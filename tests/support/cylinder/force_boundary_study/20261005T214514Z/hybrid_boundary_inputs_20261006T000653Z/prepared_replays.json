@@ -1,0 +1,14 @@
+{
+  "reference_mean_actual_oscillation": {
+    "directory": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/hybrid_boundary_inputs_20261006T000653Z/reference_mean_actual_oscillation_replay",
+    "boundary_trace_sha256": "58af67a64984300c75da45c2ecff0da219a239b3bada47111df4c66faf8dab3d",
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+    "status": "prepared; no solver replay performed"
+  },
+  "actual_mean_reference_oscillation": {
+    "directory": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/hybrid_boundary_inputs_20261006T000653Z/actual_mean_reference_oscillation_replay",
+    "boundary_trace_sha256": "3631d4982549f4dc268547110608ef5a9ca387d4679f9af8c4220d3cec670146",
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+    "status": "prepared; no solver replay performed"
+  }
+}

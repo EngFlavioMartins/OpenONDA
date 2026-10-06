@@ -1,0 +1,37 @@
+{
+  "status": "Read-only image-group adapter design review complete; no image replay prepared or launched",
+  "source_projection_helper": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/project_reference_volume_images.py",
+  "source_projection_helper_sha256": "2ec58b2dc7f319307306f83ee6f58b16275c2ec7a40d0dd262cd4d558a84f734",
+  "supported_source_schema": "openonda-cylinder-reference-particle-image/1",
+  "source_groups": [
+    "production",
+    "reference_support",
+    "exact_reference"
+  ],
+  "required_endpoint_count": 301,
+  "native_fvm_row_count": 1501,
+  "adapter_command": "python -m tests.support.cylinder.replay_boundary_inputs prepare --directory /tmp/PRIVATE_READY_DIRECTORY --source FULL_PROJECTION_DIRECTORY/particle_image_traces.h5 --group GROUP --reference-directory /tmp/openonda-cylinder-boundary-study-20261005 --origin EXPLICIT_IMAGE_SUPPORT_ORIGIN --source-receipt FULL_PROJECTION_DIRECTORY/report.json",
+  "subsequent_replay_command": "python -m tests.support.cylinder.replay_boundary_inputs replay --directory /tmp/PRIVATE_READY_DIRECTORY",
+  "enforced_current_checks": [
+    "HDF5 complete flag",
+    "all301 .04 accepted endpoint times match original native clock",
+    "exact original ordered356 face centres/normals/areas",
+    "finite velocity/Un/Gt arrays and correct shapes",
+    "Un equals vector-velocity normal projection",
+    "Gt has zero normal projection",
+    "strict original native numerical-source hashes",
+    "strict native mesh/config and unchanged initial primary/BDF/flux hashes",
+    "frozen adapter/initialization-helper hashes before and after replay"
+  ],
+  "required_manual_checks_for_image_source_before_current_adapter_preparation": [
+    "projection report status complete and complete_qualified_horizon true",
+    "projection report frames exactly301",
+    "projection report output_sha256 equals SHA256 of particle_image_traces.h5",
+    "source HDF5 full_reference_horizon_complete true",
+    "source mapped_initial_state_sha256 equals original mapped initial_state.npz hash",
+    "projection volume_history_sha256 links to the independently qualified deterministic complete native volume capture",
+    "two-frame CUDA qualification verifies CPU/GPU pointwise equivalence; its partial export alone must never be replayed as the fullhorizon"
+  ],
+  "deferred_hardening": "Automate the source-receipt/output-HDF5 and mapped-initial checks after the currently active reference-harmonic replay finishes. No mutation of its frozen helper during execution.",
+  "origin_scope": "Both image-support groups share one simultaneous native reference coefficient image. Their support difference probes omitted wake extent; neither is an evolved autonomous VPM state. exact_reference is native reference outer trace. Original capture receipt remains a separately hashed byte-identical file, never rewritten as a generated-trace receipt."
+}

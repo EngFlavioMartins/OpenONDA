@@ -1,0 +1,30 @@
+{
+  "schema": "openonda-host-hybrid-input-verification/1",
+  "status": "pass",
+  "checks": {
+    "reference_mean_actual_oscillation": {
+      "native_row_count": 1501,
+      "all_fields_finite": true,
+      "projection_checks": {
+        "velocity_normal_projection_max": 8.881784197001252e-16,
+        "gt_normal_component_max": 1.249000902703301e-16,
+        "normal_flux_max": 5.342948306008566e-16
+      },
+      "initial_state_matches_original_models": true,
+      "adapter_hash_unchanged": true
+    },
+    "actual_mean_reference_oscillation": {
+      "native_row_count": 1501,
+      "all_fields_finite": true,
+      "projection_checks": {
+        "velocity_normal_projection_max": 5.551115123125783e-16,
+        "gt_normal_component_max": 2.220446049250313e-16,
+        "normal_flux_max": 7.632783294297951e-16
+      },
+      "initial_state_matches_original_models": true,
+      "adapter_hash_unchanged": true
+    }
+  },
+  "solver_or_device_initialization": false,
+  "solver_steps_advanced": 0
+}

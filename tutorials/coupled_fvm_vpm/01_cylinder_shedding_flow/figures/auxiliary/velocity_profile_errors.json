@@ -34,28 +34,28 @@
       ],
       "errors": {
         "coupled_fvm_x2_velocity_x": {
-          "rms": 0.009283444134006221,
-          "maximum": 0.014448265301504226
+          "rms": 0.003476711726357021,
+          "maximum": 0.004220412751454017
         },
         "coupled_vpm_x2_velocity_x": {
-          "rms": 0.009111015847695232,
-          "maximum": 0.014811185947526506
+          "rms": 0.003618946187124945,
+          "maximum": 0.004491274158068048
         },
         "coupled_fvm_x2_velocity_y": {
-          "rms": 0.10753058716236247,
-          "maximum": 0.11625473491903884
+          "rms": 0.00047322382290744807,
+          "maximum": 0.0008461782225115955
         },
         "coupled_vpm_x2_velocity_y": {
-          "rms": 0.10606819878657339,
-          "maximum": 0.11675964812881648
+          "rms": 0.0005315949921118033,
+          "maximum": 0.0009321848352745535
         },
         "coupled_vpm_x4_velocity_x": {
-          "rms": 0.0036405037487955757,
-          "maximum": 0.005381773122768108
+          "rms": 0.0032331361779092942,
+          "maximum": 0.003413823188592069
         },
         "coupled_vpm_x4_velocity_y": {
-          "rms": 0.1023051669026064,
-          "maximum": 0.10304095479378682
+          "rms": 0.00027783430379833737,
+          "maximum": 0.00047948824998238215
         }
       },
       "native_fvm_profiles": {
@@ -79,28 +79,28 @@
       ],
       "errors": {
         "coupled_fvm_x2_velocity_x": {
-          "rms": 0.014808480997818679,
-          "maximum": 0.02442560793212034
+          "rms": 0.0036131612233422815,
+          "maximum": 0.006830834884894443
         },
         "coupled_vpm_x2_velocity_x": {
-          "rms": 0.013469016065945659,
-          "maximum": 0.022863439626347404
+          "rms": 0.005446495782597425,
+          "maximum": 0.00805694422697445
         },
         "coupled_fvm_x2_velocity_y": {
-          "rms": 0.01309460070726833,
-          "maximum": 0.03381512772147392
+          "rms": 0.003713687585613553,
+          "maximum": 0.005503660867175214
         },
         "coupled_vpm_x2_velocity_y": {
-          "rms": 0.011828273498966245,
-          "maximum": 0.03383155576876318
+          "rms": 0.004155630821656933,
+          "maximum": 0.008228204303567965
         },
         "coupled_vpm_x4_velocity_x": {
-          "rms": 0.003959334510308453,
-          "maximum": 0.005854022653227542
+          "rms": 0.003569319163954426,
+          "maximum": 0.00532970036381375
         },
         "coupled_vpm_x4_velocity_y": {
-          "rms": 0.0015652204893173483,
-          "maximum": 0.0023739169276245546
+          "rms": 0.005628791802629886,
+          "maximum": 0.0064189391312360206
         }
       },
       "native_fvm_profiles": {
@@ -124,28 +124,28 @@
       ],
       "errors": {
         "coupled_fvm_x2_velocity_x": {
-          "rms": 0.018924926195565055,
-          "maximum": 0.03892233604433071
+          "rms": 0.00727953984048931,
+          "maximum": 0.014388455477254758
         },
         "coupled_vpm_x2_velocity_x": {
-          "rms": 0.018135872931284585,
-          "maximum": 0.042270235779881205
+          "rms": 0.00870061031935997,
+          "maximum": 0.017158108305535436
         },
         "coupled_fvm_x2_velocity_y": {
-          "rms": 0.0065886705306646325,
-          "maximum": 0.012232392288092392
+          "rms": 0.0028424077921821635,
+          "maximum": 0.004917616086839868
         },
         "coupled_vpm_x2_velocity_y": {
-          "rms": 0.006272695463135123,
-          "maximum": 0.01283844741723475
+          "rms": 0.002756447579788563,
+          "maximum": 0.005201266374670194
         },
         "coupled_vpm_x4_velocity_x": {
-          "rms": 0.004528439326786865,
-          "maximum": 0.008112842327952174
+          "rms": 0.003898487733405147,
+          "maximum": 0.006449913426432641
         },
         "coupled_vpm_x4_velocity_y": {
-          "rms": 0.0025698801776217156,
-          "maximum": 0.004021534955308688
+          "rms": 0.005286556234299938,
+          "maximum": 0.0068946658984857315
         }
       },
       "native_fvm_profiles": {
@@ -169,28 +169,28 @@
       ],
       "errors": {
         "coupled_fvm_x2_velocity_x": {
-          "rms": 0.02693802093569383,
-          "maximum": 0.06559054127167985
+          "rms": 0.011694959433265081,
+          "maximum": 0.0294788243004519
         },
         "coupled_vpm_x2_velocity_x": {
-          "rms": 0.025257320498584174,
-          "maximum": 0.06638347324878191
+          "rms": 0.012541700394099941,
+          "maximum": 0.030271757483079142
         },
         "coupled_fvm_x2_velocity_y": {
-          "rms": 0.039444568169704326,
-          "maximum": 0.09497820729053175
+          "rms": 0.0031365884615657965,
+          "maximum": 0.007417746656918384
         },
         "coupled_vpm_x2_velocity_y": {
-          "rms": 0.03546872807180456,
-          "maximum": 0.09528919432924225
+          "rms": 0.0034928311912283253,
+          "maximum": 0.008364699736222364
         },
         "coupled_vpm_x4_velocity_x": {
-          "rms": 0.006393373802569151,
-          "maximum": 0.011690992377608955
+          "rms": 0.005377526471704861,
+          "maximum": 0.008219965211132774
         },
         "coupled_vpm_x4_velocity_y": {
-          "rms": 0.004631199778928698,
-          "maximum": 0.009482741496134739
+          "rms": 0.0049709053382772286,
+          "maximum": 0.008376645333442234
         }
       },
       "native_fvm_profiles": {
@@ -198,6 +198,4326 @@
           "method": "native-centres-affine-k12",
           "native_time": 4.000000000000003,
           "native_field": "solution/fvm/fvm_000500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 5.0000000000000036,
+      "files": [
+        "velocity_profiles_t5.pdf",
+        "velocity_profiles_t5.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.01489165674998232,
+          "maximum": 0.031460902544692915
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.016422016462979406,
+          "maximum": 0.03471629387751274
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.006753896068155677,
+          "maximum": 0.013584078130063404
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.006686180329905786,
+          "maximum": 0.015480844723228526
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.007479296017881758,
+          "maximum": 0.009961443583101026
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.0023516618206390377,
+          "maximum": 0.003978021512248443
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 5.0000000000000036,
+          "native_field": "solution/fvm/fvm_000625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 6.000000000000004,
+      "files": [
+        "velocity_profiles_t6.pdf",
+        "velocity_profiles_t6.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.016780303148851143,
+          "maximum": 0.033934768212164804
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.0183342492454621,
+          "maximum": 0.039398174130543584
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.003940797986276436,
+          "maximum": 0.007119314348833061
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.004053454650548099,
+          "maximum": 0.008729951788621848
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.008281957521147689,
+          "maximum": 0.01197264901479922
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.0018110512229805849,
+          "maximum": 0.003009983168713523
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 6.000000000000004,
+          "native_field": "solution/fvm/fvm_000750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 7.000000000000005,
+      "files": [
+        "velocity_profiles_t7.pdf",
+        "velocity_profiles_t7.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.01636565205000682,
+          "maximum": 0.029634680432963592
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.017759812692865494,
+          "maximum": 0.03357624996282843
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.0033392663486763717,
+          "maximum": 0.0076354790951794205
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.003650007772366109,
+          "maximum": 0.008871113822923743
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.00939858603100784,
+          "maximum": 0.014422381987903243
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.003566104202038946,
+          "maximum": 0.007084242091265829
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 7.000000000000005,
+          "native_field": "solution/fvm/fvm_000875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 8.000000000000005,
+      "files": [
+        "velocity_profiles_t8.pdf",
+        "velocity_profiles_t8.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.015452402986719554,
+          "maximum": 0.024430707976317467
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.017310261699956246,
+          "maximum": 0.0348488004613271
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.002812528016497226,
+          "maximum": 0.005688667261316366
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.0032132538185161196,
+          "maximum": 0.0061933170183866015
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.01207736439590812,
+          "maximum": 0.024601869568790624
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.007214340145429016,
+          "maximum": 0.014691889306601286
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 8.000000000000005,
+          "native_field": "solution/fvm/fvm_001000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 8.999999999999895,
+      "files": [
+        "velocity_profiles_t9.pdf",
+        "velocity_profiles_t9.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.01560798209895083,
+          "maximum": 0.02419231640475561
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.017591886008845533,
+          "maximum": 0.02798139063545657
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.005247855476227861,
+          "maximum": 0.011484458616249409
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.006056354614460314,
+          "maximum": 0.01446088771296515
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.015772013621740667,
+          "maximum": 0.030618269317373104
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.01296799694568669,
+          "maximum": 0.027996782120427693
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 8.999999999999895,
+          "native_field": "solution/fvm/fvm_001125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 9.999999999999785,
+      "files": [
+        "velocity_profiles_t10.pdf",
+        "velocity_profiles_t10.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.017587688824797557,
+          "maximum": 0.030370105844087874
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.018925367958602654,
+          "maximum": 0.027818257377976163
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.008889121568692879,
+          "maximum": 0.023109917398234203
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.008987545555930152,
+          "maximum": 0.025620857161249178
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.01846121293253207,
+          "maximum": 0.033086206283631125
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.008006876943422385,
+          "maximum": 0.013662254680350386
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 9.999999999999785,
+          "native_field": "solution/fvm/fvm_001250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 10.999999999999675,
+      "files": [
+        "velocity_profiles_t11.pdf",
+        "velocity_profiles_t11.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.02209432427562659,
+          "maximum": 0.04330963416243158
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.0236058593859156,
+          "maximum": 0.03916337372562393
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.008373095092084283,
+          "maximum": 0.021086192467518805
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.008416583992014223,
+          "maximum": 0.022816237588755006
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.018203709548811634,
+          "maximum": 0.02488402966968717
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.005865376434519282,
+          "maximum": 0.014567083326935515
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 10.999999999999675,
+          "native_field": "solution/fvm/fvm_001375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 11.999999999999565,
+      "files": [
+        "velocity_profiles_t12.pdf",
+        "velocity_profiles_t12.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.024329100529552453,
+          "maximum": 0.04592023331150161
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.02663034604964375,
+          "maximum": 0.04520492773490081
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.004905626853780006,
+          "maximum": 0.012597969412134868
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.005817158281703788,
+          "maximum": 0.014256165341395677
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.01889825167113864,
+          "maximum": 0.02700994734323947
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.014539828313327015,
+          "maximum": 0.03113925052608274
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 11.999999999999565,
+          "native_field": "solution/fvm/fvm_001500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 12.999999999999455,
+      "files": [
+        "velocity_profiles_t13.pdf",
+        "velocity_profiles_t13.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.022251258909683644,
+          "maximum": 0.03402036165450251
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.02468851592626376,
+          "maximum": 0.034666808567425766
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.00732010438244865,
+          "maximum": 0.019449416651691115
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.008004563877342377,
+          "maximum": 0.023935196486623622
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.01946081178324368,
+          "maximum": 0.02803520915767832
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.013243333068702382,
+          "maximum": 0.02375581863731488
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 12.999999999999455,
+          "native_field": "solution/fvm/fvm_001625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 13.999999999999345,
+      "files": [
+        "velocity_profiles_t14.pdf",
+        "velocity_profiles_t14.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.02217694071387848,
+          "maximum": 0.03347580439594855
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.02345236200589131,
+          "maximum": 0.03535440537533718
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.007681567860573201,
+          "maximum": 0.01918474505657697
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.00801767005892601,
+          "maximum": 0.0253112315336671
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.02075804293511322,
+          "maximum": 0.030732922476290225
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.0085457026589613,
+          "maximum": 0.014821466058252531
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 13.999999999999345,
+          "native_field": "solution/fvm/fvm_001750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 14.999999999999234,
+      "files": [
+        "velocity_profiles_t15.pdf",
+        "velocity_profiles_t15.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.02667233775371834,
+          "maximum": 0.04712535990463494
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.02764619054637652,
+          "maximum": 0.044945761171475404
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.006541322476648783,
+          "maximum": 0.01510637289965322
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.00645883234486253,
+          "maximum": 0.016251513734992673
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.02762021054307483,
+          "maximum": 0.050879742483084245
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.013383440497549129,
+          "maximum": 0.021522944142833622
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 14.999999999999234,
+          "native_field": "solution/fvm/fvm_001875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 15.999999999999124,
+      "files": [
+        "velocity_profiles_t16.pdf",
+        "velocity_profiles_t16.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.026775216709948892,
+          "maximum": 0.04645620478237067
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.027543885921083526,
+          "maximum": 0.04567713481934699
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.015036615509141904,
+          "maximum": 0.02500946454241504
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.012266609024423999,
+          "maximum": 0.02559272214528474
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.02569992824133628,
+          "maximum": 0.04552362010719091
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.03503537184699733,
+          "maximum": 0.05816251940217726
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 15.999999999999124,
+          "native_field": "solution/fvm/fvm_002000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 16.999999999999016,
+      "files": [
+        "velocity_profiles_t17.pdf",
+        "velocity_profiles_t17.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.025837032512337023,
+          "maximum": 0.03785867287845579
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.026223482464867106,
+          "maximum": 0.03900591579685031
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.021185155070529798,
+          "maximum": 0.037776885126972304
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.018372172600560482,
+          "maximum": 0.03608859079724763
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.02737787732899384,
+          "maximum": 0.04351169753513351
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.027942602798300645,
+          "maximum": 0.05054415915983734
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 16.999999999999016,
+          "native_field": "solution/fvm/fvm_002125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 17.999999999998906,
+      "files": [
+        "velocity_profiles_t18.pdf",
+        "velocity_profiles_t18.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.027856046300826175,
+          "maximum": 0.047362665492019174
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.028220350757213568,
+          "maximum": 0.04851630269495888
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.010302559325711275,
+          "maximum": 0.015735016090266174
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.008970607325257247,
+          "maximum": 0.013676495444473802
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.029006656865369695,
+          "maximum": 0.04654525389840214
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.010819297963987106,
+          "maximum": 0.017395187492546538
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 17.999999999998906,
+          "native_field": "solution/fvm/fvm_002250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 18.999999999998796,
+      "files": [
+        "velocity_profiles_t19.pdf",
+        "velocity_profiles_t19.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.029366821167631407,
+          "maximum": 0.05301885075762369
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.029420890503041322,
+          "maximum": 0.052392370077749995
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.03664427626937536,
+          "maximum": 0.06788508416885392
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.03157860974407859,
+          "maximum": 0.06377923654209094
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.035215332257354084,
+          "maximum": 0.06343490400175344
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.05265659296685427,
+          "maximum": 0.08967859200888248
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 18.999999999998796,
+          "native_field": "solution/fvm/fvm_002375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 19.999999999998685,
+      "files": [
+        "velocity_profiles_t20.pdf",
+        "velocity_profiles_t20.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.039813310649786486,
+          "maximum": 0.06462229496515859
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.03705635408353664,
+          "maximum": 0.058973845490649546
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.03148310409192826,
+          "maximum": 0.05696800018286047
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.027765258916103496,
+          "maximum": 0.05522059603225843
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.031421186330930634,
+          "maximum": 0.04578055202763753
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.03479116411159454,
+          "maximum": 0.06325355773622118
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 19.999999999998685,
+          "native_field": "solution/fvm/fvm_002500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 20.999999999998575,
+      "files": [
+        "velocity_profiles_t21.pdf",
+        "velocity_profiles_t21.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.035050638603047565,
+          "maximum": 0.06836785250178545
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.034029043884551795,
+          "maximum": 0.06804513761650854
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.03672336597240984,
+          "maximum": 0.07058412185551108
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.03285747908972367,
+          "maximum": 0.06853518673263415
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.03358947478599102,
+          "maximum": 0.05636837619592305
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.017348850249274315,
+          "maximum": 0.02979715969993668
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 20.999999999998575,
+          "native_field": "solution/fvm/fvm_002625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 21.999999999998465,
+      "files": [
+        "velocity_profiles_t22.pdf",
+        "velocity_profiles_t22.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.05685967975105945,
+          "maximum": 0.12215859520417116
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.05278879917030339,
+          "maximum": 0.12284367382753367
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.07780142290051631,
+          "maximum": 0.15352699791492683
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.06873628923583132,
+          "maximum": 0.1507005213775974
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.04025599966711158,
+          "maximum": 0.06581295060592085
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.08706794419732758,
+          "maximum": 0.16156708996394734
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 21.999999999998465,
+          "native_field": "solution/fvm/fvm_002750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 22.999999999998355,
+      "files": [
+        "velocity_profiles_t23.pdf",
+        "velocity_profiles_t23.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.07336216564480558,
+          "maximum": 0.14670600232712033
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.06600228265443356,
+          "maximum": 0.144235071134525
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.03299987157727765,
+          "maximum": 0.05387478528976551
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.029160483308620307,
+          "maximum": 0.052831979922287775
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.04401814317188747,
+          "maximum": 0.06405670849007117
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.028876087395791547,
+          "maximum": 0.04341802333468445
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 22.999999999998355,
+          "native_field": "solution/fvm/fvm_002875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 23.999999999998245,
+      "files": [
+        "velocity_profiles_t24.pdf",
+        "velocity_profiles_t24.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.043446609973455765,
+          "maximum": 0.08754297758373752
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.041854116446752486,
+          "maximum": 0.0863267931930316
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.09127596865694948,
+          "maximum": 0.16320895512413033
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.08167167341313258,
+          "maximum": 0.1613017684229848
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.045657263752726884,
+          "maximum": 0.08538235086022583
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.05033217742524819,
+          "maximum": 0.09993847782124904
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 23.999999999998245,
+          "native_field": "solution/fvm/fvm_003000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 24.999999999998135,
+      "files": [
+        "velocity_profiles_t25.pdf",
+        "velocity_profiles_t25.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.10308063388168567,
+          "maximum": 0.21660561955647406
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.09297042621098624,
+          "maximum": 0.21673266029650687
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.12448957066377231,
+          "maximum": 0.25473229604954006
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.11175360515854128,
+          "maximum": 0.2534068984078757
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.05521903192151933,
+          "maximum": 0.0875638733195877
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.13640503300741455,
+          "maximum": 0.26720787283284897
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 24.999999999998135,
+          "native_field": "solution/fvm/fvm_003125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 25.999999999998025,
+      "files": [
+        "velocity_profiles_t26.pdf",
+        "velocity_profiles_t26.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.11319491491760282,
+          "maximum": 0.2470632413014846
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.10168964522421703,
+          "maximum": 0.24424820656841573
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.041337329497746995,
+          "maximum": 0.08034069467286858
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.038718543128289755,
+          "maximum": 0.07961341901111313
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.05326455227121166,
+          "maximum": 0.08020790130653299
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.0243976165775067,
+          "maximum": 0.03851844733214005
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 25.999999999998025,
+          "native_field": "solution/fvm/fvm_003250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 26.999999999997915,
+      "files": [
+        "velocity_profiles_t27.pdf",
+        "velocity_profiles_t27.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.04993749589580815,
+          "maximum": 0.0903807804334611
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.048588256283553954,
+          "maximum": 0.08970401485000612
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.13756224886039506,
+          "maximum": 0.24764091275773875
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.12251445030952073,
+          "maximum": 0.24453861488321837
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.06583355267675764,
+          "maximum": 0.11811719353703176
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.12367645964526883,
+          "maximum": 0.23839170461378678
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 26.999999999997915,
+          "native_field": "solution/fvm/fvm_003375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 27.999999999997804,
+      "files": [
+        "velocity_profiles_t28.pdf",
+        "velocity_profiles_t28.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.13780439552704996,
+          "maximum": 0.269526621480707
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.12294251796036848,
+          "maximum": 0.26868723773900544
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.15361123142542837,
+          "maximum": 0.30970039407343425
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.13898941332816267,
+          "maximum": 0.3090307073444037
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.08763401225535018,
+          "maximum": 0.2110855748868481
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.10274638119333601,
+          "maximum": 0.24158261720659582
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 27.999999999997804,
+          "native_field": "solution/fvm/fvm_003500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 28.999999999997694,
+      "files": [
+        "velocity_profiles_t29.pdf",
+        "velocity_profiles_t29.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.12862732496934562,
+          "maximum": 0.27435607193980094
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.11551209275321575,
+          "maximum": 0.27365178583297967
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.04564588130065874,
+          "maximum": 0.08041967448589193
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.04402730286956868,
+          "maximum": 0.07881860152855558
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.06592465164535369,
+          "maximum": 0.0985453348293015
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.040158921936605176,
+          "maximum": 0.07837691005093372
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 28.999999999997694,
+          "native_field": "solution/fvm/fvm_003625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 29.999999999997584,
+      "files": [
+        "velocity_profiles_t30.pdf",
+        "velocity_profiles_t30.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.06475370160046572,
+          "maximum": 0.1584456120561742
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.06156194718637752,
+          "maximum": 0.16345801180086061
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.17425401190019238,
+          "maximum": 0.32763555097284874
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.15556169448098478,
+          "maximum": 0.324394785994745
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.08721176589742523,
+          "maximum": 0.1476926508773686
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.21809001585761628,
+          "maximum": 0.4094477831784392
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 29.999999999997584,
+          "native_field": "solution/fvm/fvm_003750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 30.999999999997474,
+      "files": [
+        "velocity_profiles_t31.pdf",
+        "velocity_profiles_t31.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.1612736455739419,
+          "maximum": 0.32198270213419
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.14348332030593577,
+          "maximum": 0.31857857016519264
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.12482284042619958,
+          "maximum": 0.23982268702940415
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.113632372551037,
+          "maximum": 0.2386551282494611
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.10192132030711255,
+          "maximum": 0.2642452440110642
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.05800792435077787,
+          "maximum": 0.14081113672436468
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 30.999999999997474,
+          "native_field": "solution/fvm/fvm_003875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 31.999999999997364,
+      "files": [
+        "velocity_profiles_t32.pdf",
+        "velocity_profiles_t32.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.09526012285171281,
+          "maximum": 0.1570994321279482
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.08704627188187833,
+          "maximum": 0.16437910970629144
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.11669875671326628,
+          "maximum": 0.21539159355861792
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.10478538158355788,
+          "maximum": 0.21289005471165623
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.0762969054034952,
+          "maximum": 0.12674743522931597
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.062273902280463464,
+          "maximum": 0.11628620112686044
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 31.999999999997364,
+          "native_field": "solution/fvm/fvm_004000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 32.9999999999977,
+      "files": [
+        "velocity_profiles_t33.pdf",
+        "velocity_profiles_t33.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.13010253487919085,
+          "maximum": 0.3179307348313975
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.11788783941374531,
+          "maximum": 0.32075378288659134
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.2063593527969345,
+          "maximum": 0.41313081466586987
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.18490897819615712,
+          "maximum": 0.4114359170710389
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.09111655697748017,
+          "maximum": 0.17618741348975298
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.30547019154775207,
+          "maximum": 0.5818718434496849
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 32.9999999999977,
+          "native_field": "solution/fvm/fvm_004125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 33.99999999999803,
+      "files": [
+        "velocity_profiles_t34.pdf",
+        "velocity_profiles_t34.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.17977343504340643,
+          "maximum": 0.3774377122770408
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.16065488180826473,
+          "maximum": 0.37630145844802654
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.07186243384346395,
+          "maximum": 0.13167713018006844
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.06612729958376211,
+          "maximum": 0.13087841519776955
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.10138575737012899,
+          "maximum": 0.21734947918081504
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.04016200800374636,
+          "maximum": 0.0685299281321618
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 33.99999999999803,
+          "native_field": "solution/fvm/fvm_004250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 34.999999999998366,
+      "files": [
+        "velocity_profiles_t35.pdf",
+        "velocity_profiles_t35.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.07661751577320644,
+          "maximum": 0.12987718830466943
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.07319777090681058,
+          "maximum": 0.12879250557162036
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.20459997665731108,
+          "maximum": 0.3728022935095304
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.18315087459794363,
+          "maximum": 0.3711974438421465
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.08869430904455423,
+          "maximum": 0.16792644997788053
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.14742557499386919,
+          "maximum": 0.2842089052511109
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 34.999999999998366,
+          "native_field": "solution/fvm/fvm_004375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 35.9999999999987,
+      "files": [
+        "velocity_profiles_t36.pdf",
+        "velocity_profiles_t36.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.19588065045826697,
+          "maximum": 0.4065641100226959
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.17580472237331807,
+          "maximum": 0.410025914818775
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.22437834418440034,
+          "maximum": 0.45940344706803327
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.20199389791007022,
+          "maximum": 0.45840626154983233
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.1302890547266489,
+          "maximum": 0.2935429718250173
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.24767709716513406,
+          "maximum": 0.4945359075165216
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 35.9999999999987,
+          "native_field": "solution/fvm/fvm_004500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 36.999999999999034,
+      "files": [
+        "velocity_profiles_t37.pdf",
+        "velocity_profiles_t37.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.1790141200137122,
+          "maximum": 0.370133677316009
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.16100077615992797,
+          "maximum": 0.36882653902003326
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.06749136837842137,
+          "maximum": 0.1389762136545602
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.06272681422711704,
+          "maximum": 0.13779940146459174
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.10198865635760718,
+          "maximum": 0.15523038726169858
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.04946008090537636,
+          "maximum": 0.09276883178344209
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 36.999999999999034,
+          "native_field": "solution/fvm/fvm_004625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 37.99999999999937,
+      "files": [
+        "velocity_profiles_t38.pdf",
+        "velocity_profiles_t38.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.10596919608978998,
+          "maximum": 0.24401483135950594
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.09983873932470777,
+          "maximum": 0.2510348671085013
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.27467282655510944,
+          "maximum": 0.5190276436505561
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.2454905698086367,
+          "maximum": 0.5160319270962117
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.10480713074420597,
+          "maximum": 0.19477621134348744
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.2973331996117626,
+          "maximum": 0.5493239967163759
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 37.99999999999937,
+          "native_field": "solution/fvm/fvm_004750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 38.9999999999997,
+      "files": [
+        "velocity_profiles_t39.pdf",
+        "velocity_profiles_t39.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.24132777915933096,
+          "maximum": 0.4668532536714792
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2159131524906333,
+          "maximum": 0.46519748775974507
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.20337230063021602,
+          "maximum": 0.40129900723393475
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.18408834363558524,
+          "maximum": 0.39999550046071963
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.15481213625896176,
+          "maximum": 0.3616882984429244
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.11845173091804106,
+          "maximum": 0.26648896176839953
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 38.9999999999997,
+          "native_field": "solution/fvm/fvm_004875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 40.000000000000036,
+      "files": [
+        "velocity_profiles_t40.pdf",
+        "velocity_profiles_t40.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.154542054494562,
+          "maximum": 0.2698310966622146
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.1405111591878104,
+          "maximum": 0.2750961020977526
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.14751062530383396,
+          "maximum": 0.2924268744541506
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.13322514433293978,
+          "maximum": 0.29079457995945657
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.1138645835076124,
+          "maximum": 0.17864897987757966
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.08484660628614739,
+          "maximum": 0.1642407072791312
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 40.000000000000036,
+          "native_field": "solution/fvm/fvm_005000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 41.00000000000037,
+      "files": [
+        "velocity_profiles_t41.pdf",
+        "velocity_profiles_t41.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.16986369770765508,
+          "maximum": 0.4004949170545728
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.1554026914354735,
+          "maximum": 0.4087186010694103
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.31787829600729506,
+          "maximum": 0.6191590744945079
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.2847254092899244,
+          "maximum": 0.6168063349065087
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.11894303401598119,
+          "maximum": 0.21484378055670428
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.4443236726493424,
+          "maximum": 0.8184372483349778
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 41.00000000000037,
+          "native_field": "solution/fvm/fvm_005125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 42.0000000000007,
+      "files": [
+        "velocity_profiles_t42.pdf",
+        "velocity_profiles_t42.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2653500279546886,
+          "maximum": 0.5379722375063158
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.23736780275633768,
+          "maximum": 0.5365697542257244
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.142057781413098,
+          "maximum": 0.24049931082841322
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.1305560528049161,
+          "maximum": 0.23904590148904503
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.15556990218962768,
+          "maximum": 0.3441343701443986
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.06139853008026556,
+          "maximum": 0.12977324489770475
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 42.0000000000007,
+          "native_field": "solution/fvm/fvm_005250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 43.00000000000104,
+      "files": [
+        "velocity_profiles_t43.pdf",
+        "velocity_profiles_t43.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.11919357117842883,
+          "maximum": 0.19725213982013945
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.11186047451962637,
+          "maximum": 0.20438753231238183
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.2659351588166165,
+          "maximum": 0.4813515493234339
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.23836735573549878,
+          "maximum": 0.4805873126520748
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.12852312412510467,
+          "maximum": 0.22374481230614218
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.17098588308524304,
+          "maximum": 0.32860315686699637
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 43.00000000000104,
+          "native_field": "solution/fvm/fvm_005375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 44.00000000000137,
+      "files": [
+        "velocity_profiles_t44.pdf",
+        "velocity_profiles_t44.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.24532881364118447,
+          "maximum": 0.5188044782846148
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2213181286857743,
+          "maximum": 0.5254986834875092
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.3310924656707846,
+          "maximum": 0.6512022486407308
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.2974472659122075,
+          "maximum": 0.649743030655878
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.15949689266762604,
+          "maximum": 0.3224282956580883
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.4249338725127292,
+          "maximum": 0.791048978678345
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 44.00000000000137,
+          "native_field": "solution/fvm/fvm_005500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 45.000000000001705,
+      "files": [
+        "velocity_profiles_t45.pdf",
+        "velocity_profiles_t45.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2616073317601564,
+          "maximum": 0.5296686792614795
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.23460012329597751,
+          "maximum": 0.5286305496009256
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.08982374436450807,
+          "maximum": 0.1666337067015851
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.08484556398686961,
+          "maximum": 0.16622028936209823
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.15343210360727288,
+          "maximum": 0.27656160398805185
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.05670530955989272,
+          "maximum": 0.10402353807857712
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 45.000000000001705,
+          "native_field": "solution/fvm/fvm_005625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 46.00000000000204,
+      "files": [
+        "velocity_profiles_t46.pdf",
+        "velocity_profiles_t46.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.12598161393542634,
+          "maximum": 0.24429671923801402
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.11969298431476205,
+          "maximum": 0.25287342233804766
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.3669554663771599,
+          "maximum": 0.6862062637604835
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.3286176161912301,
+          "maximum": 0.6846240355681074
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.13659155444803026,
+          "maximum": 0.25760335883321117
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.34597477668996335,
+          "maximum": 0.6375447227462756
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 46.00000000000204,
+          "native_field": "solution/fvm/fvm_005750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 47.00000000000237,
+      "files": [
+        "velocity_profiles_t47.pdf",
+        "velocity_profiles_t47.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.30587434727940727,
+          "maximum": 0.5633032629624313
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2744444456530652,
+          "maximum": 0.5663333172079623
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.29922076775853557,
+          "maximum": 0.566461933679915
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.27023209519191904,
+          "maximum": 0.5653378418258334
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.2067929391617959,
+          "maximum": 0.4370142890891153
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.2594658854524626,
+          "maximum": 0.5074156861397211
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 47.00000000000237,
+          "native_field": "solution/fvm/fvm_005875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 48.00000000000271,
+      "files": [
+        "velocity_profiles_t48.pdf",
+        "velocity_profiles_t48.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2276516350271632,
+          "maximum": 0.41088887893982007
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.20583658327381382,
+          "maximum": 0.4127118628785233
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.15967666557167337,
+          "maximum": 0.33941138893215406
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.14454653912399396,
+          "maximum": 0.33815971966700487
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.1581532646949413,
+          "maximum": 0.23425651812152015
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.09645974413610985,
+          "maximum": 0.19467633251145966
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 48.00000000000271,
+          "native_field": "solution/fvm/fvm_006000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 49.00000000000304,
+      "files": [
+        "velocity_profiles_t49.pdf",
+        "velocity_profiles_t49.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.19359258847263916,
+          "maximum": 0.45201365656329356
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.17868449021611785,
+          "maximum": 0.4609290091424098
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.42741677823021723,
+          "maximum": 0.8145409827788002
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.3826530753045042,
+          "maximum": 0.8117493085059732
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.1336307511264335,
+          "maximum": 0.22769587946178094
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5476691334284289,
+          "maximum": 0.9848904478639045
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 49.00000000000304,
+          "native_field": "solution/fvm/fvm_006125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 50.000000000003375,
+      "files": [
+        "velocity_profiles_t50.pdf",
+        "velocity_profiles_t50.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.3409710559962187,
+          "maximum": 0.6633785968819352
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.3052733563668803,
+          "maximum": 0.6615197367571313
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.22189377927349982,
+          "maximum": 0.3732228393914925
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.20253652539827047,
+          "maximum": 0.3711725755677478
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.22099643484484677,
+          "maximum": 0.4673733390458229
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.1208424110771527,
+          "maximum": 0.25468369857115764
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 50.000000000003375,
+          "native_field": "solution/fvm/fvm_006250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 51.00000000000371,
+      "files": [
+        "velocity_profiles_t51.pdf",
+        "velocity_profiles_t51.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.17476058829896127,
+          "maximum": 0.28393386692740386
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.16159350290479021,
+          "maximum": 0.29131069734126847
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.30393075626293486,
+          "maximum": 0.5697212362739725
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.2729359327164294,
+          "maximum": 0.56713749021044
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.16897490603700116,
+          "maximum": 0.2812222310623652
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.18334415037651453,
+          "maximum": 0.3529663429063209
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 51.00000000000371,
+          "native_field": "solution/fvm/fvm_006375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 52.00000000000404,
+      "files": [
+        "velocity_profiles_t52.pdf",
+        "velocity_profiles_t52.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2802180541914491,
+          "maximum": 0.5856033880044238
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2542005348267885,
+          "maximum": 0.5938588607211112
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.44168444553401864,
+          "maximum": 0.8341697044386289
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.396375976995316,
+          "maximum": 0.8321723023371733
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.16288388281625424,
+          "maximum": 0.2979882263604485
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5822230122748553,
+          "maximum": 1.0376210650704234
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 52.00000000000404,
+          "native_field": "solution/fvm/fvm_006500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 53.00000000000438,
+      "files": [
+        "velocity_profiles_t53.pdf",
+        "velocity_profiles_t53.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.34265040971738603,
+          "maximum": 0.6719813730705565
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.30703526309049956,
+          "maximum": 0.670429676058006
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.1305082268064977,
+          "maximum": 0.2414482995944889
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.12301372849406339,
+          "maximum": 0.2412659912721899
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.2137532427525477,
+          "maximum": 0.41259115894479503
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.07022609350627157,
+          "maximum": 0.10341070363995113
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 53.00000000000438,
+          "native_field": "solution/fvm/fvm_006625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 54.00000000000471,
+      "files": [
+        "velocity_profiles_t54.pdf",
+        "velocity_profiles_t54.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.15018012904742914,
+          "maximum": 0.2454668070557695
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.14298431963673916,
+          "maximum": 0.2457375359298044
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.43911995819244515,
+          "maximum": 0.8171725353514432
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.3934750519355564,
+          "maximum": 0.8168819538144529
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.1703568676258188,
+          "maximum": 0.31583951200417526
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.36166660056479344,
+          "maximum": 0.6558334815891903
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 54.00000000000471,
+          "native_field": "solution/fvm/fvm_006750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 55.000000000005045,
+      "files": [
+        "velocity_profiles_t55.pdf",
+        "velocity_profiles_t55.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.354623873711919,
+          "maximum": 0.6658884268202868
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.3191618308318786,
+          "maximum": 0.6725985258165662
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.40561430385002156,
+          "maximum": 0.7337897483085274
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.3653244610316547,
+          "maximum": 0.7319716322264204
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.22821178992118735,
+          "maximum": 0.42851137316909804
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.4345338651338477,
+          "maximum": 0.7750761879003372
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 55.000000000005045,
+          "native_field": "solution/fvm/fvm_006875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 56.00000000000538,
+      "files": [
+        "velocity_profiles_t56.pdf",
+        "velocity_profiles_t56.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.308086349649676,
+          "maximum": 0.5702230268124691
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2773779287808913,
+          "maximum": 0.5692167718315402
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.1547796177567695,
+          "maximum": 0.329548202635699
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.14188119071618913,
+          "maximum": 0.32849163712382673
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.20849284611823374,
+          "maximum": 0.3127658720383457
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.10436952810206242,
+          "maximum": 0.21790512764171727
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 56.00000000000538,
+          "native_field": "solution/fvm/fvm_007000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 57.00000000000571,
+      "files": [
+        "velocity_profiles_t57.pdf",
+        "velocity_profiles_t57.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2047594494315304,
+          "maximum": 0.45436870415062597
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.1907366723015524,
+          "maximum": 0.46346128267939274
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.5258954606598194,
+          "maximum": 0.9951428607036945
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.4713181735091433,
+          "maximum": 0.9937068828321988
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.14881456352700523,
+          "maximum": 0.2748286170583014
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5952397630233998,
+          "maximum": 1.0473635740214564
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 57.00000000000571,
+          "native_field": "solution/fvm/fvm_007125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 58.00000000000605,
+      "files": [
+        "velocity_profiles_t58.pdf",
+        "velocity_profiles_t58.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.4035253586788072,
+          "maximum": 0.7583737761560592
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.36195062965813946,
+          "maximum": 0.7572662938437706
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.31703684872824384,
+          "maximum": 0.5221166332879413
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.2879011348455516,
+          "maximum": 0.5203474483516416
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.27074318376501183,
+          "maximum": 0.5204688255612607
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.2496176189328914,
+          "maximum": 0.45981161800456805
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 58.00000000000605,
+          "native_field": "solution/fvm/fvm_007250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 59.00000000000638,
+      "files": [
+        "velocity_profiles_t59.pdf",
+        "velocity_profiles_t59.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2431203843243264,
+          "maximum": 0.3808596269766191
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.22226357299563015,
+          "maximum": 0.3892192319387444
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.3129602618754775,
+          "maximum": 0.627622695562071
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.2807704832343772,
+          "maximum": 0.625689795134323
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.21111653310610248,
+          "maximum": 0.33620666016592426
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.18983245469598647,
+          "maximum": 0.37124413230428205
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 59.00000000000638,
+          "native_field": "solution/fvm/fvm_007375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 60.000000000006715,
+      "files": [
+        "velocity_profiles_t60.pdf",
+        "velocity_profiles_t60.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2980938572430397,
+          "maximum": 0.6117451754579578
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2720348516453096,
+          "maximum": 0.6211484701485314
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.5525942922908467,
+          "maximum": 1.025073071458038
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.49546679847162184,
+          "maximum": 1.022443977408866
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.14934780473253317,
+          "maximum": 0.25684339958426994
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.689299003011702,
+          "maximum": 1.189934223239867
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 60.000000000006715,
+          "native_field": "solution/fvm/fvm_007500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 61.00000000000705,
+      "files": [
+        "velocity_profiles_t61.pdf",
+        "velocity_profiles_t61.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.4178396330470843,
+          "maximum": 0.7937004972607558
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.37440591881677415,
+          "maximum": 0.7926391018639792
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.19740959758243995,
+          "maximum": 0.3240727916213869
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.18337363087747144,
+          "maximum": 0.32410943235701173
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.2786123570105287,
+          "maximum": 0.5289330568431908
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.10715070964511055,
+          "maximum": 0.1939769001443383
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 61.00000000000705,
+          "native_field": "solution/fvm/fvm_007625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 62.00000000000738,
+      "files": [
+        "velocity_profiles_t62.pdf",
+        "velocity_profiles_t62.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.185794322970825,
+          "maximum": 0.3111687633871809
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.17548408475310046,
+          "maximum": 0.31407672609726023
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.47749978515332964,
+          "maximum": 0.8972894191574075
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.42819978345556053,
+          "maximum": 0.8960600314275702
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.20638293405693733,
+          "maximum": 0.37185258004949817
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.3626046504885316,
+          "maximum": 0.6488506344512581
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 62.00000000000738,
+          "native_field": "solution/fvm/fvm_007750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 63.00000000000772,
+      "files": [
+        "velocity_profiles_t63.pdf",
+        "velocity_profiles_t63.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.3847440945877405,
+          "maximum": 0.7220877841541402
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.34758058220618615,
+          "maximum": 0.7303757062927941
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.5177947508425823,
+          "maximum": 0.9080619829023916
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.46561578198629927,
+          "maximum": 0.9059966731169893
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.21941167243024853,
+          "maximum": 0.3722101973908154
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.592663393998982,
+          "maximum": 1.0116947266436087
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 63.00000000000772,
+          "native_field": "solution/fvm/fvm_007875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 64.00000000000804,
+      "files": [
+        "velocity_profiles_t64.pdf",
+        "velocity_profiles_t64.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.39040591848570716,
+          "maximum": 0.7127493967770442
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.3506980831060883,
+          "maximum": 0.7130101927795149
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.14421649170356593,
+          "maximum": 0.25260255120222386
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.13587313134415496,
+          "maximum": 0.2529195017430745
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.26800759210312,
+          "maximum": 0.44577938044822785
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.10472877209504457,
+          "maximum": 0.20998050023571097
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 64.00000000000804,
+          "native_field": "solution/fvm/fvm_008000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 65.00000000000749,
+      "files": [
+        "velocity_profiles_t65.pdf",
+        "velocity_profiles_t65.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2091866548458006,
+          "maximum": 0.41298920480818885
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.19695743340821426,
+          "maximum": 0.42239568059664023
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.5986749776223489,
+          "maximum": 1.1310859014409154
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5366183702377368,
+          "maximum": 1.1313513577267666
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.17014111388678585,
+          "maximum": 0.3288958304680176
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.6059379977849162,
+          "maximum": 1.039242566302103
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 65.00000000000749,
+          "native_field": "solution/fvm/fvm_008125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 66.00000000000693,
+      "files": [
+        "velocity_profiles_t66.pdf",
+        "velocity_profiles_t66.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.44853913785208294,
+          "maximum": 0.8343320745374534
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.4031362604416215,
+          "maximum": 0.8361859100307626
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.42496914990136087,
+          "maximum": 0.6840680144347134
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.38420360824190714,
+          "maximum": 0.6822402570297356
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.29011598192829247,
+          "maximum": 0.49997409349580235
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.42619195134639903,
+          "maximum": 0.7227616211462675
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 66.00000000000693,
+          "native_field": "solution/fvm/fvm_008250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 67.00000000000638,
+      "files": [
+        "velocity_profiles_t67.pdf",
+        "velocity_profiles_t67.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.32170981867799403,
+          "maximum": 0.5019347563237089
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2916141782928127,
+          "maximum": 0.5033073330262228
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.29599707576892353,
+          "maximum": 0.6244114960000062
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.26638368240596416,
+          "maximum": 0.6233345964623874
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.25908081066865357,
+          "maximum": 0.39370161979068996
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.19528618730665287,
+          "maximum": 0.3960792798603806
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 67.00000000000638,
+          "native_field": "solution/fvm/fvm_008375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 68.00000000000583,
+      "files": [
+        "velocity_profiles_t68.pdf",
+        "velocity_profiles_t68.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2992696218700711,
+          "maximum": 0.6059227899366617
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.274924451401175,
+          "maximum": 0.6150173019784272
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.6516889954964891,
+          "maximum": 1.2008704063682307
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5845919153054757,
+          "maximum": 1.1999080771724
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.13247881075546136,
+          "maximum": 0.2134556419044854
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7424270863901391,
+          "maximum": 1.2438681588547875
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 68.00000000000583,
+          "native_field": "solution/fvm/fvm_008500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 69.00000000000527,
+      "files": [
+        "velocity_profiles_t69.pdf",
+        "velocity_profiles_t69.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.4791621543874357,
+          "maximum": 0.8917422312822042
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.4297963924906735,
+          "maximum": 0.8938110850289609
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.2875721789210918,
+          "maximum": 0.4169447089977144
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.26394267641361024,
+          "maximum": 0.4177874225816338
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.3299886274204691,
+          "maximum": 0.5846470534691028
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.2318232297569941,
+          "maximum": 0.394470246122976
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 69.00000000000527,
+          "native_field": "solution/fvm/fvm_008625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 70.00000000000472,
+      "files": [
+        "velocity_profiles_t70.pdf",
+        "velocity_profiles_t70.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.23748684270340187,
+          "maximum": 0.3850480626911922
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.22096352692278878,
+          "maximum": 0.3921320124756936
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.48433468419130793,
+          "maximum": 0.9535767220444573
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.4336282996425121,
+          "maximum": 0.9503973930677638
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.24502779778408612,
+          "maximum": 0.4253066743169407
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.3608751049638178,
+          "maximum": 0.6434623889996725
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 70.00000000000472,
+          "native_field": "solution/fvm/fvm_008750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 71.00000000000416,
+      "files": [
+        "velocity_profiles_t71.pdf",
+        "velocity_profiles_t71.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.3963493547342266,
+          "maximum": 0.7482679024073257
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.35953173049061704,
+          "maximum": 0.7576605062292877
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.6296058815853958,
+          "maximum": 1.0845792215865673
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5654240214728014,
+          "maximum": 1.0818844782014747
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.1892218188776483,
+          "maximum": 0.2979982237455632
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7022962765018256,
+          "maximum": 1.1624569615252758
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 71.00000000000416,
+          "native_field": "solution/fvm/fvm_008875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 72.00000000000361,
+      "files": [
+        "velocity_profiles_t72.pdf",
+        "velocity_profiles_t72.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.4660188815518516,
+          "maximum": 0.8296563138595476
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.41816371785295353,
+          "maximum": 0.8326296962416198
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.15810424019637265,
+          "maximum": 0.27351611732325476
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.1513497033779597,
+          "maximum": 0.27371155403840947
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.333628829608662,
+          "maximum": 0.5764153539304453
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.09583270580548371,
+          "maximum": 0.14416118036332887
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 72.00000000000361,
+          "native_field": "solution/fvm/fvm_009000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 73.00000000000306,
+      "files": [
+        "velocity_profiles_t73.pdf",
+        "velocity_profiles_t73.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.21696843421973283,
+          "maximum": 0.32895415179937126
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.20592710677281034,
+          "maximum": 0.33313272122300885
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.6362569377416905,
+          "maximum": 1.2072354905043652
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5704836406511214,
+          "maximum": 1.208089785605844
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.19846363459659713,
+          "maximum": 0.3842813331182743
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.6011675647699296,
+          "maximum": 1.008908805478942
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 73.00000000000306,
+          "native_field": "solution/fvm/fvm_009125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 74.0000000000025,
+      "files": [
+        "velocity_profiles_t74.pdf",
+        "velocity_profiles_t74.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.4744501060821983,
+          "maximum": 0.8852211263616971
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.427558832287771,
+          "maximum": 0.89130303001277
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.5384227405276353,
+          "maximum": 0.8546572012235135
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.48545657891516136,
+          "maximum": 0.8525846986833356
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.2768436351891204,
+          "maximum": 0.43252048842886026
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5865865225879542,
+          "maximum": 0.9689918622012781
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 74.0000000000025,
+          "native_field": "solution/fvm/fvm_009250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 75.00000000000195,
+      "files": [
+        "velocity_profiles_t75.pdf",
+        "velocity_profiles_t75.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.40320725787103223,
+          "maximum": 0.6516226102770014
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.3637510292751755,
+          "maximum": 0.6500922285770716
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.25715449470669044,
+          "maximum": 0.5423473556702192
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.23351920427564732,
+          "maximum": 0.5420350256199152
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.3155075174180965,
+          "maximum": 0.45773596232141756
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.1902804848130688,
+          "maximum": 0.4014553829780543
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 75.00000000000195,
+          "native_field": "solution/fvm/fvm_009375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 76.00000000000139,
+      "files": [
+        "velocity_profiles_t76.pdf",
+        "velocity_profiles_t76.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2897331473853352,
+          "maximum": 0.5792321144184682
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2684105080515863,
+          "maximum": 0.5880240374554151
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.7242624249201775,
+          "maximum": 1.3355349040341102
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.649598563742747,
+          "maximum": 1.3369570734382767
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.12708919321162737,
+          "maximum": 0.2536822800026637
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7584116693331405,
+          "maximum": 1.2323439933431193
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 76.00000000000139,
+          "native_field": "solution/fvm/fvm_009500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 77.00000000000084,
+      "files": [
+        "velocity_profiles_t77.pdf",
+        "velocity_profiles_t77.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5225250096308802,
+          "maximum": 0.9638008019442494
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.4693040231301552,
+          "maximum": 0.969731913764357
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.39445979760345196,
+          "maximum": 0.563597619654386
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.35888801383700997,
+          "maximum": 0.5620474220529736
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.3494986158918727,
+          "maximum": 0.5660439983318925
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.4130244670997466,
+          "maximum": 0.67631816272333
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 77.00000000000084,
+          "native_field": "solution/fvm/fvm_009625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 78.00000000000028,
+      "files": [
+        "velocity_profiles_t78.pdf",
+        "velocity_profiles_t78.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.3044200513811807,
+          "maximum": 0.4649344127157975
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.27922563009737533,
+          "maximum": 0.4725682342629921
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.46351945462205535,
+          "maximum": 0.9596870732740422
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.415243036449072,
+          "maximum": 0.9586581783057487
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.2891226571259947,
+          "maximum": 0.4796774526348274
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.3602936980243235,
+          "maximum": 0.6558890219435669
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 78.00000000000028,
+          "native_field": "solution/fvm/fvm_009750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 78.99999999999973,
+      "files": [
+        "velocity_profiles_t79.pdf",
+        "velocity_profiles_t79.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.39031336399673483,
+          "maximum": 0.7403059272926045
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.35562576063142076,
+          "maximum": 0.7494507073532227
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.729246531416246,
+          "maximum": 1.2601595881881376
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.654908458626487,
+          "maximum": 1.2596847271548215
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.14946282786961437,
+          "maximum": 0.2321253334518375
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7579890834885703,
+          "maximum": 1.218039015047638
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 78.99999999999973,
+          "native_field": "solution/fvm/fvm_009875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 79.99999999999918,
+      "files": [
+        "velocity_profiles_t80.pdf",
+        "velocity_profiles_t80.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5280442001184613,
+          "maximum": 0.9309483160099181
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.47394352938461104,
+          "maximum": 0.9330524836907496
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.21803155692542533,
+          "maximum": 0.34494147035811035
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.2052638490548112,
+          "maximum": 0.3457089185944767
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.3869709875332666,
+          "maximum": 0.6505139190162
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.19161546267804086,
+          "maximum": 0.289345459074651
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 79.99999999999918,
+          "native_field": "solution/fvm/fvm_010000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 80.99999999999862,
+      "files": [
+        "velocity_profiles_t81.pdf",
+        "velocity_profiles_t81.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2371569582944322,
+          "maximum": 0.3900106137733713
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.22442970215595504,
+          "maximum": 0.3914124432839585
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.6414744469209973,
+          "maximum": 1.2448879607538028
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5741281423083607,
+          "maximum": 1.2424024233064213
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.2326819026614606,
+          "maximum": 0.43690162688955014
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5948059843945072,
+          "maximum": 0.9864880410577679
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 80.99999999999862,
+          "native_field": "solution/fvm/fvm_010125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 81.99999999999807,
+      "files": [
+        "velocity_profiles_t82.pdf",
+        "velocity_profiles_t82.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.48107024083190875,
+          "maximum": 0.8960350291713496
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.43472322444334677,
+          "maximum": 0.9029148991613898
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.6516337698775725,
+          "maximum": 1.03432526562129
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5863406967647007,
+          "maximum": 1.031642740922699
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.2411105707382123,
+          "maximum": 0.36394164114322936
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.6981122894980158,
+          "maximum": 1.1342313647723539
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 81.99999999999807,
+          "native_field": "solution/fvm/fvm_010250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 82.99999999999751,
+      "files": [
+        "velocity_profiles_t83.pdf",
+        "velocity_profiles_t83.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.47951347669025923,
+          "maximum": 0.7809639094439144
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.43139906667898364,
+          "maximum": 0.7799252321886119
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.207934915318082,
+          "maximum": 0.39864657897099526
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.1932572943997571,
+          "maximum": 0.39956171328456097
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.37989632957286407,
+          "maximum": 0.5933168399027073
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.14215651566802084,
+          "maximum": 0.2907665576463724
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 82.99999999999751,
+          "native_field": "solution/fvm/fvm_010375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 83.99999999999696,
+      "files": [
+        "velocity_profiles_t84.pdf",
+        "velocity_profiles_t84.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2763163711929043,
+          "maximum": 0.5235871499882601
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2588051276190328,
+          "maximum": 0.5333426075062578
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.7605896128516845,
+          "maximum": 1.4113257931728935
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.6822198063889282,
+          "maximum": 1.413381308461254
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.13978114343314085,
+          "maximum": 0.3026024605584179
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7596915740982922,
+          "maximum": 1.2066599940053067
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 83.99999999999696,
+          "native_field": "solution/fvm/fvm_010500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 84.9999999999964,
+      "files": [
+        "velocity_profiles_t85.pdf",
+        "velocity_profiles_t85.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5459273491461312,
+          "maximum": 0.994401021910301
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.4912209770710212,
+          "maximum": 1.00354496985253
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.5089700325879946,
+          "maximum": 0.7539490519031067
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.46072891930724086,
+          "maximum": 0.7520398689439558
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.335190908193561,
+          "maximum": 0.5006533604983104
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5779644231588897,
+          "maximum": 0.9461327206719455
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 84.9999999999964,
+          "native_field": "solution/fvm/fvm_010625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 85.99999999999585,
+      "files": [
+        "velocity_profiles_t86.pdf",
+        "velocity_profiles_t86.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.3800789396742799,
+          "maximum": 0.5412279942629731
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.3454218179783115,
+          "maximum": 0.5488628073540228
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.4164566949678996,
+          "maximum": 0.8845396286041236
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.373892457535904,
+          "maximum": 0.8842049316984285
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.34132648989099484,
+          "maximum": 0.5368954790364873
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.35112675791053555,
+          "maximum": 0.6759229952668275
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 85.99999999999585,
+          "native_field": "solution/fvm/fvm_010750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 86.9999999999953,
+      "files": [
+        "velocity_profiles_t87.pdf",
+        "velocity_profiles_t87.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.37087106682068716,
+          "maximum": 0.7168186195695836
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.3397474512942112,
+          "maximum": 0.7255963086635724
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.8018588974160963,
+          "maximum": 1.3940000044712346
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.7197893888696074,
+          "maximum": 1.3962044687080422
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.11394617576971149,
+          "maximum": 0.17717315664258226
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7768442668066977,
+          "maximum": 1.2091421731998522
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 86.9999999999953,
+          "native_field": "solution/fvm/fvm_010875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 87.99999999999474,
+      "files": [
+        "velocity_profiles_t88.pdf",
+        "velocity_profiles_t88.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5718118325932413,
+          "maximum": 1.0064307528781324
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.5135777169543347,
+          "maximum": 1.0124216989186905
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.3132813087030386,
+          "maximum": 0.4108846665703335
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.28906285808000287,
+          "maximum": 0.41229477261171166
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.4085595027887429,
+          "maximum": 0.6420682291221306
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.3763446036968461,
+          "maximum": 0.5833051665934561
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 87.99999999999474,
+          "native_field": "solution/fvm/fvm_011000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 88.99999999999419,
+      "files": [
+        "velocity_profiles_t89.pdf",
+        "velocity_profiles_t89.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2756068662154043,
+          "maximum": 0.4523509399222422
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2574108266892714,
+          "maximum": 0.4549214677707044
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.6193766845870993,
+          "maximum": 1.266121195191682
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5542422056931401,
+          "maximum": 1.2646563426587842
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.27376382382532766,
+          "maximum": 0.4880763604677496
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5897953507288237,
+          "maximum": 0.9858347062074844
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 88.99999999999419,
+          "native_field": "solution/fvm/fvm_011125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 89.99999999999363,
+      "files": [
+        "velocity_profiles_t90.pdf",
+        "velocity_profiles_t90.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.4692066898918171,
+          "maximum": 0.88147267804555
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.42519174996736875,
+          "maximum": 0.8896128543384313
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.7522223118945865,
+          "maximum": 1.212144425499378
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.6764843297774117,
+          "maximum": 1.2117042127665223
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.19403092407310657,
+          "maximum": 0.305623292493336
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7551707567488223,
+          "maximum": 1.196928362663151
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 89.99999999999363,
+          "native_field": "solution/fvm/fvm_011250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 90.99999999999308,
+      "files": [
+        "velocity_profiles_t91.pdf",
+        "velocity_profiles_t91.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5429339978526637,
+          "maximum": 0.8867643111188612
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.48808170320834127,
+          "maximum": 0.8889097129563934
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.17937399364974763,
+          "maximum": 0.26986227029962656
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.17247204085901832,
+          "maximum": 0.2701247104342503
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.43521949944099964,
+          "maximum": 0.6871477869874837
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.12266290572358038,
+          "maximum": 0.19766216401855863
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 90.99999999999308,
+          "native_field": "solution/fvm/fvm_011375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 91.99999999999253,
+      "files": [
+        "velocity_profiles_t92.pdf",
+        "velocity_profiles_t92.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.2670403118891203,
+          "maximum": 0.42813839095656475
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.25233098944239146,
+          "maximum": 0.4388071929761679
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.7642284664413204,
+          "maximum": 1.4365522438419251
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.6841889373026643,
+          "maximum": 1.436994731943158
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.16754907354560597,
+          "maximum": 0.34907821936247196
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7590277519625743,
+          "maximum": 1.193931379673782
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 91.99999999999253,
+          "native_field": "solution/fvm/fvm_011500.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 92.99999999999197,
+      "files": [
+        "velocity_profiles_t93.pdf",
+        "velocity_profiles_t93.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5493238199318361,
+          "maximum": 1.0047172088520973
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.49514854151380094,
+          "maximum": 1.0140534240891543
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.6238672601927522,
+          "maximum": 0.9537461587725076
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5628206432188259,
+          "maximum": 0.9511235151304425
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.29767070167210224,
+          "maximum": 0.444365955733132
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.6922996236355401,
+          "maximum": 1.1289607460176538
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 92.99999999999197,
+          "native_field": "solution/fvm/fvm_011625.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 93.99999999999142,
+      "files": [
+        "velocity_profiles_t94.pdf",
+        "velocity_profiles_t94.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.45479088855882865,
+          "maximum": 0.6374870084380637
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.41100430054816656,
+          "maximum": 0.6356164984223065
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.3469391305321049,
+          "maximum": 0.7221393674101577
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.3136632872117094,
+          "maximum": 0.7229991393384911
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.4024024654287817,
+          "maximum": 0.5946276487374406
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.2930454468140733,
+          "maximum": 0.596102553666133
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 93.99999999999142,
+          "native_field": "solution/fvm/fvm_011750.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 94.99999999999086,
+      "files": [
+        "velocity_profiles_t95.pdf",
+        "velocity_profiles_t95.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.34367247701030623,
+          "maximum": 0.6613655817364442
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.3174603541193873,
+          "maximum": 0.6711508744425523
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.8381134166577986,
+          "maximum": 1.4635390435378937
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.7521924246205169,
+          "maximum": 1.466885189243364
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.09575533339253901,
+          "maximum": 0.19686858275347285
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7810484481263547,
+          "maximum": 1.1869272989768422
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 94.99999999999086,
+          "native_field": "solution/fvm/fvm_011875.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 95.99999999999031,
+      "files": [
+        "velocity_profiles_t96.pdf",
+        "velocity_profiles_t96.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5950652189207285,
+          "maximum": 1.0496855179738274
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.5351098163453432,
+          "maximum": 1.0580663464810705
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.424907750775066,
+          "maximum": 0.5805777944380989
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.38759419463700445,
+          "maximum": 0.5785600235323022
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.3954716203722607,
+          "maximum": 0.5792062282393513
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5475465839808258,
+          "maximum": 0.887118401492756
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 95.99999999999031,
+          "native_field": "solution/fvm/fvm_012000.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 96.99999999998975,
+      "files": [
+        "velocity_profiles_t97.pdf",
+        "velocity_profiles_t97.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.3319760142714158,
+          "maximum": 0.5083442586336816
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.30567299439217516,
+          "maximum": 0.5105428524108746
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.5709497553505855,
+          "maximum": 1.2191687358520609
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.5110484276414367,
+          "maximum": 1.2193932844767046
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.32291523229773456,
+          "maximum": 0.5400643092553054
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.5778123529681909,
+          "maximum": 1.0011025639250228
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 96.99999999998975,
+          "native_field": "solution/fvm/fvm_012125.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 97.9999999999892,
+      "files": [
+        "velocity_profiles_t98.pdf",
+        "velocity_profiles_t98.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.4425465610275346,
+          "maximum": 0.842767383577937
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.40231670663396685,
+          "maximum": 0.8515782190313373
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.8256293548631248,
+          "maximum": 1.3511246196018434
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.7418953589891217,
+          "maximum": 1.3526066386762947
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.1471303502124009,
+          "maximum": 0.24521989136511446
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7751865740085195,
+          "maximum": 1.193704141292563
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 97.9999999999892,
+          "native_field": "solution/fvm/fvm_012250.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 98.99999999998865,
+      "files": [
+        "velocity_profiles_t99.pdf",
+        "velocity_profiles_t99.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.5883750277248279,
+          "maximum": 0.966707681800353
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.5289118531262653,
+          "maximum": 0.9717462325204178
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.2134087759989449,
+          "maximum": 0.33125440958833435
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.20364864718760575,
+          "maximum": 0.33201905306172447
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.4605837115967688,
+          "maximum": 0.7035117069533532
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.2898211726036673,
+          "maximum": 0.4002130737681715
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 98.99999999998865,
+          "native_field": "solution/fvm/fvm_012375.vtu",
+          "point_count": 41,
+          "sampled_y_interval": [
+            -1.6,
+            1.6
+          ]
+        }
+      }
+    },
+    {
+      "time": 99.99999999998809,
+      "files": [
+        "velocity_profiles_t100.pdf",
+        "velocity_profiles_t100.png"
+      ],
+      "errors": {
+        "coupled_fvm_x2_velocity_x": {
+          "rms": 0.26852470048913424,
+          "maximum": 0.43111985912195383
+        },
+        "coupled_vpm_x2_velocity_x": {
+          "rms": 0.2540555388278617,
+          "maximum": 0.4329084736014819
+        },
+        "coupled_fvm_x2_velocity_y": {
+          "rms": 0.7410881082366667,
+          "maximum": 1.4467318464251957
+        },
+        "coupled_vpm_x2_velocity_y": {
+          "rms": 0.6630848298126786,
+          "maximum": 1.4434390356344147
+        },
+        "coupled_vpm_x4_velocity_x": {
+          "rms": 0.20703146540234163,
+          "maximum": 0.3958479628585818
+        },
+        "coupled_vpm_x4_velocity_y": {
+          "rms": 0.7586609122863577,
+          "maximum": 1.1950624275028439
+        }
+      },
+      "native_fvm_profiles": {
+        "x2": {
+          "method": "native-centres-affine-k12",
+          "native_time": 99.99999999998809,
+          "native_field": "solution/fvm/fvm_012500.vtu",
           "point_count": 41,
           "sampled_y_interval": [
             -1.6,

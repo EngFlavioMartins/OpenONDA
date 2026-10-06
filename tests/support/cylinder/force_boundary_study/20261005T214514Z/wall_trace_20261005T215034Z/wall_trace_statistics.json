@@ -1,0 +1,193 @@
+{
+  "schema": "openonda-planar-cylinder-wall-trace/1",
+  "generated_utc": "2026-10-05T21:50:35.551841+00:00",
+  "native_committed_time": 46.0,
+  "native_coupling_step": 1150,
+  "source_information": {
+    "source_checkpoint_info": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/backups/checkpoint_info.json",
+    "checkpoint_info_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "artifact_sha256": {
+      "fvm": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+      "vpm": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+      "vpm_vtu": "64a1d1a94875049200b1fda2c33a32f2c9299c85cc8253cef6aabdadb8c4882a",
+      "vpm_boundary_condition": "e0c81f841a30f3c0db5b8fc2f106867950c74fbc5468507f2ca5c28833dd7d0b"
+    },
+    "publication_attempts": 1,
+    "coupled_mesh_sha256": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "reference_mesh_sha256": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201"
+  },
+  "particle_geometry": {
+    "count": 22152,
+    "minimum_radius": 0.501775277298901,
+    "centres_inside_radius_0_5": 0,
+    "centres_within_one_core_radius_of_wall": 77,
+    "core_radius_minimum": 0.03999999910593033,
+    "core_radius_maximum": 0.03999999910593033,
+    "represented_span": 1.0,
+    "volume_minimum": 0.0015999999595806003,
+    "volume_maximum": 0.0015999999595806003
+  },
+  "freestream_velocity": [
+    1.0,
+    0.0,
+    0.0
+  ],
+  "statistics": {
+    "cylinder": {
+      "face_count": 104,
+      "vpm_trace": {
+        "velocity_rms": 0.10032859558159941,
+        "velocity_maximum": 0.17852098298219388,
+        "normal_velocity_rms": 0.05116051401033217,
+        "normal_velocity_maximum": 0.10224666062235434,
+        "tangential_velocity_rms": 0.08630428087629682,
+        "tangential_velocity_maximum": 0.1737963634561504,
+        "integrated_normal_flux": 1.3654714369475021e-05
+      },
+      "fvm_trace": {
+        "velocity_rms": 0.0,
+        "velocity_maximum": 0.0,
+        "normal_velocity_rms": 0.0,
+        "normal_velocity_maximum": 0.0,
+        "tangential_velocity_rms": 0.0,
+        "tangential_velocity_maximum": 0.0,
+        "integrated_normal_flux": 0.0
+      },
+      "vpm_minus_fvm_trace": {
+        "velocity_rms": 0.10032859558159941,
+        "velocity_maximum": 0.17852098298219388,
+        "normal_velocity_rms": 0.05116051401033217,
+        "normal_velocity_maximum": 0.10224666062235434,
+        "tangential_velocity_rms": 0.08630428087629682,
+        "tangential_velocity_maximum": 0.1737963634561504,
+        "integrated_normal_flux": 1.3654714369475021e-05
+      },
+      "unchanged_source_core_radius_sensitivity": {
+        "0.25": {
+          "velocity_rms": 0.10542287122178395,
+          "velocity_maximum": 0.25652985669531225,
+          "normal_velocity_rms": 0.09456557277428561,
+          "normal_velocity_maximum": 0.24225791682875614,
+          "tangential_velocity_rms": 0.046597577431837976,
+          "tangential_velocity_maximum": 0.1667159362836167,
+          "integrated_normal_flux": -0.004749390380725844
+        },
+        "0.5": {
+          "velocity_rms": 0.0701554720531949,
+          "velocity_maximum": 0.1579874669106524,
+          "normal_velocity_rms": 0.06739136998606561,
+          "normal_velocity_maximum": 0.15726204344979522,
+          "tangential_velocity_rms": 0.01949855149511943,
+          "tangential_velocity_maximum": 0.07602263183205425,
+          "integrated_normal_flux": -0.00021580041692136444
+        },
+        "2.0": {
+          "velocity_rms": 0.19653989876849381,
+          "velocity_maximum": 0.3527556894600619,
+          "normal_velocity_rms": 0.029681117195228292,
+          "normal_velocity_maximum": 0.05724914277100927,
+          "tangential_velocity_rms": 0.19428577685968912,
+          "tangential_velocity_maximum": 0.3527556884699891,
+          "integrated_normal_flux": 1.392671094945278e-05
+        }
+      },
+      "radial_velocity_fourier_modes": {
+        "mean": -2.0625195303491487e-06,
+        "amplitudes": {
+          "1": 0.048775970163206936,
+          "2": 0.04943694237701188,
+          "3": 0.008643446054829156,
+          "4": 0.008477352830556775,
+          "5": 0.008280032286918036,
+          "6": 0.0023767323941686256,
+          "7": 0.0059743576098659785,
+          "8": 0.0006084346347299829,
+          "9": 0.005595782799291773,
+          "10": 0.00209285633417428,
+          "11": 0.0035804012691623486,
+          "12": 0.0018085324924052878
+        },
+        "fit_residual_rms": 0.00708874541117253
+      }
+    },
+    "numericalBoundary": {
+      "face_count": 356,
+      "vpm_trace": {
+        "velocity_rms": 1.0226474561535623,
+        "velocity_maximum": 1.1876772322541613,
+        "normal_velocity_rms": 0.5825978909682639,
+        "normal_velocity_maximum": 1.1552044586244254,
+        "tangential_velocity_rms": 0.8404686294066444,
+        "tangential_velocity_maximum": 1.1875210399974159,
+        "integrated_normal_flux": 1.9602613437794125e-05
+      },
+      "fvm_trace": {
+        "velocity_rms": 1.0187775905358532,
+        "velocity_maximum": 1.1844460363070786,
+        "normal_velocity_rms": 0.5825958035890652,
+        "normal_velocity_maximum": 1.1552016306424973,
+        "tangential_velocity_rms": 0.8357570870883775,
+        "tangential_velocity_maximum": 1.1840797997984862,
+        "integrated_normal_flux": -1.1102230246251565e-16
+      },
+      "vpm_minus_fvm_trace": {
+        "velocity_rms": 0.006924757933427043,
+        "velocity_maximum": 0.014708512710633255,
+        "normal_velocity_rms": 4.8658094495574975e-06,
+        "normal_velocity_maximum": 1.0051982254510872e-05,
+        "tangential_velocity_rms": 0.006924756223901255,
+        "tangential_velocity_maximum": 0.014708512593825773,
+        "integrated_normal_flux": 1.9602613437936874e-05
+      },
+      "vpm_minus_committed_boundary_history": {
+        "velocity_rms": 1.7843291483005591e-06,
+        "velocity_maximum": 6.254216321058712e-06,
+        "normal_velocity_rms": 1.5236560243305028e-06,
+        "normal_velocity_maximum": 6.004634459044755e-06,
+        "tangential_velocity_rms": 9.286026216829054e-07,
+        "tangential_velocity_maximum": 5.259926630807321e-06,
+        "integrated_normal_flux": 1.960261343759594e-05
+      }
+    }
+  },
+  "cylinder_geometry_comparison": {
+    "coupled": {
+      "face_count": 104,
+      "surface_area": 3.1404867435894346,
+      "face_radius_minimum": 0.4995892434348361,
+      "face_radius_mean": 0.4996708932374183,
+      "face_radius_maximum": 0.49977778307462,
+      "owner_wall_distance_mean": 0.014830725449167453
+    },
+    "reference": {
+      "face_count": 104,
+      "surface_area": 3.140486743009852,
+      "face_radius_minimum": 0.4995892433614187,
+      "face_radius_mean": 0.49967089316549373,
+      "face_radius_maximum": 0.49977778297698977,
+      "owner_wall_distance_mean": 0.01483072745698071,
+      "coupled_wall_centre_nearest_distance_maximum": 2.1677832627164625e-07,
+      "coupled_wall_normal_difference_maximum": 6.39715882225622e-07
+    }
+  },
+  "method": {
+    "formula": "u = freestream + sum Gamma_z/(2 pi span) * (1-exp(-r_xy^2/sigma^2))/r_xy^2 * (-r_y,r_x,0)",
+    "precision": "float64 streamed NumPy summation of the exact stored float32 source values",
+    "normal_convention": "FVM outward face normal; cylinder normals point into the solid",
+    "weights": "Actual native FVM face areas",
+    "source_script": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_planar_wall_trace.py"
+  },
+  "limitations": [
+    "The checkpoint is one accepted endpoint, not a complete-cycle boundary-condition control experiment.",
+    "Nonzero VPM wall trace shows the represented free-space field is not exactly a no-slip cylinder solution. It does not prove how much of the force deficit it causes.",
+    "The physical cylinder wall itself is enforced as no-slip by FVM; VPM trace evaluated there is a diagnostic, not the FVM wall boundary value.",
+    "Changing only Gaussian core radii is an instantaneous representation sensitivity; no evolved trajectory or force improvement is inferred.",
+    "At this time the startup taper is complete and the native background velocity is exactly [1,0,0]."
+  ],
+  "verification": {
+    "analytic_gaussian_filament_vector_and_source_centre": "passed",
+    "represented_span_invariance": "passed",
+    "all_frozen_artifact_hashes": "passed",
+    "coupled_fvm_vpm_clock_agreement": "passed"
+  }
+}

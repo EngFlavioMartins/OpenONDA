@@ -1,0 +1,143 @@
+{
+  "created_utc": "2026-10-06T01:57:35.452207+00:00",
+  "scope": "Removed only redundant intermediate test-only comparison renders. All source CSV snapshots, scientific results, original JSON receipts, helper fingerprints and unique warm-image failure figure are preserved. Native/user outputs untouched.",
+  "final_comparison": "boundary_input_force_comparison_20261006T013533Z",
+  "preserved_failure_figure": "boundary_input_force_comparison_20261006T003604Z",
+  "removed_test_plot_intermediates": [
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001317Z/boundary_input_controls.pdf",
+      "sha256": "bef6fca8d89e5f3ed99b7e3b917be953e0dee44a29fc3ea8157e8003f22a6039",
+      "bytes": 41098
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001317Z/boundary_input_controls.png",
+      "sha256": "f21594752898049b7ed6c2ff5477cd716e3f1604f0c9770a000cf33924c9bd64",
+      "bytes": 316544
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001317Z/boundary_input_controls.svg",
+      "sha256": "0e0904c117d11b00531ac6dc6d313d018d3a3b587bb2016db2471368c5c714bc",
+      "bytes": 159189
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001728Z/boundary_input_controls.pdf",
+      "sha256": "b17daeea2a98ba8bdd1e3e6cabd2bc219da3ca1637fe7285c877c66e36b58c71",
+      "bytes": 44214
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001728Z/boundary_input_controls.png",
+      "sha256": "5eadfa1fbd5e59314e59dbd5d1ef1696a9b2b383494a70288e034f4c4ef3d213",
+      "bytes": 346552
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001728Z/boundary_input_controls.svg",
+      "sha256": "bd39c4701ba69c4a2278408e2179ad09ddc9329a7eb6a053a52faf07c8f3ad6b",
+      "bytes": 181553
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T002142Z/boundary_input_controls.pdf",
+      "sha256": "56fc09e1d78b3447286e445b39d157c4bcbb60f0022f7f8078bdeb312dfd81e3",
+      "bytes": 51197
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T002142Z/boundary_input_controls.png",
+      "sha256": "bebe337d4d6584132ef35fce1ef3e7f0cc7de36aa73adecbd88707b7eefb29ec",
+      "bytes": 457476
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T002142Z/boundary_input_controls.svg",
+      "sha256": "fa9bbb88acf03fca5b908f69e695579c432a20f54729285fc4c87ea2f0223e74",
+      "bytes": 231358
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T003047Z/boundary_input_controls.pdf",
+      "sha256": "a8c2d8336620b51f54128265282e99f2b4f429a6f7ad101a8c1e75745abeb1ec",
+      "bytes": 51331
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T003047Z/boundary_input_controls.png",
+      "sha256": "074e13d7d03b3e7ae72c876c707da303ae3e58221d2ec5244190537bf9782d66",
+      "bytes": 459201
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T003047Z/boundary_input_controls.svg",
+      "sha256": "f47477013de0d62b05c13f2b3adf86a8ca9cb841899fcb123fdcfbc5723229c7",
+      "bytes": 230653
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T003520Z/boundary_input_controls.pdf",
+      "sha256": "0ade8dcd452dd7bcd737092253558f6d07d7e65d208c4c1e1bb141dd83a339d1",
+      "bytes": 58663
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T003520Z/boundary_input_controls.png",
+      "sha256": "579e46d84d13b57ac2a0093b3961664493c73cd91ff6a3a59ee633adb75133ad",
+      "bytes": 570515
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T003520Z/boundary_input_controls.svg",
+      "sha256": "2d7a61c9a8eb15beea3dd6702b930998d33aff1c71e37c50d506cb3f0d1cf46d",
+      "bytes": 304053
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013001Z/boundary_input_amplitude_controls.pdf",
+      "sha256": "92fefe208adaf35aa5bc80475dba3312d014bc75819f680ea4c3361639fdf994",
+      "bytes": 37129
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013001Z/boundary_input_amplitude_controls.png",
+      "sha256": "641d3f4b9bdc3c4eed69d59e38a7332ea611ac0624354e4f3161322fe6034019",
+      "bytes": 276176
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013001Z/boundary_input_amplitude_controls.svg",
+      "sha256": "63bc6596be895045ed17c7ce8f68d2dac2f674d0779b9f5a115e6cad6d92bcc4",
+      "bytes": 171912
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013001Z/boundary_input_response_curves.pdf",
+      "sha256": "cef218b153ad616df5cf0f209b5049996a64dc570df7ae820d78120eb70727dc",
+      "bytes": 40119
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013001Z/boundary_input_response_curves.png",
+      "sha256": "c2f3b27ae19a2354bb1f493d015af5d42a2db1b193474dd21082f5ac3cd16cef",
+      "bytes": 337132
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013001Z/boundary_input_response_curves.svg",
+      "sha256": "a55f70cdb7f220afd0dc2fe665705d0fb74080f6a71af96541731760443f0028",
+      "bytes": 128633
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013101Z/boundary_input_amplitude_controls.pdf",
+      "sha256": "e75819627d43605c61c13c6235636870c1efa10e7028bc7d634d4e887b594d2e",
+      "bytes": 38051
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013101Z/boundary_input_amplitude_controls.png",
+      "sha256": "de57dedb21c9ee366cf51da502a60d162e4cea804dfc0f1c52b86dfb895e23ea",
+      "bytes": 291830
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013101Z/boundary_input_amplitude_controls.svg",
+      "sha256": "c01a85f0cf756fe82d09af2100f13a6d50542fb67499f1db708c28da9362241f",
+      "bytes": 184163
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013101Z/boundary_input_response_curves.pdf",
+      "sha256": "1baeb1e2e1e5f16aed129214fa5099cade3b03d17c10bd6b0ea9358335641743",
+      "bytes": 42101
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013101Z/boundary_input_response_curves.png",
+      "sha256": "5df591719c0c0a20927db1972d04bd394516556b5ad5476f85cc864edbf72581",
+      "bytes": 356687
+    },
+    {
+      "path": "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013101Z/boundary_input_response_curves.svg",
+      "sha256": "8932a45d8bfbd331372613e5a41e189c4fb65a5a52b0ca7c056d2aa8748938fc",
+      "bytes": 138532
+    }
+  ]
+}

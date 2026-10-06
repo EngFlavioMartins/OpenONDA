@@ -2,22 +2,22 @@
   "reference": "reference_flow/samples",
   "time_interval": [
     0.04,
-    4.560000000000003
+    99.99999999998809
   ],
   "errors": {
     "drag_coefficient": {
-      "rms": 0.2591724348678621,
-      "maximum": 3.8764768179918656
+      "rms": 0.09907522208986567,
+      "maximum": 3.637075024072315
     },
     "lift_coefficient": {
-      "rms": 0.19549720984173763,
-      "maximum": 0.5027641025845256
+      "rms": 0.3811428716009017,
+      "maximum": 0.9306459188619458
     }
   },
   "available_time_intervals": {
     "coupled": [
       0.04,
-      4.560000000000003
+      99.99999999998809
     ],
     "reference": [
       0.0,
@@ -26,7 +26,7 @@
   },
   "comparison_time_interval": [
     0.04,
-    4.560000000000003
+    99.99999999998809
   ],
   "time_alignment": "piecewise-linear interpolation on the common interval; no time shift"
 }

@@ -1,0 +1,1493 @@
+{
+  "schema": "openonda-native-planar-wall-candidate-comparison/1",
+  "created_at": "2026-10-05T23:34:06.132656+00:00",
+  "output": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z",
+  "preparation": {
+    "schema": "openonda-native-wall-candidate-preparation/1",
+    "captured_at": "2026-10-05T23:03:35.936623+00:00",
+    "window": [
+      48,
+      58
+    ],
+    "restart_time": 46.0,
+    "settling_seconds_excluded": 2,
+    "candidate_directory": "/tmp/openonda-planar-wall-candidate-cycles-20261006",
+    "production_directory": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow",
+    "baseline_directory": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z",
+    "sources": {
+      "baseline_report": {
+        "source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/force_comparison.json",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_force_comparison.json",
+        "sha256": "27180bb256e2768ac7747302758c4a87aa2b97ae03e20da2a17b8c8ab0ef3e96"
+      },
+      "baseline_forces": {
+        "source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/snapshots/coupled_forces_history.csv",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_forces_history.csv",
+        "sha256": "77fdbc5be90dce6622297900825a183ce80be301f91c01bd056bb10a88507ce7"
+      },
+      "reference_forces": {
+        "source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/snapshots/reference_forces_history.csv",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/reference_forces_history.csv",
+        "sha256": "d1ffc08ba43e5ce9c97cf8f84463c2e970691d3258c5995a1bfcbc5fd89b43b8"
+      },
+      "baseline_diagnostics": {
+        "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/coupler_diagnostics.jsonl",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_coupler_diagnostics.jsonl",
+        "sha256": "f443dc79e6853f44d800ddee6bfb0f5be7536e3e6185fb39f8ae9ba08a6fe71a",
+        "captured_at": "2026-10-05T23:03:35.729670+00:00",
+        "exchange_count": 250,
+        "interval": [
+          48,
+          58
+        ],
+        "selection": "start < accepted time <= end, tolerance 1e-8; complete lines from one read of an appending JSONL"
+      },
+      "baseline_fvm_metadata": {
+        "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/fvm_metadata.json",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_fvm_metadata.json",
+        "sha256": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+      },
+      "baseline_vpm_metadata": {
+        "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm_metadata.json",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_vpm_metadata.json",
+        "sha256": "d456f77560fb42512127e9cdabc2afd7e7368c73060bedd9a2c43f38f24a1f37"
+      },
+      "candidate_fvm_metadata": {
+        "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/solution/fvm_metadata.json",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_fvm_metadata.json",
+        "sha256": "b84825883fbfdc9c460b271cedf20c20e1542c62e9896fa078ca46d1f893c9a9"
+      },
+      "candidate_vpm_metadata": {
+        "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/solution/vpm_metadata.json",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_vpm_metadata.json",
+        "sha256": "53d1243ce019a7f081a7e54c0a7b36ac1ce4915f41464d44a95c9425b423d43f"
+      },
+      "candidate_inputs": {
+        "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/inputs/inputs.json",
+        "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_inputs.json",
+        "sha256": "4e85a5aaa7678a69cfb5a9d0a4ccd0c586845e0d238f96287f2041714265e367"
+      }
+    },
+    "execution": {
+      "baseline": {
+        "fvm_cores": 1,
+        "fvm_execution": {
+          "linear_backend": "scipy",
+          "operator_backend": "numba",
+          "output_mode": "synchronous",
+          "parallel_mode": "serial",
+          "type": "ComputeConfig"
+        },
+        "fvm_cell_count": 7741,
+        "vpm_configured_device": "AUTO",
+        "vpm_capacity": 200000,
+        "vpm_precision": "f32",
+        "vpm_induction": {
+          "method": "PLANAR",
+          "stretching_scheme": "DIRECT",
+          "type": "PlanarInduction"
+        }
+      },
+      "candidate": {
+        "fvm_cores": 1,
+        "fvm_execution": {
+          "linear_backend": "scipy",
+          "operator_backend": "numba",
+          "output_mode": "synchronous",
+          "parallel_mode": "serial",
+          "type": "ComputeConfig"
+        },
+        "fvm_cell_count": 7741,
+        "vpm_configured_device": "AUTO",
+        "vpm_capacity": 200000,
+        "vpm_precision": "f32",
+        "vpm_induction": {
+          "method": "PLANAR",
+          "stretching_scheme": "DIRECT",
+          "type": "PlanarInduction"
+        }
+      }
+    },
+    "sampling": {
+      "baseline": {
+        "fvm": [
+          {
+            "type": "ForceSampler",
+            "file_name": "forces_history",
+            "schedule": {
+              "every_n_steps": 5,
+              "every_time": null,
+              "final_only": false
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "phase_near_upper",
+            "schedule": {
+              "every_n_steps": 5,
+              "every_time": null,
+              "final_only": false
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "phase_near_lower",
+            "schedule": {
+              "every_n_steps": 5,
+              "every_time": null,
+              "final_only": false
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "centreline",
+            "schedule": {
+              "every_n_steps": 25,
+              "every_time": null,
+              "final_only": false
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "span_middle",
+            "schedule": {
+              "every_n_steps": 25,
+              "every_time": null,
+              "final_only": false
+            }
+          },
+          {
+            "type": "SurfaceSampler",
+            "file_name": "midspan",
+            "schedule": {
+              "every_n_steps": 50,
+              "every_time": null,
+              "final_only": false
+            }
+          }
+        ],
+        "vpm": [
+          {
+            "type": "LineSampler",
+            "file_name": "vpm_phase_near_upper",
+            "schedule": {
+              "first_step": null,
+              "interval": 1,
+              "is_final_only": false,
+              "start_time": null,
+              "type": "EverySteps"
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "vpm_phase_near_lower",
+            "schedule": {
+              "first_step": null,
+              "interval": 1,
+              "is_final_only": false,
+              "start_time": null,
+              "type": "EverySteps"
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "vpm_phase_wake_upper",
+            "schedule": {
+              "first_step": null,
+              "interval": 1,
+              "is_final_only": false,
+              "start_time": null,
+              "type": "EverySteps"
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "vpm_phase_wake_lower",
+            "schedule": {
+              "first_step": null,
+              "interval": 1,
+              "is_final_only": false,
+              "start_time": null,
+              "type": "EverySteps"
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "vpm_transverse_x2",
+            "schedule": {
+              "first_step": null,
+              "interval": 5,
+              "is_final_only": false,
+              "start_time": null,
+              "type": "EverySteps"
+            }
+          },
+          {
+            "type": "LineSampler",
+            "file_name": "vpm_transverse_x4",
+            "schedule": {
+              "first_step": null,
+              "interval": 5,
+              "is_final_only": false,
+              "start_time": null,
+              "type": "EverySteps"
+            }
+          },
+          {
+            "type": "SurfaceSampler",
+            "file_name": "vpm_midspan",
+            "schedule": {
+              "first_step": null,
+              "interval": 10,
+              "is_final_only": false,
+              "start_time": null,
+              "type": "EverySteps"
+            }
+          }
+        ]
+      },
+      "candidate": {
+        "fvm": [
+          {
+            "type": "ForceSampler",
+            "file_name": "forces_history",
+            "schedule": {
+              "every_n_steps": 5,
+              "every_time": null,
+              "final_only": false
+            }
+          }
+        ],
+        "vpm": []
+      }
+    },
+    "scope": "Native isolated candidate versus immutable actual production forces at identical accepted times; no time shift or solver initialization.",
+    "analysis_source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/compare_native_wall_candidate.py",
+    "analysis_source_sha256": "8e9b24f0e6cc4e310c88a709ebd215885cb53dce524b99208bead8402bf6e71f",
+    "verification": {
+      "frozen_hashes_verified": true,
+      "production_exchange_count": 250,
+      "same_trajectory_strata_cover_exactly_250_rows": true,
+      "identity_timing_ratios_equal_one": true,
+      "stratum_weighted_phase_means_match_total": true,
+      "frozen_complete_cycle_medians_match_previous_baseline": true,
+      "incomplete_trial_refused_before_final_report": true,
+      "ruff_check_passed": true
+    }
+  },
+  "candidate_force_source": {
+    "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/samples/forces_history.csv",
+    "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_forces_history.csv",
+    "captured_start_utc": "2026-10-05T23:34:04.677867+00:00",
+    "captured_end_utc": "2026-10-05T23:34:04.677960+00:00",
+    "captured_live_bytes_sha256": "52ada6f3c431499bdce8b7fbdf940686a7a88485196b099374abb54f5dfdd6f9",
+    "immutable_snapshot_sha256": "52ada6f3c431499bdce8b7fbdf940686a7a88485196b099374abb54f5dfdd6f9",
+    "published_source_complete_last_time": 58.00000000000605,
+    "retained_last_time": 58.00000000000605,
+    "retained_sample_count": 300,
+    "partial_final_line_bytes_omitted": 0,
+    "snapshot_rule": "Complete lines from one byte read with time <= requested end + 1e-8; live source may keep appending."
+  },
+  "candidate_diagnostic_source": {
+    "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/solution/coupler_diagnostics.jsonl",
+    "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_coupler_diagnostics.jsonl",
+    "sha256": "3cc15e4a40f66867ad5e88316a09e7a150ca1b5f809294dbd1961ba65c3680c7",
+    "captured_at": "2026-10-05T23:34:04.683011+00:00",
+    "exchange_count": 250,
+    "interval": [
+      48,
+      58
+    ],
+    "selection": "start < accepted time <= end, tolerance 1e-8; complete lines from one read of an appending JSONL"
+  },
+  "candidate_continuation_receipt_sha256": "312780cc656c92e4b03fdbb0da160b6797c4b8a7e94eb33666586e15f36d20e1",
+  "analysis_source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/compare_native_wall_candidate.py",
+  "analysis_source_sha256": "2ad1b275eccebd65f50ff85046b3728b6b3141bbc2610871b8e413042c45f0d0",
+  "window": [
+    48,
+    58
+  ],
+  "complete_cycle_statistics": {
+    "reference": {
+      "drag_coefficient": {
+        "mean": 1.3806095685594564,
+        "whole_window_peak_to_peak": 0.05362113543212477,
+        "rms_fluctuation": 0.018324683998306168,
+        "complete_cycle_count": 2,
+        "cycles": [
+          {
+            "left_trough_time": 50.40000000000351,
+            "peak_time": 51.680000000003936,
+            "right_trough_time": 53.080000000004404,
+            "period": 2.680000000000895,
+            "peak_to_peak_raw": 0.05333585817142583,
+            "peak_to_peak_drift_corrected": 0.05322326773782682,
+            "minimum_coefficient": 1.3520797995681946,
+            "maximum_coefficient": 1.4054156577396204,
+            "pressure_contribution_at_raw_extrema": 0.048982336875731836,
+            "pressure_contribution_drift_corrected": 0.04887260633149304,
+            "viscous_contribution_at_raw_extrema": 0.004353521295694107,
+            "viscous_contribution_drift_corrected": 0.004350661406334
+          },
+          {
+            "left_trough_time": 53.080000000004404,
+            "peak_time": 54.36000000000483,
+            "right_trough_time": 55.7600000000053,
+            "period": 2.680000000000895,
+            "peak_to_peak_raw": 0.05331828300072172,
+            "peak_to_peak_drift_corrected": 0.053228617094484454,
+            "minimum_coefficient": 1.3523155357885424,
+            "maximum_coefficient": 1.405633818789264,
+            "pressure_contribution_at_raw_extrema": 0.048904611317900804,
+            "pressure_contribution_drift_corrected": 0.04881405656447657,
+            "viscous_contribution_at_raw_extrema": 0.004413671682820919,
+            "viscous_contribution_drift_corrected": 0.004414560530007827
+          }
+        ],
+        "median_peak_to_peak_raw": 0.05332707058607378,
+        "mean_peak_to_peak_raw": 0.05332707058607378,
+        "median_peak_to_peak_drift_corrected": 0.053225942416155636,
+        "mean_peak_to_peak_drift_corrected": 0.053225942416155636,
+        "median_period": 2.680000000000895,
+        "mean_period": 2.680000000000895,
+        "median_pressure_contribution_at_raw_extrema": 0.04894347409681632,
+        "mean_pressure_contribution_at_raw_extrema": 0.04894347409681632,
+        "median_viscous_contribution_at_raw_extrema": 0.004383596489257513,
+        "mean_viscous_contribution_at_raw_extrema": 0.004383596489257513,
+        "median_pressure_contribution_drift_corrected": 0.048843331447984806,
+        "mean_pressure_contribution_drift_corrected": 0.048843331447984806,
+        "median_viscous_contribution_drift_corrected": 0.0043826109681709136,
+        "mean_viscous_contribution_drift_corrected": 0.0043826109681709136,
+        "mean_pressure_coefficient": 1.075024472042347,
+        "mean_viscous_coefficient": 0.3055850965171092
+      },
+      "lift_coefficient": {
+        "mean": -0.009706235016136659,
+        "whole_window_peak_to_peak": 1.0751837864914164,
+        "rms_fluctuation": 0.3894194378967844,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 51.440000000003856,
+            "peak_time": 54.08000000000474,
+            "right_trough_time": 56.76000000000563,
+            "period": 5.320000000001777,
+            "peak_to_peak_raw": 1.0751837864914164,
+            "peak_to_peak_drift_corrected": 1.074904810929602,
+            "minimum_coefficient": -0.5376876010211133,
+            "maximum_coefficient": 0.537496185470303,
+            "pressure_contribution_at_raw_extrema": 0.9680834926100248,
+            "pressure_contribution_drift_corrected": 0.9674647836422858,
+            "viscous_contribution_at_raw_extrema": 0.10710029388139154,
+            "viscous_contribution_drift_corrected": 0.10744002728731633
+          }
+        ],
+        "median_peak_to_peak_raw": 1.0751837864914164,
+        "mean_peak_to_peak_raw": 1.0751837864914164,
+        "median_peak_to_peak_drift_corrected": 1.074904810929602,
+        "mean_peak_to_peak_drift_corrected": 1.074904810929602,
+        "median_period": 5.320000000001777,
+        "mean_period": 5.320000000001777,
+        "median_pressure_contribution_at_raw_extrema": 0.9680834926100248,
+        "mean_pressure_contribution_at_raw_extrema": 0.9680834926100248,
+        "median_viscous_contribution_at_raw_extrema": 0.10710029388139154,
+        "mean_viscous_contribution_at_raw_extrema": 0.10710029388139154,
+        "median_pressure_contribution_drift_corrected": 0.9674647836422858,
+        "mean_pressure_contribution_drift_corrected": 0.9674647836422858,
+        "median_viscous_contribution_drift_corrected": 0.10744002728731633,
+        "mean_viscous_contribution_drift_corrected": 0.10744002728731633,
+        "mean_pressure_coefficient": -0.010498355196578853,
+        "mean_viscous_coefficient": 0.0007921201804421997
+      }
+    },
+    "baseline": {
+      "drag_coefficient": {
+        "mean": 1.2864036611619132,
+        "whole_window_peak_to_peak": 0.0343359309090443,
+        "rms_fluctuation": 0.011793254810406089,
+        "complete_cycle_count": 3,
+        "cycles": [
+          {
+            "left_trough_time": 48.680000000002934,
+            "peak_time": 50.04000000000339,
+            "right_trough_time": 51.40000000000384,
+            "period": 2.7200000000009084,
+            "peak_to_peak_raw": 0.03410401652493733,
+            "peak_to_peak_drift_corrected": 0.03385416697132504,
+            "minimum_coefficient": 1.270626868414088,
+            "maximum_coefficient": 1.3047308849390253,
+            "pressure_contribution_at_raw_extrema": 0.031637270467287815,
+            "pressure_contribution_drift_corrected": 0.031383832712825854,
+            "viscous_contribution_at_raw_extrema": 0.002466746057649405,
+            "viscous_contribution_drift_corrected": 0.002470334258499074
+          },
+          {
+            "left_trough_time": 51.40000000000384,
+            "peak_time": 52.80000000000431,
+            "right_trough_time": 54.160000000004764,
+            "period": 2.7600000000009217,
+            "peak_to_peak_raw": 0.0343359309090443,
+            "peak_to_peak_drift_corrected": 0.034223095183252505,
+            "minimum_coefficient": 1.2703978782646872,
+            "maximum_coefficient": 1.3047338091737315,
+            "pressure_contribution_at_raw_extrema": 0.03183324871850857,
+            "pressure_contribution_drift_corrected": 0.03173868955336567,
+            "viscous_contribution_at_raw_extrema": 0.002502682190535621,
+            "viscous_contribution_drift_corrected": 0.0024844056298868877
+          },
+          {
+            "left_trough_time": 54.160000000004764,
+            "peak_time": 55.52000000000522,
+            "right_trough_time": 56.920000000005686,
+            "period": 2.7600000000009217,
+            "peak_to_peak_raw": 0.034074832360170504,
+            "peak_to_peak_drift_corrected": 0.03405478750062674,
+            "minimum_coefficient": 1.2703978782646872,
+            "maximum_coefficient": 1.3044727106248577,
+            "pressure_contribution_at_raw_extrema": 0.03165944637833207,
+            "pressure_contribution_drift_corrected": 0.03162533260593403,
+            "viscous_contribution_at_raw_extrema": 0.0024153859818383805,
+            "viscous_contribution_drift_corrected": 0.0024294548946925953
+          }
+        ],
+        "median_peak_to_peak_raw": 0.03410401652493733,
+        "mean_peak_to_peak_raw": 0.03417159326471738,
+        "median_peak_to_peak_drift_corrected": 0.03405478750062674,
+        "mean_peak_to_peak_drift_corrected": 0.03404401655173476,
+        "median_period": 2.7600000000009217,
+        "mean_period": 2.746666666667584,
+        "median_pressure_contribution_at_raw_extrema": 0.03165944637833207,
+        "mean_pressure_contribution_at_raw_extrema": 0.03170998852137615,
+        "median_viscous_contribution_at_raw_extrema": 0.002466746057649405,
+        "mean_viscous_contribution_at_raw_extrema": 0.0024616047433411357,
+        "median_pressure_contribution_drift_corrected": 0.03162533260593403,
+        "mean_pressure_contribution_drift_corrected": 0.03158261829070852,
+        "median_viscous_contribution_drift_corrected": 0.002470334258499074,
+        "mean_viscous_contribution_drift_corrected": 0.0024613982610261855,
+        "mean_pressure_coefficient": 0.9966134924435679,
+        "mean_viscous_coefficient": 0.28979016871834534
+      },
+      "lift_coefficient": {
+        "mean": 0.027401840634408807,
+        "whole_window_peak_to_peak": 0.850283690588871,
+        "rms_fluctuation": 0.29997271923505464,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 52.28000000000414,
+            "peak_time": 55.04000000000506,
+            "right_trough_time": 57.80000000000598,
+            "period": 5.520000000001843,
+            "peak_to_peak_raw": 0.8475040956348712,
+            "peak_to_peak_drift_corrected": 0.8472497059025841,
+            "minimum_coefficient": -0.4237335226052076,
+            "maximum_coefficient": 0.4237705730296636,
+            "pressure_contribution_at_raw_extrema": 0.7594153557362712,
+            "pressure_contribution_drift_corrected": 0.7589903724279081,
+            "viscous_contribution_at_raw_extrema": 0.0880887398986,
+            "viscous_contribution_drift_corrected": 0.08825933347467595
+          }
+        ],
+        "median_peak_to_peak_raw": 0.8475040956348712,
+        "mean_peak_to_peak_raw": 0.8475040956348712,
+        "median_peak_to_peak_drift_corrected": 0.8472497059025841,
+        "mean_peak_to_peak_drift_corrected": 0.8472497059025841,
+        "median_period": 5.520000000001843,
+        "mean_period": 5.520000000001843,
+        "median_pressure_contribution_at_raw_extrema": 0.7594153557362712,
+        "mean_pressure_contribution_at_raw_extrema": 0.7594153557362712,
+        "median_viscous_contribution_at_raw_extrema": 0.0880887398986,
+        "mean_viscous_contribution_at_raw_extrema": 0.0880887398986,
+        "median_pressure_contribution_drift_corrected": 0.7589903724279081,
+        "mean_pressure_contribution_drift_corrected": 0.7589903724279081,
+        "median_viscous_contribution_drift_corrected": 0.08825933347467595,
+        "mean_viscous_contribution_drift_corrected": 0.08825933347467595,
+        "mean_pressure_coefficient": 0.022951037078570637,
+        "mean_viscous_coefficient": 0.004450803555838184
+      }
+    },
+    "candidate": {
+      "drag_coefficient": {
+        "mean": 1.2861726232048434,
+        "whole_window_peak_to_peak": 0.034507300363336935,
+        "rms_fluctuation": 0.011658284902437931,
+        "complete_cycle_count": 3,
+        "cycles": [
+          {
+            "left_trough_time": 48.680000000002934,
+            "peak_time": 50.04000000000339,
+            "right_trough_time": 51.40000000000384,
+            "period": 2.7200000000009084,
+            "peak_to_peak_raw": 0.033719537037249836,
+            "peak_to_peak_drift_corrected": 0.03356143890542351,
+            "minimum_coefficient": 1.2709277897724085,
+            "maximum_coefficient": 1.3046473268096583,
+            "pressure_contribution_at_raw_extrema": 0.03128826482827851,
+            "pressure_contribution_drift_corrected": 0.031115245763245425,
+            "viscous_contribution_at_raw_extrema": 0.0024312722089713246,
+            "viscous_contribution_drift_corrected": 0.002446193142178199
+          },
+          {
+            "left_trough_time": 51.40000000000384,
+            "peak_time": 52.7600000000043,
+            "right_trough_time": 54.160000000004764,
+            "period": 2.7600000000009217,
+            "peak_to_peak_raw": 0.034167554138208045,
+            "peak_to_peak_drift_corrected": 0.03383131073878842,
+            "minimum_coefficient": 1.2702649099278382,
+            "maximum_coefficient": 1.3044324640660463,
+            "pressure_contribution_at_raw_extrema": 0.031740553224876566,
+            "pressure_contribution_drift_corrected": 0.03145364387074234,
+            "viscous_contribution_at_raw_extrema": 0.002427000913331534,
+            "viscous_contribution_drift_corrected": 0.00237766686804608
+          },
+          {
+            "left_trough_time": 54.160000000004764,
+            "peak_time": 55.52000000000522,
+            "right_trough_time": 56.920000000005686,
+            "period": 2.7600000000009217,
+            "peak_to_peak_raw": 0.03355083547220006,
+            "peak_to_peak_drift_corrected": 0.03348748877867691,
+            "minimum_coefficient": 1.2701400264463214,
+            "maximum_coefficient": 1.3036908619185215,
+            "pressure_contribution_at_raw_extrema": 0.031146323650306118,
+            "pressure_contribution_drift_corrected": 0.031123812342886192,
+            "viscous_contribution_at_raw_extrema": 0.0024045118218938843,
+            "viscous_contribution_drift_corrected": 0.0023636764357907736
+          }
+        ],
+        "median_peak_to_peak_raw": 0.033719537037249836,
+        "mean_peak_to_peak_raw": 0.03381264221588598,
+        "median_peak_to_peak_drift_corrected": 0.03356143890542351,
+        "mean_peak_to_peak_drift_corrected": 0.03362674614096295,
+        "median_period": 2.7600000000009217,
+        "mean_period": 2.746666666667584,
+        "median_pressure_contribution_at_raw_extrema": 0.03128826482827851,
+        "mean_pressure_contribution_at_raw_extrema": 0.03139171390115373,
+        "median_viscous_contribution_at_raw_extrema": 0.002427000913331534,
+        "mean_viscous_contribution_at_raw_extrema": 0.002420928314732248,
+        "median_pressure_contribution_drift_corrected": 0.031123812342886192,
+        "mean_pressure_contribution_drift_corrected": 0.031230900658957988,
+        "median_viscous_contribution_drift_corrected": 0.00237766686804608,
+        "mean_viscous_contribution_drift_corrected": 0.0023958454820050177,
+        "mean_pressure_coefficient": 0.9966629330402608,
+        "mean_viscous_coefficient": 0.2895096901645825
+      },
+      "lift_coefficient": {
+        "mean": 0.027409481682247085,
+        "whole_window_peak_to_peak": 0.8478926097732222,
+        "rms_fluctuation": 0.2985345805452586,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 52.28000000000414,
+            "peak_time": 55.04000000000506,
+            "right_trough_time": 57.76000000000597,
+            "period": 5.48000000000183,
+            "peak_to_peak_raw": 0.842960839740374,
+            "peak_to_peak_drift_corrected": 0.8416558992557205,
+            "minimum_coefficient": -0.42217852206368034,
+            "maximum_coefficient": 0.4207823176766936,
+            "pressure_contribution_at_raw_extrema": 0.7551876674126619,
+            "pressure_contribution_drift_corrected": 0.7543548643912499,
+            "viscous_contribution_at_raw_extrema": 0.08777317232771203,
+            "viscous_contribution_drift_corrected": 0.08730103486447058
+          }
+        ],
+        "median_peak_to_peak_raw": 0.842960839740374,
+        "mean_peak_to_peak_raw": 0.842960839740374,
+        "median_peak_to_peak_drift_corrected": 0.8416558992557205,
+        "mean_peak_to_peak_drift_corrected": 0.8416558992557205,
+        "median_period": 5.48000000000183,
+        "mean_period": 5.48000000000183,
+        "median_pressure_contribution_at_raw_extrema": 0.7551876674126619,
+        "mean_pressure_contribution_at_raw_extrema": 0.7551876674126619,
+        "median_viscous_contribution_at_raw_extrema": 0.08777317232771203,
+        "mean_viscous_contribution_at_raw_extrema": 0.08777317232771203,
+        "median_pressure_contribution_drift_corrected": 0.7543548643912499,
+        "mean_pressure_contribution_drift_corrected": 0.7543548643912499,
+        "median_viscous_contribution_drift_corrected": 0.08730103486447058,
+        "mean_viscous_contribution_drift_corrected": 0.08730103486447058,
+        "mean_pressure_coefficient": 0.022978614848000803,
+        "mean_viscous_coefficient": 0.004430866834246284
+      }
+    }
+  },
+  "relative_to_reference": {
+    "baseline": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.6395254070798988,
+        "median_peak_to_peak_drift_corrected": 0.6398155853092065
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.7882411419172168,
+        "median_peak_to_peak_drift_corrected": 0.7882090556184815
+      }
+    },
+    "candidate": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.6323155700597513,
+        "median_peak_to_peak_drift_corrected": 0.6305466353797547
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.7840155797839532,
+        "median_peak_to_peak_drift_corrected": 0.7830050537478174
+      }
+    }
+  },
+  "candidate_relative_to_baseline": {
+    "drag_coefficient": {
+      "median_peak_to_peak_raw": 0.9887262696050374,
+      "median_peak_to_peak_drift_corrected": 0.9855130913621427
+    },
+    "lift_coefficient": {
+      "median_peak_to_peak_raw": 0.9946392519895803,
+      "median_peak_to_peak_drift_corrected": 0.9933976882991014
+    }
+  },
+  "timing": {
+    "scope": "Accepted exchanges after settling, before final timing row publication; numerical evolution phases exclude sampling and backup. Grouping retains total interface evaluations, Picard sweeps, prediction attempts, FVM substeps and optionally 500-particle bins.",
+    "baseline": {
+      "exchange_count": 250,
+      "particles_minimum": 22035,
+      "particles_maximum": 22528,
+      "phase_seconds": {
+        "vpm": {
+          "mean": 0.1300462575079946,
+          "median": 0.12469036250058707,
+          "sum": 32.51156437699865,
+          "minimum": 0.08082281200040597,
+          "maximum": 0.2988803629996255
+        },
+        "vpm_boundary_condition": {
+          "mean": 0.06298736604395526,
+          "median": 0.06295292600043467,
+          "sum": 15.746841510988816,
+          "minimum": 0.05847424700004922,
+          "maximum": 0.06972196000060649
+        },
+        "fvm": {
+          "mean": 7.621473157752109,
+          "median": 7.532372532999943,
+          "sum": 1905.3682894380272,
+          "minimum": 5.342652226003338,
+          "maximum": 12.673763766002594
+        },
+        "transfer": {
+          "mean": 0.5637970416919997,
+          "median": 0.569635433998883,
+          "sum": 140.94926042299994,
+          "minimum": 0.3281377050025185,
+          "maximum": 0.8516882960029761
+        },
+        "evolution_total": {
+          "mean": 8.378303822996058,
+          "median": 8.338803432001441,
+          "sum": 2094.5759557490146,
+          "minimum": 5.811311921006563,
+          "maximum": 13.686668507007198
+        },
+        "state_checks_and_samplers": {
+          "mean": 1.7793861858881719,
+          "median": 1.7942066635005176,
+          "sum": 444.846546472043,
+          "minimum": 1.2805289089992584,
+          "maximum": 2.565569222000704
+        },
+        "backup": {
+          "mean": 0.011765732968022349,
+          "median": 1.8030004866886884e-06,
+          "sum": 2.941433242005587,
+          "minimum": 1.155998688773252e-06,
+          "maximum": 0.38571954799954256
+        },
+        "total": {
+          "mean": 10.176001629432022,
+          "median": 10.201979636499345,
+          "sum": 2544.0004073580058,
+          "minimum": 7.253483117001451,
+          "maximum": 15.811424056999385
+        }
+      }
+    },
+    "candidate": {
+      "exchange_count": 250,
+      "particles_minimum": 22254,
+      "particles_maximum": 22713,
+      "phase_seconds": {
+        "vpm": {
+          "mean": 0.37411495146791274,
+          "median": 0.3380969339978037,
+          "sum": 93.52873786697819,
+          "minimum": 0.24801588600166724,
+          "maximum": 0.6693713480017323
+        },
+        "vpm_boundary_condition": {
+          "mean": 0.0543542581602087,
+          "median": 0.05423608300225169,
+          "sum": 13.588564540052175,
+          "minimum": 0.02227021199723822,
+          "maximum": 0.0677253540015954
+        },
+        "fvm": {
+          "mean": 6.29040151068785,
+          "median": 6.287253276996125,
+          "sum": 1572.6003776719626,
+          "minimum": 1.4954363580000063,
+          "maximum": 8.719892189001257
+        },
+        "transfer": {
+          "mean": 0.5159067731601099,
+          "median": 0.5073320660048921,
+          "sum": 128.97669329002747,
+          "minimum": 0.33530326600157423,
+          "maximum": 0.8307442649966106
+        },
+        "evolution_total": {
+          "mean": 7.234777493476082,
+          "median": 7.218903414999659,
+          "sum": 1808.6943733690205,
+          "minimum": 2.4962718740025593,
+          "maximum": 10.131716240004607
+        },
+        "state_checks_and_samplers": {
+          "mean": 0.07214911451192166,
+          "median": 0.06635600950176013,
+          "sum": 18.037278627980413,
+          "minimum": 0.05257306599742151,
+          "maximum": 0.1128205839995644
+        },
+        "backup": {
+          "mean": 0.010736962944080006,
+          "median": 2.3659995349589735e-06,
+          "sum": 2.6842407360200013,
+          "minimum": 1.2889977369923145e-06,
+          "maximum": 0.3878854809991026
+        },
+        "total": {
+          "mean": 7.3235539765080615,
+          "median": 7.322216680498968,
+          "sum": 1830.8884941270153,
+          "minimum": 2.566663186997175,
+          "maximum": 10.232736284997372
+        }
+      }
+    },
+    "matched_interface_sweeps": [
+      {
+        "total_interface_evaluations": 1,
+        "picard_sweeps": 0,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "candidate": {
+            "exchange_count": 2,
+            "particles_minimum": 22289,
+            "particles_maximum": 22644,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.513128938000591,
+                "median": 0.513128938000591,
+                "sum": 1.026257876001182,
+                "minimum": 0.5003465100016911,
+                "maximum": 0.525911365999491
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.023286084000574192,
+                "median": 0.023286084000574192,
+                "sum": 0.046572168001148384,
+                "minimum": 0.02227021199723822,
+                "maximum": 0.024301956003910163
+              },
+              "fvm": {
+                "mean": 1.815829686502184,
+                "median": 1.815829686502184,
+                "sum": 3.631659373004368,
+                "minimum": 1.4954363580000063,
+                "maximum": 2.1362230150043615
+              },
+              "transfer": {
+                "mean": 0.5654107195005054,
+                "median": 0.5654107195005054,
+                "sum": 1.1308214390010107,
+                "minimum": 0.47821879400362377,
+                "maximum": 0.652602644997387
+              },
+              "evolution_total": {
+                "mean": 2.9176554280038545,
+                "median": 2.9176554280038545,
+                "sum": 5.835310856007709,
+                "minimum": 2.4962718740025593,
+                "maximum": 3.3390389820051496
+              },
+              "state_checks_and_samplers": {
+                "mean": 0.08020310249958129,
+                "median": 0.08020310249958129,
+                "sum": 0.16040620499916258,
+                "minimum": 0.06763121699987096,
+                "maximum": 0.09277498799929162
+              },
+              "backup": {
+                "mean": 3.2059997465694323e-06,
+                "median": 3.2059997465694323e-06,
+                "sum": 6.411999493138865e-06,
+                "minimum": 3.0289993446785957e-06,
+                "maximum": 3.383000148460269e-06
+              },
+              "total": {
+                "mean": 3.000760900999012,
+                "median": 3.000760900999012,
+                "sum": 6.001521801998024,
+                "minimum": 2.566663186997175,
+                "maximum": 3.4348586150008487
+              }
+            }
+          }
+        },
+        "both_runs_represented": false
+      },
+      {
+        "total_interface_evaluations": 4,
+        "picard_sweeps": 3,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "candidate": {
+            "exchange_count": 248,
+            "particles_minimum": 22254,
+            "particles_maximum": 22713,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.3729938709313589,
+                "median": 0.336823399999048,
+                "sum": 92.50247999097701,
+                "minimum": 0.24801588600166724,
+                "maximum": 0.6693713480017323
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.05460480795181866,
+                "median": 0.05424743399998988,
+                "sum": 13.541992372051027,
+                "minimum": 0.0494020299956901,
+                "maximum": 0.0677253540015954
+              },
+              "fvm": {
+                "mean": 6.326486767334509,
+                "median": 6.294693698995616,
+                "sum": 1568.9687182989583,
+                "minimum": 4.830826437995711,
+                "maximum": 8.719892189001257
+              },
+              "transfer": {
+                "mean": 0.515507547786397,
+                "median": 0.5073320660048921,
+                "sum": 127.84587185102646,
+                "minimum": 0.33530326600157423,
+                "maximum": 0.8307442649966106
+              },
+              "evolution_total": {
+                "mean": 7.269592994004084,
+                "median": 7.23578035850187,
+                "sum": 1802.8590625130128,
+                "minimum": 5.546390356990742,
+                "maximum": 10.131716240004607
+              },
+              "state_checks_and_samplers": {
+                "mean": 0.07208416299589214,
+                "median": 0.06630179199964914,
+                "sum": 17.87687242298125,
+                "minimum": 0.05257306599742151,
+                "maximum": 0.1128205839995644
+              },
+              "backup": {
+                "mean": 0.010823525500082695,
+                "median": 2.3550001060357317e-06,
+                "sum": 2.684234324020508,
+                "minimum": 1.2889977369923145e-06,
+                "maximum": 0.3878854809991026
+              },
+              "total": {
+                "mean": 7.358415210987973,
+                "median": 7.333865975500885,
+                "sum": 1824.8869723250173,
+                "minimum": 5.625337003999448,
+                "maximum": 10.232736284997372
+              }
+            }
+          }
+        },
+        "both_runs_represented": false
+      },
+      {
+        "total_interface_evaluations": 5,
+        "picard_sweeps": 4,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "baseline": {
+            "exchange_count": 250,
+            "particles_minimum": 22035,
+            "particles_maximum": 22528,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.1300462575079946,
+                "median": 0.12469036250058707,
+                "sum": 32.51156437699865,
+                "minimum": 0.08082281200040597,
+                "maximum": 0.2988803629996255
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.06298736604395526,
+                "median": 0.06295292600043467,
+                "sum": 15.746841510988816,
+                "minimum": 0.05847424700004922,
+                "maximum": 0.06972196000060649
+              },
+              "fvm": {
+                "mean": 7.621473157752109,
+                "median": 7.532372532999943,
+                "sum": 1905.3682894380272,
+                "minimum": 5.342652226003338,
+                "maximum": 12.673763766002594
+              },
+              "transfer": {
+                "mean": 0.5637970416919997,
+                "median": 0.569635433998883,
+                "sum": 140.94926042299994,
+                "minimum": 0.3281377050025185,
+                "maximum": 0.8516882960029761
+              },
+              "evolution_total": {
+                "mean": 8.378303822996058,
+                "median": 8.338803432001441,
+                "sum": 2094.5759557490146,
+                "minimum": 5.811311921006563,
+                "maximum": 13.686668507007198
+              },
+              "state_checks_and_samplers": {
+                "mean": 1.7793861858881719,
+                "median": 1.7942066635005176,
+                "sum": 444.846546472043,
+                "minimum": 1.2805289089992584,
+                "maximum": 2.565569222000704
+              },
+              "backup": {
+                "mean": 0.011765732968022349,
+                "median": 1.8030004866886884e-06,
+                "sum": 2.941433242005587,
+                "minimum": 1.155998688773252e-06,
+                "maximum": 0.38571954799954256
+              },
+              "total": {
+                "mean": 10.176001629432022,
+                "median": 10.201979636499345,
+                "sum": 2544.0004073580058,
+                "minimum": 7.253483117001451,
+                "maximum": 15.811424056999385
+              }
+            }
+          }
+        },
+        "both_runs_represented": false
+      }
+    ],
+    "matched_interface_sweeps_and_population": [
+      {
+        "total_interface_evaluations": 1,
+        "picard_sweeps": 0,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "candidate": {
+            "exchange_count": 1,
+            "particles_minimum": 22289,
+            "particles_maximum": 22289,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.5003465100016911,
+                "median": 0.5003465100016911,
+                "sum": 0.5003465100016911,
+                "minimum": 0.5003465100016911,
+                "maximum": 0.5003465100016911
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.02227021199723822,
+                "median": 0.02227021199723822,
+                "sum": 0.02227021199723822,
+                "minimum": 0.02227021199723822,
+                "maximum": 0.02227021199723822
+              },
+              "fvm": {
+                "mean": 1.4954363580000063,
+                "median": 1.4954363580000063,
+                "sum": 1.4954363580000063,
+                "minimum": 1.4954363580000063,
+                "maximum": 1.4954363580000063
+              },
+              "transfer": {
+                "mean": 0.47821879400362377,
+                "median": 0.47821879400362377,
+                "sum": 0.47821879400362377,
+                "minimum": 0.47821879400362377,
+                "maximum": 0.47821879400362377
+              },
+              "evolution_total": {
+                "mean": 2.4962718740025593,
+                "median": 2.4962718740025593,
+                "sum": 2.4962718740025593,
+                "minimum": 2.4962718740025593,
+                "maximum": 2.4962718740025593
+              },
+              "state_checks_and_samplers": {
+                "mean": 0.06763121699987096,
+                "median": 0.06763121699987096,
+                "sum": 0.06763121699987096,
+                "minimum": 0.06763121699987096,
+                "maximum": 0.06763121699987096
+              },
+              "backup": {
+                "mean": 3.383000148460269e-06,
+                "median": 3.383000148460269e-06,
+                "sum": 3.383000148460269e-06,
+                "minimum": 3.383000148460269e-06,
+                "maximum": 3.383000148460269e-06
+              },
+              "total": {
+                "mean": 2.566663186997175,
+                "median": 2.566663186997175,
+                "sum": 2.566663186997175,
+                "minimum": 2.566663186997175,
+                "maximum": 2.566663186997175
+              }
+            }
+          }
+        },
+        "both_runs_represented": false,
+        "particle_count_bin": [
+          22000,
+          22499
+        ]
+      },
+      {
+        "total_interface_evaluations": 1,
+        "picard_sweeps": 0,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "candidate": {
+            "exchange_count": 1,
+            "particles_minimum": 22644,
+            "particles_maximum": 22644,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.525911365999491,
+                "median": 0.525911365999491,
+                "sum": 0.525911365999491,
+                "minimum": 0.525911365999491,
+                "maximum": 0.525911365999491
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.024301956003910163,
+                "median": 0.024301956003910163,
+                "sum": 0.024301956003910163,
+                "minimum": 0.024301956003910163,
+                "maximum": 0.024301956003910163
+              },
+              "fvm": {
+                "mean": 2.1362230150043615,
+                "median": 2.1362230150043615,
+                "sum": 2.1362230150043615,
+                "minimum": 2.1362230150043615,
+                "maximum": 2.1362230150043615
+              },
+              "transfer": {
+                "mean": 0.652602644997387,
+                "median": 0.652602644997387,
+                "sum": 0.652602644997387,
+                "minimum": 0.652602644997387,
+                "maximum": 0.652602644997387
+              },
+              "evolution_total": {
+                "mean": 3.3390389820051496,
+                "median": 3.3390389820051496,
+                "sum": 3.3390389820051496,
+                "minimum": 3.3390389820051496,
+                "maximum": 3.3390389820051496
+              },
+              "state_checks_and_samplers": {
+                "mean": 0.09277498799929162,
+                "median": 0.09277498799929162,
+                "sum": 0.09277498799929162,
+                "minimum": 0.09277498799929162,
+                "maximum": 0.09277498799929162
+              },
+              "backup": {
+                "mean": 3.0289993446785957e-06,
+                "median": 3.0289993446785957e-06,
+                "sum": 3.0289993446785957e-06,
+                "minimum": 3.0289993446785957e-06,
+                "maximum": 3.0289993446785957e-06
+              },
+              "total": {
+                "mean": 3.4348586150008487,
+                "median": 3.4348586150008487,
+                "sum": 3.4348586150008487,
+                "minimum": 3.4348586150008487,
+                "maximum": 3.4348586150008487
+              }
+            }
+          }
+        },
+        "both_runs_represented": false,
+        "particle_count_bin": [
+          22500,
+          22999
+        ]
+      },
+      {
+        "total_interface_evaluations": 4,
+        "picard_sweeps": 3,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "candidate": {
+            "exchange_count": 145,
+            "particles_minimum": 22254,
+            "particles_maximum": 22499,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.36980660757921024,
+                "median": 0.3422601799975382,
+                "sum": 53.62195809898549,
+                "minimum": 0.24801588600166724,
+                "maximum": 0.6693713480017323
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.05427224275220491,
+                "median": 0.053916175002086675,
+                "sum": 7.869475199069711,
+                "minimum": 0.0494020299956901,
+                "maximum": 0.06523538999681477
+              },
+              "fvm": {
+                "mean": 6.305864410937873,
+                "median": 6.317625932999363,
+                "sum": 914.3503395859916,
+                "minimum": 4.830826437995711,
+                "maximum": 8.168912904002354
+              },
+              "transfer": {
+                "mean": 0.5081067716273788,
+                "median": 0.493838718997722,
+                "sum": 73.67548188596993,
+                "minimum": 0.34533196900156327,
+                "maximum": 0.7858139890049642
+              },
+              "evolution_total": {
+                "mean": 7.238050032896667,
+                "median": 7.254186027003016,
+                "sum": 1049.5172547700167,
+                "minimum": 5.546390356990742,
+                "maximum": 9.150350954005262
+              },
+              "state_checks_and_samplers": {
+                "mean": 0.07047600473783075,
+                "median": 0.06589481600167346,
+                "sum": 10.21902068698546,
+                "minimum": 0.05257306599742151,
+                "maximum": 0.09860060699793394
+              },
+              "backup": {
+                "mean": 0.008955972489664041,
+                "median": 2.381999365752563e-06,
+                "sum": 1.298616011001286,
+                "minimum": 1.5789992175996304e-06,
+                "maximum": 0.2985707680018095
+              },
+              "total": {
+                "mean": 7.323321927186269,
+                "median": 7.341215550000925,
+                "sum": 1061.881679442009,
+                "minimum": 5.625337003999448,
+                "maximum": 9.248981341999752
+              }
+            }
+          }
+        },
+        "both_runs_represented": false,
+        "particle_count_bin": [
+          22000,
+          22499
+        ]
+      },
+      {
+        "total_interface_evaluations": 4,
+        "picard_sweeps": 3,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "candidate": {
+            "exchange_count": 103,
+            "particles_minimum": 22500,
+            "particles_maximum": 22713,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.37748079506787885,
+                "median": 0.32784683299905737,
+                "sum": 38.88052189199152,
+                "minimum": 0.25864471699969727,
+                "maximum": 0.6393931370002974
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.05507298226195452,
+                "median": 0.0547437360000913,
+                "sum": 5.6725171729813155,
+                "minimum": 0.05088086900286726,
+                "maximum": 0.0677253540015954
+              },
+              "fvm": {
+                "mean": 6.355518239931715,
+                "median": 6.282458170997415,
+                "sum": 654.6183787129667,
+                "minimum": 5.042655854998884,
+                "maximum": 8.719892189001257
+              },
+              "transfer": {
+                "mean": 0.5259261161655974,
+                "median": 0.5359191229945282,
+                "sum": 54.17038996505653,
+                "minimum": 0.33530326600157423,
+                "maximum": 0.8307442649966106
+              },
+              "evolution_total": {
+                "mean": 7.3139981334271456,
+                "median": 7.193587563000619,
+                "sum": 753.341807742996,
+                "minimum": 5.792445778988622,
+                "maximum": 10.131716240004607
+              },
+              "state_checks_and_samplers": {
+                "mean": 0.07434807510675526,
+                "median": 0.06725502000335837,
+                "sum": 7.657851735995791,
+                "minimum": 0.055025410001690034,
+                "maximum": 0.1128205839995644
+              },
+              "backup": {
+                "mean": 0.013452604980769146,
+                "median": 2.3239990696310997e-06,
+                "sum": 1.3856183130192221,
+                "minimum": 1.2889977369923145e-06,
+                "maximum": 0.3878854809991026
+              },
+              "total": {
+                "mean": 7.407818377504934,
+                "median": 7.3044606180010305,
+                "sum": 763.0052928830082,
+                "minimum": 5.8652827779988,
+                "maximum": 10.232736284997372
+              }
+            }
+          }
+        },
+        "both_runs_represented": false,
+        "particle_count_bin": [
+          22500,
+          22999
+        ]
+      },
+      {
+        "total_interface_evaluations": 5,
+        "picard_sweeps": 4,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "baseline": {
+            "exchange_count": 236,
+            "particles_minimum": 22035,
+            "particles_maximum": 22499,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.1297493784364263,
+                "median": 0.12560027400104445,
+                "sum": 30.62085331099661,
+                "minimum": 0.08082281200040597,
+                "maximum": 0.26128513000003295
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.06287864063549439,
+                "median": 0.06290375550088356,
+                "sum": 14.839359189976676,
+                "minimum": 0.05847424700004922,
+                "maximum": 0.06749385700095445
+              },
+              "fvm": {
+                "mean": 7.5573953880636235,
+                "median": 7.501517613499345,
+                "sum": 1783.545311583015,
+                "minimum": 5.342652226003338,
+                "maximum": 9.879606619999322
+              },
+              "transfer": {
+                "mean": 0.5627685282881615,
+                "median": 0.5699647550018199,
+                "sum": 132.8133726760061,
+                "minimum": 0.3281377050025185,
+                "maximum": 0.8431937789955555
+              },
+              "evolution_total": {
+                "mean": 8.312791935423705,
+                "median": 8.327423458500562,
+                "sum": 1961.8188967599945,
+                "minimum": 5.811311921006563,
+                "maximum": 10.867831806999675
+              },
+              "state_checks_and_samplers": {
+                "mean": 1.7790531999789891,
+                "median": 1.7942066635005176,
+                "sum": 419.85655519504144,
+                "minimum": 1.2837518449996423,
+                "maximum": 2.565569222000704
+              },
+              "backup": {
+                "mean": 0.012463586580536885,
+                "median": 1.7995007510762662e-06,
+                "sum": 2.941406433006705,
+                "minimum": 1.155998688773252e-06,
+                "maximum": 0.38571954799954256
+              },
+              "total": {
+                "mean": 10.110818772838993,
+                "median": 10.148017556000923,
+                "sum": 2386.153230390002,
+                "minimum": 7.253483117001451,
+                "maximum": 13.28107603600074
+              }
+            }
+          }
+        },
+        "both_runs_represented": false,
+        "particle_count_bin": [
+          22000,
+          22499
+        ]
+      },
+      {
+        "total_interface_evaluations": 5,
+        "picard_sweeps": 4,
+        "prediction_attempted": true,
+        "fvm_substeps_per_exchange": 5,
+        "statistics": {
+          "baseline": {
+            "exchange_count": 14,
+            "particles_minimum": 22500,
+            "particles_maximum": 22528,
+            "phase_seconds": {
+              "vpm": {
+                "mean": 0.1350507904287172,
+                "median": 0.1207231505004529,
+                "sum": 1.8907110660020408,
+                "minimum": 0.09149448500102153,
+                "maximum": 0.2988803629996255
+              },
+              "vpm_boundary_condition": {
+                "mean": 0.06482016578658138,
+                "median": 0.06452759349940607,
+                "sum": 0.9074823210121394,
+                "minimum": 0.06004367999958049,
+                "maximum": 0.06972196000060649
+              },
+              "fvm": {
+                "mean": 8.70164127535801,
+                "median": 8.580242967497725,
+                "sum": 121.82297785501214,
+                "minimum": 6.377140584001609,
+                "maximum": 12.673763766002594
+              },
+              "transfer": {
+                "mean": 0.581134839070988,
+                "median": 0.5468880374974106,
+                "sum": 8.13588774699383,
+                "minimum": 0.3993187800006126,
+                "maximum": 0.8516882960029761
+              },
+              "evolution_total": {
+                "mean": 9.482647070644296,
+                "median": 9.562862922498425,
+                "sum": 132.75705898902015,
+                "minimum": 7.019090943000265,
+                "maximum": 13.686668507007198
+              },
+              "state_checks_and_samplers": {
+                "mean": 1.7849993769286812,
+                "median": 1.7767908660007379,
+                "sum": 24.989991277001536,
+                "minimum": 1.2805289089992584,
+                "maximum": 2.296320002000357
+              },
+              "backup": {
+                "mean": 1.91492849158489e-06,
+                "median": 1.873499968496617e-06,
+                "sum": 2.6808998882188462e-05,
+                "minimum": 1.59599949256517e-06,
+                "maximum": 2.5350000214530155e-06
+              },
+              "total": {
+                "mean": 11.274798354857401,
+                "median": 11.346742788500706,
+                "sum": 157.84717696800362,
+                "minimum": 8.543332519000614,
+                "maximum": 15.811424056999385
+              }
+            }
+          }
+        },
+        "both_runs_represented": false,
+        "particle_count_bin": [
+          22500,
+          22999
+        ]
+      }
+    ],
+    "execution_configuration_equal": true,
+    "sampling_configuration_equal": false,
+    "exact_shared_sweep_group_count": 0,
+    "matched_sweep_cost_estimate": null,
+    "comparison_limitation": "No identical sweep group is shared: baseline uses 5 evaluations per exchange; candidate uses 4 for 248 exchanges and 1 for 2 exchanges. Aggregate differences include changed convergence count and unequal sampling."
+  },
+  "final_native_checkpoint": {
+    "time": 58.0,
+    "checkpoint_info_sha256": "f0a366bfa5f8c2c73ed446dcd091f97c1fdf5fd7b29d511f6d0b277b71291f33",
+    "native_strict_restart": true,
+    "candidate_source_and_input_hash_verification": true
+  },
+  "figure_sha256": {
+    "png": "b41c52153c06b11df83ea5f93b540b0490c0e3a6df59b35b0de4fe18a17f5884",
+    "pdf": "c0b9926ef5a54f6f256fba60ff0ca709fa6429d3ad79a1fd3b8d56b100e0b5c8",
+    "svg": "9f25a130d4a383ba49c767a23e934ba55b847f1a507c109dd33229e1e5805cc8"
+  },
+  "limitations": [
+    "The first 2 s after the identical native restart are excluded; later complete cycles remain a finite transient and do not prove final saturation.",
+    "Force curves use physical accepted time, without phase shifting or selecting amplitudes across different windows.",
+    "The candidate writes FVM forces only, while production also writes FVM/VPM profiles and surfaces. Total timing differences cannot be assigned solely to the numerical correction.",
+    "GPU and CPU are shared with concurrent production, so matching configured execution and particle bins does not remove resource contention.",
+    "Only a final native checkpoint hash receipt is reported here; independent native field decoding/audit remains a separate validation."
+  ],
+  "independent_verification": {
+    "source_and_snapshot_hashes_checked": true,
+    "direct_cycle_minimum_maximum_maximum_error": 0.0,
+    "direct_linear_trough_baseline_maximum_error": 2.220446049250313e-16,
+    "candidate_and_baseline_each_250_accepted_timing_rows": true,
+    "all_interfaces_converged": true,
+    "timing_strata_cover_all_rows_without_duplication": true,
+    "exact_shared_sweep_stratum_count": 0,
+    "sampling_scope_explicit": true,
+    "figure_visually_inspected": true,
+    "figure_pixel_dimensions": [
+      2430,
+      1890
+    ],
+    "figure_verification_note": "Final PNG inspected after correcting the timing caption; labels, unshifted curves, three-cycle Cd trend, single-cycle Cl markers and complete-cycle table are readable and unclipped."
+  },
+  "scientific_outcome": "The candidate does not recover force amplitudes in the complete 48\u201358 s window. Raw median Cd is 1.13% below the baseline and Cl is 0.54% below it; drift-corrected medians are 1.45% and 0.66% below. The tested wall correction alone is not supported as the explanation of the large force deficit."
+}

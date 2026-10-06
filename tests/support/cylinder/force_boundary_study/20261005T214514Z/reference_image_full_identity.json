@@ -1,0 +1,20 @@
+{
+  "status": "complete",
+  "recorded_at": "2026-10-06T00:11:05.915965+00:00",
+  "service": "openonda-reference-image-full-20261006.service",
+  "invocation_id": "a195461735f7409fb0b3f0468b3a04b7",
+  "launcher_pid": 1576327,
+  "log": "/tmp/openonda-reference-image-full-20261006.log",
+  "output_directory": "/tmp/openonda-reference-image-full-20261006",
+  "resource_limits": {
+    "memory_max_mib": 2500,
+    "swap_max_bytes": 0,
+    "cpu_quota_percent": 100,
+    "runtime_max_seconds": 3600,
+    "threads": 1
+  },
+  "scope": "Bounded private boundary-input diagnostic;production unchanged; numerical-source hashes checked before/after",
+  "interpretation": "Reference filtered-input gate passed; forced FVM model is not an autonomous coupled solution",
+  "endpoint_count": 301,
+  "wall_seconds": 1104.5083362439982
+}

@@ -1,0 +1,53 @@
+{
+  "status": "passed",
+  "reviewed_conclusions_path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_effect_conclusions.json",
+  "reviewed_conclusions_sha256": "891e96f64602ad8db755d5f1d13354086c4e572aada053737e1e63a902b501e5",
+  "checks": {
+    "all_11_evidence_hashes_match": true,
+    "mature_statistics_exact_copy": true,
+    "mature_window_55_95": true,
+    "no_mean_lift_ratio": true,
+    "no_production_recovery_claim": true,
+    "no_main_numerical_promotion_claim": true,
+    "finding_2_attribution_corrected": true,
+    "remaining_autonomous_defect_explicit": true,
+    "forced_one_lift_cycle_limitation_explicit": true,
+    "phase_mode_confound_explicit": true,
+    "retired_warm_oracle_excluded": true,
+    "no_second_harmonic_unique_cause_claim": true,
+    "mature_reported_ratios_match": true,
+    "input_and_support_amplitude_ratios_exact_copy": true,
+    "normal_mode_frequency_amplitude_ratios_exact_copy": true,
+    "all_conditional_relative_effects_recomputed": true,
+    "conclusions_bytes_unchanged_during_review": true
+  },
+  "evidence_hash_checks": {
+    "mature_forces": true,
+    "mature_independent_review": true,
+    "boundary_form_controls": true,
+    "input_component_and_support_controls": true,
+    "normal_mode_frequency_controls": true,
+    "normal_mode_frequency_native_audit": true,
+    "cold_support_native_audit": true,
+    "cold_support_spectral_decomposition": true,
+    "physics_scaling_and_clocks": true,
+    "production_preservation": true,
+    "frozen_wake_operator": true
+  },
+  "measured_mature_peak_to_peak_ratio": {
+    "Cd": 0.6395722973527449,
+    "Cl": 0.7856431055036722
+  },
+  "paired_support_relative_amplitude_effect": {
+    "drag_coefficient": {
+      "median_peak_to_peak_raw": -0.2225482954955148,
+      "median_peak_to_peak_drift_corrected": -0.21459046428732054
+    },
+    "lift_coefficient": {
+      "median_peak_to_peak_raw": -0.0011298259642086306,
+      "median_peak_to_peak_drift_corrected": -0.012557715074576592
+    }
+  },
+  "overclaims_found": [],
+  "review_scope": "Independent read-only source-hash, copied-ratio, conditional-ratio and claim-scope review of these exact consolidated report bytes. Native finite-state and boundary interpolation evidence was already independently audited in the cited receipts. The completed boundary-input studies localize a consequential normal waveform mismatch and finite-support effect; they do not uniquely identify the remaining autonomous lift/waveform operation or demonstrate a production amplitude repair. The mode/frequency controls retain spatial/initial-phase and finite-settling limitations. No solver launched and no helper/native source edited."
+}

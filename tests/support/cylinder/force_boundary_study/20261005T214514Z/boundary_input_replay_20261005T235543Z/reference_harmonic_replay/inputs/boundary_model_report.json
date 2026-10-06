@@ -1,0 +1,730 @@
+{
+  "schema": "openonda-paired-harmonic-boundary-input-models/1",
+  "status": "prepared; neither model has been advanced by a solver",
+  "prepared_at_utc": "2026-10-05T23:56:10.217335+00:00",
+  "sources_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/prepare_boundary_input_replay.py": "f5e1440c4f7a8cbcce2ab52e61ef289ec98230034314a3adcd07edf8f85a1eb5",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/replay_boundary_inputs.py": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_boundary_harmonics.py": "2cfb81ea604012227824e1f715cb7b15ffbbbf58a19e4632caf19399d45bd552",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_boundary_harmonic_phase.py": "e373ea553cc7930c6479295fc1dcb2c7632eacba835f2e969b3f143ea55e2d29",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/boundary_harmonic_fields.npz": "88033ed2a99ea4b007ea6fee25abbdd9651e90ee5fa4382305400da2d4960480",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/boundary_harmonic_complex_fields.npz": "85a9215a7f8a2a4c7db44d364ec6ef528279e7b9f6adfb3b4dd47cb4f6c0e35f",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/boundary_harmonic_statistics.json": "d547730f26c689d110b8a53d42e051e5eef4f03bfdc1fa47a270ecb1ae2ce1b0",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/boundary_harmonic_phase_statistics.json": "75d834b3497b6554356f1130a85c195e97e6f2dc3b50ffcd7a73e20a39f38e87",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/reference_traces.h5": "bbc2fba359eb0e3119a3002ae2818d05962b5ac933c2ddddd0060c000b33e3e3",
+    "/tmp/openonda-cylinder-boundary-study-20261005/reference/report.json": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+    "/tmp/openonda-cylinder-boundary-study-20261005/initial_state.npz": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/coupled_forces.csv": "52036a20f5a6eefbfe73d5af71050339f431addcd0ef4bd5f9feacb0dfdd6bab",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/reference_forces.csv": "08e963544dcc3c1341e58d76900a1bce3250d0b1d331318bccfe28777111efea"
+  },
+  "execution_source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/prepare_boundary_input_replay.py": "f5e1440c4f7a8cbcce2ab52e61ef289ec98230034314a3adcd07edf8f85a1eb5",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/replay_boundary_inputs.py": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_boundary_harmonics.py": "2cfb81ea604012227824e1f715cb7b15ffbbbf58a19e4632caf19399d45bd552",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_boundary_harmonic_phase.py": "e373ea553cc7930c6479295fc1dcb2c7632eacba835f2e969b3f143ea55e2d29"
+  },
+  "particle_sources": [
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000750.h5",
+      "sha256": "b57274e5327cd4687b9032c562622cfde43ea7d511eb4de91b1c992f2e07bee9",
+      "time": 30.0,
+      "step": 750,
+      "particle_count": 23578,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 7.753538832519813e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000775.h5",
+      "sha256": "78394c29619c44d5cb174bcaebd57fb5ace0d6f5daf63bd12b97bd126bb90a20",
+      "time": 31.0,
+      "step": 775,
+      "particle_count": 22900,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 7.91976125930168e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000800.h5",
+      "sha256": "1aa993c9ce10d9b0ee932008f81acf942d2e5329d1aebd88af1ad388b13f748b",
+      "time": 32.0,
+      "step": 800,
+      "particle_count": 21631,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.6782186479348828e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000825.h5",
+      "sha256": "6fef109262e5b50c719ee81635d988af5260b83b76abfb0d1d5a1ab3483905e1",
+      "time": 33.0,
+      "step": 825,
+      "particle_count": 21941,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 5.98897733551373e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000850.h5",
+      "sha256": "554dff9f889cfd84bce7f1c635d8d3a74a1e90021820d26566a71c8ea5a5b679",
+      "time": 34.0,
+      "step": 850,
+      "particle_count": 21719,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.103127484995459e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000875.h5",
+      "sha256": "368535f6ba6d0437943133d9f0b6f7a60477a7043b0165191aae0f34100023aa",
+      "time": 35.0,
+      "step": 875,
+      "particle_count": 21775,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.371741148429783e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000900.h5",
+      "sha256": "89d7d322c5b8cf2dcb22aec2a6f84f63257297795a59f1149488dc4aca786eef",
+      "time": 36.0,
+      "step": 900,
+      "particle_count": 22447,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 2.4739259536731794e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000925.h5",
+      "sha256": "8679997a79dd77b77e2e0dfe5e0eb80e7d67d40e166a47149526265fd7118fbf",
+      "time": 37.0,
+      "step": 925,
+      "particle_count": 22147,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.3445536467779491e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000950.h5",
+      "sha256": "025bbb5676924911069e07684cf831d937cce929389b54b7694ee8b90a1f5a7f",
+      "time": 38.0,
+      "step": 950,
+      "particle_count": 22194,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.196693949988647e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000975.h5",
+      "sha256": "95e8ac2e0db121d9b0f8243d886fc79eb90d690f9c388f062294d9f444175020",
+      "time": 39.0,
+      "step": 975,
+      "particle_count": 22400,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 5.250105437063929e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001000.h5",
+      "sha256": "ace6b8fad66e98a30ed682787003011be7028eae08284f6578e3058004e9d434",
+      "time": 40.0,
+      "step": 1000,
+      "particle_count": 22153,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.5315511173737998e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001025.h5",
+      "sha256": "5809a4d0b1e7ea5470c9628e1c0a69398e39fa8205427e07e096e21d00facef5",
+      "time": 41.0,
+      "step": 1025,
+      "particle_count": 22314,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 6.418913382561948e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001050.h5",
+      "sha256": "a53c604e6e0d7aec3c1e52b9354f463dd8e1916fad5d3c5d4c22a687b3ed0b62",
+      "time": 42.0,
+      "step": 1050,
+      "particle_count": 22356,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 7.089022220740795e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001075.h5",
+      "sha256": "21397a6926a5d1e5652f8d39198a5381192985569c87a67b671aa8136c3bc998",
+      "time": 43.0,
+      "step": 1075,
+      "particle_count": 22056,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.6612153050820597e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001100.h5",
+      "sha256": "8bd3625f932b19df2beef941584367576e3594b1bcc637c587ade609a02207e1",
+      "time": 44.0,
+      "step": 1100,
+      "particle_count": 22418,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 5.666660013675804e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001125.h5",
+      "sha256": "d47d96a923d53ea6e3958d8cd3efa3df8220d95f3b91d002658560b80fc2d7e1",
+      "time": 45.0,
+      "step": 1125,
+      "particle_count": 22286,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.0786439964965784e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001150.h5",
+      "sha256": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+      "time": 46.0,
+      "step": 1150,
+      "particle_count": 22152,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.3667112265227695e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001175.h5",
+      "sha256": "3921e8b420b4fd8fadc3d45f96dbb4f2ea426f4461fac47b06e4ede88b9da76f",
+      "time": 47.0,
+      "step": 1175,
+      "particle_count": 22547,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 2.994601209278945e-07
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001200.h5",
+      "sha256": "8ded4f04ae7090ba8e51fb8148dd7762f86f1397c5b20a76b487dabe9c99d194",
+      "time": 48.0,
+      "step": 1200,
+      "particle_count": 22268,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.3615318191927e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001225.h5",
+      "sha256": "f52a6752dbb2024cafa66afd906c869f81e9ba8825de00b56d3e8e0921838eae",
+      "time": 49.0,
+      "step": 1225,
+      "particle_count": 22258,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 1.212633107559052e-06
+    },
+    {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001250.h5",
+      "sha256": "2e5b0535ae007b17608be361fb5f9fe7c4eaa592f6d49b71c170ca3e4e0f47f1",
+      "time": 50.0,
+      "step": 1250,
+      "particle_count": 22475,
+      "span": 1.0,
+      "configuration_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+      "normal_flux_correction": 5.47196871554011e-07
+    }
+  ],
+  "force_frequency_hz": {
+    "coupled": 0.1815070887743629,
+    "reference": 0.18733035691621663
+  },
+  "fit_midpoint_clock": {
+    "coupled": 40.0,
+    "reference": 105.99999999998477
+  },
+  "source_windows": {
+    "coupled": [
+      30.0,
+      50.0
+    ],
+    "reference": [
+      99.99999999998809,
+      111.99999999998144
+    ]
+  },
+  "measured_samples": {
+    "coupled": 21,
+    "reference": 1501
+  },
+  "model_columns": [
+    "mean",
+    "linear_slope",
+    "cos_fundamental",
+    "sin_fundamental",
+    "cos_second_harmonic",
+    "sin_second_harmonic"
+  ],
+  "design_matrix_condition_number": {
+    "coupled": 9.340541204705971,
+    "reference": 5.318757577494635
+  },
+  "coupled_phase_mapping": {
+    "replay_clock_start": 99.99999999998809,
+    "source_clock_start": 36.251508379930236,
+    "source_clock_end": 48.251508379923585,
+    "source_minus_replay_clock": -63.748491620057855,
+    "source_clock_rate": 1.0,
+    "initial_lift_phase_error_radians_modulo_2pi": -2.4492935982947064e-16,
+    "equivalent_source_start_candidates_inside_measured_window": [
+      30.742081686171012,
+      36.251508379930236
+    ],
+    "selection": "Equivalent lift-phase start nearest the measured window midpoint after accounting for replay duration"
+  },
+  "phase_policy": "The coupled source clock is translated at unit rate so that its fitted lift fundamental matches the reference force phase at the unchanged100s initial state. No individual field/harmonic phase is aligned, no frequency is rescaled, and no amplitude is rescaled. The coupled drag-second minus twice-lift phase remains its measured value.",
+  "force_relative_phase_degrees": {
+    "coupled": {
+      "boundary_midpoint_time": 40.0,
+      "lift_fundamental_phase_degrees": 97.89881713525665,
+      "drag_second_harmonic_phase_degrees": 126.41973266070937,
+      "drag_second_minus_twice_lift_fundamental_degrees": -69.37790160980398
+    },
+    "reference": {
+      "boundary_midpoint_time": 105.99999999998477,
+      "lift_fundamental_phase_degrees": -102.40362037736452,
+      "drag_second_harmonic_phase_degrees": 118.38082887675637,
+      "drag_second_minus_twice_lift_fundamental_degrees": -36.811930368514595
+    }
+  },
+  "fit_quality": {
+    "coupled": {
+      "normal_velocity": {
+        "upstream": {
+          "residual_rms": 0.0002725476800251432,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.005038329406952104,
+          "residual_fraction_of_fluctuation_rms": 0.05409485129119786,
+          "captured_fluctuation_energy_fraction": 0.9970737470637832,
+          "maximum_residual_magnitude": 0.0009515787707068402,
+          "linear_slope_rms_per_second": 7.443481117511737e-06
+        },
+        "downstream": {
+          "residual_rms": 0.02436489740149811,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.2364846282385616,
+          "residual_fraction_of_fluctuation_rms": 0.10302951859060887,
+          "captured_fluctuation_energy_fraction": 0.9893849182989873,
+          "maximum_residual_magnitude": 0.11385212972497805,
+          "linear_slope_rms_per_second": 0.0006012402738715515
+        },
+        "lower": {
+          "residual_rms": 0.002119029118825048,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.041023217034453316,
+          "residual_fraction_of_fluctuation_rms": 0.051654386759706905,
+          "captured_fluctuation_energy_fraction": 0.9973318243284787,
+          "maximum_residual_magnitude": 0.010439898363798036,
+          "linear_slope_rms_per_second": 0.0001075506287870536
+        },
+        "upper": {
+          "residual_rms": 0.0017220901134051654,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.04188262305761648,
+          "residual_fraction_of_fluctuation_rms": 0.041117054942718015,
+          "captured_fluctuation_energy_fraction": 0.9983093877928375,
+          "maximum_residual_magnitude": 0.006192960889154539,
+          "linear_slope_rms_per_second": 4.8349145211245935e-05
+        },
+        "corners": {
+          "residual_rms": 0.0021025543858821695,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.05048127328162588,
+          "residual_fraction_of_fluctuation_rms": 0.04165018529054129,
+          "captured_fluctuation_energy_fraction": 0.9982652620652636,
+          "maximum_residual_magnitude": 0.008503485380081499,
+          "linear_slope_rms_per_second": 0.00012316050120378562
+        },
+        "all": {
+          "residual_rms": 0.011540632910416244,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.1154357715250774,
+          "residual_fraction_of_fluctuation_rms": 0.0999744945431334,
+          "captured_fluctuation_energy_fraction": 0.990005100440845,
+          "maximum_residual_magnitude": 0.11385212972497805,
+          "linear_slope_rms_per_second": 0.0002894709261844137
+        }
+      },
+      "tangential_gradient": {
+        "upstream": {
+          "residual_rms": 0.0001519767243118813,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.005290350236991967,
+          "residual_fraction_of_fluctuation_rms": 0.028727157466665862,
+          "captured_fluctuation_energy_fraction": 0.9991747504238854,
+          "maximum_residual_magnitude": 0.0005915792914954858,
+          "linear_slope_rms_per_second": 4.541922842691103e-06
+        },
+        "downstream": {
+          "residual_rms": 0.14570853362969546,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.6527060962820839,
+          "residual_fraction_of_fluctuation_rms": 0.2232375865028289,
+          "captured_fluctuation_energy_fraction": 0.950164979972392,
+          "maximum_residual_magnitude": 0.6704121433730593,
+          "linear_slope_rms_per_second": 0.0024898334930686565
+        },
+        "lower": {
+          "residual_rms": 0.0017488247213263354,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.057857877810859146,
+          "residual_fraction_of_fluctuation_rms": 0.030226216160975483,
+          "captured_fluctuation_energy_fraction": 0.99908637585659,
+          "maximum_residual_magnitude": 0.010723888186144725,
+          "linear_slope_rms_per_second": 6.430554628858554e-05
+        },
+        "upper": {
+          "residual_rms": 0.0015375187478402982,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.05921884260430072,
+          "residual_fraction_of_fluctuation_rms": 0.025963336671639664,
+          "captured_fluctuation_energy_fraction": 0.9993259051488751,
+          "maximum_residual_magnitude": 0.009601837747082481,
+          "linear_slope_rms_per_second": 5.394628310276385e-05
+        },
+        "corners": {
+          "residual_rms": 0.0025786122038469208,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.07016090187698883,
+          "residual_fraction_of_fluctuation_rms": 0.03675283719083216,
+          "captured_fluctuation_energy_fraction": 0.9986492289584242,
+          "maximum_residual_magnitude": 0.01056802832520353,
+          "linear_slope_rms_per_second": 5.304432437775737e-05
+        },
+        "all": {
+          "residual_rms": 0.06847906103993201,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.3098527203106766,
+          "residual_fraction_of_fluctuation_rms": 0.22100519553699854,
+          "captured_fluctuation_energy_fraction": 0.9511567035456531,
+          "maximum_residual_magnitude": 0.6704121433730593,
+          "linear_slope_rms_per_second": 0.0011707991856699609
+        }
+      },
+      "velocity": {
+        "upstream": {
+          "residual_rms": 0.0015591948967724136,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.014571133845511196,
+          "residual_fraction_of_fluctuation_rms": 0.10700573567600173,
+          "captured_fluctuation_energy_fraction": 0.9885497725324377,
+          "maximum_residual_magnitude": 0.0037510816586393447,
+          "linear_slope_rms_per_second": 4.0936125773161e-05
+        },
+        "downstream": {
+          "residual_rms": 0.035340939173893395,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.41682966378328795,
+          "residual_fraction_of_fluctuation_rms": 0.08478508667815769,
+          "captured_fluctuation_energy_fraction": 0.9928114890769772,
+          "maximum_residual_magnitude": 0.11774237759880811,
+          "linear_slope_rms_per_second": 0.0008190987607740515
+        },
+        "lower": {
+          "residual_rms": 0.002514763127928364,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.056435414873024344,
+          "residual_fraction_of_fluctuation_rms": 0.04456001844916709,
+          "captured_fluctuation_energy_fraction": 0.9980144047558099,
+          "maximum_residual_magnitude": 0.011674569893819962,
+          "linear_slope_rms_per_second": 0.000139622643729405
+        },
+        "upper": {
+          "residual_rms": 0.0019319605329499443,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.05769570475344184,
+          "residual_fraction_of_fluctuation_rms": 0.03348534420726862,
+          "captured_fluctuation_energy_fraction": 0.9988787317233208,
+          "maximum_residual_magnitude": 0.006198525790793411,
+          "linear_slope_rms_per_second": 7.544404586465714e-05
+        },
+        "corners": {
+          "residual_rms": 0.002966730499454319,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.07367887851048041,
+          "residual_fraction_of_fluctuation_rms": 0.0402656848126742,
+          "captured_fluctuation_energy_fraction": 0.9983786746265664,
+          "maximum_residual_magnitude": 0.012051517111760751,
+          "linear_slope_rms_per_second": 0.0001393683427070498
+        },
+        "all": {
+          "residual_rms": 0.016708107901048454,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.20064370221346894,
+          "residual_fraction_of_fluctuation_rms": 0.083272525958838,
+          "captured_fluctuation_energy_fraction": 0.9930656864204347,
+          "maximum_residual_magnitude": 0.11774237759880811,
+          "linear_slope_rms_per_second": 0.00039446863732063456
+        }
+      }
+    },
+    "reference": {
+      "normal_velocity": {
+        "upstream": {
+          "residual_rms": 1.6747711194316926e-05,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.0053201715477445176,
+          "residual_fraction_of_fluctuation_rms": 0.003147964505283125,
+          "captured_fluctuation_energy_fraction": 0.9999900903194735,
+          "maximum_residual_magnitude": 5.039574634080335e-05,
+          "linear_slope_rms_per_second": 2.510596095147724e-06
+        },
+        "downstream": {
+          "residual_rms": 0.025964830192460934,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.2272721156401098,
+          "residual_fraction_of_fluctuation_rms": 0.11424556030259687,
+          "captured_fluctuation_energy_fraction": 0.9869479519511457,
+          "maximum_residual_magnitude": 0.09871453049542883,
+          "linear_slope_rms_per_second": 0.00039461602862690524
+        },
+        "lower": {
+          "residual_rms": 0.0004564002502614689,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.04418554248693358,
+          "residual_fraction_of_fluctuation_rms": 0.01032917611900848,
+          "captured_fluctuation_energy_fraction": 0.9998933081207025,
+          "maximum_residual_magnitude": 0.003523673089820989,
+          "linear_slope_rms_per_second": 9.711831296581067e-06
+        },
+        "upper": {
+          "residual_rms": 0.00048042804268736073,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.045019463262088985,
+          "residual_fraction_of_fluctuation_rms": 0.010671563094621132,
+          "captured_fluctuation_energy_fraction": 0.9998861177411176,
+          "maximum_residual_magnitude": 0.0037860958694574814,
+          "linear_slope_rms_per_second": 1.1029553190402844e-05
+        },
+        "corners": {
+          "residual_rms": 0.0008792464367175575,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.053924033940584634,
+          "residual_fraction_of_fluctuation_rms": 0.016305279343276538,
+          "captured_fluctuation_energy_fraction": 0.9997341378655377,
+          "maximum_residual_magnitude": 0.0028768818667550544,
+          "linear_slope_rms_per_second": 1.4091592292021558e-05
+        },
+        "all": {
+          "residual_rms": 0.012206020756360987,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.11196186051452145,
+          "residual_fraction_of_fluctuation_rms": 0.10901945269816114,
+          "captured_fluctuation_energy_fraction": 0.9881147589333934,
+          "maximum_residual_magnitude": 0.09871453049542883,
+          "linear_slope_rms_per_second": 0.000185597421190422
+        }
+      },
+      "tangential_gradient": {
+        "upstream": {
+          "residual_rms": 7.126453783035102e-05,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.006405719994538943,
+          "residual_fraction_of_fluctuation_rms": 0.011125140950760577,
+          "captured_fluctuation_energy_fraction": 0.9998762312388257,
+          "maximum_residual_magnitude": 0.0003539944012329946,
+          "linear_slope_rms_per_second": 1.5681923523095874e-06
+        },
+        "downstream": {
+          "residual_rms": 0.16457244450133743,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.6674059726565157,
+          "residual_fraction_of_fluctuation_rms": 0.24658521386357982,
+          "captured_fluctuation_energy_fraction": 0.9391957323038526,
+          "maximum_residual_magnitude": 0.7115111388762962,
+          "linear_slope_rms_per_second": 0.0018885299206044953
+        },
+        "lower": {
+          "residual_rms": 0.001585621337544157,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.06273263385100285,
+          "residual_fraction_of_fluctuation_rms": 0.025275861066350064,
+          "captured_fluctuation_energy_fraction": 0.9993611308473546,
+          "maximum_residual_magnitude": 0.011538086632516542,
+          "linear_slope_rms_per_second": 3.2119465740658424e-05
+        },
+        "upper": {
+          "residual_rms": 0.0017030850199118792,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.06493532461454819,
+          "residual_fraction_of_fluctuation_rms": 0.026227404421572998,
+          "captured_fluctuation_energy_fraction": 0.9993121232573072,
+          "maximum_residual_magnitude": 0.012854064725789746,
+          "linear_slope_rms_per_second": 4.8261376340205294e-05
+        },
+        "corners": {
+          "residual_rms": 0.00385114977260216,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.07551918852603377,
+          "residual_fraction_of_fluctuation_rms": 0.050995645580520915,
+          "captured_fluctuation_energy_fraction": 0.9973994441318259,
+          "maximum_residual_magnitude": 0.025039949635969182,
+          "linear_slope_rms_per_second": 9.998429900313803e-06
+        },
+        "all": {
+          "residual_rms": 0.07734235516661561,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.3172716691452139,
+          "residual_fraction_of_fluctuation_rms": 0.24377327914272848,
+          "captured_fluctuation_energy_fraction": 0.9405745883760014,
+          "maximum_residual_magnitude": 0.7115111388762962,
+          "linear_slope_rms_per_second": 0.0008879318202273337
+        }
+      },
+      "velocity": {
+        "upstream": {
+          "residual_rms": 2.685186124048435e-05,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.009243284515214478,
+          "residual_fraction_of_fluctuation_rms": 0.0029050129525155363,
+          "captured_fluctuation_energy_fraction": 0.9999915608997457,
+          "maximum_residual_magnitude": 9.025418185802318e-05,
+          "linear_slope_rms_per_second": 2.99364672507539e-06
+        },
+        "downstream": {
+          "residual_rms": 0.040599052876382026,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.42689377452649696,
+          "residual_fraction_of_fluctuation_rms": 0.09510340815209539,
+          "captured_fluctuation_energy_fraction": 0.9909553417578559,
+          "maximum_residual_magnitude": 0.1339680372284929,
+          "linear_slope_rms_per_second": 0.0008968496625664703
+        },
+        "lower": {
+          "residual_rms": 0.0006319763764060292,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.062448073347304164,
+          "residual_fraction_of_fluctuation_rms": 0.010120030011034939,
+          "captured_fluctuation_energy_fraction": 0.9998975849925757,
+          "maximum_residual_magnitude": 0.003776136556113954,
+          "linear_slope_rms_per_second": 2.0347694688519827e-05
+        },
+        "upper": {
+          "residual_rms": 0.000666979505619369,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.06390994121699711,
+          "residual_fraction_of_fluctuation_rms": 0.010436240323782101,
+          "captured_fluctuation_energy_fraction": 0.9998910848879042,
+          "maximum_residual_magnitude": 0.00412003073835822,
+          "linear_slope_rms_per_second": 1.7264897150222926e-05
+        },
+        "corners": {
+          "residual_rms": 0.0012840853559724257,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.07582549957074132,
+          "residual_fraction_of_fluctuation_rms": 0.01693474310412475,
+          "captured_fluctuation_energy_fraction": 0.9997132144759973,
+          "maximum_residual_magnitude": 0.004136525371797922,
+          "linear_slope_rms_per_second": 3.540021722913767e-05
+        },
+        "all": {
+          "residual_rms": 0.019083824042111976,
+          "measured_fluctuation_rms_after_mean_and_trend": 0.20618489532585318,
+          "residual_fraction_of_fluctuation_rms": 0.0925568481238746,
+          "captured_fluctuation_energy_fraction": 0.991433229865374,
+          "maximum_residual_magnitude": 0.1339680372284929,
+          "linear_slope_rms_per_second": 0.0004216749014631791
+        }
+      }
+    }
+  },
+  "reference_one_second_sampling_sensitivity": {
+    "normal_velocity": {
+      "reference_one_second_sample_count": 13,
+      "dense_vs_one_second_complex_coefficients": {
+        "harmonic_1": {
+          "amplitude_rms_ratio_one_second_to_dense": 1.0002921390432238,
+          "complex_coefficient_rms_difference_fraction": 0.02169714346576747
+        },
+        "harmonic_2": {
+          "amplitude_rms_ratio_one_second_to_dense": 1.0142795554283746,
+          "complex_coefficient_rms_difference_fraction": 0.11382288443794393
+        }
+      },
+      "dense_time_rms_difference_between_low_mode_models": 0.004282340242209168
+    },
+    "tangential_gradient": {
+      "reference_one_second_sample_count": 13,
+      "dense_vs_one_second_complex_coefficients": {
+        "harmonic_1": {
+          "amplitude_rms_ratio_one_second_to_dense": 1.010087868361386,
+          "complex_coefficient_rms_difference_fraction": 0.051034626052413254
+        },
+        "harmonic_2": {
+          "amplitude_rms_ratio_one_second_to_dense": 1.0423603952841074,
+          "complex_coefficient_rms_difference_fraction": 0.2191532172055527
+        }
+      },
+      "dense_time_rms_difference_between_low_mode_models": 0.02837487315587581
+    }
+  },
+  "coupling_endpoint_interpolation_error": {
+    "coupled": {
+      "velocity": {
+        "native_endpoint_linear_interpolation_rms_error_vs_continuous_low_mode_model": 4.626933406106523e-05,
+        "maximum_component_error": 0.00028239190476264664
+      },
+      "normal_velocity": {
+        "native_endpoint_linear_interpolation_rms_error_vs_continuous_low_mode_model": 2.907738535693266e-05,
+        "maximum_component_error": 0.00020531383625171928
+      },
+      "tangential_gradient": {
+        "native_endpoint_linear_interpolation_rms_error_vs_continuous_low_mode_model": 8.556236427917564e-05,
+        "maximum_component_error": 0.0006796501362700269
+      }
+    },
+    "reference": {
+      "velocity": {
+        "native_endpoint_linear_interpolation_rms_error_vs_continuous_low_mode_model": 5.2946971949289936e-05,
+        "maximum_component_error": 0.00032923475315815853
+      },
+      "normal_velocity": {
+        "native_endpoint_linear_interpolation_rms_error_vs_continuous_low_mode_model": 3.198940554992016e-05,
+        "maximum_component_error": 0.0002165267855605002
+      },
+      "tangential_gradient": {
+        "native_endpoint_linear_interpolation_rms_error_vs_continuous_low_mode_model": 9.830286937822121e-05,
+        "maximum_component_error": 0.0007788334912564032
+      }
+    }
+  },
+  "initial_input_difference_from_reference_state_trace": {
+    "coupled": {
+      "velocity": {
+        "rms_difference_from_exact_reference_start": 0.041732700187134895,
+        "maximum_component_difference_from_exact_reference_start": 0.10716834704456091
+      },
+      "normal_velocity": {
+        "rms_difference_from_exact_reference_start": 0.023524598891145415,
+        "maximum_component_difference_from_exact_reference_start": 0.0502536537066362
+      },
+      "tangential_gradient": {
+        "rms_difference_from_exact_reference_start": 0.08696027002085682,
+        "maximum_component_difference_from_exact_reference_start": 0.45188116709034043
+      }
+    },
+    "reference": {
+      "velocity": {
+        "rms_difference_from_exact_reference_start": 0.015392025185487766,
+        "maximum_component_difference_from_exact_reference_start": 0.06519488754295463
+      },
+      "normal_velocity": {
+        "rms_difference_from_exact_reference_start": 0.01397381716924027,
+        "maximum_component_difference_from_exact_reference_start": 0.06519488754295463
+      },
+      "tangential_gradient": {
+        "rms_difference_from_exact_reference_start": 0.08726211054455559,
+        "maximum_component_difference_from_exact_reference_start": 0.504866002592467
+      }
+    }
+  },
+  "verification": {
+    "reconstructed_full_velocity_vs_frozen_normal_trace_maximum_error": 1.1102230246251565e-16,
+    "fresh_vs_frozen_harmonic_coefficient_maximum_error": 0.0,
+    "exact_original_face_geometry": true,
+    "solver_or_device_initialization": false
+  },
+  "harmonic_coefficients_sha256": "bf7d564eddd8b7e47428e62e6355c67c8092666d3525a85766dce5b9235ca614",
+  "endpoint_models": {
+    "coupled": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+      "sha256": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b",
+      "accepted_endpoint_count": 301
+    },
+    "reference": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5",
+      "sha256": "926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572",
+      "accepted_endpoint_count": 301
+    }
+  },
+  "units": {
+    "velocity": "m/s",
+    "normal_velocity": "m/s",
+    "tangential_gradient": "1/s"
+  },
+  "kernel_and_weights": "Exact Gaussian planar induction using each stored core radius and circulation=stored_strength_z/span; volume h_xy^2*span is not multiplied again. Full velocity uses the same uniform normal-flux correction as frozen Un.",
+  "interpretation_gate": "Run the reference-harmonic model first against the exact reference-fed Numba/.04 control. Interpret the actual coupled harmonic control only if this filtering model retains the reference force amplitudes after settling; quantify any filtering bias instead of assuming zero.",
+  "limitations": [
+    "The measured VPM field has21 one-second snapshots and a .5Hz Nyquist frequency. Fundamental .1815Hz and second .3630Hz are resolved; higher modes, including the third .5445Hz, are not identifiable without aliasing.",
+    "Residual energy is concentrated at the downstream boundary. The models remove around5%coupled and6%reference Gt fluctuation energy there; this control cannot exclude a causal role for omitted higher modes.",
+    "The actual data originate at30\u201350s; native reference traces and the mapped initialization originate at100\u2013112s. The clock translation is a research control, not a physical-time-identical coupled restart.",
+    "A100s reference interior/BDF state is initialized with a different harmonic boundary input. Initial lift-phase alignment reduces one phase discontinuity but does not make the complete state consistent with the coupled field. Exclude initial settling and compare complete cycles;12s may still be insufficient for a fully equilibrated response.",
+    "One global lift-phase translation preserves the measured drag/lift relative phase, side-to-side phase and frequency differences. It does not enforce the reference's phase relationships.",
+    "This forced-FVM comparison probes measured boundary inputs separately from closed-loop feedback. It does not uniquely isolate particle kernel, transfer, diffusion, tail truncation or a source-state change."
+  ]
+}

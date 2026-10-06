@@ -1,0 +1,98 @@
+{
+  "physical_time": 46.0,
+  "physical_time_advanced": 0,
+  "input_sha256": {
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/frozen_renewal_fields.npz": "00d623ced530951bd61fbcd34b3f50da6a62fd483f9200026e8cda05a936c459",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048"
+  },
+  "gaussian_source_sha256": "348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306",
+  "sigma_over_particle_spacing": 1.0,
+  "native_guard": {
+    "physical_target_maximum_strength": 0.041904552786421474,
+    "coefficient_bound_from_target": 0.07542819501555866,
+    "maximum_native_amplification": 1.8,
+    "limited_node_count": 3,
+    "limited_wall_node_count": 3,
+    "wall_node_count": 224,
+    "maximum_uncommitted_proposal_over_bound": 1.0297235782124659
+  },
+  "homogeneous_mode_response": [
+    {
+      "wavelength_per_axis_in_particle_spacings": 16,
+      "direction": "axis",
+      "represented_amplitude_ratio": 0.9623659595270762,
+      "unconstrained_exact_inverse_gain": 1.0391057477671155,
+      "first_native_correction_amplitude_ratio": 0.9913401351035611
+    },
+    {
+      "wavelength_per_axis_in_particle_spacings": 16,
+      "direction": "diagonal",
+      "represented_amplitude_ratio": 0.92614824005647,
+      "unconstrained_exact_inverse_gain": 1.079740755042656,
+      "first_native_correction_amplitude_ratio": 0.9808663820538887
+    },
+    {
+      "wavelength_per_axis_in_particle_spacings": 8,
+      "direction": "axis",
+      "represented_amplitude_ratio": 0.8576163161244761,
+      "unconstrained_exact_inverse_gain": 1.1660225921528038,
+      "first_native_correction_amplitude_ratio": 0.955304772477723
+    },
+    {
+      "wavelength_per_axis_in_particle_spacings": 8,
+      "direction": "diagonal",
+      "represented_amplitude_ratio": 0.7355057456829173,
+      "unconstrained_exact_inverse_gain": 1.3596086854107439,
+      "first_native_correction_amplitude_ratio": 0.8911353806831838
+    },
+    {
+      "wavelength_per_axis_in_particle_spacings": 4,
+      "direction": "axis",
+      "represented_amplitude_ratio": 0.5435227251760107,
+      "unconstrained_exact_inverse_gain": 1.8398494739592843,
+      "first_native_correction_amplitude_ratio": 0.7420073430906134
+    },
+    {
+      "wavelength_per_axis_in_particle_spacings": 4,
+      "direction": "diagonal",
+      "represented_amplitude_ratio": 0.2954169527827573,
+      "unconstrained_exact_inverse_gain": 3.385046086828255,
+      "first_native_correction_amplitude_ratio": 0.4619335742158033
+    },
+    {
+      "wavelength_per_axis_in_particle_spacings": 2,
+      "direction": "axis",
+      "represented_amplitude_ratio": 0.16960994539598298,
+      "unconstrained_exact_inverse_gain": 5.895880678844224,
+      "first_native_correction_amplitude_ratio": 0.2822838748509867
+    },
+    {
+      "wavelength_per_axis_in_particle_spacings": 2,
+      "direction": "diagonal",
+      "represented_amplitude_ratio": 0.02876753357722833,
+      "unconstrained_exact_inverse_gain": 34.761408979168635,
+      "first_native_correction_amplitude_ratio": 0.051119503648517424
+    }
+  ],
+  "target_fourier_power_fraction": {
+    "gaussian_symbol_0_to_0.2": 0.051172393800936834,
+    "gaussian_symbol_0.2_to_0.5": 0.06653556252661258,
+    "gaussian_symbol_0.5_to_0.9": 0.18814507999926736,
+    "gaussian_symbol_0.9_to_1.01": 0.6941469636731833
+  },
+  "solid_kernel_leakage": {
+    "deep_solid_node_count": 340,
+    "deep_solid_represented_curl_rms": 0.0025044311673570823,
+    "deep_solid_represented_strength_l1": 0.00019035890269825285
+  },
+  "wall_owner_normal_distance_min_median_max": [
+    0.011347680989328784,
+    0.01520769706799978,
+    0.01850304791889553
+  ],
+  "sigma_over_median_wall_owner_distance": 2.6302470269590312,
+  "interpretation": "Homogeneous mode symbols are exact for the native sampled Gaussian; the finite target spectrum and saturated-node counts are diagnostic. Walls/blending couple modes. Deep-solid represented curl describes Gaussian tails, not particle centres inside the body. Complete no-slip zero extension is solenoidal and needs no extra potential velocity term. This does not prove evolved force causality; unchanged-guard mapped refinement and actual outer-face field measurements provide the separate geometric evidence."
+}

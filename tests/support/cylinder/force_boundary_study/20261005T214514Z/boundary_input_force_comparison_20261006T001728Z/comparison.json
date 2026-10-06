@@ -1,0 +1,994 @@
+{
+  "schema": "openonda-explicit-boundary-input-force-comparison/1",
+  "captured_at_utc": "2026-10-06T00:17:29.022619+00:00",
+  "window": [
+    102.0,
+    112.0
+  ],
+  "settling_seconds_from100s_reference_initialization": 2.0,
+  "sources": {
+    "reference_flow": {
+      "live_source": "/tmp/openonda-cylinder-boundary-study-20261005/reference/samples/forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001728Z/snapshots/reference_flow_forces_history.csv",
+      "sha256": "08e963544dcc3c1341e58d76900a1bce3250d0b1d331318bccfe28777111efea",
+      "sample_count": 300,
+      "first_time": 100.03999999998807,
+      "last_time": 111.99999999998144
+    },
+    "exact_mixed": {
+      "live_source": "/tmp/openonda-cylinder-boundary-study-20261005/mixed_subcycled_numba/samples/forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001728Z/snapshots/exact_mixed_forces_history.csv",
+      "sha256": "e10f55efdc0ddded8eeb0c7ec95a5e314a4264e04bdf0fab45a66a433af8ad8b",
+      "sample_count": 300,
+      "first_time": 100.03999999998807,
+      "last_time": 111.99999999998144
+    },
+    "reference_harmonic": {
+      "live_source": "/tmp/openonda-reference-harmonic-replay-20261006/mixed_subcycled_numba/samples/forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001728Z/snapshots/reference_harmonic_forces_history.csv",
+      "sha256": "43d3539b366aa3e19d548e41154ccc6570b63a274bafb5d5de96968f1ba1dd08",
+      "sample_count": 300,
+      "first_time": 100.03999999998807,
+      "last_time": 111.99999999998144
+    },
+    "coupled_harmonic": {
+      "live_source": "/tmp/openonda-coupled-harmonic-replay-20261006/mixed_subcycled_numba/samples/forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T001728Z/snapshots/coupled_harmonic_forces_history.csv",
+      "sha256": "aef515711821a29177724afd7dc8d03710f196a42d8a508c035cfccab3caa348",
+      "sample_count": 300,
+      "first_time": 100.03999999998807,
+      "last_time": 111.99999999998144
+    }
+  },
+  "provenance": {
+    "reference_flow": {
+      "result_report": "/tmp/openonda-cylinder-boundary-study-20261005/reference/report.json",
+      "result_report_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+      "result": {
+        "status": "complete",
+        "accepted_time": 111.99999999998144,
+        "accepted_new_steps": 1500,
+        "face_count": 356,
+        "step_size": 0.008,
+        "wall_seconds": 693.9206855800003,
+        "strict_native_reference_restart": true,
+        "initial_restriction": {
+          "method": "Native affine reconstruction of each primary and BDF field; matching oriented face fluxes retained, other fluxes reconstructed from their matching velocity history",
+          "comparison": "12-neighbour versus 24-neighbour reconstruction differences; estimates, not rigorous error bounds",
+          "reconstruction_differences": {
+            "velocity": {
+              "all_fluid_cells": {
+                "maximum_absolute_component_difference": 0.010517577396595687,
+                "rms_vector_difference": 0.0020874226541078094
+              },
+              "near_body_cells_r_lt_1": {
+                "maximum_absolute_component_difference": 1.37759821439154e-07,
+                "rms_vector_difference": 1.2607900172228513e-08
+              }
+            },
+            "velocity_old": {
+              "all_fluid_cells": {
+                "maximum_absolute_component_difference": 0.010517577396595687,
+                "rms_vector_difference": 0.0020874226541078094
+              },
+              "near_body_cells_r_lt_1": {
+                "maximum_absolute_component_difference": 1.37759821439154e-07,
+                "rms_vector_difference": 1.2607900172228513e-08
+              }
+            },
+            "velocity_older": {
+              "all_fluid_cells": {
+                "maximum_absolute_component_difference": 0.010557895663930634,
+                "rms_vector_difference": 0.0020882498034237662
+              },
+              "near_body_cells_r_lt_1": {
+                "maximum_absolute_component_difference": 1.377422612636181e-07,
+                "rms_vector_difference": 1.2608111693705192e-08
+              }
+            },
+            "kinematic_pressure": {
+              "all_fluid_cells": {
+                "maximum_absolute_component_difference": 0.0030570862252807807,
+                "rms_vector_difference": 0.00045509699803578324
+              },
+              "near_body_cells_r_lt_1": {
+                "maximum_absolute_component_difference": 6.178221384489646e-08,
+                "rms_vector_difference": 4.127369195111849e-09
+              }
+            }
+          },
+          "fluid_cells": 7741,
+          "maximum_nearest_source_cell_distance": 0.03956296662664638,
+          "maximum_near_body_source_cell_distance": 1.5836124055134848e-07,
+          "matching_oriented_native_faces": 16802,
+          "total_faces": 31194,
+          "matching_face_maximum_centre_distance": 8.849573650682179e-06,
+          "history_clock": {
+            "step": 12500,
+            "time": 99.99999999998809
+          },
+          "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c"
+        },
+        "maximum_trace_reconstruction_differences": {
+          "normal_velocity_correction": 7.899169194598389e-05,
+          "velocity_reconstruction_difference": 0.010617546850699378,
+          "gradient_reconstruction_difference": 0.07503658574056882
+        },
+        "trace_sha256": "bbc2fba359eb0e3119a3002ae2818d05962b5ac933c2ddddd0060c000b33e3e3",
+        "final_checkpoint_sha256": "bd9d1b4e0edfec3a0d2caeea2220ffbcc05cd9a75bd321edebc5a1927b4af9f7"
+      },
+      "native_checkpoint_audit": {
+        "checkpoint_sha256": "bd9d1b4e0edfec3a0d2caeea2220ffbcc05cd9a75bd321edebc5a1927b4af9f7",
+        "accepted_time": 111.99999999998144,
+        "accepted_step": 14000,
+        "finite_complete_primary_BDF_and_flux_fields": true,
+        "configuration_hash": "7cb5e3d3d175860c9e0607a176050c3b7e18c5880ad8d3e9b3aa1aa3a7049ff1",
+        "decoded_field_shapes": {
+          "velocity": [
+            38122,
+            3
+          ],
+          "velocity_old": [
+            38122,
+            3
+          ],
+          "velocity_older": [
+            38122,
+            3
+          ],
+          "kinematic_pressure": [
+            38122
+          ],
+          "volumetric_face_flux": [
+            50859
+          ],
+          "volumetric_face_flux_old": [
+            50859
+          ],
+          "volumetric_face_flux_older": [
+            50859
+          ]
+        }
+      }
+    },
+    "exact_mixed": {
+      "result_report": "/tmp/openonda-cylinder-boundary-study-20261005/mixed_subcycled_numba/report.json",
+      "result_report_sha256": "b450c70fbb5f54aa32d47421956caacc788c1ad7087dca80e5a267715484ea1e",
+      "result": {
+        "status": "complete",
+        "accepted_time": 111.99999999998144,
+        "accepted_new_steps": 1500,
+        "mode": "mixed_subcycled",
+        "label": "mixed_subcycled_numba",
+        "pressure_condition": "fixedFluxPressure",
+        "operator_backend": "numba",
+        "frozen_settings_comparison": {
+          "matched": true,
+          "canonical_settings_sha256": "97cea5f0d5d22e877813f6766025f38d5d504adc5a7948f63c470acedf1219e6",
+          "operator_backend": "numba",
+          "comparison": "All equation settings match frozen native case metadata; output controls/horizon excluded and recorded operator backend deliberately varied."
+        },
+        "wall_seconds": 459.4422267760001,
+        "maximum_normal_velocity_mismatch": 2.220446049250313e-16,
+        "trace_schedule": {
+          "method": "linear interpolation of accepted coupling endpoint traces",
+          "fvm_step_size": 0.008,
+          "coupling_step_size": 0.04,
+          "fvm_substeps_per_coupling_interval": 5,
+          "maximum_normal_velocity_difference_from_stepwise_reference": 0.0006231704081894329,
+          "maximum_tangential_gradient_component_difference_from_stepwise_reference": 0.003879710993147212
+        },
+        "finite_primary_and_temporal_fields": true,
+        "trace_sha256": "bbc2fba359eb0e3119a3002ae2818d05962b5ac933c2ddddd0060c000b33e3e3",
+        "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+        "final_checkpoint_sha256": "5d11faa655e0808489887bcc9a8698e9149957336b352a1a6c6c2aa6b714f3f9"
+      },
+      "native_checkpoint_audit": {
+        "checkpoint_sha256": "5d11faa655e0808489887bcc9a8698e9149957336b352a1a6c6c2aa6b714f3f9",
+        "accepted_time": 111.99999999998144,
+        "accepted_step": 14000,
+        "finite_complete_primary_BDF_and_flux_fields": true,
+        "configuration_hash": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+        "decoded_field_shapes": {
+          "velocity": [
+            23683,
+            3
+          ],
+          "velocity_old": [
+            23683,
+            3
+          ],
+          "velocity_older": [
+            23683,
+            3
+          ],
+          "kinematic_pressure": [
+            23683
+          ],
+          "volumetric_face_flux": [
+            31194
+          ],
+          "volumetric_face_flux_old": [
+            31194
+          ],
+          "volumetric_face_flux_older": [
+            31194
+          ]
+        }
+      }
+    },
+    "reference_harmonic": {
+      "result_report": "/tmp/openonda-reference-harmonic-replay-20261006/mixed_subcycled_numba/report.json",
+      "result_report_sha256": "c4e438a12d41ed0a4e9d09d37cedac381055c0cb160f2e7cd2dec841723e743b",
+      "result": {
+        "schema": "openonda-explicit-boundary-input-result/1",
+        "status": "complete",
+        "trace_origin": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5",
+        "accepted_time": 111.99999999998144,
+        "accepted_new_steps": 1500,
+        "mode": "mixed_subcycled",
+        "operator_backend": "numba",
+        "pressure_condition": "fixedFluxPressure",
+        "frozen_settings_comparison": {
+          "matched": true,
+          "canonical_settings_sha256": "97cea5f0d5d22e877813f6766025f38d5d504adc5a7948f63c470acedf1219e6",
+          "operator_backend": "numba",
+          "comparison": "All equation settings match frozen native case metadata; output controls/horizon excluded and recorded operator backend deliberately varied."
+        },
+        "wall_seconds": 545.099768961998,
+        "maximum_normal_velocity_mismatch": 3.3306690738754696e-16,
+        "finite_primary_and_temporal_fields": true,
+        "boundary_trace_sha256": "8edd7a102364f05e9e30cc84ead7244a632b8f0c50aef5b492a403e0f11fd678",
+        "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+        "final_checkpoint_sha256": "60e6188a9a9c3116786c6a3c1597978b2698f9fd53d12434ee116904725e7bfb",
+        "initialization_and_trace_scope": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+        "source_clock": [
+          99.99999999998809,
+          111.99999999998144
+        ],
+        "limitation": "Forced-input FVM control, not a self-sustained coupled solution or a physical-time-identical restart of the trace's source flow."
+      },
+      "native_checkpoint_audit": {
+        "checkpoint_sha256": "60e6188a9a9c3116786c6a3c1597978b2698f9fd53d12434ee116904725e7bfb",
+        "accepted_time": 111.99999999998144,
+        "accepted_step": 14000,
+        "finite_complete_primary_BDF_and_flux_fields": true,
+        "configuration_hash": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+        "decoded_field_shapes": {
+          "velocity": [
+            23683,
+            3
+          ],
+          "velocity_old": [
+            23683,
+            3
+          ],
+          "velocity_older": [
+            23683,
+            3
+          ],
+          "kinematic_pressure": [
+            23683
+          ],
+          "volumetric_face_flux": [
+            31194
+          ],
+          "volumetric_face_flux_old": [
+            31194
+          ],
+          "volumetric_face_flux_older": [
+            31194
+          ]
+        }
+      },
+      "trace_receipt": {
+        "schema": "openonda-explicit-boundary-input-replay/1",
+        "status": "prepared; no solver replay performed",
+        "prepared_at_utc": "2026-10-05T23:56:11.707818+00:00",
+        "trace_origin": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5",
+        "source_hdf5": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5",
+        "source_hdf5_sha256": "926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572",
+        "source_group": "",
+        "source_attributes": {
+          "complete": true,
+          "fundamental_frequency_hz": 0.18733035691621663,
+          "model": "mean + linear trend + fundamental + second harmonic; no amplitude rescaling",
+          "phase_policy": "One global initial lift-phase translation only; reference model keeps its native clock",
+          "schema": "openonda-harmonic-boundary-endpoint-model/1",
+          "source_fit_midpoint_time": 105.99999999998477,
+          "trace_origin": "Native reference FVM field harmonic model"
+        },
+        "source_receipt_sha256": "7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972",
+        "adapter_source_sha256": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+        "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e",
+        "boundary_trace_sha256": "8edd7a102364f05e9e30cc84ead7244a632b8f0c50aef5b492a403e0f11fd678",
+        "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+        "original_capture_receipt_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+        "native_input_sha256": {
+          "reference_backup.npz": "a517ec6564a6b38430d02571bf7726558cc859240c6cc802189ba13f398dc374",
+          "reference_mesh.npz": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201",
+          "reference_metadata.json": "637a9dc944cca03fcc056f9eddb2217a65060eb1eb44c33b51acb37cd2e3fc01",
+          "small_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+          "small_metadata.json": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+        },
+        "captured_reference_directory": "/tmp/openonda-cylinder-boundary-study-20261005",
+        "clock": {
+          "start_time": 99.99999999998809,
+          "end_time": 111.99999999998144,
+          "native_step_size": 0.008,
+          "accepted_endpoint_step_size": 0.04,
+          "accepted_endpoint_count": 301,
+          "fvm_steps": 1500,
+          "fvm_substeps_per_coupling_interval": 5,
+          "source_time_window": [
+            99.99999999998809,
+            111.99999999998144
+          ]
+        },
+        "geometry": {
+          "face_count": 356,
+          "exact_original_native_face_geometry": true,
+          "maximum_velocity_normal_projection_difference": 1.1102230246251565e-15,
+          "maximum_tangential_gradient_normal_component": 1.8041124150158794e-16,
+          "maximum_signed_normal_flux": 4.649058915617843e-16
+        },
+        "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+        "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+      },
+      "trace_receipt_sha256": "f0ea76c6c11bb836c2ea18adfb6abc27d0d6a683088d4126d2f57906de7e4959"
+    },
+    "coupled_harmonic": {
+      "result_report": "/tmp/openonda-coupled-harmonic-replay-20261006/mixed_subcycled_numba/report.json",
+      "result_report_sha256": "2869e757be71443fcb5e5c044d9bfd97c65156ebec807fba4a6898a3fd359fe0",
+      "result": {
+        "schema": "openonda-explicit-boundary-input-result/1",
+        "status": "complete",
+        "trace_origin": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+        "accepted_time": 111.99999999998144,
+        "accepted_new_steps": 1500,
+        "mode": "mixed_subcycled",
+        "operator_backend": "numba",
+        "pressure_condition": "fixedFluxPressure",
+        "frozen_settings_comparison": {
+          "matched": true,
+          "canonical_settings_sha256": "97cea5f0d5d22e877813f6766025f38d5d504adc5a7948f63c470acedf1219e6",
+          "operator_backend": "numba",
+          "comparison": "All equation settings match frozen native case metadata; output controls/horizon excluded and recorded operator backend deliberately varied."
+        },
+        "wall_seconds": 567.3585045110012,
+        "maximum_normal_velocity_mismatch": 3.3306690738754696e-16,
+        "finite_primary_and_temporal_fields": true,
+        "boundary_trace_sha256": "4ee7487b81c2d51a9203da2b760a64499a5e2544f9ef4c531e8da672b0f88079",
+        "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+        "final_checkpoint_sha256": "bd90111f9593ff168ff7b05ee85cfad78d19c9e547492b2d2b008ab85471521d",
+        "initialization_and_trace_scope": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+        "source_clock": [
+          36.25150837993024,
+          48.25150837992359
+        ],
+        "limitation": "Forced-input FVM control, not a self-sustained coupled solution or a physical-time-identical restart of the trace's source flow."
+      },
+      "native_checkpoint_audit": {
+        "checkpoint_sha256": "bd90111f9593ff168ff7b05ee85cfad78d19c9e547492b2d2b008ab85471521d",
+        "accepted_time": 111.99999999998144,
+        "accepted_step": 14000,
+        "finite_complete_primary_BDF_and_flux_fields": true,
+        "configuration_hash": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+        "decoded_field_shapes": {
+          "velocity": [
+            23683,
+            3
+          ],
+          "velocity_old": [
+            23683,
+            3
+          ],
+          "velocity_older": [
+            23683,
+            3
+          ],
+          "kinematic_pressure": [
+            23683
+          ],
+          "volumetric_face_flux": [
+            31194
+          ],
+          "volumetric_face_flux_old": [
+            31194
+          ],
+          "volumetric_face_flux_older": [
+            31194
+          ]
+        }
+      },
+      "trace_receipt": {
+        "schema": "openonda-explicit-boundary-input-replay/1",
+        "status": "prepared; no solver replay performed",
+        "prepared_at_utc": "2026-10-05T23:56:10.883733+00:00",
+        "trace_origin": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+        "source_hdf5": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+        "source_hdf5_sha256": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b",
+        "source_group": "",
+        "source_attributes": {
+          "complete": true,
+          "fundamental_frequency_hz": 0.1815070887743629,
+          "model": "mean + linear trend + fundamental + second harmonic; no amplitude rescaling",
+          "phase_policy": "One global initial lift-phase translation only; reference model keeps its native clock",
+          "schema": "openonda-harmonic-boundary-endpoint-model/1",
+          "source_fit_midpoint_time": 40.0,
+          "trace_origin": "Measured actual coupled VPM Gaussian field harmonic model"
+        },
+        "source_receipt_sha256": "7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972",
+        "adapter_source_sha256": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+        "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e",
+        "boundary_trace_sha256": "4ee7487b81c2d51a9203da2b760a64499a5e2544f9ef4c531e8da672b0f88079",
+        "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+        "original_capture_receipt_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+        "native_input_sha256": {
+          "reference_backup.npz": "a517ec6564a6b38430d02571bf7726558cc859240c6cc802189ba13f398dc374",
+          "reference_mesh.npz": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201",
+          "reference_metadata.json": "637a9dc944cca03fcc056f9eddb2217a65060eb1eb44c33b51acb37cd2e3fc01",
+          "small_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+          "small_metadata.json": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+        },
+        "captured_reference_directory": "/tmp/openonda-cylinder-boundary-study-20261005",
+        "clock": {
+          "start_time": 99.99999999998809,
+          "end_time": 111.99999999998144,
+          "native_step_size": 0.008,
+          "accepted_endpoint_step_size": 0.04,
+          "accepted_endpoint_count": 301,
+          "fvm_steps": 1500,
+          "fvm_substeps_per_coupling_interval": 5,
+          "source_time_window": [
+            36.25150837993024,
+            48.25150837992359
+          ]
+        },
+        "geometry": {
+          "face_count": 356,
+          "exact_original_native_face_geometry": true,
+          "maximum_velocity_normal_projection_difference": 8.881784197001252e-16,
+          "maximum_tangential_gradient_normal_component": 1.3877787807814457e-16,
+          "maximum_signed_normal_flux": 6.314393452555578e-16
+        },
+        "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+        "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+      },
+      "trace_receipt_sha256": "d05b3558552d90d18ec31fb44e7afeab5ec87352658a2da1d9f7283b131b9c7f"
+    }
+  },
+  "canonical_comparison_sha256": "00874a6c4aaaf2e39034793ef6cb64d99a1eb859c812b2686b9698591ec61dbb",
+  "independent_baseline_statistics_maximum_differences": {
+    "reference_flow.drag_coefficient.median_peak_to_peak_raw": 0.0,
+    "reference_flow.drag_coefficient.median_peak_to_peak_drift_corrected": 0.0,
+    "reference_flow.lift_coefficient.median_peak_to_peak_raw": 0.0,
+    "reference_flow.lift_coefficient.median_peak_to_peak_drift_corrected": 0.0,
+    "exact_mixed.drag_coefficient.median_peak_to_peak_raw": 0.0,
+    "exact_mixed.drag_coefficient.median_peak_to_peak_drift_corrected": 0.0,
+    "exact_mixed.lift_coefficient.median_peak_to_peak_raw": 0.0,
+    "exact_mixed.lift_coefficient.median_peak_to_peak_drift_corrected": 0.0
+  },
+  "complete_cycle_statistics": {
+    "reference_flow": {
+      "drag_coefficient": {
+        "mean": 1.380281161480033,
+        "whole_window_peak_to_peak": 0.053911092965750695,
+        "rms_fluctuation": 0.01922855024085209,
+        "complete_cycle_count": 3,
+        "cycles": [
+          {
+            "left_trough_time": 103.75999999998601,
+            "peak_time": 105.11999999998525,
+            "right_trough_time": 106.4799999999845,
+            "period": 2.7199999999984925,
+            "peak_to_peak_raw": 0.053611837491057246,
+            "peak_to_peak_drift_corrected": 0.05353931341534501,
+            "minimum_coefficient": 1.3528221722223848,
+            "maximum_coefficient": 1.406434009713442,
+            "pressure_contribution_at_raw_extrema": 0.04919902155082001,
+            "pressure_contribution_drift_corrected": 0.04920654479283093,
+            "viscous_contribution_at_raw_extrema": 0.004412815940237291,
+            "viscous_contribution_drift_corrected": 0.004332768622514249
+          },
+          {
+            "left_trough_time": 106.4799999999845,
+            "peak_time": 107.79999999998377,
+            "right_trough_time": 109.15999999998301,
+            "period": 2.6799999999985147,
+            "peak_to_peak_raw": 0.053802750840694635,
+            "peak_to_peak_drift_corrected": 0.05369944113834446,
+            "minimum_coefficient": 1.3528221722223848,
+            "maximum_coefficient": 1.4066249230630794,
+            "pressure_contribution_at_raw_extrema": 0.049300391301746904,
+            "pressure_contribution_drift_corrected": 0.04921405003445134,
+            "viscous_contribution_at_raw_extrema": 0.004502359538947787,
+            "viscous_contribution_drift_corrected": 0.004485391103893122
+          },
+          {
+            "left_trough_time": 109.15999999998301,
+            "peak_time": 110.4399999999823,
+            "right_trough_time": 111.83999999998153,
+            "period": 2.6799999999985147,
+            "peak_to_peak_raw": 0.05370134296400941,
+            "peak_to_peak_drift_corrected": 0.05369984507372805,
+            "minimum_coefficient": 1.353031922224126,
+            "maximum_coefficient": 1.4067332651881355,
+            "pressure_contribution_at_raw_extrema": 0.04932381122158436,
+            "pressure_contribution_drift_corrected": 0.04929521088035482,
+            "viscous_contribution_at_raw_extrema": 0.0043775317424251114,
+            "viscous_contribution_drift_corrected": 0.004404634193373336
+          }
+        ],
+        "median_peak_to_peak_raw": 0.05370134296400941,
+        "mean_peak_to_peak_raw": 0.05370531043192043,
+        "median_peak_to_peak_drift_corrected": 0.05369944113834446,
+        "mean_peak_to_peak_drift_corrected": 0.05364619987580584,
+        "median_period": 2.6799999999985147,
+        "mean_period": 2.6933333333318408,
+        "median_pressure_contribution_at_raw_extrema": 0.049300391301746904,
+        "mean_pressure_contribution_at_raw_extrema": 0.04927440802471709,
+        "median_viscous_contribution_at_raw_extrema": 0.004412815940237291,
+        "mean_viscous_contribution_at_raw_extrema": 0.0044309024072033965,
+        "median_pressure_contribution_drift_corrected": 0.04921405003445134,
+        "mean_pressure_contribution_drift_corrected": 0.0492386019025457,
+        "median_viscous_contribution_drift_corrected": 0.004404634193373336,
+        "mean_viscous_contribution_drift_corrected": 0.0044075979732602355,
+        "mean_pressure_coefficient": 1.074568075665938,
+        "mean_viscous_coefficient": 0.30571308581409484
+      },
+      "lift_coefficient": {
+        "mean": -0.02935712763352797,
+        "whole_window_peak_to_peak": 1.078737058977826,
+        "rms_fluctuation": 0.3757339612994186,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 104.83999999998541,
+            "peak_time": 107.51999999998392,
+            "right_trough_time": 110.19999999998244,
+            "period": 5.359999999997029,
+            "peak_to_peak_raw": 1.078737058977826,
+            "peak_to_peak_drift_corrected": 1.0784035154933043,
+            "minimum_coefficient": -0.5396013972012956,
+            "maximum_coefficient": 0.5391356617765303,
+            "pressure_contribution_at_raw_extrema": 0.969643101130636,
+            "pressure_contribution_drift_corrected": 0.9696917129465913,
+            "viscous_contribution_at_raw_extrema": 0.10909395784718988,
+            "viscous_contribution_drift_corrected": 0.108711802546713
+          }
+        ],
+        "median_peak_to_peak_raw": 1.078737058977826,
+        "mean_peak_to_peak_raw": 1.078737058977826,
+        "median_peak_to_peak_drift_corrected": 1.0784035154933043,
+        "mean_peak_to_peak_drift_corrected": 1.0784035154933043,
+        "median_period": 5.359999999997029,
+        "mean_period": 5.359999999997029,
+        "median_pressure_contribution_at_raw_extrema": 0.969643101130636,
+        "mean_pressure_contribution_at_raw_extrema": 0.969643101130636,
+        "median_viscous_contribution_at_raw_extrema": 0.10909395784718988,
+        "mean_viscous_contribution_at_raw_extrema": 0.10909395784718988,
+        "median_pressure_contribution_drift_corrected": 0.9696917129465913,
+        "mean_pressure_contribution_drift_corrected": 0.9696917129465913,
+        "median_viscous_contribution_drift_corrected": 0.108711802546713,
+        "mean_viscous_contribution_drift_corrected": 0.108711802546713,
+        "mean_pressure_coefficient": -0.02745126744247046,
+        "mean_viscous_coefficient": -0.0019058601910575158
+      }
+    },
+    "exact_mixed": {
+      "drag_coefficient": {
+        "mean": 1.3810628789153145,
+        "whole_window_peak_to_peak": 0.053055102193913184,
+        "rms_fluctuation": 0.018973012127521855,
+        "complete_cycle_count": 3,
+        "cycles": [
+          {
+            "left_trough_time": 103.83999999998596,
+            "peak_time": 105.07999999998528,
+            "right_trough_time": 106.4799999999845,
+            "period": 2.639999999998537,
+            "peak_to_peak_raw": 0.05240047781202639,
+            "peak_to_peak_drift_corrected": 0.052288535468835384,
+            "minimum_coefficient": 1.35475447220316,
+            "maximum_coefficient": 1.4071549500151863,
+            "pressure_contribution_at_raw_extrema": 0.04807701850652957,
+            "pressure_contribution_drift_corrected": 0.0479856533800187,
+            "viscous_contribution_at_raw_extrema": 0.004323459305496824,
+            "viscous_contribution_drift_corrected": 0.004302882088816795
+          },
+          {
+            "left_trough_time": 106.4799999999845,
+            "peak_time": 107.71999999998381,
+            "right_trough_time": 109.07999999998306,
+            "period": 2.599999999998559,
+            "peak_to_peak_raw": 0.05252926028339422,
+            "peak_to_peak_drift_corrected": 0.05222134686972746,
+            "minimum_coefficient": 1.3544041430661407,
+            "maximum_coefficient": 1.4069334033495349,
+            "pressure_contribution_at_raw_extrema": 0.04844769179039332,
+            "pressure_contribution_drift_corrected": 0.0480776831202645,
+            "viscous_contribution_at_raw_extrema": 0.004081568493000953,
+            "viscous_contribution_drift_corrected": 0.004143663749463011
+          },
+          {
+            "left_trough_time": 109.07999999998306,
+            "peak_time": 110.39999999998233,
+            "right_trough_time": 111.75999999998157,
+            "period": 2.6799999999985147,
+            "peak_to_peak_raw": 0.0521089057194537,
+            "peak_to_peak_drift_corrected": 0.05197613166227266,
+            "minimum_coefficient": 1.3544041430661407,
+            "maximum_coefficient": 1.4065130487855944,
+            "pressure_contribution_at_raw_extrema": 0.04807736755434289,
+            "pressure_contribution_drift_corrected": 0.04791577395538016,
+            "viscous_contribution_at_raw_extrema": 0.004031538165110815,
+            "viscous_contribution_drift_corrected": 0.004060357706892392
+          }
+        ],
+        "median_peak_to_peak_raw": 0.05240047781202639,
+        "mean_peak_to_peak_raw": 0.052346214604958106,
+        "median_peak_to_peak_drift_corrected": 0.05222134686972746,
+        "mean_peak_to_peak_drift_corrected": 0.05216200466694517,
+        "median_period": 2.639999999998537,
+        "mean_period": 2.639999999998537,
+        "median_pressure_contribution_at_raw_extrema": 0.04807736755434289,
+        "mean_pressure_contribution_at_raw_extrema": 0.04820069261708859,
+        "median_viscous_contribution_at_raw_extrema": 0.004081568493000953,
+        "mean_viscous_contribution_at_raw_extrema": 0.004145521987869531,
+        "median_pressure_contribution_drift_corrected": 0.0479856533800187,
+        "mean_pressure_contribution_drift_corrected": 0.047993036818554456,
+        "median_viscous_contribution_drift_corrected": 0.004143663749463011,
+        "mean_viscous_contribution_drift_corrected": 0.004168967848390733,
+        "mean_pressure_coefficient": 1.0751723868222438,
+        "mean_viscous_coefficient": 0.30589049209307084
+      },
+      "lift_coefficient": {
+        "mean": -0.027585994899750305,
+        "whole_window_peak_to_peak": 1.0642676956259012,
+        "rms_fluctuation": 0.36762271743951663,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 104.79999999998543,
+            "peak_time": 107.43999999998397,
+            "right_trough_time": 110.11999999998248,
+            "period": 5.3199999999970515,
+            "peak_to_peak_raw": 1.057401057894322,
+            "peak_to_peak_drift_corrected": 1.0543637584295529,
+            "minimum_coefficient": -0.5303460180139639,
+            "maximum_coefficient": 0.5270550398803582,
+            "pressure_contribution_at_raw_extrema": 0.954340840635304,
+            "pressure_contribution_drift_corrected": 0.9516062033231143,
+            "viscous_contribution_at_raw_extrema": 0.10306021725901812,
+            "viscous_contribution_drift_corrected": 0.10275755510643872
+          }
+        ],
+        "median_peak_to_peak_raw": 1.057401057894322,
+        "mean_peak_to_peak_raw": 1.057401057894322,
+        "median_peak_to_peak_drift_corrected": 1.0543637584295529,
+        "mean_peak_to_peak_drift_corrected": 1.0543637584295529,
+        "median_period": 5.3199999999970515,
+        "mean_period": 5.3199999999970515,
+        "median_pressure_contribution_at_raw_extrema": 0.954340840635304,
+        "mean_pressure_contribution_at_raw_extrema": 0.954340840635304,
+        "median_viscous_contribution_at_raw_extrema": 0.10306021725901812,
+        "mean_viscous_contribution_at_raw_extrema": 0.10306021725901812,
+        "median_pressure_contribution_drift_corrected": 0.9516062033231143,
+        "mean_pressure_contribution_drift_corrected": 0.9516062033231143,
+        "median_viscous_contribution_drift_corrected": 0.10275755510643872,
+        "mean_viscous_contribution_drift_corrected": 0.10275755510643872,
+        "mean_pressure_coefficient": -0.025862080260081084,
+        "mean_viscous_coefficient": -0.0017239146396692319
+      }
+    },
+    "reference_harmonic": {
+      "drag_coefficient": {
+        "mean": 1.3812789476403555,
+        "whole_window_peak_to_peak": 0.05287148850959067,
+        "rms_fluctuation": 0.01885226956898149,
+        "complete_cycle_count": 3,
+        "cycles": [
+          {
+            "left_trough_time": 103.75999999998601,
+            "peak_time": 105.07999999998528,
+            "right_trough_time": 106.43999999998452,
+            "period": 2.6799999999985147,
+            "peak_to_peak_raw": 0.052538972575283394,
+            "peak_to_peak_drift_corrected": 0.05241054509687437,
+            "minimum_coefficient": 1.354266450692364,
+            "maximum_coefficient": 1.4068054232676475,
+            "pressure_contribution_at_raw_extrema": 0.048380422159329806,
+            "pressure_contribution_drift_corrected": 0.048227833649508556,
+            "viscous_contribution_at_raw_extrema": 0.004158550415953588,
+            "viscous_contribution_drift_corrected": 0.004182711447365928
+          },
+          {
+            "left_trough_time": 106.43999999998452,
+            "peak_time": 107.75999999998379,
+            "right_trough_time": 109.07999999998306,
+            "period": 2.639999999998537,
+            "peak_to_peak_raw": 0.052569608209745544,
+            "peak_to_peak_drift_corrected": 0.05227297689329791,
+            "minimum_coefficient": 1.3539339347580568,
+            "maximum_coefficient": 1.4065035429678023,
+            "pressure_contribution_at_raw_extrema": 0.04835347420339331,
+            "pressure_contribution_drift_corrected": 0.04804097078026914,
+            "viscous_contribution_at_raw_extrema": 0.0042161340063522346,
+            "viscous_contribution_drift_corrected": 0.004232006113028763
+          },
+          {
+            "left_trough_time": 109.07999999998306,
+            "peak_time": 110.39999999998233,
+            "right_trough_time": 111.75999999998157,
+            "period": 2.6799999999985147,
+            "peak_to_peak_raw": 0.05227838005160845,
+            "peak_to_peak_drift_corrected": 0.052123960508131395,
+            "minimum_coefficient": 1.3539339347580568,
+            "maximum_coefficient": 1.4062123148096652,
+            "pressure_contribution_at_raw_extrema": 0.04820312107495761,
+            "pressure_contribution_drift_corrected": 0.048021837101955844,
+            "viscous_contribution_at_raw_extrema": 0.004075258976650897,
+            "viscous_contribution_drift_corrected": 0.004102123406175662
+          }
+        ],
+        "median_peak_to_peak_raw": 0.052538972575283394,
+        "mean_peak_to_peak_raw": 0.05246232027887913,
+        "median_peak_to_peak_drift_corrected": 0.05227297689329791,
+        "mean_peak_to_peak_drift_corrected": 0.05226916083276789,
+        "median_period": 2.6799999999985147,
+        "mean_period": 2.6666666666651886,
+        "median_pressure_contribution_at_raw_extrema": 0.04835347420339331,
+        "mean_pressure_contribution_at_raw_extrema": 0.04831233914589358,
+        "median_viscous_contribution_at_raw_extrema": 0.004158550415953588,
+        "mean_viscous_contribution_at_raw_extrema": 0.004149981132985574,
+        "median_pressure_contribution_drift_corrected": 0.04804097078026914,
+        "mean_pressure_contribution_drift_corrected": 0.048096880510577845,
+        "median_viscous_contribution_drift_corrected": 0.004182711447365928,
+        "mean_viscous_contribution_drift_corrected": 0.004172280322190118,
+        "mean_pressure_coefficient": 1.0753508618709195,
+        "mean_viscous_coefficient": 0.30592808576943603
+      },
+      "lift_coefficient": {
+        "mean": -0.02764672124661598,
+        "whole_window_peak_to_peak": 1.0775054810774816,
+        "rms_fluctuation": 0.3684373537828478,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 104.79999999998543,
+            "peak_time": 107.43999999998397,
+            "right_trough_time": 110.11999999998248,
+            "period": 5.3199999999970515,
+            "peak_to_peak_raw": 1.0728158009194888,
+            "peak_to_peak_drift_corrected": 1.0703314513161009,
+            "minimum_coefficient": -0.5373352713266996,
+            "maximum_coefficient": 0.5354805295927894,
+            "pressure_contribution_at_raw_extrema": 0.9687444286924414,
+            "pressure_contribution_drift_corrected": 0.96650121402217,
+            "viscous_contribution_at_raw_extrema": 0.1040713722270476,
+            "viscous_contribution_drift_corrected": 0.10383023729393101
+          }
+        ],
+        "median_peak_to_peak_raw": 1.0728158009194888,
+        "mean_peak_to_peak_raw": 1.0728158009194888,
+        "median_peak_to_peak_drift_corrected": 1.0703314513161009,
+        "mean_peak_to_peak_drift_corrected": 1.0703314513161009,
+        "median_period": 5.3199999999970515,
+        "mean_period": 5.3199999999970515,
+        "median_pressure_contribution_at_raw_extrema": 0.9687444286924414,
+        "mean_pressure_contribution_at_raw_extrema": 0.9687444286924414,
+        "median_viscous_contribution_at_raw_extrema": 0.1040713722270476,
+        "mean_viscous_contribution_at_raw_extrema": 0.1040713722270476,
+        "median_pressure_contribution_drift_corrected": 0.96650121402217,
+        "mean_pressure_contribution_drift_corrected": 0.96650121402217,
+        "median_viscous_contribution_drift_corrected": 0.10383023729393101,
+        "mean_viscous_contribution_drift_corrected": 0.10383023729393101,
+        "mean_pressure_coefficient": -0.025928449882869277,
+        "mean_viscous_coefficient": -0.0017182713637467102
+      }
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": {
+        "mean": 1.2955690322003168,
+        "whole_window_peak_to_peak": 0.0448352758352899,
+        "rms_fluctuation": 0.013882806409764826,
+        "complete_cycle_count": 2,
+        "cycles": [
+          {
+            "left_trough_time": 103.99999999998587,
+            "peak_time": 105.35999999998512,
+            "right_trough_time": 106.79999999998432,
+            "period": 2.799999999998448,
+            "peak_to_peak_raw": 0.04116870229599123,
+            "peak_to_peak_drift_corrected": 0.039901976418320384,
+            "minimum_coefficient": 1.273179628169193,
+            "maximum_coefficient": 1.3143483304651842,
+            "pressure_contribution_at_raw_extrema": 0.037832459318956735,
+            "pressure_contribution_drift_corrected": 0.036848066272193614,
+            "viscous_contribution_at_raw_extrema": 0.003336242977034498,
+            "viscous_contribution_drift_corrected": 0.0030539101461266593
+          },
+          {
+            "left_trough_time": 106.79999999998432,
+            "peak_time": 108.19999999998355,
+            "right_trough_time": 109.5599999999828,
+            "period": 2.7599999999984703,
+            "peak_to_peak_raw": 0.03752593896683942,
+            "peak_to_peak_drift_corrected": 0.0372543459246224,
+            "minimum_coefficient": 1.273179628169193,
+            "maximum_coefficient": 1.3107055671360324,
+            "pressure_contribution_at_raw_extrema": 0.03481050612119119,
+            "pressure_contribution_drift_corrected": 0.03452796265023572,
+            "viscous_contribution_at_raw_extrema": 0.0027154328456483467,
+            "viscous_contribution_drift_corrected": 0.00272638327438679
+          }
+        ],
+        "median_peak_to_peak_raw": 0.03934732063141533,
+        "mean_peak_to_peak_raw": 0.03934732063141533,
+        "median_peak_to_peak_drift_corrected": 0.03857816117147139,
+        "mean_peak_to_peak_drift_corrected": 0.03857816117147139,
+        "median_period": 2.7799999999984593,
+        "mean_period": 2.7799999999984593,
+        "median_pressure_contribution_at_raw_extrema": 0.03632148272007396,
+        "mean_pressure_contribution_at_raw_extrema": 0.03632148272007396,
+        "median_viscous_contribution_at_raw_extrema": 0.0030258379113414224,
+        "mean_viscous_contribution_at_raw_extrema": 0.0030258379113414224,
+        "median_pressure_contribution_drift_corrected": 0.03568801446121467,
+        "mean_pressure_contribution_drift_corrected": 0.03568801446121467,
+        "median_viscous_contribution_drift_corrected": 0.0028901467102567246,
+        "mean_viscous_contribution_drift_corrected": 0.0028901467102567246,
+        "mean_pressure_coefficient": 1.0044827018430875,
+        "mean_viscous_coefficient": 0.2910863303572291
+      },
+      "lift_coefficient": {
+        "mean": -0.03325367078964106,
+        "whole_window_peak_to_peak": 1.0229983039844577,
+        "rms_fluctuation": 0.3367664622018373,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 104.87999999998539,
+            "peak_time": 107.63999999998386,
+            "right_trough_time": 110.4399999999823,
+            "period": 5.5599999999969185,
+            "peak_to_peak_raw": 0.9701755112287204,
+            "peak_to_peak_drift_corrected": 0.9543684112849413,
+            "minimum_coefficient": -0.4977150651748174,
+            "maximum_coefficient": 0.47246044605390297,
+            "pressure_contribution_at_raw_extrema": 0.8701229383205784,
+            "pressure_contribution_drift_corrected": 0.8562373223510744,
+            "viscous_contribution_at_raw_extrema": 0.1000525729081419,
+            "viscous_contribution_drift_corrected": 0.09813108893386688
+          }
+        ],
+        "median_peak_to_peak_raw": 0.9701755112287204,
+        "mean_peak_to_peak_raw": 0.9701755112287204,
+        "median_peak_to_peak_drift_corrected": 0.9543684112849413,
+        "mean_peak_to_peak_drift_corrected": 0.9543684112849413,
+        "median_period": 5.5599999999969185,
+        "mean_period": 5.5599999999969185,
+        "median_pressure_contribution_at_raw_extrema": 0.8701229383205784,
+        "mean_pressure_contribution_at_raw_extrema": 0.8701229383205784,
+        "median_viscous_contribution_at_raw_extrema": 0.1000525729081419,
+        "mean_viscous_contribution_at_raw_extrema": 0.1000525729081419,
+        "median_pressure_contribution_drift_corrected": 0.8562373223510744,
+        "mean_pressure_contribution_drift_corrected": 0.8562373223510744,
+        "median_viscous_contribution_drift_corrected": 0.09813108893386688,
+        "mean_viscous_contribution_drift_corrected": 0.09813108893386688,
+        "mean_pressure_coefficient": -0.03187964359267325,
+        "mean_viscous_coefficient": -0.0013740271969678078
+      }
+    }
+  },
+  "relative_to_native_reference_flow": {
+    "reference_flow": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 1.0,
+        "median_peak_to_peak_drift_corrected": 1.0
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 1.0,
+        "median_peak_to_peak_drift_corrected": 1.0
+      }
+    },
+    "exact_mixed": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.9757759288654129,
+        "median_peak_to_peak_drift_corrected": 0.9724746806059112
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.9802213144473583,
+        "median_peak_to_peak_drift_corrected": 0.977708013078245
+      }
+    },
+    "reference_harmonic": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.9783549102393019,
+        "median_peak_to_peak_drift_corrected": 0.973436143564854
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.9945109347926288,
+        "median_peak_to_peak_drift_corrected": 0.9925148016848675
+      }
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.7327064549910021,
+        "median_peak_to_peak_drift_corrected": 0.7184089881323623
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.8993623637515755,
+        "median_peak_to_peak_drift_corrected": 0.8849826596201104
+      }
+    }
+  },
+  "relative_to_exact_fed_mixed_numba_control": {
+    "reference_flow": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 1.024825444467311,
+        "median_peak_to_peak_drift_corrected": 1.0283044072437328
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 1.0201777754279837,
+        "median_peak_to_peak_drift_corrected": 1.0228002497919295
+      }
+    },
+    "exact_mixed": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 1.0,
+        "median_peak_to_peak_drift_corrected": 1.0
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 1.0,
+        "median_peak_to_peak_drift_corrected": 1.0
+      }
+    },
+    "reference_harmonic": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 1.0026430057327687,
+        "median_peak_to_peak_drift_corrected": 1.0009886765980824
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 1.0145779530955485,
+        "median_peak_to_peak_drift_corrected": 1.01514438708547
+      }
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.7508962184002215,
+        "median_peak_to_peak_drift_corrected": 0.7387431287000187
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.9175094955557354,
+        "median_peak_to_peak_drift_corrected": 0.905160485320975
+      }
+    }
+  },
+  "reference_harmonic_filtering_admissibility": {
+    "status": "pass",
+    "passed": true,
+    "label": "reference_harmonic",
+    "denominator": "exact_mixed",
+    "relative_amplitude_tolerance": 0.05,
+    "relative_amplitude_differences": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.002643005732768655,
+        "median_peak_to_peak_drift_corrected": 0.0009886765980824386
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.014577953095548546,
+        "median_peak_to_peak_drift_corrected": 0.015144387085469946
+      }
+    },
+    "scope": "Paired filtered-reference response on unchanged native mapped initialization/settings. A pass only admits interpreting the filtered actual-input experiment; it does not prove autonomous force recovery."
+  },
+  "normalization": "Cd/Cl=2F/(rho Uref^2 D span),rho=Uref=D=span=1; verified directly from native force CSVs. No amplitude scaling applied to comparisons.",
+  "method": "Complete trough-bracketed cycles wholly inside the accepted-time window; rawmax-min and peak minus linearly interpolated bracketing troughs. Pressure/viscous contributions use the same extrema. Curves and cycle times retain the native/research replay clock without phase shifts.",
+  "limitations": [
+    "The102\u2013112s window generally contains only3complete drag cycles and1complete lift cycle. The10s measured response does not establish fully settled saturation.",
+    "Actual/hybrid/image boundary inputs and reference initialization are distinct flow states. Source-clock mappings and reconstruction/filtering limitations are retained in their explicit input receipts.",
+    "Filtering admissibility is assessed against exact-fed mixedNumba/.04control, not inferred merely because a model has finite fields or passed an analytic test.",
+    "No source history, production force, native solver or user figure is modified by this utility."
+  ]
+}

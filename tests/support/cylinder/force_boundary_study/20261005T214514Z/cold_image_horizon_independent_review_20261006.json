@@ -1,0 +1,1645 @@
+{
+  "status": "passed",
+  "checks": {
+    "merged_output_hash": true,
+    "merge_source_hash": true,
+    "merged_policy": true,
+    "strict_subset_validation": true,
+    "ordered_provenance": true,
+    "all_current_numerical_and_image_source_hashes": true,
+    "all_301_zero_history": true,
+    "fixed_10_internal_coefficient_iterates": true,
+    "all_301_final_native_admissions": true,
+    "common_reference_image_crop": true,
+    "final_configuration_identities": true,
+    "qualified_volume_native_schema_all_fields_finite": true,
+    "qualified_volume_source_receipt_matches_original": true,
+    "qualified_volume_original_input_hash": true,
+    "qualified_volume_frozen_inputs_unchanged": true,
+    "qualified_volume_deterministic_native_outputs": true,
+    "qualified_volume_historical_input_scope_honest": true,
+    "merged_clock_and_frame_order": true,
+    "merged_geometry_order": true,
+    "exact_reference_channel_bitwise": true,
+    "merged_all_fields_finite": true,
+    "merged_subset_rows_bitwise": true,
+    "merged_native_trace_projection": true,
+    "auxiliary_final_guards": true,
+    "production_final_guards": true,
+    "reference_support_final_guards": true,
+    "assembled_full_support_capacity": true,
+    "bounded_oracle_coefficients": true
+  },
+  "input_report": "/tmp/openonda-reference-image-cold-full-20261006/report.json",
+  "input_report_sha256": "c3ee5325572aeea4d6433d27180c7aa61da0dde439ba75b120ec8fb8e106f60e",
+  "merged_output_sha256": "43a9018b54b259436abc95aca4ea725b41409164b3004001600931d29caf66dd",
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_reference_particle_image.py": "4e263f3affe32e1d0caad2fab5f5e8559a84d76fca165d4fc419e94493dee134",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_saved_wall_circulation.py": "b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/capture_reference_volume_history.py": "6b1a0def8848ede644dd9a916bc1b8e71433843946b94c5e230e1556d2ff7306",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/project_reference_volume_images.py": "1f64266bfb7b953d46a1be197fa09d046dfcf0b1f062c0daa953421008ed488f",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/reference_cut_cell_deposition.py": "bb69db6ab5b3e242d0b03b6cb0a5c10726b83ba77d26eab7e5856142687796a8",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/stream_planar_image_induction.py": "1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4",
+    "source/coupler/interpolation.py": "f1bdcd6f2d99cc0159164d629fed642f1a19513f31552d7ec6d7802caba328c9",
+    "source/coupler/stable_renewal.py": "348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306",
+    "source/coupler/vorticity_transfer.py": "9380fd0290fb3ee192a68adcee92b54398fda6f1db05a43fb63a30613ca959d7",
+    "source/solvers/vpm/physics/induction/planar.py": "52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc"
+  },
+  "merge_source_sha256": "49d52f0fa52adf8acca0f648dc3cfd228a0f38579f9cde03e72a7cef80b106fe",
+  "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f",
+  "configuration_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+  "mapped_initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+  "independent_analysis_script_sha256": "822309fa08c0d879f0e6c12a5e471398b586a4b1ba46a4a25d894b58fd23b1fc",
+  "frames": 301,
+  "clock": [
+    99.99999999998809,
+    111.99999999998144
+  ],
+  "projection_checks": {
+    "exact_reference": {
+      "maximum_normal_velocity_error": 0.0,
+      "maximum_tangential_gradient_error": 0.0,
+      "maximum_balanced_velocity_error": 0.0,
+      "maximum_absolute_closed_surface_flux": 4.996003610813204e-16,
+      "maximum_flux_correction": 7.899169194598389e-05
+    },
+    "production": {
+      "maximum_normal_velocity_error": 0.0,
+      "maximum_tangential_gradient_error": 0.0,
+      "maximum_balanced_velocity_error": 0.0,
+      "maximum_absolute_closed_surface_flux": 5.412337245047638e-16,
+      "maximum_flux_correction": 1.7900308329638806e-06
+    },
+    "reference_support": {
+      "maximum_normal_velocity_error": 0.0,
+      "maximum_tangential_gradient_error": 0.0,
+      "maximum_balanced_velocity_error": 0.0,
+      "maximum_absolute_closed_surface_flux": 5.412337245047638e-16,
+      "maximum_flux_correction": 1.7886744450522989e-06
+    }
+  },
+  "native_final_budgets": {
+    "auxiliary_final": {
+      "stored_particle_count": {
+        "minimum": 86464.0,
+        "maximum": 87301.0,
+        "mean": 86914.39202657808,
+        "first": 86946.0,
+        "last": 86700.0,
+        "last_to_first": 0.9971706576495756
+      },
+      "maximum_stored_axial_strength": {
+        "minimum": 0.0769578367471695,
+        "maximum": 0.0828179270029068,
+        "mean": 0.0801631833281232,
+        "first": 0.0811220109462738,
+        "last": 0.07891195267438889,
+        "last_to_first": 0.9727563672780669
+      },
+      "stored_strength_l1": {
+        "minimum": 40.423497162742684,
+        "maximum": 40.831845340443785,
+        "mean": 40.624089550289455,
+        "first": 40.678558814949604,
+        "last": 40.70064643868312,
+        "last_to_first": 1.0005429795051
+      },
+      "representation_residual_after_prune": {
+        "minimum": 0.08620332900862636,
+        "maximum": 0.09440529926205654,
+        "mean": 0.09026129810138893,
+        "first": 0.0903462112361802,
+        "last": 0.09101996312080296,
+        "last_to_first": 1.0074574448159366
+      },
+      "maximum_transfer_amplification": {
+        "minimum": 1.7999999999999998,
+        "maximum": 1.8000000000000003,
+        "mean": 1.8000000000000007,
+        "first": 1.8,
+        "last": 1.8,
+        "last_to_first": 1.0
+      },
+      "closure_correction_fraction": {
+        "minimum": 0.06493078141916145,
+        "maximum": 0.06602164307700589,
+        "mean": 0.06548320368120006,
+        "first": 0.06521936290196657,
+        "last": 0.06563776382311398,
+        "last_to_first": 1.0064152868493415
+      },
+      "maximum_strength_error_over_native_tolerance": 0.00024565533512137255,
+      "maximum_linear_impulse_error_over_native_tolerance": 3.0941449882130824e-05,
+      "capacity": 200000,
+      "native_closure_limit": 0.08,
+      "all_zero_population_pruning": true,
+      "all_zero_solid_particles": true
+    },
+    "production_final": {
+      "stored_particle_count": {
+        "minimum": 54062.0,
+        "maximum": 54757.0,
+        "mean": 54459.00996677741,
+        "first": 54663.0,
+        "last": 54313.0,
+        "last_to_first": 0.9935971315149187
+      },
+      "maximum_stored_axial_strength": {
+        "minimum": 0.07863093167543411,
+        "maximum": 0.08487311750650406,
+        "mean": 0.08196105652077254,
+        "first": 0.08296186476945877,
+        "last": 0.08060922473669052,
+        "last_to_first": 0.9716419099389104
+      },
+      "stored_strength_l1": {
+        "minimum": 32.19573100073195,
+        "maximum": 32.52882539013979,
+        "mean": 32.384961514617316,
+        "first": 32.39230005804369,
+        "last": 32.52816178094764,
+        "last_to_first": 1.004194259829049
+      },
+      "representation_residual_after_prune": {
+        "minimum": 0.07050737347351088,
+        "maximum": 0.08184086490158571,
+        "mean": 0.07608643559484018,
+        "first": 0.07651602577409829,
+        "last": 0.07678072039440267,
+        "last_to_first": 1.003459335709435
+      },
+      "maximum_transfer_amplification": {
+        "minimum": 1.7999999999999998,
+        "maximum": 1.8000000000000003,
+        "mean": 1.8000000000000007,
+        "first": 1.8,
+        "last": 1.8,
+        "last_to_first": 1.0
+      },
+      "closure_correction_fraction": {
+        "minimum": 0.0018188728397483963,
+        "maximum": 0.0021777278358882214,
+        "mean": 0.0019770348819292834,
+        "first": 0.002015131198005804,
+        "last": 0.002012477821576991,
+        "last_to_first": 0.9986832736094609
+      },
+      "maximum_strength_error_over_native_tolerance": 0.0007188690056833905,
+      "maximum_linear_impulse_error_over_native_tolerance": 0.00016190456548561345,
+      "capacity": 200000,
+      "native_closure_limit": 0.08,
+      "all_zero_population_pruning": true,
+      "all_zero_solid_particles": true
+    },
+    "reference_support_final": {
+      "stored_particle_count": {
+        "minimum": 54062.0,
+        "maximum": 54757.0,
+        "mean": 54459.00996677741,
+        "first": 54663.0,
+        "last": 54313.0,
+        "last_to_first": 0.9935971315149187
+      },
+      "maximum_stored_axial_strength": {
+        "minimum": 0.07863093167543411,
+        "maximum": 0.08487311750650406,
+        "mean": 0.08196105652077254,
+        "first": 0.08296186476945877,
+        "last": 0.08060922473669052,
+        "last_to_first": 0.9716419099389104
+      },
+      "stored_strength_l1": {
+        "minimum": 32.19573100073195,
+        "maximum": 32.52882539013979,
+        "mean": 32.384961514617316,
+        "first": 32.39230005804369,
+        "last": 32.52816178094764,
+        "last_to_first": 1.004194259829049
+      },
+      "representation_residual_after_prune": {
+        "minimum": 0.07050737347351088,
+        "maximum": 0.08184086490158571,
+        "mean": 0.07608643559484018,
+        "first": 0.07651602577409829,
+        "last": 0.07678072039440267,
+        "last_to_first": 1.003459335709435
+      },
+      "maximum_transfer_amplification": {
+        "minimum": 1.7999999999999998,
+        "maximum": 1.8000000000000003,
+        "mean": 1.8000000000000007,
+        "first": 1.8,
+        "last": 1.8,
+        "last_to_first": 1.0
+      },
+      "closure_correction_fraction": {
+        "minimum": 0.0018188728397483963,
+        "maximum": 0.0021777278358882214,
+        "mean": 0.0019770348819292834,
+        "first": 0.002015131198005804,
+        "last": 0.002012477821576991,
+        "last_to_first": 0.9986832736094609
+      },
+      "maximum_strength_error_over_native_tolerance": 0.0007188690056833905,
+      "maximum_linear_impulse_error_over_native_tolerance": 0.00016190456548561345,
+      "capacity": 200000,
+      "native_closure_limit": 0.08,
+      "all_zero_population_pruning": true,
+      "all_zero_solid_particles": true
+    }
+  },
+  "oracle_coefficient_bounds": {
+    "maximum_coefficient_to_target_ratio": {
+      "minimum": 1.7586920620742728,
+      "maximum": 1.7675204012899062,
+      "mean": 1.7650771959286602,
+      "first": 1.7643475045676782,
+      "last": 1.7671432384967083,
+      "last_to_first": 1.0015845710223141
+    },
+    "maximum_coefficient_l1_to_target_l1_ratio": {
+      "minimum": 1.057486522872833,
+      "maximum": 1.0677732373041144,
+      "mean": 1.062810415594575,
+      "first": 1.0643493088594025,
+      "last": 1.064435633754281,
+      "last_to_first": 1.0000811057931451
+    }
+  },
+  "assembled_full_reference_support": {
+    "source_count": {
+      "minimum": 86214.0,
+      "maximum": 87062.0,
+      "mean": 86670.00664451827,
+      "first": 86682.0,
+      "last": 86435.0,
+      "last_to_first": 0.9971505041415749
+    },
+    "stored_strength_l1": {
+      "minimum": 40.77405113093709,
+      "maximum": 41.179689164737376,
+      "mean": 40.973112536760844,
+      "first": 41.02746534790144,
+      "last": 41.04986846743169,
+      "last_to_first": 1.0005460517567994
+    },
+    "derivation": "Full-support fields use the native small-region renewal plus exactly the unchanged removed auxiliary outside sources. The reference_support_renewals diagnostics intentionally refer to that same cropped small renewal, not the assembled full source count. These total counts and L1 are independently reconstructed from the disjoint cropped and removed diagnostics; maximum axial coefficient remains bounded by max(auxiliary,small).",
+    "maximum_axial_strength_upper_bound": 0.08487311750650406
+  },
+  "worker_checks": [
+    {
+      "start_frame": 0,
+      "stop_frame": 101,
+      "construction_wall_seconds": 35.809827124998264,
+      "worker_wall_seconds": 1611.8943007130001,
+      "peak_rss_bytes": 1162354688,
+      "cold_repeat": {
+        "frame_index": 0,
+        "time": 99.99999999998809,
+        "coefficient_comparison": {
+          "native_masked": {
+            "particle_count": 54663,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          },
+          "full_reference_native_masked": {
+            "particle_count": 86682,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          }
+        },
+        "repeated_admission": {
+          "maximum_coefficient_to_target_ratio": 1.7643475045676782,
+          "maximum_coefficient_l1_to_target_l1_ratio": 1.0643493088594025,
+          "maximum_coefficient_ratio_limit": 4.0,
+          "coefficient_l1_ratio_limit": 10.0,
+          "zero_initial_coefficients": true,
+          "passed": true
+        },
+        "repeat_wall_seconds": 12.237708254997415,
+        "passed": true
+      },
+      "cpu_cuda_checks": {
+        "0": {
+          "production": {
+            "maximum_velocity_absolute_error": 1.1893908080651272e-10,
+            "maximum_jacobian_absolute_error": 3.798952874500827e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 54663,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          },
+          "reference_support": {
+            "maximum_velocity_absolute_error": 1.189390252953615e-10,
+            "maximum_jacobian_absolute_error": 3.798952874500827e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 86682,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          }
+        },
+        "100": {
+          "production": {
+            "maximum_velocity_absolute_error": 1.104638602811292e-10,
+            "maximum_jacobian_absolute_error": 4.68570515721467e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 54399,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          },
+          "reference_support": {
+            "maximum_velocity_absolute_error": 1.104638602811292e-10,
+            "maximum_jacobian_absolute_error": 4.68570515721467e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 86587,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          }
+        }
+      }
+    },
+    {
+      "start_frame": 101,
+      "stop_frame": 201,
+      "construction_wall_seconds": 38.067893518000346,
+      "worker_wall_seconds": 1597.356067648001,
+      "peak_rss_bytes": 1171755008,
+      "cold_repeat": {
+        "frame_index": 101,
+        "time": 104.03999999998585,
+        "coefficient_comparison": {
+          "native_masked": {
+            "particle_count": 54501,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          },
+          "full_reference_native_masked": {
+            "particle_count": 86649,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          }
+        },
+        "repeated_admission": {
+          "maximum_coefficient_to_target_ratio": 1.7668252128688917,
+          "maximum_coefficient_l1_to_target_l1_ratio": 1.0655201519415365,
+          "maximum_coefficient_ratio_limit": 4.0,
+          "coefficient_l1_ratio_limit": 10.0,
+          "zero_initial_coefficients": true,
+          "passed": true
+        },
+        "repeat_wall_seconds": 11.294785217000026,
+        "passed": true
+      },
+      "cpu_cuda_checks": {
+        "101": {
+          "production": {
+            "maximum_velocity_absolute_error": 1.1605560956695626e-10,
+            "maximum_jacobian_absolute_error": 5.164166205773313e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 54501,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          },
+          "reference_support": {
+            "maximum_velocity_absolute_error": 1.1605538752235134e-10,
+            "maximum_jacobian_absolute_error": 5.164166427817918e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 86649,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          }
+        },
+        "200": {
+          "production": {
+            "maximum_velocity_absolute_error": 1.2043460673183404e-10,
+            "maximum_jacobian_absolute_error": 3.918228519417255e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 54749,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          },
+          "reference_support": {
+            "maximum_velocity_absolute_error": 1.2043460673183404e-10,
+            "maximum_jacobian_absolute_error": 3.918228574928406e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 86703,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          }
+        }
+      }
+    },
+    {
+      "start_frame": 201,
+      "stop_frame": 301,
+      "construction_wall_seconds": 39.97072137599753,
+      "worker_wall_seconds": 1592.7232859369979,
+      "peak_rss_bytes": 1174376448,
+      "cold_repeat": {
+        "frame_index": 201,
+        "time": 108.03999999998364,
+        "coefficient_comparison": {
+          "native_masked": {
+            "particle_count": 54700,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          },
+          "full_reference_native_masked": {
+            "particle_count": 86725,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          }
+        },
+        "repeated_admission": {
+          "maximum_coefficient_to_target_ratio": 1.7590530667046094,
+          "maximum_coefficient_l1_to_target_l1_ratio": 1.0648779794528287,
+          "maximum_coefficient_ratio_limit": 4.0,
+          "coefficient_l1_ratio_limit": 10.0,
+          "zero_initial_coefficients": true,
+          "passed": true
+        },
+        "repeat_wall_seconds": 14.830616319999535,
+        "passed": true
+      },
+      "cpu_cuda_checks": {
+        "201": {
+          "production": {
+            "maximum_velocity_absolute_error": 1.259952697729716e-10,
+            "maximum_jacobian_absolute_error": 3.800517345275978e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 54700,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          },
+          "reference_support": {
+            "maximum_velocity_absolute_error": 1.259954363064253e-10,
+            "maximum_jacobian_absolute_error": 3.800517345275978e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 86725,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          }
+        },
+        "300": {
+          "production": {
+            "maximum_velocity_absolute_error": 1.0431133734556397e-10,
+            "maximum_jacobian_absolute_error": 4.484390747627742e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 54313,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          },
+          "reference_support": {
+            "maximum_velocity_absolute_error": 1.0431144836786643e-10,
+            "maximum_jacobian_absolute_error": 4.48439063660544e-09,
+            "absolute_error_bound": 2e-06,
+            "source_count": 86435,
+            "source_batch_size": 32768,
+            "source_storage_dtype": "float32",
+            "accumulator_dtype": "float64"
+          }
+        }
+      }
+    }
+  ],
+  "phase_wall_seconds": {
+    "outside_target": {
+      "minimum": 0.12677575899942894,
+      "maximum": 0.3900107100016612,
+      "mean": 0.17289395947833128,
+      "first": 0.24142906599809066,
+      "last": 0.15793925100297201,
+      "last_to_first": 0.6541849066517164
+    },
+    "outside_renewals": {
+      "minimum": 10.264419584997086,
+      "maximum": 19.860378296001727,
+      "mean": 12.902690355867303,
+      "first": 13.009113804000663,
+      "last": 13.676723444001254,
+      "last_to_first": 1.0513186101727607
+    },
+    "inside_target": {
+      "minimum": 0.0025282169990532566,
+      "maximum": 0.006153852002171334,
+      "mean": 0.003322023182732797,
+      "first": 0.004075634999026079,
+      "last": 0.0030819690000498667,
+      "last_to_first": 0.7561935749365043
+    },
+    "inside_renewals": {
+      "minimum": 0.6358125580009073,
+      "maximum": 1.517326585999399,
+      "mean": 0.8787943647706158,
+      "first": 0.7771950410024147,
+      "last": 1.4283462399980635,
+      "last_to_first": 1.8378221226885387
+    },
+    "production_kernel": {
+      "minimum": 0.39506998700016993,
+      "maximum": 3.3263898660006816,
+      "mean": 0.5881337918803292,
+      "first": 2.8232894700013276,
+      "last": 2.604450923001423,
+      "last_to_first": 0.9224880943576069
+    },
+    "reference_support_kernel": {
+      "minimum": 0.6276201280015812,
+      "maximum": 4.571356362001097,
+      "mean": 0.8729990154452176,
+      "first": 3.873460080998484,
+      "last": 4.029366643000685,
+      "last_to_first": 1.0402499467509712
+    }
+  },
+  "field_error_windows": {
+    "100_to_104s": {
+      "first_time": 99.99999999998809,
+      "last_time": 103.99999999998587,
+      "production": {
+        "normal_velocity": {
+          "rms_over_window": 0.011738390964786743,
+          "minimum_frame_rms": 0.010588286704819521,
+          "maximum_frame_rms": 0.012723331698053626,
+          "first_frame_rms": 0.012240670441458868,
+          "last_frame_rms": 0.010593563827819707
+        },
+        "tangential_gradient": {
+          "rms_over_window": 0.02056831035050139,
+          "minimum_frame_rms": 0.01228051652627302,
+          "maximum_frame_rms": 0.026706372198581282,
+          "first_frame_rms": 0.020446099950973035,
+          "last_frame_rms": 0.014083787060286958
+        },
+        "velocity": {
+          "rms_over_window": 0.01420832434231242,
+          "minimum_frame_rms": 0.012824667874600437,
+          "maximum_frame_rms": 0.015452235041757788,
+          "first_frame_rms": 0.014869525235951617,
+          "last_frame_rms": 0.012906796581395222
+        }
+      },
+      "reference_support": {
+        "normal_velocity": {
+          "rms_over_window": 0.010870744492626584,
+          "minimum_frame_rms": 0.010593720754008728,
+          "maximum_frame_rms": 0.011175382156698185,
+          "first_frame_rms": 0.010814829050499944,
+          "last_frame_rms": 0.010904402458354582
+        },
+        "tangential_gradient": {
+          "rms_over_window": 0.020603413408812617,
+          "minimum_frame_rms": 0.012187534556578642,
+          "maximum_frame_rms": 0.026817050741966632,
+          "first_frame_rms": 0.02041685535621184,
+          "last_frame_rms": 0.01404319041779001
+        },
+        "velocity": {
+          "rms_over_window": 0.014225783988819993,
+          "minimum_frame_rms": 0.013624829085546474,
+          "maximum_frame_rms": 0.014664757823219196,
+          "first_frame_rms": 0.014566474732607491,
+          "last_frame_rms": 0.013854302556570703
+        }
+      },
+      "auxiliary_coefficient_maximum": {
+        "minimum": 0.07705945521593094,
+        "maximum": 0.08280026167631149,
+        "mean": 0.08036277620214047,
+        "first": 0.0811220109462738,
+        "last": 0.07729344069957733,
+        "last_to_first": 0.9528047911776732
+      },
+      "auxiliary_coefficient_l1": {
+        "minimum": 40.423497162742684,
+        "maximum": 40.82719764664646,
+        "mean": 40.60833039154111,
+        "first": 40.678558814949604,
+        "last": 40.7058072132329,
+        "last_to_first": 1.0006698466975503
+      },
+      "final_native_closure_fraction": {
+        "minimum": 0.06496789828230973,
+        "maximum": 0.06600729923725902,
+        "mean": 0.06552704003853262,
+        "first": 0.06521936290196657,
+        "last": 0.06547151082784529,
+        "last_to_first": 1.0038661513185543
+      }
+    },
+    "104_to_108s": {
+      "first_time": 103.99999999998587,
+      "last_time": 107.99999999998366,
+      "production": {
+        "normal_velocity": {
+          "rms_over_window": 0.011716585519832793,
+          "minimum_frame_rms": 0.010593563827819707,
+          "maximum_frame_rms": 0.012722734776466507,
+          "first_frame_rms": 0.010593563827819707,
+          "last_frame_rms": 0.0126729544601972
+        },
+        "tangential_gradient": {
+          "rms_over_window": 0.018871288248910965,
+          "minimum_frame_rms": 0.012367415241149657,
+          "maximum_frame_rms": 0.026573099794837806,
+          "first_frame_rms": 0.014083787060286958,
+          "last_frame_rms": 0.020386830017773593
+        },
+        "velocity": {
+          "rms_over_window": 0.014393056865625196,
+          "minimum_frame_rms": 0.012906796581395222,
+          "maximum_frame_rms": 0.015444398048705557,
+          "first_frame_rms": 0.012906796581395222,
+          "last_frame_rms": 0.015030457481701762
+        }
+      },
+      "reference_support": {
+        "normal_velocity": {
+          "rms_over_window": 0.010936014557134768,
+          "minimum_frame_rms": 0.01059707880682094,
+          "maximum_frame_rms": 0.011175452222676413,
+          "first_frame_rms": 0.010904402458354582,
+          "last_frame_rms": 0.010948527592485501
+        },
+        "tangential_gradient": {
+          "rms_over_window": 0.018838751237777198,
+          "minimum_frame_rms": 0.012272663106406453,
+          "maximum_frame_rms": 0.026684009748000417,
+          "first_frame_rms": 0.01404319041779001,
+          "last_frame_rms": 0.020350789080533428
+        },
+        "velocity": {
+          "rms_over_window": 0.014258459298245763,
+          "minimum_frame_rms": 0.013748821187360937,
+          "maximum_frame_rms": 0.014679325721768688,
+          "first_frame_rms": 0.013854302556570703,
+          "last_frame_rms": 0.014610340165694263
+        }
+      },
+      "auxiliary_coefficient_maximum": {
+        "minimum": 0.07715846598148346,
+        "maximum": 0.0828179270029068,
+        "mean": 0.08028585648182596,
+        "first": 0.07729344069957733,
+        "last": 0.0826207622885704,
+        "last_to_first": 1.0689233334779236
+      },
+      "auxiliary_coefficient_l1": {
+        "minimum": 40.427492048847355,
+        "maximum": 40.831845340443785,
+        "mean": 40.66336871356785,
+        "first": 40.7058072132329,
+        "last": 40.714360894158474,
+        "last_to_first": 1.000210134167854
+      },
+      "final_native_closure_fraction": {
+        "minimum": 0.06493742424881271,
+        "maximum": 0.06601490205462947,
+        "mean": 0.06539915882121562,
+        "first": 0.06547151082784529,
+        "last": 0.06518699054363483,
+        "last_to_first": 0.9956542887033936
+      }
+    },
+    "108_to_112s": {
+      "first_time": 107.99999999998366,
+      "last_time": 111.99999999998144,
+      "production": {
+        "normal_velocity": {
+          "rms_over_window": 0.011639038686956425,
+          "minimum_frame_rms": 0.010591237035648161,
+          "maximum_frame_rms": 0.0126729544601972,
+          "first_frame_rms": 0.0126729544601972,
+          "last_frame_rms": 0.010702047045288616
+        },
+        "tangential_gradient": {
+          "rms_over_window": 0.020620053379935957,
+          "minimum_frame_rms": 0.012444167949863858,
+          "maximum_frame_rms": 0.026601239485253166,
+          "first_frame_rms": 0.020386830017773593,
+          "last_frame_rms": 0.014176081449965143
+        },
+        "velocity": {
+          "rms_over_window": 0.014117187832196577,
+          "minimum_frame_rms": 0.012836261445821468,
+          "maximum_frame_rms": 0.015082912619935057,
+          "first_frame_rms": 0.015030457481701762,
+          "last_frame_rms": 0.01312857934545688
+        }
+      },
+      "reference_support": {
+        "normal_velocity": {
+          "rms_over_window": 0.010835321039594576,
+          "minimum_frame_rms": 0.010597893923470148,
+          "maximum_frame_rms": 0.011042387271412147,
+          "first_frame_rms": 0.010948527592485501,
+          "last_frame_rms": 0.010999957417979768
+        },
+        "tangential_gradient": {
+          "rms_over_window": 0.020655186587395114,
+          "minimum_frame_rms": 0.012351421145040316,
+          "maximum_frame_rms": 0.026718260483967877,
+          "first_frame_rms": 0.020350789080533428,
+          "last_frame_rms": 0.014140336537304647
+        },
+        "velocity": {
+          "rms_over_window": 0.014150291702719352,
+          "minimum_frame_rms": 0.013631000916761695,
+          "maximum_frame_rms": 0.014669516422438906,
+          "first_frame_rms": 0.014610340165694263,
+          "last_frame_rms": 0.014065126747669753
+        }
+      },
+      "auxiliary_coefficient_maximum": {
+        "minimum": 0.0769578367471695,
+        "maximum": 0.0826207622885704,
+        "mean": 0.07983683647200612,
+        "first": 0.0826207622885704,
+        "last": 0.07891195267438889,
+        "last_to_first": 0.9551104406271668
+      },
+      "auxiliary_coefficient_l1": {
+        "minimum": 40.43093081433145,
+        "maximum": 40.810360150267165,
+        "mean": 40.602272407212986,
+        "first": 40.714360894158474,
+        "last": 40.70064643868312,
+        "last_to_first": 0.9996631543471601
+      },
+      "final_native_closure_fraction": {
+        "minimum": 0.06493078141916145,
+        "maximum": 0.06602164307700589,
+        "mean": 0.06552036360968443,
+        "first": 0.06518699054363483,
+        "last": 0.06563776382311398,
+        "last_to_first": 1.0069150803821418
+      }
+    }
+  },
+  "full_support_minus_production_crop": {
+    "normal_velocity": {
+      "minimum": 0.0016073181158034388,
+      "maximum": 0.007568713997682115,
+      "mean": 0.005438322315627634,
+      "first": 0.007488998267638792,
+      "last": 0.001665581899949281,
+      "last_to_first": 0.222403830315536
+    },
+    "tangential_gradient": {
+      "minimum": 6.962245537232587e-05,
+      "maximum": 0.000712817006622973,
+      "mean": 0.0004877270989319058,
+      "first": 0.000693532197702682,
+      "last": 0.00011527309289721232,
+      "last_to_first": 0.16621159519205195
+    },
+    "velocity": {
+      "minimum": 0.002321469041011117,
+      "maximum": 0.01032599895824799,
+      "mean": 0.007447076740948154,
+      "first": 0.010207971147138898,
+      "last": 0.0024053934888404313,
+      "last_to_first": 0.23563874291657042
+    }
+  },
+  "reference_frequency_fit": {
+    "frequency_per_s": 0.18733548226847,
+    "period_s": 5.338017058439055,
+    "duration_cycles": 2.248025787220394,
+    "fit_lift_rms_error": 0.00030291729295078525,
+    "reference_lift_peak_times": [
+      102.1599999999869,
+      107.51999999998392
+    ],
+    "reference_lift_trough_times": [
+      104.83999999998541,
+      110.19999999998244
+    ],
+    "force_history_sha256": "08e963544dcc3c1341e58d76900a1bce3250d0b1d331318bccfe28777111efea",
+    "fit_model": "One shared fundamental fitted to reference Cl with constant, linear trend and harmonics 1..3; boundary fields fitted at that frequency with the same basis and native area weights. Complex amplitude = cos coefficient - i sin coefficient; positive coherent phase is phase lead. Only 2.25 lift cycles, so fitted trends and phases are descriptive, not long-run confidence bounds."
+  },
+  "temporal_boundary_harmonics": {
+    "normal_velocity": {
+      "all_outer_faces": {
+        "face_count": 356,
+        "face_area": 14.342908038933523,
+        "reference_mean_spatial_rms": 0.589498044490966,
+        "reference_linear_trend_spatial_rms_per_s": 0.00011204957524996616,
+        "reference_unfitted_rms": 0.005753210880682324,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.15422908619556794,
+          0.040993360573968254,
+          0.015451246309702599
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.010167403759335484,
+          "linear_trend_error_spatial_rms_per_s": 1.2571284041846996e-05,
+          "unfitted_rms": 0.006605754791968511,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9996550599776419,
+              "coherent_gain": 0.9983348448901876,
+              "coherent_phase_degrees": -0.11889005768012105,
+              "relative_spatial_harmonic_error": 0.05142808286874628,
+              "orthogonal_spatial_error_relative_to_reference": 0.051359287543618196
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.0145678467311503,
+              "coherent_gain": 1.0142354720358346,
+              "coherent_phase_degrees": -0.6233098424015947,
+              "relative_spatial_harmonic_error": 0.0315753637704613,
+              "orthogonal_spatial_error_relative_to_reference": 0.025967727758324285
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.0582512891539164,
+              "coherent_gain": 1.0569188696948286,
+              "coherent_phase_degrees": -0.16055984544315696,
+              "relative_spatial_harmonic_error": 0.0778867861150725,
+              "orthogonal_spatial_error_relative_to_reference": 0.05308760569974483
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.010493046285323035,
+          "linear_trend_error_spatial_rms_per_s": 1.2134573415968838e-05,
+          "unfitted_rms": 0.006605539377108433,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0052073836299777,
+              "coherent_gain": 1.0049722825327239,
+              "coherent_phase_degrees": 0.2931321800097754,
+              "relative_spatial_harmonic_error": 0.022882828288979605,
+              "orthogonal_spatial_error_relative_to_reference": 0.02173926045643098
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.0145558364632865,
+              "coherent_gain": 1.0142224888401388,
+              "coherent_phase_degrees": -0.6243721664047452,
+              "relative_spatial_harmonic_error": 0.031607081806252546,
+              "orthogonal_spatial_error_relative_to_reference": 0.026005546189873247
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.0575689444447272,
+              "coherent_gain": 1.056800817150151,
+              "coherent_phase_degrees": -0.14503103842844176,
+              "relative_spatial_harmonic_error": 0.06969368131095995,
+              "orthogonal_spatial_error_relative_to_reference": 0.0403001876510109
+            }
+          ]
+        }
+      },
+      "downstream_faces": {
+        "face_count": 79,
+        "face_area": 3.1669256514209554,
+        "reference_mean_spatial_rms": 0.8383082526780187,
+        "reference_linear_trend_spatial_rms_per_s": 0.00023813191202935993,
+        "reference_unfitted_rms": 0.012241692262408397,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.31247099908654935,
+          0.08681597736602645,
+          0.03286557553502348
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.01158997723475349,
+          "linear_trend_error_spatial_rms_per_s": 2.577682073859532e-05,
+          "unfitted_rms": 0.01405492266493132,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0046218430805274,
+              "coherent_gain": 1.0043999973243394,
+              "coherent_phase_degrees": 0.21218889403949853,
+              "relative_spatial_harmonic_error": 0.021882148202651934,
+              "orthogonal_spatial_error_relative_to_reference": 0.021111441669938835
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.0149258403363843,
+              "coherent_gain": 1.0146145688138664,
+              "coherent_phase_degrees": -0.6481981637824638,
+              "relative_spatial_harmonic_error": 0.031227891071055135,
+              "orthogonal_spatial_error_relative_to_reference": 0.025134401388694275
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.0576419641648742,
+              "coherent_gain": 1.0568821037739429,
+              "coherent_phase_degrees": -0.14063202397438523,
+              "relative_spatial_harmonic_error": 0.0696324926284992,
+              "orthogonal_spatial_error_relative_to_reference": 0.040084199940850045
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.01123766365428028,
+          "linear_trend_error_spatial_rms_per_s": 2.5779424688147562e-05,
+          "unfitted_rms": 0.014054948630466255,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0065513979009704,
+              "coherent_gain": 1.0063266329832685,
+              "coherent_phase_degrees": 0.2166915307676116,
+              "relative_spatial_harmonic_error": 0.022513207295658564,
+              "orthogonal_spatial_error_relative_to_reference": 0.02127026950829861
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.0149160202004355,
+              "coherent_gain": 1.014604193144812,
+              "coherent_phase_degrees": -0.6491031935782267,
+              "relative_spatial_harmonic_error": 0.031246771569735026,
+              "orthogonal_spatial_error_relative_to_reference": 0.025156695181522092
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.057563105644523,
+              "coherent_gain": 1.0568132963679984,
+              "coherent_phase_degrees": -0.14485354013852914,
+              "relative_spatial_harmonic_error": 0.06942538772841424,
+              "orthogonal_spatial_error_relative_to_reference": 0.039816818560680575
+            }
+          ]
+        }
+      },
+      "upstream_faces": {
+        "face_count": 78,
+        "face_area": 3.1445428589997766,
+        "reference_mean_spatial_rms": 0.9173861524569701,
+        "reference_linear_trend_spatial_rms_per_s": 2.4480835512039618e-06,
+        "reference_unfitted_rms": 1.2038771335782935e-05,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.007390998630117611,
+          0.00013843232343518049,
+          1.6510343054852865e-05
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.013326923232575439,
+          "linear_trend_error_spatial_rms_per_s": 4.118987059831119e-07,
+          "unfitted_rms": 3.879048306969244e-05,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9911747745590737,
+              "coherent_gain": 0.9908612912586295,
+              "coherent_phase_degrees": -1.7609639900728007,
+              "relative_spatial_harmonic_error": 0.040506317956146114,
+              "orthogonal_spatial_error_relative_to_reference": 0.02492659638843976
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.9391028399515906,
+              "coherent_gain": 1.5182393301851536,
+              "coherent_phase_degrees": 49.60351041593225,
+              "relative_spatial_harmonic_error": 1.6710054623487385,
+              "orthogonal_spatial_error_relative_to_reference": 1.2062624756607745
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 2.4777436712986827,
+              "coherent_gain": 2.238368214526334,
+              "coherent_phase_degrees": 26.920337167996564,
+              "relative_spatial_harmonic_error": 1.7741449748630933,
+              "orthogonal_spatial_error_relative_to_reference": 1.0625071467330787
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.015128574011095422,
+          "linear_trend_error_spatial_rms_per_s": 3.3174538478545225e-07,
+          "unfitted_rms": 4.0446093715127433e-05,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9305458370444926,
+              "coherent_gain": 0.9300519493615454,
+              "coherent_phase_degrees": -3.4722884636519598,
+              "relative_spatial_harmonic_error": 0.09605425281480548,
+              "orthogonal_spatial_error_relative_to_reference": 0.03031379767737156
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.9873611176029435,
+              "coherent_gain": 1.5543105277753035,
+              "coherent_phase_degrees": 54.3955469000129,
+              "relative_spatial_harmonic_error": 1.771950350688612,
+              "orthogonal_spatial_error_relative_to_reference": 1.238435704833674
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.4297758016983886,
+              "coherent_gain": 1.1027816912067985,
+              "coherent_phase_degrees": -27.440904565733685,
+              "relative_spatial_harmonic_error": 1.0425213984691988,
+              "orthogonal_spatial_error_relative_to_reference": 0.910017244156034
+            }
+          ]
+        }
+      },
+      "upper_faces": {
+        "face_count": 99,
+        "face_area": 3.966925635758738,
+        "reference_mean_spatial_rms": 0.09133678549315792,
+        "reference_linear_trend_spatial_rms_per_s": 6.895359060220293e-06,
+        "reference_unfitted_rms": 0.00013836878236197852,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.06301282138858265,
+          0.00537617195536313,
+          0.0006598283985398575
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.00732890142876604,
+          "linear_trend_error_spatial_rms_per_s": 4.590196139004438e-06,
+          "unfitted_rms": 0.00018215532000893006,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9520823622807119,
+              "coherent_gain": 0.9432015267100142,
+              "coherent_phase_degrees": -3.5270305000862265,
+              "relative_spatial_harmonic_error": 0.15372323448471006,
+              "orthogonal_spatial_error_relative_to_reference": 0.12973705938519942
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.9694353490120386,
+              "coherent_gain": 0.9693015170432513,
+              "coherent_phase_degrees": 1.8642561373740565,
+              "relative_spatial_harmonic_error": 0.047201210132693294,
+              "orthogonal_spatial_error_relative_to_reference": 0.016107916430893914
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.5534651578627112,
+              "coherent_gain": 1.1586890833154504,
+              "coherent_phase_degrees": -17.875983209577353,
+              "relative_spatial_harmonic_error": 1.098977495340052,
+              "orthogonal_spatial_error_relative_to_reference": 1.034743255546524
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.006972412890726368,
+          "linear_trend_error_spatial_rms_per_s": 9.922689451026887e-07,
+          "unfitted_rms": 0.0001675647316495768,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9935124959559358,
+              "coherent_gain": 0.9934147972733841,
+              "coherent_phase_degrees": 1.0863111577643856,
+              "relative_spatial_harmonic_error": 0.02438396312425599,
+              "orthogonal_spatial_error_relative_to_reference": 0.013932701779422262
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.9689609902131512,
+              "coherent_gain": 0.9688197715960578,
+              "coherent_phase_degrees": 1.8743914287195167,
+              "relative_spatial_harmonic_error": 0.04777677851714995,
+              "orthogonal_spatial_error_relative_to_reference": 0.0165423915868546
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.0589063330920878,
+              "coherent_gain": 1.0405621849323212,
+              "coherent_phase_degrees": -0.44532384849255613,
+              "relative_spatial_harmonic_error": 0.20055201850284243,
+              "orthogonal_spatial_error_relative_to_reference": 0.19624719501538082
+            }
+          ]
+        }
+      },
+      "lower_faces": {
+        "face_count": 98,
+        "face_area": 3.9709654836162427,
+        "reference_mean_spatial_rms": 0.09655679315176274,
+        "reference_linear_trend_spatial_rms_per_s": 8.396147903020898e-06,
+        "reference_unfitted_rms": 0.00013092138619787662,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.061780799835726714,
+          0.0051747882018860535,
+          0.000620741031574087
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.008269918917208399,
+          "linear_trend_error_spatial_rms_per_s": 4.413888889161852e-06,
+          "unfitted_rms": 0.00017876560568928055,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9472887439469673,
+              "coherent_gain": 0.9381483426140065,
+              "coherent_phase_degrees": -3.6924600607238913,
+              "relative_spatial_harmonic_error": 0.15796923736139332,
+              "orthogonal_spatial_error_relative_to_reference": 0.1312770035429493
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.9847137204125548,
+              "coherent_gain": 0.9840759433796914,
+              "coherent_phase_degrees": 2.098940445093559,
+              "relative_spatial_harmonic_error": 0.05319505705569021,
+              "orthogonal_spatial_error_relative_to_reference": 0.035435135531065975
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.5802845444668212,
+              "coherent_gain": 1.1401271338569576,
+              "coherent_phase_degrees": -19.88840786555222,
+              "relative_spatial_harmonic_error": 1.163205157787163,
+              "orthogonal_spatial_error_relative_to_reference": 1.0942620162117604
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.007918820408850863,
+          "linear_trend_error_spatial_rms_per_s": 8.724387390177731e-07,
+          "unfitted_rms": 0.00016160220464849813,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9923737661076228,
+              "coherent_gain": 0.992257431628569,
+              "coherent_phase_degrees": 0.9598420521221415,
+              "relative_spatial_harmonic_error": 0.023859841459187906,
+              "orthogonal_spatial_error_relative_to_reference": 0.015194770037820637
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.9845845737186142,
+              "coherent_gain": 0.9839503701899274,
+              "coherent_phase_degrees": 2.04208174999509,
+              "relative_spatial_harmonic_error": 0.0524957805858485,
+              "orthogonal_spatial_error_relative_to_reference": 0.035333437531176855
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.075453686557885,
+              "coherent_gain": 1.0541520229152674,
+              "coherent_phase_degrees": -0.41008895964608827,
+              "relative_spatial_harmonic_error": 0.2198876722410015,
+              "orthogonal_spatial_error_relative_to_reference": 0.21298860184196444
+            }
+          ]
+        }
+      }
+    },
+    "tangential_gradient": {
+      "all_outer_faces": {
+        "face_count": 356,
+        "face_area": 14.342908038933523,
+        "reference_mean_spatial_rms": 0.07920959516177475,
+        "reference_linear_trend_spatial_rms_per_s": 0.0005940242434976577,
+        "reference_unfitted_rms": 0.04074479151142439,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.41680702974885103,
+          0.13719878429711738,
+          0.09449423646569045
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.008354189535838578,
+          "linear_trend_error_spatial_rms_per_s": 0.00010601362973715344,
+          "unfitted_rms": 0.05195866820031843,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0015523140876497,
+              "coherent_gain": 1.0013466568507567,
+              "coherent_phase_degrees": 0.670915615764094,
+              "relative_spatial_harmonic_error": 0.023473900209920916,
+              "orthogonal_spatial_error_relative_to_reference": 0.020295582478435232
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.033038502881936,
+              "coherent_gain": 1.0327215528492721,
+              "coherent_phase_degrees": -0.894657178735313,
+              "relative_spatial_harmonic_error": 0.044466111177741074,
+              "orthogonal_spatial_error_relative_to_reference": 0.02558794085384115
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.1046400584969085,
+              "coherent_gain": 1.1039152435106585,
+              "coherent_phase_degrees": 1.3622773775926351,
+              "relative_spatial_harmonic_error": 0.11411921630924174,
+              "orthogonal_spatial_error_relative_to_reference": 0.040009923529759316
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.008333399051523825,
+          "linear_trend_error_spatial_rms_per_s": 0.00010599797794438393,
+          "unfitted_rms": 0.05195869305387738,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0005787719298653,
+              "coherent_gain": 1.000369802780503,
+              "coherent_phase_degrees": 0.670612361919029,
+              "relative_spatial_harmonic_error": 0.023565126858674762,
+              "orthogonal_spatial_error_relative_to_reference": 0.020448386771950496
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.0330382632307293,
+              "coherent_gain": 1.0327213463087184,
+              "coherent_phase_degrees": -0.8947315929928481,
+              "relative_spatial_harmonic_error": 0.04446565892246194,
+              "orthogonal_spatial_error_relative_to_reference": 0.025586601514650965
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.1047448003258284,
+              "coherent_gain": 1.1040179977274305,
+              "coherent_phase_degrees": 1.3598185961550586,
+              "relative_spatial_harmonic_error": 0.11422306910313983,
+              "orthogonal_spatial_error_relative_to_reference": 0.04006662627260907
+            }
+          ]
+        }
+      },
+      "downstream_faces": {
+        "face_count": 79,
+        "face_area": 3.1669256514209554,
+        "reference_mean_spatial_rms": 0.07540112045957453,
+        "reference_linear_trend_spatial_rms_per_s": 0.0012639998484377346,
+        "reference_unfitted_rms": 0.08670490065481641,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.8751176131747515,
+          0.2912463749311146,
+          0.20106377562904978
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.008476921527993668,
+          "linear_trend_error_spatial_rms_per_s": 0.00022540690826614604,
+          "unfitted_rms": 0.11056225767132472,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0006951012538579,
+              "coherent_gain": 1.0005456406263535,
+              "coherent_phase_degrees": 0.6604905476571654,
+              "relative_spatial_harmonic_error": 0.020793367354130454,
+              "orthogonal_spatial_error_relative_to_reference": 0.017294701416009122
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.0335521348028516,
+              "coherent_gain": 1.0332951546307716,
+              "coherent_phase_degrees": -0.9140493060959811,
+              "relative_spatial_harmonic_error": 0.04361969606464029,
+              "orthogonal_spatial_error_relative_to_reference": 0.02304644814502653
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.1046504242529516,
+              "coherent_gain": 1.1039361194354063,
+              "coherent_phase_degrees": 1.362011789225684,
+              "relative_spatial_harmonic_error": 0.11403557848705273,
+              "orthogonal_spatial_error_relative_to_reference": 0.039719063535308546
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.008525637688311154,
+          "linear_trend_error_spatial_rms_per_s": 0.00022537074561098985,
+          "unfitted_rms": 0.11056230266540451,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.9997688089410253,
+              "coherent_gain": 0.999615654523428,
+              "coherent_phase_degrees": 0.6563432970595073,
+              "relative_spatial_harmonic_error": 0.020917349105145328,
+              "orthogonal_spatial_error_relative_to_reference": 0.017498987486549062
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 1.0335519564301898,
+              "coherent_gain": 1.033295002952124,
+              "coherent_phase_degrees": -0.9141159091411067,
+              "relative_spatial_harmonic_error": 0.04361938574243886,
+              "orthogonal_spatial_error_relative_to_reference": 0.023045249290103192
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.104756627668195,
+              "coherent_gain": 1.1040410495695576,
+              "coherent_phase_degrees": 1.3595155554839582,
+              "relative_spatial_harmonic_error": 0.11413445679567814,
+              "orthogonal_spatial_error_relative_to_reference": 0.03975634845093628
+            }
+          ]
+        }
+      },
+      "upstream_faces": {
+        "face_count": 78,
+        "face_area": 3.1445428589997766,
+        "reference_mean_spatial_rms": 0.08904945176192011,
+        "reference_linear_trend_spatial_rms_per_s": 1.0268586465700324e-06,
+        "reference_unfitted_rms": 3.854574928760583e-05,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.008887622888570715,
+          0.00013220869353797497,
+          8.511186854534118e-05
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.004774636397708184,
+          "linear_trend_error_spatial_rms_per_s": 2.529840843499481e-06,
+          "unfitted_rms": 0.00016651151724050592,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.992021632565064,
+              "coherent_gain": 0.982888849442054,
+              "coherent_phase_degrees": 0.09539942835896369,
+              "relative_spatial_harmonic_error": 0.1353955150404398,
+              "orthogonal_spatial_error_relative_to_reference": 0.13429977334132343
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 3.435641734694711,
+              "coherent_gain": 0.37389142059142827,
+              "coherent_phase_degrees": -93.94671442254948,
+              "relative_spatial_harmonic_error": 3.5854013792478905,
+              "orthogonal_spatial_error_relative_to_reference": 3.415236351233134
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 2.448782769708821,
+              "coherent_gain": 0.3172788938107631,
+              "coherent_phase_degrees": -63.394651484669176,
+              "relative_spatial_harmonic_error": 2.590821312374474,
+              "orthogonal_spatial_error_relative_to_reference": 2.4281415026239763
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.0047807403058991735,
+          "linear_trend_error_spatial_rms_per_s": 2.5626456988283925e-06,
+          "unfitted_rms": 0.00016686030650449505,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 0.953765428575322,
+              "coherent_gain": 0.9427357173009027,
+              "coherent_phase_degrees": -1.629908596610945,
+              "relative_spatial_harmonic_error": 0.15798706589411338,
+              "orthogonal_spatial_error_relative_to_reference": 0.1446300801030682
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 3.43672695080224,
+              "coherent_gain": 0.37682115330696414,
+              "coherent_phase_degrees": -93.75731196479141,
+              "relative_spatial_harmonic_error": 3.5861509549146597,
+              "orthogonal_spatial_error_relative_to_reference": 3.416006140625463
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 2.3404811927109943,
+              "coherent_gain": 0.3039036471314638,
+              "coherent_phase_degrees": 5.846309263595681,
+              "relative_spatial_harmonic_error": 2.4234698892460367,
+              "orthogonal_spatial_error_relative_to_reference": 2.3206668840430487
+            }
+          ]
+        }
+      },
+      "upper_faces": {
+        "face_count": 99,
+        "face_area": 3.966925635758738,
+        "reference_mean_spatial_rms": 0.07687229204052894,
+        "reference_linear_trend_spatial_rms_per_s": 1.3502660077313443e-05,
+        "reference_unfitted_rms": 0.000567590102708134,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.09096790939765642,
+          0.01288677503498501,
+          0.0022909659927865017
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.009307020266635872,
+          "linear_trend_error_spatial_rms_per_s": 6.46731455281289e-06,
+          "unfitted_rms": 0.0009817623280543907,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0342441969385072,
+              "coherent_gain": 1.0324718852136312,
+              "coherent_phase_degrees": 1.0558575548099682,
+              "relative_spatial_harmonic_error": 0.07118921379142291,
+              "orthogonal_spatial_error_relative_to_reference": 0.06052160890449044
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.9188608517963349,
+              "coherent_gain": 0.9153468903251943,
+              "coherent_phase_degrees": 3.3529027535171125,
+              "relative_spatial_harmonic_error": 0.12940321305707128,
+              "orthogonal_spatial_error_relative_to_reference": 0.08028284583821454
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.0604423251132058,
+              "coherent_gain": 1.0299498233389395,
+              "coherent_phase_degrees": 3.71092521261361,
+              "relative_spatial_harmonic_error": 0.2625971820099323,
+              "orthogonal_spatial_error_relative_to_reference": 0.25247036716333593
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.009254551546773569,
+          "linear_trend_error_spatial_rms_per_s": 6.527907066805676e-06,
+          "unfitted_rms": 0.0009821792451764988,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0316506864743316,
+              "coherent_gain": 1.029860698307216,
+              "coherent_phase_degrees": 1.196468428922823,
+              "relative_spatial_harmonic_error": 0.07092826214179511,
+              "orthogonal_spatial_error_relative_to_reference": 0.06074603678540048
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.9188338389649363,
+              "coherent_gain": 0.9153189009245734,
+              "coherent_phase_degrees": 3.3506124867355638,
+              "relative_spatial_harmonic_error": 0.12941079909517184,
+              "orthogonal_spatial_error_relative_to_reference": 0.08029279692023293
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.05584264742376,
+              "coherent_gain": 1.0230992761224142,
+              "coherent_phase_degrees": 3.8122111728094112,
+              "relative_spatial_harmonic_error": 0.2704306277985175,
+              "orthogonal_spatial_error_relative_to_reference": 0.2609052841868223
+            }
+          ]
+        }
+      },
+      "lower_faces": {
+        "face_count": 98,
+        "face_area": 3.9709654836162427,
+        "reference_mean_spatial_rms": 0.0767477829816651,
+        "reference_linear_trend_spatial_rms_per_s": 1.1972201248126169e-05,
+        "reference_unfitted_rms": 0.0005043004472870989,
+        "reference_harmonic_amplitude_spatial_rms": [
+          0.08915796174544141,
+          0.012398211125756495,
+          0.002125052239982919
+        ],
+        "production": {
+          "mean_error_spatial_rms": 0.009495789850157046,
+          "linear_trend_error_spatial_rms_per_s": 4.97185157934947e-06,
+          "unfitted_rms": 0.0009381284644205347,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.0342099000721838,
+              "coherent_gain": 1.0325704146762948,
+              "coherent_phase_degrees": 1.005787652064021,
+              "relative_spatial_harmonic_error": 0.06904686987285856,
+              "orthogonal_spatial_error_relative_to_reference": 0.058210447022340066
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.9267467755185332,
+              "coherent_gain": 0.922618477184522,
+              "coherent_phase_degrees": 3.7904684613340915,
+              "relative_spatial_harmonic_error": 0.13288764071697615,
+              "orthogonal_spatial_error_relative_to_reference": 0.08737695057458009
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.0910438338135298,
+              "coherent_gain": 1.0563981986162854,
+              "coherent_phase_degrees": 1.053731574113693,
+              "relative_spatial_harmonic_error": 0.27917297093015336,
+              "orthogonal_spatial_error_relative_to_reference": 0.27276270504376615
+            }
+          ]
+        },
+        "reference_support": {
+          "mean_error_spatial_rms": 0.009442955924932087,
+          "linear_trend_error_spatial_rms_per_s": 4.977442075155189e-06,
+          "unfitted_rms": 0.000938383985899867,
+          "harmonics": [
+            {
+              "harmonic": 1,
+              "frequency_per_s": 0.18733548226847,
+              "amplitude_norm_ratio": 1.031659296987757,
+              "coherent_gain": 1.0300250101380015,
+              "coherent_phase_degrees": 1.1557460957912786,
+              "relative_spatial_harmonic_error": 0.068483428280452,
+              "orthogonal_spatial_error_relative_to_reference": 0.058046391373475045
+            },
+            {
+              "harmonic": 2,
+              "frequency_per_s": 0.37467096453694,
+              "amplitude_norm_ratio": 0.926745199953047,
+              "coherent_gain": 0.9226191835816865,
+              "coherent_phase_degrees": 3.788125296749767,
+              "relative_spatial_harmonic_error": 0.13285257960806743,
+              "orthogonal_spatial_error_relative_to_reference": 0.08735277742050138
+            },
+            {
+              "harmonic": 3,
+              "frequency_per_s": 0.56200644680541,
+              "amplitude_norm_ratio": 1.0864258689176995,
+              "coherent_gain": 1.0491594250772256,
+              "coherent_phase_degrees": 1.197201340516098,
+              "relative_spatial_harmonic_error": 0.28715913798096504,
+              "orthogonal_spatial_error_relative_to_reference": 0.28210932176233455
+            }
+          ]
+        }
+      }
+    }
+  },
+  "scope": "Reference-driven independent cold particle images only. Every frame has zero auxiliary coefficient history, fixed ten nonphysical inverse iterations, one independent native small-region renewal and shared outside coefficient crop. Final image native budgets are enforced; earlier coefficient-search iterates may exceed the final closure bound and are never exported as solver steps. All three worker start images repeated bitwise. No particle arrays are retained in published fields, so state classifications and coefficient budgets are verified against hashed captured diagnostics plus native guard rules, not independently recomputed from particles. No autonomous VPM advection/diffusion equivalence or force recovery is demonstrated by this field audit.",
+  "limitations": [
+    "Finite reference domain and freestream continuation omit wake beyond x=24; owned exit-straddling circulation is zero under the unchanged blend support.",
+    "Gaussian image core/spacing and bounded inverse/pruning are the current native choices; the field image is an oracle diagnostic, not the physical production coefficient trajectory.",
+    "The strong mixed boundary is evaluated through Un and Gt=P_t(J n), the normal derivative of tangential velocity. Force causality requires the paired fresh FVM controls using the same primary/BDF/face-flux initial state and .04-to-.008 endpoint interpolation.",
+    "Historical warm whole-horizon auxiliary projection remains inadmissible due coefficient growth; this cold report does not rehabilitate those prior force controls."
+  ]
+}

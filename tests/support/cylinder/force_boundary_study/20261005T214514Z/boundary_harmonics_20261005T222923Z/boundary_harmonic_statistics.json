@@ -1,0 +1,1846 @@
+{
+  "schema": "openonda-planar-boundary-harmonics/1",
+  "captured_at": "2026-10-05T22:29:38.112226+00:00",
+  "output": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z",
+  "source_files": {
+    "mesh": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/coupled_mesh.npz",
+      "sha256": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048"
+    },
+    "reference_traces": {
+      "source": "/tmp/openonda-cylinder-boundary-study-20261005/reference_traces.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/reference_traces.h5",
+      "sha256": "bbc2fba359eb0e3119a3002ae2818d05962b5ac933c2ddddd0060c000b33e3e3"
+    },
+    "coupled_forces": {
+      "live_source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/samples/forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/coupled_forces.csv",
+      "sha256": "52036a20f5a6eefbfe73d5af71050339f431addcd0ef4bd5f9feacb0dfdd6bab",
+      "sample_count": 1391,
+      "first_time": 0.04,
+      "last_time": 55.64000000000526
+    },
+    "reference_forces": {
+      "live_source": "/tmp/openonda-cylinder-boundary-study-20261005/reference/samples/forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/reference_forces.csv",
+      "sha256": "08e963544dcc3c1341e58d76900a1bce3250d0b1d331318bccfe28777111efea",
+      "sample_count": 300,
+      "first_time": 100.03999999998807,
+      "last_time": 111.99999999998144
+    },
+    "vpm_000750.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000750.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000750.h5",
+      "sha256": "b57274e5327cd4687b9032c562622cfde43ea7d511eb4de91b1c992f2e07bee9"
+    },
+    "vpm_000775.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000775.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000775.h5",
+      "sha256": "78394c29619c44d5cb174bcaebd57fb5ace0d6f5daf63bd12b97bd126bb90a20"
+    },
+    "vpm_000800.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000800.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000800.h5",
+      "sha256": "1aa993c9ce10d9b0ee932008f81acf942d2e5329d1aebd88af1ad388b13f748b"
+    },
+    "vpm_000825.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000825.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000825.h5",
+      "sha256": "6fef109262e5b50c719ee81635d988af5260b83b76abfb0d1d5a1ab3483905e1"
+    },
+    "vpm_000850.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000850.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000850.h5",
+      "sha256": "554dff9f889cfd84bce7f1c635d8d3a74a1e90021820d26566a71c8ea5a5b679"
+    },
+    "vpm_000875.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000875.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000875.h5",
+      "sha256": "368535f6ba6d0437943133d9f0b6f7a60477a7043b0165191aae0f34100023aa"
+    },
+    "vpm_000900.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000900.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000900.h5",
+      "sha256": "89d7d322c5b8cf2dcb22aec2a6f84f63257297795a59f1149488dc4aca786eef"
+    },
+    "vpm_000925.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000925.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000925.h5",
+      "sha256": "8679997a79dd77b77e2e0dfe5e0eb80e7d67d40e166a47149526265fd7118fbf"
+    },
+    "vpm_000950.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000950.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000950.h5",
+      "sha256": "025bbb5676924911069e07684cf831d937cce929389b54b7694ee8b90a1f5a7f"
+    },
+    "vpm_000975.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_000975.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_000975.h5",
+      "sha256": "95e8ac2e0db121d9b0f8243d886fc79eb90d690f9c388f062294d9f444175020"
+    },
+    "vpm_001000.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001000.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001000.h5",
+      "sha256": "ace6b8fad66e98a30ed682787003011be7028eae08284f6578e3058004e9d434"
+    },
+    "vpm_001025.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001025.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001025.h5",
+      "sha256": "5809a4d0b1e7ea5470c9628e1c0a69398e39fa8205427e07e096e21d00facef5"
+    },
+    "vpm_001050.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001050.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001050.h5",
+      "sha256": "a53c604e6e0d7aec3c1e52b9354f463dd8e1916fad5d3c5d4c22a687b3ed0b62"
+    },
+    "vpm_001075.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001075.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001075.h5",
+      "sha256": "21397a6926a5d1e5652f8d39198a5381192985569c87a67b671aa8136c3bc998"
+    },
+    "vpm_001100.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001100.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001100.h5",
+      "sha256": "8bd3625f932b19df2beef941584367576e3594b1bcc637c587ade609a02207e1"
+    },
+    "vpm_001125.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001125.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001125.h5",
+      "sha256": "d47d96a923d53ea6e3958d8cd3efa3df8220d95f3b91d002658560b80fc2d7e1"
+    },
+    "vpm_001150.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001150.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001150.h5",
+      "sha256": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b"
+    },
+    "vpm_001175.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001175.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001175.h5",
+      "sha256": "3921e8b420b4fd8fadc3d45f96dbb4f2ea426f4461fac47b06e4ede88b9da76f"
+    },
+    "vpm_001200.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001200.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001200.h5",
+      "sha256": "8ded4f04ae7090ba8e51fb8148dd7762f86f1397c5b20a76b487dabe9c99d194"
+    },
+    "vpm_001225.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001225.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001225.h5",
+      "sha256": "f52a6752dbb2024cafa66afd906c869f81e9ba8825de00b56d3e8e0921838eae"
+    },
+    "vpm_001250.h5": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm/vpm_001250.h5",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/snapshots/vpm_001250.h5",
+      "sha256": "2e5b0535ae007b17608be361fb5f9fe7c4eaa592f6d49b71c170ca3e4e0f47f1"
+    }
+  },
+  "numerical_source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_boundary_harmonics.py": "2cfb81ea604012227824e1f715cb7b15ffbbbf58a19e4632caf19399d45bd552",
+    "/home/flavio-martins/Projects/OpenONDA/source/solvers/vpm/physics/induction/planar.py": "52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc",
+    "/home/flavio-martins/Projects/OpenONDA/source/coupler/boundary.py": "7026ddf426ed5688a67dbfda3b444119d502ce1f10c80ceded0f58dcbdc51ec8"
+  },
+  "analytic_checks": {
+    "normal_derivative_finite_difference_maximum_error": 5.275624381795296e-10,
+    "epsilon": 1e-07
+  },
+  "face_count": 356,
+  "reference_attributes": {
+    "complete": true,
+    "gradient_convention": "J[i,j]=d(velocity_i)/d(x_j); native FVM gradient transposed",
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c"
+  },
+  "coupled_configuration": {
+    "axisymmetric_no_swirl_axis": null,
+    "cutoff_radius_factor": 100,
+    "domain_bounds": [
+      -5.0,
+      15.0,
+      -5.0,
+      5.0,
+      -0.5,
+      0.5
+    ],
+    "induction": {
+      "kernel": "GAUSSIAN",
+      "method": "PLANAR",
+      "planar_span": 1.0,
+      "plane_z": 0.0,
+      "spanwise_tolerance": 0.001,
+      "stretching_scheme": "DIRECT",
+      "type": "source.solvers.vpm.physics.induction.planar.PlanarInduction"
+    },
+    "integrator": {
+      "a": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ]
+      ],
+      "b": [
+        0.5,
+        0.5
+      ],
+      "c": [
+        0.0,
+        1.0
+      ],
+      "name": "RK2",
+      "order": 2
+    },
+    "max_n_particles": 200000,
+    "particle_kernel": "GAUSSIAN",
+    "precision": "f32",
+    "random_seed": 42,
+    "stabilization": {
+      "divergence_relaxation": {
+        "angular_impulse_reference_scale": null,
+        "angular_impulse_reference_tolerance": 0.01,
+        "grid_spacing": null,
+        "interval_steps": 0,
+        "linear_impulse_reference_scale": null,
+        "linear_impulse_reference_tolerance": 0.01,
+        "max_correction_norm": 0.02,
+        "max_iterations": 30,
+        "max_projection_sweeps": 3,
+        "max_residual_ratio": 0.9,
+        "regularization": 0.1,
+        "solver_relative_tolerance": 1e-05,
+        "spectral_convergence_fraction": 0.1,
+        "start_step": 0,
+        "total_enstrophy_tolerance": 0.0001,
+        "total_helicity_tolerance": 0.0001,
+        "total_kinetic_energy_tolerance": 1e-06,
+        "variation_tolerance": 0.001,
+        "vortex_strength_reference_scale": null,
+        "vortex_strength_reference_tolerance": 0.001
+      },
+      "filament_refinement": {
+        "interval_steps": 0,
+        "max_absolute_vortex_strength": null,
+        "max_vortex_strength_factor": 2.0,
+        "offset_fraction": 0.25
+      },
+      "max_vortex_strength_error": 1e-05,
+      "max_vortex_strength_growth": 0.001,
+      "max_vorticity_growth": 0.05,
+      "pedrizzetti_relaxation_end_step": null,
+      "pedrizzetti_relaxation_factor": 0.0,
+      "pedrizzetti_relaxation_interval_steps": 1,
+      "pedrizzetti_relaxation_preserve_moments": false,
+      "pedrizzetti_relaxation_preserve_vortex_strength": true,
+      "pedrizzetti_relaxation_start_step": 0,
+      "regularization_core_radius": null,
+      "regularization_core_radius_trigger": null,
+      "regularization_divergence_trigger": 0.04,
+      "regularization_grid_spacing": null,
+      "regularization_interval_steps": 0,
+      "regularization_misalignment_trigger": 20.0,
+      "regularization_preserve_groups": false,
+      "regularization_projection_max_correction": 0.2,
+      "regularization_projection_trigger": 0.08,
+      "regularization_solenoidal_remesh": false,
+      "regularization_start_step": 0,
+      "regularization_tail_budget": 0.003,
+      "regularization_total_enstrophy_dissipation_limit": 0.15,
+      "regularization_total_kinetic_energy_dissipation_limit": 0.15,
+      "regularization_transfer_only": false,
+      "remove_particles_by_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.5,
+        0.5
+      ],
+      "selective_eddy_viscosity_coefficient": 0.0,
+      "selective_eddy_viscosity_start_step": 0
+    },
+    "state_limits": {
+      "divergence": {
+        "maximum": null
+      },
+      "finite_state": {
+        "enabled": true
+      },
+      "growth": {
+        "maximum_particle_strength_growth": null,
+        "maximum_vorticity_growth": null
+      },
+      "lagrangian_cfl": {
+        "maximum": 1.0
+      },
+      "maximum_particle_strength": {
+        "maximum": null
+      },
+      "misalignment": {
+        "maximum_degrees": null
+      }
+    },
+    "time_step_size": 0.04,
+    "turbulence": {
+      "filter_width": null,
+      "flow_model": "INVISCID",
+      "model": "INVISCID",
+      "smagorinsky_coefficient": 0.2,
+      "subgrid_dissipation_coefficient": 1.048
+    },
+    "viscous": {
+      "core_radius_ratio": 1.0,
+      "dvh_domain_padding": 3.0,
+      "dvh_grid_spacing": null,
+      "dvh_support_radius_ratio": 4,
+      "dvh_threshold": 0.01,
+      "dvh_threshold_mode": "budget",
+      "gbd_domain_padding": 5.0,
+      "gbd_grid_spacing": 0.04,
+      "gbd_remeshing_kernel": "M4_PRIME",
+      "gbd_threshold": 1.6000000000000003e-05,
+      "gbd_threshold_mode": "absolute",
+      "kinematic_viscosity": 0.006666666666666667,
+      "particle_spacing": 0.04,
+      "scheme": "GBD"
+    }
+  },
+  "coupled_particle_snapshots": [
+    {
+      "time": 30,
+      "step": 750,
+      "particle_count": 23578,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 7.753538832519813e-07
+    },
+    {
+      "time": 31,
+      "step": 775,
+      "particle_count": 22900,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 7.91976125930168e-07
+    },
+    {
+      "time": 32,
+      "step": 800,
+      "particle_count": 21631,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.6782186479348828e-06
+    },
+    {
+      "time": 33,
+      "step": 825,
+      "particle_count": 21941,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 5.98897733551373e-07
+    },
+    {
+      "time": 34,
+      "step": 850,
+      "particle_count": 21719,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.103127484995459e-06
+    },
+    {
+      "time": 35,
+      "step": 875,
+      "particle_count": 21775,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.371741148429783e-06
+    },
+    {
+      "time": 36,
+      "step": 900,
+      "particle_count": 22447,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 2.4739259536731794e-07
+    },
+    {
+      "time": 37,
+      "step": 925,
+      "particle_count": 22147,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.3445536467779491e-06
+    },
+    {
+      "time": 38,
+      "step": 950,
+      "particle_count": 22194,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.196693949988647e-06
+    },
+    {
+      "time": 39,
+      "step": 975,
+      "particle_count": 22400,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 5.250105437063929e-07
+    },
+    {
+      "time": 40,
+      "step": 1000,
+      "particle_count": 22153,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.5315511173737998e-06
+    },
+    {
+      "time": 41,
+      "step": 1025,
+      "particle_count": 22314,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 6.418913382561948e-07
+    },
+    {
+      "time": 42,
+      "step": 1050,
+      "particle_count": 22356,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 7.089022220740795e-07
+    },
+    {
+      "time": 43,
+      "step": 1075,
+      "particle_count": 22056,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.6612153050820597e-06
+    },
+    {
+      "time": 44,
+      "step": 1100,
+      "particle_count": 22418,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 5.666660013675804e-07
+    },
+    {
+      "time": 45,
+      "step": 1125,
+      "particle_count": 22286,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.0786439964965784e-06
+    },
+    {
+      "time": 46,
+      "step": 1150,
+      "particle_count": 22152,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.3667112265227695e-06
+    },
+    {
+      "time": 47,
+      "step": 1175,
+      "particle_count": 22547,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 2.994601209278945e-07
+    },
+    {
+      "time": 48,
+      "step": 1200,
+      "particle_count": 22268,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.3615318191927e-06
+    },
+    {
+      "time": 49,
+      "step": 1225,
+      "particle_count": 22258,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 1.212633107559052e-06
+    },
+    {
+      "time": 50,
+      "step": 1250,
+      "particle_count": 22475,
+      "span": 1.0,
+      "background": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "core_radius_range": [
+        0.03999999910593033,
+        0.03999999910593033
+      ],
+      "particle_volume_range": [
+        0.0015999999595806003,
+        0.0015999999595806003
+      ],
+      "mean_normal_flux_correction": 5.47196871554011e-07
+    }
+  ],
+  "force_frequency_fits": {
+    "coupled": {
+      "window": [
+        29.999999999997584,
+        50.000000000003375
+      ],
+      "sample_count": 501,
+      "fundamental_frequency": 0.1815070887743629,
+      "period": 5.509426693759224,
+      "force_harmonics": {
+        "lift_coefficient": {
+          "mean": 0.00014922819405019584,
+          "linear_slope": 0.00021267410358736388,
+          "fundamental_amplitude": 0.4261543883734488,
+          "second_harmonic_amplitude": 0.004943030952183769,
+          "residual_rms": 0.011540662786755878
+        },
+        "drag_coefficient": {
+          "mean": 1.2873864745725638,
+          "linear_slope": 9.375725586453125e-05,
+          "fundamental_amplitude": 0.00041723962488632717,
+          "second_harmonic_amplitude": 0.017279992801706806,
+          "residual_rms": 0.001358961048430437
+        }
+      }
+    },
+    "reference": {
+      "window": [
+        100.03999999998807,
+        111.99999999998144
+      ],
+      "sample_count": 300,
+      "fundamental_frequency": 0.18733035691621663,
+      "period": 5.338163106405916,
+      "force_harmonics": {
+        "lift_coefficient": {
+          "mean": -0.00024757698098667536,
+          "linear_slope": -1.7548702311714903e-05,
+          "fundamental_amplitude": 0.5386163294372246,
+          "second_harmonic_amplitude": 0.00015259267890159017,
+          "residual_rms": 0.001690958676174987
+        },
+        "drag_coefficient": {
+          "mean": 1.379753519243331,
+          "linear_slope": 5.287489969265334e-05,
+          "fundamental_amplitude": 8.650442414474428e-05,
+          "second_harmonic_amplitude": 0.026758856002837096,
+          "residual_rms": 0.00017472349949631155
+        }
+      }
+    }
+  },
+  "boundary_amplitudes": {
+    "coupled": {
+      "all": {
+        "face_count": 356,
+        "area": 14.342908038933523,
+        "normal_velocity": {
+          "mean": 0.5767616238179528,
+          "linear_slope": 0.0002894709261844137,
+          "fundamental_amplitude": 0.15550252760413688,
+          "second_harmonic_amplitude": 0.03761068343697204,
+          "residual_rms": 0.011540632910416243
+        },
+        "tangential_gradient": {
+          "mean": 0.07989067718720186,
+          "linear_slope": 0.0011707991856699609,
+          "fundamental_amplitude": 0.4029497826749484,
+          "second_harmonic_amplitude": 0.12112836551303305,
+          "residual_rms": 0.06847906103993202
+        }
+      },
+      "upstream": {
+        "face_count": 78,
+        "area": 3.1445428589997766,
+        "normal_velocity": {
+          "mean": 0.8951448109114111,
+          "linear_slope": 7.443481117511737e-06,
+          "fundamental_amplitude": 0.007065683094783903,
+          "second_harmonic_amplitude": 0.00015898956791940153,
+          "residual_rms": 0.0002725476800251432
+        },
+        "tangential_gradient": {
+          "mean": 0.09119675704702462,
+          "linear_slope": 4.541922842691103e-06,
+          "fundamental_amplitude": 0.007418713864652334,
+          "second_harmonic_amplitude": 8.1711196702048e-05,
+          "residual_rms": 0.0001519767243118813
+        }
+      },
+      "downstream": {
+        "face_count": 79,
+        "area": 3.1669256514209554,
+        "normal_velocity": {
+          "mean": 0.8219593657692033,
+          "linear_slope": 0.0006012402738715515,
+          "fundamental_amplitude": 0.31720733963893244,
+          "second_harmonic_amplitude": 0.07975260348248525,
+          "residual_rms": 0.02436489740149811
+        },
+        "tangential_gradient": {
+          "mean": 0.0726316736588076,
+          "linear_slope": 0.0024898334930686565,
+          "fundamental_amplitude": 0.8475974079462868,
+          "second_harmonic_amplitude": 0.2572543077328012,
+          "residual_rms": 0.14570853362969546
+        }
+      },
+      "lower": {
+        "face_count": 97,
+        "area": 3.906939659231581,
+        "normal_velocity": {
+          "mean": 0.09275890146934367,
+          "linear_slope": 0.0001075506287870536,
+          "fundamental_amplitude": 0.058262482546243055,
+          "second_harmonic_amplitude": 0.003748175342268043,
+          "residual_rms": 0.002119029118825048
+        },
+        "tangential_gradient": {
+          "mean": 0.07843960120169614,
+          "linear_slope": 6.430554628858554e-05,
+          "fundamental_amplitude": 0.08065693901831768,
+          "second_harmonic_amplitude": 0.009586298983425674,
+          "residual_rms": 0.0017488247213263352
+        }
+      },
+      "upper": {
+        "face_count": 99,
+        "area": 3.966925635758738,
+        "normal_velocity": {
+          "mean": 0.09274908739295909,
+          "linear_slope": 4.8349145211245935e-05,
+          "fundamental_amplitude": 0.05925192011618088,
+          "second_harmonic_amplitude": 0.004588573071387896,
+          "residual_rms": 0.0017220901134051654
+        },
+        "tangential_gradient": {
+          "mean": 0.07838401334804017,
+          "linear_slope": 5.394628310276385e-05,
+          "fundamental_amplitude": 0.08185177786459095,
+          "second_harmonic_amplitude": 0.010604741616615818,
+          "residual_rms": 0.0015375187478402985
+        }
+      }
+    },
+    "reference": {
+      "all": {
+        "face_count": 356,
+        "area": 14.342908038933523,
+        "normal_velocity": {
+          "mean": 0.5894990740450152,
+          "linear_slope": 0.000185597421190422,
+          "fundamental_amplitude": 0.15472593040492727,
+          "second_harmonic_amplitude": 0.041056133029407894,
+          "residual_rms": 0.01220602075636099
+        },
+        "tangential_gradient": {
+          "mean": 0.07921520204353298,
+          "linear_slope": 0.0008879318202273337,
+          "fundamental_amplitude": 0.4163079679550437,
+          "second_harmonic_amplitude": 0.1376679358663146,
+          "residual_rms": 0.07734235516661561
+        }
+      },
+      "upstream": {
+        "face_count": 78,
+        "area": 3.1445428589997766,
+        "normal_velocity": {
+          "mean": 0.9173861734610507,
+          "linear_slope": 2.510596095147724e-06,
+          "fundamental_amplitude": 0.007390286697153173,
+          "second_harmonic_amplitude": 0.0001384588575238825,
+          "residual_rms": 1.6747711194316926e-05
+        },
+        "tangential_gradient": {
+          "mean": 0.08904940751696587,
+          "linear_slope": 1.5681923523095874e-06,
+          "fundamental_amplitude": 0.008891181566500934,
+          "second_harmonic_amplitude": 0.00013265105902144256,
+          "residual_rms": 7.126453783035103e-05
+        }
+      },
+      "downstream": {
+        "face_count": 79,
+        "area": 3.1669256514209554,
+        "normal_velocity": {
+          "mean": 0.8383108750718578,
+          "linear_slope": 0.00039461602862690524,
+          "fundamental_amplitude": 0.3135811690140896,
+          "second_harmonic_amplitude": 0.0869504629178212,
+          "residual_rms": 0.025964830192460937
+        },
+        "tangential_gradient": {
+          "mean": 0.0754297378939383,
+          "linear_slope": 0.0018885299206044953,
+          "fundamental_amplitude": 0.8740435126707878,
+          "second_harmonic_amplitude": 0.29224709611788396,
+          "residual_rms": 0.16457244450133743
+        }
+      },
+      "lower": {
+        "face_count": 97,
+        "area": 3.906939659231581,
+        "normal_velocity": {
+          "mean": 0.09149693788897986,
+          "linear_slope": 9.711831296581067e-06,
+          "fundamental_amplitude": 0.062287158931678584,
+          "second_harmonic_amplitude": 0.00518046934571532,
+          "residual_rms": 0.0004564002502614689
+        },
+        "tangential_gradient": {
+          "mean": 0.07732076548638389,
+          "linear_slope": 3.2119465740658424e-05,
+          "fundamental_amplitude": 0.08987941827566504,
+          "second_harmonic_amplitude": 0.01237411876410246,
+          "residual_rms": 0.0015856213375441566
+        }
+      },
+      "upper": {
+        "face_count": 99,
+        "area": 3.966925635758738,
+        "normal_velocity": {
+          "mean": 0.09133952702182221,
+          "linear_slope": 1.1029553190402844e-05,
+          "fundamental_amplitude": 0.06301295679042943,
+          "second_harmonic_amplitude": 0.0054118260389838906,
+          "residual_rms": 0.0004804280426873606
+        },
+        "tangential_gradient": {
+          "mean": 0.07687262410719942,
+          "linear_slope": 4.8261376340205294e-05,
+          "fundamental_amplitude": 0.09095604002556028,
+          "second_harmonic_amplitude": 0.013019267132068153,
+          "residual_rms": 0.0017030850199118795
+        }
+      }
+    },
+    "reference_one_second_samples": {
+      "all": {
+        "face_count": 356,
+        "area": 14.342908038933523,
+        "normal_velocity": {
+          "mean": 0.5894758417401934,
+          "linear_slope": 0.00039570868601245977,
+          "fundamental_amplitude": 0.15477113189019767,
+          "second_harmonic_amplitude": 0.04164239635667604,
+          "residual_rms": 0.010790190608385963
+        },
+        "tangential_gradient": {
+          "mean": 0.08055934954311134,
+          "linear_slope": 0.002657778973094793,
+          "fundamental_amplitude": 0.4205076279335703,
+          "second_harmonic_amplitude": 0.14349960404755888,
+          "residual_rms": 0.06585464682372844
+        }
+      },
+      "upstream": {
+        "face_count": 78,
+        "area": 3.1445428589997766,
+        "normal_velocity": {
+          "mean": 0.9173859202911216,
+          "linear_slope": 2.2309368055761117e-06,
+          "fundamental_amplitude": 0.007389318037122781,
+          "second_harmonic_amplitude": 0.00014300210485823598,
+          "residual_rms": 1.5351613843276505e-05
+        },
+        "tangential_gradient": {
+          "mean": 0.08904956239229266,
+          "linear_slope": 4.207380447755351e-06,
+          "fundamental_amplitude": 0.008901061529675075,
+          "second_harmonic_amplitude": 0.00013193042873144617,
+          "residual_rms": 7.028880102302368e-05
+        }
+      },
+      "downstream": {
+        "face_count": 79,
+        "area": 3.1669256514209554,
+        "normal_velocity": {
+          "mean": 0.8382404994568576,
+          "linear_slope": 0.0008415349116985304,
+          "fundamental_amplitude": 0.31367467816270045,
+          "second_harmonic_amplitude": 0.08820405667558123,
+          "residual_rms": 0.02295289153144205
+        },
+        "tangential_gradient": {
+          "mean": 0.08160602576498237,
+          "linear_slope": 0.0056547526063742614,
+          "fundamental_amplitude": 0.8831221362966081,
+          "second_harmonic_amplitude": 0.304690926199422,
+          "residual_rms": 0.14012413398996876
+        }
+      },
+      "lower": {
+        "face_count": 97,
+        "area": 3.906939659231581,
+        "normal_velocity": {
+          "mean": 0.09151118569267118,
+          "linear_slope": 2.0389827494246713e-05,
+          "fundamental_amplitude": 0.062285946543426514,
+          "second_harmonic_amplitude": 0.005127086400044632,
+          "residual_rms": 0.0003928565625289196
+        },
+        "tangential_gradient": {
+          "mean": 0.07731826815861212,
+          "linear_slope": 8.046938257712076e-05,
+          "fundamental_amplitude": 0.0897574753410484,
+          "second_harmonic_amplitude": 0.012172535083546097,
+          "residual_rms": 0.0014729115473265295
+        }
+      },
+      "upper": {
+        "face_count": 99,
+        "area": 3.966925635758738,
+        "normal_velocity": {
+          "mean": 0.09132285352190408,
+          "linear_slope": 1.9378214554386268e-05,
+          "fundamental_amplitude": 0.06304104166949562,
+          "second_harmonic_amplitude": 0.0054624343564405285,
+          "residual_rms": 0.0004427055975722404
+        },
+        "tangential_gradient": {
+          "mean": 0.07686926303370131,
+          "linear_slope": 7.63487865691357e-05,
+          "fundamental_amplitude": 0.09097492892935677,
+          "second_harmonic_amplitude": 0.013256725423313152,
+          "residual_rms": 0.0017101888710683026
+        }
+      }
+    }
+  },
+  "coupled_to_reference_ratios": {
+    "all": {
+      "normal_velocity": {
+        "mean": 0.9783927561757464,
+        "linear_slope": 1.5596710575381216,
+        "fundamental_amplitude": 1.0050191793785128,
+        "second_harmonic_amplitude": 0.9160795394449854,
+        "residual_rms": 0.9454869150867214
+      },
+      "tangential_gradient": {
+        "mean": 1.0085270898292686,
+        "linear_slope": 1.3185687898539393,
+        "fundamental_amplitude": 0.967912732139833,
+        "second_harmonic_amplitude": 0.8798589500946491,
+        "residual_rms": 0.8854018072298194
+      }
+    },
+    "upstream": {
+      "normal_velocity": {
+        "mean": 0.9757557251318396,
+        "linear_slope": 2.9648262147375646,
+        "fundamental_amplitude": 0.9560769946185834,
+        "second_harmonic_amplitude": 1.1482802239067857,
+        "residual_rms": 16.27372701038862
+      },
+      "tangential_gradient": {
+        "mean": 1.0241141360727148,
+        "linear_slope": 2.8962791688161804,
+        "fundamental_amplitude": 0.834390098679755,
+        "second_harmonic_amplitude": 0.6159860110037997,
+        "residual_rms": 2.1325715277024577
+      }
+    },
+    "downstream": {
+      "normal_velocity": {
+        "mean": 0.9804946950005237,
+        "linear_slope": 1.5236083439479386,
+        "fundamental_amplitude": 1.0115637384612208,
+        "second_harmonic_amplitude": 0.9172188485972892,
+        "residual_rms": 0.9383807720249455
+      },
+      "tangential_gradient": {
+        "mean": 0.9629050250835413,
+        "linear_slope": 1.3183976943673157,
+        "fundamental_amplitude": 0.9697428053167623,
+        "second_harmonic_amplitude": 0.8802630074005332,
+        "residual_rms": 0.8853762491722078
+      }
+    },
+    "lower": {
+      "normal_velocity": {
+        "mean": 1.01379241327065,
+        "linear_slope": 11.074186268548086,
+        "fundamental_amplitude": 0.9353851346816106,
+        "second_harmonic_amplitude": 0.7235204171931056,
+        "residual_rms": 4.6429183980750866
+      },
+      "tangential_gradient": {
+        "mean": 1.014470054819999,
+        "linear_slope": 2.002073969965956,
+        "fundamental_amplitude": 0.8973905324012944,
+        "second_harmonic_amplitude": 0.7747055904486466,
+        "residual_rms": 1.102927086005888
+      }
+    },
+    "upper": {
+      "normal_velocity": {
+        "mean": 1.01543209623584,
+        "linear_slope": 4.383599623357003,
+        "fundamental_amplitude": 0.9403132805407445,
+        "second_harmonic_amplitude": 0.8478788930638712,
+        "residual_rms": 3.584491246123654
+      },
+      "tangential_gradient": {
+        "mean": 1.0196609554883038,
+        "linear_slope": 1.1177941284244437,
+        "fundamental_amplitude": 0.8999048094177048,
+        "second_harmonic_amplitude": 0.8145421327514631,
+        "residual_rms": 0.9027844939413843
+      }
+    }
+  },
+  "reference_one_second_to_native_ratios": {
+    "all": {
+      "normal_velocity": {
+        "mean": 0.9999605897517999,
+        "linear_slope": 2.132080734066152,
+        "fundamental_amplitude": 1.0002921390432238,
+        "second_harmonic_amplitude": 1.0142795554283746,
+        "residual_rms": 0.8840055923027014
+      },
+      "tangential_gradient": {
+        "mean": 1.0169683023574145,
+        "linear_slope": 2.9932241558978396,
+        "fundamental_amplitude": 1.010087868361386,
+        "second_harmonic_amplitude": 1.0423603952841078,
+        "residual_rms": 0.8514693751161359
+      }
+    },
+    "upstream": {
+      "normal_velocity": {
+        "mean": 0.9999997240312353,
+        "linear_slope": 0.8886084105236541,
+        "fundamental_amplitude": 0.9998689279496065,
+        "second_harmonic_amplitude": 1.032812977194831,
+        "residual_rms": 0.9166395136122143
+      },
+      "tangential_gradient": {
+        "mean": 1.0000017392067067,
+        "linear_slope": 2.68294921956407,
+        "fundamental_amplitude": 1.0011112092470775,
+        "second_harmonic_amplitude": 0.9945674742794183,
+        "residual_rms": 0.9863082419807431
+      }
+    },
+    "downstream": {
+      "normal_velocity": {
+        "mean": 0.9999160506954009,
+        "linear_slope": 2.1325411302392134,
+        "fundamental_amplitude": 1.0002981975891756,
+        "second_harmonic_amplitude": 1.0144173327627344,
+        "residual_rms": 0.8839992929399776
+      },
+      "tangential_gradient": {
+        "mean": 1.081881338096767,
+        "linear_slope": 2.9942615918757824,
+        "fundamental_amplitude": 1.0103869240995553,
+        "second_harmonic_amplitude": 1.0425798245622895,
+        "residual_rms": 0.8514434747235586
+      }
+    },
+    "lower": {
+      "normal_velocity": {
+        "mean": 1.0001557189127859,
+        "linear_slope": 2.099483287093826,
+        "fundamental_amplitude": 0.9999805355024557,
+        "second_harmonic_amplitude": 0.9896953457093921,
+        "residual_rms": 0.8607720138274563
+      },
+      "tangential_gradient": {
+        "mean": 0.9999677017195049,
+        "linear_slope": 2.5053151016537174,
+        "fundamental_amplitude": 0.998643260749167,
+        "second_harmonic_amplitude": 0.9837092495716817,
+        "residual_rms": 0.9289175873527318
+      }
+    },
+    "upper": {
+      "normal_velocity": {
+        "mean": 0.9998174558106246,
+        "linear_slope": 1.7569355911214837,
+        "fundamental_amplitude": 1.0004457000670448,
+        "second_harmonic_amplitude": 1.0093514309388518,
+        "residual_rms": 0.9214815919068484
+      },
+      "tangential_gradient": {
+        "mean": 0.9999562773674355,
+        "linear_slope": 1.5819852718442164,
+        "fundamental_amplitude": 1.0002076706922507,
+        "second_harmonic_amplitude": 1.0182389906310554,
+        "residual_rms": 1.0041711664851534
+      }
+    }
+  },
+  "method": {
+    "induction": "Exact native Gaussian planar formula with per-particle core radius; float64 streamed accumulation of stored float32 sources; circulation=stored_strength_z/span.",
+    "volume": "Native particle_volume=h_xy^2*span; strengths carry circulation*span. Volume is not multiplied into induction a second time.",
+    "gradient": "J[i,j]=d(u_i)/d(x_j); gt=J*n-((J*n) dot n)*n.",
+    "flux_balance": "Area-weighted constant removed from coupled un, matching reference closed-surface trace balancing; gt unchanged.",
+    "harmonic_fit": "Independent force-derived fundamental in each run; simultaneous constant, linear drift, fundamental and second harmonic least squares at each face. Report area-weighted RMS harmonic amplitudes, independent of phase offsets.",
+    "units": {
+      "normal_velocity": "m/s",
+      "tangential_gradient": "1/s"
+    }
+  },
+  "limitations": [
+    "Coupled 30\u201350 s and mature reference 100\u2013112 s are different accepted-time windows; this measures input differences, not their causal effect on forces.",
+    "One-second particle output resolves the fitted first and second harmonics only; higher harmonics may alias and are not interpreted.",
+    "A weak coupled shedding mode can itself yield weaker VPM traces, so attenuation alone cannot establish whether boundary inputs caused or inherited that weakness.",
+    "The native reference traces use reconstructed reference fields on the small-domain faces, not a particle representation or a simultaneously coupled trajectory.",
+    "Stored endpoint fields are measured; intra-exchange interpolation and Picard history are not reconstructed by this diagnostic."
+  ],
+  "force_phase_analysis": {
+    "schema": "openonda-planar-boundary-harmonic-phase/1",
+    "source_boundary_fields": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/boundary_harmonic_fields.npz",
+    "source_boundary_fields_sha256": "88033ed2a99ea4b007ea6fee25abbdd9651e90ee5fa4382305400da2d4960480",
+    "analysis_source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_boundary_harmonic_phase.py",
+    "analysis_source_sha256": "e373ea553cc7930c6479295fc1dcb2c7632eacba835f2e969b3f143ea55e2d29",
+    "force_phase_references": {
+      "coupled": {
+        "boundary_midpoint_time": 40.0,
+        "lift_fundamental_phase_degrees": 97.89881713525665,
+        "drag_second_harmonic_phase_degrees": 126.41973266070937,
+        "drag_second_minus_twice_lift_fundamental_degrees": -69.37790160980398
+      },
+      "reference": {
+        "boundary_midpoint_time": 105.99999999998477,
+        "lift_fundamental_phase_degrees": -102.40362037736452,
+        "drag_second_harmonic_phase_degrees": 118.38082887675637,
+        "drag_second_minus_twice_lift_fundamental_degrees": -36.811930368514595
+      }
+    },
+    "boundary_phase_relative_to_forces": {
+      "upstream": {
+        "normal_velocity": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.007065683094783903,
+            "reference_harmonic_rms": 0.007390286697153174,
+            "amplitude_ratio": 0.9560769946185833,
+            "complex_projection_gain_real": 0.9542394896246837,
+            "complex_projection_gain_imaginary": 0.05453865167144575,
+            "complex_projection_gain_magnitude": 0.9557967713302427,
+            "force_aligned_projection_phase_difference_degrees": 3.271127149156257,
+            "complex_shape_coherence": 0.9997069030110358,
+            "normalised_complex_rms_difference": 0.07486147466845251,
+            "amplitude_rescaled_complex_rms_difference": 0.06199873490884102,
+            "normalised_residual_after_optimal_complex_projection": 0.024209668979226186
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.00015898956791940153,
+            "reference_harmonic_rms": 0.0001384588575238825,
+            "amplitude_ratio": 1.1482802239067857,
+            "complex_projection_gain_real": 0.7380717659064517,
+            "complex_projection_gain_imaginary": 0.6738039946915142,
+            "complex_projection_gain_magnitude": 0.9993806856701355,
+            "force_aligned_projection_phase_difference_degrees": 42.39372821281955,
+            "complex_shape_coherence": 0.8703282220344695,
+            "normalised_complex_rms_difference": 0.9178256592635201,
+            "amplitude_rescaled_complex_rms_difference": 0.8452659227211999,
+            "normalised_residual_after_optimal_complex_projection": 0.49247211690644915
+          }
+        },
+        "tangential_gradient": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.0074187138646523345,
+            "reference_harmonic_rms": 0.008891181566500934,
+            "amplitude_ratio": 0.8343900986797551,
+            "complex_projection_gain_real": 0.8207258102088525,
+            "complex_projection_gain_imaginary": 0.09243983869803116,
+            "complex_projection_gain_magnitude": 0.8259152373709395,
+            "force_aligned_projection_phase_difference_degrees": 6.426244747422203,
+            "complex_shape_coherence": 0.9898430466490132,
+            "normalised_complex_rms_difference": 0.23399832554338176,
+            "amplitude_rescaled_complex_rms_difference": 0.18097723048670744,
+            "normalised_residual_after_optimal_complex_projection": 0.14216449275610124
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 8.1711196702048e-05,
+            "reference_harmonic_rms": 0.00013265105902144256,
+            "amplitude_ratio": 0.6159860110037997,
+            "complex_projection_gain_real": -0.051764518715686283,
+            "complex_projection_gain_imaginary": -0.25392493190342713,
+            "complex_projection_gain_magnitude": 0.25914751868390856,
+            "force_aligned_projection_phase_difference_degrees": -101.52229538956749,
+            "complex_shape_coherence": 0.42070357776730427,
+            "normalised_complex_rms_difference": 1.2177716547792306,
+            "amplitude_rescaled_complex_rms_difference": 1.4724369039069602,
+            "normalised_residual_after_optimal_complex_projection": 0.9071981589783953
+          }
+        }
+      },
+      "downstream": {
+        "normal_velocity": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.3172073396389325,
+            "reference_harmonic_rms": 0.31358116901408967,
+            "amplitude_ratio": 1.0115637384612208,
+            "complex_projection_gain_real": 0.9990293249881333,
+            "complex_projection_gain_imaginary": -0.1401748876482279,
+            "complex_projection_gain_magnitude": 1.0088154396684454,
+            "force_aligned_projection_phase_difference_degrees": -7.987090822728277,
+            "complex_shape_coherence": 0.9972831185141569,
+            "normalised_complex_rms_difference": 0.15875310073625162,
+            "amplitude_rescaled_complex_rms_difference": 0.1574237957606037,
+            "normalised_residual_after_optimal_complex_projection": 0.07366397713046711
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.07975260348248527,
+            "reference_harmonic_rms": 0.08695046291782121,
+            "amplitude_ratio": 0.9172188485972892,
+            "complex_projection_gain_real": 0.8903095122399259,
+            "complex_projection_gain_imaginary": 0.17947427300727548,
+            "complex_projection_gain_magnitude": 0.9082191598157269,
+            "force_aligned_projection_phase_difference_degrees": 11.397302834524908,
+            "complex_shape_coherence": 0.9901880682071399,
+            "normalised_complex_rms_difference": 0.24631563438459336,
+            "amplitude_rescaled_complex_rms_difference": 0.2422311583984962,
+            "normalised_residual_after_optimal_complex_projection": 0.1397411520641364
+          }
+        },
+        "tangential_gradient": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.8475974079462869,
+            "reference_harmonic_rms": 0.8740435126707878,
+            "amplitude_ratio": 0.9697428053167624,
+            "complex_projection_gain_real": 0.9655001322620543,
+            "complex_projection_gain_imaginary": -0.0852575396889699,
+            "complex_projection_gain_magnitude": 0.9692571142229809,
+            "force_aligned_projection_phase_difference_degrees": -5.046358134298231,
+            "complex_shape_coherence": 0.9994991547334835,
+            "normalised_complex_rms_difference": 0.09695794933637769,
+            "amplitude_rescaled_complex_rms_difference": 0.09354196692275765,
+            "normalised_residual_after_optimal_complex_projection": 0.03164553186553229
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.2572543077328012,
+            "reference_harmonic_rms": 0.2922470961178839,
+            "amplitude_ratio": 0.8802630074005333,
+            "complex_projection_gain_real": 0.8193164620730825,
+            "complex_projection_gain_imaginary": 0.30831594943138785,
+            "complex_projection_gain_magnitude": 0.8754074421078055,
+            "force_aligned_projection_phase_difference_degrees": 20.621757675418905,
+            "complex_shape_coherence": 0.9944839607572894,
+            "normalised_complex_rms_difference": 0.3690935356405836,
+            "amplitude_rescaled_complex_rms_difference": 0.3721202626691519,
+            "normalised_residual_after_optimal_complex_projection": 0.10488875915222941
+          }
+        }
+      },
+      "lower": {
+        "normal_velocity": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.058262482546243055,
+            "reference_harmonic_rms": 0.062287158931678584,
+            "amplitude_ratio": 0.9353851346816106,
+            "complex_projection_gain_real": 0.8707216580126775,
+            "complex_projection_gain_imaginary": -0.2600376124381001,
+            "complex_projection_gain_magnitude": 0.9087220508025838,
+            "force_aligned_projection_phase_difference_degrees": -16.628049174424774,
+            "complex_shape_coherence": 0.9714950741780791,
+            "normalised_complex_rms_difference": 0.3653793017645905,
+            "amplitude_rescaled_complex_rms_difference": 0.3718341651633412,
+            "normalised_residual_after_optimal_complex_projection": 0.23705974109436734
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.003748175342268043,
+            "reference_harmonic_rms": 0.00518046934571532,
+            "amplitude_ratio": 0.7235204171931056,
+            "complex_projection_gain_real": 0.7079804482619101,
+            "complex_projection_gain_imaginary": 0.08107275904137681,
+            "complex_projection_gain_magnitude": 0.7126072602631244,
+            "force_aligned_projection_phase_difference_degrees": 6.532639579093569,
+            "complex_shape_coherence": 0.9849165874650522,
+            "normalised_complex_rms_difference": 0.32790379316419205,
+            "amplitude_rescaled_complex_rms_difference": 0.20725960941524077,
+            "normalised_residual_after_optimal_complex_projection": 0.1730298116978577
+          }
+        },
+        "tangential_gradient": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.08065693901831768,
+            "reference_harmonic_rms": 0.08987941827566505,
+            "amplitude_ratio": 0.8973905324012943,
+            "complex_projection_gain_real": 0.8896204087069175,
+            "complex_projection_gain_imaginary": -0.11691832441527297,
+            "complex_projection_gain_magnitude": 0.8972705089168694,
+            "force_aligned_projection_phase_difference_degrees": -7.487184650777607,
+            "complex_shape_coherence": 0.999866252785057,
+            "normalised_complex_rms_difference": 0.16145881898999295,
+            "amplitude_rescaled_complex_rms_difference": 0.13159464668817228,
+            "normalised_residual_after_optimal_complex_projection": 0.016354710072888124
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.009586298983425674,
+            "reference_harmonic_rms": 0.01237411876410246,
+            "amplitude_ratio": 0.7747055904486466,
+            "complex_projection_gain_real": 0.7711284635811735,
+            "complex_projection_gain_imaginary": 0.06933625840218209,
+            "complex_projection_gain_magnitude": 0.7742393842180049,
+            "force_aligned_projection_phase_difference_degrees": 5.13795139201676,
+            "complex_shape_coherence": 0.9993982149652854,
+            "normalised_complex_rms_difference": 0.24064875796487953,
+            "amplitude_rescaled_complex_rms_difference": 0.09609788389627147,
+            "normalised_residual_after_optimal_complex_projection": 0.03468728764549329
+          }
+        }
+      },
+      "upper": {
+        "normal_velocity": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.05925192011618087,
+            "reference_harmonic_rms": 0.06301295679042943,
+            "amplitude_ratio": 0.9403132805407444,
+            "complex_projection_gain_real": 0.875897141337556,
+            "complex_projection_gain_imaginary": -0.25992632126551435,
+            "complex_projection_gain_magnitude": 0.9136506414871748,
+            "force_aligned_projection_phase_difference_degrees": -16.528486887059188,
+            "complex_shape_coherence": 0.9716449404625692,
+            "normalised_complex_rms_difference": 0.3638609389398439,
+            "amplitude_rescaled_complex_rms_difference": 0.3701485553617432,
+            "normalised_residual_after_optimal_complex_projection": 0.23644472858046647
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.004588573071387896,
+            "reference_harmonic_rms": 0.0054118260389838906,
+            "amplitude_ratio": 0.8478788930638712,
+            "complex_projection_gain_real": 0.8310849898284693,
+            "complex_projection_gain_imaginary": 0.023468213315214165,
+            "complex_projection_gain_magnitude": 0.8314162720048215,
+            "force_aligned_projection_phase_difference_degrees": 1.6174908297993227,
+            "complex_shape_coherence": 0.980583758843718,
+            "normalised_complex_rms_difference": 0.23817774380969478,
+            "amplitude_rescaled_complex_rms_difference": 0.19903245916435972,
+            "normalised_residual_after_optimal_complex_projection": 0.19610071874402976
+          }
+        },
+        "tangential_gradient": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.08185177786459095,
+            "reference_harmonic_rms": 0.09095604002556028,
+            "amplitude_ratio": 0.8999048094177048,
+            "complex_projection_gain_real": 0.8921708879541447,
+            "complex_projection_gain_imaginary": -0.1166948568942736,
+            "complex_projection_gain_magnitude": 0.8997702945410356,
+            "force_aligned_projection_phase_difference_degrees": -7.451913213765778,
+            "complex_shape_coherence": 0.9998505232161652,
+            "normalised_complex_rms_difference": 0.15964614027538115,
+            "amplitude_rescaled_complex_rms_difference": 0.131104195595073,
+            "normalised_residual_after_optimal_complex_projection": 0.01728962765247178
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.010604741616615818,
+            "reference_harmonic_rms": 0.013019267132068154,
+            "amplitude_ratio": 0.814542132751463,
+            "complex_projection_gain_real": 0.8069484098325429,
+            "complex_projection_gain_imaginary": 0.10620041693801587,
+            "complex_projection_gain_magnitude": 0.8139067911555217,
+            "force_aligned_projection_phase_difference_degrees": 7.497462533754657,
+            "complex_shape_coherence": 0.9992200015562176,
+            "normalised_complex_rms_difference": 0.2226703086678054,
+            "amplitude_rescaled_complex_rms_difference": 0.13654807888606765,
+            "normalised_residual_after_optimal_complex_projection": 0.03948909330425159
+          }
+        }
+      },
+      "corners": {
+        "normal_velocity": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.0722497967362711,
+            "reference_harmonic_rms": 0.07457804258239784,
+            "amplitude_ratio": 0.9687810813275991,
+            "complex_projection_gain_real": 0.9376639607111219,
+            "complex_projection_gain_imaginary": -0.21297952539464943,
+            "complex_projection_gain_magnitude": 0.961547701080814,
+            "force_aligned_projection_phase_difference_degrees": -12.796949435708768,
+            "complex_shape_coherence": 0.9925335244605803,
+            "normalised_complex_rms_difference": 0.2514137269840849,
+            "amplitude_rescaled_complex_rms_difference": 0.25345559046350025,
+            "normalised_residual_after_optimal_complex_projection": 0.12197213953136271
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.0068078829113711135,
+            "reference_harmonic_rms": 0.008808891570532907,
+            "amplitude_ratio": 0.7728421739398548,
+            "complex_projection_gain_real": 0.7651890715070614,
+            "complex_projection_gain_imaginary": 0.0927997475919477,
+            "complex_projection_gain_magnitude": 0.7707957630312766,
+            "force_aligned_projection_phase_difference_degrees": 6.91488409455016,
+            "complex_shape_coherence": 0.9973520972617915,
+            "normalised_complex_rms_difference": 0.25866364801795816,
+            "amplitude_rescaled_complex_rms_difference": 0.14073054002366234,
+            "normalised_residual_after_optimal_complex_projection": 0.07272409564584306
+          }
+        },
+        "tangential_gradient": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.09700314259289988,
+            "reference_harmonic_rms": 0.10672810401431942,
+            "amplitude_ratio": 0.9088809689703213,
+            "complex_projection_gain_real": 0.9038784364781112,
+            "complex_projection_gain_imaginary": -0.09491492093566967,
+            "complex_projection_gain_magnitude": 0.9088482107295691,
+            "force_aligned_projection_phase_difference_degrees": -5.994574786124389,
+            "complex_shape_coherence": 0.9999639576117548,
+            "normalised_complex_rms_difference": 0.1353061077712597,
+            "amplitude_rescaled_complex_rms_difference": 0.104919557910029,
+            "normalised_residual_after_optimal_complex_projection": 0.008490198904403943
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.017577984824105972,
+            "reference_harmonic_rms": 0.02264115723612712,
+            "amplitude_ratio": 0.7763730731951214,
+            "complex_projection_gain_real": 0.7689385176219318,
+            "complex_projection_gain_imaginary": 0.10716716224952694,
+            "complex_projection_gain_magnitude": 0.7763705587844185,
+            "force_aligned_projection_phase_difference_degrees": 7.934219578331408,
+            "complex_shape_coherence": 0.9999967613370562,
+            "normalised_complex_rms_difference": 0.2547118244969663,
+            "amplitude_rescaled_complex_rms_difference": 0.13839081651286253,
+            "normalised_residual_after_optimal_complex_projection": 0.002545057052099877
+          }
+        }
+      },
+      "all": {
+        "normal_velocity": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.15550252760413685,
+            "reference_harmonic_rms": 0.15472593040492727,
+            "amplitude_ratio": 1.0050191793785126,
+            "complex_projection_gain_real": 0.9875379449665423,
+            "complex_projection_gain_imaginary": -0.15104779771184212,
+            "complex_projection_gain_magnitude": 0.9990228375479407,
+            "force_aligned_projection_phase_difference_degrees": -8.69621621776676,
+            "complex_shape_coherence": 0.9940336045782929,
+            "normalised_complex_rms_difference": 0.18704988902850164,
+            "amplitude_rescaled_complex_rms_difference": 0.18651504578142777,
+            "normalised_residual_after_optimal_complex_projection": 0.10907425438244697
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.037610683436972034,
+            "reference_harmonic_rms": 0.0410561330294079,
+            "amplitude_ratio": 0.9160795394449852,
+            "complex_projection_gain_real": 0.8891704963504728,
+            "complex_projection_gain_imaginary": 0.17825520631337768,
+            "complex_projection_gain_magnitude": 0.9068622222575881,
+            "force_aligned_projection_phase_difference_degrees": 11.336021458385915,
+            "complex_shape_coherence": 0.9899383003434601,
+            "normalised_complex_rms_difference": 0.24669967549388958,
+            "amplitude_rescaled_complex_rms_difference": 0.2423804197679816,
+            "normalised_residual_after_optimal_complex_projection": 0.14149968732510304
+          }
+        },
+        "tangential_gradient": {
+          "harmonic_1": {
+            "coupled_harmonic_rms": 0.4029497826749484,
+            "reference_harmonic_rms": 0.4163079679550437,
+            "amplitude_ratio": 0.967912732139833,
+            "complex_projection_gain_real": 0.9635096215822027,
+            "complex_projection_gain_imaginary": -0.0860637757470366,
+            "complex_projection_gain_magnitude": 0.9673457315651501,
+            "force_aligned_projection_phase_difference_degrees": -5.104296805810833,
+            "complex_shape_coherence": 0.9994142027934384,
+            "normalised_complex_rms_difference": 0.09917567178492476,
+            "amplitude_rescaled_complex_rms_difference": 0.09538425492001734,
+            "normalised_residual_after_optimal_complex_projection": 0.03422354824906572
+          },
+          "harmonic_2": {
+            "coupled_harmonic_rms": 0.12112836551303303,
+            "reference_harmonic_rms": 0.1376679358663146,
+            "amplitude_ratio": 0.879858950094649,
+            "complex_projection_gain_real": 0.8191646738508644,
+            "complex_projection_gain_imaginary": 0.30723019148873076,
+            "complex_projection_gain_magnitude": 0.8748835085012149,
+            "force_aligned_projection_phase_difference_degrees": 20.55870887919238,
+            "complex_shape_coherence": 0.994345182721732,
+            "normalised_complex_rms_difference": 0.3685409398695468,
+            "amplitude_rescaled_complex_rms_difference": 0.3714345841209687,
+            "normalised_residual_after_optimal_complex_projection": 0.10619631631128028
+          }
+        }
+      }
+    },
+    "boundary_mean_differences": {
+      "upstream": {
+        "normal_velocity": {
+          "coupled_signed_area_mean": -0.8940238039294918,
+          "reference_signed_area_mean": -0.9163885828217417,
+          "signed_area_mean_difference": 0.022364778892249727,
+          "rms_mean_difference": 0.022461119715417283,
+          "normalised_rms_mean_difference": 0.02448382193365476,
+          "maximum_mean_difference_magnitude": 0.025375202203762326
+        },
+        "tangential_gradient": {
+          "coupled_signed_area_mean": [
+            0.0,
+            0.00018027246313458218,
+            0.0
+          ],
+          "reference_signed_area_mean": [
+            0.0,
+            0.0002106128345192558,
+            -1.4331306957979623e-19
+          ],
+          "signed_area_mean_difference": [
+            0.0,
+            -3.0340371384698494e-05,
+            1.4331306957979623e-19
+          ],
+          "rms_mean_difference": 0.0022200549384583388,
+          "normalised_rms_mean_difference": 0.024930597522901766,
+          "maximum_mean_difference_magnitude": 0.0034316664898690064
+        }
+      },
+      "downstream": {
+        "normal_velocity": {
+          "coupled_signed_area_mean": 0.7836025398180974,
+          "reference_signed_area_mean": 0.8062050553835697,
+          "signed_area_mean_difference": -0.022602515565472395,
+          "rms_mean_difference": 0.03196800600322435,
+          "normalised_rms_mean_difference": 0.038133831915855974,
+          "maximum_mean_difference_magnitude": 0.062409542864468925
+        },
+        "tangential_gradient": {
+          "coupled_signed_area_mean": [
+            0.0,
+            0.00390980347627037,
+            0.0
+          ],
+          "reference_signed_area_mean": [
+            0.0,
+            0.0019436466443941852,
+            -4.963640560240985e-19
+          ],
+          "signed_area_mean_difference": [
+            0.0,
+            0.0019661568318761827,
+            4.963640560240985e-19
+          ],
+          "rms_mean_difference": 0.010683407387684776,
+          "normalised_rms_mean_difference": 0.14163389249352434,
+          "maximum_mean_difference_magnitude": 0.03537333296542861
+        }
+      },
+      "lower": {
+        "normal_velocity": {
+          "coupled_signed_area_mean": 0.044075711885230406,
+          "reference_signed_area_mean": 0.04368915780307421,
+          "signed_area_mean_difference": 0.0003865540821561977,
+          "rms_mean_difference": 0.0019309626013141745,
+          "normalised_rms_mean_difference": 0.021104122671921077,
+          "maximum_mean_difference_magnitude": 0.004490759798883373
+        },
+        "tangential_gradient": {
+          "coupled_signed_area_mean": [
+            -0.04313587709891701,
+            0.0,
+            0.0
+          ],
+          "reference_signed_area_mean": [
+            -0.04173683593962106,
+            0.0,
+            2.7233560192636074e-18
+          ],
+          "signed_area_mean_difference": [
+            -0.001399041159295983,
+            0.0,
+            -2.7233560192636074e-18
+          ],
+          "rms_mean_difference": 0.0030525819931040976,
+          "normalised_rms_mean_difference": 0.039479459028915774,
+          "maximum_mean_difference_magnitude": 0.006608181390808179
+        }
+      },
+      "upper": {
+        "normal_velocity": {
+          "coupled_signed_area_mean": 0.04288060401307911,
+          "reference_signed_area_mean": 0.04309255682458147,
+          "signed_area_mean_difference": -0.00021195281150235835,
+          "rms_mean_difference": 0.0022622435813552944,
+          "normalised_rms_mean_difference": 0.024767410726955204,
+          "maximum_mean_difference_magnitude": 0.0056008103565429734
+        },
+        "tangential_gradient": {
+          "coupled_signed_area_mean": [
+            -0.042230190515870375,
+            0.0,
+            0.0
+          ],
+          "reference_signed_area_mean": [
+            -0.0406755591509446,
+            0.0,
+            -2.8625121916336216e-18
+          ],
+          "signed_area_mean_difference": [
+            -0.0015546313649257458,
+            0.0,
+            2.8625121916336216e-18
+          ],
+          "rms_mean_difference": 0.003239741038899185,
+          "normalised_rms_mean_difference": 0.04214427537144229,
+          "maximum_mean_difference_magnitude": 0.006883568492432192
+        }
+      },
+      "corners": {
+        "normal_velocity": {
+          "coupled_signed_area_mean": -0.08009005834076809,
+          "reference_signed_area_mean": -0.08379649007553229,
+          "signed_area_mean_difference": 0.0037064317347641888,
+          "rms_mean_difference": 0.013552063207643957,
+          "normalised_rms_mean_difference": 0.02496207227216206,
+          "maximum_mean_difference_magnitude": 0.015965957790904373
+        },
+        "tangential_gradient": {
+          "coupled_signed_area_mean": [
+            -0.009579907896155062,
+            -0.02328317403734783,
+            0.0
+          ],
+          "reference_signed_area_mean": [
+            -0.010660855851024855,
+            -0.0223746740314886,
+            9.092627356560904e-18
+          ],
+          "signed_area_mean_difference": [
+            0.0010809479548697927,
+            -0.0009085000058592286,
+            -9.092627356560904e-18
+          ],
+          "rms_mean_difference": 0.0028663137318762797,
+          "normalised_rms_mean_difference": 0.07219572963343436,
+          "maximum_mean_difference_magnitude": 0.003805881704927804
+        }
+      },
+      "all": {
+        "normal_velocity": {
+          "coupled_signed_area_mean": -7.740571309608061e-18,
+          "reference_signed_area_mean": 7.740571309608061e-18,
+          "signed_area_mean_difference": -1.6932499739767635e-17,
+          "rms_mean_difference": 0.018458171183732025,
+          "normalised_rms_mean_difference": 0.0313116203170194,
+          "maximum_mean_difference_magnitude": 0.062409542864468925
+        },
+        "tangential_gradient": {
+          "coupled_signed_area_mean": [
+            -0.023535174321798996,
+            0.0006470168448088449,
+            0.0
+          ],
+          "reference_signed_area_mean": [
+            -0.0227359816595266,
+            0.00022952063699135762,
+            -9.100133103072709e-20
+          ],
+          "signed_area_mean_difference": [
+            -0.0007991926622723693,
+            0.0004174962078174845,
+            9.100133103072709e-20
+          ],
+          "rms_mean_difference": 0.005640314208976599,
+          "normalised_rms_mean_difference": 0.07120242154879497,
+          "maximum_mean_difference_magnitude": 0.03537333296542861
+        }
+      }
+    },
+    "side_geometry": {
+      "upstream": {
+        "face_count": 78,
+        "area": 3.1445428589997766
+      },
+      "downstream": {
+        "face_count": 79,
+        "area": 3.1669256514209554
+      },
+      "lower": {
+        "face_count": 97,
+        "area": 3.906939659231581
+      },
+      "upper": {
+        "face_count": 99,
+        "area": 3.966925635758738
+      },
+      "corners": {
+        "face_count": 3,
+        "area": 0.1575742335224713
+      },
+      "all": {
+        "face_count": 356,
+        "area": 14.342908038933523
+      }
+    },
+    "method": {
+      "complex_convention": "u=Re(C exp(i omega (t-t_mid))); C=cosine_coefficient-i*sine_coefficient.",
+      "alignment": "First harmonic divided by unit phase of each run's lift fundamental; second harmonic by each run's drag second harmonic. Force fits are transformed to the matching boundary fit midpoint.",
+      "complex_projection": "Gain=sum(area*Cb*conjugate(Cr))/sum(area*abs(Cr)^2), with vector components summed for gt. Phase is arg(gain); coherence is the magnitude of the normalised complex inner product.",
+      "amplitude_rescaled_error": "RMS((norm(Cr)/norm(Cb))*Cb-Cr)/norm(Cr); reveals force-relative phase and spatial shape differences after matching global amplitudes.",
+      "means": "Signed area-average and RMS of the local linear-trend fit intercept, evaluated at each window midpoint; units m/s for un and 1/s for gt."
+    },
+    "limitations": [
+      "Force-aligned phase differences measure a coupled relationship, not whether a boundary trace creates positive or negative feedback; that requires a controlled evolution.",
+      "The two time windows, different shedding frequency and possible output aliasing retain the limitations of the parent harmonic measurement.",
+      "Three short oblique corner facets are reported separately instead of being silently assigned to an axis-aligned side."
+    ]
+  },
+  "independent_verification": {
+    "all_snapshot_hashes_rechecked": true,
+    "all_39_boundary_field_arrays_finite": true,
+    "independent_gaussian_velocity_maximum_difference_at_46s": 2.220446049250313e-16,
+    "known_force_relative_phase_maximum_complex_error": 1.4350786792269315e-14,
+    "known_phase_check": "First and second harmonics with known phase offsets, unequal dense-force and one-second boundary timestamps and different 30\u201350 / 100\u2013112 s origins.",
+    "ruff_check": "Both authored harmonic helpers passed."
+  },
+  "reproduction": {
+    "induction_and_amplitudes": "python -m tests.support.cylinder.analyze_boundary_harmonics --start 30 --end 50",
+    "force_relative_phase": "python -m tests.support.cylinder.analyze_boundary_harmonic_phase /home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z"
+  }
+}

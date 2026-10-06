@@ -1,0 +1,646 @@
+{
+  "schema": "openonda-native-planar-physics-audit/1",
+  "created_utc": "2026-10-06T00:53:59.568097+00:00",
+  "scope": "Read-only physical scaling, time levels, native evolution path and exact uniform Fourier symbols. No solver initialized or advanced; no native/tutorial/test-execution source changed.",
+  "repository": "/home/flavio-martins/Projects/OpenONDA",
+  "git_head": "e756ac9fcad42885dafb89c89ed7009529d12482",
+  "source_paths": {
+    "source/solvers/vpm/physics/diffusion/planar.py": {
+      "sha256": "02cf516552a476081496babd8404218ca46f03724e73a4a4bbfc90af9d6acc13",
+      "lines": [
+        15,
+        26,
+        100,
+        167,
+        254
+      ]
+    },
+    "source/solvers/vpm/physics/induction/planar.py": {
+      "sha256": "52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc",
+      "lines": [
+        175,
+        235
+      ]
+    },
+    "source/solvers/vpm/core/evolution.py": {
+      "sha256": "55df073a4779c061ee2b12dd84ff753da962ed9775d0792631172d82f061ae39",
+      "lines": [
+        468,
+        561,
+        673
+      ]
+    },
+    "source/solvers/vpm/numerics/rk_tableaux.py": {
+      "sha256": "74e922fda7a9a40f28e2cd8e8f13f1bd2ab65bf486fc6f4dfdb2d47d80cdea20",
+      "lines": [
+        66
+      ]
+    },
+    "source/solvers/vpm/numerics/runge_kutta.py": {
+      "sha256": "133c97ba694318244fe43cf5d5eef0f2c3194b014d6190d2441acdee9d6f4b7b",
+      "lines": [
+        251
+      ]
+    },
+    "source/solvers/vpm/physics/stage_rhs.py": {
+      "sha256": "c31a83c994e818199b08f323f9a215dc5d4edac2a34dd3b835eebe1d85202708",
+      "lines": [
+        711
+      ]
+    },
+    "source/solvers/vpm/particles/snapshot.py": {
+      "sha256": "dadb1ecd3d3ba0d6e6b64bb6e4e88bc9ff23e66e232cf1cc4b0f0022db619906",
+      "lines": [
+        15,
+        144
+      ]
+    },
+    "source/coupler/solver.py": {
+      "sha256": "6dacb1e1a6d5f4dca207669411f4d15ca2864b87b8be5432933240644e61d893",
+      "lines": [
+        944,
+        1062,
+        1093
+      ]
+    },
+    "source/coupler/interface_iteration.py": {
+      "sha256": "f02a9e91fd6aa0925d82e820829cba3cc62385845635859f8b49fc2187677ba5",
+      "lines": [
+        215,
+        271
+      ]
+    },
+    "source/coupler/boundary.py": {
+      "sha256": "7026ddf426ed5688a67dbfda3b444119d502ce1f10c80ceded0f58dcbdc51ec8",
+      "lines": [
+        352,
+        407,
+        633
+      ]
+    },
+    "source/coupler/vorticity_transfer.py": {
+      "sha256": "9380fd0290fb3ee192a68adcee92b54398fda6f1db05a43fb63a30613ca959d7",
+      "lines": [
+        1286,
+        1383
+      ]
+    },
+    "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": {
+      "sha256": "398ed628e4458a804b564e9ff23bfd72c24858b0e179abc9828793286a61d45e",
+      "lines": [
+        27,
+        62,
+        80,
+        329
+      ]
+    }
+  },
+  "original_read_only_observation": {
+    "time_s": 85.0,
+    "coupling_step": 2125,
+    "fvm_step": 10625,
+    "vpm_step": 2125,
+    "particle_count": 22288,
+    "storage_dtype": "float32",
+    "maximum_absolute_axial_strength": 0.06388407200574875,
+    "core_radius": 0.03999999910593033,
+    "particle_volume": 0.0015999999595806003,
+    "kinematic_viscosity": 0.006666666828095913,
+    "scope": "Earlier live committed generation read in this audit; metadata/artifact bytes were not frozen at that earlier observation, so no historical artifact hashes are invented."
+  },
+  "committed_checkpoint_revalidation": {
+    "path": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/backups/checkpoint_info.json",
+    "metadata_sha256": "afc4a9013f79da52fb1614b3dfdb1aebd6c6f285d268f3f4155699abc3eee98e",
+    "checkpoint_created_utc": "2026-10-06T00:50:17.751477+00:00",
+    "native_kind": "openonda.coupled_backup",
+    "format_version": 13,
+    "time_s": 86.0,
+    "coupling_step": 2150,
+    "fvm_step": 10750,
+    "vpm_step": 2150,
+    "native_config_sha256": "f0decdb902d4f1ebcebc5b1bdb01851728ae2677da4f853740152e69576ab625",
+    "checkpoint_files": {
+      "fvm": "checkpoint-eyh2c_sq/fvm_002150.npz",
+      "vpm": "checkpoint-eyh2c_sq/vpm_002150.h5",
+      "vpm_vtu": "checkpoint-eyh2c_sq/vpm_002150.vtu",
+      "vpm_boundary_condition": "checkpoint-eyh2c_sq/vpm_boundary_condition_002150.npz"
+    },
+    "checkpoint_file_sha256": {
+      "fvm": "8bfc631e17dd971f25c975062c370ac37a227fe0276811e3f32f7a6e08a6304f",
+      "vpm": "4a4a0c8639a8bafc2537f5a1fbc99cef1c92f1cb15aacb8801c57e4575aaea05",
+      "vpm_vtu": "04992e42e9100efd488edb2edfb0253b4c15b3fafe536faff9ad7be55c293245",
+      "vpm_boundary_condition": "e91e52863a79b07202b90053c2a0bf516f3973bb4ca0433034943d17c625b3d0"
+    },
+    "n_fvm_substeps": 5,
+    "native_fvm_config_sha256": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+    "native_fvm_mesh_hash": "8bee36542bcfa14bcfbc794b931f9242a82d3ccf2cdbe856dcbf4c29fd360670",
+    "native_vpm_config_sha256": "f365903ecd3aa8834461af83c02f592023db2b001381c963040f6d93cd5332fc",
+    "particle_count": 22324,
+    "particle_storage_dtype": "float32",
+    "checks": {
+      "unchanged_committed_metadata_and_four_hashes": true,
+      "native_coupled_format13": true,
+      "native_fvm_format10": true,
+      "native_vpm_format10_3": true,
+      "fvm_vpm_coupled_clock_match": true,
+      "five_fvm_steps_per_exchange": true,
+      "fvm_interval008": true,
+      "vpm_interval004": true,
+      "all_native_particle_fields_finite": true,
+      "all_primary_and_bdf_fields_finite": true,
+      "one_plane_no_transverse_strength": true,
+      "constant_core_h": true,
+      "planar_volume_h2_span": true,
+      "physical_molecular_viscosity": true,
+      "no_extra_eddy_viscosity": true,
+      "developed_freestream_constant": true
+    }
+  },
+  "receipt_publication_note": "All 16 checks completed successfully before JSON publication. The first write stopped on a NumPy bool serialization error; this report preserves that already-completed generation identity and converts its passed checks to plain JSON booleans. No solver was initialized or advanced.",
+  "physical_scaling": {
+    "diameter_m": 1.0,
+    "span_m": 1.0,
+    "nu_m2_per_s": 0.006666666666666667,
+    "particle_spacing_m": 0.04,
+    "gaussian_core_m": 0.04,
+    "particle_volume_m3": 0.0016,
+    "stored_axial_strength": "Gamma_z=two-dimensional circulation*span, in m^3/s. Native induction divides by span; renewal multiplies h^2 cross(n,delta_u) by span/h.",
+    "vpm_interval_s": 0.04,
+    "fvm_interval_s": 0.008,
+    "diffusion_substeps": 2,
+    "diffusion_number_per_substep": 0.08333333333333333,
+    "planar_operators": "XY induction with explicitly zero axial stretching rate; no z diffusion stencil or z-end loss.",
+    "turbulence": "INVISCID selects no eddy viscosity; viscous.scheme=GBD still applies the molecular viscosity."
+  },
+  "time_and_state_path": {
+    "sequence": "accepted old endpoint -> one shared-position/strength Heun RK2 step -> one GBD interval of .04 s -> endpoint VPM boundary trace -> five .008 s FVM substeps -> accepted-endpoint FVM renewal -> refreshed accepted boundary history",
+    "picard": "Each sweep restores the same accepted FVM state and already-advected VPM predictor; RK and GBD are not repeated inside Picard.",
+    "interpolation_fractions": [
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      1.0
+    ],
+    "snapshot": "All position/velocity/strength/radius/volume/molecular and eddy viscosity/IDs/gradient/strain fields are restored; derived vorticity/effective viscosity rebuilt, count restored and source revision touched. VPM clock and background are constant during current fixed-step Picard sweeps.",
+    "order_limitation": "GBD uses advection-then-diffusion Lie splitting; selecting RK2 does not ensure second-order full viscous evolution when operators do not commute. Uniform advection and diffusion commute in the symbol calculation."
+  },
+  "exact_symbol_derivation": {
+    "assumptions": "Uniform wall-free infinite/padded lattice, unpruned scalar axial strength, fixed core and uniform translation. No wall correction, retention, Gaussian inverse renewal or nonlinear velocity evolution.",
+    "native_m4_weight": "w(q)=1-2.5|q|^2+1.5|q|^3 for |q|<1; .5(1-|q|)(2-|q|)^2 for 1<=|q|<2; zero otherwise.",
+    "theta": "theta=k*h; k=2*pi/lambda",
+    "translation_removed_m4_symbol": "R_f(theta)=sum_{m=-1..2} w(f-m)*exp[-i*theta*(m-f)]",
+    "half_cell_weights": [
+      -0.0625,
+      0.5625,
+      0.5625,
+      -0.0625
+    ],
+    "half_cell_symbol": "R_0.5(theta)=[9*cos(theta/2)-cos(3*theta/2)]/8",
+    "moments": "zeroth=1; centred first=second=0; third=f(1-f)(1-2f), giving order theta^3 phase error. At half-cell shift fourth=-9/16, giving order theta^4 attenuation.",
+    "two_dimensional_m4": "Separable R_fx(theta_x)*R_fy(theta_y). Tables use an axial Fourier mode, not a measured cylinder spectrum.",
+    "native_diffusion_symbol": "G(theta_x,theta_y)=[1-4*alpha*(sin(theta_x/2)^2+sin(theta_y/2)^2)]^nsub",
+    "physical_symbol": "exp[-nu*dt*(kx^2+ky^2)]",
+    "effective_viscosity": "nu_eff=-ln(|R|*G)/(k^2*dt), a per-mode comparison, not a material viscosity change.",
+    "gaussian_filter": "Fixed Gaussian representation factor exp[-sigma^2*k^2/4] is not another diffusion factor applied every step. Constant-core diffusion commutes with that representation. Gaussian transfer inversion must be measured separately.",
+    "half_cell_results": [
+      {
+        "wavelength_m": 1.0,
+        "wavelength_over_h": 25.0,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.9999069782427563,
+        "m4_phase_error_rad": 3.46976971602983e-18,
+        "gbd_amplitude": 0.98955513753634,
+        "combined_amplitude": 0.9894630873785568,
+        "exact_physical_diffusion_amplitude": 0.9895276429707293,
+        "m4_extra_viscosity_over_physical": 0.008836418385099005,
+        "combined_effective_viscosity_over_physical": 1.0061971446906512,
+        "fixed_gaussian_representation_filter": 0.9843326628692644
+      },
+      {
+        "wavelength_m": 0.5,
+        "wavelength_over_h": 12.5,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.9985349778420335,
+        "m4_phase_error_rad": 0.0,
+        "gbd_amplitude": 0.9591938943868926,
+        "combined_amplitude": 0.9577886540778296,
+        "exact_physical_diffusion_amplitude": 0.9587640114564283,
+        "m4_extra_viscosity_over_physical": 0.034815613532534456,
+        "combined_effective_viscosity_over_physical": 1.0241704417999407,
+        "fixed_gaussian_representation_filter": 0.9387881212869448
+      },
+      {
+        "wavelength_m": 0.25132741228718347,
+        "wavelength_over_h": 6.283185307179586,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.9784382319182064,
+        "m4_phase_error_rad": -7.091805775315709e-18,
+        "gbd_amplitude": 0.8526374900113285,
+        "combined_amplitude": 0.8342531181938616,
+        "exact_physical_diffusion_amplitude": 0.8464817248906141,
+        "m4_extra_viscosity_over_physical": 0.13078571648220452,
+        "combined_effective_viscosity_over_physical": 1.08731054181899,
+        "fixed_gaussian_representation_filter": 0.7788007830714049
+      },
+      {
+        "wavelength_m": 0.2,
+        "wavelength_over_h": 5.0,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.9487712429686843,
+        "m4_phase_error_rad": 0.0,
+        "gbd_amplitude": 0.7829350401822778,
+        "combined_amplitude": 0.7428262512374765,
+        "exact_physical_diffusion_amplitude": 0.7685962724186927,
+        "m4_extra_viscosity_over_physical": 0.19980876856243118,
+        "combined_effective_viscosity_over_physical": 1.1295783642519417,
+        "fixed_gaussian_representation_filter": 0.6738254512314336
+      },
+      {
+        "wavelength_m": 0.16,
+        "wavelength_over_h": 4.0,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.8838834764831845,
+        "m4_phase_error_rad": -2.3551386880256623e-17,
+        "gbd_amplitude": 0.6944444444444445,
+        "combined_amplitude": 0.6138079697799893,
+        "exact_physical_diffusion_amplitude": 0.6628321311472734,
+        "m4_extra_viscosity_over_physical": 0.30014586348074285,
+        "combined_effective_viscosity_over_physical": 1.186851588498848,
+        "fixed_gaussian_representation_filter": 0.5396414858162971
+      },
+      {
+        "wavelength_m": 0.12,
+        "wavelength_over_h": 3.0,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.6874999999999999,
+        "m4_phase_error_rad": -2.923859363048431e-17,
+        "gbd_amplitude": 0.5625,
+        "combined_amplitude": 0.38671874999999994,
+        "exact_physical_diffusion_amplitude": 0.4813879392253192,
+        "m4_extra_viscosity_over_physical": 0.5125191813058615,
+        "combined_effective_viscosity_over_physical": 1.299522959830232,
+        "fixed_gaussian_representation_filter": 0.3339971859861317
+      },
+      {
+        "wavelength_m": 0.1,
+        "wavelength_over_h": 2.5,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.4487712429686843,
+        "m4_phase_error_rad": 4.638595283872566e-17,
+        "gbd_amplitude": 0.4878982931510556,
+        "combined_amplitude": 0.21895472345969874,
+        "exact_physical_diffusion_amplitude": 0.34897401931199007,
+        "m4_extra_viscosity_over_physical": 0.7610886379471878,
+        "combined_effective_viscosity_over_physical": 1.4427727903966743,
+        "fixed_gaussian_representation_filter": 0.20615299242398238
+      }
+    ],
+    "phase_dependence_results": [
+      {
+        "wavelength_m": 1.0,
+        "wavelength_over_h": 25.0,
+        "fractional_translation": 0.0,
+        "m4_amplitude": 1.0,
+        "m4_phase_error_rad": 0.0,
+        "gbd_amplitude": 0.98955513753634,
+        "combined_amplitude": 0.98955513753634,
+        "exact_physical_diffusion_amplitude": 0.9895276429707293,
+        "m4_extra_viscosity_over_physical": -0.0,
+        "combined_effective_viscosity_over_physical": 0.9973607263055536,
+        "fixed_gaussian_representation_filter": 0.9843326628692644
+      },
+      {
+        "wavelength_m": 0.2,
+        "wavelength_over_h": 5.0,
+        "fractional_translation": 0.0,
+        "m4_amplitude": 1.0,
+        "m4_phase_error_rad": 0.0,
+        "gbd_amplitude": 0.7829350401822778,
+        "combined_amplitude": 0.7829350401822778,
+        "exact_physical_diffusion_amplitude": 0.7685962724186927,
+        "m4_extra_viscosity_over_physical": -0.0,
+        "combined_effective_viscosity_over_physical": 0.9297695956895106,
+        "fixed_gaussian_representation_filter": 0.6738254512314336
+      },
+      {
+        "wavelength_m": 0.16,
+        "wavelength_over_h": 4.0,
+        "fractional_translation": 0.0,
+        "m4_amplitude": 1.0,
+        "m4_phase_error_rad": 0.0,
+        "gbd_amplitude": 0.6944444444444445,
+        "combined_amplitude": 0.6944444444444445,
+        "exact_physical_diffusion_amplitude": 0.6628321311472734,
+        "m4_extra_viscosity_over_physical": -0.0,
+        "combined_effective_viscosity_over_physical": 0.8867057250181049,
+        "fixed_gaussian_representation_filter": 0.5396414858162971
+      },
+      {
+        "wavelength_m": 0.1,
+        "wavelength_over_h": 2.5,
+        "fractional_translation": 0.0,
+        "m4_amplitude": 1.0,
+        "m4_phase_error_rad": 0.0,
+        "gbd_amplitude": 0.4878982931510556,
+        "combined_amplitude": 0.4878982931510556,
+        "exact_physical_diffusion_amplitude": 0.34897401931199007,
+        "m4_extra_viscosity_over_physical": -0.0,
+        "combined_effective_viscosity_over_physical": 0.6816841524494864,
+        "fixed_gaussian_representation_filter": 0.20615299242398238
+      },
+      {
+        "wavelength_m": 1.0,
+        "wavelength_over_h": 25.0,
+        "fractional_translation": 0.1,
+        "m4_amplitude": 0.9999879850564347,
+        "m4_phase_error_rad": 0.00019054935032418961,
+        "gbd_amplitude": 0.98955513753634,
+        "combined_amplitude": 0.9895432480872077,
+        "exact_physical_diffusion_amplitude": 0.9895276429707293,
+        "m4_extra_viscosity_over_physical": 0.0011412896407453018,
+        "combined_effective_viscosity_over_physical": 0.9985020159462971,
+        "fixed_gaussian_representation_filter": 0.9843326628692644
+      },
+      {
+        "wavelength_m": 0.2,
+        "wavelength_over_h": 5.0,
+        "fractional_translation": 0.1,
+        "m4_amplitude": 0.993940021478797,
+        "m4_phase_error_rad": 0.023851867439569137,
+        "gbd_amplitude": 0.7829350401822778,
+        "combined_amplitude": 0.778190470655276,
+        "exact_physical_diffusion_amplitude": 0.7685962724186927,
+        "m4_extra_viscosity_over_physical": 0.023095206493462955,
+        "combined_effective_viscosity_over_physical": 0.9528648021829733,
+        "fixed_gaussian_representation_filter": 0.6738254512314336
+      },
+      {
+        "wavelength_m": 0.16,
+        "wavelength_over_h": 4.0,
+        "fractional_translation": 0.1,
+        "m4_amplitude": 0.9870369800569784,
+        "m4_phase_error_rad": 0.046422411505593744,
+        "gbd_amplitude": 0.6944444444444445,
+        "combined_amplitude": 0.6854423472617907,
+        "exact_physical_diffusion_amplitude": 0.6628321311472734,
+        "m4_extra_viscosity_over_physical": 0.031728379596069764,
+        "combined_effective_viscosity_over_physical": 0.9184341046141745,
+        "fixed_gaussian_representation_filter": 0.5396414858162971
+      },
+      {
+        "wavelength_m": 0.1,
+        "wavelength_over_h": 2.5,
+        "fractional_translation": 0.1,
+        "m4_amplitude": 0.9549061386873204,
+        "m4_phase_error_rad": 0.17969017121507563,
+        "gbd_amplitude": 0.4878982931510556,
+        "combined_amplitude": 0.46589707518500884,
+        "exact_physical_diffusion_amplitude": 0.34897401931199007,
+        "m4_extra_viscosity_over_physical": 0.04382986030279637,
+        "combined_effective_viscosity_over_physical": 0.7255140127522829,
+        "fixed_gaussian_representation_filter": 0.20615299242398238
+      },
+      {
+        "wavelength_m": 1.0,
+        "wavelength_over_h": 25.0,
+        "fractional_translation": 0.25,
+        "m4_amplitude": 0.999947744464861,
+        "m4_phase_error_rad": 0.0002490323134568257,
+        "gbd_amplitude": 0.98955513753634,
+        "combined_amplitude": 0.9895034278030784,
+        "exact_physical_diffusion_amplitude": 0.9895276429707293,
+        "m4_extra_viscosity_over_physical": 0.004963810324549054,
+        "combined_effective_viscosity_over_physical": 1.0023245366301046,
+        "fixed_gaussian_representation_filter": 0.9843326628692644
+      },
+      {
+        "wavelength_m": 0.2,
+        "wavelength_over_h": 5.0,
+        "fractional_translation": 0.25,
+        "m4_amplitude": 0.9722621493768454,
+        "m4_phase_error_rad": 0.034289240160133246,
+        "gbd_amplitude": 0.7829350401822778,
+        "combined_amplitude": 0.7612181049900683,
+        "exact_physical_diffusion_amplitude": 0.7685962724186927,
+        "m4_extra_viscosity_over_physical": 0.10688046122339878,
+        "combined_effective_viscosity_over_physical": 1.0366500569129091,
+        "fixed_gaussian_representation_filter": 0.6738254512314336
+      },
+      {
+        "wavelength_m": 0.16,
+        "wavelength_over_h": 4.0,
+        "fractional_translation": 0.25,
+        "m4_amplitude": 0.9388011803624876,
+        "m4_phase_error_rad": 0.070948527302082,
+        "gbd_amplitude": 0.6944444444444445,
+        "combined_amplitude": 0.6519452641406165,
+        "exact_physical_diffusion_amplitude": 0.6628321311472734,
+        "m4_extra_viscosity_over_physical": 0.15356617379129367,
+        "combined_effective_viscosity_over_physical": 1.0402718988093984,
+        "fixed_gaussian_representation_filter": 0.5396414858162971
+      },
+      {
+        "wavelength_m": 0.1,
+        "wavelength_over_h": 2.5,
+        "fractional_translation": 0.25,
+        "m4_amplitude": 0.7594741861654131,
+        "m4_phase_error_rad": 0.3662154888924948,
+        "gbd_amplitude": 0.4878982931510556,
+        "combined_amplitude": 0.3705461591223921,
+        "exact_physical_diffusion_amplitude": 0.34897401931199007,
+        "m4_extra_viscosity_over_physical": 0.26134116007399033,
+        "combined_effective_viscosity_over_physical": 0.9430253125234768,
+        "fixed_gaussian_representation_filter": 0.20615299242398238
+      },
+      {
+        "wavelength_m": 1.0,
+        "wavelength_over_h": 25.0,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.9999069782427563,
+        "m4_phase_error_rad": 3.46976971602983e-18,
+        "gbd_amplitude": 0.98955513753634,
+        "combined_amplitude": 0.9894630873785568,
+        "exact_physical_diffusion_amplitude": 0.9895276429707293,
+        "m4_extra_viscosity_over_physical": 0.008836418385099005,
+        "combined_effective_viscosity_over_physical": 1.0061971446906512,
+        "fixed_gaussian_representation_filter": 0.9843326628692644
+      },
+      {
+        "wavelength_m": 0.2,
+        "wavelength_over_h": 5.0,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.9487712429686843,
+        "m4_phase_error_rad": 0.0,
+        "gbd_amplitude": 0.7829350401822778,
+        "combined_amplitude": 0.7428262512374765,
+        "exact_physical_diffusion_amplitude": 0.7685962724186927,
+        "m4_extra_viscosity_over_physical": 0.19980876856243118,
+        "combined_effective_viscosity_over_physical": 1.1295783642519417,
+        "fixed_gaussian_representation_filter": 0.6738254512314336
+      },
+      {
+        "wavelength_m": 0.16,
+        "wavelength_over_h": 4.0,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.8838834764831845,
+        "m4_phase_error_rad": -2.3551386880256623e-17,
+        "gbd_amplitude": 0.6944444444444445,
+        "combined_amplitude": 0.6138079697799893,
+        "exact_physical_diffusion_amplitude": 0.6628321311472734,
+        "m4_extra_viscosity_over_physical": 0.30014586348074285,
+        "combined_effective_viscosity_over_physical": 1.186851588498848,
+        "fixed_gaussian_representation_filter": 0.5396414858162971
+      },
+      {
+        "wavelength_m": 0.1,
+        "wavelength_over_h": 2.5,
+        "fractional_translation": 0.5,
+        "m4_amplitude": 0.4487712429686843,
+        "m4_phase_error_rad": 4.638595283872566e-17,
+        "gbd_amplitude": 0.4878982931510556,
+        "combined_amplitude": 0.21895472345969874,
+        "exact_physical_diffusion_amplitude": 0.34897401931199007,
+        "m4_extra_viscosity_over_physical": 0.7610886379471878,
+        "combined_effective_viscosity_over_physical": 1.4427727903966743,
+        "fixed_gaussian_representation_filter": 0.20615299242398238
+      },
+      {
+        "wavelength_m": 1.0,
+        "wavelength_over_h": 25.0,
+        "fractional_translation": 0.75,
+        "m4_amplitude": 0.9999477444648609,
+        "m4_phase_error_rad": -0.0002490323134568257,
+        "gbd_amplitude": 0.98955513753634,
+        "combined_amplitude": 0.9895034278030783,
+        "exact_physical_diffusion_amplitude": 0.9895276429707293,
+        "m4_extra_viscosity_over_physical": 0.0049638103245596005,
+        "combined_effective_viscosity_over_physical": 1.0023245366301152,
+        "fixed_gaussian_representation_filter": 0.9843326628692644
+      },
+      {
+        "wavelength_m": 0.2,
+        "wavelength_over_h": 5.0,
+        "fractional_translation": 0.75,
+        "m4_amplitude": 0.9722621493768454,
+        "m4_phase_error_rad": -0.03428924016013325,
+        "gbd_amplitude": 0.7829350401822778,
+        "combined_amplitude": 0.7612181049900683,
+        "exact_physical_diffusion_amplitude": 0.7685962724186927,
+        "m4_extra_viscosity_over_physical": 0.10688046122339878,
+        "combined_effective_viscosity_over_physical": 1.0366500569129091,
+        "fixed_gaussian_representation_filter": 0.6738254512314336
+      },
+      {
+        "wavelength_m": 0.16,
+        "wavelength_over_h": 4.0,
+        "fractional_translation": 0.75,
+        "m4_amplitude": 0.9388011803624876,
+        "m4_phase_error_rad": -0.07094852730208201,
+        "gbd_amplitude": 0.6944444444444445,
+        "combined_amplitude": 0.6519452641406165,
+        "exact_physical_diffusion_amplitude": 0.6628321311472734,
+        "m4_extra_viscosity_over_physical": 0.15356617379129367,
+        "combined_effective_viscosity_over_physical": 1.0402718988093984,
+        "fixed_gaussian_representation_filter": 0.5396414858162971
+      },
+      {
+        "wavelength_m": 0.1,
+        "wavelength_over_h": 2.5,
+        "fractional_translation": 0.75,
+        "m4_amplitude": 0.7594741861654131,
+        "m4_phase_error_rad": -0.3662154888924948,
+        "gbd_amplitude": 0.4878982931510556,
+        "combined_amplitude": 0.3705461591223921,
+        "exact_physical_diffusion_amplitude": 0.34897401931199007,
+        "m4_extra_viscosity_over_physical": 0.26134116007399033,
+        "combined_effective_viscosity_over_physical": 0.9430253125234768,
+        "fixed_gaussian_representation_filter": 0.20615299242398238
+      },
+      {
+        "wavelength_m": 1.0,
+        "wavelength_over_h": 25.0,
+        "fractional_translation": 0.9,
+        "m4_amplitude": 0.9999879850564347,
+        "m4_phase_error_rad": -0.00019054935032418224,
+        "gbd_amplitude": 0.98955513753634,
+        "combined_amplitude": 0.9895432480872077,
+        "exact_physical_diffusion_amplitude": 0.9895276429707293,
+        "m4_extra_viscosity_over_physical": 0.0011412896407453018,
+        "combined_effective_viscosity_over_physical": 0.9985020159462971,
+        "fixed_gaussian_representation_filter": 0.9843326628692644
+      },
+      {
+        "wavelength_m": 0.2,
+        "wavelength_over_h": 5.0,
+        "fractional_translation": 0.9,
+        "m4_amplitude": 0.993940021478797,
+        "m4_phase_error_rad": -0.023851867439569116,
+        "gbd_amplitude": 0.7829350401822778,
+        "combined_amplitude": 0.778190470655276,
+        "exact_physical_diffusion_amplitude": 0.7685962724186927,
+        "m4_extra_viscosity_over_physical": 0.023095206493462955,
+        "combined_effective_viscosity_over_physical": 0.9528648021829733,
+        "fixed_gaussian_representation_filter": 0.6738254512314336
+      },
+      {
+        "wavelength_m": 0.16,
+        "wavelength_over_h": 4.0,
+        "fractional_translation": 0.9,
+        "m4_amplitude": 0.9870369800569784,
+        "m4_phase_error_rad": -0.04642241150559371,
+        "gbd_amplitude": 0.6944444444444445,
+        "combined_amplitude": 0.6854423472617907,
+        "exact_physical_diffusion_amplitude": 0.6628321311472734,
+        "m4_extra_viscosity_over_physical": 0.031728379596069764,
+        "combined_effective_viscosity_over_physical": 0.9184341046141745,
+        "fixed_gaussian_representation_filter": 0.5396414858162971
+      },
+      {
+        "wavelength_m": 0.1,
+        "wavelength_over_h": 2.5,
+        "fractional_translation": 0.9,
+        "m4_amplitude": 0.9549061386873204,
+        "m4_phase_error_rad": -0.17969017121507552,
+        "gbd_amplitude": 0.4878982931510556,
+        "combined_amplitude": 0.46589707518500884,
+        "exact_physical_diffusion_amplitude": 0.34897401931199007,
+        "m4_extra_viscosity_over_physical": 0.04382986030279637,
+        "combined_effective_viscosity_over_physical": 0.7255140127522829,
+        "fixed_gaussian_representation_filter": 0.20615299242398238
+      }
+    ],
+    "nyquist": "At lambda=2h=.08m and f=.5 the M4 symbol is exactly zero; this unresolved limiting mode is not a cylinder amplitude prediction."
+  },
+  "demonstrated_findings": [
+    "Physical viscosity, intervals, span/circulation/volume scaling and planar stretching are correct in the examined path and native state.",
+    "No additional lost-state or 2D/3D scaling defect was demonstrated.",
+    "Fractional M4 remeshing has short-wave attenuation and dispersion even while circulation and low-order moments are conserved.",
+    "Full GBD evolution uses Lie splitting; RK2 is the inviscid particle integrator."
+  ],
+  "limitations": [
+    "Neither native validity nor these symbols establishes Cd/Cl recovery or uniquely assigns its cause.",
+    "Half-cell results are phase-specific: integer translation has no M4 attenuation; the five-point stencil underdiffuses short waves.",
+    "Walls, pruning, varying displacement, FVM renewal and nonlinear feedback change the actual spectrum.",
+    "Body-scale effective viscosity error in the symmetric axial example is about .62%; larger errors affect wavelengths resolved by only a few nodes. Boundary-layer thickness is not automatically a periodic wavelength.",
+    "This physical receipt is not a full monitoring/output/native coverage qualification."
+  ],
+  "shortest_isolated_discriminating_measurement": {
+    "purpose": "Measure Gaussian target-to-field reconstruction separately from additional off-lattice M4 evolution, without another mature cylinder. Decisive for operator error, not a Cd/Cl proof.",
+    "input": "One qualified frozen reference target and complete simultaneous Gaussian coefficient image C0. Keep identical support, h, sigma, span and dtype. Do not use the rejected warm auxiliary history.",
+    "gaussian_measurement": "Before evolution, measure FVM velocity-curl target vs native C0 Gaussian represented curl, and reference vs C0 outer Un/gt. M4 evolution is absent; this separates transfer/reconstruction, with prescribed masks/taper unchanged.",
+    "m4_measurement": "Freeze C0. Rigidly translate coefficients by delta=(f*h,0,0), for f=0,.25,.5, without changing strength/core. Exact Gaussian comparator is C0 evaluated at query-delta. Apply only native M4 scatter to fully padded wall-free support, nu=0 and no pruning, then reconstruct with identical sigma. Difference from the exact translated field isolates M4 from inverse renewal, molecular diffusion, nonlinear advection, retention and wall closure.",
+    "cardinal_control": "f=0 must match C0 within storage/cardinal error. Keep native circulation/XY moments/capacity guards unchanged. Record any failure; do not loosen guards.",
+    "extra_minimal_control": "If needed repeat initial inverse construction at sigma/h=.5 and1, always using exact same-sigma translated comparator. Measure inverse target residual separately. M4 symbol is independent of sigma; reject unqualified inverse variants.",
+    "measurements": [
+      "target represented-curl residual before remesh",
+      "outer Un/gt errors before remesh",
+      "additional outer Un/gt and represented-curl error after M4",
+      "circulation/XY first and second moments",
+      "per-mode amplitude/phase change",
+      "source/checkpoint/output hashes"
+    ],
+    "bounded_scope": "One already-qualified frozen image, three host scatters and bounded native induction at existing356face probes; no accepted flow interval or Picard loop. Roughly22k production coefficients fit comfortably within native200kcapacity. Measure RAM/time before using reference416k-node support.",
+    "no_launch_performed": true
+  }
+}

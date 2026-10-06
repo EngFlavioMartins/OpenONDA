@@ -1,0 +1,234 @@
+{
+  "format_version": 13,
+  "kind": "openonda.coupled_backup",
+  "created_utc": "2026-10-05T21:44:40.194201+00:00",
+  "backend": "fvm",
+  "config_sha256": "f0decdb902d4f1ebcebc5b1bdb01851728ae2677da4f853740152e69576ab625",
+  "config": {
+    "coupler": {
+      "freestream_velocity": [
+        1.0,
+        0.1,
+        0.0
+      ],
+      "freestream": {
+        "initial": [
+          1.0,
+          0.1,
+          0.0
+        ],
+        "final": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "start_time": 1.0,
+        "end_time": 2.0
+      },
+      "transfer_region_bounds": {
+        "xmin": -1.25,
+        "xmax": 2.05,
+        "ymin": -1.25,
+        "ymax": 1.25,
+        "zmin": -0.5,
+        "zmax": 0.5
+      },
+      "eta_blend_width": 0.24,
+      "vpm_only_width": 0.08,
+      "transfer_vorticity_cutoff": 0.05,
+      "transfer_amplification_cap": 1.8,
+      "transfer_diagnostic_interval_steps": 60,
+      "transfer_discretization_error_limit": 0.08,
+      "coupling_patch": "numericalBoundary",
+      "interface_iterations": 6,
+      "interface_normal_tolerance": 1e-05,
+      "interface_gradient_tolerance": 1e-05,
+      "backup_interval_steps": 25
+    },
+    "vpm": {
+      "axisymmetric_no_swirl_axis": null,
+      "cutoff_radius_factor": 100,
+      "domain_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.5,
+        0.5
+      ],
+      "state_limits": {
+        "finite_state": {
+          "enabled": true
+        },
+        "lagrangian_cfl": {
+          "maximum": 1.0
+        },
+        "maximum_particle_strength": {
+          "maximum": null
+        },
+        "divergence": {
+          "maximum": null
+        },
+        "misalignment": {
+          "maximum_degrees": null
+        },
+        "growth": {
+          "maximum_particle_strength_growth": null,
+          "maximum_vorticity_growth": null
+        }
+      },
+      "max_n_particles": 200000,
+      "particle_kernel": "GAUSSIAN",
+      "precision": "f32",
+      "random_seed": 42,
+      "stabilization": {
+        "selective_eddy_viscosity_coefficient": 0.0,
+        "selective_eddy_viscosity_start_step": 0,
+        "pedrizzetti_relaxation_factor": 0.0,
+        "pedrizzetti_relaxation_interval_steps": 1,
+        "pedrizzetti_relaxation_start_step": 0,
+        "pedrizzetti_relaxation_end_step": null,
+        "pedrizzetti_relaxation_preserve_vortex_strength": true,
+        "pedrizzetti_relaxation_preserve_moments": false,
+        "filament_refinement": {
+          "interval_steps": 0,
+          "max_vortex_strength_factor": 2.0,
+          "offset_fraction": 0.25,
+          "max_absolute_vortex_strength": null
+        },
+        "divergence_relaxation": {
+          "interval_steps": 0,
+          "start_step": 0,
+          "grid_spacing": null,
+          "regularization": 0.1,
+          "solver_relative_tolerance": 1e-05,
+          "max_iterations": 30,
+          "max_projection_sweeps": 3,
+          "max_correction_norm": 0.02,
+          "max_residual_ratio": 0.9,
+          "total_kinetic_energy_tolerance": 1e-06,
+          "total_enstrophy_tolerance": 0.0001,
+          "total_helicity_tolerance": 0.0001,
+          "variation_tolerance": 0.001,
+          "vortex_strength_reference_scale": null,
+          "linear_impulse_reference_scale": null,
+          "angular_impulse_reference_scale": null,
+          "vortex_strength_reference_tolerance": 0.001,
+          "linear_impulse_reference_tolerance": 0.01,
+          "angular_impulse_reference_tolerance": 0.01,
+          "spectral_convergence_fraction": 0.1
+        },
+        "remove_particles_by_bounds": [
+          -5.0,
+          15.0,
+          -5.0,
+          5.0,
+          -0.5,
+          0.5
+        ],
+        "regularization_interval_steps": 0,
+        "regularization_start_step": 0,
+        "regularization_grid_spacing": null,
+        "regularization_tail_budget": 0.003,
+        "regularization_solenoidal_remesh": false,
+        "regularization_transfer_only": false,
+        "regularization_preserve_groups": false,
+        "regularization_total_kinetic_energy_dissipation_limit": 0.15,
+        "regularization_total_enstrophy_dissipation_limit": 0.15,
+        "regularization_divergence_trigger": 0.04,
+        "regularization_misalignment_trigger": 20.0,
+        "regularization_core_radius_trigger": null,
+        "regularization_core_radius": null,
+        "regularization_projection_trigger": 0.08,
+        "regularization_projection_max_correction": 0.2,
+        "max_vortex_strength_error": 1e-05,
+        "max_vortex_strength_growth": 0.001,
+        "max_vorticity_growth": 0.05
+      },
+      "integrator": {
+        "name": "RK2",
+        "order": 2,
+        "a": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            0.0
+          ]
+        ],
+        "b": [
+          0.5,
+          0.5
+        ],
+        "c": [
+          0.0,
+          1.0
+        ]
+      },
+      "induction": {
+        "type": "source.solvers.vpm.physics.induction.planar.PlanarInduction",
+        "method": "PLANAR",
+        "planar_span": 1.0,
+        "spanwise_tolerance": 0.001,
+        "plane_z": 0.0,
+        "stretching_scheme": "DIRECT",
+        "kernel": "GAUSSIAN"
+      },
+      "time_step_size": 0.04,
+      "turbulence": {
+        "model": "INVISCID",
+        "smagorinsky_coefficient": 0.2,
+        "subgrid_dissipation_coefficient": 1.048,
+        "filter_width": null,
+        "flow_model": "INVISCID"
+      },
+      "viscous": {
+        "scheme": "GBD",
+        "core_radius_ratio": 1.0,
+        "dvh_grid_spacing": null,
+        "dvh_domain_padding": 3.0,
+        "dvh_threshold": 0.01,
+        "dvh_threshold_mode": "budget",
+        "gbd_grid_spacing": 0.04,
+        "gbd_domain_padding": 5.0,
+        "gbd_threshold": 1.6000000000000003e-05,
+        "gbd_threshold_mode": "absolute",
+        "gbd_remeshing_kernel": "M4_PRIME",
+        "dvh_support_radius_ratio": 4,
+        "kinematic_viscosity": 0.006666666666666667,
+        "particle_spacing": 0.04
+      }
+    },
+    "solid_geometry": {
+      "wall_revisions": [
+        "8954c6414900ac54ef6d774ee1af045b"
+      ]
+    },
+    "transfer_lattice": {
+      "anchor": [
+        -1.581431638466319,
+        -1.5814329494196484,
+        -2.5410988417628992e-17
+      ]
+    }
+  },
+  "coupling_step": 1125,
+  "time": 45.0,
+  "fvm_step": 5625,
+  "vpm_step": 1125,
+  "n_fvm_substeps": 5,
+  "checkpoint_files": {
+    "fvm": "checkpoint-uhx2vh8_/fvm_001125.npz",
+    "vpm": "checkpoint-uhx2vh8_/vpm_001125.h5",
+    "vpm_vtu": "checkpoint-uhx2vh8_/vpm_001125.vtu",
+    "vpm_boundary_condition": "checkpoint-uhx2vh8_/vpm_boundary_condition_001125.npz"
+  },
+  "file_sha256": {
+    "fvm": "f51df047865918122b94cb92b01a01623b33c199d4c6fedf05c214e1bbf30d5f",
+    "vpm": "d47d96a923d53ea6e3958d8cd3efa3df8220d95f3b91d002658560b80fc2d7e1",
+    "vpm_vtu": "0bd605230519a0a25782fbf6758d334b31df0feaadc4ed496369c86538973937",
+    "vpm_boundary_condition": "2b8821bebcb9166c2ed3de826ecf6de77e02af1fc53db47e1010fe30974e521b"
+  }
+}

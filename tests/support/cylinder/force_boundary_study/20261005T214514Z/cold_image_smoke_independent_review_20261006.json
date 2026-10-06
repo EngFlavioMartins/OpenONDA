@@ -1,0 +1,133 @@
+{
+  "schema": "openonda-cylinder-cold-image-smoke-independent-review/1",
+  "written_at_utc": "2026-10-06T00:56:09.811127+00:00",
+  "status": "passed",
+  "checks": {
+    "final_completed_bounded_range": true,
+    "independent_cold_fixed_ten_iterations": true,
+    "output_hash": true,
+    "captured_sources_unchanged": true,
+    "reviewed_tooling_unchanged": true,
+    "native_configuration_exact": true,
+    "qualified_volume_hash": true,
+    "first_cold_image_bitwise_repeat": true,
+    "schema_and_history_policy": true,
+    "accepted_indices_clocks_geometry": true,
+    "initial_history_and_native_config_identity": true,
+    "exact_reference_channels_bitwise": true,
+    "finite_projected_fields": true,
+    "boundary_projection_consistency": true,
+    "final_native_and_oracle_guards": true,
+    "first_final_independent_cpu_cuda_kernels": true
+  },
+  "source_receipt_sha256": "7fcfc80019e912e5e32c785989d6a4e46852b84b534e8f70c99e88f9acf38cc4",
+  "output_sha256": "141053fd7f483d9610c496af9a5c568cd3e84de68ad2afb03409b46360a7b5a6",
+  "measurements": [
+    {
+      "frame_index": 0,
+      "time": 99.99999999998809,
+      "auxiliary_maximum_stored_strength": 0.0811220109462738,
+      "auxiliary_strength_l1": 40.678558814949604,
+      "native_final_closure_correction_fraction": 0.06521936290196657,
+      "final_representation_residual": 0.0903462112361802,
+      "target_relative_admission": {
+        "maximum_coefficient_to_target_ratio": 1.7643475045676782,
+        "maximum_coefficient_l1_to_target_l1_ratio": 1.0643493088594025,
+        "maximum_coefficient_ratio_limit": 4.0,
+        "coefficient_l1_ratio_limit": 10.0,
+        "zero_initial_coefficients": true,
+        "passed": true
+      },
+      "outer_errors": {
+        "production": {
+          "normal_velocity_rms": 0.012240670441458863,
+          "tangential_gradient_rms": 0.020446099950973035
+        },
+        "reference_support": {
+          "normal_velocity_rms": 0.010814829050499946,
+          "tangential_gradient_rms": 0.020416855356211835
+        }
+      },
+      "cpu_cuda_comparisons": {
+        "production": {
+          "maximum_velocity_absolute_error": 1.1893908080651272e-10,
+          "maximum_jacobian_absolute_error": 3.798952874500827e-09,
+          "absolute_error_bound": 2e-06,
+          "source_count": 54663,
+          "source_batch_size": 32768,
+          "source_storage_dtype": "float32",
+          "accumulator_dtype": "float64"
+        },
+        "reference_support": {
+          "maximum_velocity_absolute_error": 1.189390252953615e-10,
+          "maximum_jacobian_absolute_error": 3.798952874500827e-09,
+          "absolute_error_bound": 2e-06,
+          "source_count": 86682,
+          "source_batch_size": 32768,
+          "source_storage_dtype": "float32",
+          "accumulator_dtype": "float64"
+        }
+      }
+    },
+    {
+      "frame_index": 1,
+      "time": 100.03999999998807,
+      "auxiliary_maximum_stored_strength": 0.08108186721801758,
+      "auxiliary_strength_l1": 40.67005645905806,
+      "native_final_closure_correction_fraction": 0.06523368279723196,
+      "final_representation_residual": 0.09037976047962729,
+      "target_relative_admission": {
+        "maximum_coefficient_to_target_ratio": 1.7646478322760988,
+        "maximum_coefficient_l1_to_target_l1_ratio": 1.0641868566758783,
+        "maximum_coefficient_ratio_limit": 4.0,
+        "coefficient_l1_ratio_limit": 10.0,
+        "zero_initial_coefficients": true,
+        "passed": true
+      },
+      "outer_errors": {
+        "production": {
+          "normal_velocity_rms": 0.012223507364085194,
+          "tangential_gradient_rms": 0.02083161352842001
+        },
+        "reference_support": {
+          "normal_velocity_rms": 0.010785415094922392,
+          "tangential_gradient_rms": 0.020828351377646676
+        }
+      },
+      "cpu_cuda_comparisons": {
+        "production": {
+          "maximum_velocity_absolute_error": 1.214036648988781e-10,
+          "maximum_jacobian_absolute_error": 3.642075231680142e-09,
+          "absolute_error_bound": 2e-06,
+          "source_count": 54718,
+          "source_batch_size": 32768,
+          "source_storage_dtype": "float32",
+          "accumulator_dtype": "float64"
+        },
+        "reference_support": {
+          "maximum_velocity_absolute_error": 1.2140377592118057e-10,
+          "maximum_jacobian_absolute_error": 3.6420752420884828e-09,
+          "absolute_error_bound": 2e-06,
+          "source_count": 86786,
+          "source_batch_size": 32768,
+          "source_storage_dtype": "float32",
+          "accumulator_dtype": "float64"
+        }
+      }
+    }
+  ],
+  "initial_frozen25_sensitivity": {
+    "production": {
+      "normal_velocity_rms_difference_cold10_vs_frozen25": 0.0008456807743557941,
+      "tangential_gradient_rms_difference_cold10_vs_frozen25": 0.001411914425574363
+    },
+    "reference_support": {
+      "normal_velocity_rms_difference_cold10_vs_frozen25": 0.000841835105498236,
+      "tangential_gradient_rms_difference_cold10_vs_frozen25": 0.0014102824787347464
+    }
+  },
+  "wall_seconds": 80.41700665900134,
+  "process_peak_rss_bytes": 1150722048,
+  "scope": "Two independently constructed simultaneous reference images at100 and100.04s; zero initial coefficients, fixed10 internal inverse iterations, exact native final moment/storage limits and explicit oracle coefficient bounds. The first cold image repeat is bitwise identical; no evolving VPM trajectory, autonomous force recovery or tail-cause claim.",
+  "full_horizon_limit": "Native guard and target-relative stability across100-112s still require all three completed worker ranges and strict merge; these two frames do not establish developed force behavior."
+}

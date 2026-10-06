@@ -1,0 +1,156 @@
+{
+  "physical_time": 46.0,
+  "physical_time_advanced": 0,
+  "source_sha256": {
+    "source/solvers/vpm/physics/diffusion/planar.py": "2608f6efe083696c2ebe3d12d0d9aac2f26b3d24de52b171ca0cc517ad74e1dd",
+    "source/solvers/vpm/core/evolution.py": "8e0dd0ba475c590bb779343da9eb3288e175bc844d5ac1e139bd4baee74e270e"
+  },
+  "input_sha256": {
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/wall_trace_fields.npz": "a82366cb4de2be7a0c421cb31d667b66f0cd9ecea8205a95cf4afa0ae8b210ba"
+  },
+  "measurements": {
+    "remesh_prune_only": {
+      "diffusion_interval_seconds": 0,
+      "substeps": 1,
+      "operator_seconds_cold_warm": [
+        1.9081977500027278,
+        0.2108324620021449
+      ],
+      "output_particle_count": 22127,
+      "circulation": 1.0409537404175353,
+      "circulation_change": 9.266784672945505e-09,
+      "linear_impulse_change": [
+        -1.591276621581983e-08,
+        -4.3767145463391444e-08,
+        0.0
+      ],
+      "strength_l1": 26.107999801635742,
+      "native_moment_recovery": {
+        "applied": true,
+        "nonzero_node_count": 25269,
+        "retained_node_count": 22127,
+        "pruned_node_count": 3142,
+        "support_augmented_node_count": 0,
+        "correction_fraction": 9.897974765314263e-06,
+        "normalized_vortex_strength_residual": 6.038426946901556e-16,
+        "normalized_linear_impulse_residual": 5.021695560617573e-17,
+        "normalized_angular_impulse_residual": 1.8211576709816095e-17
+      },
+      "native_wall_transfer": {
+        "wall_adjacent_particles": 138,
+        "excluded_signed_weight_l1": 1.7280251885146533e-07,
+        "fluid_correction_l1": 2.8122824200661656e-07,
+        "expanded_support_particles": 0
+      },
+      "native_wall_geometry": {
+        "reused": true,
+        "queried_nodes": 0,
+        "queried_links": 0
+      },
+      "cylinder": {
+        "total_velocity": {
+          "velocity_rms": 0.10032920172250581,
+          "velocity_maximum": 0.17852108392678914,
+          "normal_velocity_rms": 0.05115916927343633,
+          "tangential_velocity_rms": 0.0863057826424577
+        },
+        "velocity_change": {
+          "velocity_rms": 3.6465237167943558e-06,
+          "velocity_maximum": 7.511433098999783e-06,
+          "normal_velocity_rms": 2.5376491336680772e-06,
+          "tangential_velocity_rms": 2.6186775463079415e-06
+        },
+        "tangential_normal_gradient_change_rms": 1.2058670874734875e-05
+      },
+      "numericalBoundary": {
+        "total_velocity": {
+          "velocity_rms": 1.0226465292806062,
+          "velocity_maximum": 1.1876725676300464,
+          "normal_velocity_rms": 0.5825980459343473,
+          "tangential_velocity_rms": 0.840467394205837
+        },
+        "velocity_change": {
+          "velocity_rms": 3.312922263166891e-06,
+          "velocity_maximum": 8.167689163811313e-06,
+          "normal_velocity_rms": 2.475113663297604e-06,
+          "tangential_velocity_rms": 2.2021049646972668e-06
+        },
+        "tangential_normal_gradient_change_rms": 4.703165612316894e-06
+      }
+    },
+    "zero_flux_molecular_diffusion": {
+      "diffusion_interval_seconds": 0.04,
+      "substeps": 2,
+      "operator_seconds_cold_warm": [
+        0.28396490100203664,
+        0.21902594600032899
+      ],
+      "output_particle_count": 22299,
+      "circulation": 1.0409537249452114,
+      "circulation_change": -6.20553919361555e-09,
+      "linear_impulse_change": [
+        -0.0030037512679177425,
+        0.00019486506226495948,
+        0.0
+      ],
+      "strength_l1": 26.032190322875977,
+      "native_moment_recovery": {
+        "applied": true,
+        "nonzero_node_count": 28502,
+        "retained_node_count": 22299,
+        "pruned_node_count": 6203,
+        "support_augmented_node_count": 0,
+        "correction_fraction": 0.0002477586742752992,
+        "normalized_vortex_strength_residual": 1.11704028960859e-15,
+        "normalized_linear_impulse_residual": 4.0501273093990336e-16,
+        "normalized_angular_impulse_residual": 9.074910673921945e-18
+      },
+      "native_wall_transfer": {
+        "wall_adjacent_particles": 138,
+        "excluded_signed_weight_l1": 1.7280251885315632e-07,
+        "fluid_correction_l1": 2.812282421849093e-07,
+        "expanded_support_particles": 0
+      },
+      "native_wall_geometry": {
+        "reused": true,
+        "queried_nodes": 0,
+        "queried_links": 0
+      },
+      "cylinder": {
+        "total_velocity": {
+          "velocity_rms": 0.09400035570961343,
+          "velocity_maximum": 0.16282277675286344,
+          "normal_velocity_rms": 0.04491802608698353,
+          "tangential_velocity_rms": 0.08257383245304122
+        },
+        "velocity_change": {
+          "velocity_rms": 0.013372243597327731,
+          "velocity_maximum": 0.03176151085619485,
+          "normal_velocity_rms": 0.008247786068809623,
+          "tangential_velocity_rms": 0.010525726758253914
+        },
+        "tangential_normal_gradient_change_rms": 0.7273605122172873
+      },
+      "numericalBoundary": {
+        "total_velocity": {
+          "velocity_rms": 1.0226039586558806,
+          "velocity_maximum": 1.1876940049929416,
+          "normal_velocity_rms": 0.5824463388242729,
+          "tangential_velocity_rms": 0.8405207425452855
+        },
+        "velocity_change": {
+          "velocity_rms": 0.000575344667402784,
+          "velocity_maximum": 0.0027124205960755935,
+          "normal_velocity_rms": 0.00047300500399320494,
+          "tangential_velocity_rms": 0.00032754809189828633
+        },
+        "tangential_normal_gradient_change_rms": 0.0012607808611076912
+      }
+    }
+  },
+  "interpretation": "Detached wall-visible M4/no-flux GBD replay on unchanged accepted 46 s particles. Molecular wall reflection can change first/second moments; pruning conserves those post-diffusion moments per connected fluid component. This demonstrates operator conservation, not evolved force-amplitude recovery. Timings exclude solver/device evolution, FVM and MPI."
+}

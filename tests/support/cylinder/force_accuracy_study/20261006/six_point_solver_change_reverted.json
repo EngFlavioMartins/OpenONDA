@@ -1,0 +1,11 @@
+{
+  "checked_utc": "2026-10-06T06:48:08.493026+00:00",
+  "reason": "No sufficient autonomous force recovery to justify retaining the experimental solver change. User explicitly requested reverting changes without demonstrated benefit.",
+  "solver_files_bitwise_equal_to_HEAD": {
+    "source/solvers/vpm/config/case.py": "3f0ccac87fb6adde49d3da396e7b1793fedcd1f8307c116aa88c866a6635fff0",
+    "source/solvers/vpm/physics/diffusion/planar.py": "02cf516552a476081496babd8404218ca46f03724e73a4a4bbfc90af9d6acc13"
+  },
+  "associated_new_test_removed": true,
+  "native_experiment_stopped": true,
+  "interpretation": "First complete cycle improved lift by less than 1% relative to baseline; no claim of exact zero effect or settled long-term equivalence."
+}

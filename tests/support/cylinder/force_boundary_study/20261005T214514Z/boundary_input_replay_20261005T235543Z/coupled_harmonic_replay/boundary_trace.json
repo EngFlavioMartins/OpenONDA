@@ -1,0 +1,54 @@
+{
+  "schema": "openonda-explicit-boundary-input-replay/1",
+  "status": "prepared; no solver replay performed",
+  "prepared_at_utc": "2026-10-05T23:56:10.883733+00:00",
+  "trace_origin": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+  "source_hdf5": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+  "source_hdf5_sha256": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b",
+  "source_group": "",
+  "source_attributes": {
+    "complete": true,
+    "fundamental_frequency_hz": 0.1815070887743629,
+    "model": "mean + linear trend + fundamental + second harmonic; no amplitude rescaling",
+    "phase_policy": "One global initial lift-phase translation only; reference model keeps its native clock",
+    "schema": "openonda-harmonic-boundary-endpoint-model/1",
+    "source_fit_midpoint_time": 40.0,
+    "trace_origin": "Measured actual coupled VPM Gaussian field harmonic model"
+  },
+  "source_receipt_sha256": "7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972",
+  "adapter_source_sha256": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+  "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e",
+  "boundary_trace_sha256": "4ee7487b81c2d51a9203da2b760a64499a5e2544f9ef4c531e8da672b0f88079",
+  "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+  "original_capture_receipt_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+  "native_input_sha256": {
+    "reference_backup.npz": "a517ec6564a6b38430d02571bf7726558cc859240c6cc802189ba13f398dc374",
+    "reference_mesh.npz": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201",
+    "reference_metadata.json": "637a9dc944cca03fcc056f9eddb2217a65060eb1eb44c33b51acb37cd2e3fc01",
+    "small_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "small_metadata.json": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+  },
+  "captured_reference_directory": "/tmp/openonda-cylinder-boundary-study-20261005",
+  "clock": {
+    "start_time": 99.99999999998809,
+    "end_time": 111.99999999998144,
+    "native_step_size": 0.008,
+    "accepted_endpoint_step_size": 0.04,
+    "accepted_endpoint_count": 301,
+    "fvm_steps": 1500,
+    "fvm_substeps_per_coupling_interval": 5,
+    "source_time_window": [
+      36.25150837993024,
+      48.25150837992359
+    ]
+  },
+  "geometry": {
+    "face_count": 356,
+    "exact_original_native_face_geometry": true,
+    "maximum_velocity_normal_projection_difference": 8.881784197001252e-16,
+    "maximum_tangential_gradient_normal_component": 1.3877787807814457e-16,
+    "maximum_signed_normal_flux": 6.314393452555578e-16
+  },
+  "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+  "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+}

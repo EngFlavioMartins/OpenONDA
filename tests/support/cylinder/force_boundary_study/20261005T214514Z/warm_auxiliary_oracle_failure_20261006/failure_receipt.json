@@ -1,0 +1,94 @@
+{
+  "schema": "openonda-cylinder-warm-auxiliary-image-failure/1",
+  "written_at_utc": "2026-10-06T00:50:36.273820+00:00",
+  "status": "inadmissible_diagnostic_oracle",
+  "original_report_sha256": "2abab903458a150b53aa355d07c418dac8158f8175867e0d69288e5c473678a9",
+  "original_trace_sha256": "fc5d16bdfc49d276ebb54e0bdc07360b4c5ac4bbe6c3bc8307da0f800fb3510f",
+  "source_bytes_receipt": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/warm_auxiliary_oracle_failure_20261006/original_source_receipt.json",
+  "selected_recorded_frames": [
+    {
+      "frame_index": 0,
+      "time": 99.99999999998809,
+      "auxiliary_maximum_absolute_strength": 0.08133638650178909,
+      "auxiliary_strength_l1": 42.916869723962975,
+      "outside_production_support_strength_l1": 9.291285547701673,
+      "outside_production_support_l1_fraction": 0.2164949495958651,
+      "representation_residual_after_prune": 0.08815653459575352,
+      "reported_native_relative_amplification": 1.8,
+      "outer_errors": {
+        "production": {
+          "area_weighted_normal_velocity_rms": 0.011846616663840038,
+          "area_weighted_tangential_gradient_rms": 0.02045350750376985
+        },
+        "reference_support": {
+          "area_weighted_normal_velocity_rms": 0.010311057919062878,
+          "area_weighted_tangential_gradient_rms": 0.02040959194055844
+        }
+      }
+    },
+    {
+      "frame_index": 100,
+      "time": 103.99999999998587,
+      "auxiliary_maximum_absolute_strength": 6.81370735168457,
+      "auxiliary_strength_l1": 85.62765649812158,
+      "outside_production_support_strength_l1": 51.471512069533965,
+      "outside_production_support_l1_fraction": 0.6011084989890282,
+      "representation_residual_after_prune": 0.05488518648971733,
+      "reported_native_relative_amplification": 3.2459557452519032,
+      "outer_errors": {
+        "production": {
+          "area_weighted_normal_velocity_rms": 0.013445644463368631,
+          "area_weighted_tangential_gradient_rms": 0.012651243623459051
+        },
+        "reference_support": {
+          "area_weighted_normal_velocity_rms": 0.013389085816044763,
+          "area_weighted_tangential_gradient_rms": 0.012679829902642136
+        }
+      }
+    },
+    {
+      "frame_index": 200,
+      "time": 107.99999999998366,
+      "auxiliary_maximum_absolute_strength": 14.124147415161133,
+      "auxiliary_strength_l1": 174.71403186541397,
+      "outside_production_support_strength_l1": 140.5011953060211,
+      "outside_production_support_l1_fraction": 0.8041780834996254,
+      "representation_residual_after_prune": 0.015224844109346138,
+      "reported_native_relative_amplification": 2.0545163404096365,
+      "outer_errors": {
+        "production": {
+          "area_weighted_normal_velocity_rms": 0.016384013659961835,
+          "area_weighted_tangential_gradient_rms": 0.02072708488756287
+        },
+        "reference_support": {
+          "area_weighted_normal_velocity_rms": 0.037267170988902316,
+          "area_weighted_tangential_gradient_rms": 0.020653163525097717
+        }
+      }
+    },
+    {
+      "frame_index": 300,
+      "time": 111.99999999998144,
+      "auxiliary_maximum_absolute_strength": 30.237401962280273,
+      "auxiliary_strength_l1": 339.97172543551113,
+      "outside_production_support_strength_l1": 305.64460161157075,
+      "outside_production_support_l1_fraction": 0.8990294743482959,
+      "representation_residual_after_prune": 0.007347573144488983,
+      "reported_native_relative_amplification": 2.237126071580177,
+      "outer_errors": {
+        "production": {
+          "area_weighted_normal_velocity_rms": 0.014506851889809831,
+          "area_weighted_tangential_gradient_rms": 0.012582338964583557
+        },
+        "reference_support": {
+          "area_weighted_normal_velocity_rms": 0.08270571380128008,
+          "area_weighted_tangential_gradient_rms": 0.013029764873980686
+        }
+      }
+    }
+  ],
+  "measured_conclusion": "The warm auxiliary image accumulates secular coefficient strength, predominantly outside the production support, and corrupts its full-support boundary forcing. Falling representation residual and relative native amplification are insufficient to admit this nonphysical time sequence. The full-support force drift is not evidence that native production wake truncation causes the force deficit.",
+  "spatial_limit": "Particle positions/strength arrays were not saved by the completed consumer. No new warm replay was launched. Outside-production L1 is directly recorded; the precise coefficient maximum location and reference eta-belt attribution remain unmeasured.",
+  "mechanism_scope": "Warm history repeatedly projects a finite reference field without physical particle advection or diffusion. Native blending sets physical_target=represented_VPM+eta*(FVM_target-represented_VPM), retaining represented_VPM where eta=0, and limits growth against the larger of previous coefficients or cap times that blended target. Global moment recovery can redistribute coefficient changes. These formulas explain why a relative cap and field residual alone do not supply an absolute bound for this auxiliary oracle; they do not prove a defect of the native evolving solver.",
+  "replacement_policy": "Retire the warm auxiliary path. Reconstruct each simultaneous reference frame independently from zero using a fixed ten internal inverse iterations, with no interim exported particle state; enforce the final unchanged atomic replacement budgets, plus explicit oracle-only coefficient/target bounds."
+}

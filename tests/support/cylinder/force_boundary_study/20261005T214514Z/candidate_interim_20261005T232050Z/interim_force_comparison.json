@@ -1,0 +1,257 @@
+{
+  "schema": "openonda-native-candidate-interim/1",
+  "captured_at": "2026-10-05T23:20:50.338351+00:00",
+  "status": "Interim: native candidate is still running.",
+  "window": [
+    48.0,
+    53.680000000004604
+  ],
+  "sources": {
+    "candidate": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/candidate_interim_20261005T232050Z/candidate_forces_history.csv",
+      "sha256": "acdecc977f1728f5f92101f2b1b8fbbbc5b730f53e4839397a5e56595e6d17ef",
+      "captured_at": "2026-10-05T23:20:50.338351+00:00",
+      "available_end": 53.680000000004604
+    },
+    "baseline": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/snapshots/coupled_forces_history.csv",
+      "sha256": "77fdbc5be90dce6622297900825a183ce80be301f91c01bd056bb10a88507ce7",
+      "captured_at": "previously frozen through58s",
+      "available_end": 58.00000000000605
+    },
+    "reference": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/snapshots/reference_forces_history.csv",
+      "sha256": "d1ffc08ba43e5ce9c97cf8f84463c2e970691d3258c5995a1bfcbc5fd89b43b8",
+      "captured_at": "previously frozen through58s",
+      "available_end": 58.00000000000605
+    }
+  },
+  "statistics": {
+    "candidate": {
+      "drag_coefficient": {
+        "mean": 1.287592630249921,
+        "whole_window_peak_to_peak": 0.033719537037249836,
+        "rms_fluctuation": 0.01160425779172219,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 48.680000000002934,
+            "peak_time": 50.04000000000339,
+            "right_trough_time": 51.40000000000384,
+            "period": 2.7200000000009084,
+            "peak_to_peak_raw": 0.033719537037249836,
+            "peak_to_peak_drift_corrected": 0.03356143890542351,
+            "minimum_coefficient": 1.2709277897724085,
+            "maximum_coefficient": 1.3046473268096583,
+            "pressure_contribution_at_raw_extrema": 0.03128826482827851,
+            "pressure_contribution_drift_corrected": 0.031115245763245425,
+            "viscous_contribution_at_raw_extrema": 0.0024312722089713246,
+            "viscous_contribution_drift_corrected": 0.002446193142178199
+          }
+        ],
+        "median_peak_to_peak_raw": 0.033719537037249836,
+        "mean_peak_to_peak_raw": 0.033719537037249836,
+        "median_peak_to_peak_drift_corrected": 0.03356143890542351,
+        "mean_peak_to_peak_drift_corrected": 0.03356143890542351,
+        "median_period": 2.7200000000009084,
+        "mean_period": 2.7200000000009084,
+        "median_pressure_contribution_at_raw_extrema": 0.03128826482827851,
+        "mean_pressure_contribution_at_raw_extrema": 0.03128826482827851,
+        "median_viscous_contribution_at_raw_extrema": 0.0024312722089713246,
+        "mean_viscous_contribution_at_raw_extrema": 0.0024312722089713246,
+        "median_pressure_contribution_drift_corrected": 0.031115245763245425,
+        "mean_pressure_contribution_drift_corrected": 0.031115245763245425,
+        "median_viscous_contribution_drift_corrected": 0.002446193142178199,
+        "mean_viscous_contribution_drift_corrected": 0.002446193142178199,
+        "mean_pressure_coefficient": 0.9978968237552954,
+        "mean_viscous_coefficient": 0.2896958064946257
+      },
+      "lift_coefficient": {
+        "mean": 0.0008910681791133811,
+        "whole_window_peak_to_peak": 0.8478926097732222,
+        "rms_fluctuation": 0.29537990934867114,
+        "complete_cycle_count": 0,
+        "cycles": [],
+        "median_peak_to_peak_raw": null,
+        "mean_peak_to_peak_raw": null,
+        "median_peak_to_peak_drift_corrected": null,
+        "mean_peak_to_peak_drift_corrected": null,
+        "median_period": null,
+        "mean_period": null,
+        "median_pressure_contribution_at_raw_extrema": null,
+        "mean_pressure_contribution_at_raw_extrema": null,
+        "median_viscous_contribution_at_raw_extrema": null,
+        "mean_viscous_contribution_at_raw_extrema": null,
+        "median_pressure_contribution_drift_corrected": null,
+        "mean_pressure_contribution_drift_corrected": null,
+        "median_viscous_contribution_drift_corrected": null,
+        "mean_viscous_contribution_drift_corrected": null,
+        "mean_pressure_coefficient": 0.0015486818110526269,
+        "mean_viscous_coefficient": -0.000657613631939197
+      }
+    },
+    "baseline": {
+      "drag_coefficient": {
+        "mean": 1.2875952139576219,
+        "whole_window_peak_to_peak": 0.03410694075964349,
+        "rms_fluctuation": 0.011747657394672918,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 48.680000000002934,
+            "peak_time": 50.04000000000339,
+            "right_trough_time": 51.40000000000384,
+            "period": 2.7200000000009084,
+            "peak_to_peak_raw": 0.03410401652493733,
+            "peak_to_peak_drift_corrected": 0.03385416697132504,
+            "minimum_coefficient": 1.270626868414088,
+            "maximum_coefficient": 1.3047308849390253,
+            "pressure_contribution_at_raw_extrema": 0.031637270467287815,
+            "pressure_contribution_drift_corrected": 0.031383832712825854,
+            "viscous_contribution_at_raw_extrema": 0.002466746057649405,
+            "viscous_contribution_drift_corrected": 0.002470334258499074
+          }
+        ],
+        "median_peak_to_peak_raw": 0.03410401652493733,
+        "mean_peak_to_peak_raw": 0.03410401652493733,
+        "median_peak_to_peak_drift_corrected": 0.03385416697132504,
+        "mean_peak_to_peak_drift_corrected": 0.03385416697132504,
+        "median_period": 2.7200000000009084,
+        "mean_period": 2.7200000000009084,
+        "median_pressure_contribution_at_raw_extrema": 0.031637270467287815,
+        "mean_pressure_contribution_at_raw_extrema": 0.031637270467287815,
+        "median_viscous_contribution_at_raw_extrema": 0.002466746057649405,
+        "mean_viscous_contribution_at_raw_extrema": 0.002466746057649405,
+        "median_pressure_contribution_drift_corrected": 0.031383832712825854,
+        "mean_pressure_contribution_drift_corrected": 0.031383832712825854,
+        "median_viscous_contribution_drift_corrected": 0.002470334258499074,
+        "mean_viscous_contribution_drift_corrected": 0.002470334258499074,
+        "mean_pressure_coefficient": 0.9976557754864657,
+        "mean_viscous_coefficient": 0.2899394384711562
+      },
+      "lift_coefficient": {
+        "mean": 0.0005137628823270127,
+        "whole_window_peak_to_peak": 0.850283690588871,
+        "rms_fluctuation": 0.2961978357982413,
+        "complete_cycle_count": 0,
+        "cycles": [],
+        "median_peak_to_peak_raw": null,
+        "mean_peak_to_peak_raw": null,
+        "median_peak_to_peak_drift_corrected": null,
+        "mean_peak_to_peak_drift_corrected": null,
+        "median_period": null,
+        "mean_period": null,
+        "median_pressure_contribution_at_raw_extrema": null,
+        "mean_pressure_contribution_at_raw_extrema": null,
+        "median_viscous_contribution_at_raw_extrema": null,
+        "mean_viscous_contribution_at_raw_extrema": null,
+        "median_pressure_contribution_drift_corrected": null,
+        "mean_pressure_contribution_drift_corrected": null,
+        "median_viscous_contribution_drift_corrected": null,
+        "mean_viscous_contribution_drift_corrected": null,
+        "mean_pressure_coefficient": 0.0011973322532906965,
+        "mean_viscous_coefficient": -0.000683569370963718
+      }
+    },
+    "reference": {
+      "drag_coefficient": {
+        "mean": 1.378177782547095,
+        "whole_window_peak_to_peak": 0.05333585817142583,
+        "rms_fluctuation": 0.018439952478024796,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 50.40000000000351,
+            "peak_time": 51.680000000003936,
+            "right_trough_time": 53.080000000004404,
+            "period": 2.680000000000895,
+            "peak_to_peak_raw": 0.05333585817142583,
+            "peak_to_peak_drift_corrected": 0.05322326773782682,
+            "minimum_coefficient": 1.3520797995681946,
+            "maximum_coefficient": 1.4054156577396204,
+            "pressure_contribution_at_raw_extrema": 0.048982336875731836,
+            "pressure_contribution_drift_corrected": 0.04887260633149304,
+            "viscous_contribution_at_raw_extrema": 0.004353521295694107,
+            "viscous_contribution_drift_corrected": 0.004350661406334
+          }
+        ],
+        "median_peak_to_peak_raw": 0.05333585817142583,
+        "mean_peak_to_peak_raw": 0.05333585817142583,
+        "median_peak_to_peak_drift_corrected": 0.05322326773782682,
+        "mean_peak_to_peak_drift_corrected": 0.05322326773782682,
+        "median_period": 2.680000000000895,
+        "mean_period": 2.680000000000895,
+        "median_pressure_contribution_at_raw_extrema": 0.048982336875731836,
+        "mean_pressure_contribution_at_raw_extrema": 0.048982336875731836,
+        "median_viscous_contribution_at_raw_extrema": 0.004353521295694107,
+        "mean_viscous_contribution_at_raw_extrema": 0.004353521295694107,
+        "median_pressure_contribution_drift_corrected": 0.04887260633149304,
+        "mean_pressure_contribution_drift_corrected": 0.04887260633149304,
+        "median_viscous_contribution_drift_corrected": 0.004350661406334,
+        "mean_viscous_contribution_drift_corrected": 0.004350661406334,
+        "mean_pressure_coefficient": 1.0728570690446941,
+        "mean_viscous_coefficient": 0.30532071350240114
+      },
+      "lift_coefficient": {
+        "mean": 0.024326183835450137,
+        "whole_window_peak_to_peak": 1.0738989838671258,
+        "rms_fluctuation": 0.38082958752346724,
+        "complete_cycle_count": 0,
+        "cycles": [],
+        "median_peak_to_peak_raw": null,
+        "mean_peak_to_peak_raw": null,
+        "median_peak_to_peak_drift_corrected": null,
+        "mean_peak_to_peak_drift_corrected": null,
+        "median_period": null,
+        "mean_period": null,
+        "median_pressure_contribution_at_raw_extrema": null,
+        "mean_pressure_contribution_at_raw_extrema": null,
+        "median_viscous_contribution_at_raw_extrema": null,
+        "mean_viscous_contribution_at_raw_extrema": null,
+        "median_pressure_contribution_drift_corrected": null,
+        "mean_pressure_contribution_drift_corrected": null,
+        "median_viscous_contribution_drift_corrected": null,
+        "mean_viscous_contribution_drift_corrected": null,
+        "mean_pressure_coefficient": 0.022933224005528954,
+        "mean_viscous_coefficient": 0.0013929598299211828
+      }
+    }
+  },
+  "candidate_relative_to": {
+    "baseline": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.9887262696050374,
+        "median_peak_to_peak_drift_corrected": 0.9913532633619527
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": null,
+        "median_peak_to_peak_drift_corrected": null
+      }
+    },
+    "reference": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.6322113901096795,
+        "median_peak_to_peak_drift_corrected": 0.630578322825728
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": null,
+        "median_peak_to_peak_drift_corrected": null
+      }
+    }
+  },
+  "limitations": [
+    "Trial is still running; this is a separate interim snapshot, not the final 48\u201358 s comparison.",
+    "Only complete cycles wholly after 48 s are used; missing lift cycles are reported rather than inferred from a partial range.",
+    "The compared trajectories can have different cycle phases within the identical physical window; no time shift or different endpoint is used.",
+    "One drag cycle does not establish sustained or mature force-amplitude recovery."
+  ],
+  "method": "Same accepted-time window 48\u201353.68 s for candidate, frozen production baseline and reference. Each peak must be bracketed by troughs entirely within this window. No phase shift is applied.",
+  "analysis_source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_force_cycles.py": "0cd42ae5b1c5a7269c3b6f6543f76ba7c717e6447d125d76352a1d992b9e0e62"
+  },
+  "findings": [
+    "One complete drag cycle per run; no complete lift cycle is available in the common window.",
+    "Candidate complete-cycle drag amplitude is 1.13% below the baseline raw value and 0.86% below its drift-corrected value.",
+    "Candidate mean drag differs from the baseline by less than 3e-6. This first drag cycle provides no positive evidence of amplitude recovery."
+  ]
+}

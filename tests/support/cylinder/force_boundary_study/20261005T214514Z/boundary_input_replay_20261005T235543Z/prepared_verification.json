@@ -1,0 +1,71 @@
+{
+  "schema": "openonda-host-boundary-input-verification/1",
+  "checked_at_utc": "2026-10-05T23:57:43.554868+00:00",
+  "checks": {
+    "reference": {
+      "native_step_count": 1501,
+      "native_trace_at_step_vs_export_maximum_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "velocity_normal_projection_maximum_difference": 1.1102230246251565e-15,
+      "gradient_normal_component_maximum": 1.8041124150158794e-16,
+      "maximum_signed_normal_flux": 5.551115123125783e-16,
+      "initial_primary_BDF_flux_and_clock_fields_bitwise_identical": {
+        "velocity": true,
+        "velocity_old": true,
+        "velocity_older": true,
+        "kinematic_pressure": true,
+        "volumetric_face_flux": true,
+        "volumetric_face_flux_old": true,
+        "volumetric_face_flux_older": true,
+        "time": true,
+        "step": true,
+        "n_committed_time_steps": true,
+        "time_step_size": true,
+        "accepted_time_step_size": true,
+        "previous_time_step_size": true,
+        "max_courant_number": true,
+        "eddy_viscosity": true,
+        "n_consecutive_accepted_steps": true
+      },
+      "original_reference_capture_receipt_byte_identical": true,
+      "boundary_trace_sha256": "8edd7a102364f05e9e30cc84ead7244a632b8f0c50aef5b492a403e0f11fd678"
+    },
+    "coupled": {
+      "native_step_count": 1501,
+      "native_trace_at_step_vs_export_maximum_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "velocity_normal_projection_maximum_difference": 8.881784197001252e-16,
+      "gradient_normal_component_maximum": 1.3877787807814457e-16,
+      "maximum_signed_normal_flux": 7.389922007661198e-16,
+      "initial_primary_BDF_flux_and_clock_fields_bitwise_identical": {
+        "velocity": true,
+        "velocity_old": true,
+        "velocity_older": true,
+        "kinematic_pressure": true,
+        "volumetric_face_flux": true,
+        "volumetric_face_flux_old": true,
+        "volumetric_face_flux_older": true,
+        "time": true,
+        "step": true,
+        "n_committed_time_steps": true,
+        "time_step_size": true,
+        "accepted_time_step_size": true,
+        "previous_time_step_size": true,
+        "max_courant_number": true,
+        "eddy_viscosity": true,
+        "n_consecutive_accepted_steps": true
+      },
+      "original_reference_capture_receipt_byte_identical": true,
+      "boundary_trace_sha256": "4ee7487b81c2d51a9203da2b760a64499a5e2544f9ef4c531e8da672b0f88079"
+    }
+  },
+  "solver_or_device_initialization": false,
+  "solver_steps_advanced": 0,
+  "meaning": "This verifies preparation and native interpolation only. No force response, restart admission by a constructed solver or amplitude recovery has been measured."
+}

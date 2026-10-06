@@ -1,0 +1,337 @@
+{
+  "schema": "openonda-planar-lagrange6-feasibility/1",
+  "created_utc": "2026-10-06T01:18:22.391217+00:00",
+  "scope": "Read-only exact-symbol candidate assessment. No diagnostic, test, solver or job launched; no native source changed.",
+  "native_sources": {
+    "source/solvers/vpm/physics/diffusion/grid.py": {
+      "sha256": "fddcd6c1363e62cdd3fbedb56211c8eacf6c3c03fbe560b747dedffdb5fe29e4",
+      "lines": [
+        318,
+        2609,
+        2714,
+        2757,
+        3527,
+        3538
+      ]
+    },
+    "source/solvers/vpm/config/viscous.py": {
+      "sha256": "e021979567fb181ff2d56e41c6edaa14f7bccd19c41ec61a6cf55adf1f154579",
+      "lines": [
+        38,
+        144,
+        282
+      ]
+    },
+    "source/solvers/vpm/config/case.py": {
+      "sha256": "3f0ccac87fb6adde49d3da396e7b1793fedcd1f8307c116aa88c866a6635fff0",
+      "lines": [
+        173
+      ]
+    },
+    "source/solvers/vpm/physics/diffusion/planar.py": {
+      "sha256": "02cf516552a476081496babd8404218ca46f03724e73a4a4bbfc90af9d6acc13",
+      "lines": [
+        15,
+        26,
+        175
+      ]
+    },
+    "tests/vpm/test_gbd_high_order_remeshing.py": {
+      "sha256": "2b9d223ff9f0c3edb4c6bf9a6c7ce20c7e701cbd4d9882ab96c96ca99cc5850a",
+      "lines": [
+        15,
+        27,
+        60,
+        98
+      ]
+    }
+  },
+  "candidate": "Six-point degree-five local Lagrange interpolation at integer offsets -2,-1,0,1,2,3; not Monaghan M6. Existing native 3D option is experimental; current planar configuration and solid-wall 3D scatter explicitly reject it.",
+  "moment_reproduction": {
+    "formula": "w_j(f)=product_{k=-2..3,k!=j}(f-k)/(j-k)",
+    "identities": "sum_j w_j(f)*j^n=f^n for n=0..5; hence centred moments1..5 vanish on complete support. Tensor products preserve circulation and XY first/second moments without changing span/volume.",
+    "conditions": "Complete support, no masks/pruning, consistent fixed lattice. Existing moment recovery and storage-precision residual guards remain required after masking/pruning/casting."
+  },
+  "exact_uniform_translation_stability": {
+    "symbol": "H6(theta)=sum_{j=-2..3}w_j(f)*exp[-i*theta*(j-f)]",
+    "p": "p=f(1-f), in[0,1/4]",
+    "s": "s=sin^2(theta/2), in[0,1]",
+    "identity": "1-|H6|^2=p(p+2)(p+6)*[(8/45)*s^3+(4p/15)*s^4+(16p(p+2)/225)*s^5]",
+    "proof": "The rational polynomial identity was independently expanded with exact Fraction arithmetic. Every term is nonnegative; the expression increases with p and s and equals1 at p=1/4,s=1. Thus0<=|H6|<=1 for all f in[0,1] and all theta. The separable XY symbol is the product of two such symbols.",
+    "phase_order": "Centred moments1..5 vanish, so attenuation begins at order theta^6 and asymmetric-phase dispersion at order theta^7. M4 retains moments only through degree2; dispersion begins at order theta^3.",
+    "half_cell_weights": [
+      0.01171875,
+      -0.09765625,
+      0.5859375,
+      0.5859375,
+      -0.09765625,
+      0.01171875
+    ],
+    "half_cell_symbol": "sqrt(1-s)*(1+s/2+3*s^2/8)",
+    "limitation": "Uniform translation is a convolution. Its symbol does not prove global contraction for spatially varying particle displacement, masked wall support or pruning."
+  },
+  "physical_parameters": {
+    "h_m": 0.04,
+    "sigma_m": 0.04,
+    "dt_s": 0.04,
+    "nu_m2_per_s": 0.006666666666666667,
+    "diffusion_substeps": 2,
+    "alpha": 0.08333333333333333
+  },
+  "symbol_comparison": [
+    {
+      "fraction": 0.25,
+      "wavelength_m": 1.0,
+      "physical_diffusion_gain": 0.9895276429707293,
+      "native_gbd_diffusion_gain": 0.98955513753634,
+      "M4_PRIME": {
+        "remesh_gain": 0.999947744464861,
+        "phase_error_rad": 0.0002490323134568257,
+        "combined_gain": 0.9895034278030784,
+        "combined_effective_viscosity_over_physical": 1.0023245366301046
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.999999121702455,
+        "phase_error_rad": 4.733002270468847e-08,
+        "combined_gain": 0.9895542684124919,
+        "combined_effective_viscosity_over_physical": 0.9974441546048685
+      }
+    },
+    {
+      "fraction": 0.25,
+      "wavelength_m": 0.5,
+      "physical_diffusion_gain": 0.9587640114564283,
+      "native_gbd_diffusion_gain": 0.9591938943868926,
+      "M4_PRIME": {
+        "remesh_gain": 0.999180351120531,
+        "phase_error_rad": 0.002016101950047479,
+        "combined_gain": 0.958407692186165,
+        "combined_effective_viscosity_over_physical": 1.008827136454305
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.9999456712517224,
+        "phase_error_rad": 5.866221821001331e-06,
+        "combined_gain": 0.9591417825832551,
+        "combined_effective_viscosity_over_physical": 0.9906450163808035
+      }
+    },
+    {
+      "fraction": 0.25,
+      "wavelength_m": 0.2,
+      "physical_diffusion_gain": 0.7685962724186927,
+      "native_gbd_diffusion_gain": 0.7829350401822778,
+      "M4_PRIME": {
+        "remesh_gain": 0.9722621493768454,
+        "phase_error_rad": 0.034289240160133246,
+        "combined_gain": 0.7612181049900683,
+        "combined_effective_viscosity_over_physical": 1.0366500569129091
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.9895562873819623,
+        "phase_error_rad": 0.0028846599915368604,
+        "combined_gain": 0.7747582916240223,
+        "combined_effective_viscosity_over_physical": 0.9696596097407124
+      }
+    },
+    {
+      "fraction": 0.25,
+      "wavelength_m": 0.16,
+      "physical_diffusion_gain": 0.6628321311472734,
+      "native_gbd_diffusion_gain": 0.6944444444444445,
+      "M4_PRIME": {
+        "remesh_gain": 0.9388011803624876,
+        "phase_error_rad": 0.070948527302082,
+        "combined_gain": 0.6519452641406165,
+        "combined_effective_viscosity_over_physical": 1.0402718988093984
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.9661053891555115,
+        "phase_error_rad": 0.012098851935297453,
+        "combined_gain": 0.670906520246883,
+        "combined_effective_viscosity_over_physical": 0.9705567508086468
+      }
+    },
+    {
+      "fraction": 0.25,
+      "wavelength_m": 0.12,
+      "physical_diffusion_gain": 0.4813879392253192,
+      "native_gbd_diffusion_gain": 0.5625,
+      "M4_PRIME": {
+        "remesh_gain": 0.8474672168253766,
+        "phase_error_rad": 0.19012560334646678,
+        "combined_gain": 0.47670030946427433,
+        "combined_effective_viscosity_over_physical": 1.013384904401787
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.8671487937055969,
+        "phase_error_rad": 0.07263183455942517,
+        "combined_gain": 0.48777119645939826,
+        "combined_effective_viscosity_over_physical": 0.9819815449368938
+      }
+    },
+    {
+      "fraction": 0.25,
+      "wavelength_m": 0.1,
+      "physical_diffusion_gain": 0.34897401931199007,
+      "native_gbd_diffusion_gain": 0.4878982931510556,
+      "M4_PRIME": {
+        "remesh_gain": 0.7594741861654131,
+        "phase_error_rad": 0.3662154888924948,
+        "combined_gain": 0.3705461591223921,
+        "combined_effective_viscosity_over_physical": 0.9430253125234768
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.7323791566687672,
+        "phase_error_rad": 0.22239976864825145,
+        "combined_gain": 0.35732654047810103,
+        "combined_effective_viscosity_over_physical": 0.9775327557163745
+      }
+    },
+    {
+      "fraction": 0.5,
+      "wavelength_m": 1.0,
+      "physical_diffusion_gain": 0.9895276429707293,
+      "native_gbd_diffusion_gain": 0.98955513753634,
+      "M4_PRIME": {
+        "remesh_gain": 0.9999069782427563,
+        "phase_error_rad": 3.46976971602983e-18,
+        "combined_gain": 0.9894630873785568,
+        "combined_effective_viscosity_over_physical": 1.0061971446906512
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.9999987815085176,
+        "phase_error_rad": 2.6020883845877437e-18,
+        "combined_gain": 0.9895539317718335,
+        "combined_effective_viscosity_over_physical": 0.9974764691878718
+      }
+    },
+    {
+      "fraction": 0.5,
+      "wavelength_m": 0.5,
+      "physical_diffusion_gain": 0.9587640114564283,
+      "native_gbd_diffusion_gain": 0.9591938943868926,
+      "M4_PRIME": {
+        "remesh_gain": 0.9985349778420335,
+        "phase_error_rad": 0.0,
+        "combined_gain": 0.9577886540778296,
+        "combined_effective_viscosity_over_physical": 1.0241704417999407
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.9999242927100329,
+        "phase_error_rad": 1.7348548171334987e-18,
+        "combined_gain": 0.9591212764165956,
+        "combined_effective_viscosity_over_physical": 0.9911527288792205
+      }
+    },
+    {
+      "fraction": 0.5,
+      "wavelength_m": 0.2,
+      "physical_diffusion_gain": 0.7685962724186927,
+      "native_gbd_diffusion_gain": 0.7829350401822778,
+      "M4_PRIME": {
+        "remesh_gain": 0.9487712429686843,
+        "phase_error_rad": 0.0,
+        "combined_gain": 0.7428262512374765,
+        "combined_effective_viscosity_over_physical": 1.1295783642519417
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.9849841719969985,
+        "phase_error_rad": -1.4570111972877241e-18,
+        "combined_gain": 0.7711786222813777,
+        "combined_effective_viscosity_over_physical": 0.9872555889074861
+      }
+    },
+    {
+      "fraction": 0.5,
+      "wavelength_m": 0.16,
+      "physical_diffusion_gain": 0.6628321311472734,
+      "native_gbd_diffusion_gain": 0.6944444444444445,
+      "M4_PRIME": {
+        "remesh_gain": 0.8838834764831845,
+        "phase_error_rad": -2.3551386880256623e-17,
+        "combined_gain": 0.6138079697799893,
+        "combined_effective_viscosity_over_physical": 1.186851588498848
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.9501747372194234,
+        "phase_error_rad": -1.277982233812375e-17,
+        "combined_gain": 0.6598435675134885,
+        "combined_effective_viscosity_over_physical": 1.0109888277057761
+      }
+    },
+    {
+      "fraction": 0.5,
+      "wavelength_m": 0.12,
+      "physical_diffusion_gain": 0.4813879392253192,
+      "native_gbd_diffusion_gain": 0.5625,
+      "M4_PRIME": {
+        "remesh_gain": 0.6874999999999999,
+        "phase_error_rad": -2.923859363048431e-17,
+        "combined_gain": 0.38671874999999994,
+        "combined_effective_viscosity_over_physical": 1.299522959830232
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.7929687499999999,
+        "phase_error_rad": 2.1876315756160724e-17,
+        "combined_gain": 0.44604492187499994,
+        "combined_effective_viscosity_over_physical": 1.1043026950913115
+      }
+    },
+    {
+      "fraction": 0.5,
+      "wavelength_m": 0.1,
+      "physical_diffusion_gain": 0.34897401931199007,
+      "native_gbd_diffusion_gain": 0.4878982931510556,
+      "M4_PRIME": {
+        "remesh_gain": 0.4487712429686843,
+        "phase_error_rad": 4.638595283872566e-17,
+        "combined_gain": 0.21895472345969874,
+        "combined_effective_viscosity_over_physical": 1.4427727903966743
+      },
+      "LAGRANGE6": {
+        "remesh_gain": 0.5435779219969985,
+        "phase_error_rad": -7.484902906759494e-18,
+        "combined_gain": 0.2652107403369332,
+        "combined_effective_viscosity_over_physical": 1.2607178203515006
+      }
+    }
+  ],
+  "cost_and_support": {
+    "planar_scatter_deposits_per_particle": {
+      "M4_PRIME": 16,
+      "LAGRANGE6": 36
+    },
+    "scatter_deposit_ratio": 2.25,
+    "offsets": {
+      "M4_PRIME": [
+        -1,
+        0,
+        1,
+        2
+      ],
+      "LAGRANGE6": [
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "wall_free_halo": "One extra remeshing cell; radius3 plus current two diffusion substeps fits existing padding5. Candidate wall-corrected path already reserves radius5 plus diffusion.",
+    "gaussian_induction": "Core and grid spacing are unchanged. At matching population the Gaussian induction work does not change; wider signed deposition can change retained population and thus induction cost. No runtime speed claim is made.",
+    "no_new_3d_grid": "A planar implementation must retain one plane and36 scalar axial deposits; reuse of the existing216-deposit 3D kernel is inappropriate."
+  },
+  "signed_weight_and_wall_guards": {
+    "p": "f(1-f)",
+    "M4_1d_l1": "1+p <=1.25",
+    "LAGRANGE6_1d_l1": "1+p(p+6)/4 <=1.390625",
+    "M4_maximum_xy_l1": 1.5625,
+    "LAGRANGE6_maximum_xy_l1": 1.933837890625,
+    "unchanged_wall_l1_limit": 2.0,
+    "warning": "There is little headroom under the existing wall-weight L1 limit. Do not relax that limit, conditioning, visibility, capacity, strength or moment guards. Signed weights are not positivity preserving.",
+    "bounded_candidate_scope": "For an isolated GBD-only comparison, keep native M4 and its exact wall closure whenever the full six-point support touches or crosses a wall; allow six-point scatter only on complete wall-free support. Keep the renewal Gaussian/M4 path, viscosity, timestep, core, thresholds and guards unchanged. This is a proposed diagnostic, not an implemented qualified model."
+  },
+  "conclusion": "At half-cell phase, six-point scatter nearly removes excess combined damping at .16-.20m, but still gives about26% excess effective diffusion at .10m. It is not uniformly less damped than M4 at every phase/wavenumber. Candidate feasibility is established in complete uniform support; a cylinder force cause or recovery is not demonstrated.",
+  "implementation_gate": "Await cold reference-image/component controls before deciding native candidate implementation."
+}

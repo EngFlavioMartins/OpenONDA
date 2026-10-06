@@ -1,0 +1,213 @@
+{
+  "written_at_utc": "2026-10-06T01:23:53.232790+00:00",
+  "source_image_sha256": "43a9018b54b259436abc95aca4ea725b41409164b3004001600931d29caf66dd",
+  "identities": {
+    "reference": {
+      "status": "qualified preparation; native replay running",
+      "invocation": "11a119b1eefb45dc9f42ed685f461369",
+      "service": "openonda-image-cold-reference-support-replay-20261006.service",
+      "directory": "/tmp/openonda-image-cold-reference-support-replay-20261006",
+      "log": "/tmp/openonda-image-cold-reference-support-replay-20261006.log",
+      "resources": {
+        "cpu": 10,
+        "threads": 1,
+        "memory_max_mib": 1500,
+        "swap_max_bytes": 0,
+        "runtime_max_seconds": 1800
+      },
+      "receipt": {
+        "schema": "openonda-explicit-boundary-input-replay/1",
+        "status": "prepared; no solver replay performed",
+        "prepared_at_utc": "2026-10-06T01:22:17.902063+00:00",
+        "trace_origin": "independent cold reference image reference_support; same coefficients paired support; no VPM evolution",
+        "source_hdf5": "/tmp/openonda-reference-image-cold-full-20261006/particle_image_traces.h5",
+        "source_hdf5_sha256": "43a9018b54b259436abc95aca4ea725b41409164b3004001600931d29caf66dd",
+        "source_group": "reference_support",
+        "source_attributes": {
+          "auxiliary_search_policy": "fixed internal nonphysical coefficient iterations; final atomic replacement guards enforced",
+          "auxiliary_state_policy": "zero_coefficients_each_frame",
+          "coefficient_storage_dtype": "float32",
+          "complete": true,
+          "configuration_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+          "exchange_step_size": 0.04,
+          "full_reference_horizon_complete": true,
+          "fvm_step_size": 0.008,
+          "gradient_convention": "J[i,j]=d(velocity_i)/d(x_j)",
+          "kernel_backend": "cuda",
+          "mapped_initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+          "merge_source_sha256": "49d52f0fa52adf8acca0f648dc3cfd228a0f38579f9cde03e72a7cef80b106fe",
+          "merged_independent_ranges": true,
+          "native_configuration": "{\"coupler\": {\"backup_interval_steps\": 25, \"coupling_patch\": \"numericalBoundary\", \"eta_blend_width\": 0.24, \"freestream\": {\"end_time\": 2.0, \"final\": [1.0, 0.0, 0.0], \"initial\": [1.0, 0.1, 0.0], \"start_time\": 1.0}, \"freestream_velocity\": [1.0, 0.1, 0.0], \"interface_gradient_tolerance\": 1e-05, \"interface_iterations\": 6, \"interface_normal_tolerance\": 1e-05, \"transfer_amplification_cap\": 1.8, \"transfer_diagnostic_interval_steps\": 60, \"transfer_discretization_error_limit\": 0.08, \"transfer_region_bounds\": {\"xmax\": 2.05, \"xmin\": -1.25, \"ymax\": 1.25, \"ymin\": -1.25, \"zmax\": 0.5, \"zmin\": -0.5}, \"transfer_vorticity_cutoff\": 0.05, \"vpm_only_width\": 0.08}, \"solid_geometry\": {\"wall_revisions\": [\"8954c6414900ac54ef6d774ee1af045b\"]}, \"transfer_lattice\": {\"anchor\": [-1.581431638466319, -1.5814329494196484, -2.5410988417628992e-17]}, \"vpm\": {\"axisymmetric_no_swirl_axis\": null, \"cutoff_radius_factor\": 100, \"domain_bounds\": [-5.0, 15.0, -5.0, 5.0, -0.5, 0.5], \"induction\": {\"kernel\": \"GAUSSIAN\", \"method\": \"PLANAR\", \"planar_span\": 1.0, \"plane_z\": 0.0, \"spanwise_tolerance\": 0.001, \"stretching_scheme\": \"DIRECT\", \"type\": \"source.solvers.vpm.physics.induction.planar.PlanarInduction\"}, \"integrator\": {\"a\": [[0.0, 0.0], [1.0, 0.0]], \"b\": [0.5, 0.5], \"c\": [0.0, 1.0], \"name\": \"RK2\", \"order\": 2}, \"max_n_particles\": 200000, \"particle_kernel\": \"GAUSSIAN\", \"precision\": \"f32\", \"random_seed\": 42, \"stabilization\": {\"divergence_relaxation\": {\"angular_impulse_reference_scale\": null, \"angular_impulse_reference_tolerance\": 0.01, \"grid_spacing\": null, \"interval_steps\": 0, \"linear_impulse_reference_scale\": null, \"linear_impulse_reference_tolerance\": 0.01, \"max_correction_norm\": 0.02, \"max_iterations\": 30, \"max_projection_sweeps\": 3, \"max_residual_ratio\": 0.9, \"regularization\": 0.1, \"solver_relative_tolerance\": 1e-05, \"spectral_convergence_fraction\": 0.1, \"start_step\": 0, \"total_enstrophy_tolerance\": 0.0001, \"total_helicity_tolerance\": 0.0001, \"total_kinetic_energy_tolerance\": 1e-06, \"variation_tolerance\": 0.001, \"vortex_strength_reference_scale\": null, \"vortex_strength_reference_tolerance\": 0.001}, \"filament_refinement\": {\"interval_steps\": 0, \"max_absolute_vortex_strength\": null, \"max_vortex_strength_factor\": 2.0, \"offset_fraction\": 0.25}, \"max_vortex_strength_error\": 1e-05, \"max_vortex_strength_growth\": 0.001, \"max_vorticity_growth\": 0.05, \"pedrizzetti_relaxation_end_step\": null, \"pedrizzetti_relaxation_factor\": 0.0, \"pedrizzetti_relaxation_interval_steps\": 1, \"pedrizzetti_relaxation_preserve_moments\": false, \"pedrizzetti_relaxation_preserve_vortex_strength\": true, \"pedrizzetti_relaxation_start_step\": 0, \"regularization_core_radius\": null, \"regularization_core_radius_trigger\": null, \"regularization_divergence_trigger\": 0.04, \"regularization_grid_spacing\": null, \"regularization_interval_steps\": 0, \"regularization_misalignment_trigger\": 20.0, \"regularization_preserve_groups\": false, \"regularization_projection_max_correction\": 0.2, \"regularization_projection_trigger\": 0.08, \"regularization_solenoidal_remesh\": false, \"regularization_start_step\": 0, \"regularization_tail_budget\": 0.003, \"regularization_total_enstrophy_dissipation_limit\": 0.15, \"regularization_total_kinetic_energy_dissipation_limit\": 0.15, \"regularization_transfer_only\": false, \"remove_particles_by_bounds\": [-5.0, 15.0, -5.0, 5.0, -0.5, 0.5], \"selective_eddy_viscosity_coefficient\": 0.0, \"selective_eddy_viscosity_start_step\": 0}, \"state_limits\": {\"divergence\": {\"maximum\": null}, \"finite_state\": {\"enabled\": true}, \"growth\": {\"maximum_particle_strength_growth\": null, \"maximum_vorticity_growth\": null}, \"lagrangian_cfl\": {\"maximum\": 1.0}, \"maximum_particle_strength\": {\"maximum\": null}, \"misalignment\": {\"maximum_degrees\": null}}, \"time_step_size\": 0.04, \"turbulence\": {\"filter_width\": null, \"flow_model\": \"INVISCID\", \"model\": \"INVISCID\", \"smagorinsky_coefficient\": 0.2, \"subgrid_dissipation_coefficient\": 1.048}, \"viscous\": {\"core_radius_ratio\": 1.0, \"dvh_domain_padding\": 3.0, \"dvh_grid_spacing\": null, \"dvh_support_radius_ratio\": 4, \"dvh_threshold\": 0.01, \"dvh_threshold_mode\": \"budget\", \"gbd_domain_padding\": 5.0, \"gbd_grid_spacing\": 0.04, \"gbd_remeshing_kernel\": \"M4_PRIME\", \"gbd_threshold\": 1.6000000000000003e-05, \"gbd_threshold_mode\": \"absolute\", \"kinematic_viscosity\": 0.006666666666666667, \"particle_spacing\": 0.04, \"scheme\": \"GBD\"}}}",
+          "outer_repetitions": 10,
+          "projection_history": "cold",
+          "qualified_reference_frame_count": 301,
+          "range_provenance": "[{\"directory\": \"/tmp/openonda-reference-image-cold-part0-20261006\", \"output\": \"/tmp/openonda-reference-image-cold-part0-20261006/particle_image_traces.h5\", \"output_sha256\": \"5c57d19cc0d9648053a555d23702add12984461dc9815a4575ee441b648c117c\", \"report_path\": \"/tmp/openonda-reference-image-cold-part0-20261006/report.json\", \"report_sha256\": \"9453e0de4c3f8169d248fc3cccb63ebd47af2ca8321a437e50cdcc03e6b22746\"}, {\"directory\": \"/tmp/openonda-reference-image-cold-part1-20261006\", \"output\": \"/tmp/openonda-reference-image-cold-part1-20261006/particle_image_traces.h5\", \"output_sha256\": \"a954bedbe71b1f72768d9cdf6e538d07cce706269799e3020685020b1514325a\", \"report_path\": \"/tmp/openonda-reference-image-cold-part1-20261006/report.json\", \"report_sha256\": \"3ff7600a718b6667d5f24a90413ddbc453969c3bf4b246f90ee27cb9a337aef9\"}, {\"directory\": \"/tmp/openonda-reference-image-cold-part2-20261006\", \"output\": \"/tmp/openonda-reference-image-cold-part2-20261006/particle_image_traces.h5\", \"output_sha256\": \"4721127c441845849f1c10901bb2554e380f1a6e6e7d3b39de03cb1061e0d9a2\", \"report_path\": \"/tmp/openonda-reference-image-cold-part2-20261006/report.json\", \"report_sha256\": \"5fc758f9405383ee5d50956336f6578149cccffe3f3a746fef0bee2c4a63d14c\"}]",
+          "schema": "openonda-cylinder-reference-particle-image/2",
+          "source_sha256": "{\"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_reference_particle_image.py\": \"4e263f3affe32e1d0caad2fab5f5e8559a84d76fca165d4fc419e94493dee134\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_saved_wall_circulation.py\": \"b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/capture_reference_volume_history.py\": \"6b1a0def8848ede644dd9a916bc1b8e71433843946b94c5e230e1556d2ff7306\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/project_reference_volume_images.py\": \"1f64266bfb7b953d46a1be197fa09d046dfcf0b1f062c0daa953421008ed488f\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/reference_cut_cell_deposition.py\": \"bb69db6ab5b3e242d0b03b6cb0a5c10726b83ba77d26eab7e5856142687796a8\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/stream_planar_image_induction.py\": \"1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4\", \"source/coupler/interpolation.py\": \"f1bdcd6f2d99cc0159164d629fed642f1a19513f31552d7ec6d7802caba328c9\", \"source/coupler/stable_renewal.py\": \"348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306\", \"source/coupler/vorticity_transfer.py\": \"9380fd0290fb3ee192a68adcee92b54398fda6f1db05a43fb63a30613ca959d7\", \"source/solvers/vpm/physics/induction/planar.py\": \"52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc\"}",
+          "start_frame": 0,
+          "stop_frame": 301,
+          "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f"
+        },
+        "particle_image_admission": {
+          "status": "qualified independent cold schema-2 merged image",
+          "frame_count": 301,
+          "independent_range_count": 3,
+          "fixed_inverse_iterations": 10,
+          "zero_initial_coefficients_each_frame": true,
+          "both_supports_independently_repeated": true,
+          "native_moment_closure_correction_limit": 0.08,
+          "target_relative_coefficient_ratio_limit": 4.0,
+          "target_relative_coefficient_l1_ratio_limit": 10.0,
+          "unchanged_native_volume_validation": {
+            "frame_count": 301,
+            "physical_cell_count": 12618,
+            "initial_time": 99.99999999998809,
+            "final_time": 111.99999999998144,
+            "gradient_convention": "G[i,j]=d(velocity_j)/d(x_i); native FVM ordering"
+          },
+          "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f",
+          "configuration_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+          "merge_source_sha256": "49d52f0fa52adf8acca0f648dc3cfd228a0f38579f9cde03e72a7cef80b106fe",
+          "scope": "Host-only provenance and trace admission. The 0.08 limit bounds the final native atomic moment closure, including storage rounding; it is not a represented-vorticity residual threshold or force-recovery proof."
+        },
+        "source_receipt_sha256": "c3ee5325572aeea4d6433d27180c7aa61da0dde439ba75b120ec8fb8e106f60e",
+        "adapter_source_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+        "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e",
+        "boundary_trace_sha256": "b2b56305e619cadf0eed09d2bc30737905080b769fe5aef9d12ef8985dffedf2",
+        "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+        "original_capture_receipt_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+        "native_input_sha256": {
+          "reference_backup.npz": "a517ec6564a6b38430d02571bf7726558cc859240c6cc802189ba13f398dc374",
+          "reference_mesh.npz": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201",
+          "reference_metadata.json": "637a9dc944cca03fcc056f9eddb2217a65060eb1eb44c33b51acb37cd2e3fc01",
+          "small_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+          "small_metadata.json": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+        },
+        "captured_reference_directory": "/tmp/openonda-cylinder-boundary-study-20261005",
+        "clock": {
+          "start_time": 99.99999999998809,
+          "end_time": 111.99999999998144,
+          "native_step_size": 0.008,
+          "accepted_endpoint_step_size": 0.04,
+          "accepted_endpoint_count": 301,
+          "fvm_steps": 1500,
+          "fvm_substeps_per_coupling_interval": 5,
+          "source_time_window": null
+        },
+        "geometry": {
+          "face_count": 356,
+          "exact_original_native_face_geometry": true,
+          "maximum_velocity_normal_projection_difference": 0.0,
+          "maximum_tangential_gradient_normal_component": 5.898059818321144e-17,
+          "maximum_signed_normal_flux": 5.412337245047638e-16
+        },
+        "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+        "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+      }
+    },
+    "production": {
+      "status": "qualified preparation; native replay running",
+      "invocation": "bef34defe8734ae4b73f7c6350b96d10",
+      "service": "openonda-image-cold-production-support-replay-20261006.service",
+      "directory": "/tmp/openonda-image-cold-production-support-replay-20261006",
+      "log": "/tmp/openonda-image-cold-production-support-replay-20261006.log",
+      "resources": {
+        "cpu": 11,
+        "threads": 1,
+        "memory_max_mib": 1500,
+        "swap_max_bytes": 0,
+        "runtime_max_seconds": 1800
+      },
+      "receipt": {
+        "schema": "openonda-explicit-boundary-input-replay/1",
+        "status": "prepared; no solver replay performed",
+        "prepared_at_utc": "2026-10-06T01:22:47.576506+00:00",
+        "trace_origin": "independent cold reference image production; same coefficients paired support; no VPM evolution",
+        "source_hdf5": "/tmp/openonda-reference-image-cold-full-20261006/particle_image_traces.h5",
+        "source_hdf5_sha256": "43a9018b54b259436abc95aca4ea725b41409164b3004001600931d29caf66dd",
+        "source_group": "production",
+        "source_attributes": {
+          "auxiliary_search_policy": "fixed internal nonphysical coefficient iterations; final atomic replacement guards enforced",
+          "auxiliary_state_policy": "zero_coefficients_each_frame",
+          "coefficient_storage_dtype": "float32",
+          "complete": true,
+          "configuration_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+          "exchange_step_size": 0.04,
+          "full_reference_horizon_complete": true,
+          "fvm_step_size": 0.008,
+          "gradient_convention": "J[i,j]=d(velocity_i)/d(x_j)",
+          "kernel_backend": "cuda",
+          "mapped_initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+          "merge_source_sha256": "49d52f0fa52adf8acca0f648dc3cfd228a0f38579f9cde03e72a7cef80b106fe",
+          "merged_independent_ranges": true,
+          "native_configuration": "{\"coupler\": {\"backup_interval_steps\": 25, \"coupling_patch\": \"numericalBoundary\", \"eta_blend_width\": 0.24, \"freestream\": {\"end_time\": 2.0, \"final\": [1.0, 0.0, 0.0], \"initial\": [1.0, 0.1, 0.0], \"start_time\": 1.0}, \"freestream_velocity\": [1.0, 0.1, 0.0], \"interface_gradient_tolerance\": 1e-05, \"interface_iterations\": 6, \"interface_normal_tolerance\": 1e-05, \"transfer_amplification_cap\": 1.8, \"transfer_diagnostic_interval_steps\": 60, \"transfer_discretization_error_limit\": 0.08, \"transfer_region_bounds\": {\"xmax\": 2.05, \"xmin\": -1.25, \"ymax\": 1.25, \"ymin\": -1.25, \"zmax\": 0.5, \"zmin\": -0.5}, \"transfer_vorticity_cutoff\": 0.05, \"vpm_only_width\": 0.08}, \"solid_geometry\": {\"wall_revisions\": [\"8954c6414900ac54ef6d774ee1af045b\"]}, \"transfer_lattice\": {\"anchor\": [-1.581431638466319, -1.5814329494196484, -2.5410988417628992e-17]}, \"vpm\": {\"axisymmetric_no_swirl_axis\": null, \"cutoff_radius_factor\": 100, \"domain_bounds\": [-5.0, 15.0, -5.0, 5.0, -0.5, 0.5], \"induction\": {\"kernel\": \"GAUSSIAN\", \"method\": \"PLANAR\", \"planar_span\": 1.0, \"plane_z\": 0.0, \"spanwise_tolerance\": 0.001, \"stretching_scheme\": \"DIRECT\", \"type\": \"source.solvers.vpm.physics.induction.planar.PlanarInduction\"}, \"integrator\": {\"a\": [[0.0, 0.0], [1.0, 0.0]], \"b\": [0.5, 0.5], \"c\": [0.0, 1.0], \"name\": \"RK2\", \"order\": 2}, \"max_n_particles\": 200000, \"particle_kernel\": \"GAUSSIAN\", \"precision\": \"f32\", \"random_seed\": 42, \"stabilization\": {\"divergence_relaxation\": {\"angular_impulse_reference_scale\": null, \"angular_impulse_reference_tolerance\": 0.01, \"grid_spacing\": null, \"interval_steps\": 0, \"linear_impulse_reference_scale\": null, \"linear_impulse_reference_tolerance\": 0.01, \"max_correction_norm\": 0.02, \"max_iterations\": 30, \"max_projection_sweeps\": 3, \"max_residual_ratio\": 0.9, \"regularization\": 0.1, \"solver_relative_tolerance\": 1e-05, \"spectral_convergence_fraction\": 0.1, \"start_step\": 0, \"total_enstrophy_tolerance\": 0.0001, \"total_helicity_tolerance\": 0.0001, \"total_kinetic_energy_tolerance\": 1e-06, \"variation_tolerance\": 0.001, \"vortex_strength_reference_scale\": null, \"vortex_strength_reference_tolerance\": 0.001}, \"filament_refinement\": {\"interval_steps\": 0, \"max_absolute_vortex_strength\": null, \"max_vortex_strength_factor\": 2.0, \"offset_fraction\": 0.25}, \"max_vortex_strength_error\": 1e-05, \"max_vortex_strength_growth\": 0.001, \"max_vorticity_growth\": 0.05, \"pedrizzetti_relaxation_end_step\": null, \"pedrizzetti_relaxation_factor\": 0.0, \"pedrizzetti_relaxation_interval_steps\": 1, \"pedrizzetti_relaxation_preserve_moments\": false, \"pedrizzetti_relaxation_preserve_vortex_strength\": true, \"pedrizzetti_relaxation_start_step\": 0, \"regularization_core_radius\": null, \"regularization_core_radius_trigger\": null, \"regularization_divergence_trigger\": 0.04, \"regularization_grid_spacing\": null, \"regularization_interval_steps\": 0, \"regularization_misalignment_trigger\": 20.0, \"regularization_preserve_groups\": false, \"regularization_projection_max_correction\": 0.2, \"regularization_projection_trigger\": 0.08, \"regularization_solenoidal_remesh\": false, \"regularization_start_step\": 0, \"regularization_tail_budget\": 0.003, \"regularization_total_enstrophy_dissipation_limit\": 0.15, \"regularization_total_kinetic_energy_dissipation_limit\": 0.15, \"regularization_transfer_only\": false, \"remove_particles_by_bounds\": [-5.0, 15.0, -5.0, 5.0, -0.5, 0.5], \"selective_eddy_viscosity_coefficient\": 0.0, \"selective_eddy_viscosity_start_step\": 0}, \"state_limits\": {\"divergence\": {\"maximum\": null}, \"finite_state\": {\"enabled\": true}, \"growth\": {\"maximum_particle_strength_growth\": null, \"maximum_vorticity_growth\": null}, \"lagrangian_cfl\": {\"maximum\": 1.0}, \"maximum_particle_strength\": {\"maximum\": null}, \"misalignment\": {\"maximum_degrees\": null}}, \"time_step_size\": 0.04, \"turbulence\": {\"filter_width\": null, \"flow_model\": \"INVISCID\", \"model\": \"INVISCID\", \"smagorinsky_coefficient\": 0.2, \"subgrid_dissipation_coefficient\": 1.048}, \"viscous\": {\"core_radius_ratio\": 1.0, \"dvh_domain_padding\": 3.0, \"dvh_grid_spacing\": null, \"dvh_support_radius_ratio\": 4, \"dvh_threshold\": 0.01, \"dvh_threshold_mode\": \"budget\", \"gbd_domain_padding\": 5.0, \"gbd_grid_spacing\": 0.04, \"gbd_remeshing_kernel\": \"M4_PRIME\", \"gbd_threshold\": 1.6000000000000003e-05, \"gbd_threshold_mode\": \"absolute\", \"kinematic_viscosity\": 0.006666666666666667, \"particle_spacing\": 0.04, \"scheme\": \"GBD\"}}}",
+          "outer_repetitions": 10,
+          "projection_history": "cold",
+          "qualified_reference_frame_count": 301,
+          "range_provenance": "[{\"directory\": \"/tmp/openonda-reference-image-cold-part0-20261006\", \"output\": \"/tmp/openonda-reference-image-cold-part0-20261006/particle_image_traces.h5\", \"output_sha256\": \"5c57d19cc0d9648053a555d23702add12984461dc9815a4575ee441b648c117c\", \"report_path\": \"/tmp/openonda-reference-image-cold-part0-20261006/report.json\", \"report_sha256\": \"9453e0de4c3f8169d248fc3cccb63ebd47af2ca8321a437e50cdcc03e6b22746\"}, {\"directory\": \"/tmp/openonda-reference-image-cold-part1-20261006\", \"output\": \"/tmp/openonda-reference-image-cold-part1-20261006/particle_image_traces.h5\", \"output_sha256\": \"a954bedbe71b1f72768d9cdf6e538d07cce706269799e3020685020b1514325a\", \"report_path\": \"/tmp/openonda-reference-image-cold-part1-20261006/report.json\", \"report_sha256\": \"3ff7600a718b6667d5f24a90413ddbc453969c3bf4b246f90ee27cb9a337aef9\"}, {\"directory\": \"/tmp/openonda-reference-image-cold-part2-20261006\", \"output\": \"/tmp/openonda-reference-image-cold-part2-20261006/particle_image_traces.h5\", \"output_sha256\": \"4721127c441845849f1c10901bb2554e380f1a6e6e7d3b39de03cb1061e0d9a2\", \"report_path\": \"/tmp/openonda-reference-image-cold-part2-20261006/report.json\", \"report_sha256\": \"5fc758f9405383ee5d50956336f6578149cccffe3f3a746fef0bee2c4a63d14c\"}]",
+          "schema": "openonda-cylinder-reference-particle-image/2",
+          "source_sha256": "{\"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_reference_particle_image.py\": \"4e263f3affe32e1d0caad2fab5f5e8559a84d76fca165d4fc419e94493dee134\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_saved_wall_circulation.py\": \"b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/capture_reference_volume_history.py\": \"6b1a0def8848ede644dd9a916bc1b8e71433843946b94c5e230e1556d2ff7306\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/project_reference_volume_images.py\": \"1f64266bfb7b953d46a1be197fa09d046dfcf0b1f062c0daa953421008ed488f\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/reference_cut_cell_deposition.py\": \"bb69db6ab5b3e242d0b03b6cb0a5c10726b83ba77d26eab7e5856142687796a8\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/stream_planar_image_induction.py\": \"1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4\", \"source/coupler/interpolation.py\": \"f1bdcd6f2d99cc0159164d629fed642f1a19513f31552d7ec6d7802caba328c9\", \"source/coupler/stable_renewal.py\": \"348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306\", \"source/coupler/vorticity_transfer.py\": \"9380fd0290fb3ee192a68adcee92b54398fda6f1db05a43fb63a30613ca959d7\", \"source/solvers/vpm/physics/induction/planar.py\": \"52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc\"}",
+          "start_frame": 0,
+          "stop_frame": 301,
+          "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f"
+        },
+        "particle_image_admission": {
+          "status": "qualified independent cold schema-2 merged image",
+          "frame_count": 301,
+          "independent_range_count": 3,
+          "fixed_inverse_iterations": 10,
+          "zero_initial_coefficients_each_frame": true,
+          "both_supports_independently_repeated": true,
+          "native_moment_closure_correction_limit": 0.08,
+          "target_relative_coefficient_ratio_limit": 4.0,
+          "target_relative_coefficient_l1_ratio_limit": 10.0,
+          "unchanged_native_volume_validation": {
+            "frame_count": 301,
+            "physical_cell_count": 12618,
+            "initial_time": 99.99999999998809,
+            "final_time": 111.99999999998144,
+            "gradient_convention": "G[i,j]=d(velocity_j)/d(x_i); native FVM ordering"
+          },
+          "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f",
+          "configuration_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+          "merge_source_sha256": "49d52f0fa52adf8acca0f648dc3cfd228a0f38579f9cde03e72a7cef80b106fe",
+          "scope": "Host-only provenance and trace admission. The 0.08 limit bounds the final native atomic moment closure, including storage rounding; it is not a represented-vorticity residual threshold or force-recovery proof."
+        },
+        "source_receipt_sha256": "c3ee5325572aeea4d6433d27180c7aa61da0dde439ba75b120ec8fb8e106f60e",
+        "adapter_source_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+        "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e",
+        "boundary_trace_sha256": "61143104dc49ac2a49f4faf628bf1a29f84b6751d25ca067fe24261335476116",
+        "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+        "original_capture_receipt_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+        "native_input_sha256": {
+          "reference_backup.npz": "a517ec6564a6b38430d02571bf7726558cc859240c6cc802189ba13f398dc374",
+          "reference_mesh.npz": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201",
+          "reference_metadata.json": "637a9dc944cca03fcc056f9eddb2217a65060eb1eb44c33b51acb37cd2e3fc01",
+          "small_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+          "small_metadata.json": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+        },
+        "captured_reference_directory": "/tmp/openonda-cylinder-boundary-study-20261005",
+        "clock": {
+          "start_time": 99.99999999998809,
+          "end_time": 111.99999999998144,
+          "native_step_size": 0.008,
+          "accepted_endpoint_step_size": 0.04,
+          "accepted_endpoint_count": 301,
+          "fvm_steps": 1500,
+          "fvm_substeps_per_coupling_interval": 5,
+          "source_time_window": null
+        },
+        "geometry": {
+          "face_count": 356,
+          "exact_original_native_face_geometry": true,
+          "maximum_velocity_normal_projection_difference": 0.0,
+          "maximum_tangential_gradient_normal_component": 6.245004513516506e-17,
+          "maximum_signed_normal_flux": 5.412337245047638e-16
+        },
+        "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+        "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+      }
+    }
+  },
+  "production_unchanged": true
+}

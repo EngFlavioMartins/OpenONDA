@@ -1,0 +1,52 @@
+{
+  "status": "pass",
+  "checks": {
+    "reference": {
+      "assertions": {
+        "adapter_unchanged": true,
+        "native_initialization_helper_unchanged": true,
+        "declared_model_hdf5_hash_matches_source": true,
+        "source_receipt_hash_matches": true,
+        "original_initial_state_hash_matches": true,
+        "original_capture_report_hash_matches": true,
+        "endpoint_count301_and_complete": true,
+        "model_schema_explicit": true
+      },
+      "adapter_source_sha256": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+      "source_origin": {
+        "complete": true,
+        "fundamental_frequency_hz": 0.18733035691621663,
+        "model": "mean + linear trend + fundamental + second harmonic; no amplitude rescaling",
+        "phase_policy": "One global initial lift-phase translation only; reference model keeps its native clock",
+        "schema": "openonda-harmonic-boundary-endpoint-model/1",
+        "source_fit_midpoint_time": 105.99999999998477,
+        "trace_origin": "Native reference FVM field harmonic model"
+      },
+      "receipt_not_capture": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+    },
+    "coupled": {
+      "assertions": {
+        "adapter_unchanged": true,
+        "native_initialization_helper_unchanged": true,
+        "declared_model_hdf5_hash_matches_source": true,
+        "source_receipt_hash_matches": true,
+        "original_initial_state_hash_matches": true,
+        "original_capture_report_hash_matches": true,
+        "endpoint_count301_and_complete": true,
+        "model_schema_explicit": true
+      },
+      "adapter_source_sha256": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+      "source_origin": {
+        "complete": true,
+        "fundamental_frequency_hz": 0.1815070887743629,
+        "model": "mean + linear trend + fundamental + second harmonic; no amplitude rescaling",
+        "phase_policy": "One global initial lift-phase translation only; reference model keeps its native clock",
+        "schema": "openonda-harmonic-boundary-endpoint-model/1",
+        "source_fit_midpoint_time": 40.0,
+        "trace_origin": "Measured actual coupled VPM Gaussian field harmonic model"
+      },
+      "receipt_not_capture": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+    }
+  },
+  "scope": "Independent read-only receipt-to-HDF5 hash cross-check; no helper or native source mutation and no solver launch."
+}

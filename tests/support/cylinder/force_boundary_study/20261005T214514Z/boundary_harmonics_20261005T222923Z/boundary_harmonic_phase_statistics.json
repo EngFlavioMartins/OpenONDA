@@ -1,0 +1,591 @@
+{
+  "schema": "openonda-planar-boundary-harmonic-phase/1",
+  "source_boundary_fields": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_harmonics_20261005T222923Z/boundary_harmonic_fields.npz",
+  "source_boundary_fields_sha256": "88033ed2a99ea4b007ea6fee25abbdd9651e90ee5fa4382305400da2d4960480",
+  "analysis_source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/analyze_boundary_harmonic_phase.py",
+  "analysis_source_sha256": "e373ea553cc7930c6479295fc1dcb2c7632eacba835f2e969b3f143ea55e2d29",
+  "force_phase_references": {
+    "coupled": {
+      "boundary_midpoint_time": 40.0,
+      "lift_fundamental_phase_degrees": 97.89881713525665,
+      "drag_second_harmonic_phase_degrees": 126.41973266070937,
+      "drag_second_minus_twice_lift_fundamental_degrees": -69.37790160980398
+    },
+    "reference": {
+      "boundary_midpoint_time": 105.99999999998477,
+      "lift_fundamental_phase_degrees": -102.40362037736452,
+      "drag_second_harmonic_phase_degrees": 118.38082887675637,
+      "drag_second_minus_twice_lift_fundamental_degrees": -36.811930368514595
+    }
+  },
+  "boundary_phase_relative_to_forces": {
+    "upstream": {
+      "normal_velocity": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.007065683094783903,
+          "reference_harmonic_rms": 0.007390286697153174,
+          "amplitude_ratio": 0.9560769946185833,
+          "complex_projection_gain_real": 0.9542394896246837,
+          "complex_projection_gain_imaginary": 0.05453865167144575,
+          "complex_projection_gain_magnitude": 0.9557967713302427,
+          "force_aligned_projection_phase_difference_degrees": 3.271127149156257,
+          "complex_shape_coherence": 0.9997069030110358,
+          "normalised_complex_rms_difference": 0.07486147466845251,
+          "amplitude_rescaled_complex_rms_difference": 0.06199873490884102,
+          "normalised_residual_after_optimal_complex_projection": 0.024209668979226186
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.00015898956791940153,
+          "reference_harmonic_rms": 0.0001384588575238825,
+          "amplitude_ratio": 1.1482802239067857,
+          "complex_projection_gain_real": 0.7380717659064517,
+          "complex_projection_gain_imaginary": 0.6738039946915142,
+          "complex_projection_gain_magnitude": 0.9993806856701355,
+          "force_aligned_projection_phase_difference_degrees": 42.39372821281955,
+          "complex_shape_coherence": 0.8703282220344695,
+          "normalised_complex_rms_difference": 0.9178256592635201,
+          "amplitude_rescaled_complex_rms_difference": 0.8452659227211999,
+          "normalised_residual_after_optimal_complex_projection": 0.49247211690644915
+        }
+      },
+      "tangential_gradient": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.0074187138646523345,
+          "reference_harmonic_rms": 0.008891181566500934,
+          "amplitude_ratio": 0.8343900986797551,
+          "complex_projection_gain_real": 0.8207258102088525,
+          "complex_projection_gain_imaginary": 0.09243983869803116,
+          "complex_projection_gain_magnitude": 0.8259152373709395,
+          "force_aligned_projection_phase_difference_degrees": 6.426244747422203,
+          "complex_shape_coherence": 0.9898430466490132,
+          "normalised_complex_rms_difference": 0.23399832554338176,
+          "amplitude_rescaled_complex_rms_difference": 0.18097723048670744,
+          "normalised_residual_after_optimal_complex_projection": 0.14216449275610124
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 8.1711196702048e-05,
+          "reference_harmonic_rms": 0.00013265105902144256,
+          "amplitude_ratio": 0.6159860110037997,
+          "complex_projection_gain_real": -0.051764518715686283,
+          "complex_projection_gain_imaginary": -0.25392493190342713,
+          "complex_projection_gain_magnitude": 0.25914751868390856,
+          "force_aligned_projection_phase_difference_degrees": -101.52229538956749,
+          "complex_shape_coherence": 0.42070357776730427,
+          "normalised_complex_rms_difference": 1.2177716547792306,
+          "amplitude_rescaled_complex_rms_difference": 1.4724369039069602,
+          "normalised_residual_after_optimal_complex_projection": 0.9071981589783953
+        }
+      }
+    },
+    "downstream": {
+      "normal_velocity": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.3172073396389325,
+          "reference_harmonic_rms": 0.31358116901408967,
+          "amplitude_ratio": 1.0115637384612208,
+          "complex_projection_gain_real": 0.9990293249881333,
+          "complex_projection_gain_imaginary": -0.1401748876482279,
+          "complex_projection_gain_magnitude": 1.0088154396684454,
+          "force_aligned_projection_phase_difference_degrees": -7.987090822728277,
+          "complex_shape_coherence": 0.9972831185141569,
+          "normalised_complex_rms_difference": 0.15875310073625162,
+          "amplitude_rescaled_complex_rms_difference": 0.1574237957606037,
+          "normalised_residual_after_optimal_complex_projection": 0.07366397713046711
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.07975260348248527,
+          "reference_harmonic_rms": 0.08695046291782121,
+          "amplitude_ratio": 0.9172188485972892,
+          "complex_projection_gain_real": 0.8903095122399259,
+          "complex_projection_gain_imaginary": 0.17947427300727548,
+          "complex_projection_gain_magnitude": 0.9082191598157269,
+          "force_aligned_projection_phase_difference_degrees": 11.397302834524908,
+          "complex_shape_coherence": 0.9901880682071399,
+          "normalised_complex_rms_difference": 0.24631563438459336,
+          "amplitude_rescaled_complex_rms_difference": 0.2422311583984962,
+          "normalised_residual_after_optimal_complex_projection": 0.1397411520641364
+        }
+      },
+      "tangential_gradient": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.8475974079462869,
+          "reference_harmonic_rms": 0.8740435126707878,
+          "amplitude_ratio": 0.9697428053167624,
+          "complex_projection_gain_real": 0.9655001322620543,
+          "complex_projection_gain_imaginary": -0.0852575396889699,
+          "complex_projection_gain_magnitude": 0.9692571142229809,
+          "force_aligned_projection_phase_difference_degrees": -5.046358134298231,
+          "complex_shape_coherence": 0.9994991547334835,
+          "normalised_complex_rms_difference": 0.09695794933637769,
+          "amplitude_rescaled_complex_rms_difference": 0.09354196692275765,
+          "normalised_residual_after_optimal_complex_projection": 0.03164553186553229
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.2572543077328012,
+          "reference_harmonic_rms": 0.2922470961178839,
+          "amplitude_ratio": 0.8802630074005333,
+          "complex_projection_gain_real": 0.8193164620730825,
+          "complex_projection_gain_imaginary": 0.30831594943138785,
+          "complex_projection_gain_magnitude": 0.8754074421078055,
+          "force_aligned_projection_phase_difference_degrees": 20.621757675418905,
+          "complex_shape_coherence": 0.9944839607572894,
+          "normalised_complex_rms_difference": 0.3690935356405836,
+          "amplitude_rescaled_complex_rms_difference": 0.3721202626691519,
+          "normalised_residual_after_optimal_complex_projection": 0.10488875915222941
+        }
+      }
+    },
+    "lower": {
+      "normal_velocity": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.058262482546243055,
+          "reference_harmonic_rms": 0.062287158931678584,
+          "amplitude_ratio": 0.9353851346816106,
+          "complex_projection_gain_real": 0.8707216580126775,
+          "complex_projection_gain_imaginary": -0.2600376124381001,
+          "complex_projection_gain_magnitude": 0.9087220508025838,
+          "force_aligned_projection_phase_difference_degrees": -16.628049174424774,
+          "complex_shape_coherence": 0.9714950741780791,
+          "normalised_complex_rms_difference": 0.3653793017645905,
+          "amplitude_rescaled_complex_rms_difference": 0.3718341651633412,
+          "normalised_residual_after_optimal_complex_projection": 0.23705974109436734
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.003748175342268043,
+          "reference_harmonic_rms": 0.00518046934571532,
+          "amplitude_ratio": 0.7235204171931056,
+          "complex_projection_gain_real": 0.7079804482619101,
+          "complex_projection_gain_imaginary": 0.08107275904137681,
+          "complex_projection_gain_magnitude": 0.7126072602631244,
+          "force_aligned_projection_phase_difference_degrees": 6.532639579093569,
+          "complex_shape_coherence": 0.9849165874650522,
+          "normalised_complex_rms_difference": 0.32790379316419205,
+          "amplitude_rescaled_complex_rms_difference": 0.20725960941524077,
+          "normalised_residual_after_optimal_complex_projection": 0.1730298116978577
+        }
+      },
+      "tangential_gradient": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.08065693901831768,
+          "reference_harmonic_rms": 0.08987941827566505,
+          "amplitude_ratio": 0.8973905324012943,
+          "complex_projection_gain_real": 0.8896204087069175,
+          "complex_projection_gain_imaginary": -0.11691832441527297,
+          "complex_projection_gain_magnitude": 0.8972705089168694,
+          "force_aligned_projection_phase_difference_degrees": -7.487184650777607,
+          "complex_shape_coherence": 0.999866252785057,
+          "normalised_complex_rms_difference": 0.16145881898999295,
+          "amplitude_rescaled_complex_rms_difference": 0.13159464668817228,
+          "normalised_residual_after_optimal_complex_projection": 0.016354710072888124
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.009586298983425674,
+          "reference_harmonic_rms": 0.01237411876410246,
+          "amplitude_ratio": 0.7747055904486466,
+          "complex_projection_gain_real": 0.7711284635811735,
+          "complex_projection_gain_imaginary": 0.06933625840218209,
+          "complex_projection_gain_magnitude": 0.7742393842180049,
+          "force_aligned_projection_phase_difference_degrees": 5.13795139201676,
+          "complex_shape_coherence": 0.9993982149652854,
+          "normalised_complex_rms_difference": 0.24064875796487953,
+          "amplitude_rescaled_complex_rms_difference": 0.09609788389627147,
+          "normalised_residual_after_optimal_complex_projection": 0.03468728764549329
+        }
+      }
+    },
+    "upper": {
+      "normal_velocity": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.05925192011618087,
+          "reference_harmonic_rms": 0.06301295679042943,
+          "amplitude_ratio": 0.9403132805407444,
+          "complex_projection_gain_real": 0.875897141337556,
+          "complex_projection_gain_imaginary": -0.25992632126551435,
+          "complex_projection_gain_magnitude": 0.9136506414871748,
+          "force_aligned_projection_phase_difference_degrees": -16.528486887059188,
+          "complex_shape_coherence": 0.9716449404625692,
+          "normalised_complex_rms_difference": 0.3638609389398439,
+          "amplitude_rescaled_complex_rms_difference": 0.3701485553617432,
+          "normalised_residual_after_optimal_complex_projection": 0.23644472858046647
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.004588573071387896,
+          "reference_harmonic_rms": 0.0054118260389838906,
+          "amplitude_ratio": 0.8478788930638712,
+          "complex_projection_gain_real": 0.8310849898284693,
+          "complex_projection_gain_imaginary": 0.023468213315214165,
+          "complex_projection_gain_magnitude": 0.8314162720048215,
+          "force_aligned_projection_phase_difference_degrees": 1.6174908297993227,
+          "complex_shape_coherence": 0.980583758843718,
+          "normalised_complex_rms_difference": 0.23817774380969478,
+          "amplitude_rescaled_complex_rms_difference": 0.19903245916435972,
+          "normalised_residual_after_optimal_complex_projection": 0.19610071874402976
+        }
+      },
+      "tangential_gradient": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.08185177786459095,
+          "reference_harmonic_rms": 0.09095604002556028,
+          "amplitude_ratio": 0.8999048094177048,
+          "complex_projection_gain_real": 0.8921708879541447,
+          "complex_projection_gain_imaginary": -0.1166948568942736,
+          "complex_projection_gain_magnitude": 0.8997702945410356,
+          "force_aligned_projection_phase_difference_degrees": -7.451913213765778,
+          "complex_shape_coherence": 0.9998505232161652,
+          "normalised_complex_rms_difference": 0.15964614027538115,
+          "amplitude_rescaled_complex_rms_difference": 0.131104195595073,
+          "normalised_residual_after_optimal_complex_projection": 0.01728962765247178
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.010604741616615818,
+          "reference_harmonic_rms": 0.013019267132068154,
+          "amplitude_ratio": 0.814542132751463,
+          "complex_projection_gain_real": 0.8069484098325429,
+          "complex_projection_gain_imaginary": 0.10620041693801587,
+          "complex_projection_gain_magnitude": 0.8139067911555217,
+          "force_aligned_projection_phase_difference_degrees": 7.497462533754657,
+          "complex_shape_coherence": 0.9992200015562176,
+          "normalised_complex_rms_difference": 0.2226703086678054,
+          "amplitude_rescaled_complex_rms_difference": 0.13654807888606765,
+          "normalised_residual_after_optimal_complex_projection": 0.03948909330425159
+        }
+      }
+    },
+    "corners": {
+      "normal_velocity": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.0722497967362711,
+          "reference_harmonic_rms": 0.07457804258239784,
+          "amplitude_ratio": 0.9687810813275991,
+          "complex_projection_gain_real": 0.9376639607111219,
+          "complex_projection_gain_imaginary": -0.21297952539464943,
+          "complex_projection_gain_magnitude": 0.961547701080814,
+          "force_aligned_projection_phase_difference_degrees": -12.796949435708768,
+          "complex_shape_coherence": 0.9925335244605803,
+          "normalised_complex_rms_difference": 0.2514137269840849,
+          "amplitude_rescaled_complex_rms_difference": 0.25345559046350025,
+          "normalised_residual_after_optimal_complex_projection": 0.12197213953136271
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.0068078829113711135,
+          "reference_harmonic_rms": 0.008808891570532907,
+          "amplitude_ratio": 0.7728421739398548,
+          "complex_projection_gain_real": 0.7651890715070614,
+          "complex_projection_gain_imaginary": 0.0927997475919477,
+          "complex_projection_gain_magnitude": 0.7707957630312766,
+          "force_aligned_projection_phase_difference_degrees": 6.91488409455016,
+          "complex_shape_coherence": 0.9973520972617915,
+          "normalised_complex_rms_difference": 0.25866364801795816,
+          "amplitude_rescaled_complex_rms_difference": 0.14073054002366234,
+          "normalised_residual_after_optimal_complex_projection": 0.07272409564584306
+        }
+      },
+      "tangential_gradient": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.09700314259289988,
+          "reference_harmonic_rms": 0.10672810401431942,
+          "amplitude_ratio": 0.9088809689703213,
+          "complex_projection_gain_real": 0.9038784364781112,
+          "complex_projection_gain_imaginary": -0.09491492093566967,
+          "complex_projection_gain_magnitude": 0.9088482107295691,
+          "force_aligned_projection_phase_difference_degrees": -5.994574786124389,
+          "complex_shape_coherence": 0.9999639576117548,
+          "normalised_complex_rms_difference": 0.1353061077712597,
+          "amplitude_rescaled_complex_rms_difference": 0.104919557910029,
+          "normalised_residual_after_optimal_complex_projection": 0.008490198904403943
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.017577984824105972,
+          "reference_harmonic_rms": 0.02264115723612712,
+          "amplitude_ratio": 0.7763730731951214,
+          "complex_projection_gain_real": 0.7689385176219318,
+          "complex_projection_gain_imaginary": 0.10716716224952694,
+          "complex_projection_gain_magnitude": 0.7763705587844185,
+          "force_aligned_projection_phase_difference_degrees": 7.934219578331408,
+          "complex_shape_coherence": 0.9999967613370562,
+          "normalised_complex_rms_difference": 0.2547118244969663,
+          "amplitude_rescaled_complex_rms_difference": 0.13839081651286253,
+          "normalised_residual_after_optimal_complex_projection": 0.002545057052099877
+        }
+      }
+    },
+    "all": {
+      "normal_velocity": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.15550252760413685,
+          "reference_harmonic_rms": 0.15472593040492727,
+          "amplitude_ratio": 1.0050191793785126,
+          "complex_projection_gain_real": 0.9875379449665423,
+          "complex_projection_gain_imaginary": -0.15104779771184212,
+          "complex_projection_gain_magnitude": 0.9990228375479407,
+          "force_aligned_projection_phase_difference_degrees": -8.69621621776676,
+          "complex_shape_coherence": 0.9940336045782929,
+          "normalised_complex_rms_difference": 0.18704988902850164,
+          "amplitude_rescaled_complex_rms_difference": 0.18651504578142777,
+          "normalised_residual_after_optimal_complex_projection": 0.10907425438244697
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.037610683436972034,
+          "reference_harmonic_rms": 0.0410561330294079,
+          "amplitude_ratio": 0.9160795394449852,
+          "complex_projection_gain_real": 0.8891704963504728,
+          "complex_projection_gain_imaginary": 0.17825520631337768,
+          "complex_projection_gain_magnitude": 0.9068622222575881,
+          "force_aligned_projection_phase_difference_degrees": 11.336021458385915,
+          "complex_shape_coherence": 0.9899383003434601,
+          "normalised_complex_rms_difference": 0.24669967549388958,
+          "amplitude_rescaled_complex_rms_difference": 0.2423804197679816,
+          "normalised_residual_after_optimal_complex_projection": 0.14149968732510304
+        }
+      },
+      "tangential_gradient": {
+        "harmonic_1": {
+          "coupled_harmonic_rms": 0.4029497826749484,
+          "reference_harmonic_rms": 0.4163079679550437,
+          "amplitude_ratio": 0.967912732139833,
+          "complex_projection_gain_real": 0.9635096215822027,
+          "complex_projection_gain_imaginary": -0.0860637757470366,
+          "complex_projection_gain_magnitude": 0.9673457315651501,
+          "force_aligned_projection_phase_difference_degrees": -5.104296805810833,
+          "complex_shape_coherence": 0.9994142027934384,
+          "normalised_complex_rms_difference": 0.09917567178492476,
+          "amplitude_rescaled_complex_rms_difference": 0.09538425492001734,
+          "normalised_residual_after_optimal_complex_projection": 0.03422354824906572
+        },
+        "harmonic_2": {
+          "coupled_harmonic_rms": 0.12112836551303303,
+          "reference_harmonic_rms": 0.1376679358663146,
+          "amplitude_ratio": 0.879858950094649,
+          "complex_projection_gain_real": 0.8191646738508644,
+          "complex_projection_gain_imaginary": 0.30723019148873076,
+          "complex_projection_gain_magnitude": 0.8748835085012149,
+          "force_aligned_projection_phase_difference_degrees": 20.55870887919238,
+          "complex_shape_coherence": 0.994345182721732,
+          "normalised_complex_rms_difference": 0.3685409398695468,
+          "amplitude_rescaled_complex_rms_difference": 0.3714345841209687,
+          "normalised_residual_after_optimal_complex_projection": 0.10619631631128028
+        }
+      }
+    }
+  },
+  "boundary_mean_differences": {
+    "upstream": {
+      "normal_velocity": {
+        "coupled_signed_area_mean": -0.8940238039294918,
+        "reference_signed_area_mean": -0.9163885828217417,
+        "signed_area_mean_difference": 0.022364778892249727,
+        "rms_mean_difference": 0.022461119715417283,
+        "normalised_rms_mean_difference": 0.02448382193365476,
+        "maximum_mean_difference_magnitude": 0.025375202203762326
+      },
+      "tangential_gradient": {
+        "coupled_signed_area_mean": [
+          0.0,
+          0.00018027246313458218,
+          0.0
+        ],
+        "reference_signed_area_mean": [
+          0.0,
+          0.0002106128345192558,
+          -1.4331306957979623e-19
+        ],
+        "signed_area_mean_difference": [
+          0.0,
+          -3.0340371384698494e-05,
+          1.4331306957979623e-19
+        ],
+        "rms_mean_difference": 0.0022200549384583388,
+        "normalised_rms_mean_difference": 0.024930597522901766,
+        "maximum_mean_difference_magnitude": 0.0034316664898690064
+      }
+    },
+    "downstream": {
+      "normal_velocity": {
+        "coupled_signed_area_mean": 0.7836025398180974,
+        "reference_signed_area_mean": 0.8062050553835697,
+        "signed_area_mean_difference": -0.022602515565472395,
+        "rms_mean_difference": 0.03196800600322435,
+        "normalised_rms_mean_difference": 0.038133831915855974,
+        "maximum_mean_difference_magnitude": 0.062409542864468925
+      },
+      "tangential_gradient": {
+        "coupled_signed_area_mean": [
+          0.0,
+          0.00390980347627037,
+          0.0
+        ],
+        "reference_signed_area_mean": [
+          0.0,
+          0.0019436466443941852,
+          -4.963640560240985e-19
+        ],
+        "signed_area_mean_difference": [
+          0.0,
+          0.0019661568318761827,
+          4.963640560240985e-19
+        ],
+        "rms_mean_difference": 0.010683407387684776,
+        "normalised_rms_mean_difference": 0.14163389249352434,
+        "maximum_mean_difference_magnitude": 0.03537333296542861
+      }
+    },
+    "lower": {
+      "normal_velocity": {
+        "coupled_signed_area_mean": 0.044075711885230406,
+        "reference_signed_area_mean": 0.04368915780307421,
+        "signed_area_mean_difference": 0.0003865540821561977,
+        "rms_mean_difference": 0.0019309626013141745,
+        "normalised_rms_mean_difference": 0.021104122671921077,
+        "maximum_mean_difference_magnitude": 0.004490759798883373
+      },
+      "tangential_gradient": {
+        "coupled_signed_area_mean": [
+          -0.04313587709891701,
+          0.0,
+          0.0
+        ],
+        "reference_signed_area_mean": [
+          -0.04173683593962106,
+          0.0,
+          2.7233560192636074e-18
+        ],
+        "signed_area_mean_difference": [
+          -0.001399041159295983,
+          0.0,
+          -2.7233560192636074e-18
+        ],
+        "rms_mean_difference": 0.0030525819931040976,
+        "normalised_rms_mean_difference": 0.039479459028915774,
+        "maximum_mean_difference_magnitude": 0.006608181390808179
+      }
+    },
+    "upper": {
+      "normal_velocity": {
+        "coupled_signed_area_mean": 0.04288060401307911,
+        "reference_signed_area_mean": 0.04309255682458147,
+        "signed_area_mean_difference": -0.00021195281150235835,
+        "rms_mean_difference": 0.0022622435813552944,
+        "normalised_rms_mean_difference": 0.024767410726955204,
+        "maximum_mean_difference_magnitude": 0.0056008103565429734
+      },
+      "tangential_gradient": {
+        "coupled_signed_area_mean": [
+          -0.042230190515870375,
+          0.0,
+          0.0
+        ],
+        "reference_signed_area_mean": [
+          -0.0406755591509446,
+          0.0,
+          -2.8625121916336216e-18
+        ],
+        "signed_area_mean_difference": [
+          -0.0015546313649257458,
+          0.0,
+          2.8625121916336216e-18
+        ],
+        "rms_mean_difference": 0.003239741038899185,
+        "normalised_rms_mean_difference": 0.04214427537144229,
+        "maximum_mean_difference_magnitude": 0.006883568492432192
+      }
+    },
+    "corners": {
+      "normal_velocity": {
+        "coupled_signed_area_mean": -0.08009005834076809,
+        "reference_signed_area_mean": -0.08379649007553229,
+        "signed_area_mean_difference": 0.0037064317347641888,
+        "rms_mean_difference": 0.013552063207643957,
+        "normalised_rms_mean_difference": 0.02496207227216206,
+        "maximum_mean_difference_magnitude": 0.015965957790904373
+      },
+      "tangential_gradient": {
+        "coupled_signed_area_mean": [
+          -0.009579907896155062,
+          -0.02328317403734783,
+          0.0
+        ],
+        "reference_signed_area_mean": [
+          -0.010660855851024855,
+          -0.0223746740314886,
+          9.092627356560904e-18
+        ],
+        "signed_area_mean_difference": [
+          0.0010809479548697927,
+          -0.0009085000058592286,
+          -9.092627356560904e-18
+        ],
+        "rms_mean_difference": 0.0028663137318762797,
+        "normalised_rms_mean_difference": 0.07219572963343436,
+        "maximum_mean_difference_magnitude": 0.003805881704927804
+      }
+    },
+    "all": {
+      "normal_velocity": {
+        "coupled_signed_area_mean": -7.740571309608061e-18,
+        "reference_signed_area_mean": 7.740571309608061e-18,
+        "signed_area_mean_difference": -1.6932499739767635e-17,
+        "rms_mean_difference": 0.018458171183732025,
+        "normalised_rms_mean_difference": 0.0313116203170194,
+        "maximum_mean_difference_magnitude": 0.062409542864468925
+      },
+      "tangential_gradient": {
+        "coupled_signed_area_mean": [
+          -0.023535174321798996,
+          0.0006470168448088449,
+          0.0
+        ],
+        "reference_signed_area_mean": [
+          -0.0227359816595266,
+          0.00022952063699135762,
+          -9.100133103072709e-20
+        ],
+        "signed_area_mean_difference": [
+          -0.0007991926622723693,
+          0.0004174962078174845,
+          9.100133103072709e-20
+        ],
+        "rms_mean_difference": 0.005640314208976599,
+        "normalised_rms_mean_difference": 0.07120242154879497,
+        "maximum_mean_difference_magnitude": 0.03537333296542861
+      }
+    }
+  },
+  "side_geometry": {
+    "upstream": {
+      "face_count": 78,
+      "area": 3.1445428589997766
+    },
+    "downstream": {
+      "face_count": 79,
+      "area": 3.1669256514209554
+    },
+    "lower": {
+      "face_count": 97,
+      "area": 3.906939659231581
+    },
+    "upper": {
+      "face_count": 99,
+      "area": 3.966925635758738
+    },
+    "corners": {
+      "face_count": 3,
+      "area": 0.1575742335224713
+    },
+    "all": {
+      "face_count": 356,
+      "area": 14.342908038933523
+    }
+  },
+  "method": {
+    "complex_convention": "u=Re(C exp(i omega (t-t_mid))); C=cosine_coefficient-i*sine_coefficient.",
+    "alignment": "First harmonic divided by unit phase of each run's lift fundamental; second harmonic by each run's drag second harmonic. Force fits are transformed to the matching boundary fit midpoint.",
+    "complex_projection": "Gain=sum(area*Cb*conjugate(Cr))/sum(area*abs(Cr)^2), with vector components summed for gt. Phase is arg(gain); coherence is the magnitude of the normalised complex inner product.",
+    "amplitude_rescaled_error": "RMS((norm(Cr)/norm(Cb))*Cb-Cr)/norm(Cr); reveals force-relative phase and spatial shape differences after matching global amplitudes.",
+    "means": "Signed area-average and RMS of the local linear-trend fit intercept, evaluated at each window midpoint; units m/s for un and 1/s for gt."
+  },
+  "limitations": [
+    "Force-aligned phase differences measure a coupled relationship, not whether a boundary trace creates positive or negative feedback; that requires a controlled evolution.",
+    "The two time windows, different shedding frequency and possible output aliasing retain the limitations of the parent harmonic measurement.",
+    "Three short oblique corner facets are reported separately instead of being silently assigned to an axis-aligned side."
+  ]
+}

@@ -1,0 +1,1360 @@
+{
+  "physical_time": 46.0,
+  "physical_time_advanced": 0,
+  "lattice_shape": [
+    96,
+    76,
+    1
+  ],
+  "elapsed_seconds": 22.4585079339995,
+  "input_sha256": {
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/wall_trace_fields.npz": "a82366cb4de2be7a0c421cb31d667b66f0cd9ecea8205a95cf4afa0ae8b210ba"
+  },
+  "interpretation": "Frozen target repeated renewal only, no physical advection or diffusion. Default and zero pruning share geometry, radius, capacity and amplification guards. Pure renewal convergence is not a force-amplitude result. Direct Gaussian outer-face changes are measured against saved accepted state.",
+  "measurements": {
+    "native_pruning": [
+      {
+        "renewal_repetitions": 0,
+        "particle_count": 22152,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12032021624814133,
+              "weighted_rms": 1.9591449636368665,
+              "maximum_absolute": 19.71954712765641
+            },
+            "curl_error": {
+              "weighted_mean": 0.005120450547028511,
+              "weighted_rms": 0.32014676209017634,
+              "maximum_absolute": 6.585112963760906
+            },
+            "relative_curl_l2_error": 0.15726302418744081,
+            "best_amplitude_ratio": 0.9507164547562598,
+            "curl_rms_ratio": 0.9623744428698735
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.1816524801670539,
+              "weighted_rms": 7.841694458501878,
+              "maximum_absolute": 19.71954712765641
+            },
+            "curl_error": {
+              "weighted_mean": -0.01153143326331981,
+              "weighted_rms": 1.5316604085422816,
+              "maximum_absolute": 6.585112963760906
+            },
+            "relative_curl_l2_error": 0.18325600236154813,
+            "best_amplitude_ratio": 0.9233389323549671,
+            "curl_rms_ratio": 0.9382220563978816
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.13872004943914157,
+              "weighted_rms": 2.02965246675213,
+              "maximum_absolute": 7.761449346813026
+            },
+            "curl_error": {
+              "weighted_mean": 0.0003228360971074066,
+              "weighted_rms": 0.07000224369226461,
+              "maximum_absolute": 0.6658547664968415
+            },
+            "relative_curl_l2_error": 0.03438415561348503,
+            "best_amplitude_ratio": 0.9963514023963077,
+            "curl_rms_ratio": 0.9969378490908384
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.11787201717866455,
+              "weighted_rms": 2.3431862845457796,
+              "maximum_absolute": 5.145621759213062
+            },
+            "curl_error": {
+              "weighted_mean": -0.0010568845240566279,
+              "weighted_rms": 0.015593158896911373,
+              "maximum_absolute": 0.27175114772366077
+            },
+            "relative_curl_l2_error": 0.006666983964633114,
+            "best_amplitude_ratio": 1.0018281469514125,
+            "curl_rms_ratio": 1.001848662512462
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.4393633386750888,
+              "weighted_rms": 2.012879299923245,
+              "maximum_absolute": 3.2638637671903075
+            },
+            "curl_error": {
+              "weighted_mean": 0.13509530932641384,
+              "weighted_rms": 0.3965296396959852,
+              "maximum_absolute": 1.5486414931524228
+            },
+            "relative_curl_l2_error": 0.19270284989898528,
+            "best_amplitude_ratio": 0.9598760603591502,
+            "curl_rms_ratio": 0.9782057600921654
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12028081392421196,
+              "weighted_rms": 0.6714520413445394,
+              "maximum_absolute": 3.250514586448102
+            },
+            "curl_error": {
+              "weighted_mean": 0.009867720715398173,
+              "weighted_rms": 0.20910950546649804,
+              "maximum_absolute": 1.9828505756610675
+            },
+            "relative_curl_l2_error": 0.29497475453932837,
+            "best_amplitude_ratio": 0.9050566050094706,
+            "curl_rms_ratio": 0.947165938911698
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10032860019818014,
+            "velocity_maximum": 0.17852099734182,
+            "normal_velocity_rms": 0.051160500358617064,
+            "tangential_velocity_rms": 0.08630429433569466
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 2.8681159447477353e-08,
+            "velocity_maximum": 3.485314032295528e-08,
+            "normal_velocity_rms": 2.033977360621749e-08,
+            "tangential_velocity_rms": 2.0221338157981476e-08
+          },
+          "tangential_normal_gradient_rms": 6.500103711013379,
+          "tangential_normal_gradient_change_rms": 0.0
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0226474543074906,
+            "velocity_maximum": 1.1876772273736564,
+            "normal_velocity_rms": 0.5825978925116923,
+            "tangential_velocity_rms": 0.8404686260905433
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 8.434398588352732e-09,
+            "velocity_maximum": 2.5999713727957753e-08,
+            "normal_velocity_rms": 5.637733260817931e-09,
+            "tangential_velocity_rms": 6.273359803731473e-09
+          },
+          "tangential_normal_gradient_rms": 0.14672440820654598,
+          "tangential_normal_gradient_change_rms": 0.0
+        },
+        "circulation": 1.0409537311507506,
+        "linear_impulse": [
+          -5.06464371596101,
+          -7.350495582983839,
+          0.0
+        ]
+      },
+      {
+        "renewal_repetitions": 1,
+        "particle_count": 22127,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12025491078776236,
+              "weighted_rms": 1.9922579925769268,
+              "maximum_absolute": 21.751061806205556
+            },
+            "curl_error": {
+              "weighted_mean": 0.005185756007407507,
+              "weighted_rms": 0.24774378551987208,
+              "maximum_absolute": 4.848330679630159
+            },
+            "relative_curl_l2_error": 0.12169711378660013,
+            "best_amplitude_ratio": 0.9714633050098492,
+            "curl_rms_ratio": 0.9786402799413517
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.183796441444015,
+              "weighted_rms": 8.08970663104932,
+              "maximum_absolute": 21.751061806205556
+            },
+            "curl_error": {
+              "weighted_mean": -0.009387471986358866,
+              "weighted_rms": 1.0466608425404313,
+              "maximum_absolute": 4.848330679630159
+            },
+            "relative_curl_l2_error": 0.12522807324821858,
+            "best_amplitude_ratio": 0.9605698651828328,
+            "curl_rms_ratio": 0.9678955525753422
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.13859216746867492,
+              "weighted_rms": 2.0303649633989473,
+              "maximum_absolute": 7.745769026550656
+            },
+            "curl_error": {
+              "weighted_mean": 0.00019495412664077003,
+              "weighted_rms": 0.07135254610772016,
+              "maximum_absolute": 0.8649299175707763
+            },
+            "relative_curl_l2_error": 0.035047405902752814,
+            "best_amplitude_ratio": 0.9966773354460711,
+            "curl_rms_ratio": 0.9972878178102119
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.11760099250572204,
+              "weighted_rms": 2.343098340042209,
+              "maximum_absolute": 5.1446658770420175
+            },
+            "curl_error": {
+              "weighted_mean": -0.0007858598511139934,
+              "weighted_rms": 0.012066418275318163,
+              "maximum_absolute": 0.1893025554983662
+            },
+            "relative_curl_l2_error": 0.005159096863178677,
+            "best_amplitude_ratio": 1.0017993929440505,
+            "curl_rms_ratio": 1.0018110611130946
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.4397972613058736,
+              "weighted_rms": 2.0134620474169562,
+              "maximum_absolute": 3.2637027757824835
+            },
+            "curl_error": {
+              "weighted_mean": 0.1346613866956286,
+              "weighted_rms": 0.3965162824603162,
+              "maximum_absolute": 1.5486300834577142
+            },
+            "relative_curl_l2_error": 0.1926963586379987,
+            "best_amplitude_ratio": 0.9601543789700212,
+            "curl_rms_ratio": 0.9784889598622903
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12026709643509903,
+              "weighted_rms": 0.671967911994288,
+              "maximum_absolute": 3.25034004206326
+            },
+            "curl_error": {
+              "weighted_mean": 0.0098814382045111,
+              "weighted_rms": 0.20908469873523125,
+              "maximum_absolute": 1.9828500890655345
+            },
+            "relative_curl_l2_error": 0.2949397615845604,
+            "best_amplitude_ratio": 0.9057564430974802,
+            "curl_rms_ratio": 0.9478936381042535
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10590822114777265,
+            "velocity_maximum": 0.18129180389774235,
+            "normal_velocity_rms": 0.06490399652697124,
+            "tangential_velocity_rms": 0.08369003848435264
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.01641211908482946,
+            "velocity_maximum": 0.04171390625470642,
+            "normal_velocity_rms": 0.015877283408133235,
+            "tangential_velocity_rms": 0.004155661732196259
+          },
+          "tangential_normal_gradient_rms": 7.044902411547725,
+          "tangential_normal_gradient_change_rms": 0.6516442101720158
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0226908453803591,
+            "velocity_maximum": 1.187480146024995,
+            "normal_velocity_rms": 0.5823765123576826,
+            "tangential_velocity_rms": 0.8406748260052135
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.0008198961457790523,
+            "velocity_maximum": 0.001569472864491217,
+            "normal_velocity_rms": 0.0005189457914651182,
+            "tangential_velocity_rms": 0.0006347637004303153
+          },
+          "tangential_normal_gradient_rms": 0.14698664403121212,
+          "tangential_normal_gradient_change_rms": 0.0006720765607721286
+        },
+        "circulation": 1.0464969568368137,
+        "linear_impulse": [
+          -5.071325553613132,
+          -7.34889599842143,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.09505155262364172,
+        "representation_residual_after_prune": 0.09483779843703158,
+        "maximum_transfer_amplification": 1.8,
+        "prune_correction_fraction": 0.0022404185393114307
+      },
+      {
+        "renewal_repetitions": 5,
+        "particle_count": 22111,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12079521902766081,
+              "weighted_rms": 1.9777772419344097,
+              "maximum_absolute": 22.39410347066116
+            },
+            "curl_error": {
+              "weighted_mean": 0.004645447767509027,
+              "weighted_rms": 0.21993704020726668,
+              "maximum_absolute": 7.039995185981116
+            },
+            "relative_curl_l2_error": 0.10803783817150418,
+            "best_amplitude_ratio": 0.9660962895727041,
+            "curl_rms_ratio": 0.9715270215604814
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.16770629288686514,
+              "weighted_rms": 7.966614356862371,
+              "maximum_absolute": 22.39410347066116
+            },
+            "curl_error": {
+              "weighted_mean": -0.025477620543508956,
+              "weighted_rms": 0.8499487923230633,
+              "maximum_absolute": 7.039995185981116
+            },
+            "relative_curl_l2_error": 0.10169239671174184,
+            "best_amplitude_ratio": 0.9490940777105066,
+            "curl_rms_ratio": 0.9531681378277347
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.13845214708396789,
+              "weighted_rms": 2.038748588634133,
+              "maximum_absolute": 7.736224739497196
+            },
+            "curl_error": {
+              "weighted_mean": 5.493374193377751e-05,
+              "weighted_rms": 0.03504925103056729,
+              "maximum_absolute": 0.3544911636606898
+            },
+            "relative_curl_l2_error": 0.017215718211390653,
+            "best_amplitude_ratio": 1.0012585387495518,
+            "curl_rms_ratio": 1.0014057411721973
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.11736453966659605,
+              "weighted_rms": 2.342814332704597,
+              "maximum_absolute": 5.142953071065255
+            },
+            "curl_error": {
+              "weighted_mean": -0.0005494070119880166,
+              "weighted_rms": 0.007182739558882787,
+              "maximum_absolute": 0.0490312052151116
+            },
+            "relative_curl_l2_error": 0.003071039664111469,
+            "best_amplitude_ratio": 1.0016863432134364,
+            "curl_rms_ratio": 1.0016896314285635
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.441699315386941,
+              "weighted_rms": 2.0156647042658333,
+              "maximum_absolute": 3.2634882352400383
+            },
+            "curl_error": {
+              "weighted_mean": 0.1327593326145611,
+              "weighted_rms": 0.39656303746748345,
+              "maximum_absolute": 1.5485830559913942
+            },
+            "relative_curl_l2_error": 0.19271908032693746,
+            "best_amplitude_ratio": 0.9611979797168752,
+            "curl_rms_ratio": 0.9795593924595951
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12024055563025608,
+              "weighted_rms": 0.6738719554687318,
+              "maximum_absolute": 3.2501462851042855
+            },
+            "curl_error": {
+              "weighted_mean": 0.009907979009354062,
+              "weighted_rms": 0.20902961579787582,
+              "maximum_absolute": 1.9828481871716435
+            },
+            "relative_curl_l2_error": 0.294862060306039,
+            "best_amplitude_ratio": 0.9083289006252949,
+            "curl_rms_ratio": 0.950579526319872
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10796482443951066,
+            "velocity_maximum": 0.205895382413124,
+            "normal_velocity_rms": 0.05706177486343112,
+            "tangential_velocity_rms": 0.0916534623769853
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.021536321005733914,
+            "velocity_maximum": 0.06045807089896618,
+            "normal_velocity_rms": 0.01801930119413429,
+            "tangential_velocity_rms": 0.01179482543054735
+          },
+          "tangential_normal_gradient_rms": 7.103128452864155,
+          "tangential_normal_gradient_change_rms": 0.9004239357063255
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0226157715328095,
+            "velocity_maximum": 1.1875029909030157,
+            "normal_velocity_rms": 0.5827121104815236,
+            "tangential_velocity_rms": 0.8403508865264627
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.0005892398903481739,
+            "velocity_maximum": 0.0010878198601029577,
+            "normal_velocity_rms": 0.0004106492480379217,
+            "tangential_velocity_rms": 0.00042257643505455605
+          },
+          "tangential_normal_gradient_rms": 0.14702839124621783,
+          "tangential_normal_gradient_change_rms": 0.0008179048861822434
+        },
+        "circulation": 1.0426533215328122,
+        "linear_impulse": [
+          -5.0617016646674955,
+          -7.349150820244134,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.07695134504803731,
+        "representation_residual_after_prune": 0.07638694303098395,
+        "maximum_transfer_amplification": 1.8168992179073526,
+        "prune_correction_fraction": 0.0020867210189504633
+      },
+      {
+        "renewal_repetitions": 25,
+        "particle_count": 22080,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.1202625121869177,
+              "weighted_rms": 1.978002837267632,
+              "maximum_absolute": 23.040648759676028
+            },
+            "curl_error": {
+              "weighted_mean": 0.005178154608252147,
+              "weighted_rms": 0.22021543118293363,
+              "maximum_absolute": 7.218185660882021
+            },
+            "relative_curl_l2_error": 0.10817458984893501,
+            "best_amplitude_ratio": 0.9661891740220999,
+            "curl_rms_ratio": 0.9716378388747452
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.1799423490784344,
+              "weighted_rms": 7.954472569272982,
+              "maximum_absolute": 23.040648759676028
+            },
+            "curl_error": {
+              "weighted_mean": -0.01324156435193956,
+              "weighted_rms": 0.8536682622929316,
+              "maximum_absolute": 7.218185660882021
+            },
+            "relative_curl_l2_error": 0.10213741389295278,
+            "best_amplitude_ratio": 0.9476651039491959,
+            "curl_rms_ratio": 0.9517154297452217
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.1383385136254081,
+              "weighted_rms": 2.0400925309963625,
+              "maximum_absolute": 7.727540944582516
+            },
+            "curl_error": {
+              "weighted_mean": -5.869971662601819e-05,
+              "weighted_rms": 0.011256765354141643,
+              "maximum_absolute": 0.07083012724986126
+            },
+            "relative_curl_l2_error": 0.005529170941188897,
+            "best_amplitude_ratio": 1.0020527155279069,
+            "curl_rms_ratio": 1.0020658674893135
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.11724059766848827,
+              "weighted_rms": 2.3425496726358443,
+              "maximum_absolute": 5.1420912118250675
+            },
+            "curl_error": {
+              "weighted_mean": -0.00042546501388037155,
+              "weighted_rms": 0.006285999591702691,
+              "maximum_absolute": 0.03263881245824723
+            },
+            "relative_curl_l2_error": 0.002687631079541762,
+            "best_amplitude_ratio": 1.0015741047831959,
+            "curl_rms_ratio": 1.0015764738287392
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.4493291554798615,
+              "weighted_rms": 2.0255592807684932,
+              "maximum_absolute": 3.2634508975846064
+            },
+            "curl_error": {
+              "weighted_mean": 0.12512949252164096,
+              "weighted_rms": 0.3980463051646771,
+              "maximum_absolute": 1.548371321972014
+            },
+            "relative_curl_l2_error": 0.19343990894552818,
+            "best_amplitude_ratio": 0.9657805754559846,
+            "curl_rms_ratio": 0.9843678932618757
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.11996258652087198,
+              "weighted_rms": 0.6823719689281502,
+              "maximum_absolute": 3.250090887316097
+            },
+            "curl_error": {
+              "weighted_mean": 0.01018594811873815,
+              "weighted_rms": 0.20953676794135362,
+              "maximum_absolute": 1.9828388832619723
+            },
+            "relative_curl_l2_error": 0.29557746096992904,
+            "best_amplitude_ratio": 0.9195873344954817,
+            "curl_rms_ratio": 0.9625698439201144
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10727716803387205,
+            "velocity_maximum": 0.20366848658627196,
+            "normal_velocity_rms": 0.05533953919564588,
+            "tangential_velocity_rms": 0.09190172023951017
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.022973901100491002,
+            "velocity_maximum": 0.07306384167965053,
+            "normal_velocity_rms": 0.018911761211600573,
+            "tangential_velocity_rms": 0.013043980207380778
+          },
+          "tangential_normal_gradient_rms": 7.076170565311669,
+          "tangential_normal_gradient_change_rms": 0.9190561805657677
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0227239429358583,
+            "velocity_maximum": 1.1872357879058881,
+            "normal_velocity_rms": 0.582738545350643,
+            "tangential_velocity_rms": 0.8404641879443084
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.0022373768749044203,
+            "velocity_maximum": 0.006096201638605783,
+            "normal_velocity_rms": 0.0015134124015282026,
+            "tangential_velocity_rms": 0.0016478586660444237
+          },
+          "tangential_normal_gradient_rms": 0.14856468238624093,
+          "tangential_normal_gradient_change_rms": 0.003570186951110108
+        },
+        "circulation": 1.0493246259219797,
+        "linear_impulse": [
+          -5.066191834178333,
+          -7.350241809343448,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.07699395447280871,
+        "representation_residual_after_prune": 0.07633326114465043,
+        "maximum_transfer_amplification": 1.8931068468121404,
+        "prune_correction_fraction": 0.0019500671195762666
+      }
+    ],
+    "no_pruning": [
+      {
+        "renewal_repetitions": 0,
+        "particle_count": 22152,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12032021624814133,
+              "weighted_rms": 1.9591449636368665,
+              "maximum_absolute": 19.71954712765641
+            },
+            "curl_error": {
+              "weighted_mean": 0.005120450547028511,
+              "weighted_rms": 0.32014676209017634,
+              "maximum_absolute": 6.585112963760906
+            },
+            "relative_curl_l2_error": 0.15726302418744081,
+            "best_amplitude_ratio": 0.9507164547562598,
+            "curl_rms_ratio": 0.9623744428698735
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.1816524801670539,
+              "weighted_rms": 7.841694458501878,
+              "maximum_absolute": 19.71954712765641
+            },
+            "curl_error": {
+              "weighted_mean": -0.01153143326331981,
+              "weighted_rms": 1.5316604085422816,
+              "maximum_absolute": 6.585112963760906
+            },
+            "relative_curl_l2_error": 0.18325600236154813,
+            "best_amplitude_ratio": 0.9233389323549671,
+            "curl_rms_ratio": 0.9382220563978816
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.13872004943914157,
+              "weighted_rms": 2.02965246675213,
+              "maximum_absolute": 7.761449346813026
+            },
+            "curl_error": {
+              "weighted_mean": 0.0003228360971074066,
+              "weighted_rms": 0.07000224369226461,
+              "maximum_absolute": 0.6658547664968415
+            },
+            "relative_curl_l2_error": 0.03438415561348503,
+            "best_amplitude_ratio": 0.9963514023963077,
+            "curl_rms_ratio": 0.9969378490908384
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.11787201717866455,
+              "weighted_rms": 2.3431862845457796,
+              "maximum_absolute": 5.145621759213062
+            },
+            "curl_error": {
+              "weighted_mean": -0.0010568845240566279,
+              "weighted_rms": 0.015593158896911373,
+              "maximum_absolute": 0.27175114772366077
+            },
+            "relative_curl_l2_error": 0.006666983964633114,
+            "best_amplitude_ratio": 1.0018281469514125,
+            "curl_rms_ratio": 1.001848662512462
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.4393633386750888,
+              "weighted_rms": 2.012879299923245,
+              "maximum_absolute": 3.2638637671903075
+            },
+            "curl_error": {
+              "weighted_mean": 0.13509530932641384,
+              "weighted_rms": 0.3965296396959852,
+              "maximum_absolute": 1.5486414931524228
+            },
+            "relative_curl_l2_error": 0.19270284989898528,
+            "best_amplitude_ratio": 0.9598760603591502,
+            "curl_rms_ratio": 0.9782057600921654
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12028081392421196,
+              "weighted_rms": 0.6714520413445394,
+              "maximum_absolute": 3.250514586448102
+            },
+            "curl_error": {
+              "weighted_mean": 0.009867720715398173,
+              "weighted_rms": 0.20910950546649804,
+              "maximum_absolute": 1.9828505756610675
+            },
+            "relative_curl_l2_error": 0.29497475453932837,
+            "best_amplitude_ratio": 0.9050566050094706,
+            "curl_rms_ratio": 0.947165938911698
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10032860019818014,
+            "velocity_maximum": 0.17852099734182,
+            "normal_velocity_rms": 0.051160500358617064,
+            "tangential_velocity_rms": 0.08630429433569466
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 2.8681159447477353e-08,
+            "velocity_maximum": 3.485314032295528e-08,
+            "normal_velocity_rms": 2.033977360621749e-08,
+            "tangential_velocity_rms": 2.0221338157981476e-08
+          },
+          "tangential_normal_gradient_rms": 6.500103711013379,
+          "tangential_normal_gradient_change_rms": 0.0
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0226474543074906,
+            "velocity_maximum": 1.1876772273736564,
+            "normal_velocity_rms": 0.5825978925116923,
+            "tangential_velocity_rms": 0.8404686260905433
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 8.434398588352732e-09,
+            "velocity_maximum": 2.5999713727957753e-08,
+            "normal_velocity_rms": 5.637733260817931e-09,
+            "tangential_velocity_rms": 6.273359803731473e-09
+          },
+          "tangential_normal_gradient_rms": 0.14672440820654598,
+          "tangential_normal_gradient_change_rms": 0.0
+        },
+        "circulation": 1.0409537311507506,
+        "linear_impulse": [
+          -5.06464371596101,
+          -7.350495582983839,
+          0.0
+        ]
+      },
+      {
+        "renewal_repetitions": 1,
+        "particle_count": 25252,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12025059470988303,
+              "weighted_rms": 1.9881724915620123,
+              "maximum_absolute": 21.70223312677233
+            },
+            "curl_error": {
+              "weighted_mean": 0.005190072085286862,
+              "weighted_rms": 0.24808310055677046,
+              "maximum_absolute": 4.893245092072185
+            },
+            "relative_curl_l2_error": 0.12186379268257436,
+            "best_amplitude_ratio": 0.9694810005171669,
+            "curl_rms_ratio": 0.9766333933474297
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.18372108763719536,
+              "weighted_rms": 8.072338217894718,
+              "maximum_absolute": 21.70223312677233
+            },
+            "curl_error": {
+              "weighted_mean": -0.009462825793178507,
+              "weighted_rms": 1.0493981487816684,
+              "maximum_absolute": 4.893245092072185
+            },
+            "relative_curl_l2_error": 0.12555557913412566,
+            "best_amplitude_ratio": 0.9585196230135568,
+            "curl_rms_ratio": 0.9658175031955154
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.13853595235297628,
+              "weighted_rms": 2.0253020517765483,
+              "maximum_absolute": 7.72519091246185
+            },
+            "curl_error": {
+              "weighted_mean": 0.00013873901094212866,
+              "weighted_rms": 0.07147555068499178,
+              "maximum_absolute": 0.8700712291556272
+            },
+            "relative_curl_l2_error": 0.03510782408798516,
+            "best_amplitude_ratio": 0.9941982193032289,
+            "curl_rms_ratio": 0.9948009840760366
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.1170310663213554,
+              "weighted_rms": 2.3388484730064767,
+              "maximum_absolute": 5.129151991365252
+            },
+            "curl_error": {
+              "weighted_mean": -0.00021593366674746865,
+              "weighted_rms": 0.010206063019927014,
+              "maximum_absolute": 0.18668687955721547
+            },
+            "relative_curl_l2_error": 0.004363686597804517,
+            "best_amplitude_ratio": 0.9999844744742644,
+            "curl_rms_ratio": 0.9999939953365983
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.4387302276551006,
+              "weighted_rms": 2.0114458925602996,
+              "maximum_absolute": 3.261904726868474
+            },
+            "curl_error": {
+              "weighted_mean": 0.13572842034640184,
+              "weighted_rms": 0.3964964990265847,
+              "maximum_absolute": 1.5486414931524228
+            },
+            "relative_curl_l2_error": 0.19268674441580896,
+            "best_amplitude_ratio": 0.9591979904229595,
+            "curl_rms_ratio": 0.977509162268816
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12032817588207,
+              "weighted_rms": 0.6712056616980819,
+              "maximum_absolute": 3.248422387439765
+            },
+            "curl_error": {
+              "weighted_mean": 0.009820358757540138,
+              "weighted_rms": 0.20904104031426335,
+              "maximum_absolute": 1.9828505756610675
+            },
+            "relative_curl_l2_error": 0.2948781759958046,
+            "best_amplitude_ratio": 0.9047559625058476,
+            "curl_rms_ratio": 0.9468183900254092
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10592243122050385,
+            "velocity_maximum": 0.18228023358919743,
+            "normal_velocity_rms": 0.06395657263493197,
+            "tangential_velocity_rms": 0.08443410597889364
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.015676278114978646,
+            "velocity_maximum": 0.04123338283684114,
+            "normal_velocity_rms": 0.015282936448110074,
+            "tangential_velocity_rms": 0.0034896345168494627
+          },
+          "tangential_normal_gradient_rms": 7.031960555117826,
+          "tangential_normal_gradient_change_rms": 0.6416339832341943
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0226926747365737,
+            "velocity_maximum": 1.1876876504393559,
+            "normal_velocity_rms": 0.5823752110158089,
+            "tangential_velocity_rms": 0.8406779529368777
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.0007319875963188083,
+            "velocity_maximum": 0.0013971266056476057,
+            "normal_velocity_rms": 0.00045443708177596575,
+            "tangential_velocity_rms": 0.0005738403783906556
+          },
+          "tangential_normal_gradient_rms": 0.14684790155899027,
+          "tangential_normal_gradient_change_rms": 0.0005442060595250668
+        },
+        "circulation": 1.0464969568368134,
+        "linear_impulse": [
+          -5.071325553613125,
+          -7.34889599842143,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.09505155262364172,
+        "representation_residual_after_prune": 0.09505155262364172,
+        "maximum_transfer_amplification": 1.8,
+        "prune_correction_fraction": 0.0
+      },
+      {
+        "renewal_repetitions": 5,
+        "particle_count": 25252,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12082909836231696,
+              "weighted_rms": 1.9723068273493434,
+              "maximum_absolute": 22.31552072458472
+            },
+            "curl_error": {
+              "weighted_mean": 0.004611568432852895,
+              "weighted_rms": 0.22237918003277457,
+              "maximum_absolute": 7.166845756077741
+            },
+            "relative_curl_l2_error": 0.10923747015260096,
+            "best_amplitude_ratio": 0.9633589009080833,
+            "curl_rms_ratio": 0.9688398354225053
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.16599609452173572,
+              "weighted_rms": 7.941112069093307,
+              "maximum_absolute": 22.31552072458472
+            },
+            "curl_error": {
+              "weighted_mean": -0.027187818908638108,
+              "weighted_rms": 0.8695391419635866,
+              "maximum_absolute": 7.166845756077741
+            },
+            "relative_curl_l2_error": 0.1040362903972906,
+            "best_amplitude_ratio": 0.9459492949565824,
+            "curl_rms_ratio": 0.9501169084027472
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.1383984495530408,
+              "weighted_rms": 2.0339151648664595,
+              "maximum_absolute": 7.716317314092862
+            },
+            "curl_error": {
+              "weighted_mean": 1.236211006656642e-06,
+              "weighted_rms": 0.03399478400535945,
+              "maximum_absolute": 0.36406373244804424
+            },
+            "relative_curl_l2_error": 0.016697778265873715,
+            "best_amplitude_ratio": 0.9988926897413096,
+            "curl_rms_ratio": 0.9990316287693977
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.1168356178228632,
+              "weighted_rms": 2.3388562648538183,
+              "maximum_absolute": 5.1282863427999565
+            },
+            "curl_error": {
+              "weighted_mean": -2.048516825526314e-05,
+              "weighted_rms": 0.003474181850700569,
+              "maximum_absolute": 0.046772131299635686
+            },
+            "relative_curl_l2_error": 0.0014854151645583488,
+            "best_amplitude_ratio": 0.9999962235797968,
+            "curl_rms_ratio": 0.9999973268053292
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.4385438823777905,
+              "weighted_rms": 2.0110682522526973,
+              "maximum_absolute": 3.2618711920646293
+            },
+            "curl_error": {
+              "weighted_mean": 0.13591476562371188,
+              "weighted_rms": 0.3964709648538359,
+              "maximum_absolute": 1.5486414931524228
+            },
+            "relative_curl_l2_error": 0.19267433548753246,
+            "best_amplitude_ratio": 0.9590210026741266,
+            "curl_rms_ratio": 0.9773256391315104
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12027357108136776,
+              "weighted_rms": 0.670993451362367,
+              "maximum_absolute": 3.2484519489749357
+            },
+            "curl_error": {
+              "weighted_mean": 0.009874963558242387,
+              "weighted_rms": 0.20902328299486472,
+              "maximum_absolute": 1.9828505756610675
+            },
+            "relative_curl_l2_error": 0.294853127106137,
+            "best_amplitude_ratio": 0.9044799643639668,
+            "curl_rms_ratio": 0.9465190411672665
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10819335572687473,
+            "velocity_maximum": 0.20900331159853652,
+            "normal_velocity_rms": 0.05564329797844047,
+            "tangential_velocity_rms": 0.09278806827132753
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.021912914897747847,
+            "velocity_maximum": 0.06253361473256039,
+            "normal_velocity_rms": 0.018181426405949455,
+            "tangential_velocity_rms": 0.012231580975531472
+          },
+          "tangential_normal_gradient_rms": 7.0798048529504545,
+          "tangential_normal_gradient_change_rms": 0.8848900991894635
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0225920196551723,
+            "velocity_maximum": 1.187825041030774,
+            "normal_velocity_rms": 0.5827113574946828,
+            "tangential_velocity_rms": 0.8403225050593065
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.000636950412303288,
+            "velocity_maximum": 0.0011354370425385775,
+            "normal_velocity_rms": 0.0004450439002972439,
+            "tangential_velocity_rms": 0.00045567724821582374
+          },
+          "tangential_normal_gradient_rms": 0.14654100479468385,
+          "tangential_normal_gradient_change_rms": 0.0006633422121704062
+        },
+        "circulation": 1.0419661208746684,
+        "linear_impulse": [
+          -5.060706910454249,
+          -7.3493161661309365,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.07808622430832797,
+        "representation_residual_after_prune": 0.07808622430832797,
+        "maximum_transfer_amplification": 1.8,
+        "prune_correction_fraction": 0.0
+      },
+      {
+        "renewal_repetitions": 25,
+        "particle_count": 25252,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.12544066679516988,
+              "weighted_rms": 2.0357408471847487,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12055202510627949,
+              "weighted_rms": 1.9647276880869846,
+              "maximum_absolute": 22.555795055563298
+            },
+            "curl_error": {
+              "weighted_mean": 0.004888641688890375,
+              "weighted_rms": 0.23095469137134356,
+              "maximum_absolute": 7.739426605374636
+            },
+            "relative_curl_l2_error": 0.11344994707491068,
+            "best_amplitude_ratio": 0.9592897716899107,
+            "curl_rms_ratio": 0.9651167980462892
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.1931839134303739,
+              "weighted_rms": 8.35803678353983,
+              "maximum_absolute": 26.19034549151342
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.17397176439307116,
+              "weighted_rms": 7.881931018040573,
+              "maximum_absolute": 22.555795055563298
+            },
+            "curl_error": {
+              "weighted_mean": -0.01921214903730264,
+              "weighted_rms": 0.9383838912782172,
+              "maximum_absolute": 7.739426605374636
+            },
+            "relative_curl_l2_error": 0.11227324257847893,
+            "best_amplitude_ratio": 0.9383559708308652,
+            "curl_rms_ratio": 0.9430361725092078
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.13839721334203414,
+              "weighted_rms": 2.03588665893574,
+              "maximum_absolute": 7.707487034960183
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.13832233604753066,
+              "weighted_rms": 2.035418012966966,
+              "maximum_absolute": 7.70924301461438
+            },
+            "curl_error": {
+              "weighted_mean": -7.487729450348861e-05,
+              "weighted_rms": 0.007029659680923115,
+              "maximum_absolute": 0.09466103741950738
+            },
+            "relative_curl_l2_error": 0.003452873788464173,
+            "best_amplitude_ratio": 0.9997638727622277,
+            "curl_rms_ratio": 0.999769807436619
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.11681513265460795,
+              "weighted_rms": 2.338862517088635,
+              "maximum_absolute": 5.1282493863108
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.11681533762139146,
+              "weighted_rms": 2.3388625034000228,
+              "maximum_absolute": 5.128247281311394
+            },
+            "curl_error": {
+              "weighted_mean": -2.0496678343933796e-07,
+              "weighted_rms": 0.0003582771782090599,
+              "maximum_absolute": 0.005309901274705431
+            },
+            "relative_curl_l2_error": 0.00015318436872255133,
+            "best_amplitude_ratio": 0.9999999824145956,
+            "curl_rms_ratio": 0.9999999941473208
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.5744586480015026,
+              "weighted_rms": 2.057725871225287,
+              "maximum_absolute": 3.2618805510030913
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -1.4383555350315052,
+              "weighted_rms": 2.010691736311188,
+              "maximum_absolute": 3.2618780164424312
+            },
+            "curl_error": {
+              "weighted_mean": 0.1361031129699972,
+              "weighted_rms": 0.39645008645194707,
+              "maximum_absolute": 1.5486414931524226
+            },
+            "relative_curl_l2_error": 0.19266418913996458,
+            "best_amplitude_ratio": 0.9588441464586555,
+            "curl_rms_ratio": 0.977142662406197
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.13014853463961013,
+              "weighted_rms": 0.7089064479198266,
+              "maximum_absolute": 3.2484176268575564
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.12022231425295418,
+              "weighted_rms": 0.6707762514305649,
+              "maximum_absolute": 3.248404586270776
+            },
+            "curl_error": {
+              "weighted_mean": 0.009926220386655964,
+              "weighted_rms": 0.20901099205682472,
+              "maximum_absolute": 1.9828505756610675
+            },
+            "relative_curl_l2_error": 0.29483578922174325,
+            "best_amplitude_ratio": 0.9041951218672359,
+            "curl_rms_ratio": 0.9462126538682941
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.10793577907914823,
+            "velocity_maximum": 0.21169641225979718,
+            "normal_velocity_rms": 0.05129694013354783,
+            "tangential_velocity_rms": 0.09496713293744263
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.024360795304333757,
+            "velocity_maximum": 0.07748467743652013,
+            "normal_velocity_rms": 0.019517611212121845,
+            "tangential_velocity_rms": 0.014577763903702967
+          },
+          "tangential_normal_gradient_rms": 6.999803905187072,
+          "tangential_normal_gradient_change_rms": 0.8603001635460426
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0225339955733395,
+            "velocity_maximum": 1.187627836883993,
+            "normal_velocity_rms": 0.5828285487406794,
+            "tangential_velocity_rms": 0.8401706105762161
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.0010504598452654372,
+            "velocity_maximum": 0.0018981306464814583,
+            "normal_velocity_rms": 0.0007189247959415749,
+            "tangential_velocity_rms": 0.0007659066681361713
+          },
+          "tangential_normal_gradient_rms": 0.1464177760383496,
+          "tangential_normal_gradient_change_rms": 0.000987347303341865
+        },
+        "circulation": 1.044642467355369,
+        "linear_impulse": [
+          -5.056936090668817,
+          -7.349069997798981,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.08392343636642377,
+        "representation_residual_after_prune": 0.08392343636642377,
+        "maximum_transfer_amplification": 1.8,
+        "prune_correction_fraction": 0.0
+      }
+    ]
+  }
+}

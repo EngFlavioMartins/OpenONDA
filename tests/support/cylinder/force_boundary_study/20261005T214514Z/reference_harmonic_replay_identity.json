@@ -1,0 +1,18 @@
+{
+  "status": "complete",
+  "recorded_at": "2026-10-06T00:00:29.575255+00:00",
+  "service": "openonda-reference-harmonic-replay-20261006.service",
+  "invocation_id": "6d92ff0d1c61461c8c8289f9290d47d4",
+  "launcher_pid": 1565493,
+  "log": "/tmp/openonda-reference-harmonic-replay-20261006.log",
+  "output_directory": "/tmp/openonda-reference-harmonic-replay-20261006",
+  "memory_max_mib": 1500,
+  "swap_max_bytes": 0,
+  "cpu_quota_percent": 100,
+  "runtime_max_seconds": 1800,
+  "threads": 1,
+  "scope": "Reference filtered boundary-signal FVM control; unchangednative100\u2013112sclock/initialBDF/settings",
+  "production_changed": false,
+  "accepted_time": 111.99999999998144,
+  "wall_seconds": 545.099768961998
+}

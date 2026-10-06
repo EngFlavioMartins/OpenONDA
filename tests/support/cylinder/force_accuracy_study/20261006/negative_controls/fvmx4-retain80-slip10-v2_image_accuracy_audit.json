@@ -1,0 +1,58 @@
+{
+  "created_utc": "2026-10-06T06:29:41.140650+00:00",
+  "status": "stopped_after_image_accuracy_audit",
+  "parameters": {
+    "directory": "/tmp/openonda-force-fvmx4-retain80-slip10-v2-20261006",
+    "snapshot": null,
+    "mesh": "/tmp/openonda-force-fvmx4-20261006/solution/fvm/mesh.npz",
+    "initial_state": "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z",
+    "backup_steps": 100,
+    "steps": null,
+    "end_time": 24.0,
+    "wake_x": 80.0,
+    "particle_ratio": 1.0,
+    "core_ratio": 1.0,
+    "exchange_dt": 0.04,
+    "downstream_x": 4.0,
+    "half_width": 1.6,
+    "wall_potential": false,
+    "advection_substeps": 1,
+    "slip_half_width": 10.0,
+    "remeshing_order": 4,
+    "inlet_x": null,
+    "linear_interface_prediction": false
+  },
+  "input_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "398ed628e4458a804b564e9ff23bfd72c24858b0e179abc9828793286a61d45e",
+    "/tmp/openonda-force-fvmx4-20261006/solution/fvm/mesh.npz": "57005f3f27395ccc99edd82d91eb77de9decb5bfd14c01a12785e04aea0d979e"
+  },
+  "restart_changes": [],
+  "scope": "Autonomous native FVM/VPM evolution; no reference forcing or force scaling",
+  "developed_initial_conditions": {
+    "source_physical_age_s": 46.0,
+    "new_solver_time_s": 0.0,
+    "source_sha256": {
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048"
+    },
+    "fvm_cells_initialized_from_saved_fvm": 7662,
+    "fvm_cells_initialized_from_particle_velocity": 3238,
+    "maximum_saved_domain_donor_distance_m": 0.014213600694716855,
+    "pressure_initialization": "Saved FVM pressure inside old domain; Bernoulli outside",
+    "interpretation": "New initial-value problem. Reset time histories cause a short initialization transient; qualification excludes it."
+  },
+  "initial_time": 0.0,
+  "fvm_cells": 10900,
+  "compute_device": "CUDA",
+  "execution_scheduling": {
+    "time_utc": "2026-10-06T08:16:23.057707+00:00",
+    "status": "running",
+    "reason": "Complete the larger FVM downstream-region control to test remaining wake-release errors. Near-body mesh was independently qualified as identical."
+  },
+  "field_qualification": {
+    "status": "not_qualified_for_physical_channel_accuracy",
+    "reason": "Subsequent independent small-separation testing exposed severe f32 cancellation in the image pair. Preserve as screening evidence, not as a validated final channel solution. Corrected-formula controls supersede these results."
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "status": "complete; finite two-frame CUDA/CPU checks pass",
+  "recorded_at": "2026-10-06T00:00:29.575017+00:00",
+  "service": "openonda-reference-image-smoke-20261006.service",
+  "invocation_id": "26bc3d7a5ec0408e98fbe60b6e68d595",
+  "launcher_pid": 1565032,
+  "log": "/tmp/openonda-reference-image-smoke-20261006.log",
+  "output_directory": "/tmp/openonda-reference-image-smoke-20261006",
+  "memory_max_mib": 2500,
+  "swap_max_bytes": 0,
+  "cpu_quota_percent": 100,
+  "runtime_max_seconds": 300,
+  "threads": 1,
+  "scope": "Two-frame warm reference-particle image;CUDA exactCPU comparison; no FVMadvance",
+  "production_changed": false
+}

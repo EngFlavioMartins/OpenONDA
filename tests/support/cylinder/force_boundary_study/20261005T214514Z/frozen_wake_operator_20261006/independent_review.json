@@ -1,0 +1,1112 @@
+{
+  "schema": "openonda-frozen-wake-remeshing-independent-review/1",
+  "created_utc": "2026-10-06T01:42:40.208750+00:00",
+  "run_directory": "/tmp/openonda-frozen-wake-remeshing-20261006",
+  "durable_directory": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/frozen_wake_operator_20261006",
+  "runtime_seconds": 67.48144204200071,
+  "focus_test_result": "All4 focused tests passed before diagnostic launch; parent qualification evidence. Reviewer did not relaunch tests or operators.",
+  "passed_checks": 185,
+  "checks": [
+    {
+      "name": "unchanged_frozen_input:/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json",
+      "passed": true,
+      "sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1"
+    },
+    {
+      "name": "unchanged_frozen_input:/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz",
+      "passed": true,
+      "sha256": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048"
+    },
+    {
+      "name": "unchanged_frozen_input:/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/wall_trace_fields.npz",
+      "passed": true,
+      "sha256": "a82366cb4de2be7a0c421cb31d667b66f0cd9ecea8205a95cf4afa0ae8b210ba"
+    },
+    {
+      "name": "unchanged_frozen_input:/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz",
+      "passed": true,
+      "sha256": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475"
+    },
+    {
+      "name": "unchanged_frozen_input:/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5",
+      "passed": true,
+      "sha256": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b"
+    },
+    {
+      "name": "unchanged_frozen_input:/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.vtu",
+      "passed": true,
+      "sha256": "64a1d1a94875049200b1fda2c33a32f2c9299c85cc8253cef6aabdadb8c4882a"
+    },
+    {
+      "name": "unchanged_frozen_input:/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_boundary_condition_001150.npz",
+      "passed": true,
+      "sha256": "e0c81f841a30f3c0db5b8fc2f106867950c74fbc5468507f2ca5c28833dd7d0b"
+    },
+    {
+      "name": "unchanged_numerical_or_measurement_source:source/solvers/vpm/physics/diffusion/planar.py",
+      "passed": true,
+      "sha256": "02cf516552a476081496babd8404218ca46f03724e73a4a4bbfc90af9d6acc13"
+    },
+    {
+      "name": "unchanged_numerical_or_measurement_source:source/solvers/vpm/physics/diffusion/grid.py",
+      "passed": true,
+      "sha256": "fddcd6c1363e62cdd3fbedb56211c8eacf6c3c03fbe560b747dedffdb5fe29e4"
+    },
+    {
+      "name": "unchanged_numerical_or_measurement_source:source/coupler/stable_renewal.py",
+      "passed": true,
+      "sha256": "348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306"
+    },
+    {
+      "name": "unchanged_numerical_or_measurement_source:source/coupler/solver.py",
+      "passed": true,
+      "sha256": "6dacb1e1a6d5f4dca207669411f4d15ca2864b87b8be5432933240644e61d893"
+    },
+    {
+      "name": "unchanged_numerical_or_measurement_source:tests/support/cylinder/audit_saved_wall_circulation.py",
+      "passed": true,
+      "sha256": "b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a"
+    },
+    {
+      "name": "unchanged_numerical_or_measurement_source:tests/support/cylinder/measure_frozen_wake_remeshing.py",
+      "passed": true,
+      "sha256": "acd54f760e293298debec0ed6cc26c13680ce0cae62863c309a2d84e30b08ed5"
+    },
+    {
+      "name": "raw_operator_field_hash",
+      "passed": true
+    },
+    {
+      "name": "no_physical_time_advanced",
+      "passed": true
+    },
+    {
+      "name": "original_46s_native_identity",
+      "passed": true
+    },
+    {
+      "name": "native_capacity_and_material_configuration",
+      "passed": true
+    },
+    {
+      "name": "stored_native_fp32_axial_one_plane",
+      "passed": true
+    },
+    {
+      "name": "actual_subset_particle_count:x_above_1",
+      "passed": true
+    },
+    {
+      "name": "probe_count_and_actual_body_clearance:x_above_1",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_1:0.0",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_1:0.0",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.0:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.0:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.0:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 1.5543122344752192e-15
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.0:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.0:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 3.3306690738754696e-15
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_1:0.25",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_1:0.25",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.25:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.25:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.25:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 5.551115123125783e-16
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.25:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.25:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 7.771561172376096e-16
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_1:0.5",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_1:0.5",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.5:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.5:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.5:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 2.220446049250313e-16
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.5:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.5:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 5.551115123125783e-16
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_1:0.75",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_1:0.75",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.75:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.75:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.75:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 3.885780586188048e-15
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.75:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_1:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_1:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_1:0.75:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_1:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 3.1086244689504383e-15
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_1:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "actual_subset_particle_count:x_above_3",
+      "passed": true
+    },
+    {
+      "name": "probe_count_and_actual_body_clearance:x_above_3",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_3:0.0",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_3:0.0",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.0:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.0:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.0:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 4.96269692007445e-14
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.0:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.0:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 5.595524044110789e-14
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.0:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_3:0.25",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_3:0.25",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.25:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.25:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.25:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 1.709743457922741e-14
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.25:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.25:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 4.8627768478581856e-14
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.25:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_3:0.5",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_3:0.5",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.5:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.5:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.5:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 2.886579864025407e-15
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.5:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.5:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 4.4853010194856324e-14
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.5:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "finite_exact_gaussian_fields:x_above_3:0.75",
+      "passed": true
+    },
+    {
+      "name": "exact_stored_curl_equals_Jyx_minus_Jxy:x_above_3:0.75",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.75:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.75:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:M4_PRIME:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:M4_PRIME:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:M4_PRIME:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:M4_PRIME:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:M4_PRIME:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.75:M4_PRIME",
+      "passed": true,
+      "maximum_absolute_discrepancy": 2.6867397195928788e-14
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.75:M4_PRIME",
+      "passed": true
+    },
+    {
+      "name": "finite_committed_gaussian_fields:x_above_3:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "stored_output_curl_equals_Jyx_minus_Jxy:x_above_3:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:LAGRANGE6_TEST_ONLY:outer_induced_normal_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:LAGRANGE6_TEST_ONLY:outer_induced_tangential_normal_gradient",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:LAGRANGE6_TEST_ONLY:interior_wake_induced_velocity",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:LAGRANGE6_TEST_ONLY:interior_wake_jacobian",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_raw_field_metrics:x_above_3:0.75:LAGRANGE6_TEST_ONLY:interior_wake_gaussian_curl",
+      "passed": true,
+      "maximum_absolute_discrepancy": 0.0
+    },
+    {
+      "name": "independent_physical_coordinate_fft_band:x_above_3:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true,
+      "maximum_absolute_discrepancy": 9.658940314238862e-15
+    },
+    {
+      "name": "unchanged_native_complete_support_guards:x_above_3:0.75:LAGRANGE6_TEST_ONLY",
+      "passed": true
+    },
+    {
+      "name": "native_residual_guard_far_below_limit",
+      "passed": true,
+      "maximum_committed_normalized_residual": 8.81054590295527e-10,
+      "maximum_float64_precommit_normalized_residual": 2.5753249915771685e-15
+    },
+    {
+      "name": "durable_copy_hash:report.json",
+      "passed": true,
+      "sha256": "ba3096f895c84d3ce3fafd59ac30032e277d06139a142e42bf539ab1435da052"
+    },
+    {
+      "name": "durable_copy_hash:operator_fields.h5",
+      "passed": true,
+      "sha256": "a558d1f02109043cbd677d68e036f315b6147641e735677043041b40b227210b"
+    }
+  ],
+  "maximum_independent_field_statistics_absolute_discrepancy": 0.0,
+  "maximum_independent_physical_coordinate_band_absolute_discrepancy": 5.595524044110789e-14,
+  "maximum_committed_native_normalized_residual": 8.81054590295527e-10,
+  "maximum_float64_precommit_native_normalized_residual": 2.5753249915771685e-15,
+  "quantified_subsets": {
+    "x_above_1": {
+      "source_particle_count": 20986,
+      "source_fp32_distance_to_cardinal_lattice_max_cells": 1.1879528585723165e-05,
+      "source_fp32_distance_to_cardinal_lattice_rms_cells": 3.874108585619163e-06,
+      "probe_bounds_metres": [
+        [
+          1.4,
+          2.36
+        ],
+        [
+          -0.78,
+          0.78
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "phases": {
+        "0.0": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 5.547207204961525e-07,
+            "wake_curl_least_squares_gain": 1.0000000163232547,
+            "outer_Un_error_rms_m_per_s": 2.4604730633771827e-09,
+            "outer_Un_relative_l2_error": 1.4829990271893557e-08,
+            "outer_Gt_error_rms_per_s": 2.75908485272317e-07,
+            "outer_Gt_relative_l2_error": 2.254830467127011e-06,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.4340894067630206e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 1.0000139145527556,
+            "output_particle_count": 23894
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 7.654714475395147e-07,
+            "wake_curl_least_squares_gain": 1.0000000236074083,
+            "outer_Un_error_rms_m_per_s": 2.898744387550722e-09,
+            "outer_Un_relative_l2_error": 1.7471579635616307e-08,
+            "outer_Gt_error_rms_per_s": 3.718767152067265e-07,
+            "outer_Gt_relative_l2_error": 3.039119824950789e-06,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.4340894067630206e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 1.0000192144844235,
+            "output_particle_count": 25879
+          }
+        },
+        "0.25": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 0.0005409108888883079,
+            "wake_curl_least_squares_gain": 0.9999521463978027,
+            "outer_Un_error_rms_m_per_s": 1.1280134285289245e-05,
+            "outer_Un_relative_l2_error": 6.76331587451817e-05,
+            "outer_Gt_error_rms_per_s": 3.7351702380189324e-05,
+            "outer_Gt_relative_l2_error": 0.00030083041813056444,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.4925176222973692e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9665736882414869,
+            "output_particle_count": 23983
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 0.00022826087060910026,
+            "wake_curl_least_squares_gain": 0.9999976008645386,
+            "outer_Un_error_rms_m_per_s": 6.957999678517197e-07,
+            "outer_Un_relative_l2_error": 4.171860767826044e-06,
+            "outer_Gt_error_rms_per_s": 3.329847699134442e-05,
+            "outer_Gt_relative_l2_error": 0.00026818576177481163,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.4925176222973692e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9826245590088513,
+            "output_particle_count": 25971
+          }
+        },
+        "0.5": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 0.0006033269473985526,
+            "wake_curl_least_squares_gain": 0.9999666342317748,
+            "outer_Un_error_rms_m_per_s": 6.2176361677039775e-06,
+            "outer_Un_relative_l2_error": 3.707901614328967e-05,
+            "outer_Gt_error_rms_per_s": 6.604277838632258e-05,
+            "outer_Gt_relative_l2_error": 0.0005232828843041915,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.559623478267333e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9422244429054081,
+            "output_particle_count": 23983
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 0.0002886595051525978,
+            "wake_curl_least_squares_gain": 1.0000083281409198,
+            "outer_Un_error_rms_m_per_s": 9.042586102129555e-07,
+            "outer_Un_relative_l2_error": 5.392566998363996e-06,
+            "outer_Gt_error_rms_per_s": 6.977863787658755e-05,
+            "outer_Gt_relative_l2_error": 0.0005528835670311602,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.559623478267333e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9770418540919675,
+            "output_particle_count": 25971
+          }
+        },
+        "0.75": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 0.0005284059219981787,
+            "wake_curl_least_squares_gain": 1.0000047385520006,
+            "outer_Un_error_rms_m_per_s": 1.1689388821279176e-05,
+            "outer_Un_relative_l2_error": 6.932492170457771e-05,
+            "outer_Gt_error_rms_per_s": 3.615196219115606e-05,
+            "outer_Gt_relative_l2_error": 0.00028127157521081055,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.6698952022161908e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9708494257142902,
+            "output_particle_count": 23983
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 0.00021001734048311374,
+            "wake_curl_least_squares_gain": 1.0000096980310234,
+            "outer_Un_error_rms_m_per_s": 6.454471161395252e-07,
+            "outer_Un_relative_l2_error": 3.827879410544025e-06,
+            "outer_Gt_error_rms_per_s": 3.9457496188289904e-05,
+            "outer_Gt_relative_l2_error": 0.0003069894809048525,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 1.6698952022161908e-05,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9838444088220193,
+            "output_particle_count": 25971
+          }
+        }
+      }
+    },
+    "x_above_3": {
+      "source_particle_count": 18540,
+      "source_fp32_distance_to_cardinal_lattice_max_cells": 1.1879528585723165e-05,
+      "source_fp32_distance_to_cardinal_lattice_rms_cells": 4.105960845271012e-06,
+      "probe_bounds_metres": [
+        [
+          3.4,
+          4.359999999999999
+        ],
+        [
+          -0.78,
+          0.78
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "phases": {
+        "0.0": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 9.347224479656743e-07,
+            "wake_curl_least_squares_gain": 1.0000000930720672,
+            "outer_Un_error_rms_m_per_s": 2.432940265162157e-10,
+            "outer_Un_relative_l2_error": 3.318128258970316e-09,
+            "outer_Gt_error_rms_per_s": 5.530632882300936e-10,
+            "outer_Gt_relative_l2_error": 8.778034685922124e-09,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 8.829904183907115e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 0.999907799453307,
+            "output_particle_count": 21269
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 1.1717793931653252e-06,
+            "wake_curl_least_squares_gain": 1.0000001180557254,
+            "outer_Un_error_rms_m_per_s": 4.788989164259209e-10,
+            "outer_Un_relative_l2_error": 6.531389407857907e-09,
+            "outer_Gt_error_rms_per_s": 5.899603764575833e-10,
+            "outer_Gt_relative_l2_error": 9.363652873140667e-09,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 8.829904183907115e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9998807030861232,
+            "output_particle_count": 23118
+          }
+        },
+        "0.25": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 9.813465576984505e-05,
+            "wake_curl_least_squares_gain": 0.9999519905971618,
+            "outer_Un_error_rms_m_per_s": 3.1830072707330893e-07,
+            "outer_Un_relative_l2_error": 4.374432924829264e-06,
+            "outer_Gt_error_rms_per_s": 9.130899262013628e-07,
+            "outer_Gt_relative_l2_error": 1.4699820627311177e-05,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 8.221742762074761e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 1.0000375821875591,
+            "output_particle_count": 21323
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 6.23946957023675e-05,
+            "wake_curl_least_squares_gain": 0.9999771899386679,
+            "outer_Un_error_rms_m_per_s": 3.1652443893568665e-10,
+            "outer_Un_relative_l2_error": 4.350021251677764e-09,
+            "outer_Gt_error_rms_per_s": 7.526999913678874e-10,
+            "outer_Gt_relative_l2_error": 1.211770554223217e-08,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 8.221742762074761e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9999460804794049,
+            "output_particle_count": 23175
+          }
+        },
+        "0.5": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 7.968556826604667e-05,
+            "wake_curl_least_squares_gain": 0.9999836167248176,
+            "outer_Un_error_rms_m_per_s": 6.695741194038739e-08,
+            "outer_Un_relative_l2_error": 9.272176241864644e-07,
+            "outer_Gt_error_rms_per_s": 2.3395618738339601e-07,
+            "outer_Gt_relative_l2_error": 3.820075035235167e-06,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 7.672203052160982e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9990846986334146,
+            "output_particle_count": 21323
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 4.929423457481901e-05,
+            "wake_curl_least_squares_gain": 0.9999882085317339,
+            "outer_Un_error_rms_m_per_s": 3.940731273349267e-10,
+            "outer_Un_relative_l2_error": 5.457073956331096e-09,
+            "outer_Gt_error_rms_per_s": 9.48270270646718e-10,
+            "outer_Gt_relative_l2_error": 1.548351265280668e-08,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 7.672203052160982e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9998009053436567,
+            "output_particle_count": 23175
+          }
+        },
+        "0.75": {
+          "M4_PRIME": {
+            "wake_curl_relative_l2_error": 9.383166242876843e-05,
+            "wake_curl_least_squares_gain": 1.0000298761887496,
+            "outer_Un_error_rms_m_per_s": 2.539513957214562e-07,
+            "outer_Un_relative_l2_error": 3.5433073264421268e-06,
+            "outer_Gt_error_rms_per_s": 6.864504623486724e-07,
+            "outer_Gt_relative_l2_error": 1.1367060363420725e-05,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 7.174781870857636e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9988304864936292,
+            "output_particle_count": 21323
+          },
+          "LAGRANGE6_TEST_ONLY": {
+            "wake_curl_relative_l2_error": 5.1616774695816525e-05,
+            "wake_curl_least_squares_gain": 1.0000103822083295,
+            "outer_Un_error_rms_m_per_s": 4.96068506324697e-10,
+            "outer_Un_relative_l2_error": 6.921494437484568e-09,
+            "outer_Gt_error_rms_per_s": 1.1738094141734843e-09,
+            "outer_Gt_relative_l2_error": 1.9437327524566884e-08,
+            "windowed_curl_power_fraction_0.1_to_0.2m": 7.174781870857636e-06,
+            "windowed_curl_gain_0.1_to_0.2m": 0.9997249346400102,
+            "output_particle_count": 23175
+          }
+        }
+      }
+    }
+  },
+  "methodological_limits": [
+    "Field metrics and spectral bands were independently recomputed from all stored exact/output U,J,curl arrays; every current source/input hash equals the run-start receipt and output hash.",
+    "Reported moment/retention guards were checked against unchanged native validator source and their recorded values. Remeshed particle coordinates/strengths were not persisted, so this review does not independently reconstruct their postscatter invariants without repeating the operator. The native validator executed inside the qualified helper.",
+    "Actual FP32 positions cause small cardinal-lattice offsets and thus f=0 remeshing is not bitwise identity. Cardinal field errors are measured rather than assumed zero.",
+    "The two selected far-body crops and local fixed probe strips test one rigid wall-free scatter, conditioned on identical crop/cloud support. They exclude physical diffusion, pruning, renewal and wall feedback.",
+    "The finite-window curl spectrum describes the saved developed wake, not a proof that shortwave modes never matter near the wall or across repeated evolving operator/coupling feedback.",
+    "A six-point diagnostic improvement here does not demonstrate mature Cd/Cl recovery or an admissible wall-aware native planar algorithm."
+  ]
+}

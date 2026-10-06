@@ -1,0 +1,955 @@
+{
+  "status": "passed",
+  "checks": {
+    "qualified_source_output_hash": true,
+    "quality_passed": true,
+    "source_clock_301_100_to_112": true,
+    "finite_paired_fields": true,
+    "same_fixed_fundamental_from_quality_receipt": true,
+    "projection_source_policy": true
+  },
+  "source_hdf5_sha256": "43a9018b54b259436abc95aca4ea725b41409164b3004001600931d29caf66dd",
+  "source_report_sha256": "c3ee5325572aeea4d6433d27180c7aa61da0dde439ba75b120ec8fb8e106f60e",
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_reference_particle_image.py": "4e263f3affe32e1d0caad2fab5f5e8559a84d76fca165d4fc419e94493dee134",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_saved_wall_circulation.py": "b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/capture_reference_volume_history.py": "6b1a0def8848ede644dd9a916bc1b8e71433843946b94c5e230e1556d2ff7306",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/project_reference_volume_images.py": "1f64266bfb7b953d46a1be197fa09d046dfcf0b1f062c0daa953421008ed488f",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/reference_cut_cell_deposition.py": "bb69db6ab5b3e242d0b03b6cb0a5c10726b83ba77d26eab7e5856142687796a8",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/stream_planar_image_induction.py": "1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4",
+    "source/coupler/interpolation.py": "f1bdcd6f2d99cc0159164d629fed642f1a19513f31552d7ec6d7802caba328c9",
+    "source/coupler/stable_renewal.py": "348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306",
+    "source/coupler/vorticity_transfer.py": "9380fd0290fb3ee192a68adcee92b54398fda6f1db05a43fb63a30613ca959d7",
+    "source/solvers/vpm/physics/induction/planar.py": "52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc"
+  },
+  "quality_receipt_sha256": "5dee7c838914667476c58ba44aaf429939ea0100f484578dc13633c56937b74a",
+  "analysis_script_sha256": "eab3703807ab6d7af7db637a8a3e66364ef9ad07560854e721d3deb75f64861f",
+  "fixed_fundamental_frequency_per_s": 0.18733548226847,
+  "second_frequency_per_s": 0.37467096453694,
+  "duration_cycles": 2.248025787220394,
+  "fit_models": {
+    "2": "DC+linear trend+sin/cos fundamental and second harmonic; requested primary decomposition",
+    "3": "Same model plus third harmonic, to quantify spectral leakage sensitivity over only 2.248 lift cycles"
+  },
+  "harmonic_definition": "Complex amplitude = cos coefficient - i sin coefficient; area-weighted norm is sqrt(sum area*|C|^2 / sum area). Coherent projection is <C_input,C_ref>/||C_ref||^2, with positive phase indicating lead; spatial coherence is its normalized complex inner-product magnitude. Gt=P_t(J n), the normal derivative of tangential velocity.",
+  "mode_comparisons": {
+    "2": {
+      "normal_velocity": [
+        {
+          "region": "all_outer_faces",
+          "face_count": 356,
+          "DC_full_minus_crop_rms": 0.0016066508077410095,
+          "DC_full_minus_crop_signed_area_mean": -1.72348658065492e-18,
+          "trend_full_minus_crop_rms_per_s": 1.15435431897119e-05,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.007850478925155231,
+            "full_minus_crop_over_reference_amplitude": 0.050737218855098236,
+            "reference_amplitude_rms": 0.1547282074639452,
+            "production": {
+              "amplitude_norm_ratio": 0.9996675252341884,
+              "coherent_projection_gain": 0.9983582772369727,
+              "coherent_phase_lead_degrees": -0.11335580059094254,
+              "spatial_coherence": 0.9986903165660912,
+              "absolute_complex_spatial_difference_rms": 0.007923707341496215,
+              "orthogonal_difference_relative_to_reference": 0.051145980098837536
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.005206764409117,
+              "coherent_projection_gain": 1.0049747762520422,
+              "coherent_phase_lead_degrees": 0.29329849315705325,
+              "spatial_coherence": 0.9997692134938916,
+              "absolute_complex_spatial_difference_rms": 0.0035195869416168543,
+              "orthogonal_difference_relative_to_reference": 0.02159486770051516
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 5.755538864967314e-05,
+            "full_minus_crop_over_reference_amplitude": 0.001401978739806719,
+            "reference_amplitude_rms": 0.041052968219480915,
+            "production": {
+              "amplitude_norm_ratio": 1.0146487597348712,
+              "coherent_projection_gain": 1.0143150386788409,
+              "coherent_phase_lead_degrees": -0.6232425062699006,
+              "spatial_coherence": 0.9996710969654979,
+              "absolute_complex_spatial_difference_rms": 0.0012995348079371106,
+              "orthogonal_difference_relative_to_reference": 0.026021297843390735
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0146338690115158,
+              "coherent_projection_gain": 1.0143008346278748,
+              "coherent_phase_lead_degrees": -0.6242688500907163,
+              "spatial_coherence": 0.999671768907177,
+              "absolute_complex_spatial_difference_rms": 0.0012986166329630494,
+              "orthogonal_difference_relative_to_reference": 0.025994326659373203
+            }
+          }
+        },
+        {
+          "region": "side_faces",
+          "face_count": 197,
+          "DC_full_minus_crop_rms": 0.0004096480458363433,
+          "DC_full_minus_crop_signed_area_mean": 0.00039894825484220186,
+          "trend_full_minus_crop_rms_per_s": 1.5437979486067708e-05,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.010498158426327385,
+            "full_minus_crop_over_reference_amplitude": 0.16823722459113122,
+            "reference_amplitude_rms": 0.062400924954873545,
+            "production": {
+              "amplitude_norm_ratio": 0.9493897781839581,
+              "coherent_projection_gain": 0.9403957230971843,
+              "coherent_phase_lead_degrees": -3.5897586019410825,
+              "spatial_coherence": 0.9905264883892281,
+              "absolute_complex_spatial_difference_rms": 0.009715272496500879,
+              "orthogonal_difference_relative_to_reference": 0.13037190993733505
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9928963268330646,
+              "coherent_projection_gain": 0.9927894611360701,
+              "coherent_phase_lead_degrees": 1.0185196763452748,
+              "spatial_coherence": 0.9998923697327642,
+              "absolute_complex_spatial_difference_rms": 0.0015001050880708842,
+              "orthogonal_difference_relative_to_reference": 0.014567144392197695
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 7.305814239684874e-05,
+            "full_minus_crop_over_reference_amplitude": 0.01384487652495215,
+            "reference_amplitude_rms": 0.0052769081952575405,
+            "production": {
+              "amplitude_norm_ratio": 0.9769305182140691,
+              "coherent_projection_gain": 0.9763307677058911,
+              "coherent_phase_lead_degrees": 1.960477979393618,
+              "spatial_coherence": 0.9993860868332025,
+              "absolute_complex_spatial_difference_rms": 0.00028292633849843064,
+              "orthogonal_difference_relative_to_reference": 0.03422673587759212
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9764453667662292,
+              "coherent_projection_gain": 0.9760436542992459,
+              "coherent_phase_lead_degrees": 1.9518486751612225,
+              "spatial_coherence": 0.9995885970883208,
+              "absolute_complex_spatial_difference_rms": 0.000263361585734839,
+              "orthogonal_difference_relative_to_reference": 0.02800605615594225
+            }
+          }
+        },
+        {
+          "region": "upper_faces",
+          "face_count": 99,
+          "DC_full_minus_crop_rms": 0.0004047568832239552,
+          "DC_full_minus_crop_signed_area_mean": 0.00039613119580260816,
+          "trend_full_minus_crop_rms_per_s": 1.5501089246976603e-05,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.010516131779736444,
+            "full_minus_crop_over_reference_amplitude": 0.1668888659605746,
+            "reference_amplitude_rms": 0.06301278230400792,
+            "production": {
+              "amplitude_norm_ratio": 0.9517343873023032,
+              "coherent_projection_gain": 0.9428711856856178,
+              "coherent_phase_lead_degrees": -3.5095241642913857,
+              "spatial_coherence": 0.9906873159833929,
+              "absolute_complex_spatial_difference_rms": 0.009678653566100546,
+              "orthogonal_difference_relative_to_reference": 0.12958499595820402
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9934567083976471,
+              "coherent_projection_gain": 0.9933596921519074,
+              "coherent_phase_lead_degrees": 1.0805540130104885,
+              "spatial_coherence": 0.9999023447675981,
+              "absolute_complex_spatial_difference_rms": 0.0015307636232124813,
+              "orthogonal_difference_relative_to_reference": 0.013883568278935386
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 6.821009126126146e-05,
+            "full_minus_crop_over_reference_amplitude": 0.012601743567439452,
+            "reference_amplitude_rms": 0.00541275029889543,
+            "production": {
+              "amplitude_norm_ratio": 0.9654122335052482,
+              "coherent_projection_gain": 0.9651199131601935,
+              "coherent_phase_lead_degrees": 1.6947292548744628,
+              "spatial_coherence": 0.9996972067113824,
+              "absolute_complex_spatial_difference_rms": 0.0002773352039063651,
+              "orthogonal_difference_relative_to_reference": 0.02375571138173877
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9693168728486381,
+              "coherent_projection_gain": 0.9691936316805757,
+              "coherent_phase_lead_degrees": 1.8073225866778848,
+              "spatial_coherence": 0.999872857708852,
+              "absolute_complex_spatial_difference_rms": 0.0002511079236271197,
+              "orthogonal_difference_relative_to_reference": 0.015456529328401934
+            }
+          }
+        },
+        {
+          "region": "lower_faces",
+          "face_count": 98,
+          "DC_full_minus_crop_rms": 0.0004144766047838118,
+          "DC_full_minus_crop_signed_area_mean": 0.0004017624479566266,
+          "trend_full_minus_crop_rms_per_s": 1.5374675274913486e-05,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.010480172581057372,
+            "full_minus_crop_over_reference_amplitude": 0.1696269843897974,
+            "reference_amplitude_rms": 0.061783640254868114,
+            "production": {
+              "amplitude_norm_ratio": 0.946947283246154,
+              "coherent_projection_gain": 0.9378253694589643,
+              "coherent_phase_lead_degrees": -3.673580885148616,
+              "spatial_coherence": 0.9903670310390252,
+              "absolute_complex_spatial_difference_rms": 0.009751716874780996,
+              "orthogonal_difference_relative_to_reference": 0.1311210648463036
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9923136844216975,
+              "coherent_projection_gain": 0.9921981536084477,
+              "coherent_phase_lead_degrees": 0.9539827107460744,
+              "spatial_coherence": 0.9998835743020947,
+              "absolute_complex_spatial_difference_rms": 0.0014688389340661147,
+              "orthogonal_difference_relative_to_reference": 0.015141739218186862
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 7.759942677151444e-05,
+            "full_minus_crop_over_reference_amplitude": 0.01510416066050002,
+            "reference_amplitude_rms": 0.005137619263707271,
+            "production": {
+              "amplitude_norm_ratio": 0.989545745197734,
+              "coherent_projection_gain": 0.9887858161057566,
+              "coherent_phase_lead_degrees": 2.248098986976502,
+              "spatial_coherence": 0.9992320424844781,
+              "absolute_complex_spatial_difference_rms": 0.00028840357811735586,
+              "orthogonal_difference_relative_to_reference": 0.03877359548728177
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9842893888280243,
+              "coherent_projection_gain": 0.9836464090386869,
+              "coherent_phase_lead_degrees": 2.109750801493657,
+              "spatial_coherence": 0.999346757369697,
+              "absolute_complex_spatial_difference_rms": 0.00027505826088841895,
+              "orthogonal_difference_relative_to_reference": 0.03557165929137037
+            }
+          }
+        },
+        {
+          "region": "downstream_faces",
+          "face_count": 79,
+          "DC_full_minus_crop_rms": 0.0028103600117668453,
+          "DC_full_minus_crop_signed_area_mean": -0.002810227838640753,
+          "trend_full_minus_crop_rms_per_s": 1.2548640107819075e-06,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0008741507590996011,
+            "full_minus_crop_over_reference_amplitude": 0.0027875929698041777,
+            "reference_amplitude_rms": 0.3135862260267532,
+            "production": {
+              "amplitude_norm_ratio": 1.0046336496746984,
+              "coherent_projection_gain": 1.004414688217357,
+              "coherent_phase_lead_degrees": 0.21410164582433514,
+              "spatial_coherence": 0.9997820484537701,
+              "absolute_complex_spatial_difference_rms": 0.006823068217894508,
+              "orthogonal_difference_relative_to_reference": 0.020973892150345723
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.006546936910108,
+              "coherent_projection_gain": 1.0063253708220639,
+              "coherent_phase_lead_degrees": 0.21799674716204476,
+              "spatial_coherence": 0.9997798750560761,
+              "absolute_complex_spatial_difference_rms": 0.007015943027744111,
+              "orthogonal_difference_relative_to_reference": 0.02111833901983151
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 3.425808347794048e-05,
+            "full_minus_crop_over_reference_amplitude": 0.00039402607056989206,
+            "reference_amplitude_rms": 0.0869436974776617,
+            "production": {
+              "amplitude_norm_ratio": 1.0150038654822389,
+              "coherent_projection_gain": 1.0146928195847456,
+              "coherent_phase_lead_degrees": -0.6479720227830832,
+              "spatial_coherence": 0.9996935520069714,
+              "absolute_complex_spatial_difference_rms": 0.0027175776891379074,
+              "orthogonal_difference_relative_to_reference": 0.025126257720678426
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0149942029517236,
+              "coherent_projection_gain": 1.0146826018003532,
+              "coherent_phase_lead_degrees": -0.6488834710273622,
+              "spatial_coherence": 0.9996930020383719,
+              "absolute_complex_spatial_difference_rms": 0.0027192248487588155,
+              "orthogonal_difference_relative_to_reference": 0.025148551236031845
+            }
+          }
+        },
+        {
+          "region": "upstream_faces",
+          "face_count": 78,
+          "DC_full_minus_crop_rms": 0.0018243579183878217,
+          "DC_full_minus_crop_signed_area_mean": 0.0018243322737245776,
+          "trend_full_minus_crop_rms_per_s": 7.288715369328931e-07,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0005089782619942404,
+            "full_minus_crop_over_reference_amplitude": 0.06887181924426851,
+            "reference_amplitude_rms": 0.007390225313913099,
+            "production": {
+              "amplitude_norm_ratio": 0.9911649428212694,
+              "coherent_projection_gain": 0.9908512924370884,
+              "coherent_phase_lead_degrees": -1.7771455285918443,
+              "spatial_coherence": 0.9996835537955084,
+              "absolute_complex_spatial_difference_rms": 0.00030096803271186244,
+              "orthogonal_difference_relative_to_reference": 0.024933113597024735
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9305140444912268,
+              "coherent_projection_gain": 0.9300217872992798,
+              "coherent_phase_lead_degrees": -3.4688045031232004,
+              "spatial_coherence": 0.9994709835978713,
+              "absolute_complex_spatial_difference_rms": 0.0007096393692804173,
+              "orthogonal_difference_relative_to_reference": 0.030263214371146874
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 1.9997619764833836e-05,
+            "full_minus_crop_over_reference_amplitude": 0.14442340476851404,
+            "reference_amplitude_rms": 0.00013846522865796298,
+            "production": {
+              "amplitude_norm_ratio": 1.9303833767714005,
+              "coherent_projection_gain": 1.5143068171090563,
+              "coherent_phase_lead_degrees": 49.86064433111881,
+              "spatial_coherence": 0.7844591055491581,
+              "absolute_complex_spatial_difference_rms": 0.0002306178833007338,
+              "orthogonal_difference_relative_to_reference": 1.1971862198390002
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.9888371499217037,
+              "coherent_projection_gain": 1.5506882010997176,
+              "coherent_phase_lead_degrees": 54.6536353811489,
+              "spatial_coherence": 0.7796959148519349,
+              "absolute_complex_spatial_difference_rms": 0.000246190691797869,
+              "orthogonal_difference_relative_to_reference": 1.2453269899423236
+            }
+          }
+        }
+      ],
+      "tangential_gradient": [
+        {
+          "region": "all_outer_faces",
+          "face_count": 356,
+          "DC_full_minus_crop_rms": 6.915173444198554e-05,
+          "DC_full_minus_crop_signed_area_mean": [
+            4.0134581745031e-05,
+            -3.119258735434273e-07,
+            0.0
+          ],
+          "trend_full_minus_crop_rms_per_s": 1.0686908003372493e-06,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0007442240954437103,
+            "full_minus_crop_over_reference_amplitude": 0.0017872566084562998,
+            "reference_amplitude_rms": 0.4164058434152419,
+            "production": {
+              "amplitude_norm_ratio": 1.000747970050613,
+              "coherent_projection_gain": 1.0005514612545459,
+              "coherent_phase_lead_degrees": 0.7090166475424259,
+              "spatial_coherence": 0.9998036380767704,
+              "absolute_complex_spatial_difference_rms": 0.009737062106300196,
+              "orthogonal_difference_relative_to_reference": 0.019831110453399258
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9997746263266317,
+              "coherent_projection_gain": 0.9995750163028494,
+              "coherent_phase_lead_degrees": 0.7092914375504519,
+              "spatial_coherence": 0.9998003449792322,
+              "absolute_complex_spatial_difference_rms": 0.009787353886232518,
+              "orthogonal_difference_relative_to_reference": 0.019977242795596598
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 5.027442595070232e-06,
+            "full_minus_crop_over_reference_amplitude": 3.65279416080023e-05,
+            "reference_amplitude_rms": 0.13763279215188115,
+            "production": {
+              "amplitude_norm_ratio": 1.0332744502239941,
+              "coherent_projection_gain": 1.0329474624897024,
+              "coherent_phase_lead_degrees": -0.8759595635840699,
+              "spatial_coherence": 0.9996835422242165,
+              "absolute_complex_spatial_difference_rms": 0.0061591178576224734,
+              "orthogonal_difference_relative_to_reference": 0.025992868671668154
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0332745495398519,
+              "coherent_projection_gain": 1.0329475768378196,
+              "coherent_phase_lead_degrees": -0.8760397047317365,
+              "spatial_coherence": 0.9996835568028092,
+              "absolute_complex_spatial_difference_rms": 0.006159149765834359,
+              "orthogonal_difference_relative_to_reference": 0.02599227253744217
+            }
+          }
+        },
+        {
+          "region": "side_faces",
+          "face_count": 197,
+          "DC_full_minus_crop_rms": 7.640906473684793e-05,
+          "DC_full_minus_crop_signed_area_mean": [
+            7.322990504558975e-05,
+            -3.9407529937791274e-07,
+            0.0
+          ],
+          "trend_full_minus_crop_rms_per_s": 1.0346661976343333e-06,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0007186001482394807,
+            "full_minus_crop_over_reference_amplitude": 0.00797931408383098,
+            "reference_amplitude_rms": 0.09005788476175271,
+            "production": {
+              "amplitude_norm_ratio": 1.0344555114110154,
+              "coherent_projection_gain": 1.032733560064289,
+              "coherent_phase_lead_degrees": 1.0286830050572553,
+              "spatial_coherence": 0.9983354031877333,
+              "absolute_complex_spatial_difference_rms": 0.006345068622493682,
+              "orthogonal_difference_relative_to_reference": 0.05966237512507399
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0319016405571155,
+              "coherent_projection_gain": 1.0301723199853359,
+              "coherent_phase_lead_degrees": 1.1740360877286877,
+              "spatial_coherence": 0.9983241420462844,
+              "absolute_complex_spatial_difference_rms": 0.006309762814034765,
+              "orthogonal_difference_relative_to_reference": 0.059715884993001254
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 4.903625243281171e-06,
+            "full_minus_crop_over_reference_amplitude": 0.00038756520323039484,
+            "reference_amplitude_rms": 0.012652387785097741,
+            "production": {
+              "amplitude_norm_ratio": 0.9227600411872348,
+              "coherent_projection_gain": 0.9189042847170263,
+              "coherent_phase_lead_degrees": 3.5744059317165258,
+              "spatial_coherence": 0.9958214960573634,
+              "absolute_complex_spatial_difference_rms": 0.0016618830525771788,
+              "orthogonal_difference_relative_to_reference": 0.08426748566651898
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9227356596850834,
+              "coherent_projection_gain": 0.9188831509762437,
+              "coherent_phase_lead_degrees": 3.5722866523891765,
+              "spatial_coherence": 0.9958249053578849,
+              "absolute_complex_spatial_difference_rms": 0.001661543593662972,
+              "orthogonal_difference_relative_to_reference": 0.08423094743878695
+            }
+          }
+        }
+      ]
+    },
+    "3": {
+      "normal_velocity": [
+        {
+          "region": "all_outer_faces",
+          "face_count": 356,
+          "DC_full_minus_crop_rms": 0.0016066465837194814,
+          "DC_full_minus_crop_signed_area_mean": 1.602540153942294e-17,
+          "trend_full_minus_crop_rms_per_s": 2.7979764451487734e-06,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.007865090051361075,
+            "full_minus_crop_over_reference_amplitude": 0.05099615283583969,
+            "reference_amplitude_rms": 0.1542290861955679,
+            "production": {
+              "amplitude_norm_ratio": 0.999655059977642,
+              "coherent_projection_gain": 0.998334844890188,
+              "coherent_phase_lead_degrees": -0.11889005768012095,
+              "spatial_coherence": 0.9986793293603857,
+              "absolute_complex_spatial_difference_rms": 0.007931706225636681,
+              "orthogonal_difference_relative_to_reference": 0.05135928754361819
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0052073836299777,
+              "coherent_projection_gain": 1.004972282532724,
+              "coherent_phase_lead_degrees": 0.2931321800097755,
+              "spatial_coherence": 0.9997661168221776,
+              "absolute_complex_spatial_difference_rms": 0.003529197696579416,
+              "orthogonal_difference_relative_to_reference": 0.021739260456430987
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 1.9947186541238274e-05,
+            "full_minus_crop_over_reference_amplitude": 0.00048659554283786145,
+            "reference_amplitude_rms": 0.04099336057396826,
+            "production": {
+              "amplitude_norm_ratio": 1.01456784673115,
+              "coherent_projection_gain": 1.0142354720358342,
+              "coherent_phase_lead_degrees": -0.6233098424015948,
+              "spatial_coherence": 0.9996723977638493,
+              "absolute_complex_spatial_difference_rms": 0.001294380272296734,
+              "orthogonal_difference_relative_to_reference": 0.025967727758324278
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0145558364632863,
+              "coherent_projection_gain": 1.0142224888401383,
+              "coherent_phase_lead_degrees": -0.6243721664047452,
+              "spatial_coherence": 0.9996714349164755,
+              "absolute_complex_spatial_difference_rms": 0.0012956805011746224,
+              "orthogonal_difference_relative_to_reference": 0.02600554618987324
+            }
+          }
+        },
+        {
+          "region": "side_faces",
+          "face_count": 197,
+          "DC_full_minus_crop_rms": 0.00040985430394893945,
+          "DC_full_minus_crop_signed_area_mean": 0.00039893993787239233,
+          "trend_full_minus_crop_rms_per_s": 3.738879045191745e-06,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.010517690221556956,
+            "full_minus_crop_over_reference_amplitude": 0.16855397634483774,
+            "reference_amplitude_rms": 0.06239953781950086,
+            "production": {
+              "amplitude_norm_ratio": 0.9497346772692028,
+              "coherent_projection_gain": 0.9407225520286805,
+              "coherent_phase_lead_degrees": -3.607932246914961,
+              "spatial_coherence": 0.9905109021959323,
+              "absolute_complex_spatial_difference_rms": 0.009723087214846231,
+              "orthogonal_difference_relative_to_reference": 0.13052600243738072
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9929542455348086,
+              "coherent_projection_gain": 0.9928466405698972,
+              "coherent_phase_lead_degrees": 1.0243297193617098,
+              "spatial_coherence": 0.9998916314972264,
+              "absolute_complex_spatial_difference_rms": 0.0015055988552079235,
+              "orthogonal_difference_relative_to_reference": 0.014617866967172844
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 1.0553225910440983e-05,
+            "full_minus_crop_over_reference_amplitude": 0.002000084625661299,
+            "reference_amplitude_rms": 0.005276389696236834,
+            "production": {
+              "amplitude_norm_ratio": 0.976816737582861,
+              "coherent_projection_gain": 0.9764085451727987,
+              "coherent_phase_lead_degrees": 1.9780667004877417,
+              "spatial_coherence": 0.9995821197627384,
+              "absolute_complex_spatial_difference_rms": 0.0002647415374353501,
+              "orthogonal_difference_relative_to_reference": 0.02823635485615554
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9765098589944781,
+              "coherent_projection_gain": 0.9760991822889044,
+              "coherent_phase_lead_degrees": 1.9557286203380808,
+              "spatial_coherence": 0.9995794443836986,
+              "absolute_complex_spatial_difference_rms": 0.00026436269435573125,
+              "orthogonal_difference_relative_to_reference": 0.028317680843383066
+            }
+          }
+        },
+        {
+          "region": "upper_faces",
+          "face_count": 99,
+          "DC_full_minus_crop_rms": 0.0003933132059363156,
+          "DC_full_minus_crop_signed_area_mean": 0.0003846192434451296,
+          "trend_full_minus_crop_rms_per_s": 3.7777240784444396e-06,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.010535723752255144,
+            "full_minus_crop_over_reference_amplitude": 0.16719968285952866,
+            "reference_amplitude_rms": 0.06301282138858265,
+            "production": {
+              "amplitude_norm_ratio": 0.952082362280712,
+              "coherent_projection_gain": 0.9432015267100143,
+              "coherent_phase_lead_degrees": -3.5270305000862265,
+              "spatial_coherence": 0.99067219820203,
+              "absolute_complex_spatial_difference_rms": 0.009686534717860245,
+              "orthogonal_difference_relative_to_reference": 0.12973705938519944
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9935124959559358,
+              "coherent_projection_gain": 0.9934147972733841,
+              "coherent_phase_lead_degrees": 1.086311157764386,
+              "spatial_coherence": 0.9999016633580863,
+              "absolute_complex_spatial_difference_rms": 0.001536502313094528,
+              "orthogonal_difference_relative_to_reference": 0.013932701779422267
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 7.071520297475785e-06,
+            "full_minus_crop_over_reference_amplitude": 0.0013153448878102608,
+            "reference_amplitude_rms": 0.005376171955363129,
+            "production": {
+              "amplitude_norm_ratio": 0.9694353490120389,
+              "coherent_projection_gain": 0.9693015170432515,
+              "coherent_phase_lead_degrees": 1.8642561373740465,
+              "spatial_coherence": 0.9998619485364095,
+              "absolute_complex_spatial_difference_rms": 0.00025376182217458793,
+              "orthogonal_difference_relative_to_reference": 0.016107916430893834
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9689609902131514,
+              "coherent_projection_gain": 0.9688197715960581,
+              "coherent_phase_lead_degrees": 1.8743914287195025,
+              "spatial_coherence": 0.9998542576857896,
+              "absolute_complex_spatial_difference_rms": 0.00025685617678149636,
+              "orthogonal_difference_relative_to_reference": 0.01654239158685449
+            }
+          }
+        },
+        {
+          "region": "lower_faces",
+          "face_count": 98,
+          "DC_full_minus_crop_rms": 0.0004257373688572393,
+          "DC_full_minus_crop_signed_area_mean": 0.00041324606319122583,
+          "trend_full_minus_crop_rms_per_s": 3.6996663179085085e-06,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.010499644111241388,
+            "full_minus_crop_over_reference_amplitude": 0.16994995434114846,
+            "reference_amplitude_rms": 0.06178079983572672,
+            "production": {
+              "amplitude_norm_ratio": 0.947288743946967,
+              "coherent_projection_gain": 0.9381483426140064,
+              "coherent_phase_lead_degrees": -3.6924600607238913,
+              "spatial_coherence": 0.9903509870761514,
+              "absolute_complex_spatial_difference_rms": 0.009759465833626642,
+              "orthogonal_difference_relative_to_reference": 0.13127700354294933
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9923737661076227,
+              "coherent_projection_gain": 0.992257431628569,
+              "coherent_phase_lead_degrees": 0.9598420521221417,
+              "spatial_coherence": 0.9998827715090555,
+              "absolute_complex_spatial_difference_rms": 0.001474080089302262,
+              "orthogonal_difference_relative_to_reference": 0.015194770037820635
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 1.3140484248465045e-05,
+            "full_minus_crop_over_reference_amplitude": 0.0025393279368758973,
+            "reference_amplitude_rms": 0.005174788201886053,
+            "production": {
+              "amplitude_norm_ratio": 0.9847137204125548,
+              "coherent_projection_gain": 0.9840759433796917,
+              "coherent_phase_lead_degrees": 2.0989404450935645,
+              "spatial_coherence": 0.9993523223860475,
+              "absolute_complex_spatial_difference_rms": 0.0002752731536504416,
+              "orthogonal_difference_relative_to_reference": 0.03543513553106602
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9845845737186143,
+              "coherent_projection_gain": 0.9839503701899279,
+              "coherent_phase_lead_degrees": 2.0420817499950803,
+              "spatial_coherence": 0.9993558668847602,
+              "absolute_complex_spatial_difference_rms": 0.0002716545460244465,
+              "orthogonal_difference_relative_to_reference": 0.035333437531176744
+            }
+          }
+        },
+        {
+          "region": "downstream_faces",
+          "face_count": 79,
+          "DC_full_minus_crop_rms": 0.002810403911648971,
+          "DC_full_minus_crop_signed_area_mean": -0.002810271981210538,
+          "trend_full_minus_crop_rms_per_s": 3.64040915625925e-07,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0008759227901734088,
+            "full_minus_crop_over_reference_amplitude": 0.0028032130749221706,
+            "reference_amplitude_rms": 0.31247099908654935,
+            "production": {
+              "amplitude_norm_ratio": 1.0046218430805274,
+              "coherent_projection_gain": 1.004399997324339,
+              "coherent_phase_lead_degrees": 0.21218889403949875,
+              "spatial_coherence": 0.9997791748629434,
+              "absolute_complex_spatial_difference_rms": 0.006837536711042592,
+              "orthogonal_difference_relative_to_reference": 0.021111441669938842
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0065513979009701,
+              "coherent_projection_gain": 1.0063266329832685,
+              "coherent_phase_lead_degrees": 0.21669153076761155,
+              "spatial_coherence": 0.9997766980224054,
+              "absolute_complex_spatial_difference_rms": 0.007034724376317023,
+              "orthogonal_difference_relative_to_reference": 0.02127026950829861
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 3.364427518236346e-05,
+            "full_minus_crop_over_reference_amplitude": 0.00038753552287403513,
+            "reference_amplitude_rms": 0.08681597736602645,
+            "production": {
+              "amplitude_norm_ratio": 1.0149258403363843,
+              "coherent_projection_gain": 1.0146145688138666,
+              "coherent_phase_lead_degrees": -0.6481981637824636,
+              "spatial_coherence": 0.999693306141053,
+              "absolute_complex_spatial_difference_rms": 0.0027110798844134625,
+              "orthogonal_difference_relative_to_reference": 0.025134401388694275
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0149160202004355,
+              "coherent_projection_gain": 1.014604193144812,
+              "coherent_phase_lead_degrees": -0.6491031935782271,
+              "spatial_coherence": 0.9996927558049956,
+              "absolute_complex_spatial_difference_rms": 0.002712719013359514,
+              "orthogonal_difference_relative_to_reference": 0.025156695181522085
+            }
+          }
+        },
+        {
+          "region": "upstream_faces",
+          "face_count": 78,
+          "DC_full_minus_crop_rms": 0.0018243642918149379,
+          "DC_full_minus_crop_signed_area_mean": 0.0018243385457584037,
+          "trend_full_minus_crop_rms_per_s": 1.9647650062900598e-07,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0005099573638980416,
+            "full_minus_crop_over_reference_amplitude": 0.06899708543037934,
+            "reference_amplitude_rms": 0.007390998630117613,
+            "production": {
+              "amplitude_norm_ratio": 0.9911747745590731,
+              "coherent_projection_gain": 0.9908612912586292,
+              "coherent_phase_lead_degrees": -1.7609639900728034,
+              "spatial_coherence": 0.9996837255058438,
+              "absolute_complex_spatial_difference_rms": 0.00029938214052498423,
+              "orthogonal_difference_relative_to_reference": 0.024926596388439526
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.9305458370444925,
+              "coherent_projection_gain": 0.9300519493615454,
+              "coherent_phase_lead_degrees": -3.472288463651965,
+              "spatial_coherence": 0.9994692494842428,
+              "absolute_complex_spatial_difference_rms": 0.0007099368509711984,
+              "orthogonal_difference_relative_to_reference": 0.030313797677371624
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 1.9698979644097363e-05,
+            "full_minus_crop_over_reference_amplitude": 0.14230043356399494,
+            "reference_amplitude_rms": 0.0001384323234351805,
+            "production": {
+              "amplitude_norm_ratio": 1.939102839951591,
+              "coherent_projection_gain": 1.5182393301851542,
+              "coherent_phase_lead_degrees": 49.6035104159322,
+              "spatial_coherence": 0.7829596754254954,
+              "absolute_complex_spatial_difference_rms": 0.00023132116862581385,
+              "orthogonal_difference_relative_to_reference": 1.206262475660774
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.9873611176029455,
+              "coherent_projection_gain": 1.5543105277753122,
+              "coherent_phase_lead_degrees": 54.39554690001252,
+              "spatial_coherence": 0.7820976842145543,
+              "absolute_complex_spatial_difference_rms": 0.0002452952040576068,
+              "orthogonal_difference_relative_to_reference": 1.238435704833666
+            }
+          }
+        }
+      ],
+      "tangential_gradient": [
+        {
+          "region": "all_outer_faces",
+          "face_count": 356,
+          "DC_full_minus_crop_rms": 6.91482551414026e-05,
+          "DC_full_minus_crop_signed_area_mean": [
+            4.013403131360331e-05,
+            -4.0394992593615225e-07,
+            0.0
+          ],
+          "trend_full_minus_crop_rms_per_s": 2.949563484061996e-07,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0007457001201188678,
+            "full_minus_crop_over_reference_amplitude": 0.0017890775992146601,
+            "reference_amplitude_rms": 0.41680702974885103,
+            "production": {
+              "amplitude_norm_ratio": 1.0015523140876497,
+              "coherent_projection_gain": 1.0013466568507567,
+              "coherent_phase_lead_degrees": 0.6709156157640941,
+              "spatial_coherence": 0.9997946615129332,
+              "absolute_complex_spatial_difference_rms": 0.009784086623118068,
+              "orthogonal_difference_relative_to_reference": 0.02029558247843524
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0005787719298653,
+              "coherent_projection_gain": 1.000369802780503,
+              "coherent_phase_lead_degrees": 0.6706123619190291,
+              "spatial_coherence": 0.9997911517261561,
+              "absolute_complex_spatial_difference_rms": 0.0098221105316191,
+              "orthogonal_difference_relative_to_reference": 0.020448386771950496
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 1.109033443896021e-06,
+            "full_minus_crop_over_reference_amplitude": 8.083405764691768e-06,
+            "reference_amplitude_rms": 0.13719878429711738,
+            "production": {
+              "amplitude_norm_ratio": 1.033038502881936,
+              "coherent_projection_gain": 1.032721552849272,
+              "coherent_phase_lead_degrees": -0.8946571787353133,
+              "spatial_coherence": 0.9996931866220089,
+              "absolute_complex_spatial_difference_rms": 0.0061006963960065375,
+              "orthogonal_difference_relative_to_reference": 0.025587940853841147
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0330382632307291,
+              "coherent_projection_gain": 1.0327213463087184,
+              "coherent_phase_lead_degrees": -0.8947315929928479,
+              "spatial_coherence": 0.9996932186025523,
+              "absolute_complex_spatial_difference_rms": 0.0061006343471320485,
+              "orthogonal_difference_relative_to_reference": 0.025586601514650965
+            }
+          }
+        },
+        {
+          "region": "side_faces",
+          "face_count": 197,
+          "DC_full_minus_crop_rms": 7.641080258464806e-05,
+          "DC_full_minus_crop_signed_area_mean": [
+            7.322744648913022e-05,
+            -3.951511157238024e-07,
+            0.0
+          ],
+          "trend_full_minus_crop_rms_per_s": 2.8545013865180506e-07,
+          "fundamental": {
+            "full_minus_crop_amplitude_rms": 0.0007200120126133377,
+            "full_minus_crop_over_reference_amplitude": 0.00799418033131035,
+            "reference_amplitude_rms": 0.09006702160486768,
+            "production": {
+              "amplitude_norm_ratio": 1.0342273845117942,
+              "coherent_projection_gain": 1.0325200865339181,
+              "coherent_phase_lead_degrees": 1.0313117368692355,
+              "spatial_coherence": 0.9983492044366222,
+              "absolute_complex_spatial_difference_rms": 0.006317949145886853,
+              "orthogonal_difference_relative_to_reference": 0.059401631106360785
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 1.0316549074184904,
+              "coherent_projection_gain": 1.029941180130654,
+              "coherent_phase_lead_degrees": 1.1765044268537348,
+              "spatial_coherence": 0.9983388560694928,
+              "absolute_complex_spatial_difference_rms": 0.006281318863036698,
+              "orthogonal_difference_relative_to_reference": 0.059439157730648826
+            }
+          },
+          "second_harmonic": {
+            "full_minus_crop_amplitude_rms": 1.2096613583247468e-06,
+            "full_minus_crop_over_reference_amplitude": 9.566526860745296e-05,
+            "reference_amplitude_rms": 0.012644728603526924,
+            "production": {
+              "amplitude_norm_ratio": 0.9226619129877229,
+              "coherent_projection_gain": 0.9188373891981099,
+              "coherent_phase_lead_degrees": 3.5642095837708454,
+              "spatial_coherence": 0.9958549022824312,
+              "absolute_complex_spatial_difference_rms": 0.0016576046937224862,
+              "orthogonal_difference_relative_to_reference": 0.08392173669416915
+            },
+            "reference_support": {
+              "amplitude_norm_ratio": 0.922647188426585,
+              "coherent_projection_gain": 0.9188232024398327,
+              "coherent_phase_lead_degrees": 3.5618971962501536,
+              "spatial_coherence": 0.9958554190217895,
+              "absolute_complex_spatial_difference_rms": 0.0016574377229060066,
+              "orthogonal_difference_relative_to_reference": 0.08391517723089091
+            }
+          }
+        }
+      ]
+    }
+  },
+  "actual_paired_difference_components": {
+    "normal_velocity": {
+      "actual_temporal_spatial_rms": 0.005778917390225466,
+      "fitted_components": {
+        "DC": {
+          "temporal_spatial_rms": 0.0016066465837195143,
+          "component_energy_over_actual_difference_energy": 0.07729434785119772
+        },
+        "trend": {
+          "temporal_spatial_rms": 9.724729303493878e-06,
+          "component_energy_over_actual_difference_energy": 2.831796690503594e-06
+        },
+        "fundamental": {
+          "temporal_spatial_rms": 0.005537320222869035,
+          "component_energy_over_actual_difference_energy": 0.9181344990867102
+        },
+        "second_harmonic": {
+          "temporal_spatial_rms": 1.4091132473663146e-05,
+          "component_energy_over_actual_difference_energy": 5.94564292089928e-06
+        },
+        "third_harmonic": {
+          "temporal_spatial_rms": 0.00040355698408975625,
+          "component_energy_over_actual_difference_energy": 0.004876595830319503
+        },
+        "residual": {
+          "temporal_spatial_rms": 5.6893963656001064e-05
+        }
+      },
+      "component_energy_scope": "The finite-window DC/trend/harmonic basis is not orthogonal, so component energies do not sum to actual difference energy."
+    },
+    "tangential_gradient": {
+      "actual_temporal_spatial_rms": 0.0005281905370831486,
+      "fitted_components": {
+        "DC": {
+          "temporal_spatial_rms": 6.91482551414032e-05,
+          "component_energy_over_actual_difference_energy": 0.01713883189565337
+        },
+        "trend": {
+          "temporal_spatial_rms": 1.0251589678536168e-06,
+          "component_energy_over_actual_difference_energy": 3.7670483797671183e-06
+        },
+        "fundamental": {
+          "temporal_spatial_rms": 0.0005224958660046622,
+          "component_energy_over_actual_difference_energy": 0.9785532976657557
+        },
+        "second_harmonic": {
+          "temporal_spatial_rms": 7.840195569259877e-07,
+          "component_energy_over_actual_difference_energy": 2.2032945470871584e-06
+        },
+        "third_harmonic": {
+          "temporal_spatial_rms": 3.663032353134351e-05,
+          "component_energy_over_actual_difference_energy": 0.004809503848124321
+        },
+        "residual": {
+          "temporal_spatial_rms": 5.616925803006792e-06
+        }
+      },
+      "component_energy_scope": "The finite-window DC/trend/harmonic basis is not orthogonal, so component energies do not sum to actual difference energy."
+    },
+    "velocity": {
+      "actual_temporal_spatial_rms": 0.007898571290624311,
+      "fitted_components": {
+        "DC": {
+          "temporal_spatial_rms": 0.0023215485049852343,
+          "component_energy_over_actual_difference_energy": 0.08638899849479761
+        },
+        "trend": {
+          "temporal_spatial_rms": 1.3268627235855896e-05,
+          "component_energy_over_actual_difference_energy": 2.8219863063110452e-06
+        },
+        "fundamental": {
+          "temporal_spatial_rms": 0.007531988611368324,
+          "component_energy_over_actual_difference_energy": 0.9093314769759985
+        },
+        "second_harmonic": {
+          "temporal_spatial_rms": 2.0108216733064412e-05,
+          "component_energy_over_actual_difference_energy": 6.4811195194179725e-06
+        },
+        "third_harmonic": {
+          "temporal_spatial_rms": 0.0005484652193362202,
+          "component_energy_over_actual_difference_energy": 0.004821710148611479
+        },
+        "residual": {
+          "temporal_spatial_rms": 7.740019901733131e-05
+        }
+      },
+      "component_energy_scope": "The finite-window DC/trend/harmonic basis is not orthogonal, so component energies do not sum to actual difference energy."
+    }
+  },
+  "interpretation": [
+    "These are direct measured input differences. The paired full/crop forced FVM response is correlated with the complete measured difference, not uniquely with its second harmonic.",
+    "The primary two-harmonic fit is accompanied by a third-harmonic sensitivity fit because only 2.248 lift cycles are available; individual low-amplitude upstream or second-harmonic differences are susceptible to leakage and trend separation.",
+    "A component control would hold DC/trend and every other input identical while substituting only the paired fundamental, or only the paired second harmonic; without it a second-harmonic-only drag cause is unsupported.",
+    "The reference image is independently rebuilt from the mature reference each frame. No conclusion here identifies autonomous production VPM evolution as equivalent to this diagnostic."
+  ],
+  "direct_input_findings": {
+    "global_normal_velocity_second_harmonic": "Both support images have essentially the same global 2f amplitude and phase relative to reference (two-mode fit ratios 1.014649 crop / 1.014634 full; phases -0.62324 / -0.62427 degrees). This does not support a uniquely attenuated input second harmonic as the paired Cd mechanism.",
+    "side_normal_velocity_fundamental": "Combined side-face coherent gain is 0.94040 at -3.590 degrees for crop versus 0.99279 at +1.019 degrees for full. Orthogonal spatial error is 13.04% of reference amplitude versus 1.46%. Global amplitude norm alone conceals this spatial change.",
+    "mean_input_difference": "Full-minus-crop Un DC RMS is 0.001607 globally and 0.000410 on sides, with zero signed global flux; signed side/downstream/upstream area means are +0.000399/-0.002810/+0.001824.",
+    "leakage_sensitivity": "Adding the third harmonic reduces paired global 2f Un difference from 5.76e-5 to 1.99e-5 and side 2f difference from 7.31e-5 to 1.06e-5; fundamental and DC remain stable. This bounds interpretation of the small second-harmonic difference over only 2.248 cycles.",
+    "force_causality_scope": "The completed paired force control measures the response to the entire support-induced input change. A unique fundamental, DC, or second-harmonic cause remains unisolated without a component control."
+  },
+  "complete_decomposition": {
+    "path": "/tmp/cold_boundary_support_spectral_decomposition_full_20261006.json",
+    "sha256": "a4aa6fdd22e94fdc1d4abe6dccc5629a6aa353685646e97be3a677d6798b1868"
+  }
+}

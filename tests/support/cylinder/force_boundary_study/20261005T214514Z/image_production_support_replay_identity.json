@@ -1,0 +1,22 @@
+{
+  "status": "complete",
+  "started_at": "2026-10-06T00:27:46.146061+00:00",
+  "service": "openonda-image-production-support-replay-20261006.service",
+  "invocation_id": "9c1633335b194ae5bfe0d0144502782a",
+  "launcher_pid": 1673839,
+  "log": "/tmp/openonda-image-production-support-replay-20261006.log",
+  "output_directory": "/tmp/openonda-image-production-support-replay-20261006",
+  "boundary_model": "mixed",
+  "pressure_condition": "fixedFluxPressure",
+  "resource_limits": {
+    "memory_max_mib": 1500,
+    "swap_max_bytes": 0,
+    "cpu_quota_percent": 100,
+    "runtime_max_seconds": 1800,
+    "threads": 1
+  },
+  "scope": "Native forced-input FVM diagnostic; same original reference100s complete primary/BDF state and numerical settings; .04 endpoint interpolation to .008; production untouched",
+  "accepted_time": 111.99999999998144,
+  "wall_seconds": 603.9098023760016,
+  "oracle_admission": "rejected for production-tail attribution: unphysical warm auxiliary image growth; preserve native control as exploratory response only"
+}

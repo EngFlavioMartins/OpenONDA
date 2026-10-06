@@ -1,0 +1,6 @@
+{
+  "old_sha256": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+  "old_source_evidence": "/tmp/openonda-frozen-boundary-adapter-20261006",
+  "new_sha256": "bc085b2eed04de1d835dfcaeaecf89bb52e7f3c60b2817350ee8ae6af210f514",
+  "scope": "All old model/hybrid runs completed before this verification-only adapter update. Existing receipts unchanged. Adds explicit full velocity boundary form and stronger generated-source receipt admission; no numerical source changed."
+}

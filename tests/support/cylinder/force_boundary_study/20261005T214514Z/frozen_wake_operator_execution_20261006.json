@@ -1,0 +1,13 @@
+{
+  "created_utc": "2026-10-06T01:37:04.922976+00:00",
+  "unit": "openonda-frozen-wake-remeshing-qualified-20261006.service",
+  "source_hashes": {
+    "tests/support/cylinder/measure_frozen_wake_remeshing.py": "acd54f760e293298debec0ed6cc26c13680ce0cae62863c309a2d84e30b08ed5",
+    "tests/coupler/test_frozen_wake_remeshing.py": "4c4897b7e9d94e4254c5eb0a30f4083c4fd2d858d034808418bc4d524c0107ec"
+  },
+  "output_directory": "/tmp/openonda-frozen-wake-remeshing-20261006",
+  "log": "/tmp/openonda-frozen-wake-remeshing-qualified-20261006.log",
+  "cpu": 14,
+  "memory_max_bytes": 786432000,
+  "scope": "Test-first one frozen cloud conditional scatter, no physical flow advanced. Original test failure preserved in /tmp/openonda-frozen-wake-remeshing-20261006.log; explicit FP64 diagnostic evaluation corrected, native sources unchanged."
+}

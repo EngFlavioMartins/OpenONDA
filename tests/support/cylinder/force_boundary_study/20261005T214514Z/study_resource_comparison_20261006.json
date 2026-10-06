@@ -1,0 +1,45 @@
+{
+  "before_controls": {
+    "window": [
+      83,
+      85
+    ],
+    "accepted_count": 50,
+    "picard_sweeps": 4,
+    "particle_count_range": [
+      22056,
+      22423
+    ],
+    "mean_phase_seconds": {
+      "total": 11.266210360180267,
+      "evolution_total": 8.395835858579595,
+      "fvm": 7.583214806400138,
+      "vpm": 0.13276221437983624,
+      "transfer": 0.6168592181594431,
+      "state_checks_and_samplers": 2.848524367619975
+    }
+  },
+  "during_controls": {
+    "window": [
+      87,
+      88.6
+    ],
+    "accepted_count": 39,
+    "picard_sweeps": 4,
+    "particle_count_range": [
+      22071,
+      22503
+    ],
+    "mean_phase_seconds": {
+      "total": 13.826781051179495,
+      "evolution_total": 10.365036167693082,
+      "fvm": 9.369497246513324,
+      "vpm": 0.22026938838480886,
+      "transfer": 0.683074342409945,
+      "state_checks_and_samplers": 3.4391746560004557
+    }
+  },
+  "total_time_ratio": 1.227278792880471,
+  "written_at_utc": "2026-10-06T01:06:08.645508+00:00",
+  "scope": "Temporary study-job resource contention comparison at similar particle count, same four actual Picard sweeps; numerical production sources/configuration unchanged. Not a numerical performance regression or new benchmark."
+}

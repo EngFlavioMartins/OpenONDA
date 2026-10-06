@@ -1,0 +1,20 @@
+{
+  "status": "complete",
+  "recorded_at": "2026-10-06T00:11:05.916679+00:00",
+  "service": "openonda-actual-mean-reference-oscillation-20261006.service",
+  "invocation_id": "b7388380d7ba429488d892c7cbb206cd",
+  "launcher_pid": null,
+  "log": "/tmp/openonda-actual-mean-reference-oscillation-20261006.log",
+  "output_directory": "/tmp/openonda-actual-mean-reference-oscillation-20261006",
+  "resource_limits": {
+    "memory_max_mib": 1500,
+    "swap_max_bytes": 0,
+    "cpu_quota_percent": 100,
+    "runtime_max_seconds": 1800,
+    "threads": 1
+  },
+  "scope": "Bounded private boundary-input diagnostic;production unchanged; numerical-source hashes checked before/after",
+  "interpretation": "Reference filtered-input gate passed; forced FVM model is not an autonomous coupled solution",
+  "accepted_time": 111.99999999998144,
+  "wall_seconds": 600.8819129280018
+}

@@ -1,0 +1,47 @@
+{
+  "checked_at_utc": "2026-10-05T23:41:25.782770+00:00",
+  "focused_tests": {
+    "command": "python -m pytest -q tests/coupler/test_reference_volume_history.py",
+    "passed": 3
+  },
+  "ruff": "passed",
+  "verification_source_sha256": {
+    "tests/support/cylinder/capture_reference_volume_history.py": "6b1a0def8848ede644dd9a916bc1b8e71433843946b94c5e230e1556d2ff7306",
+    "tests/coupler/test_reference_volume_history.py": "01aefb94d2dd59ec774bfea3b5bd98548702ac04a857adce2e7e815ba6f2a50c"
+  },
+  "original_frozen_input_schema_keys": [
+    "schema",
+    "duration",
+    "start_time",
+    "end_time",
+    "start_step",
+    "step_size",
+    "steps",
+    "reference_config_hash",
+    "reference_native_format",
+    "source_sha256",
+    "files",
+    "scope"
+  ],
+  "authored_input_provenance": {
+    "historical_hashes_recorded": false,
+    "historical_sha256": {},
+    "newly_collected_sha256": {
+      "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "398ed628e4458a804b564e9ff23bfd72c24858b0e179abc9828793286a61d45e",
+      "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/initial_conditions.py": "2e0e77013988cc15d47cb1ccef0af9831d80ea04ab6af7acbdf43e2b8b846fee",
+      "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/setup.py": "6d4c70150fe94ddc9624d61593d26a8a3462b6b70688eb5afa88f165750b4dd5",
+      "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/assets/initial_conditions.py": "2e0e77013988cc15d47cb1ccef0af9831d80ea04ab6af7acbdf43e2b8b846fee"
+    },
+    "scope": "The original study did not record authored-input hashes. These current hashes are newly collected; they do not establish historical byte equivalence.",
+    "equation_equivalence_basis": "Strict original native configuration and numerical-source hashes, plus deterministic original outer traces, forces and final primary/BDF comparison."
+  },
+  "preflight": {
+    "native_original_config_matches": true,
+    "original_numerical_source_hashes_match": true,
+    "original_checkpoint_and_mesh_input_hashes_match": true,
+    "coupling_endpoint_count": 301
+  },
+  "correction": "The earlier helper incorrectly required authored-input hashes absent from the original immutable receipt. Current authored hashes are now recorded separately as newly collected, never historical evidence. Strict original configuration/source admission and final deterministic traces/forces/BDF comparison remain required.",
+  "previous_failure_preserved": "/tmp/openonda-cylinder-reference-volumes-20261006",
+  "scope": "No solver construction or launch; no numerical/tutorial edits."
+}

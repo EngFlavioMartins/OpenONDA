@@ -1,0 +1,542 @@
+{
+  "schema": "openonda-independent-normal-mode-frequency-force-review/1",
+  "captured_at_utc": "2026-10-06T01:58:54.794225+00:00",
+  "window": [
+    102,
+    112
+  ],
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_mode_frequency_force_comparison_20261006/comparison.json": "8b4dcdafd2035a4b1f1cc95e56b15b8d1b1e950d009853f1e0606b042848f846",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/normal_frequency_model_report.json": "d187fc79bc50f93ea9079c0fbdc8bfad5114ec398ebf9492acc42ced8116d94b",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_replay_independent_review_20261006.json": "552f4987126348dbf57db6dc1107979a680c1b3eae0daccb3de436245a0a945a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_mode_frequency_force_comparison_20261006/snapshots/reference_flow_forces_history.csv": "08e963544dcc3c1341e58d76900a1bce3250d0b1d331318bccfe28777111efea",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_mode_frequency_force_comparison_20261006/snapshots/coupled_harmonic_forces_history.csv": "aef515711821a29177724afd7dc8d03710f196a42d8a508c035cfccab3caa348",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_mode_frequency_force_comparison_20261006/snapshots/actual_normal_mode_reference_frequency_forces_history.csv": "0ae42bbc0bba541c08d0b8800084c70baebfc27cfb9d05310f03ed1d5c816fca",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_mode_frequency_force_comparison_20261006/snapshots/reference_normal_mode_actual_frequency_forces_history.csv": "57c9a5c84f4d8d34a5000075afc10123276964c2aada33cdf7e452f9ecc9244a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_mode_frequency_force_comparison_20261006/snapshots/reference_normal_oscillation_forces_history.csv": "2b76071f75e3e5584385fec69f828a994c0b160869198c506f21ff3d37f349f5"
+  },
+  "analysis_recipe_sha256": "453f213ee5af224acf10046a90de26a02042f1f06255dbd24fdd2fc2b2a37759",
+  "independent_complete_cycle_statistics": {
+    "reference_flow": {
+      "drag_coefficient": {
+        "complete_cycle_count": 3,
+        "median_raw": 0.05370134296400941,
+        "median_drift": 0.053699441138344454,
+        "first_two_median_raw": 0.05370729416587594,
+        "first_two_median_drift": 0.05361937727684479,
+        "last_to_first_raw_amplitude": 1.00166950951769,
+        "last_to_first_drift_amplitude": 1.002998388439119,
+        "cycles": [
+          {
+            "left_trough_time": 103.75999999998601,
+            "peak_time": 105.11999999998525,
+            "right_trough_time": 106.4799999999845,
+            "raw_peak_to_peak": 0.053611837491057246,
+            "drift_corrected_peak_to_peak": 0.053539313415345124,
+            "trough_baseline_slope_per_second": -5.332652625894242e-05
+          },
+          {
+            "left_trough_time": 106.4799999999845,
+            "peak_time": 107.79999999998377,
+            "right_trough_time": 109.15999999998301,
+            "raw_peak_to_peak": 0.053802750840694635,
+            "drift_corrected_peak_to_peak": 0.053699441138344454,
+            "trough_baseline_slope_per_second": 7.826492602290992e-05
+          },
+          {
+            "left_trough_time": 109.15999999998301,
+            "peak_time": 110.4399999999823,
+            "right_trough_time": 111.83999999998153,
+            "raw_peak_to_peak": 0.05370134296400941,
+            "drift_corrected_peak_to_peak": 0.053699845073728054,
+            "trough_baseline_slope_per_second": 1.1702267823097555e-06
+          }
+        ]
+      },
+      "lift_coefficient": {
+        "complete_cycle_count": 1,
+        "median_raw": 1.078737058977826,
+        "median_drift": 1.0784035154933043,
+        "first_two_median_raw": 1.078737058977826,
+        "first_two_median_drift": 1.0784035154933043,
+        "last_to_first_raw_amplitude": null,
+        "last_to_first_drift_amplitude": null,
+        "cycles": [
+          {
+            "left_trough_time": 104.83999999998541,
+            "peak_time": 107.51999999998392,
+            "right_trough_time": 110.19999999998244,
+            "raw_peak_to_peak": 1.078737058977826,
+            "drift_corrected_peak_to_peak": 1.0784035154933043,
+            "trough_baseline_slope_per_second": -0.00012445652407528586
+          }
+        ]
+      }
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": {
+        "complete_cycle_count": 2,
+        "median_raw": 0.03934732063141533,
+        "median_drift": 0.03857816117147135,
+        "first_two_median_raw": 0.03934732063141533,
+        "first_two_median_drift": 0.03857816117147135,
+        "last_to_first_raw_amplitude": 0.9115161973539662,
+        "last_to_first_drift_amplitude": 0.9336466327897927,
+        "cycles": [
+          {
+            "left_trough_time": 103.99999999998587,
+            "peak_time": 105.35999999998512,
+            "right_trough_time": 106.79999999998432,
+            "raw_peak_to_peak": 0.04116870229599123,
+            "drift_corrected_peak_to_peak": 0.03990197641832027,
+            "trough_baseline_slope_per_second": -0.0008796707483830964
+          },
+          {
+            "left_trough_time": 106.79999999998432,
+            "peak_time": 108.19999999998355,
+            "right_trough_time": 109.5599999999828,
+            "raw_peak_to_peak": 0.03752593896683942,
+            "drift_corrected_peak_to_peak": 0.037254345924622435,
+            "trough_baseline_slope_per_second": 0.0001939950301551003
+          }
+        ]
+      },
+      "lift_coefficient": {
+        "complete_cycle_count": 1,
+        "median_raw": 0.9701755112287204,
+        "median_drift": 0.9543684112849413,
+        "first_two_median_raw": 0.9701755112287204,
+        "first_two_median_drift": 0.9543684112849413,
+        "last_to_first_raw_amplitude": null,
+        "last_to_first_drift_amplitude": null,
+        "cycles": [
+          {
+            "left_trough_time": 104.87999999998539,
+            "peak_time": 107.63999999998386,
+            "right_trough_time": 110.4399999999823,
+            "raw_peak_to_peak": 0.9701755112287204,
+            "drift_corrected_peak_to_peak": 0.9543684112849413,
+            "trough_baseline_slope_per_second": 0.005727210124560801
+          }
+        ]
+      }
+    },
+    "actual_normal_mode_reference_frequency": {
+      "drag_coefficient": {
+        "complete_cycle_count": 2,
+        "median_raw": 0.04370759552811221,
+        "median_drift": 0.04289181754461012,
+        "first_two_median_raw": 0.04370759552811221,
+        "first_two_median_drift": 0.04289181754461012,
+        "last_to_first_raw_amplitude": 1.0067734732592684,
+        "last_to_first_drift_amplitude": 1.000413752480965,
+        "cycles": [
+          {
+            "left_trough_time": 103.91999999998592,
+            "peak_time": 105.31999999998514,
+            "right_trough_time": 106.67999999998439,
+            "raw_peak_to_peak": 0.043560069046682415,
+            "drift_corrected_peak_to_peak": 0.04288294608194387,
+            "trough_baseline_slope_per_second": -0.0004978845328962657
+          },
+          {
+            "left_trough_time": 106.67999999998439,
+            "peak_time": 108.07999999998361,
+            "right_trough_time": 109.43999999998286,
+            "raw_peak_to_peak": 0.043855122009542,
+            "drift_corrected_peak_to_peak": 0.042900689007276366,
+            "trough_baseline_slope_per_second": 0.0006817378587615465
+          }
+        ]
+      },
+      "lift_coefficient": {
+        "complete_cycle_count": 1,
+        "median_raw": 1.0550075275637107,
+        "median_drift": 1.0484623353199436,
+        "first_two_median_raw": 1.0550075275637107,
+        "first_two_median_drift": 1.0484623353199436,
+        "last_to_first_raw_amplitude": null,
+        "last_to_first_drift_amplitude": null,
+        "cycles": [
+          {
+            "left_trough_time": 104.87999999998539,
+            "peak_time": 107.63999999998386,
+            "right_trough_time": 110.39999999998233,
+            "raw_peak_to_peak": 1.0550075275637107,
+            "drift_corrected_peak_to_peak": 1.0484623353199436,
+            "trough_baseline_slope_per_second": -0.0023714464651343197
+          }
+        ]
+      }
+    },
+    "reference_normal_mode_actual_frequency": {
+      "drag_coefficient": {
+        "complete_cycle_count": 2,
+        "median_raw": 0.05375870991593379,
+        "median_drift": 0.05360294156282319,
+        "first_two_median_raw": 0.05375870991593379,
+        "first_two_median_drift": 0.05360294156282319,
+        "last_to_first_raw_amplitude": 1.003553791067655,
+        "last_to_first_drift_amplitude": 1.0074795927978326,
+        "cycles": [
+          {
+            "left_trough_time": 103.87999999998594,
+            "peak_time": 105.23999999998519,
+            "right_trough_time": 106.63999999998441,
+            "raw_peak_to_peak": 0.05366335573879133,
+            "drift_corrected_peak_to_peak": 0.05340322437660903,
+            "trough_baseline_slope_per_second": -0.00018580811584460432
+          },
+          {
+            "left_trough_time": 106.63999999998441,
+            "peak_time": 107.99999999998366,
+            "right_trough_time": 109.39999999998288,
+            "raw_peak_to_peak": 0.05385406409307625,
+            "drift_corrected_peak_to_peak": 0.053802658749037356,
+            "trough_baseline_slope_per_second": -3.671810288494315e-05
+          }
+        ]
+      },
+      "lift_coefficient": {
+        "complete_cycle_count": 1,
+        "median_raw": 1.066645972617874,
+        "median_drift": 1.0662497042745427,
+        "first_two_median_raw": 1.066645972617874,
+        "first_two_median_drift": 1.0662497042745427,
+        "last_to_first_raw_amplitude": null,
+        "last_to_first_drift_amplitude": null,
+        "cycles": [
+          {
+            "left_trough_time": 104.95999999998534,
+            "peak_time": 107.71999999998381,
+            "right_trough_time": 110.47999999998228,
+            "raw_peak_to_peak": 1.066645972617874,
+            "drift_corrected_peak_to_peak": 1.0662497042745427,
+            "trough_baseline_slope_per_second": 0.0001435754867143536
+          }
+        ]
+      }
+    },
+    "reference_normal_oscillation": {
+      "drag_coefficient": {
+        "complete_cycle_count": 3,
+        "median_raw": 0.05939729264769267,
+        "median_drift": 0.058469682114229315,
+        "first_two_median_raw": 0.05801146247196909,
+        "first_two_median_drift": 0.05709528184896018,
+        "last_to_first_raw_amplitude": 1.10157359696583,
+        "last_to_first_drift_amplitude": 1.097501986828404,
+        "cycles": [
+          {
+            "left_trough_time": 103.83999999998596,
+            "peak_time": 105.15999999998523,
+            "right_trough_time": 106.51999999998448,
+            "raw_peak_to_peak": 0.05662563229624551,
+            "drift_corrected_peak_to_peak": 0.05572088158369104,
+            "trough_baseline_slope_per_second": 0.00068541720648104
+          },
+          {
+            "left_trough_time": 106.51999999998448,
+            "peak_time": 107.87999999998372,
+            "right_trough_time": 109.23999999998297,
+            "raw_peak_to_peak": 0.05939729264769267,
+            "drift_corrected_peak_to_peak": 0.058469682114229315,
+            "trough_baseline_slope_per_second": 0.0006820665687234311
+          },
+          {
+            "left_trough_time": 109.23999999998297,
+            "peak_time": 110.55999999998224,
+            "right_trough_time": 111.95999999998146,
+            "raw_peak_to_peak": 0.062377301449039635,
+            "drift_corrected_peak_to_peak": 0.061153778245931135,
+            "trough_baseline_slope_per_second": 0.0009269115175069543
+          }
+        ]
+      },
+      "lift_coefficient": {
+        "complete_cycle_count": 1,
+        "median_raw": 1.2265674144561056,
+        "median_drift": 1.2012467372410909,
+        "first_two_median_raw": 1.2265674144561056,
+        "first_two_median_drift": 1.2012467372410909,
+        "last_to_first_raw_amplitude": null,
+        "last_to_first_drift_amplitude": null,
+        "cycles": [
+          {
+            "left_trough_time": 104.95999999998534,
+            "peak_time": 107.67999999998383,
+            "right_trough_time": 110.39999999998233,
+            "raw_peak_to_peak": 1.2265674144561056,
+            "drift_corrected_peak_to_peak": 1.2012467372410909,
+            "trough_baseline_slope_per_second": -0.009309072505525264
+          }
+        ]
+      }
+    }
+  },
+  "maximum_differences_from_canonical_extrema": {
+    "reference_flow": {
+      "drag_coefficient": 6.938893903907228e-18,
+      "lift_coefficient": 0.0
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": 4.163336342344337e-17,
+      "lift_coefficient": 0.0
+    },
+    "actual_normal_mode_reference_frequency": {
+      "drag_coefficient": 9.71445146547012e-17,
+      "lift_coefficient": 0.0
+    },
+    "reference_normal_mode_actual_frequency": {
+      "drag_coefficient": 0.0,
+      "lift_coefficient": 0.0
+    },
+    "reference_normal_oscillation": {
+      "drag_coefficient": 1.1102230246251565e-16,
+      "lift_coefficient": 0.0
+    }
+  },
+  "relative_to_reference_flow": {
+    "reference_flow": {
+      "drag_coefficient": {
+        "raw": 1.0,
+        "drift": 1.0
+      },
+      "lift_coefficient": {
+        "raw": 1.0,
+        "drift": 1.0
+      }
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": {
+        "raw": 0.7327064549910021,
+        "drift": 0.7184089881323615
+      },
+      "lift_coefficient": {
+        "raw": 0.8993623637515755,
+        "drift": 0.8849826596201104
+      }
+    },
+    "actual_normal_mode_reference_frequency": {
+      "drag_coefficient": {
+        "raw": 0.8139013498676373,
+        "drift": 0.798738620651732
+      },
+      "lift_coefficient": {
+        "raw": 0.9780024879866457,
+        "drift": 0.9722356430193345
+      }
+    },
+    "reference_normal_mode_actual_frequency": {
+      "drag_coefficient": {
+        "raw": 1.0010682591674258,
+        "drift": 0.9982029687185635
+      },
+      "lift_coefficient": {
+        "raw": 0.9887914424934942,
+        "drift": 0.9887298112031822
+      }
+    },
+    "reference_normal_oscillation": {
+      "drag_coefficient": {
+        "raw": 1.1060671739159424,
+        "drift": 1.088832227575617
+      },
+      "lift_coefficient": {
+        "raw": 1.1370402122073737,
+        "drift": 1.113912111730824
+      }
+    }
+  },
+  "paired_changes": {
+    "frequency_at_fixed_mode": {
+      "actual_mode": {
+        "drag_coefficient": {
+          "raw": 1.110815039670467,
+          "drift": 1.1118160182380266
+        },
+        "lift_coefficient": {
+          "raw": 1.0874398656255004,
+          "drift": 1.0985928734882542
+        }
+      },
+      "reference_mode": {
+        "drag_coefficient": {
+          "raw": 1.1048868683898165,
+          "drift": 1.0907924156681263
+        },
+        "lift_coefficient": {
+          "raw": 1.1499292604515587,
+          "drift": 1.126609210230354
+        }
+      }
+    },
+    "mode_at_fixed_frequency": {
+      "actual_frequency": {
+        "drag_coefficient": {
+          "raw": 1.3662610071856394,
+          "drift": 1.3894633630817714
+        },
+        "lift_coefficient": {
+          "raw": 1.0994360919984205,
+          "drift": 1.1172307168454652
+        }
+      },
+      "reference_frequency": {
+        "drag_coefficient": {
+          "raw": 1.3589695779418713,
+          "drift": 1.3631896585733927
+        },
+        "lift_coefficient": {
+          "raw": 1.162614846254767,
+          "drift": 1.1457223562299206
+        }
+      }
+    }
+  },
+  "first_two_complete_cycles_relative_to_reference_first_two": {
+    "reference_flow": {
+      "drag_coefficient": {
+        "raw": 1.0,
+        "drift": 1.0
+      },
+      "lift_coefficient": {
+        "raw": 1.0,
+        "drift": 1.0
+      }
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": {
+        "raw": 0.732625265199368,
+        "drift": 0.7194817084929314
+      },
+      "lift_coefficient": {
+        "raw": 0.8993623637515755,
+        "drift": 0.8849826596201104
+      }
+    },
+    "actual_normal_mode_reference_frequency": {
+      "drag_coefficient": {
+        "raw": 0.8138111630260224,
+        "drift": 0.7999312883317035
+      },
+      "lift_coefficient": {
+        "raw": 0.9780024879866457,
+        "drift": 0.9722356430193345
+      }
+    },
+    "reference_normal_mode_actual_frequency": {
+      "drag_coefficient": {
+        "raw": 1.0009573327209345,
+        "drift": 0.999693474358407
+      },
+      "lift_coefficient": {
+        "raw": 0.9887914424934942,
+        "drift": 0.9887298112031822
+      }
+    },
+    "reference_normal_oscillation": {
+      "drag_coefficient": {
+        "raw": 1.0801412242590298,
+        "drift": 1.0648255304079488
+      },
+      "lift_coefficient": {
+        "raw": 1.1370402122073737,
+        "drift": 1.113912111730824
+      }
+    }
+  },
+  "input_control_matrix": [
+    [
+      "coupled_harmonic",
+      "actual_normal_mode_reference_frequency"
+    ],
+    [
+      "reference_normal_mode_actual_frequency",
+      "reference_normal_oscillation"
+    ]
+  ],
+  "input_frequencies_hz": {
+    "coupled": 0.1815070887743629,
+    "reference": 0.18733035691621663
+  },
+  "phase_policy": "Each mode retains its measured per-face complex coefficients and initial force-relative phase. Only the normal oscillator clock rate changes in a frequency substitution; actual Ut and Gt remain on their original clocks.",
+  "mode_definition": "Spatial coefficients are the fundamental and second-harmonic cosine/sine arrays for Un on all356 faces, including amplitudes and side-to-side phase. They also retain the original global initial phase relative to the source lift. Mean/trend are actual in all four controls.",
+  "original_global_phase_translation": {
+    "replay_clock_start": 99.99999999998809,
+    "source_clock_start": 36.251508379930236,
+    "source_clock_end": 48.251508379923585,
+    "source_minus_replay_clock": -63.748491620057855,
+    "source_clock_rate": 1.0,
+    "initial_lift_phase_error_radians_modulo_2pi": -2.4492935982947064e-16,
+    "equivalent_source_start_candidates_inside_measured_window": [
+      30.742081686171012,
+      36.251508379930236
+    ],
+    "selection": "Equivalent lift-phase start nearest the measured window midpoint after accounting for replay duration"
+  },
+  "frequency_substitution_models": {
+    "actual_normal_mode_reference_frequency": {
+      "normal_mode_source": "coupled",
+      "imposed_frequency_source": "reference",
+      "original_mode_frequency_hz": 0.1815070887743629,
+      "imposed_normal_frequency_hz": 0.18733035691621663,
+      "oscillator_clock_rate": 1.0320828689456467,
+      "original_source_clock_window": [
+        36.25150837993024,
+        48.25150837992359
+      ],
+      "altered_oscillator_source_clock_window": [
+        36.25150837993024,
+        48.63650280727114
+      ],
+      "measured_source_clock_window": [
+        30.0,
+        50.0
+      ],
+      "initial_fundamental_phase_radians": -4.274939804170014,
+      "harmonic_amplitude_area_weighted_rms": [
+        0.15550252760413688,
+        0.03761068343697204
+      ],
+      "harmonic_amplitude_maximum_change": 0.0,
+      "normal_coefficient_sha256": "384da59ab308ae9a198d5276be98bbd7b3d77d3017fe20fcc0f68a0517752bb1"
+    },
+    "reference_normal_mode_actual_frequency": {
+      "normal_mode_source": "reference",
+      "imposed_frequency_source": "coupled",
+      "original_mode_frequency_hz": 0.18733035691621663,
+      "imposed_normal_frequency_hz": 0.1815070887743629,
+      "oscillator_clock_rate": 0.9689144448464474,
+      "original_source_clock_window": [
+        99.99999999998809,
+        111.99999999998144
+      ],
+      "altered_oscillator_source_clock_window": [
+        99.99999999998809,
+        111.62697333813901
+      ],
+      "measured_source_clock_window": [
+        99.99999999998809,
+        111.99999999998144
+      ],
+      "initial_fundamental_phase_radians": -7.062188076984167,
+      "harmonic_amplitude_area_weighted_rms": [
+        0.15472593040492727,
+        0.041056133029407894
+      ],
+      "harmonic_amplitude_maximum_change": 0.0,
+      "normal_coefficient_sha256": "37cffab6bdd8b630c8db537bd593997e5ea3ee91aec90b635a35f983adc990f0"
+    }
+  },
+  "native_admission_receipt": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_replay_independent_review_20261006.json",
+  "scope": "Finite102\u2013112s forced native FVM responses, common unchanged100s reference primary/BDF initialization, fixed mixed Un/Gt with fixedFluxPressure, .04 endpoint/.008 native schedule; no autonomous coupled evolution or recovered mature production claim.",
+  "method": "Independent successive-trough pairing with1.5\u20135s Cd and4\u20138s Cl periods, direct native-row max-minus-min and peak minus linear bracketing-trough baseline. CSV normalization checked independently. No history phase or amplitude rescaling.",
+  "limitations": [
+    "Each control has only one complete lift cycle; drag has two cycles except reference mode/reference frequency, which has three and grows10.16%. Unequal counts and finite settling prevent interpreting the four median ratios as saturated amplitudes.",
+    "The first-two-cycle sensitivity is reported separately to show the impact of the extra late cycle. Those cycles have slightly different physical intervals and are not phase-shifted or made temporally identical.",
+    "Changing normal frequency deliberately changes its subsequent temporal phase relative to unchanged Ut/Gt. It is not a frequency change of all flow inputs together.",
+    "A spatial-mode substitution includes the measured initial force-relative phase, harmonic amplitude, spatial phase and waveform. This comparison does not isolate those mode properties individually.",
+    "All inputs are low-mode reconstructions; downstream omitted higher modes, source-state differences, startup settling and feedback remain outside this control."
+  ]
+}

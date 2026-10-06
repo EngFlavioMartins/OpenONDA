@@ -1,0 +1,1368 @@
+{
+  "written_at_utc": "2026-10-06T00:54:12.756937+00:00",
+  "smoke": {
+    "invocation": "884297d645a14c63adddff0d6bf80bfe",
+    "report": {
+      "status": "complete",
+      "output": "/tmp/openonda-reference-image-cold-smoke-20261006/particle_image_traces.h5",
+      "output_sha256": "141053fd7f483d9610c496af9a5c568cd3e84de68ad2afb03409b46360a7b5a6",
+      "frames": 2,
+      "complete_qualified_horizon": false,
+      "qualified_reference_frame_count": 301,
+      "start_frame": 0,
+      "stop_frame": 2,
+      "cold_repeat_qualification": {
+        "frame_index": 0,
+        "time": 99.99999999998809,
+        "coefficient_comparison": {
+          "native_masked": {
+            "particle_count": 54663,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          },
+          "full_reference_native_masked": {
+            "particle_count": 86682,
+            "positions_bitwise_equal": true,
+            "strengths_bitwise_equal": true
+          }
+        },
+        "repeated_admission": {
+          "maximum_coefficient_to_target_ratio": 1.7643475045676782,
+          "maximum_coefficient_l1_to_target_l1_ratio": 1.0643493088594025,
+          "maximum_coefficient_ratio_limit": 4.0,
+          "coefficient_l1_ratio_limit": 10.0,
+          "zero_initial_coefficients": true,
+          "passed": true
+        },
+        "repeat_wall_seconds": 11.997379158998228,
+        "passed": true
+      },
+      "construction_wall_seconds": 35.01849716600191,
+      "wall_seconds": 80.41700665900134,
+      "process_peak_rss_bytes": 1150722048,
+      "source_sha256": {
+        "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/project_reference_volume_images.py": "1f64266bfb7b953d46a1be197fa09d046dfcf0b1f062c0daa953421008ed488f",
+        "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_reference_particle_image.py": "4e263f3affe32e1d0caad2fab5f5e8559a84d76fca165d4fc419e94493dee134",
+        "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_saved_wall_circulation.py": "b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a",
+        "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/capture_reference_volume_history.py": "6b1a0def8848ede644dd9a916bc1b8e71433843946b94c5e230e1556d2ff7306",
+        "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/reference_cut_cell_deposition.py": "bb69db6ab5b3e242d0b03b6cb0a5c10726b83ba77d26eab7e5856142687796a8",
+        "source/coupler/vorticity_transfer.py": "9380fd0290fb3ee192a68adcee92b54398fda6f1db05a43fb63a30613ca959d7",
+        "source/coupler/stable_renewal.py": "348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306",
+        "source/coupler/interpolation.py": "f1bdcd6f2d99cc0159164d629fed642f1a19513f31552d7ec6d7802caba328c9",
+        "source/solvers/vpm/physics/induction/planar.py": "52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc",
+        "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/stream_planar_image_induction.py": "1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4"
+      },
+      "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f",
+      "volume_history_path": "/tmp/openonda-cylinder-reference-volumes-20261006-v2/reference_volume_history.h5",
+      "configuration_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+      "configuration_path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json",
+      "native_configuration": {
+        "coupler": {
+          "freestream_velocity": [
+            1.0,
+            0.1,
+            0.0
+          ],
+          "freestream": {
+            "initial": [
+              1.0,
+              0.1,
+              0.0
+            ],
+            "final": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "start_time": 1.0,
+            "end_time": 2.0
+          },
+          "transfer_region_bounds": {
+            "xmin": -1.25,
+            "xmax": 2.05,
+            "ymin": -1.25,
+            "ymax": 1.25,
+            "zmin": -0.5,
+            "zmax": 0.5
+          },
+          "eta_blend_width": 0.24,
+          "vpm_only_width": 0.08,
+          "transfer_vorticity_cutoff": 0.05,
+          "transfer_amplification_cap": 1.8,
+          "transfer_diagnostic_interval_steps": 60,
+          "transfer_discretization_error_limit": 0.08,
+          "coupling_patch": "numericalBoundary",
+          "interface_iterations": 6,
+          "interface_normal_tolerance": 1e-05,
+          "interface_gradient_tolerance": 1e-05,
+          "backup_interval_steps": 25
+        },
+        "vpm": {
+          "axisymmetric_no_swirl_axis": null,
+          "cutoff_radius_factor": 100,
+          "domain_bounds": [
+            -5.0,
+            15.0,
+            -5.0,
+            5.0,
+            -0.5,
+            0.5
+          ],
+          "state_limits": {
+            "finite_state": {
+              "enabled": true
+            },
+            "lagrangian_cfl": {
+              "maximum": 1.0
+            },
+            "maximum_particle_strength": {
+              "maximum": null
+            },
+            "divergence": {
+              "maximum": null
+            },
+            "misalignment": {
+              "maximum_degrees": null
+            },
+            "growth": {
+              "maximum_particle_strength_growth": null,
+              "maximum_vorticity_growth": null
+            }
+          },
+          "max_n_particles": 200000,
+          "particle_kernel": "GAUSSIAN",
+          "precision": "f32",
+          "random_seed": 42,
+          "stabilization": {
+            "selective_eddy_viscosity_coefficient": 0.0,
+            "selective_eddy_viscosity_start_step": 0,
+            "pedrizzetti_relaxation_factor": 0.0,
+            "pedrizzetti_relaxation_interval_steps": 1,
+            "pedrizzetti_relaxation_start_step": 0,
+            "pedrizzetti_relaxation_end_step": null,
+            "pedrizzetti_relaxation_preserve_vortex_strength": true,
+            "pedrizzetti_relaxation_preserve_moments": false,
+            "filament_refinement": {
+              "interval_steps": 0,
+              "max_vortex_strength_factor": 2.0,
+              "offset_fraction": 0.25,
+              "max_absolute_vortex_strength": null
+            },
+            "divergence_relaxation": {
+              "interval_steps": 0,
+              "start_step": 0,
+              "grid_spacing": null,
+              "regularization": 0.1,
+              "solver_relative_tolerance": 1e-05,
+              "max_iterations": 30,
+              "max_projection_sweeps": 3,
+              "max_correction_norm": 0.02,
+              "max_residual_ratio": 0.9,
+              "total_kinetic_energy_tolerance": 1e-06,
+              "total_enstrophy_tolerance": 0.0001,
+              "total_helicity_tolerance": 0.0001,
+              "variation_tolerance": 0.001,
+              "vortex_strength_reference_scale": null,
+              "linear_impulse_reference_scale": null,
+              "angular_impulse_reference_scale": null,
+              "vortex_strength_reference_tolerance": 0.001,
+              "linear_impulse_reference_tolerance": 0.01,
+              "angular_impulse_reference_tolerance": 0.01,
+              "spectral_convergence_fraction": 0.1
+            },
+            "remove_particles_by_bounds": [
+              -5.0,
+              15.0,
+              -5.0,
+              5.0,
+              -0.5,
+              0.5
+            ],
+            "regularization_interval_steps": 0,
+            "regularization_start_step": 0,
+            "regularization_grid_spacing": null,
+            "regularization_tail_budget": 0.003,
+            "regularization_solenoidal_remesh": false,
+            "regularization_transfer_only": false,
+            "regularization_preserve_groups": false,
+            "regularization_total_kinetic_energy_dissipation_limit": 0.15,
+            "regularization_total_enstrophy_dissipation_limit": 0.15,
+            "regularization_divergence_trigger": 0.04,
+            "regularization_misalignment_trigger": 20.0,
+            "regularization_core_radius_trigger": null,
+            "regularization_core_radius": null,
+            "regularization_projection_trigger": 0.08,
+            "regularization_projection_max_correction": 0.2,
+            "max_vortex_strength_error": 1e-05,
+            "max_vortex_strength_growth": 0.001,
+            "max_vorticity_growth": 0.05
+          },
+          "integrator": {
+            "name": "RK2",
+            "order": 2,
+            "a": [
+              [
+                0.0,
+                0.0
+              ],
+              [
+                1.0,
+                0.0
+              ]
+            ],
+            "b": [
+              0.5,
+              0.5
+            ],
+            "c": [
+              0.0,
+              1.0
+            ]
+          },
+          "induction": {
+            "type": "source.solvers.vpm.physics.induction.planar.PlanarInduction",
+            "method": "PLANAR",
+            "planar_span": 1.0,
+            "spanwise_tolerance": 0.001,
+            "plane_z": 0.0,
+            "stretching_scheme": "DIRECT",
+            "kernel": "GAUSSIAN"
+          },
+          "time_step_size": 0.04,
+          "turbulence": {
+            "model": "INVISCID",
+            "smagorinsky_coefficient": 0.2,
+            "subgrid_dissipation_coefficient": 1.048,
+            "filter_width": null,
+            "flow_model": "INVISCID"
+          },
+          "viscous": {
+            "scheme": "GBD",
+            "core_radius_ratio": 1.0,
+            "dvh_grid_spacing": null,
+            "dvh_domain_padding": 3.0,
+            "dvh_threshold": 0.01,
+            "dvh_threshold_mode": "budget",
+            "gbd_grid_spacing": 0.04,
+            "gbd_domain_padding": 5.0,
+            "gbd_threshold": 1.6000000000000003e-05,
+            "gbd_threshold_mode": "absolute",
+            "gbd_remeshing_kernel": "M4_PRIME",
+            "dvh_support_radius_ratio": 4,
+            "kinematic_viscosity": 0.006666666666666667,
+            "particle_spacing": 0.04
+          }
+        },
+        "solid_geometry": {
+          "wall_revisions": [
+            "8954c6414900ac54ef6d774ee1af045b"
+          ]
+        },
+        "transfer_lattice": {
+          "anchor": [
+            -1.581431638466319,
+            -1.5814329494196484,
+            -2.5410988417628992e-17
+          ]
+        }
+      },
+      "outer_repetitions": 10,
+      "kernel_backend": "cuda",
+      "projection_history": "cold",
+      "native_cuda_cpu_comparison": {
+        "maximum_velocity_absolute_error": 1.2140377592118057e-10,
+        "maximum_jacobian_absolute_error": 3.6420752420884828e-09,
+        "absolute_error_bound": 2e-06,
+        "source_count": 86786,
+        "source_batch_size": 32768,
+        "source_storage_dtype": "float32",
+        "accumulator_dtype": "float64"
+      },
+      "frame_reports": [
+        {
+          "index": 0,
+          "time": 99.99999999998809,
+          "image": {
+            "support": "production",
+            "support_bounds": [
+              -5.0,
+              15.0,
+              -5.0,
+              5.0,
+              -0.5,
+              0.5
+            ],
+            "reference_bounds": [
+              -8.0,
+              24.0,
+              -10.0,
+              10.0,
+              -0.5,
+              0.5
+            ],
+            "auxiliary_lattice_node_count": 417069,
+            "auxiliary_wake_prune_threshold": 1.6000000000000003e-05,
+            "inner_fvm_prune_threshold": 8e-05,
+            "auxiliary_renewals": [
+              {
+                "particle_count": 93634,
+                "renewed_output_count": 93634,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.14855576887372005,
+                "representation_residual_after_prune": 0.1808148884859891,
+                "maximum_transfer_amplification": 1.358276670829738,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.749989042565403e-14,
+                  "linear_impulse": 5.856087064091555e-14,
+                  "angular_impulse": 0.8402794110925775
+                },
+                "conservation_applied_particle_strength_fraction": 0.1032043714439274,
+                "population_pruned_count": 0,
+                "stored_particle_count": 93634,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.058124713599681854,
+                "stored_strength_l1": 34.71428511314059,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.10320439045894372,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 2.5062238381834412e-08,
+                  "vortex_strength_tolerance": 0.0001481002085140021,
+                  "linear_impulse_error": 2.034507600320985e-08,
+                  "linear_impulse_tolerance": 0.0035797492374918948
+                },
+                "circulation_rounding_error": 2.5062232980385478e-08,
+                "xy_first_moment_rounding_error": [
+                  3.392438184992415e-10,
+                  -4.06886059461398e-08
+                ]
+              },
+              {
+                "particle_count": 90932,
+                "renewed_output_count": 90932,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.09151279271405945,
+                "representation_residual_after_prune": 0.12314260978931668,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 8.340550472496489e-15,
+                  "linear_impulse": 1.2214976244412755e-13,
+                  "angular_impulse": 0.6469277557769324
+                },
+                "conservation_applied_particle_strength_fraction": 0.09275626632931065,
+                "population_pruned_count": 0,
+                "stored_particle_count": 90932,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.0777314230799675,
+                "stored_strength_l1": 35.92903309076836,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.09275628587608446,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 9.03004569730026e-09,
+                  "vortex_strength_tolerance": 0.00015127543602725573,
+                  "linear_impulse_error": 2.4115120834971413e-08,
+                  "linear_impulse_tolerance": 0.003656498071159866
+                },
+                "circulation_rounding_error": -9.03003696675435e-09,
+                "xy_first_moment_rounding_error": [
+                  -2.7665937048540455e-08,
+                  -3.950635068430299e-08
+                ]
+              },
+              {
+                "particle_count": 89749,
+                "renewed_output_count": 89749,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.07381105373982139,
+                "representation_residual_after_prune": 0.10583273963305366,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 4.593547764386585e-15,
+                  "linear_impulse": 1.7825203741976834e-13,
+                  "angular_impulse": 0.5587447621816786
+                },
+                "conservation_applied_particle_strength_fraction": 0.0849907108154841,
+                "population_pruned_count": 0,
+                "stored_particle_count": 89749,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.0786057785153389,
+                "stored_strength_l1": 36.94064295410035,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.08499073054317476,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 9.649375118381265e-09,
+                  "vortex_strength_tolerance": 0.0001541302213557112,
+                  "linear_impulse_error": 2.317526226892827e-08,
+                  "linear_impulse_tolerance": 0.0037255014554581083
+                },
+                "circulation_rounding_error": -9.649390520587724e-09,
+                "xy_first_moment_rounding_error": [
+                  -2.656720143992451e-08,
+                  -3.798105891383534e-08
+                ]
+              },
+              {
+                "particle_count": 89017,
+                "renewed_output_count": 89017,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06715821011038778,
+                "representation_residual_after_prune": 0.09866858253850627,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.4988010832439613e-14,
+                  "linear_impulse": 1.3452036875013155e-13,
+                  "angular_impulse": 0.49313432044465344
+                },
+                "conservation_applied_particle_strength_fraction": 0.07954512878542887,
+                "population_pruned_count": 0,
+                "stored_particle_count": 89017,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.07997271418571472,
+                "stored_strength_l1": 37.773893703028996,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.07954514899403992,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 5.055326185443576e-09,
+                  "vortex_strength_tolerance": 0.00015663226890483856,
+                  "linear_impulse_error": 1.7518980076268084e-08,
+                  "linear_impulse_tolerance": 0.0037859787694067264
+                },
+                "circulation_rounding_error": 5.055317872014956e-09,
+                "xy_first_moment_rounding_error": [
+                  -5.304986048979001e-09,
+                  -3.4633895092298514e-08
+                ]
+              },
+              {
+                "particle_count": 88416,
+                "renewed_output_count": 88416,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06423134734448403,
+                "representation_residual_after_prune": 0.09484037042922784,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 3.969047313034935e-15,
+                  "linear_impulse": 1.3930835019175514e-13,
+                  "angular_impulse": 0.4313793696872139
+                },
+                "conservation_applied_particle_strength_fraction": 0.07558222070512324,
+                "population_pruned_count": 0,
+                "stored_particle_count": 88416,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.0804726853966713,
+                "stored_strength_l1": 38.470348233176594,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.0755822408465489,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 3.207957344208978e-09,
+                  "vortex_strength_tolerance": 0.00015879897386946915,
+                  "linear_impulse_error": 3.922507217066825e-08,
+                  "linear_impulse_tolerance": 0.003838350474503097
+                },
+                "circulation_rounding_error": -3.2079647093717504e-09,
+                "xy_first_moment_rounding_error": [
+                  -6.6616361954026e-08,
+                  -4.143285290793536e-08
+                ]
+              },
+              {
+                "particle_count": 88003,
+                "renewed_output_count": 88003,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06333633251209109,
+                "representation_residual_after_prune": 0.0930872553002502,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 2.4841240175987878e-15,
+                  "linear_impulse": 1.7014833429837769e-13,
+                  "angular_impulse": 0.3857422349194941
+                },
+                "conservation_applied_particle_strength_fraction": 0.07253488923184279,
+                "population_pruned_count": 0,
+                "stored_particle_count": 88003,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08058895170688629,
+                "stored_strength_l1": 39.05534815222942,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.07253490924146445,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 2.043988991951018e-08,
+                  "vortex_strength_tolerance": 0.0001606555436375911,
+                  "linear_impulse_error": 2.8466074054020577e-08,
+                  "linear_impulse_tolerance": 0.003883225861772769
+                },
+                "circulation_rounding_error": 2.0439878211139652e-08,
+                "xy_first_moment_rounding_error": [
+                  -1.7967822789830875e-08,
+                  -5.40221933210347e-08
+                ]
+              },
+              {
+                "particle_count": 87760,
+                "renewed_output_count": 87760,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06293800974571724,
+                "representation_residual_after_prune": 0.09174823907136039,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.5709655798445965e-14,
+                  "linear_impulse": 6.092646627963948e-14,
+                  "angular_impulse": 0.3431800186614282
+                },
+                "conservation_applied_particle_strength_fraction": 0.07008966799081241,
+                "population_pruned_count": 0,
+                "stored_particle_count": 87760,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.0809684470295906,
+                "stored_strength_l1": 39.556732958852265,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.07008968808250529,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 6.199421642705261e-09,
+                  "vortex_strength_tolerance": 0.00016226660947596345,
+                  "linear_impulse_error": 6.242274967508921e-08,
+                  "linear_impulse_tolerance": 0.003922167141898769
+                },
+                "circulation_rounding_error": -6.199429556420564e-09,
+                "xy_first_moment_rounding_error": [
+                  -1.2040534485102703e-07,
+                  -3.299874489823153e-08
+                ]
+              },
+              {
+                "particle_count": 87424,
+                "renewed_output_count": 87424,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06291812015184048,
+                "representation_residual_after_prune": 0.09097963260249653,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.2906342661267445e-14,
+                  "linear_impulse": 7.437698838800158e-14,
+                  "angular_impulse": 0.2939395809952501
+                },
+                "conservation_applied_particle_strength_fraction": 0.06814019870903537,
+                "population_pruned_count": 0,
+                "stored_particle_count": 87424,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08103124052286148,
+                "stored_strength_l1": 39.98527028252106,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.06814021872254891,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.4321244329318361e-08,
+                  "vortex_strength_tolerance": 0.00016365802877277194,
+                  "linear_impulse_error": 2.8834062749807953e-08,
+                  "linear_impulse_tolerance": 0.003955799317145238
+                },
+                "circulation_rounding_error": 1.4321234578635323e-08,
+                "xy_first_moment_rounding_error": [
+                  -3.5745989865710673e-08,
+                  -4.5252912069659586e-08
+                ]
+              },
+              {
+                "particle_count": 87222,
+                "renewed_output_count": 87222,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06317827356208444,
+                "representation_residual_after_prune": 0.09068111230817193,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.3766765505351941e-14,
+                  "linear_impulse": 1.4669084036153289e-13,
+                  "angular_impulse": 0.2519632090681725
+                },
+                "conservation_applied_particle_strength_fraction": 0.06654923076264514,
+                "population_pruned_count": 0,
+                "stored_particle_count": 87222,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08108143508434296,
+                "stored_strength_l1": 40.35546229287181,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.06654925114921825,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 8.001924484135614e-09,
+                  "vortex_strength_tolerance": 0.0001648700821450347,
+                  "linear_impulse_error": 3.2387714426200966e-08,
+                  "linear_impulse_tolerance": 0.003985096015500305
+                },
+                "circulation_rounding_error": 8.001904037905845e-09,
+                "xy_first_moment_rounding_error": [
+                  -5.133337116656713e-08,
+                  -3.95058691819158e-08
+                ]
+              },
+              {
+                "particle_count": 86946,
+                "renewed_output_count": 86946,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06345219557907278,
+                "representation_residual_after_prune": 0.0903462112361802,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 4.427014310692812e-15,
+                  "linear_impulse": 5.463605923895761e-14,
+                  "angular_impulse": 0.21411997919658532
+                },
+                "conservation_applied_particle_strength_fraction": 0.06521934270289459,
+                "population_pruned_count": 0,
+                "stored_particle_count": 86946,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.0811220109462738,
+                "stored_strength_l1": 40.678558814949604,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.06521936290196657,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 8.107951435243343e-09,
+                  "vortex_strength_tolerance": 0.00016593436248863805,
+                  "linear_impulse_error": 2.74806590220866e-08,
+                  "linear_impulse_tolerance": 0.0040108208729243335
+                },
+                "circulation_rounding_error": -8.107938564399876e-09,
+                "xy_first_moment_rounding_error": [
+                  -1.566888934335446e-08,
+                  -5.268041411981006e-08
+                ]
+              }
+            ],
+            "final_auxiliary_native_admission": {
+              "passed": true,
+              "budget": {
+                "closure_correction_fraction": 0.06521936290196657,
+                "closure_correction_limit": 0.08,
+                "vortex_strength_error": 8.107951435243343e-09,
+                "vortex_strength_tolerance": 0.00016593436248863805,
+                "linear_impulse_error": 2.74806590220866e-08,
+                "linear_impulse_tolerance": 0.0040108208729243335
+              }
+            },
+            "auxiliary_target": {
+              "maximum_absolute_axial_strength": 0.04597847687955968,
+              "axial_strength_l1": 38.21918093651257,
+              "definition": "Simultaneous compatible FVM circulation multiplied by mesh, fluid, blend and exterior support weights; no previous particle coefficients."
+            },
+            "projection_history": "empty_each_frame",
+            "auxiliary_history_input_particle_count": 0,
+            "same_complete_image_crop": {
+              "removed_particle_count": 32019,
+              "removed_circulation": -0.8720790010065842,
+              "removed_strength_l1": 8.635165289857756,
+              "removed_first_xy_moments": [
+                -12.168723047762157,
+                -5.2819946660322055
+              ]
+            },
+            "finite_reference_exit": {
+              "straddling_raw_circulation": -0.12959922037697286,
+              "straddling_raw_strength_l1": 1.3764503204129488,
+              "straddling_owned_strength_l1": 0.0,
+              "reference_exit_curl_is_owned": false
+            },
+            "complete_cut_cell_deposition": null,
+            "sample_wall_seconds": 11.74980349299949,
+            "phase_wall_seconds": {
+              "outside_target": 0.2809737479983596,
+              "outside_renewals": 10.90464946600332,
+              "inside_target": 0.0018334339983994141,
+              "inside_renewals": 0.5571594259999983
+            }
+          },
+          "kernel_wall_seconds": {
+            "production": 2.3384395469984156,
+            "reference_support": 3.1833827549999114
+          },
+          "kernel_cpu_comparison": {
+            "production": {
+              "maximum_velocity_absolute_error": 1.1893908080651272e-10,
+              "maximum_jacobian_absolute_error": 3.798952874500827e-09,
+              "absolute_error_bound": 2e-06,
+              "source_count": 54663,
+              "source_batch_size": 32768,
+              "source_storage_dtype": "float32",
+              "accumulator_dtype": "float64"
+            },
+            "reference_support": {
+              "maximum_velocity_absolute_error": 1.189390252953615e-10,
+              "maximum_jacobian_absolute_error": 3.798952874500827e-09,
+              "absolute_error_bound": 2e-06,
+              "source_count": 86682,
+              "source_batch_size": 32768,
+              "source_storage_dtype": "float32",
+              "accumulator_dtype": "float64"
+            }
+          },
+          "flux_correction": {
+            "production": {
+              "raw_flux_imbalance": 8.77575356949406e-06,
+              "normal_velocity_correction": 6.118531573703507e-07,
+              "corrected_flux_imbalance": -1.3877787807814457e-16
+            },
+            "reference_support": {
+              "raw_flux_imbalance": 8.755756204188725e-06,
+              "normal_velocity_correction": 6.104589237009265e-07,
+              "corrected_flux_imbalance": -1.6653345369377348e-16
+            }
+          },
+          "auxiliary_image_admission": {
+            "maximum_coefficient_to_target_ratio": 1.7643475045676782,
+            "maximum_coefficient_l1_to_target_l1_ratio": 1.0643493088594025,
+            "maximum_coefficient_ratio_limit": 4.0,
+            "coefficient_l1_ratio_limit": 10.0,
+            "zero_initial_coefficients": true,
+            "passed": true
+          },
+          "production_renewals": [
+            {
+              "particle_count": 54663,
+              "renewed_output_count": 2854,
+              "preserved_outer_count": 51809,
+              "representation_residual_before_prune": 0.07721706255925521,
+              "representation_residual_after_prune": 0.07651602577409829,
+              "maximum_transfer_amplification": 1.8,
+              "conservation_residual": {
+                "total_vortex_strength": 0.0,
+                "linear_impulse": 5.449219015837261e-15,
+                "angular_impulse": 0.0016640880078736542
+              },
+              "conservation_applied_particle_strength_fraction": 0.0020151095686057646,
+              "population_pruned_count": 0,
+              "stored_particle_count": 54663,
+              "particle_capacity": 200000,
+              "stored_inside_solid_count": 0,
+              "maximum_stored_axial_strength": 0.08296186476945877,
+              "stored_strength_l1": 32.39230005804369,
+              "native_replacement_budget": {
+                "closure_correction_fraction": 0.002015131198005804,
+                "closure_correction_limit": 0.08,
+                "vortex_strength_error": 6.034018340539404e-09,
+                "vortex_strength_tolerance": 4.012795346859669e-05,
+                "linear_impulse_error": 3.3870183642756506e-09,
+                "linear_impulse_tolerance": 0.00010351547489412054
+              },
+              "circulation_rounding_error": 6.034017996497676e-09,
+              "xy_first_moment_rounding_error": [
+                -1.023918025544651e-10,
+                -6.7732664820508865e-09
+              ]
+            }
+          ],
+          "reference_support_renewals": [
+            {
+              "particle_count": 54663,
+              "renewed_output_count": 2854,
+              "preserved_outer_count": 51809,
+              "representation_residual_before_prune": 0.07721706255925521,
+              "representation_residual_after_prune": 0.07651602577409829,
+              "maximum_transfer_amplification": 1.8,
+              "conservation_residual": {
+                "total_vortex_strength": 0.0,
+                "linear_impulse": 5.449219015837261e-15,
+                "angular_impulse": 0.0016640880078736542
+              },
+              "conservation_applied_particle_strength_fraction": 0.0020151095686057646,
+              "population_pruned_count": 0,
+              "stored_particle_count": 54663,
+              "particle_capacity": 200000,
+              "stored_inside_solid_count": 0,
+              "maximum_stored_axial_strength": 0.08296186476945877,
+              "stored_strength_l1": 32.39230005804369,
+              "native_replacement_budget": {
+                "closure_correction_fraction": 0.002015131198005804,
+                "closure_correction_limit": 0.08,
+                "vortex_strength_error": 6.034018340539404e-09,
+                "vortex_strength_tolerance": 4.012795346859669e-05,
+                "linear_impulse_error": 3.3870183642756506e-09,
+                "linear_impulse_tolerance": 0.00010351547489412054
+              },
+              "circulation_rounding_error": 6.034017996497676e-09,
+              "xy_first_moment_rounding_error": [
+                -1.023918025544651e-10,
+                -6.7732664820508865e-09
+              ]
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "time": 100.03999999998807,
+          "image": {
+            "support": "production",
+            "support_bounds": [
+              -5.0,
+              15.0,
+              -5.0,
+              5.0,
+              -0.5,
+              0.5
+            ],
+            "reference_bounds": [
+              -8.0,
+              24.0,
+              -10.0,
+              10.0,
+              -0.5,
+              0.5
+            ],
+            "auxiliary_lattice_node_count": 417069,
+            "auxiliary_wake_prune_threshold": 1.6000000000000003e-05,
+            "inner_fvm_prune_threshold": 8e-05,
+            "auxiliary_renewals": [
+              {
+                "particle_count": 93665,
+                "renewed_output_count": 93665,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.1485045045872403,
+                "representation_residual_after_prune": 0.18077381941376924,
+                "maximum_transfer_amplification": 1.3581962705753698,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.584843367652411e-14,
+                  "linear_impulse": 8.568160128763375e-14,
+                  "angular_impulse": 0.7075020761542987
+                },
+                "conservation_applied_particle_strength_fraction": 0.10318080620135944,
+                "population_pruned_count": 0,
+                "stored_particle_count": 93665,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.0580650195479393,
+                "stored_strength_l1": 34.714530399440406,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.10318082535171201,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.0564197322482372e-08,
+                  "vortex_strength_tolerance": 0.00014809788371388882,
+                  "linear_impulse_error": 5.0736356361963906e-08,
+                  "linear_impulse_tolerance": 0.0035796930444485743
+                },
+                "circulation_rounding_error": -1.0564192151214479e-08,
+                "xy_first_moment_rounding_error": [
+                  -9.739248480067474e-08,
+                  -2.8484927991469842e-08
+                ]
+              },
+              {
+                "particle_count": 91008,
+                "renewed_output_count": 91008,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.09147320853368235,
+                "representation_residual_after_prune": 0.12313439659055304,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 3.0808688933348094e-15,
+                  "linear_impulse": 2.531324078174936e-13,
+                  "angular_impulse": 0.5277659176142606
+                },
+                "conservation_applied_particle_strength_fraction": 0.092769377501543,
+                "population_pruned_count": 0,
+                "stored_particle_count": 91008,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.07765670865774155,
+                "stored_strength_l1": 35.92886932870084,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.09276939695145829,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.0542516803990765e-08,
+                  "vortex_strength_tolerance": 0.0001512767713970754,
+                  "linear_impulse_error": 2.6615117101783064e-08,
+                  "linear_impulse_tolerance": 0.0036565303485559726
+                },
+                "circulation_rounding_error": -1.0542510593861152e-08,
+                "xy_first_moment_rounding_error": [
+                  -3.204486774458732e-08,
+                  -4.2503685331531055e-08
+                ]
+              },
+              {
+                "particle_count": 89854,
+                "renewed_output_count": 89854,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.07378975406880221,
+                "representation_residual_after_prune": 0.10581536182209635,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.5015766408055242e-14,
+                  "linear_impulse": 8.528825480125004e-14,
+                  "angular_impulse": 0.4423310284210764
+                },
+                "conservation_applied_particle_strength_fraction": 0.084945204217762,
+                "population_pruned_count": 0,
+                "stored_particle_count": 89854,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.07854306697845459,
+                "stored_strength_l1": 36.93972074401764,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.08494522388095581,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.8383275776634456e-08,
+                  "vortex_strength_tolerance": 0.00015412126204806617,
+                  "linear_impulse_error": 4.9592333624385925e-08,
+                  "linear_impulse_tolerance": 0.003725284898877719
+                },
+                "circulation_rounding_error": -1.838327770641771e-08,
+                "xy_first_moment_rounding_error": [
+                  -8.70442895264793e-08,
+                  -4.754865650417663e-08
+                ]
+              },
+              {
+                "particle_count": 89101,
+                "renewed_output_count": 89101,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06714688592229252,
+                "representation_residual_after_prune": 0.0986523532382166,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 2.79359868571305e-14,
+                  "linear_impulse": 9.946433489539497e-14,
+                  "angular_impulse": 0.38286776453081117
+                },
+                "conservation_applied_particle_strength_fraction": 0.0795048219868752,
+                "population_pruned_count": 0,
+                "stored_particle_count": 89101,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.07990390062332153,
+                "stored_strength_l1": 37.771605914102906,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.07950484228689357,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.6985494108445742e-08,
+                  "vortex_strength_tolerance": 0.00015661978314544144,
+                  "linear_impulse_error": 1.9237944780951e-08,
+                  "linear_impulse_tolerance": 0.003785676974506302
+                },
+                "circulation_rounding_error": 1.6985467801074107e-08,
+                "xy_first_moment_rounding_error": [
+                  -6.759629336984507e-09,
+                  -3.7877563244231495e-08
+                ]
+              },
+              {
+                "particle_count": 88574,
+                "renewed_output_count": 88574,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.0642222764779405,
+                "representation_residual_after_prune": 0.09483192380995902,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 1.8055001937966608e-14,
+                  "linear_impulse": 9.563087615528361e-14,
+                  "angular_impulse": 0.3234800795836428
+                },
+                "conservation_applied_particle_strength_fraction": 0.07556431999898791,
+                "population_pruned_count": 0,
+                "stored_particle_count": 88574,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.0804036557674408,
+                "stored_strength_l1": 38.46454909692065,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.0755643400024846,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.063715830695866e-08,
+                  "vortex_strength_tolerance": 0.0001587792192384594,
+                  "linear_impulse_error": 2.443175888410067e-08,
+                  "linear_impulse_tolerance": 0.0038378729827696035
+                },
+                "circulation_rounding_error": -1.0637168961509432e-08,
+                "xy_first_moment_rounding_error": [
+                  -3.159471123043301e-08,
+                  -3.727491084973215e-08
+                ]
+              },
+              {
+                "particle_count": 88110,
+                "renewed_output_count": 88110,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06333232554251557,
+                "representation_residual_after_prune": 0.09309365176612974,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 3.2862601528904634e-14,
+                  "linear_impulse": 1.2145981964640876e-13,
+                  "angular_impulse": 0.2775952581224317
+                },
+                "conservation_applied_particle_strength_fraction": 0.0725379684012056,
+                "population_pruned_count": 0,
+                "stored_particle_count": 88110,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08052083104848862,
+                "stored_strength_l1": 39.04927766812537,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.07253798850769602,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.9260536776588566e-09,
+                  "vortex_strength_tolerance": 0.00016063482762037853,
+                  "linear_impulse_error": 4.121988834911749e-08,
+                  "linear_impulse_tolerance": 0.003882725132249397
+                },
+                "circulation_rounding_error": -1.9260362661863225e-09,
+                "xy_first_moment_rounding_error": [
+                  -7.58993329924525e-08,
+                  -3.2180191241146646e-08
+                ]
+              },
+              {
+                "particle_count": 87838,
+                "renewed_output_count": 87838,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06294077152777959,
+                "representation_residual_after_prune": 0.09176771545760257,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 6.716849298982197e-15,
+                  "linear_impulse": 7.602393521719537e-14,
+                  "angular_impulse": 0.2344434250415688
+                },
+                "conservation_applied_particle_strength_fraction": 0.0700959473572954,
+                "population_pruned_count": 0,
+                "stored_particle_count": 87838,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08092851936817169,
+                "stored_strength_l1": 39.55089190628142,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.07009596760397373,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 7.750115146865078e-09,
+                  "vortex_strength_tolerance": 0.00016224729953124423,
+                  "linear_impulse_error": 4.533985860697733e-08,
+                  "linear_impulse_tolerance": 0.003921700398734945
+                },
+                "circulation_rounding_error": -7.750101453810546e-09,
+                "xy_first_moment_rounding_error": [
+                  -8.496917995771122e-08,
+                  -3.167108711670894e-08
+                ]
+              },
+              {
+                "particle_count": 87530,
+                "renewed_output_count": 87530,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.062928833832826,
+                "representation_residual_after_prune": 0.09100807817846175,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 4.926614671774132e-15,
+                  "linear_impulse": 1.5092827672238308e-13,
+                  "angular_impulse": 0.1950858280536636
+                },
+                "conservation_applied_particle_strength_fraction": 0.06814134490060543,
+                "population_pruned_count": 0,
+                "stored_particle_count": 87530,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08099114894866943,
+                "stored_strength_l1": 39.97889658165294,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.06814136505095197,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 1.194772655810361e-09,
+                  "vortex_strength_tolerance": 0.0001636359784105566,
+                  "linear_impulse_error": 2.39009221546246e-08,
+                  "linear_impulse_tolerance": 0.00395526633499674
+                },
+                "circulation_rounding_error": -1.1947591432534912e-09,
+                "xy_first_moment_rounding_error": [
+                  2.11938253548088e-08,
+                  -4.2846775955166183e-08
+                ]
+              },
+              {
+                "particle_count": 87303,
+                "renewed_output_count": 87303,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06319344707115272,
+                "representation_residual_after_prune": 0.09070866859945044,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 3.232136780439987e-14,
+                  "linear_impulse": 2.1306576976842796e-13,
+                  "angular_impulse": 0.1604256757230189
+                },
+                "conservation_applied_particle_strength_fraction": 0.06655263321307626,
+                "population_pruned_count": 0,
+                "stored_particle_count": 87303,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08104068785905838,
+                "stored_strength_l1": 40.34807338561894,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.06655265319144085,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 6.084730927446991e-09,
+                  "vortex_strength_tolerance": 0.00016484403483527083,
+                  "linear_impulse_error": 2.6361804530201724e-08,
+                  "linear_impulse_tolerance": 0.003984466422617205
+                },
+                "circulation_rounding_error": -6.084704287198946e-09,
+                "xy_first_moment_rounding_error": [
+                  -3.314323842307239e-08,
+                  -4.1003905298358085e-08
+                ]
+              },
+              {
+                "particle_count": 87044,
+                "renewed_output_count": 87044,
+                "preserved_outer_count": 0,
+                "representation_residual_before_prune": 0.06346961051434513,
+                "representation_residual_after_prune": 0.09037976047962729,
+                "maximum_transfer_amplification": 1.8,
+                "conservation_residual": {
+                  "total_vortex_strength": 9.520162436160717e-15,
+                  "linear_impulse": 4.066812254828624e-14,
+                  "angular_impulse": 0.12494414809368593
+                },
+                "conservation_applied_particle_strength_fraction": 0.06523366251062751,
+                "population_pruned_count": 0,
+                "stored_particle_count": 87044,
+                "particle_capacity": 200000,
+                "stored_inside_solid_count": 0,
+                "maximum_stored_axial_strength": 0.08108186721801758,
+                "stored_strength_l1": 40.67005645905806,
+                "native_replacement_budget": {
+                  "closure_correction_fraction": 0.06523368279723196,
+                  "closure_correction_limit": 0.08,
+                  "vortex_strength_error": 7.162437865027016e-10,
+                  "vortex_strength_tolerance": 0.00016590476292947104,
+                  "linear_impulse_error": 2.5660416564886047e-08,
+                  "linear_impulse_tolerance": 0.004010105418162849
+                },
+                "circulation_rounding_error": 7.162493762259723e-10,
+                "xy_first_moment_rounding_error": [
+                  -2.4774175667948696e-08,
+                  -4.494525319504183e-08
+                ]
+              }
+            ],
+            "final_auxiliary_native_admission": {
+              "passed": true,
+              "budget": {
+                "closure_correction_fraction": 0.06523368279723196,
+                "closure_correction_limit": 0.08,
+                "vortex_strength_error": 7.162437865027016e-10,
+                "vortex_strength_tolerance": 0.00016590476292947104,
+                "linear_impulse_error": 2.5660416564886047e-08,
+                "linear_impulse_tolerance": 0.004010105418162849
+              }
+            },
+            "auxiliary_target": {
+              "maximum_absolute_axial_strength": 0.04594790288180935,
+              "axial_strength_l1": 38.21702570739889,
+              "definition": "Simultaneous compatible FVM circulation multiplied by mesh, fluid, blend and exterior support weights; no previous particle coefficients."
+            },
+            "projection_history": "empty_each_frame",
+            "auxiliary_history_input_particle_count": 0,
+            "same_complete_image_crop": {
+              "removed_particle_count": 32068,
+              "removed_circulation": -0.8705880024395896,
+              "removed_strength_l1": 8.62067875882401,
+              "removed_first_xy_moments": [
+                -12.208065952444233,
+                -5.276165386458348
+              ]
+            },
+            "finite_reference_exit": {
+              "straddling_raw_circulation": -0.12510373421419202,
+              "straddling_raw_strength_l1": 1.3726402134441722,
+              "straddling_owned_strength_l1": 0.0,
+              "reference_exit_curl_is_owned": false
+            },
+            "complete_cut_cell_deposition": null,
+            "sample_wall_seconds": 10.07755148599972,
+            "phase_wall_seconds": {
+              "outside_target": 0.16041311099979794,
+              "outside_renewals": 9.378199231003236,
+              "inside_target": 0.001860927997768158,
+              "inside_renewals": 0.5318890749986167
+            }
+          },
+          "kernel_wall_seconds": {
+            "production": 2.318566653000744,
+            "reference_support": 2.656874018997769
+          },
+          "kernel_cpu_comparison": {
+            "production": {
+              "maximum_velocity_absolute_error": 1.214036648988781e-10,
+              "maximum_jacobian_absolute_error": 3.642075231680142e-09,
+              "absolute_error_bound": 2e-06,
+              "source_count": 54718,
+              "source_batch_size": 32768,
+              "source_storage_dtype": "float32",
+              "accumulator_dtype": "float64"
+            },
+            "reference_support": {
+              "maximum_velocity_absolute_error": 1.2140377592118057e-10,
+              "maximum_jacobian_absolute_error": 3.6420752420884828e-09,
+              "absolute_error_bound": 2e-06,
+              "source_count": 86786,
+              "source_batch_size": 32768,
+              "source_storage_dtype": "float32",
+              "accumulator_dtype": "float64"
+            }
+          },
+          "flux_correction": {
+            "production": {
+              "raw_flux_imbalance": 9.484232302403584e-06,
+              "normal_velocity_correction": 6.612489096812748e-07,
+              "corrected_flux_imbalance": 2.220446049250313e-16
+            },
+            "reference_support": {
+              "raw_flux_imbalance": 9.464251762840437e-06,
+              "normal_velocity_correction": 6.59855849117203e-07,
+              "corrected_flux_imbalance": 2.220446049250313e-16
+            }
+          },
+          "auxiliary_image_admission": {
+            "maximum_coefficient_to_target_ratio": 1.7646478322760988,
+            "maximum_coefficient_l1_to_target_l1_ratio": 1.0641868566758783,
+            "maximum_coefficient_ratio_limit": 4.0,
+            "coefficient_l1_ratio_limit": 10.0,
+            "zero_initial_coefficients": true,
+            "passed": true
+          },
+          "production_renewals": [
+            {
+              "particle_count": 54718,
+              "renewed_output_count": 2865,
+              "preserved_outer_count": 51853,
+              "representation_residual_before_prune": 0.07727754873855462,
+              "representation_residual_after_prune": 0.07659769705961848,
+              "maximum_transfer_amplification": 1.8,
+              "conservation_residual": {
+                "total_vortex_strength": 2.7200464103316335e-15,
+                "linear_impulse": 1.432843787967409e-15,
+                "angular_impulse": 0.0014300384711587455
+              },
+              "conservation_applied_particle_strength_fraction": 0.001936247323416932,
+              "population_pruned_count": 0,
+              "stored_particle_count": 54718,
+              "particle_capacity": 200000,
+              "stored_inside_solid_count": 0,
+              "maximum_stored_axial_strength": 0.08290021121501923,
+              "stored_strength_l1": 32.397292981475466,
+              "native_replacement_budget": {
+                "closure_correction_fraction": 0.0019362691505366105,
+                "closure_correction_limit": 0.08,
+                "vortex_strength_error": 2.507299035059418e-09,
+                "vortex_strength_tolerance": 4.008839686872145e-05,
+                "linear_impulse_error": 6.002040477232553e-09,
+                "linear_impulse_tolerance": 9.929613816020888e-05
+              },
+              "circulation_rounding_error": -2.5072992833423245e-09,
+              "xy_first_moment_rounding_error": [
+                -8.412818088102185e-09,
+                -8.562845370807521e-09
+              ]
+            }
+          ],
+          "reference_support_renewals": [
+            {
+              "particle_count": 54718,
+              "renewed_output_count": 2865,
+              "preserved_outer_count": 51853,
+              "representation_residual_before_prune": 0.07727754873855462,
+              "representation_residual_after_prune": 0.07659769705961848,
+              "maximum_transfer_amplification": 1.8,
+              "conservation_residual": {
+                "total_vortex_strength": 2.7200464103316335e-15,
+                "linear_impulse": 1.432843787967409e-15,
+                "angular_impulse": 0.0014300384711587455
+              },
+              "conservation_applied_particle_strength_fraction": 0.001936247323416932,
+              "population_pruned_count": 0,
+              "stored_particle_count": 54718,
+              "particle_capacity": 200000,
+              "stored_inside_solid_count": 0,
+              "maximum_stored_axial_strength": 0.08290021121501923,
+              "stored_strength_l1": 32.397292981475466,
+              "native_replacement_budget": {
+                "closure_correction_fraction": 0.0019362691505366105,
+                "closure_correction_limit": 0.08,
+                "vortex_strength_error": 2.507299035059418e-09,
+                "vortex_strength_tolerance": 4.008839686872145e-05,
+                "linear_impulse_error": 6.002040477232553e-09,
+                "linear_impulse_tolerance": 9.929613816020888e-05
+              },
+              "circulation_rounding_error": -2.5072992833423245e-09,
+              "xy_first_moment_rounding_error": [
+                -8.412818088102185e-09,
+                -8.562845370807521e-09
+              ]
+            }
+          ]
+        }
+      ],
+      "scope": "Simultaneous complete native reference field imaged at each accepted coupling endpoint; identical coefficients for both support traces. No VPM advection/diffusion or autonomous coupled force claim.",
+      "limitations": [
+        "Auxiliary full-reference renewal is a guarded finite Gaussian image, not exact inverse or evolved particle state.",
+        "The finite reference outer blending belt excludes straddling exit curl and cannot reconstruct unknown wake beyond the reference domain.",
+        "Small FVM replay must preserve the original restricted initial primary/BDF/face-flux fields and use the native linear .04\u2192.008 endpoint schedule."
+      ]
+    }
+  },
+  "worker_invocations": {
+    "part0": "3e6dc54880b14ee7be93f1b120e154af",
+    "part1": "79b7bc3c84754042a031fe04337daa98",
+    "part2": "71de862280684c90907c87d06939b4d7"
+  },
+  "worker_ranges": [
+    [
+      0,
+      101
+    ],
+    [
+      101,
+      201
+    ],
+    [
+      201,
+      301
+    ]
+  ],
+  "allowed_cpus": [
+    10,
+    11,
+    12
+  ],
+  "per_worker": {
+    "memory_max_bytes": 1572864000,
+    "memory_swap_max_bytes": 0,
+    "cpu_quota_percent": 100,
+    "runtime_max_seconds": 2400,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "NUMBA_NUM_THREADS": 1,
+    "CUDA_PATH": "/usr",
+    "outer_repetitions": 10
+  },
+  "worker_directory_pattern": "/tmp/openonda-reference-image-cold-part{part}-20261006",
+  "unit_pattern": "openonda-reference-image-cold-part{part}-20261006.service",
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/project_reference_volume_images.py": "1f64266bfb7b953d46a1be197fa09d046dfcf0b1f062c0daa953421008ed488f",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_reference_particle_image.py": "4e263f3affe32e1d0caad2fab5f5e8559a84d76fca165d4fc419e94493dee134",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/audit_saved_wall_circulation.py": "b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/capture_reference_volume_history.py": "6b1a0def8848ede644dd9a916bc1b8e71433843946b94c5e230e1556d2ff7306",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/reference_cut_cell_deposition.py": "bb69db6ab5b3e242d0b03b6cb0a5c10726b83ba77d26eab7e5856142687796a8",
+    "source/coupler/vorticity_transfer.py": "9380fd0290fb3ee192a68adcee92b54398fda6f1db05a43fb63a30613ca959d7",
+    "source/coupler/stable_renewal.py": "348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306",
+    "source/coupler/interpolation.py": "f1bdcd6f2d99cc0159164d629fed642f1a19513f31552d7ec6d7802caba328c9",
+    "source/solvers/vpm/physics/induction/planar.py": "52992e154d10dc922f41ac8fb56fe84b559840326014aae81c7aece69db979bc",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/stream_planar_image_induction.py": "1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4"
+  },
+  "projection_history": "independent zero coefficients; final native closure .08 limit unchanged",
+  "production_untouched": true
+}

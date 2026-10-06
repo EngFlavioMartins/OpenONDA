@@ -1,0 +1,50 @@
+{
+  "status": "passed",
+  "created_utc": "2026-10-06T01:01:18.078348+00:00",
+  "scope": "Host-only endpoint roundtrip and independent explicit sine/cosine reconstruction; no prepare_input call or solver initialization/advance.",
+  "helper_sha256": "6d12154e2449b926e27e26036a50b27ca7932332b7e6ab5783542f72ef9d6780",
+  "test_sha256": "09f7e8bf18aa67ad0742ad7118d925829714aa33c864ea98c327b5f501031b38",
+  "focused_test": "1 passed",
+  "ruff": "passed",
+  "component_report_sha256": "f08b68f48cd75932ea09b095a4a7e23a95f5d13c43817af1ea113c9a7399031a",
+  "models": {
+    "actual_mean_reference_normal_oscillation": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/actual_mean_reference_normal_oscillation_endpoints.h5",
+      "sha256": "0eb6c07161b039464ea9c1893847ef3d86d7e24f4ac55a8f597b2a0ec94d1425"
+    },
+    "actual_mean_reference_gradient_oscillation": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/actual_mean_reference_gradient_oscillation_endpoints.h5",
+      "sha256": "bb0152ed1cd3bdcc84f6307dc4b45df54b6fc3d0e27b50f09851b9fdda5fd6a8"
+    }
+  },
+  "checks": {
+    "actual_mean_reference_normal_oscillation": {
+      "endpoint_sha256": "0eb6c07161b039464ea9c1893847ef3d86d7e24f4ac55a8f597b2a0ec94d1425",
+      "original_source_clocks_bitwise_unchanged": true,
+      "research_clock_bitwise_unchanged": true,
+      "complete301_endpoint_schedule": true,
+      "independent_explicit_harmonic_formula_maximum_field_errors": {
+        "normal_velocity": 2.220446049250313e-16,
+        "tangential_gradient": 4.440892098500626e-16,
+        "velocity": 4.440892098500626e-16
+      },
+      "finite_fields": true,
+      "normal_flux_maximum": 6.522560269672795e-16
+    },
+    "actual_mean_reference_gradient_oscillation": {
+      "endpoint_sha256": "bb0152ed1cd3bdcc84f6307dc4b45df54b6fc3d0e27b50f09851b9fdda5fd6a8",
+      "original_source_clocks_bitwise_unchanged": true,
+      "research_clock_bitwise_unchanged": true,
+      "complete301_endpoint_schedule": true,
+      "independent_explicit_harmonic_formula_maximum_field_errors": {
+        "normal_velocity": 4.440892098500626e-16,
+        "tangential_gradient": 6.661338147750939e-16,
+        "velocity": 4.440892098500626e-16
+      },
+      "finite_fields": true,
+      "normal_flux_maximum": 6.557254739192331e-16
+    }
+  },
+  "original_frozen_artifacts_unchanged": true,
+  "replay_inputs_not_prepared": true
+}

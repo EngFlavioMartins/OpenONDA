@@ -1,0 +1,62 @@
+{
+  "reference": {
+    "drag_coefficient": {
+      "mean": 1.380281161480033,
+      "complete_cycle_count": 3,
+      "median_peak_to_peak_raw": 0.05370134296400941,
+      "median_peak_to_peak_drift_corrected": 0.05369944113834446,
+      "median_period": 2.6799999999985147,
+      "median_peak_to_peak_raw_ratio_to_reference": 1.0,
+      "median_peak_to_peak_drift_corrected_ratio_to_reference": 1.0
+    },
+    "lift_coefficient": {
+      "mean": -0.02935712763352797,
+      "complete_cycle_count": 1,
+      "median_peak_to_peak_raw": 1.078737058977826,
+      "median_peak_to_peak_drift_corrected": 1.0784035154933043,
+      "median_period": 5.359999999997029,
+      "median_peak_to_peak_raw_ratio_to_reference": 1.0,
+      "median_peak_to_peak_drift_corrected_ratio_to_reference": 1.0
+    }
+  },
+  "exact_subcycled": {
+    "drag_coefficient": {
+      "mean": 1.3810628789153145,
+      "complete_cycle_count": 3,
+      "median_peak_to_peak_raw": 0.05240047781202639,
+      "median_peak_to_peak_drift_corrected": 0.05222134686972746,
+      "median_period": 2.639999999998537,
+      "median_peak_to_peak_raw_ratio_to_reference": 0.9757759288654129,
+      "median_peak_to_peak_drift_corrected_ratio_to_reference": 0.9724746806059112
+    },
+    "lift_coefficient": {
+      "mean": -0.027585994899750305,
+      "complete_cycle_count": 1,
+      "median_peak_to_peak_raw": 1.057401057894322,
+      "median_peak_to_peak_drift_corrected": 1.0543637584295529,
+      "median_period": 5.3199999999970515,
+      "median_peak_to_peak_raw_ratio_to_reference": 0.9802213144473583,
+      "median_peak_to_peak_drift_corrected_ratio_to_reference": 0.977708013078245
+    }
+  },
+  "reference_harmonic": {
+    "drag_coefficient": {
+      "mean": 1.3812789476403555,
+      "complete_cycle_count": 3,
+      "median_peak_to_peak_raw": 0.052538972575283394,
+      "median_peak_to_peak_drift_corrected": 0.05227297689329791,
+      "median_period": 2.6799999999985147,
+      "median_peak_to_peak_raw_ratio_to_reference": 0.9783549102393019,
+      "median_peak_to_peak_drift_corrected_ratio_to_reference": 0.973436143564854
+    },
+    "lift_coefficient": {
+      "mean": -0.02764672124661598,
+      "complete_cycle_count": 1,
+      "median_peak_to_peak_raw": 1.0728158009194888,
+      "median_peak_to_peak_drift_corrected": 1.0703314513161009,
+      "median_period": 5.3199999999970515,
+      "median_peak_to_peak_raw_ratio_to_reference": 0.9945109347926288,
+      "median_peak_to_peak_drift_corrected_ratio_to_reference": 0.9925148016848675
+    }
+  }
+}

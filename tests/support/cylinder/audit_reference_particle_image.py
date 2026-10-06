@@ -1,0 +1,568 @@
+"""Frozen mature reference curl represented by the guarded native planar transfer.
+
+This read-only image uses one simultaneous complete reference velocity field.
+The reference-derived outside wake is shared by the inner masked/cut-cell
+comparisons; no coupled checkpoint wake is reused at a different flow time.
+An auxiliary reference-sized renewal region creates that wake. This is a
+representation diagnostic, not a compatible native restart or force proof.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+from pathlib import Path
+import resource
+from time import perf_counter
+
+import h5py
+import numpy as np
+
+from source.coupler.stable_renewal import build_stable_renewal_lattice, renew_stable_overlap
+from source.coupler.vorticity_transfer import (
+    _reduce_applied_particle_state,
+    _vortex_invariant_residual,
+    required_renewal_buffer_length,
+)
+from tests.support.cylinder.audit_frozen_renewal import smoothstep
+from tests.support.cylinder.audit_saved_wall_circulation import (
+    digest,
+    gaussian_velocity_and_gradient,
+    load_donor_geometry,
+    velocity_statistics,
+)
+from tests.support.cylinder.reference_cut_cell_deposition import deposit_cut_cell_circulation
+
+
+def _box_mask(points, box):
+    roundoff = 64 * np.finfo(float).eps * np.maximum(1, np.abs(box))
+    return np.all(
+        (points >= box[::2] - roundoff[::2]) & (points <= box[1::2] + roundoff[1::2]), axis=1
+    )
+
+
+def admit_final_native_image(row):
+    """Apply the unchanged atomic replacement guards to a final image budget."""
+    budget = row["native_replacement_budget"]
+    if (
+        row["population_pruned_count"]
+        or row["stored_particle_count"] > row["particle_capacity"]
+        or row["stored_inside_solid_count"]
+    ):
+        raise ValueError("Final reference image violates native population or solid support guards")
+    if (
+        budget["closure_correction_fraction"] > budget["closure_correction_limit"]
+        or budget["vortex_strength_error"] > budget["vortex_strength_tolerance"]
+        or budget["linear_impulse_error"] > budget["linear_impulse_tolerance"]
+        or not all(np.isfinite(value) for value in budget.values())
+    ):
+        raise ValueError("Final reference image violates native storage/moment replacement guards")
+    return {"passed": True, "budget": budget}
+
+
+class ReferenceParticleImage:
+    """Fixed geometry and bounded query plans for repeated reference images.
+
+    Every ``sample`` starts the auxiliary image from zero coefficients. A
+    previously tried warm sequence produced unbounded unobserved outer-belt
+    coefficients and is retired. The independent small renewal retains the
+    simultaneously reconstructed common outside wake.
+    The supplied reference array and gradients remain the caller's live fields.
+    Native kernel, velocity taper, pruning, capacity and strength guards remain.
+    """
+
+    def __init__(self, reference_directory, configuration, *, support="production"):
+        self.directory = Path(reference_directory)
+        self.configuration = configuration
+        self.coupling = configuration["coupler"]
+        self.vpm = configuration["vpm"]
+        self.viscous = self.vpm["viscous"]
+        self.h = self.viscous["particle_spacing"]
+        self.span = self.vpm["induction"]["planar_span"]
+        self.dtype = np.float32 if self.vpm["precision"] == "f32" else np.float64
+        (
+            self.mesh,
+            self.geometry,
+            self.state,
+            self.gradient,
+            self.boundary,
+            self.wall,
+            self.trace,
+        ) = load_donor_geometry(
+            self.directory, self.directory / "reference_backup.npz", "reference_mesh.npz"
+        )
+        self.reference_bounds = np.column_stack(
+            (self.mesh["vertex_position"].min(axis=0), self.mesh["vertex_position"].max(axis=0))
+        ).ravel()
+        self.freestream = np.asarray(self.coupling["freestream"]["final"], dtype=float)
+        self.support = support
+        self.support_bounds = (
+            np.asarray(self.vpm["domain_bounds"], dtype=float)
+            if support == "production"
+            else self.reference_bounds.copy()
+        )
+        self.outer_lattice = self._lattice(self.reference_bounds)
+        box = self.coupling["transfer_region_bounds"]
+        self.inner_lattice = self._lattice(
+            np.array([box[f"{axis}{side}"] for axis in "xyz" for side in ("min", "max")])
+        )
+        self.storage_measurements = {}
+        self.plans = {}
+        for label, lattice in (("outside", self.outer_lattice), ("inside", self.inner_lattice)):
+            plans = []
+            for axis, component, sign in ((0, 1, 1), (1, 0, -1)):
+                for side in (-1, 1):
+                    for start in range(0, len(lattice.positions), 32768):
+                        points = lattice.positions[start : start + 32768].copy()
+                        points[:, axis] += side * self.h / 2
+                        weight = smoothstep(self.boundary.signed_distance(points), 0, self.h)
+                        valid = (weight > 0) & _box_mask(points, self.reference_bounds)
+                        plans.append(
+                            (
+                                start,
+                                len(points),
+                                component,
+                                sign * side,
+                                weight,
+                                valid,
+                                self.trace.prepare(points[valid]),
+                            )
+                        )
+            self.plans[label] = plans
+
+    def _lattice(self, box):
+        return build_stable_renewal_lattice(
+            box,
+            self.h,
+            buffer_length=required_renewal_buffer_length(
+                self.coupling["freestream_velocity"], self.vpm["time_step_size"], self.h
+            ),
+            blend_ramp_width=self.coupling["eta_blend_width"],
+            vpm_dead_zone=self.coupling["vpm_only_width"],
+            lattice_anchor=self.configuration["transfer_lattice"]["anchor"],
+            mesh_weight_at_node=lambda points: _box_mask(points, self.reference_bounds).astype(
+                float
+            ),
+            fluid_weight_at_node=lambda points: smoothstep(
+                self.boundary.signed_distance(points), -self.h, 0
+            ),
+            interior_at_node=lambda points: self.boundary.contains(points, include_boundary=False),
+            planar_span=self.span,
+            plane_z=0,
+            solid_boundary=self.boundary,
+        )
+
+    def target(self, label, velocity, gradient):
+        lattice = self.outer_lattice if label == "outside" else self.inner_lattice
+        target = np.zeros_like(lattice.positions)
+        for start, count, component, sign, weight, valid, plan in self.plans[label]:
+            # Freestream continuation is used only beyond the reference mesh.
+            # Inside the body the total velocity is exactly zero; wall taper
+            # and all fluid query locations are the current native policy.
+            values = np.broadcast_to(self.freestream, (count, 3)).copy()
+            values[weight == 0] = 0
+            values[valid] = plan.sample(velocity, gradient) * weight[valid, None]
+            target[start : start + count, 2] += sign * self.h * self.span * values[:, component]
+        return target
+
+    def renew(self, position, strength, lattice, target):
+        result = renew_stable_overlap(
+            position,
+            strength,
+            lattice,
+            fvm_vortex_strength_at_node=lambda _points: target,
+            particle_fluid_weight=lambda points: smoothstep(
+                self.boundary.signed_distance(points), -self.h, 0
+            ),
+            particle_in_solid=lambda points: self.boundary.contains(points, include_boundary=False),
+            prune_threshold=(
+                self.viscous["gbd_threshold"]
+                if lattice is self.outer_lattice
+                else self.coupling["transfer_vorticity_cutoff"] * self.h**2 * self.span
+            ),
+            release_prune_threshold=self.viscous["gbd_threshold"],
+            core_radius_ratio=self.viscous["core_radius_ratio"],
+            amplification_cap=self.coupling["transfer_amplification_cap"],
+            maximum_particle_count=self.vpm["max_n_particles"],
+            freestream_speed=float(np.linalg.norm(self.freestream)),
+            time_step_size=self.vpm["time_step_size"],
+            compute_diagnostics=True,
+        )
+        stored_position = result.position.astype(self.dtype)
+        stored_strength = result.vortex_strength.astype(self.dtype)
+        if self.boundary.contains(stored_position, include_boundary=False).any():
+            raise ValueError("Reference image has solid particles after actual storage rounding")
+        if not np.isfinite(stored_strength).all():
+            raise ValueError("Reference image strength is nonfinite after storage rounding")
+        reductions = _reduce_applied_particle_state(
+            stored_position,
+            stored_strength,
+            renewed_count=min(int(result.renewed_output_count), len(stored_position)),
+            reference_vortex_strength=result.vortex_strength,
+        )
+        residual = _vortex_invariant_residual(
+            result.conservation_target_invariants,
+            reductions.renewed_invariants,
+        )
+        strength_l1 = result.conservation_reference_strength_l1
+        epsilon = float(np.finfo(self.dtype).eps)
+        closure_fraction = (
+            result.conservation_applied_particle_strength_fraction
+            + reductions.cast_correction_l1 / (strength_l1 + 1e-30)
+        )
+        self.storage_measurements[id(result)] = {
+            "stored_particle_count": len(stored_position),
+            "particle_capacity": self.vpm["max_n_particles"],
+            "stored_inside_solid_count": 0,
+            "maximum_stored_axial_strength": float(
+                np.max(np.abs(stored_strength[:, 2]), initial=0)
+            ),
+            "stored_strength_l1": float(np.sum(np.abs(stored_strength[:, 2]), dtype=float)),
+            "native_replacement_budget": {
+                "closure_correction_fraction": float(closure_fraction),
+                "closure_correction_limit": self.coupling["transfer_discretization_error_limit"],
+                "vortex_strength_error": residual["total_vortex_strength"],
+                "vortex_strength_tolerance": 32 * epsilon * strength_l1 + np.finfo(float).tiny,
+                "linear_impulse_error": residual["linear_impulse"],
+                "linear_impulse_tolerance": 32
+                * epsilon
+                * strength_l1
+                * max(reductions.renewed_position_scale, self.h)
+                + np.finfo(float).tiny,
+            },
+            "circulation_rounding_error": float(
+                np.sum(
+                    stored_strength[:, 2].astype(float) - result.vortex_strength[:, 2], dtype=float
+                )
+            ),
+            "xy_first_moment_rounding_error": np.sum(
+                stored_position[:, :2].astype(float) * stored_strength[:, 2].astype(float)[:, None]
+                - result.position[:, :2] * result.vortex_strength[:, 2, None],
+                axis=0,
+            ).tolist(),
+        }
+        return stored_position, stored_strength, result
+
+    def sample(
+        self,
+        velocity,
+        gradient,
+        *,
+        repetitions=1,
+        outer_repetitions=10,
+        include_cut_cells=True,
+    ):
+        started = perf_counter()
+        target_started = perf_counter()
+        outer_target = self.target("outside", velocity, gradient)
+        # Admit an image using its simultaneous FVM-owned target, independently
+        # of any coefficient history or represented-field residual denominator.
+        owned_target = outer_target[:, 2] * (
+            self.outer_lattice.fvm_blend_weight
+            * self.outer_lattice.fluid_weight
+            * self.outer_lattice.mesh_weight
+            * ~self.outer_lattice.solid_interior
+        )
+        auxiliary_target = {
+            "maximum_absolute_axial_strength": float(np.max(np.abs(owned_target), initial=0)),
+            "axial_strength_l1": float(np.sum(np.abs(owned_target), dtype=float)),
+            "definition": "Simultaneous compatible FVM circulation multiplied by mesh, fluid, blend and exterior support weights; no previous particle coefficients.",
+        }
+        outside_target_seconds = perf_counter() - target_started
+        outer_started = perf_counter()
+        empty = np.empty((0, 3), dtype=self.dtype)
+        position, strength = empty, empty
+        history_input_count = len(position)
+        outer_rows = []
+        for _ in range(outer_repetitions):
+            position, strength, base = self.renew(
+                position, strength, self.outer_lattice, outer_target
+            )
+            outer_rows.append(_result_report(base) | self.storage_measurements.pop(id(base)))
+        final_auxiliary_admission = admit_final_native_image(outer_rows[-1])
+        outside_renewal_seconds = perf_counter() - outer_started
+        complete_position, complete_strength = position.copy(), strength.copy()
+        retained = _box_mask(position, self.support_bounds)
+        reference_wake_position, reference_wake_strength = position[retained], strength[retained]
+        crop = {
+            "removed_particle_count": int((~retained).sum()),
+            "removed_circulation": float(np.sum(strength[~retained, 2], dtype=float)),
+            "removed_strength_l1": float(np.sum(np.abs(strength[~retained, 2]), dtype=float)),
+            "removed_first_xy_moments": np.sum(
+                position[~retained, :2].astype(float)
+                * strength[~retained, 2].astype(float)[:, None],
+                axis=0,
+            ).tolist(),
+        }
+        target_started = perf_counter()
+        inner_target = self.target("inside", velocity, gradient)
+        inside_target_seconds = perf_counter() - target_started
+        target_variants = {"native_masked": inner_target}
+        deposits = None
+        if include_cut_cells:
+            cut = self.inner_lattice.solid_interior & (inner_target[:, 2] != 0)
+            indices, circulation, deposits = deposit_cut_cell_circulation(
+                self.inner_lattice.positions[cut],
+                inner_target[cut, 2],
+                self.inner_lattice.positions,
+                self.h,
+                self.boundary,
+                self.dtype,
+            )
+            complete = inner_target.copy()
+            complete[self.inner_lattice.solid_interior] = 0
+            np.add.at(complete[:, 2], indices, circulation)
+            target_variants["complete_cut_cells"] = complete
+        variants = {}
+        inner_started = perf_counter()
+        for name, target in target_variants.items():
+            position, strength = reference_wake_position.copy(), reference_wake_strength.copy()
+            rows = []
+            for _ in range(repetitions):
+                position, strength, result = self.renew(
+                    position, strength, self.inner_lattice, target
+                )
+                rows.append(_result_report(result) | self.storage_measurements.pop(id(result)))
+            admit_final_native_image(rows[-1])
+            variants[name] = (position, strength, rows)
+        edge_distance = np.min(
+            np.minimum(
+                self.outer_lattice.positions - self.reference_bounds[::2],
+                self.reference_bounds[1::2] - self.outer_lattice.positions,
+            )[:, :2],
+            axis=1,
+        )
+        straddling = np.abs(edge_distance) <= self.h / 2
+        exit_target = {
+            "straddling_raw_circulation": float(np.sum(outer_target[straddling, 2])),
+            "straddling_raw_strength_l1": float(np.sum(np.abs(outer_target[straddling, 2]))),
+            "straddling_owned_strength_l1": float(
+                np.sum(
+                    np.abs(outer_target[straddling, 2])
+                    * self.outer_lattice.fvm_blend_weight[straddling]
+                )
+            ),
+            "reference_exit_curl_is_owned": bool(
+                np.any(
+                    (outer_target[straddling, 2] != 0)
+                    & (self.outer_lattice.fvm_blend_weight[straddling] > 0)
+                )
+            ),
+        }
+        self.last_full_position, self.last_full_strength = complete_position, complete_strength
+        if self.support == "production":
+            for name, (position, strength, rows) in list(variants.items()):
+                variants["full_reference_" + name] = (
+                    np.concatenate((position, complete_position[~retained])),
+                    np.concatenate((strength, complete_strength[~retained])),
+                    rows,
+                )
+        return (
+            variants,
+            {
+                "support": self.support,
+                "support_bounds": self.support_bounds.tolist(),
+                "reference_bounds": self.reference_bounds.tolist(),
+                "auxiliary_lattice_node_count": len(self.outer_lattice.positions),
+                "auxiliary_wake_prune_threshold": self.viscous["gbd_threshold"],
+                "inner_fvm_prune_threshold": self.coupling["transfer_vorticity_cutoff"]
+                * self.h**2
+                * self.span,
+                "auxiliary_renewals": outer_rows,
+                "final_auxiliary_native_admission": final_auxiliary_admission,
+                "auxiliary_target": auxiliary_target,
+                "projection_history": "empty_each_frame",
+                "auxiliary_history_input_particle_count": history_input_count,
+                "same_complete_image_crop": crop,
+                "finite_reference_exit": exit_target,
+                "complete_cut_cell_deposition": deposits,
+                "sample_wall_seconds": perf_counter() - started,
+                "phase_wall_seconds": {
+                    "outside_target": outside_target_seconds,
+                    "outside_renewals": outside_renewal_seconds,
+                    "inside_target": inside_target_seconds,
+                    "inside_renewals": perf_counter() - inner_started,
+                },
+            },
+            inner_target,
+        )
+
+
+def _result_report(result):
+    return {
+        "particle_count": result.particle_count,
+        "renewed_output_count": result.renewed_output_count,
+        "preserved_outer_count": result.preserved_outer_count,
+        "representation_residual_before_prune": result.representation_residual_before_prune,
+        "representation_residual_after_prune": result.representation_residual_after_prune,
+        "maximum_transfer_amplification": result.maximum_transfer_amplification,
+        "conservation_residual": result.conservation_residual,
+        "conservation_applied_particle_strength_fraction": result.conservation_applied_particle_strength_fraction,
+        "population_pruned_count": result.population_pruned_count,
+    }
+
+
+def audit(
+    reference_directory,
+    checkpoint_directory,
+    output_directory,
+    support,
+    repetitions,
+    outer_repetitions,
+):
+    started = perf_counter()
+    source_paths = [
+        Path(__file__),
+        Path(__file__).with_name("reference_cut_cell_deposition.py"),
+        Path("source/coupler/stable_renewal.py"),
+        Path("source/coupler/interpolation.py"),
+    ]
+    source_hashes = {str(path): digest(path) for path in source_paths}
+    reference_directory, checkpoint_directory = (
+        Path(reference_directory),
+        Path(checkpoint_directory),
+    )
+    metadata_path = checkpoint_directory / "checkpoint/checkpoint_info.json"
+    configuration = json.loads(metadata_path.read_text())["config"]
+    reference_path = reference_directory.parent / "reference_traces.h5"
+    with h5py.File(reference_path) as stored:
+        time = float(stored["time"][0])
+        points, normals, area = (
+            np.asarray(stored[key]) for key in ("face_centre", "face_normal", "face_area")
+        )
+        exact_velocity = np.asarray(stored["raw_velocity"][0])
+        exact_jacobian = np.asarray(stored["jacobian"][0])
+    construction_started = perf_counter()
+    model = ReferenceParticleImage(reference_directory, configuration, support=support)
+    construction_seconds = perf_counter() - construction_started
+    if abs(float(model.state["time"]) - time) > 1e-8:
+        raise ValueError("Full reference field and exact trace clocks do not match")
+    variants, image_report, target = model.sample(
+        model.state["velocity"][: model.mesh["n_cells"]],
+        model.gradient,
+        repetitions=repetitions,
+        outer_repetitions=outer_repetitions,
+    )
+    arrays = {
+        "face_centre": points,
+        "face_normal": normals,
+        "face_area": area,
+        "exact_velocity": exact_velocity,
+        "exact_jacobian": exact_jacobian,
+        "inner_lattice_position": model.inner_lattice.positions,
+        "inner_reference_target": target,
+    }
+    exact_normal_gradient = np.einsum("fij,fj->fi", exact_jacobian, normals)
+    exact_tangent = (
+        exact_normal_gradient
+        - np.einsum("fi,fi->f", exact_normal_gradient, normals)[:, None] * normals
+    )
+    measurements = {}
+    for name, (position, strength, rows) in variants.items():
+        evaluation_started = perf_counter()
+        velocity, jacobian = gaussian_velocity_and_gradient(
+            points,
+            position.astype(float),
+            strength[:, 2].astype(float) / model.span,
+            float(model.dtype(model.h * model.viscous["core_radius_ratio"])),
+        )
+        velocity += model.freestream
+        derivative = np.einsum("fij,fj->fi", jacobian, normals)
+        tangent = derivative - np.einsum("fi,fi->f", derivative, normals)[:, None] * normals
+        measurements[name] = {
+            "outer_velocity_error": velocity_statistics(velocity - exact_velocity, normals, area),
+            "outer_tangential_normal_gradient_error": velocity_statistics(
+                tangent - exact_tangent, normals, area
+            ),
+            "outer_tangential_normal_gradient_reference_rms": float(
+                np.sqrt(np.average(np.sum(exact_tangent**2, axis=1), weights=area))
+            ),
+            "renewals": rows,
+            "gaussian_evaluation_wall_seconds": perf_counter() - evaluation_started,
+        }
+        arrays.update(
+            {
+                f"{name}_position": position,
+                f"{name}_strength": strength,
+                f"{name}_velocity": velocity,
+                f"{name}_jacobian": jacobian,
+            }
+        )
+    input_paths = [
+        metadata_path,
+        reference_path,
+        reference_directory / "reference_backup.npz",
+        reference_directory / "reference_mesh.npz",
+    ]
+    if {str(path): digest(path) for path in source_paths} != source_hashes:
+        raise ValueError("Numerical or verification source changed during the frozen image")
+    report = {
+        "scope": "One frozen simultaneous mature reference state, guarded native planar image, shared same-time reference outside wake; no evolved force or compatible restart claim",
+        "reference_time": time,
+        "face_count": len(points),
+        "spacing": model.h,
+        "core_radius": float(model.dtype(model.h * model.viscous["core_radius_ratio"])),
+        "output_dtype": str(np.dtype(model.dtype)),
+        "inner_renewal_repetitions": repetitions,
+        "outer_renewal_repetitions": outer_repetitions,
+        "construction_wall_seconds": construction_seconds,
+        "image": image_report,
+        "measurements": measurements,
+        "input_sha256": {str(path): digest(path) for path in input_paths},
+        "source_sha256": source_hashes,
+        "sources_unchanged": True,
+        "limitations": [
+            "Auxiliary reference-domain renewal starts from empty coefficients and repeats only the frozen representation operator; its outside wake is not an exact inverse or dynamically evolved native state.",
+            "Production support removes coefficients outside the physical particle bounds from the same complete reference coefficient image, with no distinct creation ramp or moment renormalization; full-reference support remains finite at the reference boundary.",
+            "Control-cell circulation is nominal-grid conserved; induction uses actual stored position/strength precision.",
+            "Frozen outer trace errors localize representation differences but do not demonstrate their evolved force effect.",
+        ],
+        "wall_seconds": perf_counter() - started,
+        "process_peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+    }
+    output_directory = Path(output_directory)
+    output_directory.mkdir(parents=True, exist_ok=True)
+    suffix = f"{support}_{repetitions}_outer{outer_repetitions}"
+    np.savez_compressed(output_directory / f"reference_particle_image_{suffix}.npz", **arrays)
+    (output_directory / f"reference_particle_image_{suffix}.json").write_text(
+        json.dumps(report, indent=2, allow_nan=False) + "\n"
+    )
+    del model
+    gc.collect()
+    return report
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--reference-directory", type=Path, required=True)
+    parser.add_argument("--checkpoint-directory", type=Path, required=True)
+    parser.add_argument("--output-directory", type=Path, required=True)
+    parser.add_argument("--support", choices=("production", "reference"), default="production")
+    parser.add_argument("--repetitions", type=int, default=1)
+    parser.add_argument("--outer-repetitions", type=int, default=10)
+    args = parser.parse_args()
+    if not 1 <= args.repetitions <= 25 or not 1 <= args.outer_repetitions <= 25:
+        parser.error("Use one to 25 bounded frozen renewals")
+    report = audit(
+        args.reference_directory,
+        args.checkpoint_directory,
+        args.output_directory,
+        args.support,
+        args.repetitions,
+        args.outer_repetitions,
+    )
+    print(
+        json.dumps(
+            {
+                "reference_time": report["reference_time"],
+                "measurements": report["measurements"],
+                "wall_seconds": report["wall_seconds"],
+            },
+            indent=2,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

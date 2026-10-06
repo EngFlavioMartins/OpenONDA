@@ -1,0 +1,4101 @@
+{
+  "schema": "openonda-frozen-wake-remeshing/1",
+  "created_utc": "2026-10-06T01:38:16.869450+00:00",
+  "source_physical_time_seconds": 46.0,
+  "source_coupling_step": 1150,
+  "physical_time_advanced_seconds": 0.0,
+  "native_checkpoint_format": 13,
+  "native_vpm_checkpoint_format": "10.3",
+  "source_configuration_sha256": "f0decdb902d4f1ebcebc5b1bdb01851728ae2677da4f853740152e69576ab625",
+  "frozen_input_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/wall_trace_fields.npz": "a82366cb4de2be7a0c421cb31d667b66f0cd9ecea8205a95cf4afa0ae8b210ba",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.vtu": "64a1d1a94875049200b1fda2c33a32f2c9299c85cc8253cef6aabdadb8c4882a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_boundary_condition_001150.npz": "e0c81f841a30f3c0db5b8fc2f106867950c74fbc5468507f2ca5c28833dd7d0b"
+  },
+  "numerical_and_measurement_sources_sha256": {
+    "source/solvers/vpm/physics/diffusion/planar.py": "02cf516552a476081496babd8404218ca46f03724e73a4a4bbfc90af9d6acc13",
+    "source/solvers/vpm/physics/diffusion/grid.py": "fddcd6c1363e62cdd3fbedb56211c8eacf6c3c03fbe560b747dedffdb5fe29e4",
+    "source/coupler/stable_renewal.py": "348c99346e6e7b9ef7f1affd919d9a297f6d107d752f3184c5f44796bbb01306",
+    "source/coupler/solver.py": "6dacb1e1a6d5f4dca207669411f4d15ca2864b87b8be5432933240644e61d893",
+    "tests/support/cylinder/audit_saved_wall_circulation.py": "b5bcd2cc27f76c59a0b2d850747eda6f69225163bc080163ac23934d2295d19a",
+    "tests/support/cylinder/measure_frozen_wake_remeshing.py": "acd54f760e293298debec0ed6cc26c13680ce0cae62863c309a2d84e30b08ed5"
+  },
+  "target_block_size": 48,
+  "source_block_size": 2048,
+  "spacing_metres": 0.04,
+  "gaussian_sigma_metres": 0.03999999910593033,
+  "represented_span_metres": 1.0,
+  "particle_capacity": 200000,
+  "native_physical_viscosity_not_applied": 0.006666666666666667,
+  "wall_seconds": 67.48144204200071,
+  "operator_fields_sha256": "a558d1f02109043cbd677d68e036f315b6147641e735677043041b40b227210b",
+  "subsets": {
+    "x_above_1": {
+      "source_particle_count": 20986,
+      "original_position_sha256": "0c903f86aeef1f5189c192f60ad92bf677087ec6eb71576c2209990f2d32ba0b",
+      "original_strength_sha256": "547662ccb398004f95dd446cc07a7085791635af60503b4e1ac885e0630656e2",
+      "minimum_source_x": 1.0185683965682983,
+      "maximum_wall_x": 0.49999999985410776,
+      "minimum_six_point_wall_clearance_metres": 0.39856839671419053,
+      "wake_probe_count": 1000,
+      "wake_probe_shape": [
+        25,
+        40
+      ],
+      "wake_probe_bounds": [
+        [
+          1.4,
+          2.36
+        ],
+        [
+          -0.78,
+          0.78
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "wake_probe_spacing_metres": 0.04,
+      "wake_probe_distance_from_crop_metres": 0.4,
+      "phases": {
+        "0.0": {
+          "rigid_shift_cells": [
+            0.0,
+            0.0
+          ],
+          "rigid_shift_metres": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "0c903f86aeef1f5189c192f60ad92bf677087ec6eb71576c2209990f2d32ba0b",
+          "original_vortex_strength_sha256": "547662ccb398004f95dd446cc07a7085791635af60503b4e1ac885e0630656e2",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              10.601733207702637,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              10.266295433044434
+            ],
+            [
+              10.583456039428711,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              10.284616470336914
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 1.8089938890007033,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23894,
+                  "retained_node_count": 23894,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 1.1767074285358161e-11,
+                  "normalized_linear_impulse_residual": 1.597561854063016e-10,
+                  "normalized_angular_impulse_residual": 1.1615741026654942e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23894,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.868024826049805,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.6769727420607898
+                ],
+                "linear_impulse_change": [
+                  -8.038137266908052e-09,
+                  -4.967225031293765e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2241553874575937e-16,
+                  6.370737993434906e-17,
+                  -5.522101247379396e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  1.1767074285358161e-11,
+                  3.339247077198031e-10,
+                  -5.516144594342323e-11,
+                  6.485334899243578e-13,
+                  1.8233155005465024e-11,
+                  -3.900830647656266e-13
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23894,
+                    "retained_node_count": 23894,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 2.500499561490326e-16,
+                    "normalized_linear_impulse_residual": 1.468031987517439e-16,
+                    "normalized_angular_impulse_residual": 6.277433147749485e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23894,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.86802444059103,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152395
+                  ],
+                  "linear_impulse_change": [
+                    -1.2878587085651816e-14,
+                    4.440892098500626e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.2241553790427839e-16,
+                    6.370737979817754e-17,
+                    -2.984279490192421e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    2.500499561490326e-16,
+                    -1.3832550765691167e-16,
+                    -9.576381299324654e-17,
+                    -6.550510819329711e-17,
+                    -1.662566197799419e-18,
+                    1.070276989833376e-18
+                  ]
+                },
+                "grid_shape": [
+                  360,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "39445c2c6f8001062a0979230b94a62b0856bf04fad59c420255f2d57d72b567",
+                "vortex_strength_sha256": "0b30654f5384288e26444015eb126bd19f23d77a5181bc6d19a4cba1060e59b9",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 24706,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.11990921599863213,
+              "induction_wall_seconds": 2.052979953998147,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16591198094312837,
+                "remeshed_rms": 0.16591198098727214,
+                "error_rms": 2.4604730633771827e-09,
+                "maximum_absolute_error": 3.1834454641832544e-08,
+                "relative_l2_error": 1.4829990271893557e-08,
+                "rms_ratio": 1.0000000002660674,
+                "least_squares_amplitude_gain": 1.0000000002660674
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12236329484400903,
+                "remeshed_rms": 0.12236328197020105,
+                "error_rms": 2.75908485272317e-07,
+                "maximum_absolute_error": 1.6058200934254696e-06,
+                "relative_l2_error": 2.254830467127011e-06,
+                "rms_ratio": 0.9999998947902802,
+                "least_squares_amplitude_gain": 0.9999998947877432
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.7107576389336936,
+                "remeshed_rms": 0.7107576422278912,
+                "error_rms": 4.8275817602003454e-08,
+                "maximum_absolute_error": 1.8046722427556006e-07,
+                "relative_l2_error": 6.792163032454877e-08,
+                "rms_ratio": 1.000000004634769,
+                "least_squares_amplitude_gain": 1.0000000046347668
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.7815453420872087,
+                "remeshed_rms": 1.7815453710006461,
+                "error_rms": 1.1278855143673586e-06,
+                "maximum_absolute_error": 4.702609354589882e-06,
+                "relative_l2_error": 6.330939144360814e-07,
+                "rms_ratio": 1.0000000162294143,
+                "least_squares_amplitude_gain": 1.000000016229214
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.029936921739629,
+                "remeshed_rms": 2.0299369548751183,
+                "error_rms": 1.126048071789149e-06,
+                "maximum_absolute_error": 4.846377594347473e-06,
+                "relative_l2_error": 5.547207204961525e-07,
+                "rms_ratio": 1.0000000163234084,
+                "least_squares_amplitude_gain": 1.0000000163232547
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7694722658040438,
+                    "rms_gain": 0.9999999310183684,
+                    "least_squares_gain": 0.9999999310183358,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.007359343992718915,
+                    "rms_gain": 0.999999459876102,
+                    "least_squares_gain": 0.9999994598498722,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.434089406763032e-05,
+                    "rms_gain": 1.0000139322526762,
+                    "least_squares_gain": 1.000013914552754,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 2.6408705144087803e-07,
+                    "rms_gain": 1.0000015493964272,
+                    "least_squares_gain": 1.0000015474829382,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 7.937522364910163e-09,
+                    "rms_gain": 1.0000008347244507,
+                    "least_squares_gain": 1.0000008346163423,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 25879,
+                  "retained_node_count": 25879,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 6.478268035264801e-10,
+                  "normalized_linear_impulse_residual": 6.559793048965243e-11,
+                  "normalized_angular_impulse_residual": 2.2093659752335864e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 25879,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.868024826049805,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.6769727282963697
+                ],
+                "linear_impulse_change": [
+                  -7.71009123212707e-09,
+                  1.9168919784817717e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2241553757954429e-16,
+                  6.370737992879176e-17,
+                  -1.0503283931484475e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  -6.478268035264801e-10,
+                  2.589320125626734e-10,
+                  -5.420451008145272e-11,
+                  2.304959498242064e-12,
+                  1.9808294494726683e-11,
+                  -1.7943005968486584e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 25879,
+                    "retained_node_count": 25879,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 3.564541928081954e-16,
+                    "normalized_linear_impulse_residual": 1.0771983838057582e-16,
+                    "normalized_angular_impulse_residual": 2.6903297703204586e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 25879,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.868024428452415,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152268
+                  ],
+                  "linear_impulse_change": [
+                    -8.43769498715119e-15,
+                    3.2862601528904634e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.2241553790427747e-16,
+                    6.370737979817823e-17,
+                    -1.2789769243681803e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    -3.564541928081954e-16,
+                    -1.5960635498874422e-16,
+                    4.788190649662327e-17,
+                    -6.450756847461745e-17,
+                    1.995079437359303e-18,
+                    1.8755824918924697e-18
+                  ]
+                },
+                "grid_shape": [
+                  360,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "1bab770bdc6a08c02674e95f55cd42ba2e271a870fb162a7d62c1e0f2153ca95",
+                "vortex_strength_sha256": "fa43b0b4f07a75ed7afa0f8df6aab2912ac9b6dd3d6dc2c45d222bf41b3e5601",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 22721,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.034323741998377955,
+              "induction_wall_seconds": 2.3574229490004655,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16591198094312837,
+                "remeshed_rms": 0.16591198100022303,
+                "error_rms": 2.898744387550722e-09,
+                "maximum_absolute_error": 3.706270482184415e-08,
+                "relative_l2_error": 1.7471579635616307e-08,
+                "rms_ratio": 1.000000000344126,
+                "least_squares_amplitude_gain": 1.000000000344126
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12236329484400903,
+                "remeshed_rms": 0.12236327901219839,
+                "error_rms": 3.718767152067265e-07,
+                "maximum_absolute_error": 2.0939576973189045e-06,
+                "relative_l2_error": 3.039119824950789e-06,
+                "rms_ratio": 0.9999998706163425,
+                "least_squares_amplitude_gain": 0.9999998706117327
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.7107576389336936,
+                "remeshed_rms": 0.7107576420034579,
+                "error_rms": 5.7700434550918276e-08,
+                "maximum_absolute_error": 2.181339845419572e-07,
+                "relative_l2_error": 8.118158903994717e-08,
+                "rms_ratio": 1.000000004319003,
+                "least_squares_amplitude_gain": 1.0000000043189996
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.7815453420872087,
+                "remeshed_rms": 1.7815453793813283,
+                "error_rms": 1.5560014557071197e-06,
+                "maximum_absolute_error": 6.2601334220868665e-06,
+                "relative_l2_error": 8.733998618773025e-07,
+                "rms_ratio": 1.0000000209335786,
+                "least_squares_amplitude_gain": 1.0000000209331974
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.029936921739629,
+                "remeshed_rms": 2.029936969661773,
+                "error_rms": 1.55385875389794e-06,
+                "maximum_absolute_error": 6.372310858537844e-06,
+                "relative_l2_error": 7.654714475395147e-07,
+                "rms_ratio": 1.0000000236077011,
+                "least_squares_amplitude_gain": 1.0000000236074083
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7694722658040438,
+                    "rms_gain": 0.9999999365445946,
+                    "least_squares_gain": 0.9999999365445584,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.007359343992718915,
+                    "rms_gain": 0.9999994623151206,
+                    "least_squares_gain": 0.999999462277989,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.434089406763032e-05,
+                    "rms_gain": 1.0000192593754833,
+                    "least_squares_gain": 1.0000192144844202,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 2.6408705144087803e-07,
+                    "rms_gain": 1.0000019045295687,
+                    "least_squares_gain": 1.0000018928152519,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 7.937522364910163e-09,
+                    "rms_gain": 0.9999995993644448,
+                    "least_squares_gain": 0.9999995989702368,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 6.380627095000818
+        },
+        "0.25": {
+          "rigid_shift_cells": [
+            0.25,
+            0.25
+          ],
+          "rigid_shift_metres": [
+            0.01,
+            0.01,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "7173fef676e2c8e4bb461ffdc1d2ebd5b377244c0ebe4a44c4a38f9264d00a66",
+          "original_vortex_strength_sha256": "547662ccb398004f95dd446cc07a7085791635af60503b4e1ac885e0630656e2",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              6.67325496673584,
+              14.19472599029541,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              12.827709197998047,
+              8.040338516235352,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 3.8944890269995085,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23983,
+                  "retained_node_count": 23983,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 2.2220079656907727e-10,
+                  "normalized_linear_impulse_residual": 9.068925773467026e-11,
+                  "normalized_angular_impulse_residual": 9.806650451507101e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23983,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.89566421508789,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.6769727371783429
+                ],
+                "linear_impulse_change": [
+                  -7.655942102502422e-09,
+                  -2.7541220859461646e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2247287923533762e-16,
+                  6.365003822257004e-17,
+                  -4.668959121545413e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  -2.2220079656907727e-10,
+                  3.23189589603472e-10,
+                  -5.2838226480630735e-11,
+                  3.643661724366383e-11,
+                  1.9278691347708948e-11,
+                  -1.3272463438723944e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23983,
+                    "retained_node_count": 23983,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 3.617744046411536e-16,
+                    "normalized_linear_impulse_residual": 2.042903642972624e-16,
+                    "normalized_angular_impulse_residual": 9.551483324689051e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23983,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.8956646219444,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152418
+                  ],
+                  "linear_impulse_change": [
+                    -7.549516567451064e-15,
+                    6.394884621840902e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.224728787687687e-16,
+                    6.365003809287304e-17,
+                    -4.547473508864641e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    3.617744046411536e-16,
+                    1.7556699048761865e-16,
+                    -1.5428614315578608e-16,
+                    8.246328341085118e-17,
+                    5.320211832958141e-18,
+                    4.0525051071360837e-19
+                  ]
+                },
+                "grid_shape": [
+                  361,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "e94d1520426f03cc74383bbad086c72647c401bbddd99fa7600b26a8ab9661b3",
+                "vortex_strength_sha256": "da8bc710b8bd8d0576679a2a53cd95681b22547b4a6336896d2b416d0fc8f9c0",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 24752,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.023914906996651553,
+              "induction_wall_seconds": 2.2597668870002963,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16678408187009103,
+                "remeshed_rms": 0.16678357449696338,
+                "error_rms": 1.1280134285289245e-05,
+                "maximum_absolute_error": 7.364177423406504e-05,
+                "relative_l2_error": 6.76331587451817e-05,
+                "rms_ratio": 0.9999969579043638,
+                "least_squares_amplitude_gain": 0.9999969556218689
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12416198671764031,
+                "remeshed_rms": 0.12415471326920212,
+                "error_rms": 3.7351702380189324e-05,
+                "maximum_absolute_error": 0.00020469570533722392,
+                "relative_l2_error": 0.00030083041813056444,
+                "rms_ratio": 0.9999414196838301,
+                "least_squares_amplitude_gain": 0.9999413761501865
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.7090758356889352,
+                "remeshed_rms": 0.7090714819546148,
+                "error_rms": 5.517385585127309e-05,
+                "maximum_absolute_error": 0.00020077873248713907,
+                "relative_l2_error": 7.781093794807773e-05,
+                "rms_ratio": 0.9999938599877457,
+                "least_squares_amplitude_gain": 0.9999938569793245
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.7942840772156572,
+                "remeshed_rms": 1.7942536902512136,
+                "error_rms": 0.0011700903191595455,
+                "maximum_absolute_error": 0.00515624840416673,
+                "relative_l2_error": 0.0006521209957875087,
+                "rms_ratio": 0.9999830645744288,
+                "least_squares_amplitude_gain": 0.9999828520869365
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.0451118026229533,
+                "remeshed_rms": 2.0450142335129646,
+                "error_rms": 0.0011062232430327512,
+                "maximum_absolute_error": 0.005973218859741447,
+                "relative_l2_error": 0.0005409108888883079,
+                "rms_ratio": 0.9999522915520496,
+                "least_squares_amplitude_gain": 0.9999521463978027
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7718803059011612,
+                    "rms_gain": 0.9999972786926632,
+                    "least_squares_gain": 0.9999972732203697,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.0072487377800258355,
+                    "rms_gain": 1.0000718387537721,
+                    "least_squares_gain": 1.0000703615222264,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.4925176222973682e-05,
+                    "rms_gain": 0.9688716594806676,
+                    "least_squares_gain": 0.9665736882414864,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 2.671496766589995e-07,
+                    "rms_gain": 0.8260662305284586,
+                    "least_squares_gain": 0.8045745573308185,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 6.4161718120060885e-09,
+                    "rms_gain": 0.7129459194700194,
+                    "least_squares_gain": 0.6569885628311686,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 25971,
+                  "retained_node_count": 25971,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 4.888950141566721e-12,
+                  "normalized_linear_impulse_residual": 1.0580857439626693e-10,
+                  "normalized_angular_impulse_residual": 8.996874240120872e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 25971,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.900529861450195,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.676972741917257
+                ],
+                "linear_impulse_change": [
+                  -8.886137159436203e-09,
+                  -3.2145571537967044e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2247287931333755e-16,
+                  6.365003824341037e-17,
+                  -4.283423606921133e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  4.888950141566721e-12,
+                  2.1774108643840545e-10,
+                  -6.100042631200129e-11,
+                  5.221185067545093e-11,
+                  1.7969971773893094e-11,
+                  -9.9872893149886e-13
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 25971,
+                    "retained_node_count": 25971,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 4.788190649662327e-17,
+                    "normalized_linear_impulse_residual": 2.9526437218312275e-16,
+                    "normalized_angular_impulse_residual": 8.357548026950296e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 25971,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.90053001050801,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152353
+                  ],
+                  "linear_impulse_change": [
+                    3.730349362740526e-14,
+                    8.526512829121202e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.2247287876876973e-16,
+                    6.365003809287356e-17,
+                    3.979039320256561e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    4.788190649662327e-17,
+                    2.713308034808652e-16,
+                    -2.0748826148536749e-16,
+                    1.928576789447326e-17,
+                    2.9926191560389544e-18,
+                    5.195519368123184e-20
+                  ]
+                },
+                "grid_shape": [
+                  361,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "faac124103207f7c70fbde634fcbda552fbbd4db0932a04073645dff74c9571e",
+                "vortex_strength_sha256": "4874ae43a1fa0d3e828a5adf6cd9b9a063d88e7c89d1c767cb9bb8a39d793b2a",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 22764,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.03806043200165732,
+              "induction_wall_seconds": 2.4191818819999753,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16678408187009103,
+                "remeshed_rms": 0.16678395603993318,
+                "error_rms": 6.957999678517197e-07,
+                "maximum_absolute_error": 5.779204969608154e-06,
+                "relative_l2_error": 4.171860767826044e-06,
+                "rms_ratio": 0.9999992455505559,
+                "least_squares_amplitude_gain": 0.9999992455421383
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12416198671764031,
+                "remeshed_rms": 0.12415973625761256,
+                "error_rms": 3.329847699134442e-05,
+                "maximum_absolute_error": 0.00014945024283419261,
+                "relative_l2_error": 0.00026818576177481163,
+                "rms_ratio": 0.9999818748065552,
+                "least_squares_amplitude_gain": 0.9999818390090149
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.7090758356889352,
+                "remeshed_rms": 0.7090747501191423,
+                "error_rms": 1.1829783468263305e-05,
+                "maximum_absolute_error": 7.350038542086601e-05,
+                "relative_l2_error": 1.6683382612763185e-05,
+                "rms_ratio": 0.9999984690356966,
+                "least_squares_amplitude_gain": 0.9999984688977006
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.7942840772156572,
+                "remeshed_rms": 1.7943483468152666,
+                "error_rms": 0.0005815224711703152,
+                "maximum_absolute_error": 0.0020542927501023545,
+                "relative_l2_error": 0.00032409721434563084,
+                "rms_ratio": 1.000035819077049,
+                "least_squares_amplitude_gain": 1.00003576719905
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.0451118026229533,
+                "remeshed_rms": 2.045106949395202,
+                "error_rms": 0.00046681900055966174,
+                "maximum_absolute_error": 0.0026436543711120253,
+                "relative_l2_error": 0.00022826087060910026,
+                "rms_ratio": 0.9999976269132353,
+                "least_squares_amplitude_gain": 0.9999976008645386
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7718803059011612,
+                    "rms_gain": 0.9999981527527185,
+                    "least_squares_gain": 0.9999981525739183,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.0072487377800258355,
+                    "rms_gain": 1.0000154867733513,
+                    "least_squares_gain": 1.000015464982615,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.4925176222973682e-05,
+                    "rms_gain": 0.9831158837613763,
+                    "least_squares_gain": 0.982624559008852,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 2.671496766589995e-07,
+                    "rms_gain": 0.8483887573408375,
+                    "least_squares_gain": 0.8398501690850215,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 6.4161718120060885e-09,
+                    "rms_gain": 0.6552079386959279,
+                    "least_squares_gain": 0.6222779815947147,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 8.643616705998284
+        },
+        "0.5": {
+          "rigid_shift_cells": [
+            0.5,
+            0.5
+          ],
+          "rigid_shift_metres": [
+            0.02,
+            0.02,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "6b377c0b968d156f759558aa98a72941213ce40c1e44279450a1d88f70cc98d0",
+          "original_vortex_strength_sha256": "547662ccb398004f95dd446cc07a7085791635af60503b4e1ac885e0630656e2",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              7.513682842254639,
+              13.354408264160156,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              12.231229782104492,
+              8.636816024780273,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 2.629332835000241,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23983,
+                  "retained_node_count": 23983,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 1.4199906072545092e-10,
+                  "normalized_linear_impulse_residual": 7.486201876543296e-11,
+                  "normalized_angular_impulse_residual": 8.053021036928202e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23983,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.898784637451172,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.6769727447784739
+                ],
+                "linear_impulse_change": [
+                  -5.552764026361956e-09,
+                  -2.2952034939294208e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2253022739142971e-16,
+                  6.359269639632977e-17,
+                  -3.839722921838984e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  1.4199906072545092e-10,
+                  7.176909900436287e-11,
+                  -3.8046090387476245e-11,
+                  1.4535236497275824e-10,
+                  1.8159868089926307e-11,
+                  -7.284350601645234e-13
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23983,
+                    "retained_node_count": 23983,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 1.0108402482620467e-16,
+                    "normalized_linear_impulse_residual": 1.356229011753172e-16,
+                    "normalized_angular_impulse_residual": 2.0266934495187792e-16
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23983,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.898783537996767,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152321
+                  ],
+                  "linear_impulse_change": [
+                    -3.552713678800501e-15,
+                    4.263256414560601e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.2253022700260434e-16,
+                    6.359269630226248e-17,
+                    -9.663381206337363e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    -1.0108402482620467e-16,
+                    -7.448296566141397e-17,
+                    3.0325207447861404e-16,
+                    3.325132395598838e-17,
+                    3.923656226806629e-17,
+                    -1.7249124302168973e-18
+                  ]
+                },
+                "grid_shape": [
+                  361,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "e94d1520426f03cc74383bbad086c72647c401bbddd99fa7600b26a8ab9661b3",
+                "vortex_strength_sha256": "715d01dc965a88797d54f8332e7413cf4a514998c4e1aceea0ae8da050c62504",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 24752,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.014750319001905154,
+              "induction_wall_seconds": 2.5278605399980734,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16768611507048323,
+                "remeshed_rms": 0.1676854031567586,
+                "error_rms": 6.2176361677039775e-06,
+                "maximum_absolute_error": 5.025763073654432e-05,
+                "relative_l2_error": 3.707901614328967e-05,
+                "rms_ratio": 0.999995754486146,
+                "least_squares_amplitude_gain": 0.9999957538077315
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12620855825265442,
+                "remeshed_rms": 0.12620636057409318,
+                "error_rms": 6.604277838632258e-05,
+                "maximum_absolute_error": 0.0004244099939115162,
+                "relative_l2_error": 0.0005232828843041915,
+                "rms_ratio": 0.9999825869291934,
+                "least_squares_amplitude_gain": 0.9999824501683126
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.707283510215348,
+                "remeshed_rms": 0.7072769370513675,
+                "error_rms": 4.258160036115039e-05,
+                "maximum_absolute_error": 0.00019359102010074736,
+                "relative_l2_error": 6.020442968928469e-05,
+                "rms_ratio": 0.9999907064651082,
+                "least_squares_amplitude_gain": 0.9999907046960066
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.806262795707814,
+                "remeshed_rms": 1.8063086109917246,
+                "error_rms": 0.0014379671040251158,
+                "maximum_absolute_error": 0.006834802288788744,
+                "relative_l2_error": 0.0007961007154895335,
+                "rms_ratio": 1.0000253646833779,
+                "least_squares_amplitude_gain": 1.0000250481168869
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.059580841030511,
+                "remeshed_rms": 2.059512495246744,
+                "error_rms": 0.001242600621739482,
+                "maximum_absolute_error": 0.007763827050901832,
+                "relative_l2_error": 0.0006033269473985526,
+                "rms_ratio": 0.9999668156828779,
+                "least_squares_amplitude_gain": 0.9999666342317748
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7747607006082817,
+                    "rms_gain": 1.0000109022846835,
+                    "least_squares_gain": 1.0000109005937872,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.007247146838100562,
+                    "rms_gain": 1.0000077788412929,
+                    "least_squares_gain": 1.000006771500087,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.5596234782673308e-05,
+                    "rms_gain": 0.9455063042588113,
+                    "least_squares_gain": 0.9422244429054079,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 2.6844175805801594e-07,
+                    "rms_gain": 0.6861152333164217,
+                    "least_squares_gain": 0.6615251422132815,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 5.090640163159364e-09,
+                    "rms_gain": 0.3888800284869279,
+                    "least_squares_gain": 0.3209311293479477,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 25971,
+                  "retained_node_count": 25971,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 2.0488150665314933e-10,
+                  "normalized_linear_impulse_residual": 1.2933873202771449e-10,
+                  "normalized_angular_impulse_residual": 9.613867357464772e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 25971,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.908456802368164,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.6769727460907062
+                ],
+                "linear_impulse_change": [
+                  -8.79515926754948e-09,
+                  -3.983878649194139e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2253022767749878e-16,
+                  6.359269645125765e-17,
+                  -4.583942683211717e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  2.0488150665314933e-10,
+                  1.4970416923698105e-10,
+                  -6.02727330577011e-11,
+                  8.380154213081658e-11,
+                  2.178445160116235e-11,
+                  -1.4489457167590493e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 25971,
+                    "retained_node_count": 25971,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 4.788190649662327e-17,
+                    "normalized_linear_impulse_residual": 4.478074930216886e-16,
+                    "normalized_angular_impulse_residual": 7.749122474677596e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 25971,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.908457281756995,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152333
+                  ],
+                  "linear_impulse_change": [
+                    3.1086244689504383e-15,
+                    1.412203687323199e-13,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.22530227002607e-16,
+                    6.359269630226239e-17,
+                    -3.694822225952521e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    -4.788190649662327e-17,
+                    1.5428614315578608e-16,
+                    5.320211832958141e-17,
+                    -1.9618281134033145e-17,
+                    -2.5936032685670936e-17,
+                    -3.740773945048693e-19
+                  ]
+                },
+                "grid_shape": [
+                  361,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "faac124103207f7c70fbde634fcbda552fbbd4db0932a04073645dff74c9571e",
+                "vortex_strength_sha256": "797879f9a671e009c3ef6a91612048aa8457b313a43b36f5fc3f67b50e7bec20",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 22764,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.0398536150023574,
+              "induction_wall_seconds": 3.2019057949983107,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16768611507048323,
+                "remeshed_rms": 0.16768594014696064,
+                "error_rms": 9.042586102129555e-07,
+                "maximum_absolute_error": 7.764526244707914e-06,
+                "relative_l2_error": 5.392566998363996e-06,
+                "rms_ratio": 0.999998956839554,
+                "least_squares_amplitude_gain": 0.9999989568255583
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12620855825265442,
+                "remeshed_rms": 0.1262060272424229,
+                "error_rms": 6.977863787658755e-05,
+                "maximum_absolute_error": 0.0004063813256712928,
+                "relative_l2_error": 0.0005528835670311602,
+                "rms_ratio": 0.999979945811389,
+                "least_squares_amplitude_gain": 0.9999797931723549
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.707283510215348,
+                "remeshed_rms": 0.7072825820129209,
+                "error_rms": 1.666865937088983e-05,
+                "maximum_absolute_error": 0.00010385179637006914,
+                "relative_l2_error": 2.3567153949078623e-05,
+                "rms_ratio": 0.9999986876515375,
+                "least_squares_amplitude_gain": 0.9999986873746933
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.806262795707814,
+                "remeshed_rms": 1.8064035193890582,
+                "error_rms": 0.0009291046637425764,
+                "maximum_absolute_error": 0.0028522494928020503,
+                "relative_l2_error": 0.000514379560909071,
+                "rms_ratio": 1.0000779087525795,
+                "least_squares_amplitude_gain": 1.0000777794942999
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.059580841030511,
+                "remeshed_rms": 2.0595980792444273,
+                "error_rms": 0.0005945175863936384,
+                "maximum_absolute_error": 0.0037802203353800926,
+                "relative_l2_error": 0.0002886595051525978,
+                "rms_ratio": 1.0000083697680482,
+                "least_squares_amplitude_gain": 1.0000083281409198
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7747607006082817,
+                    "rms_gain": 1.0000068378563058,
+                    "least_squares_gain": 1.0000068377490439,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.007247146838100562,
+                    "rms_gain": 1.0000202788100947,
+                    "least_squares_gain": 1.0000202543765633,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.5596234782673308e-05,
+                    "rms_gain": 0.9779028973950891,
+                    "least_squares_gain": 0.977041854091967,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 2.6844175805801594e-07,
+                    "rms_gain": 0.8013611342939823,
+                    "least_squares_gain": 0.7829617374513805,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 5.090640163159364e-09,
+                    "rms_gain": 0.5042485836840417,
+                    "least_squares_gain": 0.4234489989755974,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 8.420183678998
+        },
+        "0.75": {
+          "rigid_shift_cells": [
+            0.75,
+            0.75
+          ],
+          "rigid_shift_metres": [
+            0.03,
+            0.03,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "9167a9367a3a9b8b003785c6ab8e7bcc914ef29c022d16f9138155b6a85bb60c",
+          "original_vortex_strength_sha256": "547662ccb398004f95dd446cc07a7085791635af60503b4e1ac885e0630656e2",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              11.81770133972168,
+              9.050241470336914,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              13.858487129211426,
+              7.009591102600098,
+              0.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 3.2374177709971264,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23983,
+                  "retained_node_count": 23983,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 2.3720891198180254e-10,
+                  "normalized_linear_impulse_residual": 8.49296012093547e-11,
+                  "normalized_angular_impulse_residual": 9.406861964815318e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23983,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.88727378845215,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.6769727368651532
+                ],
+                "linear_impulse_change": [
+                  -5.382708057055652e-09,
+                  -2.6263724528519106e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2258755718330884e-16,
+                  6.353535472052203e-17,
+                  -4.4918706976204703e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  -2.3720891198180254e-10,
+                  3.238185822878471e-10,
+                  -3.691031028452901e-11,
+                  2.833472866368465e-11,
+                  2.261894711046945e-11,
+                  -1.95563778196418e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23983,
+                    "retained_node_count": 23983,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 7.129083856163908e-16,
+                    "normalized_linear_impulse_residual": 6.764446184340852e-17,
+                    "normalized_angular_impulse_residual": 5.95206645433421e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23983,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.887274879637204,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152491
+                  ],
+                  "linear_impulse_change": [
+                    2.042810365310288e-14,
+                    6.217248937900877e-15,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.225875567383848e-16,
+                    6.353535462933571e-17,
+                    -2.8421709430404007e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    7.129083856163908e-16,
+                    2.1280847331832564e-17,
+                    -1.4896593132282794e-16,
+                    4.355923438234478e-17,
+                    7.581301861965351e-17,
+                    -3.8446843324111567e-19
+                  ]
+                },
+                "grid_shape": [
+                  361,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "e94d1520426f03cc74383bbad086c72647c401bbddd99fa7600b26a8ab9661b3",
+                "vortex_strength_sha256": "a6329176ac2c476d263af0942de678d0f30f4b2d41d247a18a32c94c1156e5e2",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 24752,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.02392357600183459,
+              "induction_wall_seconds": 4.078706254000281,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16861741108186923,
+                "remeshed_rms": 0.168617279837275,
+                "error_rms": 1.1689388821279176e-05,
+                "maximum_absolute_error": 6.978842666188756e-05,
+                "relative_l2_error": 6.932492170457771e-05,
+                "rms_ratio": 0.9999992216426917,
+                "least_squares_amplitude_gain": 0.9999992192400222
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12853045020301282,
+                "remeshed_rms": 0.12853616551615546,
+                "error_rms": 3.615196219115606e-05,
+                "maximum_absolute_error": 0.00024690339805393067,
+                "relative_l2_error": 0.00028127157521081055,
+                "rms_ratio": 1.0000444666079797,
+                "least_squares_amplitude_gain": 1.0000444280397698
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.7053902391998481,
+                "remeshed_rms": 0.7053864521968668,
+                "error_rms": 5.621909401231086e-05,
+                "maximum_absolute_error": 0.00020954843987824878,
+                "relative_l2_error": 7.969927975765923e-05,
+                "rms_ratio": 0.9999946313362861,
+                "least_squares_amplitude_gain": 0.9999946281747099
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.8175895392259056,
+                "remeshed_rms": 1.8176456013928322,
+                "error_rms": 0.001193719740341163,
+                "maximum_absolute_error": 0.005400440442737797,
+                "relative_l2_error": 0.0006567597989420412,
+                "rms_ratio": 1.0000308442394263,
+                "least_squares_amplitude_gain": 1.0000306290483931
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.073314791098847,
+                "remeshed_rms": 2.073324905032163,
+                "error_rms": 0.0010955518137830474,
+                "maximum_absolute_error": 0.006387898794715879,
+                "relative_l2_error": 0.0005284059219981787,
+                "rms_ratio": 1.0000048781465116,
+                "least_squares_amplitude_gain": 1.0000047385520006
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7781072426284923,
+                    "rms_gain": 1.000022516615656,
+                    "least_squares_gain": 1.0000225115783752,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.0073600130188334455,
+                    "rms_gain": 1.0001504543469573,
+                    "least_squares_gain": 1.0001486347313528,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.6698952022161986e-05,
+                    "rms_gain": 0.9737001985769367,
+                    "least_squares_gain": 0.9708494257142863,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 3.4662067493300523e-07,
+                    "rms_gain": 0.8858089834619901,
+                    "least_squares_gain": 0.8534677790836446,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 1.0471028607196457e-08,
+                    "rms_gain": 0.840688153284928,
+                    "least_squares_gain": 0.7760234804560614,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 25971,
+                  "retained_node_count": 25971,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 3.5550574800431033e-10,
+                  "normalized_linear_impulse_residual": 7.109635197470186e-11,
+                  "normalized_angular_impulse_residual": 8.220334025340666e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 25971,
+                "original_strength_l1": 20.868022918701172,
+                "strength_l1": 20.896724700927734,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  0.6769727418152343
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  0.6769727343965322
+                ],
+                "linear_impulse_change": [
+                  -7.104828725346124e-09,
+                  -2.1288628637705642e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.2258755709902635e-16,
+                  6.353535474969619e-17,
+                  -3.92529173609546e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  -3.5550574800431033e-10,
+                  3.612305087450466e-10,
+                  -4.8711620133032256e-11,
+                  -1.5273846693251938e-11,
+                  2.015705499619794e-11,
+                  -2.1089399249247597e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 25971,
+                    "retained_node_count": 25971,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 5.373413951287722e-16,
+                    "normalized_linear_impulse_residual": 6.041138457891871e-17,
+                    "normalized_angular_impulse_residual": 3.571240621787555e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 25971,
+                  "original_strength_l1": 20.868022918701172,
+                  "strength_l1": 20.896725142897957,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    0.6769727418152343
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    0.6769727418152455
+                  ],
+                  "linear_impulse_change": [
+                    -8.881784197001252e-15,
+                    -1.687538997430238e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.2258755673838315e-16,
+                    6.353535462933502e-17,
+                    -1.7053025658242404e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    5.373413951287722e-16,
+                    -1.9152762598649308e-16,
+                    -1.5960635498874423e-17,
+                    7.149034650537502e-17,
+                    2.726608564391047e-17,
+                    7.117861534328763e-19
+                  ]
+                },
+                "grid_shape": [
+                  361,
+                  135
+                ],
+                "grid_origin": [
+                  0.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "faac124103207f7c70fbde634fcbda552fbbd4db0932a04073645dff74c9571e",
+                "vortex_strength_sha256": "968979d1dcb6b02e5233cf8d8377dd4f8da1899afafbb7168beae88a96ff9172",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 22764,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.041455397997197,
+              "induction_wall_seconds": 4.48852101400189,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.16861741108186923,
+                "remeshed_rms": 0.16861736526532606,
+                "error_rms": 6.454471161395252e-07,
+                "maximum_absolute_error": 5.21274920128878e-06,
+                "relative_l2_error": 3.827879410544025e-06,
+                "rms_ratio": 0.9999997282810661,
+                "least_squares_amplitude_gain": 0.9999997282737766
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.12853045020301282,
+                "remeshed_rms": 0.12853052659142128,
+                "error_rms": 3.9457496188289904e-05,
+                "maximum_absolute_error": 0.00025309641524581816,
+                "relative_l2_error": 0.0003069894809048525,
+                "rms_ratio": 1.0000005943214882,
+                "least_squares_amplitude_gain": 1.000000547200394
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.7053902391998481,
+                "remeshed_rms": 0.7053903017591444,
+                "error_rms": 1.2266097303944525e-05,
+                "maximum_absolute_error": 7.459518077523875e-05,
+                "relative_l2_error": 1.7389094181198826e-05,
+                "rms_ratio": 1.0000000886874993,
+                "least_squares_amplitude_gain": 1.000000088536313
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.8175895392259056,
+                "remeshed_rms": 1.8176648431586362,
+                "error_rms": 0.0006301754729235212,
+                "maximum_absolute_error": 0.0023191112985383455,
+                "relative_l2_error": 0.00034670945189963355,
+                "rms_ratio": 1.0000414306591812,
+                "least_squares_amplitude_gain": 1.0000413714137089
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 2.073314791098847,
+                "remeshed_rms": 2.073334943796211,
+                "error_rms": 0.0004354320584108824,
+                "maximum_absolute_error": 0.0027333108926204386,
+                "relative_l2_error": 0.00021001734048311374,
+                "rms_ratio": 1.0000097200374254,
+                "least_squares_amplitude_gain": 1.0000096980310234
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.7781072426284923,
+                    "rms_gain": 1.0000100444727407,
+                    "least_squares_gain": 1.0000100442465307,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.0073600130188334455,
+                    "rms_gain": 1.000003460619255,
+                    "least_squares_gain": 1.0000034500435482,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 1.6698952022161986e-05,
+                    "rms_gain": 0.984324126402339,
+                    "least_squares_gain": 0.9838444088220162,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 3.4662067493300523e-07,
+                    "rms_gain": 0.8846740984574859,
+                    "least_squares_gain": 0.8737677325587847,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 1.0471028607196457e-08,
+                    "rms_gain": 0.7874998569758359,
+                    "least_squares_gain": 0.7470113997973107,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 11.877835794999555
+        }
+      }
+    },
+    "x_above_3": {
+      "source_particle_count": 18540,
+      "original_position_sha256": "444764dbf77f13c7aacb0b15a14eb8e2ceae5a76fcfdb94c32f518c35fe7ccd5",
+      "original_strength_sha256": "317499b315d91939ee0304f5dc271dea08ca95810d2cb3e86f2831d5b5626ebc",
+      "minimum_source_x": 3.018568277359009,
+      "maximum_wall_x": 0.49999999985410776,
+      "minimum_six_point_wall_clearance_metres": 2.398568277504901,
+      "wake_probe_count": 1000,
+      "wake_probe_shape": [
+        25,
+        40
+      ],
+      "wake_probe_bounds": [
+        [
+          3.4,
+          4.359999999999999
+        ],
+        [
+          -0.78,
+          0.78
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ],
+      "wake_probe_spacing_metres": 0.04,
+      "wake_probe_distance_from_crop_metres": 0.4,
+      "phases": {
+        "0.0": {
+          "rigid_shift_cells": [
+            0.0,
+            0.0
+          ],
+          "rigid_shift_metres": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "444764dbf77f13c7aacb0b15a14eb8e2ceae5a76fcfdb94c32f518c35fe7ccd5",
+          "original_vortex_strength_sha256": "317499b315d91939ee0304f5dc271dea08ca95810d2cb3e86f2831d5b5626ebc",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              7.740635871887207,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              7.692746162414551
+            ],
+            [
+              7.838955402374268,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              7.594364643096924
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 1.7219597309995152,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 21269,
+                  "retained_node_count": 21269,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 3.158979526792576e-10,
+                  "normalized_linear_impulse_residual": 2.304172566362876e-10,
+                  "normalized_angular_impulse_residual": 1.574207491795385e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 21269,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.433385848999023,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.8662649151451947
+                ],
+                "linear_impulse_change": [
+                  -5.626893617716178e-09,
+                  -5.3378278686011527e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.3547795678510576e-16,
+                  4.538911655340895e-17,
+                  -5.534766813752867e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  3.158979526792576e-10,
+                  3.3360055683022836e-10,
+                  -6.082256534108832e-11,
+                  4.744348584497149e-11,
+                  2.6147181670048475e-11,
+                  -1.975057229800123e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 21269,
+                    "retained_node_count": 21269,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 1.927896921068942e-15,
+                    "normalized_linear_impulse_residual": 2.1437806877322596e-16,
+                    "normalized_angular_impulse_residual": 1.1317249890917068e-16
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 21269,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.433385488186785,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.86626491026979
+                  ],
+                  "linear_impulse_change": [
+                    -3.597122599785507e-14,
+                    3.4638958368304884e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.35477955880842e-16,
+                    4.5389116458085774e-17,
+                    -3.979039320256561e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    -1.927896921068942e-15,
+                    2.3739029251968316e-16,
+                    -8.272692012049565e-17,
+                    1.115015010319724e-16,
+                    9.413559184906942e-19,
+                    -1.1275195889384808e-18
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.778568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "255b8ac8ab4f71412809aab7687cedeac09970ce0d6080d2f676f4e1d2a22eef",
+                "vortex_strength_sha256": "1937bf4e26f66be7cd40f7f3ef0706ecde14c037f033646a99e61a3d14fc6d89",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 20716,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.013239725998573704,
+              "induction_wall_seconds": 4.33344748500167,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07332267095417068,
+                "remeshed_rms": 0.07332267083368112,
+                "error_rms": 2.432940265162157e-10,
+                "maximum_absolute_error": 9.860765814995176e-10,
+                "relative_l2_error": 3.318128258970316e-09,
+                "rms_ratio": 0.9999999983567216,
+                "least_squares_amplitude_gain": 0.9999999983567215
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.06300536600944119,
+                "remeshed_rms": 0.06300536571320857,
+                "error_rms": 5.530632882300936e-10,
+                "maximum_absolute_error": 2.250095415545772e-09,
+                "relative_l2_error": 8.778034685922124e-09,
+                "rms_ratio": 0.9999999952982954,
+                "least_squares_amplitude_gain": 0.9999999952982955
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.526632488772198,
+                "remeshed_rms": 0.526632482433241,
+                "error_rms": 4.486386205227697e-08,
+                "maximum_absolute_error": 1.308618150230867e-07,
+                "relative_l2_error": 8.519007658808424e-08,
+                "rms_ratio": 0.9999999879632244,
+                "least_squares_amplitude_gain": 0.9999999879632211
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0369130983626462,
+                "remeshed_rms": 1.0369131827221523,
+                "error_rms": 1.1439675044615115e-06,
+                "maximum_absolute_error": 4.040953990536167e-06,
+                "relative_l2_error": 1.1032433733047745e-06,
+                "rms_ratio": 1.0000000813563896,
+                "least_squares_amplitude_gain": 1.0000000813557846
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2254756390648665,
+                "remeshed_rms": 1.2254757531229477,
+                "error_rms": 1.1454795892690114e-06,
+                "maximum_absolute_error": 4.168845508356611e-06,
+                "relative_l2_error": 9.347224479656743e-07,
+                "rms_ratio": 1.0000000930724997,
+                "least_squares_amplitude_gain": 1.0000000930720672
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8395575126627016,
+                    "rms_gain": 0.9999996383940113,
+                    "least_squares_gain": 0.9999996383939028,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.058865149814770305,
+                    "rms_gain": 0.9999997483533439,
+                    "least_squares_gain": 0.9999997482913711,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 8.829904183907481e-06,
+                    "rms_gain": 0.9999079597764978,
+                    "least_squares_gain": 0.9999077994532574,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 1.1960422815780202e-07,
+                    "rms_gain": 0.9998605411741495,
+                    "least_squares_gain": 0.9998604700629413,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 5.71448022242752e-10,
+                    "rms_gain": 1.0000059031697686,
+                    "least_squares_gain": 1.0000058969576484,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23118,
+                  "retained_node_count": 23118,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 8.81054590295527e-10,
+                  "normalized_linear_impulse_residual": 8.389031105617063e-11,
+                  "normalized_angular_impulse_residual": 2.9059207708364534e-11
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23118,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.433385848999023,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.8662648966721642
+                ],
+                "linear_impulse_change": [
+                  -5.737743169476062e-09,
+                  1.8680314184393865e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.3547795556438675e-16,
+                  4.5389116555286516e-17,
+                  -1.0216946577656927e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  -8.81054590295527e-10,
+                  4.802562259298027e-10,
+                  -6.257617462557644e-11,
+                  -7.130942178922726e-11,
+                  3.245750110387383e-11,
+                  -5.1927017851423265e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23118,
+                    "retained_node_count": 23118,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 3.884568423049361e-16,
+                    "normalized_linear_impulse_residual": 2.19727983894653e-16,
+                    "normalized_angular_impulse_residual": 2.0209414360570523e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23118,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.433385559485806,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.8662649102698257
+                  ],
+                  "linear_impulse_change": [
+                    -3.197442310920451e-14,
+                    3.9968028886505635e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.3547795588084264e-16,
+                    4.538911645808576e-17,
+                    -7.105427357601002e-14
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    3.884568423049361e-16,
+                    -2.2120459075697748e-16,
+                    -8.632374273443024e-17,
+                    1.5106654978525292e-16,
+                    -4.407512710903445e-17,
+                    1.1591322876937654e-19
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.778568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "ba6da998963b1404e2134b03925dc3595927dbc5b49346649288d6dcbcf9e005",
+                "vortex_strength_sha256": "7e954bba3914c095ed95b14e864b5370efd71f2902d49a101a7b92d4d9100465",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 18867,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.04678411200075061,
+              "induction_wall_seconds": 4.058563345999573,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07332267095417068,
+                "remeshed_rms": 0.0733226705646385,
+                "error_rms": 4.788989164259209e-10,
+                "maximum_absolute_error": 1.2968781049060851e-09,
+                "relative_l2_error": 6.531389407857907e-09,
+                "rms_ratio": 0.9999999946874251,
+                "least_squares_amplitude_gain": 0.9999999946874251
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.06300536600944119,
+                "remeshed_rms": 0.06300536562938953,
+                "error_rms": 5.899603764575833e-10,
+                "maximum_absolute_error": 2.548514704825422e-09,
+                "relative_l2_error": 9.363652873140667e-09,
+                "rms_ratio": 0.9999999939679477,
+                "least_squares_amplitude_gain": 0.9999999939679477
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.526632488772198,
+                "remeshed_rms": 0.526632482648369,
+                "error_rms": 5.360022416037571e-08,
+                "maximum_absolute_error": 1.6377435507752836e-07,
+                "relative_l2_error": 1.0177918245291017e-07,
+                "rms_ratio": 0.999999988371722,
+                "least_squares_amplitude_gain": 0.999999988371717
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0369130983626462,
+                "remeshed_rms": 1.0369132071615783,
+                "error_rms": 1.434201528497496e-06,
+                "maximum_absolute_error": 5.283873635075764e-06,
+                "relative_l2_error": 1.3831453482092126e-06,
+                "rms_ratio": 1.0000001049257958,
+                "least_squares_amplitude_gain": 1.0000001049248448
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2254756390648665,
+                "remeshed_rms": 1.225475783740115,
+                "error_rms": 1.4359871006823186e-06,
+                "maximum_absolute_error": 5.401109354874478e-06,
+                "relative_l2_error": 1.1717793931653252e-06,
+                "rms_ratio": 1.000000118056405,
+                "least_squares_amplitude_gain": 1.0000001180557254
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8395575126627016,
+                    "rms_gain": 0.9999995767419207,
+                    "least_squares_gain": 0.9999995767417845,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.058865149814770305,
+                    "rms_gain": 0.9999996650086033,
+                    "least_squares_gain": 0.9999996649147671,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 8.829904183907481e-06,
+                    "rms_gain": 0.999881008101902,
+                    "least_squares_gain": 0.9998807030860672,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 1.1960422815780202e-07,
+                    "rms_gain": 0.9997269006076572,
+                    "least_squares_gain": 0.9997266252460384,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 5.71448022242752e-10,
+                    "rms_gain": 0.9999832998966771,
+                    "least_squares_gain": 0.9999832855206315,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 10.180277335999563
+        },
+        "0.25": {
+          "rigid_shift_cells": [
+            0.25,
+            0.25
+          ],
+          "rigid_shift_metres": [
+            0.01,
+            0.01,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "c822a6eafa43db8813a9def02a3312213eeba4baf9c56cbf861ec5f6fb821323",
+          "original_vortex_strength_sha256": "317499b315d91939ee0304f5dc271dea08ca95810d2cb3e86f2831d5b5626ebc",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              3.7148797512054443,
+              11.718513488769531,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              9.440312385559082,
+              5.993077278137207,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 2.3550640680005017,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 21323,
+                  "retained_node_count": 21323,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 1.5189010706552027e-10,
+                  "normalized_linear_impulse_residual": 1.3739604379660932e-10,
+                  "normalized_angular_impulse_residual": 1.3406770884561418e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 21323,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.451738357543945,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.866264907925641
+                ],
+                "linear_impulse_change": [
+                  -5.6998410435937785e-09,
+                  -3.1517833676275586e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.3563603414825766e-16,
+                  4.523103783614669e-17,
+                  -4.7206681585976185e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  -1.5189010706552027e-10,
+                  4.593182249860529e-10,
+                  -6.170265028555629e-11,
+                  2.4645219934968224e-11,
+                  2.950285680114119e-11,
+                  -4.254540340398421e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 21323,
+                    "retained_node_count": 21323,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 1.3667925932951454e-15,
+                    "normalized_linear_impulse_residual": 4.1688217050264776e-16,
+                    "normalized_angular_impulse_residual": 9.282581949373897e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 21323,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.451736860182512,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.8662649102698408
+                  ],
+                  "linear_impulse_change": [
+                    3.019806626980426e-14,
+                    9.237055564881302e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.3563603361432216e-16,
+                    4.523103773958701e-17,
+                    -3.268496584496461e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    1.3667925932951454e-15,
+                    -1.0520706145758685e-16,
+                    -7.553327489262646e-17,
+                    -8.272692012049565e-17,
+                    -2.8465478968091744e-17,
+                    -6.326052273140822e-18
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "681b10ba9111b3dde4a5303564232ab3aa16f6663826cfa0885dce8c66f11920",
+                "vortex_strength_sha256": "0e05f179da30184f8fa8162f4718561c65c0340fee4e6654d8d20ce3ec093e93",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 20662,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.018667841999558732,
+              "induction_wall_seconds": 2.412974856000801,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07276388335197352,
+                "remeshed_rms": 0.07276379225717064,
+                "error_rms": 3.1830072707330893e-07,
+                "maximum_absolute_error": 1.4069101176017451e-06,
+                "relative_l2_error": 4.374432924829264e-06,
+                "rms_ratio": 0.9999987480766738,
+                "least_squares_amplitude_gain": 0.9999987480678896
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.06211571891597843,
+                "remeshed_rms": 0.06211535965697473,
+                "error_rms": 9.130899262013628e-07,
+                "maximum_absolute_error": 4.178287999381802e-06,
+                "relative_l2_error": 1.4699820627311177e-05,
+                "rms_ratio": 0.9999942162948449,
+                "least_squares_amplitude_gain": 0.999994216203528
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.5245800564085253,
+                "remeshed_rms": 0.5245757464832875,
+                "error_rms": 9.444674232696071e-06,
+                "maximum_absolute_error": 2.3437816580179627e-05,
+                "relative_l2_error": 1.8004257152583924e-05,
+                "rms_ratio": 0.9999917840467146,
+                "least_squares_amplitude_gain": 0.9999917839183888
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0473521154440955,
+                "remeshed_rms": 1.0472665102978844,
+                "error_rms": 0.00020134972015184321,
+                "maximum_absolute_error": 0.0005035983154037527,
+                "relative_l2_error": 0.00019224644432638344,
+                "rms_ratio": 0.9999182651708545,
+                "least_squares_amplitude_gain": 0.9999182500317979
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2411195764553629,
+                "remeshed_rms": 1.2410599955917803,
+                "error_rms": 0.00012179684240466292,
+                "maximum_absolute_error": 0.0006817582126155686,
+                "relative_l2_error": 9.813465576984505e-05,
+                "rms_ratio": 0.9999519942600915,
+                "least_squares_amplitude_gain": 0.9999519905971618
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8363922497813169,
+                    "rms_gain": 0.9998032838380237,
+                    "least_squares_gain": 0.9998032660521707,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.05612769082751758,
+                    "rms_gain": 0.9997656273662697,
+                    "least_squares_gain": 0.9997654461964215,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 8.221742762074834e-06,
+                    "rms_gain": 1.0000802592966616,
+                    "least_squares_gain": 1.000037582187542,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 1.0983396152063151e-07,
+                    "rms_gain": 0.9979178820421216,
+                    "least_squares_gain": 0.9962311128925975,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 2.0193677335423676e-10,
+                    "rms_gain": 1.1535684760181066,
+                    "least_squares_gain": 0.782151403405732,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23175,
+                  "retained_node_count": 23175,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 1.3173723944525886e-10,
+                  "normalized_linear_impulse_residual": 1.6142047112400949e-10,
+                  "normalized_angular_impulse_residual": 1.2381494066320606e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23175,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.455909729003906,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.8662649123029713
+                ],
+                "linear_impulse_change": [
+                  -6.954695486172113e-09,
+                  -3.698126782580857e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.3563603424080987e-16,
+                  4.523103785740444e-17,
+                  -4.3596571686066454e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  1.3173723944525886e-10,
+                  2.9851795294376456e-10,
+                  -7.540499061727786e-11,
+                  5.423344528358834e-11,
+                  2.8686780378007438e-11,
+                  -4.08288408514912e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23175,
+                    "retained_node_count": 23175,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 2.0142206638033723e-16,
+                    "normalized_linear_impulse_residual": 3.010899008038097e-16,
+                    "normalized_angular_impulse_residual": 1.3318486489464493e-16
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23175,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.4559093847667,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.8662649102698228
+                  ],
+                  "linear_impulse_change": [
+                    4.3520742565306136e-14,
+                    5.5067062021407764e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.356360336143234e-16,
+                    4.5231037739587197e-17,
+                    4.689582056016661e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    2.0142206638033723e-16,
+                    -3.2281482960062973e-16,
+                    -2.086157116082064e-16,
+                    -3.165203900262442e-16,
+                    -5.140927322026045e-17,
+                    -3.667073055613003e-18
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "8be1da247247e95483b874de8eb44eebbd699824e95f0fa7093dfd98f1c96a96",
+                "vortex_strength_sha256": "a7470c0330d35c72536e5bb2f4a1ea06fc0fd26bf7129321a47b5de650d06e24",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 18810,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.03300727299938444,
+              "induction_wall_seconds": 2.826015170001483,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07276388335197352,
+                "remeshed_rms": 0.07276388318944178,
+                "error_rms": 3.1652443893568665e-10,
+                "maximum_absolute_error": 1.2279101624379507e-09,
+                "relative_l2_error": 4.350021251677764e-09,
+                "rms_ratio": 0.9999999977663131,
+                "least_squares_amplitude_gain": 0.999999997766313
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.06211571891597843,
+                "remeshed_rms": 0.06211571854935544,
+                "error_rms": 7.526999913678874e-10,
+                "maximum_absolute_error": 3.3767937612783072e-09,
+                "relative_l2_error": 1.211770554223217e-08,
+                "rms_ratio": 0.9999999940977422,
+                "least_squares_amplitude_gain": 0.9999999940977423
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.5245800564085253,
+                "remeshed_rms": 0.5245798842125668,
+                "error_rms": 1.503770371603565e-06,
+                "maximum_absolute_error": 4.169980750784452e-06,
+                "relative_l2_error": 2.866617503339622e-06,
+                "rms_ratio": 0.9999996717451293,
+                "least_squares_amplitude_gain": 0.9999996717410744
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0473521154440955,
+                "remeshed_rms": 1.0472969360951891,
+                "error_rms": 0.00017085973090435146,
+                "maximum_absolute_error": 0.00033384803283648123,
+                "relative_l2_error": 0.0001631349461034926,
+                "rms_ratio": 0.9999473153793336,
+                "least_squares_amplitude_gain": 0.999947303460663
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2411195764553629,
+                "remeshed_rms": 1.2410912685347748,
+                "error_rms": 7.74392783031836e-05,
+                "maximum_absolute_error": 0.0004474239071928787,
+                "relative_l2_error": 6.23946957023675e-05,
+                "rms_ratio": 0.999977191625106,
+                "least_squares_amplitude_gain": 0.9999771899386679
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8363922497813169,
+                    "rms_gain": 0.999920438150652,
+                    "least_squares_gain": 0.9999204342316514,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.05612769082751758,
+                    "rms_gain": 0.999962672531433,
+                    "least_squares_gain": 0.9999626615797637,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 8.221742762074834e-06,
+                    "rms_gain": 0.999958517568866,
+                    "least_squares_gain": 0.9999460804793563,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 1.0983396152063151e-07,
+                    "rms_gain": 0.9975198089070303,
+                    "least_squares_gain": 0.9964092440389,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 2.0193677335423676e-10,
+                    "rms_gain": 1.1114595131518383,
+                    "least_squares_gain": 0.7913520177559727,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 7.653189958997245
+        },
+        "0.5": {
+          "rigid_shift_cells": [
+            0.5,
+            0.5
+          ],
+          "rigid_shift_metres": [
+            0.02,
+            0.02,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "d0b3043c5e3a7845fc772e431c152331b4848412553f62d5e815d72320d6c7f5",
+          "original_vortex_strength_sha256": "317499b315d91939ee0304f5dc271dea08ca95810d2cb3e86f2831d5b5626ebc",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              4.2004289627075195,
+              11.232925415039062,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              9.036355972290039,
+              6.397037506103516,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 1.6150424459992792,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 21323,
+                  "retained_node_count": 21323,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 1.1622109340578235e-10,
+                  "normalized_linear_impulse_residual": 1.0707932861309731e-10,
+                  "normalized_angular_impulse_residual": 1.1139531472817448e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 21323,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.455568313598633,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.8662649084761347
+                ],
+                "linear_impulse_change": [
+                  -4.209436799129662e-09,
+                  -2.4623025396408593e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.357941191342792e-16,
+                  4.5072958937121266e-17,
+                  -3.9281484021103097e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  -1.1622109340578235e-10,
+                  3.570406613483978e-10,
+                  -4.5469366156490877e-11,
+                  5.306872937838927e-11,
+                  2.8814684556316286e-11,
+                  -3.5552025887237696e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 21323,
+                    "retained_node_count": 21323,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 6.474280705082268e-16,
+                    "normalized_linear_impulse_residual": 2.2122103884880397e-16,
+                    "normalized_angular_impulse_residual": 2.4582671548355837e-16
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 21323,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.45556785953474,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.8662649102698297
+                  ],
+                  "linear_impulse_change": [
+                    -1.3766765505351941e-14,
+                    4.973799150320701e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.3579411871714752e-16,
+                    4.5072958865810853e-17,
+                    -8.668621376273222e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    6.474280705082268e-16,
+                    -3.2191562394714606e-16,
+                    -8.632374273443024e-17,
+                    1.4746972717131833e-16,
+                    -1.3558335243933134e-17,
+                    -1.8265114836386605e-18
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "681b10ba9111b3dde4a5303564232ab3aa16f6663826cfa0885dce8c66f11920",
+                "vortex_strength_sha256": "acde08441b14424ba1c0636e73ea8e44fe19f56a376b90b01a3361dadc6d8632",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 20662,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.014271449002990266,
+              "induction_wall_seconds": 1.909747238001728,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07221326492702881,
+                "remeshed_rms": 0.07221324845235746,
+                "error_rms": 6.695741194038739e-08,
+                "maximum_absolute_error": 3.1788296671331207e-07,
+                "relative_l2_error": 9.272176241864644e-07,
+                "rms_ratio": 0.9999997718608712,
+                "least_squares_amplitude_gain": 0.9999997718604674
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.061243872234303755,
+                "remeshed_rms": 0.061243788856998944,
+                "error_rms": 2.3395618738339601e-07,
+                "maximum_absolute_error": 1.1006783008984944e-06,
+                "relative_l2_error": 3.820075035235167e-06,
+                "rms_ratio": 0.9999986386016793,
+                "least_squares_amplitude_gain": 0.9999986385953095
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.5224875629243438,
+                "remeshed_rms": 0.5224864487390831,
+                "error_rms": 4.779022292617191e-06,
+                "maximum_absolute_error": 1.964100785661893e-05,
+                "relative_l2_error": 9.146671866922876e-06,
+                "rms_ratio": 0.9999978675372587,
+                "least_squares_amplitude_gain": 0.9999978674977015
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0576179282673885,
+                "remeshed_rms": 1.0575080380455493,
+                "error_rms": 0.00038994197554298985,
+                "maximum_absolute_error": 0.0007067529652197146,
+                "relative_l2_error": 0.00036869834098009365,
+                "rms_ratio": 0.99989609648352,
+                "least_squares_amplitude_gain": 0.9998960339122571
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2564643307632708,
+                "remeshed_rms": 1.256443749582963,
+                "error_rms": 0.00010012207420288925,
+                "maximum_absolute_error": 0.0009398477775102165,
+                "relative_l2_error": 7.968556826604667e-05,
+                "rms_ratio": 0.9999836197655565,
+                "least_squares_amplitude_gain": 0.9999836167248176
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8333353615637613,
+                    "rms_gain": 0.9999342438533904,
+                    "least_squares_gain": 0.9999342424804447,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.053592228147648885,
+                    "rms_gain": 0.9996788600733406,
+                    "least_squares_gain": 0.9996788351703997,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 7.672203052160986e-06,
+                    "rms_gain": 0.9991527038502355,
+                    "least_squares_gain": 0.9990846986334175,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 1.0228158061649594e-07,
+                    "rms_gain": 0.9926023697035341,
+                    "least_squares_gain": 0.9895169635444181,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 3.327646780730344e-10,
+                    "rms_gain": 0.4045481280328259,
+                    "least_squares_gain": 0.15617848425551148,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23175,
+                  "retained_node_count": 23175,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 1.4921891955763653e-10,
+                  "normalized_linear_impulse_residual": 1.6934975830488388e-10,
+                  "normalized_angular_impulse_residual": 1.2955144298493163e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23175,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.462302207946777,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.8662649125727728
+                ],
+                "linear_impulse_change": [
+                  -6.6032734835630436e-09,
+                  -3.89513985510348e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.357941193770101e-16,
+                  4.507295897767483e-17,
+                  -4.568390465919947e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  1.4921891955763653e-10,
+                  3.0618009510756655e-10,
+                  -7.172851276973508e-11,
+                  6.039798920609425e-11,
+                  3.450436955049026e-11,
+                  -4.8740903591068265e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23175,
+                    "retained_node_count": 23175,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 2.5753249915771685e-15,
+                    "normalized_linear_impulse_residual": 3.7359385327465817e-16,
+                    "normalized_angular_impulse_residual": 1.2089838982586775e-16
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23175,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.462301975345248,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.86626491026978
+                  ],
+                  "linear_impulse_change": [
+                    -4.440892098500626e-15,
+                    8.704148513061227e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.3579411871714927e-16,
+                    4.5072958865810755e-17,
+                    -4.263256414560601e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    -2.5753249915771685e-15,
+                    -3.506902048586228e-16,
+                    -2.158093568360756e-17,
+                    -3.5968226139345933e-17,
+                    -1.8518016426428883e-17,
+                    2.4903781574996352e-18
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "8be1da247247e95483b874de8eb44eebbd699824e95f0fa7093dfd98f1c96a96",
+                "vortex_strength_sha256": "f9f54535e265a74d18509554d252d06482c13867e09a1c5f798a522853623d86",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 18810,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.033519997999974294,
+              "induction_wall_seconds": 3.364028572999814,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07221326492702881,
+                "remeshed_rms": 0.07221326473590059,
+                "error_rms": 3.940731273349267e-10,
+                "maximum_absolute_error": 1.5567089284296287e-09,
+                "relative_l2_error": 5.457073956331096e-09,
+                "rms_ratio": 0.999999997353281,
+                "least_squares_amplitude_gain": 0.9999999973532812
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.061243872234303755,
+                "remeshed_rms": 0.061243871798217976,
+                "error_rms": 9.48270270646718e-10,
+                "maximum_absolute_error": 4.206558962271956e-09,
+                "relative_l2_error": 1.548351265280668e-08,
+                "rms_ratio": 0.9999999928795198,
+                "least_squares_amplitude_gain": 0.9999999928795196
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.5224875629243438,
+                "remeshed_rms": 0.5224876738486194,
+                "error_rms": 1.0496058784303385e-06,
+                "maximum_absolute_error": 6.04958255689958e-06,
+                "relative_l2_error": 2.008862895330432e-06,
+                "rms_ratio": 1.0000002123003178,
+                "least_squares_amplitude_gain": 1.0000002122983225
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0576179282673885,
+                "remeshed_rms": 1.0575144390280182,
+                "error_rms": 0.00038132349719253875,
+                "maximum_absolute_error": 0.0005572112344049973,
+                "relative_l2_error": 0.00036054938839513695,
+                "rms_ratio": 0.9999021487471003,
+                "least_squares_amplitude_gain": 0.9999020885366036
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2564643307632708,
+                "remeshed_rms": 1.2564495166432104,
+                "error_rms": 6.193644745553765e-05,
+                "maximum_absolute_error": 0.0006356140364523477,
+                "relative_l2_error": 4.929423457481901e-05,
+                "rms_ratio": 0.9999882096771888,
+                "least_squares_amplitude_gain": 0.9999882085317339
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8333353615637613,
+                    "rms_gain": 0.9999640384076706,
+                    "least_squares_gain": 0.9999640382561883,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.053592228147648885,
+                    "rms_gain": 0.9999229386077358,
+                    "least_squares_gain": 0.9999229366364888,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 7.672203052160986e-06,
+                    "rms_gain": 0.9998258633740852,
+                    "least_squares_gain": 0.9998009053436119,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 1.0228158061649594e-07,
+                    "rms_gain": 0.9938772188568149,
+                    "least_squares_gain": 0.9915759226140736,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 3.327646780730344e-10,
+                    "rms_gain": 0.5071285452206216,
+                    "least_squares_gain": 0.20055331071550886,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 6.943109487001493
+        },
+        "0.75": {
+          "rigid_shift_cells": [
+            0.75,
+            0.75
+          ],
+          "rigid_shift_metres": [
+            0.03,
+            0.03,
+            0.0
+          ],
+          "exact_comparator": "Same Gaussian sigma, span, shifted FP32 positions and original FP32 circulation; no freestream added.",
+          "shifted_position_sha256": "08193316173b2b08e635ea35dd714c3631056906036ceb18ce59833870523b24",
+          "original_vortex_strength_sha256": "317499b315d91939ee0304f5dc271dea08ca95810d2cb3e86f2831d5b5626ebc",
+          "fractional_lattice_coordinate_strength_weighted_histogram": [
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              8.153358459472656,
+              7.280035972595215,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              10.08358097076416,
+              5.3498125076293945,
+              0.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "fractional_lattice_histogram_edges": [
+            0.0,
+            0.0625,
+            0.125,
+            0.1875,
+            0.25,
+            0.3125,
+            0.375,
+            0.4375,
+            0.5,
+            0.5625,
+            0.625,
+            0.6875,
+            0.75,
+            0.8125,
+            0.875,
+            0.9375,
+            1.0
+          ],
+          "exact_induction_wall_seconds": 2.628037326001504,
+          "operators": {
+            "M4_PRIME": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 21323,
+                  "retained_node_count": 21323,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 8.648093826994964e-11,
+                  "normalized_linear_impulse_residual": 1.5482839308884462e-10,
+                  "normalized_angular_impulse_residual": 1.3243340982302555e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 21323,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.448469161987305,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.8662649116045134
+                ],
+                "linear_impulse_change": [
+                  -3.925275660066063e-09,
+                  -3.5932416153627855e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.3595218593063294e-16,
+                  4.4914880251867937e-17,
+                  -4.676920042356869e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  8.648093826994964e-11,
+                  3.221110635983138e-10,
+                  -4.270785883594861e-11,
+                  8.716172327337949e-11,
+                  3.598816213283746e-11,
+                  -4.45100489633491e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 21323,
+                    "retained_node_count": 21323,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 7.481391036983954e-16,
+                    "normalized_linear_impulse_residual": 5.380261885738289e-17,
+                    "normalized_angular_impulse_residual": 4.828799960857054e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 21323,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.448469521190185,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.8662649102698312
+                  ],
+                  "linear_impulse_change": [
+                    -8.881784197001252e-15,
+                    -8.881784197001252e-15,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.359521853219161e-16,
+                    4.4914880185371326e-17,
+                    -1.7053025658242404e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    7.481391036983954e-16,
+                    -1.6455463458750763e-16,
+                    1.654538402409913e-16,
+                    3.165203900262442e-16,
+                    1.4907143724158607e-17,
+                    -1.4612091869109285e-18
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "681b10ba9111b3dde4a5303564232ab3aa16f6663826cfa0885dce8c66f11920",
+                "vortex_strength_sha256": "dea04b04664675e28099d3cdedd754bba5001f00e7eba991f1dd9774704ba33c",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 20662,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.013809208998281974,
+              "induction_wall_seconds": 1.863708705001045,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07167072238592737,
+                "remeshed_rms": 0.07167079029402576,
+                "error_rms": 2.539513957214562e-07,
+                "maximum_absolute_error": 1.0945811313028964e-06,
+                "relative_l2_error": 3.5433073264421268e-06,
+                "rms_ratio": 1.0000009475012408,
+                "least_squares_amplitude_gain": 1.0000009474954121
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.06038944462349074,
+                "remeshed_rms": 0.06038968995415985,
+                "error_rms": 6.864504623486724e-07,
+                "maximum_absolute_error": 2.9274484630442688e-06,
+                "relative_l2_error": 1.1367060363420725e-05,
+                "rms_ratio": 1.0000040624759945,
+                "least_squares_amplitude_gain": 1.0000040624196413
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.5203574085968927,
+                "remeshed_rms": 0.5203604451977993,
+                "error_rms": 9.635610135224889e-06,
+                "maximum_absolute_error": 2.4891957719458402e-05,
+                "relative_l2_error": 1.8517292107374116e-05,
+                "rms_ratio": 1.0000058356061745,
+                "least_squares_amplitude_gain": 1.0000058354517567
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0676099155396985,
+                "remeshed_rms": 1.0675844187256938,
+                "error_rms": 0.0002342359041658287,
+                "maximum_absolute_error": 0.0004951748110708643,
+                "relative_l2_error": 0.00021940214375717714,
+                "rms_ratio": 0.9999761178557509,
+                "least_squares_amplitude_gain": 0.9999760940722789
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2715305493541569,
+                "remeshed_rms": 1.271568542870744,
+                "error_rms": 0.00011930982527486573,
+                "maximum_absolute_error": 0.0006141589235442446,
+                "relative_l2_error": 9.383166242876843e-05,
+                "rms_ratio": 1.0000298801445284,
+                "least_squares_amplitude_gain": 1.0000298761887496
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8303814385557999,
+                    "rms_gain": 1.0001171805891016,
+                    "least_squares_gain": 1.0001171611043351,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.05122994084906681,
+                    "rms_gain": 0.999856342249112,
+                    "least_squares_gain": 0.9998561875043572,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 7.174781870857206e-06,
+                    "rms_gain": 0.9988584280040752,
+                    "least_squares_gain": 0.998830486493656,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 9.607125006019454e-08,
+                    "rms_gain": 0.99340001381503,
+                    "least_squares_gain": 0.9919598271544267,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 5.166607831782776e-10,
+                    "rms_gain": 0.5805415738258596,
+                    "least_squares_gain": 0.5372053602526374,
+                    "mode_count": 216
+                  }
+                }
+              }
+            },
+            "LAGRANGE6_TEST_ONLY": {
+              "moment_and_capacity_guards": {
+                "native_moment_guard": {
+                  "applied": false,
+                  "nonzero_node_count": 23175,
+                  "retained_node_count": 23175,
+                  "pruned_node_count": 0,
+                  "support_augmented_node_count": 0,
+                  "correction_fraction": 0.0,
+                  "normalized_vortex_strength_residual": 6.576125456760348e-11,
+                  "normalized_linear_impulse_residual": 1.4357961243971328e-10,
+                  "normalized_angular_impulse_residual": 1.1720296564283472e-10
+                },
+                "unchanged_native_residual_limit": 1e-05,
+                "recorded_correction_fraction_limit": 0.08,
+                "particle_capacity": 200000,
+                "particle_count": 23175,
+                "original_strength_l1": 15.433385848999023,
+                "strength_l1": 15.454477310180664,
+                "circulation_before": [
+                  0.0,
+                  0.0,
+                  1.8662649102698197
+                ],
+                "circulation_after": [
+                  0.0,
+                  0.0,
+                  1.8662649112847385
+                ],
+                "linear_impulse_change": [
+                  -5.947944359263602e-09,
+                  -3.298810824503562e-08,
+                  0.0
+                ],
+                "angular_impulse_change": [
+                  -1.3595218588075467e-16,
+                  4.491488028613301e-17,
+                  -4.139052975915547e-07
+                ],
+                "scaled_xy_moment_names": [
+                  "1",
+                  "x",
+                  "y",
+                  "x2",
+                  "xy",
+                  "y2"
+                ],
+                "scaled_xy_moment_residuals_over_strength_l1": [
+                  6.576125456760348e-11,
+                  3.0631413070227483e-10,
+                  -6.458140323284497e-11,
+                  5.09158979615127e-11,
+                  3.4672626875107314e-11,
+                  -4.132597575932661e-12
+                ],
+                "float64_before_commit_moments": {
+                  "native_moment_guard": {
+                    "applied": false,
+                    "nonzero_node_count": 23175,
+                    "retained_node_count": 23175,
+                    "pruned_node_count": 0,
+                    "support_augmented_node_count": 0,
+                    "correction_fraction": 0.0,
+                    "normalized_vortex_strength_residual": 1.0934340746361164e-15,
+                    "normalized_linear_impulse_residual": 3.119624124451354e-16,
+                    "normalized_angular_impulse_residual": 3.219201392262534e-17
+                  },
+                  "unchanged_native_residual_limit": 1e-05,
+                  "recorded_correction_fraction_limit": 0.08,
+                  "particle_capacity": 200000,
+                  "particle_count": 23175,
+                  "original_strength_l1": 15.433385848999023,
+                  "strength_l1": 15.45447714257223,
+                  "circulation_before": [
+                    0.0,
+                    0.0,
+                    1.8662649102698197
+                  ],
+                  "circulation_after": [
+                    0.0,
+                    0.0,
+                    1.8662649102698365
+                  ],
+                  "linear_impulse_change": [
+                    -1.5987211554602254e-14,
+                    -7.105427357601002e-14,
+                    0.0
+                  ],
+                  "angular_impulse_change": [
+                    -1.3595218532191463e-16,
+                    4.491488018537131e-17,
+                    1.1368683772161603e-13
+                  ],
+                  "scaled_xy_moment_names": [
+                    "1",
+                    "x",
+                    "y",
+                    "x2",
+                    "xy",
+                    "y2"
+                  ],
+                  "scaled_xy_moment_residuals_over_strength_l1": [
+                    1.0934340746361164e-15,
+                    -1.6635304589447493e-16,
+                    3.165203900262442e-16,
+                    2.589712282032907e-16,
+                    2.1707386478628698e-17,
+                    -1.9986250657507653e-18
+                  ]
+                },
+                "grid_shape": [
+                  311,
+                  135
+                ],
+                "grid_origin": [
+                  2.818568361533681,
+                  -2.6614329494196483,
+                  -2.5410988417628992e-17
+                ],
+                "complete_halo_nodes_each_side": 5,
+                "position_sha256": "8be1da247247e95483b874de8eb44eebbd699824e95f0fa7093dfd98f1c96a96",
+                "vortex_strength_sha256": "96f8f66dbf6b1063a658175bd361958da6e8c5cb956440474c1be79e8bd33cfd",
+                "committed_position_dtype": "float32",
+                "committed_strength_dtype": "float32",
+                "physical_diffusion_interval_seconds": 0.0,
+                "pruning_threshold": 0.0,
+                "exact_zero_nodes_omitted": 18810,
+                "wall_mask_or_wall_correction": false
+              },
+              "scatter_wall_seconds": 0.03421607500058599,
+              "induction_wall_seconds": 2.8296421949999058,
+              "outer_induced_normal_velocity": {
+                "exact_rms": 0.07167072238592737,
+                "remeshed_rms": 0.07167072211450079,
+                "error_rms": 4.96068506324697e-10,
+                "maximum_absolute_error": 1.894941606406242e-09,
+                "relative_l2_error": 6.921494437484568e-09,
+                "rms_ratio": 0.9999999962128668,
+                "least_squares_amplitude_gain": 0.999999996212867
+              },
+              "outer_induced_tangential_normal_gradient": {
+                "exact_rms": 0.06038944462349074,
+                "remeshed_rms": 0.06038944405880323,
+                "error_rms": 1.1738094141734843e-09,
+                "maximum_absolute_error": 5.238130817986075e-09,
+                "relative_l2_error": 1.9437327524566884e-08,
+                "rms_ratio": 0.9999999906492348,
+                "least_squares_amplitude_gain": 0.9999999906492348
+              },
+              "interior_wake_induced_velocity": {
+                "exact_rms": 0.5203574085968927,
+                "remeshed_rms": 0.5203576871095417,
+                "error_rms": 1.2236261814230707e-06,
+                "maximum_absolute_error": 4.098114716605261e-06,
+                "relative_l2_error": 2.351511021477513e-06,
+                "rms_ratio": 1.000000535233369,
+                "least_squares_amplitude_gain": 1.0000005352307475
+              },
+              "interior_wake_jacobian": {
+                "exact_rms": 1.0676099155396985,
+                "remeshed_rms": 1.0675610905943476,
+                "error_rms": 0.00022631568878308497,
+                "maximum_absolute_error": 0.00035897430384937423,
+                "relative_l2_error": 0.00021198350210964255,
+                "rms_ratio": 0.9999542670551853,
+                "least_squares_amplitude_gain": 0.9999542456324338
+              },
+              "interior_wake_gaussian_curl": {
+                "exact_rms": 1.2715305493541569,
+                "remeshed_rms": 1.2715437522745354,
+                "error_rms": 6.563230588486133e-05,
+                "maximum_absolute_error": 0.00042870237879089057,
+                "relative_l2_error": 5.1616774695816525e-05,
+                "rms_ratio": 1.0000103834865668,
+                "least_squares_amplitude_gain": 1.0000103822083295
+              },
+              "interior_wake_gaussian_curl_spectral_bands": {
+                "method": "Subtract a least-squares affine plane; apply separable Hann window; use radial FFT wavelengths. Finite window, crop and leakage affect bands.",
+                "bands": {
+                  "wavelength_at_least_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.8303814385557999,
+                    "rms_gain": 1.0000415924961967,
+                    "least_squares_gain": 1.0000415897229382,
+                    "mode_count": 18
+                  },
+                  "wavelength_0.2_to_0.5m": {
+                    "exact_curl_windowed_power_fraction": 0.05122994084906681,
+                    "rms_gain": 0.9999526718405328,
+                    "least_squares_gain": 0.9999526652896265,
+                    "mode_count": 104
+                  },
+                  "wavelength_0.1_to_0.2m": {
+                    "exact_curl_windowed_power_fraction": 7.174781870857206e-06,
+                    "rms_gain": 0.9997383926621329,
+                    "least_squares_gain": 0.9997249346400199,
+                    "mode_count": 370
+                  },
+                  "wavelength_0.08_to_0.1m": {
+                    "exact_curl_windowed_power_fraction": 9.607125006019454e-08,
+                    "rms_gain": 0.9930220048519619,
+                    "least_squares_gain": 0.9916976147732561,
+                    "mode_count": 291
+                  },
+                  "wavelength_below_0.08m": {
+                    "exact_curl_windowed_power_fraction": 5.166607831782776e-10,
+                    "rms_gain": 0.5430269112338076,
+                    "least_squares_gain": 0.4898672599577674,
+                    "mode_count": 216
+                  }
+                }
+              }
+            }
+          },
+          "total_wall_seconds": 7.375883921999048
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Rigid translation with uniform imposed shift isolates one scatter. Real RK2 advection has spatially varying displacements and physical GBD diffusion.",
+    "Both exact and remeshed clouds use the same fixed particle crop. Far-field effects of the discarded cloud are absent from both; results condition on the crop.",
+    "The local 1000-point strip is ten h past the crop edge and resolves h-scale curl. Its finite-window spectrum is descriptive; it does not establish a force cause.",
+    "All field metrics exclude the unchanged freestream. The Gaussian kernel, sigma, span and actual FP32 storage are common; no additional transfer filtering is applied.",
+    "Only exact-zero nodes are omitted. Native threshold pruning, moment recovery, solid support and FVM renewal are absent. Capacity and native residual guards apply.",
+    "LAGRANGE6_TEST_ONLY is not an admitted native planar case or restart setting.",
+    "One frozen 46 s cloud and diagonal shifts do not measure mature force amplitudes or demonstrate stability for a changing displacement field or near a wall."
+  ]
+}

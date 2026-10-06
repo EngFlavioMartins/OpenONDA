@@ -1,0 +1,28 @@
+{
+  "audit_reference_particle_image.py": {
+    "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/warm_auxiliary_oracle_failure_20261006/audit_reference_particle_image.py.source",
+    "sha256": "de781225e9f6b95190dc818a54255b21228ee7f94d14cd54426c2e0a8308f249"
+  },
+  "project_reference_volume_images.py": {
+    "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/warm_auxiliary_oracle_failure_20261006/project_reference_volume_images.py.source",
+    "sha256": "2ec58b2dc7f319307306f83ee6f58b16275c2ec7a40d0dd262cd4d558a84f734"
+  },
+  "stream_planar_image_induction.py": {
+    "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/warm_auxiliary_oracle_failure_20261006/stream_planar_image_induction.py.source",
+    "sha256": "1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4"
+  },
+  "qualify_reference_image_cuda.py": {
+    "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/warm_auxiliary_oracle_failure_20261006/qualify_reference_image_cuda.py.source",
+    "sha256": "b977737b03bc09d4ce16a58b4ac736cd81555b2d9518cacffd4b457263367745"
+  },
+  "report.json": {
+    "path": "/tmp/openonda-reference-image-full-20261006/report.json",
+    "sha256": "2abab903458a150b53aa355d07c418dac8158f8175867e0d69288e5c473678a9",
+    "preserved_in_place": true
+  },
+  "particle_image_traces.h5": {
+    "path": "/tmp/openonda-reference-image-full-20261006/particle_image_traces.h5",
+    "sha256": "fc5d16bdfc49d276ebb54e0bdc07360b4c5ac4bbe6c3bc8307da0f800fb3510f",
+    "preserved_in_place": true
+  }
+}

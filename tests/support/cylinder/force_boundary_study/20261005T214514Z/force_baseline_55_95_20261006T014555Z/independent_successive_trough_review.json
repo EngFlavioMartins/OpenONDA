@@ -1,0 +1,396 @@
+{
+  "source_comparison": "tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_55_95_20261006T014555Z/force_comparison.json",
+  "source_comparison_sha256": "314012ffa9bd94ab7fce6cca188514b1349d12b4c284e5dd94d13f4434709079",
+  "analysis_recipe": "tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_mode_frequency_force_comparison_20261006/independent_review_20261006T015854Z/analysis_recipe.py",
+  "analysis_recipe_sha256": "453f213ee5af224acf10046a90de26a02042f1f06255dbd24fdd2fc2b2a37759",
+  "captured_at_utc": "2026-10-06T01:59:55.121412+00:00",
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_55_95_20261006T014555Z/snapshots/coupled_forces_history.csv": "6f7c5aecd6f128e0f88a557ad3997ab30d3203dfcba17ea64976b5053dd51101",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_55_95_20261006T014555Z/snapshots/reference_forces_history.csv": "2ad4ae23520c7c412a36da0aba1bafc4bc7dc30d307e48db40fe8f0c4150335f"
+  },
+  "window": [
+    55,
+    95
+  ],
+  "independent_successive_trough_statistics": {
+    "coupled": {
+      "drag_coefficient": {
+        "complete_cycle_count": 13,
+        "median_raw": 0.03411917824675914,
+        "median_drift": 0.03410136720252364,
+        "first_two_median_raw": 0.034200689251876804,
+        "first_two_median_drift": 0.034107309664490396,
+        "last_to_first_raw_amplitude": 0.9960555272367606,
+        "last_to_first_drift_amplitude": 0.9973965355164881,
+        "cycles": [
+          {
+            "left_trough_time": 56.920000000005686,
+            "peak_time": 58.28000000000614,
+            "right_trough_time": 59.68000000000661,
+            "raw_peak_to_peak": 0.034279348327971526,
+            "drift_corrected_peak_to_peak": 0.03420867625152326,
+            "trough_baseline_slope_per_second": 5.196476209429639e-05
+          },
+          {
+            "left_trough_time": 59.68000000000661,
+            "peak_time": 61.04000000000706,
+            "right_trough_time": 62.400000000007516,
+            "raw_peak_to_peak": 0.03412203017578208,
+            "drift_corrected_peak_to_peak": 0.03400594307745752,
+            "trough_baseline_slope_per_second": -8.535816053273448e-05
+          },
+          {
+            "left_trough_time": 62.400000000007516,
+            "peak_time": 63.840000000008,
+            "right_trough_time": 65.1600000000074,
+            "raw_peak_to_peak": 0.03411011474887804,
+            "drift_corrected_peak_to_peak": 0.03410547622691733,
+            "trough_baseline_slope_per_second": -3.514031788420627e-06
+          },
+          {
+            "left_trough_time": 65.1600000000074,
+            "peak_time": 66.52000000000665,
+            "right_trough_time": 67.92000000000587,
+            "raw_peak_to_peak": 0.03393054460802403,
+            "drift_corrected_peak_to_peak": 0.033924605314569006,
+            "trough_baseline_slope_per_second": -4.242352467873378e-06
+          },
+          {
+            "left_trough_time": 67.92000000000587,
+            "peak_time": 69.28000000000512,
+            "right_trough_time": 70.68000000000434,
+            "raw_peak_to_peak": 0.03416229223055378,
+            "drift_corrected_peak_to_peak": 0.034126639776945536,
+            "trough_baseline_slope_per_second": 2.621503941784034e-05
+          },
+          {
+            "left_trough_time": 70.68000000000434,
+            "peak_time": 72.04000000000359,
+            "right_trough_time": 73.40000000000283,
+            "raw_peak_to_peak": 0.03411825751303965,
+            "drift_corrected_peak_to_peak": 0.0340270796797113,
+            "trough_baseline_slope_per_second": -6.704252450617584e-05
+          },
+          {
+            "left_trough_time": 73.40000000000283,
+            "peak_time": 74.80000000000206,
+            "right_trough_time": 76.1600000000013,
+            "raw_peak_to_peak": 0.034248498686193285,
+            "drift_corrected_peak_to_peak": 0.034205552802866614,
+            "trough_baseline_slope_per_second": 3.067563094764059e-05
+          },
+          {
+            "left_trough_time": 76.1600000000013,
+            "peak_time": 77.52000000000055,
+            "right_trough_time": 78.91999999999977,
+            "raw_peak_to_peak": 0.03389623518417806,
+            "drift_corrected_peak_to_peak": 0.033878689918905205,
+            "trough_baseline_slope_per_second": -1.2532332337757543e-05
+          },
+          {
+            "left_trough_time": 78.91999999999977,
+            "peak_time": 80.23999999999904,
+            "right_trough_time": 81.67999999999824,
+            "raw_peak_to_peak": 0.03411917824675914,
+            "drift_corrected_peak_to_peak": 0.03410136720252364,
+            "trough_baseline_slope_per_second": 1.3493215329933359e-05
+          },
+          {
+            "left_trough_time": 81.67999999999824,
+            "peak_time": 83.03999999999749,
+            "right_trough_time": 84.39999999999674,
+            "raw_peak_to_peak": 0.03400706633884498,
+            "drift_corrected_peak_to_peak": 0.03397060053792189,
+            "trough_baseline_slope_per_second": -2.681308891405247e-05
+          },
+          {
+            "left_trough_time": 84.39999999999674,
+            "peak_time": 85.79999999999596,
+            "right_trough_time": 87.15999999999521,
+            "raw_peak_to_peak": 0.034190206953142566,
+            "drift_corrected_peak_to_peak": 0.03418054935626591,
+            "trough_baseline_slope_per_second": 6.898283483329153e-06
+          },
+          {
+            "left_trough_time": 87.15999999999521,
+            "peak_time": 88.51999999999445,
+            "right_trough_time": 89.91999999999368,
+            "raw_peak_to_peak": 0.034020336371062276,
+            "drift_corrected_peak_to_peak": 0.03398408500190007,
+            "trough_baseline_slope_per_second": -2.589383511587554e-05
+          },
+          {
+            "left_trough_time": 89.91999999999368,
+            "peak_time": 91.3199999999929,
+            "right_trough_time": 92.67999999999215,
+            "raw_peak_to_peak": 0.03414413437215025,
+            "drift_corrected_peak_to_peak": 0.034119615177874464,
+            "trough_baseline_slope_per_second": 1.7513710196997477e-05
+          }
+        ]
+      },
+      "lift_coefficient": {
+        "complete_cycle_count": 6,
+        "median_raw": 0.845589728116727,
+        "median_drift": 0.8455418289590607,
+        "first_two_median_raw": 0.8466697487644474,
+        "first_two_median_drift": 0.8464890774326163,
+        "last_to_first_raw_amplitude": 0.9974136841040235,
+        "last_to_first_drift_amplitude": 0.9975024101898484,
+        "cycles": [
+          {
+            "left_trough_time": 57.80000000000598,
+            "peak_time": 60.52000000000689,
+            "right_trough_time": 63.28000000000781,
+            "raw_peak_to_peak": 0.8472594475713427,
+            "drift_corrected_peak_to_peak": 0.847049061522256,
+            "trough_baseline_slope_per_second": 7.734781216421201e-05
+          },
+          {
+            "left_trough_time": 63.28000000000781,
+            "peak_time": 66.04000000000691,
+            "right_trough_time": 68.7600000000054,
+            "raw_peak_to_peak": 0.846080049957552,
+            "drift_corrected_peak_to_peak": 0.8459290933429765,
+            "trough_baseline_slope_per_second": 5.469442557087294e-05
+          },
+          {
+            "left_trough_time": 68.7600000000054,
+            "peak_time": 71.52000000000388,
+            "right_trough_time": 74.32000000000232,
+            "raw_peak_to_peak": 0.8458677519866067,
+            "drift_corrected_peak_to_peak": 0.8457789014260323,
+            "trough_baseline_slope_per_second": 3.2192232092192286e-05
+          },
+          {
+            "left_trough_time": 74.32000000000232,
+            "peak_time": 77.04000000000082,
+            "right_trough_time": 79.75999999999931,
+            "raw_peak_to_peak": 0.8453117042468472,
+            "drift_corrected_peak_to_peak": 0.8453047564920891,
+            "trough_baseline_slope_per_second": 2.554321602232573e-06
+          },
+          {
+            "left_trough_time": 79.75999999999931,
+            "peak_time": 82.51999999999778,
+            "right_trough_time": 85.31999999999623,
+            "raw_peak_to_peak": 0.8452403211584518,
+            "drift_corrected_peak_to_peak": 0.8450848894083587,
+            "trough_baseline_slope_per_second": 5.6315851483055815e-05
+          },
+          {
+            "left_trough_time": 85.31999999999623,
+            "peak_time": 88.03999999999472,
+            "right_trough_time": 90.79999999999319,
+            "raw_peak_to_peak": 0.8450681669940727,
+            "drift_corrected_peak_to_peak": 0.8449334804174996,
+            "trough_baseline_slope_per_second": -4.879948426559591e-05
+          }
+        ]
+      }
+    },
+    "reference": {
+      "drag_coefficient": {
+        "complete_cycle_count": 14,
+        "median_raw": 0.05334686694214541,
+        "median_drift": 0.05330932186852336,
+        "first_two_median_raw": 0.053256259859257415,
+        "first_two_median_drift": 0.05322008656821658,
+        "last_to_first_raw_amplitude": 1.0016459202108507,
+        "last_to_first_drift_amplitude": 1.002002678677376,
+        "cycles": [
+          {
+            "left_trough_time": 55.7600000000053,
+            "peak_time": 57.040000000005726,
+            "right_trough_time": 58.40000000000618,
+            "raw_peak_to_peak": 0.05319766122059266,
+            "drift_corrected_peak_to_peak": 0.05316007611853559,
+            "trough_baseline_slope_per_second": 2.936336098207727e-05
+          },
+          {
+            "left_trough_time": 58.40000000000618,
+            "peak_time": 59.68000000000661,
+            "right_trough_time": 61.080000000007075,
+            "raw_peak_to_peak": 0.05331485849792217,
+            "drift_corrected_peak_to_peak": 0.053280097017897564,
+            "trough_baseline_slope_per_second": -2.482962858899744e-05
+          },
+          {
+            "left_trough_time": 61.080000000007075,
+            "peak_time": 62.400000000007516,
+            "right_trough_time": 63.76000000000797,
+            "raw_peak_to_peak": 0.053340258421197495,
+            "drift_corrected_peak_to_peak": 0.05333639811098029,
+            "trough_baseline_slope_per_second": -2.8384633950063594e-06
+          },
+          {
+            "left_trough_time": 63.76000000000797,
+            "peak_time": 65.04000000000747,
+            "right_trough_time": 66.44000000000669,
+            "raw_peak_to_peak": 0.05339615831951572,
+            "drift_corrected_peak_to_peak": 0.05335123050414733,
+            "trough_baseline_slope_per_second": 3.509985575656973e-05
+          },
+          {
+            "left_trough_time": 66.44000000000669,
+            "peak_time": 67.72000000000598,
+            "right_trough_time": 69.08000000000523,
+            "raw_peak_to_peak": 0.05327492266416023,
+            "drift_corrected_peak_to_peak": 0.053227910187349986,
+            "trough_baseline_slope_per_second": 3.672849750802082e-05
+          },
+          {
+            "left_trough_time": 69.08000000000523,
+            "peak_time": 70.4000000000045,
+            "right_trough_time": 71.76000000000374,
+            "raw_peak_to_peak": 0.05335697390693861,
+            "drift_corrected_peak_to_peak": 0.053297703410040975,
+            "trough_baseline_slope_per_second": -4.358124771887108e-05
+          },
+          {
+            "left_trough_time": 71.76000000000374,
+            "peak_time": 73.08000000000301,
+            "right_trough_time": 74.44000000000226,
+            "raw_peak_to_peak": 0.053353475463093325,
+            "drift_corrected_peak_to_peak": 0.053320940327005746,
+            "trough_baseline_slope_per_second": -2.392289418205802e-05
+          },
+          {
+            "left_trough_time": 74.44000000000226,
+            "peak_time": 75.72000000000155,
+            "right_trough_time": 77.12000000000077,
+            "raw_peak_to_peak": 0.053433509332070805,
+            "drift_corrected_peak_to_peak": 0.053420463602194615,
+            "trough_baseline_slope_per_second": 1.0191976465780578e-05
+          },
+          {
+            "left_trough_time": 77.12000000000077,
+            "peak_time": 78.40000000000006,
+            "right_trough_time": 79.75999999999931,
+            "raw_peak_to_peak": 0.05338964583623307,
+            "drift_corrected_peak_to_peak": 0.05332323783859274,
+            "trough_baseline_slope_per_second": 5.188124815653361e-05
+          },
+          {
+            "left_trough_time": 79.75999999999931,
+            "peak_time": 81.07999999999858,
+            "right_trough_time": 82.43999999999782,
+            "raw_peak_to_peak": 0.0532753926642997,
+            "drift_corrected_peak_to_peak": 0.05327494570733349,
+            "trough_baseline_slope_per_second": -3.286448281012332e-07
+          },
+          {
+            "left_trough_time": 82.43999999999782,
+            "peak_time": 83.71999999999711,
+            "right_trough_time": 85.11999999999634,
+            "raw_peak_to_peak": 0.053327188782602786,
+            "drift_corrected_peak_to_peak": 0.05328678489154245,
+            "trough_baseline_slope_per_second": -2.885992218597177e-05
+          },
+          {
+            "left_trough_time": 85.11999999999634,
+            "peak_time": 86.4399999999956,
+            "right_trough_time": 87.79999999999485,
+            "raw_peak_to_peak": 0.05342715017069666,
+            "drift_corrected_peak_to_peak": 0.053386257065512366,
+            "trough_baseline_slope_per_second": -3.0068459694349027e-05
+          },
+          {
+            "left_trough_time": 87.79999999999485,
+            "peak_time": 89.07999999999414,
+            "right_trough_time": 90.47999999999337,
+            "raw_peak_to_peak": 0.053410627215011885,
+            "drift_corrected_peak_to_peak": 0.05334841381568287,
+            "trough_baseline_slope_per_second": 4.860421822581614e-05
+          },
+          {
+            "left_trough_time": 90.47999999999337,
+            "peak_time": 91.75999999999266,
+            "right_trough_time": 93.15999999999188,
+            "raw_peak_to_peak": 0.05328522032636562,
+            "drift_corrected_peak_to_peak": 0.05326653866946587,
+            "trough_baseline_slope_per_second": 1.4595044452944777e-05
+          }
+        ]
+      },
+      "lift_coefficient": {
+        "complete_cycle_count": 7,
+        "median_raw": 1.0763026139898768,
+        "median_drift": 1.0762617637005891,
+        "first_two_median_raw": 1.076060008341345,
+        "first_two_median_drift": 1.0759622991599738,
+        "last_to_first_raw_amplitude": 1.0003424010869761,
+        "last_to_first_drift_amplitude": 1.0004757373382616,
+        "cycles": [
+          {
+            "left_trough_time": 56.76000000000563,
+            "peak_time": 59.44000000000653,
+            "right_trough_time": 62.12000000000742,
+            "raw_peak_to_peak": 1.0759931397420213,
+            "drift_corrected_peak_to_peak": 1.0758196133642044,
+            "trough_baseline_slope_per_second": -6.474864843910834e-05
+          },
+          {
+            "left_trough_time": 62.12000000000742,
+            "peak_time": 64.76000000000762,
+            "right_trough_time": 67.44000000000614,
+            "raw_peak_to_peak": 1.0761268769406689,
+            "drift_corrected_peak_to_peak": 1.076104984955743,
+            "trough_baseline_slope_per_second": -8.16865109182458e-06
+          },
+          {
+            "left_trough_time": 67.44000000000614,
+            "peak_time": 70.12000000000465,
+            "right_trough_time": 72.80000000000317,
+            "raw_peak_to_peak": 1.0763026139898768,
+            "drift_corrected_peak_to_peak": 1.0762697816738516,
+            "trough_baseline_slope_per_second": -1.2250864188530733e-05
+          },
+          {
+            "left_trough_time": 72.80000000000317,
+            "peak_time": 75.48000000000168,
+            "right_trough_time": 78.12000000000022,
+            "raw_peak_to_peak": 1.0762875615149754,
+            "drift_corrected_peak_to_peak": 1.0762617637005891,
+            "trough_baseline_slope_per_second": 9.626050144145476e-06
+          },
+          {
+            "left_trough_time": 78.12000000000022,
+            "peak_time": 80.79999999999873,
+            "right_trough_time": 83.47999999999725,
+            "raw_peak_to_peak": 1.0763106383650953,
+            "drift_corrected_peak_to_peak": 1.0762523627914076,
+            "trough_baseline_slope_per_second": -2.1744617047746012e-05
+          },
+          {
+            "left_trough_time": 83.47999999999725,
+            "peak_time": 86.15999999999576,
+            "right_trough_time": 88.7999999999943,
+            "raw_peak_to_peak": 1.0764270305382524,
+            "drift_corrected_peak_to_peak": 1.076388560427254,
+            "trough_baseline_slope_per_second": 1.4354519029197305e-05
+          },
+          {
+            "left_trough_time": 88.7999999999943,
+            "peak_time": 91.47999999999281,
+            "right_trough_time": 94.15999999999133,
+            "raw_peak_to_peak": 1.0763615609626478,
+            "drift_corrected_peak_to_peak": 1.0763314209235157,
+            "trough_baseline_slope_per_second": -1.1246283258210435e-05
+          }
+        ]
+      }
+    }
+  },
+  "coupled_to_reference_amplitude_ratios": {
+    "drag_coefficient": {
+      "raw": 0.6395722973527449,
+      "drift": 0.6396886324427039
+    },
+    "lift_coefficient": {
+      "raw": 0.7856431055036722,
+      "drift": 0.7856284200339634
+    }
+  },
+  "scope": "Independent frozen actual mature force comparison; no relation of research replay clock to identical autonomous physical states is assumed."
+}

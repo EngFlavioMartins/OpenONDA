@@ -1,0 +1,199 @@
+{
+  "schema": "openonda-normal-frequency-boundary-input-controls/1",
+  "status": "prepared endpoint models only; no replay prepared or solver advanced",
+  "prepared_at_utc": "2026-10-06T01:41:23.652135+00:00",
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/model_report.json": "7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/harmonic_coefficients.npz": "bf7d564eddd8b7e47428e62e6355c67c8092666d3525a85766dce5b9235ca614",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5": "926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/component_model_report.json": "f08b68f48cd75932ea09b095a4a7e23a95f5d13c43817af1ea113c9a7399031a",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/actual_mean_reference_normal_oscillation_endpoints.h5": "0eb6c07161b039464ea9c1893847ef3d86d7e24f4ac55a8f597b2a0ec94d1425"
+  },
+  "helper_sha256": "eed72b52dcdf8302693b5b105c832d8ca4a2ee5a0ac817133728f9fc4fb3d1de",
+  "decomposition_helper_sha256": "a146ba8b4188c0cc57ff2a4803200759449c07ef995946100e439ca4d0e4d1aa",
+  "design_helper_sha256": "f5e1440c4f7a8cbcce2ab52e61ef289ec98230034314a3adcd07edf8f85a1eb5",
+  "adapter_source_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+  "original_frequency_hz": {
+    "coupled": 0.1815070887743629,
+    "reference": 0.18733035691621663
+  },
+  "fit_midpoint_clock": {
+    "coupled": 40.0,
+    "reference": 105.99999999998477
+  },
+  "original_global_phase_translation": {
+    "replay_clock_start": 99.99999999998809,
+    "source_clock_start": 36.251508379930236,
+    "source_clock_end": 48.251508379923585,
+    "source_minus_replay_clock": -63.748491620057855,
+    "source_clock_rate": 1.0,
+    "initial_lift_phase_error_radians_modulo_2pi": -2.4492935982947064e-16,
+    "equivalent_source_start_candidates_inside_measured_window": [
+      30.742081686171012,
+      36.251508379930236
+    ],
+    "selection": "Equivalent lift-phase start nearest the measured window midpoint after accounting for replay duration"
+  },
+  "replay_clock_window": [
+    99.99999999998809,
+    111.99999999998144
+  ],
+  "endpoint_models": {
+    "actual_normal_mode_reference_frequency": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/actual_normal_mode_reference_frequency_endpoints.h5",
+      "sha256": "de50fff9d7534225a5def3eea4b98bbc5865152578141736dc672689d8e0aa21",
+      "accepted_endpoint_count": 301
+    },
+    "reference_normal_mode_actual_frequency": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/reference_normal_mode_actual_frequency_endpoints.h5",
+      "sha256": "bbdb6f6e924609b57dcdd373875f2ed670203fdbe5f015f2b13f6223b5c2877f",
+      "accepted_endpoint_count": 301
+    }
+  },
+  "normal_oscillation_models": {
+    "actual_normal_mode_reference_frequency": {
+      "normal_mode_source": "coupled",
+      "imposed_frequency_source": "reference",
+      "original_mode_frequency_hz": 0.1815070887743629,
+      "imposed_normal_frequency_hz": 0.18733035691621663,
+      "oscillator_clock_rate": 1.0320828689456467,
+      "original_source_clock_window": [
+        36.25150837993024,
+        48.25150837992359
+      ],
+      "altered_oscillator_source_clock_window": [
+        36.25150837993024,
+        48.63650280727114
+      ],
+      "measured_source_clock_window": [
+        30.0,
+        50.0
+      ],
+      "initial_fundamental_phase_radians": -4.274939804170014,
+      "harmonic_amplitude_area_weighted_rms": [
+        0.15550252760413688,
+        0.03761068343697204
+      ],
+      "harmonic_amplitude_maximum_change": 0.0,
+      "normal_coefficient_sha256": "384da59ab308ae9a198d5276be98bbd7b3d77d3017fe20fcc0f68a0517752bb1"
+    },
+    "reference_normal_mode_actual_frequency": {
+      "normal_mode_source": "reference",
+      "imposed_frequency_source": "coupled",
+      "original_mode_frequency_hz": 0.18733035691621663,
+      "imposed_normal_frequency_hz": 0.1815070887743629,
+      "oscillator_clock_rate": 0.9689144448464474,
+      "original_source_clock_window": [
+        99.99999999998809,
+        111.99999999998144
+      ],
+      "altered_oscillator_source_clock_window": [
+        99.99999999998809,
+        111.62697333813901
+      ],
+      "measured_source_clock_window": [
+        99.99999999998809,
+        111.99999999998144
+      ],
+      "initial_fundamental_phase_radians": -7.062188076984167,
+      "harmonic_amplitude_area_weighted_rms": [
+        0.15472593040492727,
+        0.041056133029407894
+      ],
+      "harmonic_amplitude_maximum_change": 0.0,
+      "normal_coefficient_sha256": "37cffab6bdd8b630c8db537bd593997e5ea3ee91aec90b635a35f983adc990f0"
+    }
+  },
+  "field_checks": {
+    "actual_normal_mode_reference_frequency": {
+      "finite_fields": true,
+      "first_normal_endpoint_bitwise_equal_to_original_control": true,
+      "first_oscillator_source_clock_bitwise_equal": true,
+      "normal_coefficients_bitwise_unchanged": true,
+      "tangential_gradient_bitwise_unchanged": true,
+      "normal_projection_maximum_difference": 8.881784197001252e-16,
+      "gradient_normal_component_maximum": 1.3877787807814457e-16,
+      "maximum_signed_normal_flux": 5.898059818321144e-16,
+      "actual_normal_dc_trend_maximum_difference": 4.440892098500626e-16,
+      "actual_velocity_tangent_maximum_difference": 1.1102230246251565e-16
+    },
+    "reference_normal_mode_actual_frequency": {
+      "finite_fields": true,
+      "first_normal_endpoint_bitwise_equal_to_original_control": true,
+      "first_oscillator_source_clock_bitwise_equal": true,
+      "normal_coefficients_bitwise_unchanged": true,
+      "tangential_gradient_bitwise_unchanged": true,
+      "normal_projection_maximum_difference": 8.881784197001252e-16,
+      "gradient_normal_component_maximum": 1.3877787807814457e-16,
+      "maximum_signed_normal_flux": 6.140921104957897e-16,
+      "actual_normal_dc_trend_maximum_difference": 2.220446049250313e-16,
+      "actual_velocity_tangent_maximum_difference": 1.1102230246251565e-16
+    }
+  },
+  "normal_difference_from_actual_rms_by_boundary": {
+    "actual_normal_mode_reference_frequency": {
+      "upstream": 0.001220335790941539,
+      "downstream": 0.06408988152213442,
+      "lower": 0.010693844504878838,
+      "upper": 0.010821107618136922,
+      "corners": 0.013492644741106565,
+      "all": 0.03118983155674077
+    },
+    "reference_normal_mode_actual_frequency": {
+      "upstream": 0.0003955895390931786,
+      "downstream": 0.04232883000726545,
+      "lower": 0.01597660635915238,
+      "upper": 0.0162139268348984,
+      "corners": 0.013612559999192947,
+      "all": 0.02323628054058908
+    }
+  },
+  "original_model_reconstruction_maximum_difference": 4.440892098500626e-16,
+  "existing_reference_normal_reconstruction_maximum_difference": 0.0,
+  "scope": "Two missing normal-input controls in a 2x2 comparison of spatial harmonic coefficients and frequency. Both retain actual DC/trend, actual tangential velocity and gradient on their original clocks. Only normal oscillator rate changes; harmonic coefficients and initial normal phase do not change. No amplitude rescaling or solver change.",
+  "limitations": [
+    "The measured VPM field has21 one-second snapshots and a .5Hz Nyquist frequency. Fundamental .1815Hz and second .3630Hz are resolved; higher modes, including the third .5445Hz, are not identifiable without aliasing.",
+    "Residual energy is concentrated at the downstream boundary. The models remove around5%coupled and6%reference Gt fluctuation energy there; this control cannot exclude a causal role for omitted higher modes.",
+    "The actual data originate at30\u201350s; native reference traces and the mapped initialization originate at100\u2013112s. The clock translation is a research control, not a physical-time-identical coupled restart.",
+    "A100s reference interior/BDF state is initialized with a different harmonic boundary input. Initial lift-phase alignment reduces one phase discontinuity but does not make the complete state consistent with the coupled field. Exclude initial settling and compare complete cycles;12s may still be insufficient for a fully equilibrated response.",
+    "One global lift-phase translation preserves the measured drag/lift relative phase, side-to-side phase and frequency differences. It does not enforce the reference's phase relationships.",
+    "This forced-FVM comparison probes measured boundary inputs separately from closed-loop feedback. It does not uniquely isolate particle kernel, transfer, diffusion, tail truncation or a source-state change.",
+    "Changing normal frequency changes its subsequent temporal phase relative to the unchanged tangential inputs. This is deliberate and must not be interpreted as changing all boundary components coherently.",
+    "No force result exists at preparation. Compare complete force cycles after settling; a finite replay cannot establish mature autonomous coupled recovery."
+  ],
+  "preparation_recipe": {
+    "actual_normal_mode_reference_frequency": [
+      "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python",
+      "-m",
+      "tests.support.cylinder.replay_boundary_inputs",
+      "prepare",
+      "--directory",
+      "/tmp/openonda-actual-normal-mode-reference-frequency-20261006",
+      "--source",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/actual_normal_mode_reference_frequency_endpoints.h5",
+      "--source-receipt",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/normal_frequency_model_report.json",
+      "--reference-directory",
+      "/tmp/openonda-cylinder-boundary-study-20261005",
+      "--origin",
+      "actual_normal_mode_reference_frequency"
+    ],
+    "reference_normal_mode_actual_frequency": [
+      "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python",
+      "-m",
+      "tests.support.cylinder.replay_boundary_inputs",
+      "prepare",
+      "--directory",
+      "/tmp/openonda-reference-normal-mode-actual-frequency-20261006",
+      "--source",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/reference_normal_mode_actual_frequency_endpoints.h5",
+      "--source-receipt",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/normal_frequency_model_report.json",
+      "--reference-directory",
+      "/tmp/openonda-cylinder-boundary-study-20261005",
+      "--origin",
+      "reference_normal_mode_actual_frequency"
+    ]
+  }
+}

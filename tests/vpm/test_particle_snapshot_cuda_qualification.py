@@ -85,7 +85,7 @@ def _qualify():
         checks.test_nested_slots_are_independent_and_reused_handles_fail_before_mutation,
         checks.test_grown_slot_releases_old_allocation_and_empty_snapshot_restores_count,
         checks.test_snapshot_preserves_refinement_reference,
-        checks.test_snapshot_cannot_restore_into_another_solver,
+        checks.test_snapshot_cannot_restore_into_another_particle_container,
         checks.test_invalid_snapshot_is_rejected_before_restoring_any_fields,
     )
     completed = []

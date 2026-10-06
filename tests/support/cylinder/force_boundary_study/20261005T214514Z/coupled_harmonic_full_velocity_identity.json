@@ -1,0 +1,21 @@
+{
+  "status": "complete",
+  "started_at": "2026-10-06T00:27:46.146424+00:00",
+  "service": "openonda-coupled-harmonic-full-velocity-20261006.service",
+  "invocation_id": "088cba71d0f34449a50f9fe24a49e6e1",
+  "launcher_pid": 1674342,
+  "log": "/tmp/openonda-coupled-harmonic-full-velocity-20261006.log",
+  "output_directory": "/tmp/openonda-coupled-harmonic-full-velocity-20261006",
+  "boundary_model": "full_velocity",
+  "pressure_condition": "fixedFluxPressure",
+  "resource_limits": {
+    "memory_max_mib": 1500,
+    "swap_max_bytes": 0,
+    "cpu_quota_percent": 100,
+    "runtime_max_seconds": 1800,
+    "threads": 1
+  },
+  "scope": "Native forced-input FVM diagnostic; same original reference100s complete primary/BDF state and numerical settings; .04 endpoint interpolation to .008; production untouched",
+  "accepted_time": 111.99999999998144,
+  "wall_seconds": 526.4407735659988
+}

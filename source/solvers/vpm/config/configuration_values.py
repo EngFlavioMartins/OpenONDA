@@ -26,6 +26,7 @@ def _configuration_value(value: Any) -> Any:
             result["method"] = str(value.method)
         for name in (
             "planar_span",
+            "channel_half_width",
             "spanwise_tolerance",
             "plane_z",
             "z_min",

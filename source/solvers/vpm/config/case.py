@@ -202,7 +202,9 @@ class Numerics:
         object.__setattr__(self, "precision", self.precision.lower())
         if self.precision == "f64" and not getattr(self.induction, "supports_f64", True):
             raise ValueError(f"{type(self.induction).__name__} does not support precision='f64'")
-        if self.precision == "f64" and self.viscous.scheme in {"DVH", "GBD"}:
+        planar_gbd = self.viscous.scheme == "GBD" and hasattr(self.induction, "planar_span")
+        # Planar GBD uses a float64 host grid and retains particle storage dtype.
+        if self.precision == "f64" and self.viscous.scheme in {"DVH", "GBD"} and not planar_gbd:
             raise ValueError(
                 f"viscous scheme {self.viscous.scheme} uses an f32 diffusion grid; "
                 "select precision='f32' or use CS/RWM for a nominal f64 case"

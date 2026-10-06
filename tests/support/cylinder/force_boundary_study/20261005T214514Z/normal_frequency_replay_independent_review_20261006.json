@@ -1,0 +1,140 @@
+{
+  "status": "all input, initialization and completed native finite-state checks passed",
+  "controls": {
+    "actual_normal_mode_reference_frequency": {
+      "all_native_source_hashes_match": true,
+      "input_hashes_match": true,
+      "original_receipt_and_model_hashes_match": true,
+      "complete_native_trace_rows": 1501,
+      "complete_accepted_endpoints": 301,
+      "linear_substeps": 5,
+      "every_interpolated_row_bitwise_equal": true,
+      "interpolation_maximum_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "actual_tangential_gradient_bitwise_unchanged_every_substep": true,
+      "actual_velocity_tangent_maximum_change": 4.440892098500626e-16,
+      "initial_normal_phase_value_bitwise_equal": true,
+      "initial_primary_BDF_and_face_flux_identity": {
+        "velocity": true,
+        "velocity_old": true,
+        "velocity_older": true,
+        "kinematic_pressure": true,
+        "volumetric_face_flux": true,
+        "volumetric_face_flux_old": true,
+        "volumetric_face_flux_older": true
+      },
+      "initial_clock_identity": true,
+      "initial_native_metadata": {
+        "config_hash": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+        "format_version": 10,
+        "kinematic_viscosity": 0.006666666666666667,
+        "mesh_hash": "8bee36542bcfa14bcfbc794b931f9242a82d3ccf2cdbe856dcbf4c29fd360670"
+      },
+      "trace_receipt_sha256": "13e134d1344b4aa03fe5a562fced9ccaf085c2b520b6edb44525daa183cdb4c6",
+      "final": {
+        "accepted_time": 111.99999999998144,
+        "step": 14000,
+        "committed_steps": 14000,
+        "finite_decoded_native_fields": true,
+        "all_1500_diagnostic_clocks_bitwise_exact": true,
+        "all_linear_solves_converged_without_fallback": true,
+        "final_native_hash": "f9a9831febe20a3719252144febfb79e515015d7efb06476bed16c35d40c0f08",
+        "result_report_sha256": "538f5f8e7445bf0dd9cb1089fd7b20e3d78a9cc36f4208179928374a3dd32b54",
+        "wall_seconds": 529.0845554129992,
+        "maximum_field_values": {
+          "velocity": 1.359344497496962,
+          "velocity_old": 1.359344497496962,
+          "velocity_older": 1.3590285590577116,
+          "kinematic_pressure": 0.6730072665964102,
+          "volumetric_face_flux": 0.054371071797339285,
+          "volumetric_face_flux_old": 0.054371071797339285,
+          "volumetric_face_flux_older": 0.054360486202385004
+        },
+        "force_history_records": 300,
+        "force_history_all_fields_finite": true,
+        "force_history_clocks_bitwise_exact": true
+      },
+      "direct_native_boundary_checks": {
+        "initial": {
+          "normal_velocity_maximum_error": 2.220446049250313e-16
+        },
+        "final": {
+          "normal_velocity_maximum_error": 1.1102230246251565e-16,
+          "normal_face_flux_maximum_error": 6.938893903907228e-18
+        }
+      }
+    },
+    "reference_normal_mode_actual_frequency": {
+      "all_native_source_hashes_match": true,
+      "input_hashes_match": true,
+      "original_receipt_and_model_hashes_match": true,
+      "complete_native_trace_rows": 1501,
+      "complete_accepted_endpoints": 301,
+      "linear_substeps": 5,
+      "every_interpolated_row_bitwise_equal": true,
+      "interpolation_maximum_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "actual_tangential_gradient_bitwise_unchanged_every_substep": true,
+      "actual_velocity_tangent_maximum_change": 4.440892098500626e-16,
+      "initial_normal_phase_value_bitwise_equal": true,
+      "initial_primary_BDF_and_face_flux_identity": {
+        "velocity": true,
+        "velocity_old": true,
+        "velocity_older": true,
+        "kinematic_pressure": true,
+        "volumetric_face_flux": true,
+        "volumetric_face_flux_old": true,
+        "volumetric_face_flux_older": true
+      },
+      "initial_clock_identity": true,
+      "initial_native_metadata": {
+        "config_hash": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+        "format_version": 10,
+        "kinematic_viscosity": 0.006666666666666667,
+        "mesh_hash": "8bee36542bcfa14bcfbc794b931f9242a82d3ccf2cdbe856dcbf4c29fd360670"
+      },
+      "trace_receipt_sha256": "c8d9a5bd6307f9bd6478d308b61d673eaa43f68822288894581568b318cf151c",
+      "final": {
+        "accepted_time": 111.99999999998144,
+        "step": 14000,
+        "committed_steps": 14000,
+        "finite_decoded_native_fields": true,
+        "all_1500_diagnostic_clocks_bitwise_exact": true,
+        "all_linear_solves_converged_without_fallback": true,
+        "final_native_hash": "a1b438695b43f3c7099a2d1648bce2ee40bef6bccfb269500248f54c378232c6",
+        "result_report_sha256": "52fecd033fe60b09b20af8678da17af96cb24c5237c09eab1a2f3eb363e026a6",
+        "wall_seconds": 462.892316559999,
+        "maximum_field_values": {
+          "velocity": 1.334987947367719,
+          "velocity_old": 1.334987947367719,
+          "velocity_older": 1.3349206399903077,
+          "kinematic_pressure": 0.6278402036330798,
+          "volumetric_face_flux": 0.05339913545264092,
+          "volumetric_face_flux_old": 0.05339913545264092,
+          "volumetric_face_flux_older": 0.05339531287155369
+        },
+        "force_history_records": 300,
+        "force_history_all_fields_finite": true,
+        "force_history_clocks_bitwise_exact": true
+      },
+      "direct_native_boundary_checks": {
+        "initial": {
+          "normal_velocity_maximum_error": 1.1102230246251565e-16
+        },
+        "final": {
+          "normal_velocity_maximum_error": 2.7755575615628914e-17,
+          "normal_face_flux_maximum_error": 1.0408340855860843e-17
+        }
+      }
+    }
+  },
+  "method": "Independent HDF5, SHA256, explicit linear interpolation, byte-plane/XOR native state decoding; no solver initialized",
+  "paired_initial_native_mesh_configuration_exactly_equal": true,
+  "limitations": "No independent all-substep saved boundary face gradient is available. Exact admitted inputs and unchanged numerical sources establish prescribed waveform identity; final native field/clock checks are separate. Force causality and finite settling remain separate measurements."
+}

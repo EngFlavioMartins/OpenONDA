@@ -1,0 +1,273 @@
+{
+  "schema": "openonda-native-wall-candidate-preparation/1",
+  "captured_at": "2026-10-05T23:03:35.936623+00:00",
+  "window": [
+    48,
+    58
+  ],
+  "restart_time": 46.0,
+  "settling_seconds_excluded": 2,
+  "candidate_directory": "/tmp/openonda-planar-wall-candidate-cycles-20261006",
+  "production_directory": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow",
+  "baseline_directory": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z",
+  "sources": {
+    "baseline_report": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/force_comparison.json",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_force_comparison.json",
+      "sha256": "27180bb256e2768ac7747302758c4a87aa2b97ae03e20da2a17b8c8ab0ef3e96"
+    },
+    "baseline_forces": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/snapshots/coupled_forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_forces_history.csv",
+      "sha256": "77fdbc5be90dce6622297900825a183ce80be301f91c01bd056bb10a88507ce7"
+    },
+    "reference_forces": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/force_baseline_48_58_20261005T224454Z/snapshots/reference_forces_history.csv",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/reference_forces_history.csv",
+      "sha256": "d1ffc08ba43e5ce9c97cf8f84463c2e970691d3258c5995a1bfcbc5fd89b43b8"
+    },
+    "baseline_diagnostics": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/coupler_diagnostics.jsonl",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_coupler_diagnostics.jsonl",
+      "sha256": "f443dc79e6853f44d800ddee6bfb0f5be7536e3e6185fb39f8ae9ba08a6fe71a",
+      "captured_at": "2026-10-05T23:03:35.729670+00:00",
+      "exchange_count": 250,
+      "interval": [
+        48,
+        58
+      ],
+      "selection": "start < accepted time <= end, tolerance 1e-8; complete lines from one read of an appending JSONL"
+    },
+    "baseline_fvm_metadata": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/fvm_metadata.json",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_fvm_metadata.json",
+      "sha256": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+    },
+    "baseline_vpm_metadata": {
+      "source": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/solution/vpm_metadata.json",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/baseline_vpm_metadata.json",
+      "sha256": "d456f77560fb42512127e9cdabc2afd7e7368c73060bedd9a2c43f38f24a1f37"
+    },
+    "candidate_fvm_metadata": {
+      "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/solution/fvm_metadata.json",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_fvm_metadata.json",
+      "sha256": "b84825883fbfdc9c460b271cedf20c20e1542c62e9896fa078ca46d1f893c9a9"
+    },
+    "candidate_vpm_metadata": {
+      "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/solution/vpm_metadata.json",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_vpm_metadata.json",
+      "sha256": "53d1243ce019a7f081a7e54c0a7b36ac1ce4915f41464d44a95c9425b423d43f"
+    },
+    "candidate_inputs": {
+      "source": "/tmp/openonda-planar-wall-candidate-cycles-20261006/inputs/inputs.json",
+      "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/native_wall_comparison_20261005T230335Z/snapshots/candidate_inputs.json",
+      "sha256": "4e85a5aaa7678a69cfb5a9d0a4ccd0c586845e0d238f96287f2041714265e367"
+    }
+  },
+  "execution": {
+    "baseline": {
+      "fvm_cores": 1,
+      "fvm_execution": {
+        "linear_backend": "scipy",
+        "operator_backend": "numba",
+        "output_mode": "synchronous",
+        "parallel_mode": "serial",
+        "type": "ComputeConfig"
+      },
+      "fvm_cell_count": 7741,
+      "vpm_configured_device": "AUTO",
+      "vpm_capacity": 200000,
+      "vpm_precision": "f32",
+      "vpm_induction": {
+        "method": "PLANAR",
+        "stretching_scheme": "DIRECT",
+        "type": "PlanarInduction"
+      }
+    },
+    "candidate": {
+      "fvm_cores": 1,
+      "fvm_execution": {
+        "linear_backend": "scipy",
+        "operator_backend": "numba",
+        "output_mode": "synchronous",
+        "parallel_mode": "serial",
+        "type": "ComputeConfig"
+      },
+      "fvm_cell_count": 7741,
+      "vpm_configured_device": "AUTO",
+      "vpm_capacity": 200000,
+      "vpm_precision": "f32",
+      "vpm_induction": {
+        "method": "PLANAR",
+        "stretching_scheme": "DIRECT",
+        "type": "PlanarInduction"
+      }
+    }
+  },
+  "sampling": {
+    "baseline": {
+      "fvm": [
+        {
+          "type": "ForceSampler",
+          "file_name": "forces_history",
+          "schedule": {
+            "every_n_steps": 5,
+            "every_time": null,
+            "final_only": false
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "phase_near_upper",
+          "schedule": {
+            "every_n_steps": 5,
+            "every_time": null,
+            "final_only": false
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "phase_near_lower",
+          "schedule": {
+            "every_n_steps": 5,
+            "every_time": null,
+            "final_only": false
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "centreline",
+          "schedule": {
+            "every_n_steps": 25,
+            "every_time": null,
+            "final_only": false
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "span_middle",
+          "schedule": {
+            "every_n_steps": 25,
+            "every_time": null,
+            "final_only": false
+          }
+        },
+        {
+          "type": "SurfaceSampler",
+          "file_name": "midspan",
+          "schedule": {
+            "every_n_steps": 50,
+            "every_time": null,
+            "final_only": false
+          }
+        }
+      ],
+      "vpm": [
+        {
+          "type": "LineSampler",
+          "file_name": "vpm_phase_near_upper",
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "vpm_phase_near_lower",
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "vpm_phase_wake_upper",
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "vpm_phase_wake_lower",
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "vpm_transverse_x2",
+          "schedule": {
+            "first_step": null,
+            "interval": 5,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          }
+        },
+        {
+          "type": "LineSampler",
+          "file_name": "vpm_transverse_x4",
+          "schedule": {
+            "first_step": null,
+            "interval": 5,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          }
+        },
+        {
+          "type": "SurfaceSampler",
+          "file_name": "vpm_midspan",
+          "schedule": {
+            "first_step": null,
+            "interval": 10,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          }
+        }
+      ]
+    },
+    "candidate": {
+      "fvm": [
+        {
+          "type": "ForceSampler",
+          "file_name": "forces_history",
+          "schedule": {
+            "every_n_steps": 5,
+            "every_time": null,
+            "final_only": false
+          }
+        }
+      ],
+      "vpm": []
+    }
+  },
+  "scope": "Native isolated candidate versus immutable actual production forces at identical accepted times; no time shift or solver initialization.",
+  "analysis_source": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/compare_native_wall_candidate.py",
+  "analysis_source_sha256": "8e9b24f0e6cc4e310c88a709ebd215885cb53dce524b99208bead8402bf6e71f",
+  "verification": {
+    "frozen_hashes_verified": true,
+    "production_exchange_count": 250,
+    "same_trajectory_strata_cover_exactly_250_rows": true,
+    "identity_timing_ratios_equal_one": true,
+    "stratum_weighted_phase_means_match_total": true,
+    "frozen_complete_cycle_medians_match_previous_baseline": true,
+    "incomplete_trial_refused_before_final_report": true,
+    "ruff_check_passed": true
+  }
+}

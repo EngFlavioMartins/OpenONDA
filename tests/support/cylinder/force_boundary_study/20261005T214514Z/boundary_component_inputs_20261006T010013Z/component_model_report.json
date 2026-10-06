@@ -1,0 +1,170 @@
+{
+  "schema": "openonda-boundary-component-input-models/1",
+  "status": "prepared endpoint models only; no replay prepared or solver advanced",
+  "prepared_at_utc": "2026-10-06T01:00:13.653745+00:00",
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/model_report.json": "7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/harmonic_coefficients.npz": "bf7d564eddd8b7e47428e62e6355c67c8092666d3525a85766dce5b9235ca614",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5": "926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b"
+  },
+  "helper_sha256": "6d12154e2449b926e27e26036a50b27ca7932332b7e6ab5783542f72ef9d6780",
+  "decomposition_helper_sha256": "a146ba8b4188c0cc57ff2a4803200759449c07ef995946100e439ca4d0e4d1aa",
+  "design_helper_sha256": "f5e1440c4f7a8cbcce2ab52e61ef289ec98230034314a3adcd07edf8f85a1eb5",
+  "component_models": {
+    "coupled": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+      "sha256": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b",
+      "accepted_endpoint_count": 301
+    },
+    "reference": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5",
+      "sha256": "926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572",
+      "accepted_endpoint_count": 301
+    }
+  },
+  "component_frequency_hz": {
+    "coupled": 0.1815070887743629,
+    "reference": 0.18733035691621663
+  },
+  "component_fit_midpoint_clock": {
+    "coupled": 40.0,
+    "reference": 105.99999999998477
+  },
+  "component_source_time_windows": {
+    "reference": [
+      99.99999999998809,
+      111.99999999998144
+    ],
+    "coupled": [
+      36.25150837993024,
+      48.25150837992359
+    ]
+  },
+  "replay_clock": [
+    99.99999999998809,
+    111.99999999998144
+  ],
+  "coupled_global_phase_translation": {
+    "replay_clock_start": 99.99999999998809,
+    "source_clock_start": 36.251508379930236,
+    "source_clock_end": 48.251508379923585,
+    "source_minus_replay_clock": -63.748491620057855,
+    "source_clock_rate": 1.0,
+    "initial_lift_phase_error_radians_modulo_2pi": -2.4492935982947064e-16,
+    "equivalent_source_start_candidates_inside_measured_window": [
+      30.742081686171012,
+      36.251508379930236
+    ],
+    "selection": "Equivalent lift-phase start nearest the measured window midpoint after accounting for replay duration"
+  },
+  "model_components": {
+    "actual_mean_reference_normal_oscillation": {
+      "dc_trend_source": "coupled",
+      "oscillation_sources": {
+        "normal_velocity": "reference",
+        "tangential_gradient": "coupled"
+      }
+    },
+    "actual_mean_reference_gradient_oscillation": {
+      "dc_trend_source": "coupled",
+      "oscillation_sources": {
+        "normal_velocity": "coupled",
+        "tangential_gradient": "reference"
+      }
+    }
+  },
+  "endpoint_models": {
+    "actual_mean_reference_normal_oscillation": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/actual_mean_reference_normal_oscillation_endpoints.h5",
+      "sha256": "0eb6c07161b039464ea9c1893847ef3d86d7e24f4ac55a8f597b2a0ec94d1425",
+      "accepted_endpoint_count": 301
+    },
+    "actual_mean_reference_gradient_oscillation": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/actual_mean_reference_gradient_oscillation_endpoints.h5",
+      "sha256": "bb0152ed1cd3bdcc84f6307dc4b45df54b6fc3d0e27b50f09851b9fdda5fd6a8",
+      "accepted_endpoint_count": 301
+    }
+  },
+  "projection_checks": {
+    "actual_mean_reference_normal_oscillation": {
+      "finite_fields": true,
+      "normal_projection_maximum_difference": 6.661338147750939e-16,
+      "gradient_normal_component_maximum": 1.3877787807814457e-16,
+      "maximum_signed_normal_flux": 6.522560269672795e-16,
+      "velocity_tangential_component_change_maximum": 4.440892098500626e-16
+    },
+    "actual_mean_reference_gradient_oscillation": {
+      "finite_fields": true,
+      "normal_projection_maximum_difference": 6.661338147750939e-16,
+      "gradient_normal_component_maximum": 2.0816681711721685e-16,
+      "maximum_signed_normal_flux": 6.557254739192331e-16,
+      "velocity_tangential_component_change_maximum": 4.440892098500626e-16
+    }
+  },
+  "difference_from_actual_harmonic_inputs": {
+    "actual_mean_reference_normal_oscillation": {
+      "velocity": {
+        "upstream": 0.001036994117229018,
+        "downstream": 0.0996029518645479,
+        "lower": 0.024160420637640446,
+        "upper": 0.024472564803277055,
+        "corners": 0.025252491168587597,
+        "all": 0.050223489461270615
+      },
+      "normal_velocity": {
+        "upstream": 0.001036994117229018,
+        "downstream": 0.0996029518645479,
+        "lower": 0.024160420637640446,
+        "upper": 0.024472564803277055,
+        "corners": 0.025252491168587594,
+        "all": 0.050223489461270615
+      },
+      "tangential_gradient": {
+        "upstream": 8.37490701650302e-18,
+        "downstream": 6.205402074548669e-17,
+        "lower": 1.125634011120822e-17,
+        "upper": 1.0919613317261421e-17,
+        "corners": 1.1002726957706588e-17,
+        "all": 3.056857397266594e-17
+      }
+    },
+    "actual_mean_reference_gradient_oscillation": {
+      "velocity": {
+        "upstream": 7.245185961458762e-17,
+        "downstream": 1.0427831589844483e-16,
+        "lower": 1.3454466794056744e-16,
+        "upper": 1.3436274735697888e-16,
+        "corners": 9.149561020328823e-17,
+        "all": 1.1648143208376187e-16
+      },
+      "normal_velocity": {
+        "upstream": 7.199572887328677e-17,
+        "downstream": 9.630821061630416e-17,
+        "lower": 1.2242456333768007e-17,
+        "upper": 1.2057800305683418e-17,
+        "corners": 5.90649818123684e-17,
+        "all": 5.747833584382071e-17
+      },
+      "tangential_gradient": {
+        "upstream": 0.0016161539071052364,
+        "downstream": 0.2420199130872587,
+        "lower": 0.024412032931669693,
+        "upper": 0.024327852758160354,
+        "corners": 0.029982811390720433,
+        "all": 0.11519366089089064
+      }
+    }
+  },
+  "component_reconstruction_maximum_difference": 4.440892098500626e-16,
+  "scope": "Only one oscillatory mixed-boundary component changes per model. Actual DC/trend coefficients remain unchanged; this does not claim the window average is unchanged when frequencies differ. Actual velocity tangent remains unchanged. No further phase alignment, scaling or native algorithm change.",
+  "interpretation_gate": "Reference harmonic forcing must preserve reference force response, and actual harmonic forcing must reproduce the measured deficit. Finite settling and complete force-cycle counts remain required. No component force result exists yet.",
+  "limitations": [
+    "The measured VPM field has21 one-second snapshots and a .5Hz Nyquist frequency. Fundamental .1815Hz and second .3630Hz are resolved; higher modes, including the third .5445Hz, are not identifiable without aliasing.",
+    "Residual energy is concentrated at the downstream boundary. The models remove around5%coupled and6%reference Gt fluctuation energy there; this control cannot exclude a causal role for omitted higher modes.",
+    "The actual data originate at30\u201350s; native reference traces and the mapped initialization originate at100\u2013112s. The clock translation is a research control, not a physical-time-identical coupled restart.",
+    "A100s reference interior/BDF state is initialized with a different harmonic boundary input. Initial lift-phase alignment reduces one phase discontinuity but does not make the complete state consistent with the coupled field. Exclude initial settling and compare complete cycles;12s may still be insufficient for a fully equilibrated response.",
+    "One global lift-phase translation preserves the measured drag/lift relative phase, side-to-side phase and frequency differences. It does not enforce the reference's phase relationships.",
+    "This forced-FVM comparison probes measured boundary inputs separately from closed-loop feedback. It does not uniquely isolate particle kernel, transfer, diffusion, tail truncation or a source-state change."
+  ]
+}

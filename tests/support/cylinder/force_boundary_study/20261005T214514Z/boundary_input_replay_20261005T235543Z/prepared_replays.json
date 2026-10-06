@@ -1,0 +1,14 @@
+{
+  "coupled": {
+    "directory": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_replay",
+    "boundary_trace_sha256": "4ee7487b81c2d51a9203da2b760a64499a5e2544f9ef4c531e8da672b0f88079",
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+    "status": "prepared; no solver replay performed"
+  },
+  "reference": {
+    "directory": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_replay",
+    "boundary_trace_sha256": "8edd7a102364f05e9e30cc84ead7244a632b8f0c50aef5b492a403e0f11fd678",
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+    "status": "prepared; no solver replay performed"
+  }
+}

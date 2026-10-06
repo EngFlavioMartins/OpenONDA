@@ -1,0 +1,229 @@
+{
+  "scope": "Frozen FVM wall targets before Gaussian representation correction, blending, moment correction and pruning; adding raw target differences to the recorded VPM field is a local diagnostic, not a native renewal or evolved cylinder force result",
+  "native_committed_time": 46.00000000000204,
+  "particle_spacing": 0.04,
+  "inputs_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/wall_trace_fields.npz": "a82366cb4de2be7a0c421cb31d667b66f0cd9ecea8205a95cf4afa0ae8b210ba"
+  },
+  "native_wall_revision": "8954c6414900ac54ef6d774ee1af045b",
+  "lattice_anchor": [
+    -1.581431638466319,
+    -1.5814329494196484,
+    -2.5410988417628992e-17
+  ],
+  "circulation_rectangles": {
+    "whole_wall_rectangle": {
+      "untapered": {
+        "independent_contour_circulation": 0.18496361309437614,
+        "complete_cell_circulation": 0.18496361309437728,
+        "complete_cell_contour_error": 1.1379786002407855e-15,
+        "exterior_nodes_only_circulation": 0.18454014264480384,
+        "exterior_nodes_only_contour_error": -0.0004234704495723052
+      },
+      "tapered": {
+        "independent_contour_circulation": 0.18496361309437614,
+        "complete_cell_circulation": 0.18496361309437734,
+        "complete_cell_contour_error": 1.1934897514720433e-15,
+        "exterior_nodes_only_circulation": 0.18694028315799832,
+        "exterior_nodes_only_contour_error": 0.001976670063622177
+      }
+    },
+    "upper_wall_rectangle": {
+      "untapered": {
+        "independent_contour_circulation": -1.491406109638143,
+        "complete_cell_circulation": -1.4914061096381428,
+        "complete_cell_contour_error": 2.220446049250313e-16,
+        "exterior_nodes_only_circulation": -1.426471920828213,
+        "exterior_nodes_only_contour_error": 0.06493418880992996
+      },
+      "tapered": {
+        "independent_contour_circulation": -1.4909546311991198,
+        "complete_cell_circulation": -1.49095463119912,
+        "complete_cell_contour_error": -2.220446049250313e-16,
+        "exterior_nodes_only_circulation": -1.4764263762007568,
+        "exterior_nodes_only_contour_error": 0.014528254998362966
+      }
+    },
+    "lower_wall_rectangle": {
+      "untapered": {
+        "independent_contour_circulation": 1.6763697227325192,
+        "complete_cell_circulation": 1.6763697227325203,
+        "complete_cell_contour_error": 1.1102230246251565e-15,
+        "exterior_nodes_only_circulation": 1.6110120634730167,
+        "exterior_nodes_only_contour_error": -0.06535765925950243
+      },
+      "tapered": {
+        "independent_contour_circulation": 1.675918244293496,
+        "complete_cell_circulation": 1.6759182442934974,
+        "complete_cell_contour_error": 1.5543122344752192e-15,
+        "exterior_nodes_only_circulation": 1.663366659358755,
+        "exterior_nodes_only_contour_error": -0.012551584934740845
+      }
+    }
+  },
+  "changes_from_native_tapered_exterior_target": {
+    "tapered_exterior_nodes_only": {
+      "changed_nodes": 0,
+      "absolute_strength_difference": 0.0,
+      "circulation_difference": 0.0,
+      "linear_impulse_difference": [
+        0.0,
+        -0.0,
+        0.0
+      ],
+      "cylinder": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.0,
+          "velocity_maximum": 0.0,
+          "normal_velocity_rms": 0.0,
+          "tangential_velocity_rms": 0.0
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 0.10032859558159941,
+          "velocity_maximum": 0.17852098298219388,
+          "normal_velocity_rms": 0.05116051401033217,
+          "tangential_velocity_rms": 0.08630428087629682
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.0
+      },
+      "numericalBoundary": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.0,
+          "velocity_maximum": 0.0,
+          "normal_velocity_rms": 0.0,
+          "tangential_velocity_rms": 0.0
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 1.0226474561535623,
+          "velocity_maximum": 1.1876772322541613,
+          "normal_velocity_rms": 0.5825978909682639,
+          "tangential_velocity_rms": 0.8404686294066444
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.0
+      }
+    },
+    "tapered_complete_cell_circulation": {
+      "changed_nodes": 30,
+      "absolute_strength_difference": 0.028724754306698685,
+      "circulation_difference": -0.0019766700636209664,
+      "linear_impulse_difference": [
+        -0.005210711476962927,
+        0.000744658815813237,
+        0.0
+      ],
+      "cylinder": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.007224911793762247,
+          "velocity_maximum": 0.017659346378349178,
+          "normal_velocity_rms": 0.007199507672519088,
+          "tangential_velocity_rms": 0.0006053426310640829
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 0.10366178649141079,
+          "velocity_maximum": 0.17974531660601678,
+          "normal_velocity_rms": 0.05673128090228466,
+          "tangential_velocity_rms": 0.086760173730675
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.1838346048614072
+      },
+      "numericalBoundary": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.0005121822741333484,
+          "velocity_maximum": 0.0009167667411821162,
+          "normal_velocity_rms": 0.0003526251242039851,
+          "tangential_velocity_rms": 0.0003714649427826703
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 1.0227309622411578,
+          "velocity_maximum": 1.1880456792457035,
+          "normal_velocity_rms": 0.5824448993394181,
+          "tangential_velocity_rms": 0.8406762518117302
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.00041795727483274277
+      }
+    },
+    "untapered_exterior_nodes_only": {
+      "changed_nodes": 126,
+      "absolute_strength_difference": 0.34369136235598435,
+      "circulation_difference": -0.0024001405131945435,
+      "linear_impulse_difference": [
+        0.0208093710374849,
+        -0.0021232088350660477,
+        0.0
+      ],
+      "cylinder": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.037751302733563676,
+          "velocity_maximum": 0.06517851320156706,
+          "normal_velocity_rms": 0.0251569274357099,
+          "tangential_velocity_rms": 0.028147643952480258
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 0.1181179012633756,
+          "velocity_maximum": 0.21615034721952697,
+          "normal_velocity_rms": 0.030896858516024736,
+          "tangential_velocity_rms": 0.11400536273660682
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.2913850270592937
+      },
+      "numericalBoundary": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.002038197997618196,
+          "velocity_maximum": 0.003739094915027251,
+          "normal_velocity_rms": 0.0014318864061985761,
+          "tangential_velocity_rms": 0.0014505007401716652
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 1.0224162941887127,
+          "velocity_maximum": 1.1873151309667833,
+          "normal_velocity_rms": 0.5832619527944579,
+          "tangential_velocity_rms": 0.8397264870450234
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.001794404405443422
+      }
+    },
+    "untapered_complete_cell_circulation": {
+      "changed_nodes": 156,
+      "absolute_strength_difference": 0.4846218321081554,
+      "circulation_difference": -0.0019766700636210154,
+      "linear_impulse_difference": [
+        -0.002490467373860838,
+        0.0006811769404902558,
+        0.0
+      ],
+      "cylinder": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.03344538644989533,
+          "velocity_maximum": 0.06444354543287706,
+          "normal_velocity_rms": 0.009179933861345514,
+          "tangential_velocity_rms": 0.0321608875667971
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 0.1315802391195643,
+          "velocity_maximum": 0.22675235754383774,
+          "normal_velocity_rms": 0.05813517669938753,
+          "tangential_velocity_rms": 0.11804092746540373
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.809671112979957
+      },
+      "numericalBoundary": {
+        "raw_target_induced_velocity_change": {
+          "velocity_rms": 0.0002765181130302827,
+          "velocity_maximum": 0.0006150681274471068,
+          "normal_velocity_rms": 0.00017815802685333201,
+          "tangential_velocity_rms": 0.0002114757298168175
+        },
+        "existing_particle_velocity_plus_raw_target_change": {
+          "velocity_rms": 1.0227045579880913,
+          "velocity_maximum": 1.188041295743464,
+          "normal_velocity_rms": 0.582537392087829,
+          "tangential_velocity_rms": 0.8405800376817953
+        },
+        "raw_target_tangential_normal_gradient_change_rms": 0.00019649650672638123
+      }
+    }
+  }
+}

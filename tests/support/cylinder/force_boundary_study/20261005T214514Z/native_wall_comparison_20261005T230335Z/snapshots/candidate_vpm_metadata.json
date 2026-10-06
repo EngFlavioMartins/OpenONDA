@@ -1,0 +1,219 @@
+{
+  "case_name": "coupled_cylinder_flow",
+  "configuration": {
+    "backup": {
+      "directory": "solution",
+      "interval_steps": 0,
+      "log_directory": "solution"
+    },
+    "initial_conditions": [],
+    "initial_weak_particle_percent": 0.0,
+    "numerics": {
+      "axisymmetric_no_swirl_axis": null,
+      "compute_device": "AUTO",
+      "cutoff_radius_factor": 100,
+      "debug_mode": false,
+      "diagnostics": {
+        "detailed_timing": false,
+        "type": "DiagnosticsConfig",
+        "validate_stages": false
+      },
+      "domain_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.5,
+        0.5
+      ],
+      "freestream_velocity": [
+        1.0,
+        0.1,
+        0.0
+      ],
+      "induction": {
+        "method": "PLANAR",
+        "stretching_scheme": "DIRECT",
+        "type": "PlanarInduction"
+      },
+      "integrator": {
+        "a": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            0.0
+          ]
+        ],
+        "b": [
+          0.5,
+          0.5
+        ],
+        "c": [
+          0.0,
+          1.0
+        ],
+        "name": "RK2",
+        "order": 2,
+        "type": "RK2"
+      },
+      "max_n_particles": 200000,
+      "particle_kernel": "GAUSSIAN",
+      "precision": "f32",
+      "random_seed": 42,
+      "stabilization": {
+        "divergence_relaxation": {
+          "angular_impulse_reference_scale": null,
+          "angular_impulse_reference_tolerance": 0.01,
+          "grid_spacing": null,
+          "interval_steps": 0,
+          "linear_impulse_reference_scale": null,
+          "linear_impulse_reference_tolerance": 0.01,
+          "max_correction_norm": 0.02,
+          "max_iterations": 30,
+          "max_projection_sweeps": 3,
+          "max_residual_ratio": 0.9,
+          "regularization": 0.1,
+          "solver_relative_tolerance": 1e-05,
+          "spectral_convergence_fraction": 0.1,
+          "start_step": 0,
+          "total_enstrophy_tolerance": 0.0001,
+          "total_helicity_tolerance": 0.0001,
+          "total_kinetic_energy_tolerance": 1e-06,
+          "type": "DivergenceRelaxationConfig",
+          "variation_tolerance": 0.001,
+          "vortex_strength_reference_scale": null,
+          "vortex_strength_reference_tolerance": 0.001
+        },
+        "filament_refinement": {
+          "interval_steps": 0,
+          "max_absolute_vortex_strength": null,
+          "max_vortex_strength_factor": 2.0,
+          "offset_fraction": 0.25,
+          "type": "FilamentRefinementConfig"
+        },
+        "max_vortex_strength_error": 1e-05,
+        "max_vortex_strength_growth": 0.001,
+        "max_vorticity_growth": 0.05,
+        "pedrizzetti_relaxation_end_step": null,
+        "pedrizzetti_relaxation_factor": 0.0,
+        "pedrizzetti_relaxation_interval_steps": 1,
+        "pedrizzetti_relaxation_preserve_moments": false,
+        "pedrizzetti_relaxation_preserve_vortex_strength": true,
+        "pedrizzetti_relaxation_start_step": 0,
+        "regularization_core_radius": null,
+        "regularization_core_radius_trigger": null,
+        "regularization_divergence_trigger": 0.04,
+        "regularization_grid_spacing": null,
+        "regularization_interval_steps": 0,
+        "regularization_misalignment_trigger": 20.0,
+        "regularization_preserve_groups": false,
+        "regularization_projection_max_correction": 0.2,
+        "regularization_projection_trigger": 0.08,
+        "regularization_solenoidal_remesh": false,
+        "regularization_start_step": 0,
+        "regularization_tail_budget": 0.003,
+        "regularization_total_enstrophy_dissipation_limit": 0.15,
+        "regularization_total_kinetic_energy_dissipation_limit": 0.15,
+        "regularization_transfer_only": false,
+        "remove_particles_by_bounds": [
+          -5.0,
+          15.0,
+          -5.0,
+          5.0,
+          -0.5,
+          0.5
+        ],
+        "selective_eddy_viscosity_coefficient": 0.0,
+        "selective_eddy_viscosity_start_step": 0,
+        "type": "StabilizationConfig"
+      },
+      "state_limits": {
+        "divergence": {
+          "maximum": null,
+          "type": "DivergenceLimit"
+        },
+        "finite_state": {
+          "enabled": true,
+          "type": "FiniteStateCheck"
+        },
+        "growth": {
+          "maximum_particle_strength_growth": null,
+          "maximum_vorticity_growth": null,
+          "type": "GrowthLimit"
+        },
+        "lagrangian_cfl": {
+          "maximum": 1.0,
+          "type": "LagrangianCFLLimit"
+        },
+        "maximum_particle_strength": {
+          "maximum": null,
+          "type": "ParticleStrengthLimit"
+        },
+        "misalignment": {
+          "maximum_degrees": null,
+          "type": "MisalignmentLimit"
+        },
+        "type": "ParticleStateLimits"
+      },
+      "time_step_size": 0.04,
+      "turbulence": {
+        "filter_width": null,
+        "flow_model": "INVISCID",
+        "model": "INVISCID",
+        "smagorinsky_coefficient": 0.2,
+        "subgrid_dissipation_coefficient": 1.048,
+        "type": "TurbulenceConfig"
+      },
+      "type": "Numerics",
+      "verbose": true,
+      "viscous": {
+        "core_radius_ratio": 1.0,
+        "dvh_domain_padding": 3.0,
+        "dvh_grid_spacing": null,
+        "dvh_support_radius_ratio": 4,
+        "dvh_threshold": 0.01,
+        "dvh_threshold_mode": "budget",
+        "gbd_domain_padding": 5.0,
+        "gbd_grid_spacing": 0.04,
+        "gbd_remeshing_kernel": "M4_PRIME",
+        "gbd_threshold": 1.6000000000000003e-05,
+        "gbd_threshold_mode": "absolute",
+        "kinematic_viscosity": 0.006666666666666667,
+        "particle_spacing": 0.04,
+        "scheme": "GBD",
+        "type": "ViscousConfig"
+      },
+      "vlm": null,
+      "write_precision": "f32"
+    },
+    "run": {
+      "final_backup": true,
+      "initial_samples": true,
+      "runtime_compute_device": null,
+      "state_limit_action": "RAISE",
+      "steps": 2500,
+      "wall_time_limit_seconds": null
+    },
+    "samplers": {
+      "directory": null,
+      "items": []
+    }
+  },
+  "run_status": {
+    "status": "created"
+  },
+  "schema_version": 2,
+  "solver": "VPM",
+  "state": {
+    "initial_n_particles_total": 0,
+    "initial_step": 0,
+    "initial_time": 0.0,
+    "n_particles_total": 0,
+    "requested_steps": 2500,
+    "step": 0,
+    "time": 0.0
+  }
+}

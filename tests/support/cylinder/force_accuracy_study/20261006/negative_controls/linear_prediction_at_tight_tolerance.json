@@ -1,0 +1,13 @@
+{
+  "scope": "Predictor performance control; no settled amplitude claim. No native solver predictor changes retained.",
+  "accepted_exchanges": 118,
+  "accepted_predicted_seeds": 0,
+  "mean_sweeps": 6.194915254237288,
+  "maximum_force_difference_to_ordinary_predictor": {
+    "drag_coefficient": 0.0,
+    "lift_coefficient": 0.0
+  },
+  "verified_native_checkpoint_time_s": 42.4,
+  "force_snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_accuracy_study/20261006/negative_controls/linear_prediction_at_tight_tolerance.csv",
+  "force_sha256": "99a6a2738f1bb041d61e12c38677a7a3cc56c7a82ec6b60318451321370d401b"
+}

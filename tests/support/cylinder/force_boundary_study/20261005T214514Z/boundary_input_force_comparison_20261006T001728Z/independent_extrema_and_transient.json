@@ -1,0 +1,217 @@
+{
+  "source_comparison_sha256": "1d91207bfe0d04d3b3d78ee6a5f4a361f46705d2ce7e3005b7b03f9b6936f710",
+  "maximum_independent_extrema_difference": 2.220446049250313e-16,
+  "cycles": {
+    "reference_flow": {
+      "drag_coefficient": [
+        {
+          "interval": [
+            103.75999999998601,
+            106.4799999999845
+          ],
+          "peak_time": 105.11999999998525,
+          "raw_peak_to_peak": 0.053611837491057246,
+          "drift_corrected_peak_to_peak": 0.05353931341534501,
+          "linear_trough_baseline_slope_per_second": -5.332652625894242e-05,
+          "minimum": 1.3528221722223848,
+          "maximum": 1.406434009713442
+        },
+        {
+          "interval": [
+            106.4799999999845,
+            109.15999999998301
+          ],
+          "peak_time": 107.79999999998377,
+          "raw_peak_to_peak": 0.053802750840694635,
+          "drift_corrected_peak_to_peak": 0.05369944113834468,
+          "linear_trough_baseline_slope_per_second": 7.826492602290992e-05,
+          "minimum": 1.3528221722223848,
+          "maximum": 1.4066249230630794
+        },
+        {
+          "interval": [
+            109.15999999998301,
+            111.83999999998153
+          ],
+          "peak_time": 110.4399999999823,
+          "raw_peak_to_peak": 0.05370134296400941,
+          "drift_corrected_peak_to_peak": 0.05369984507372805,
+          "linear_trough_baseline_slope_per_second": 1.1702267823097555e-06,
+          "minimum": 1.353031922224126,
+          "maximum": 1.4067332651881355
+        }
+      ],
+      "lift_coefficient": [
+        {
+          "interval": [
+            104.83999999998541,
+            110.19999999998244
+          ],
+          "peak_time": 107.51999999998392,
+          "raw_peak_to_peak": 1.078737058977826,
+          "drift_corrected_peak_to_peak": 1.0784035154933043,
+          "linear_trough_baseline_slope_per_second": -0.00012445652407528586,
+          "minimum": -0.5396013972012956,
+          "maximum": 0.5391356617765303
+        }
+      ]
+    },
+    "exact_mixed": {
+      "drag_coefficient": [
+        {
+          "interval": [
+            103.83999999998596,
+            106.4799999999845
+          ],
+          "peak_time": 105.07999999998528,
+          "raw_peak_to_peak": 0.05240047781202639,
+          "drift_corrected_peak_to_peak": 0.052288535468835606,
+          "linear_trough_baseline_slope_per_second": 9.02760832185228e-05,
+          "minimum": 1.35475447220316,
+          "maximum": 1.4071549500151863
+        },
+        {
+          "interval": [
+            106.4799999999845,
+            109.07999999998306
+          ],
+          "peak_time": 107.71999999998381,
+          "raw_peak_to_peak": 0.05252926028339422,
+          "drift_corrected_peak_to_peak": 0.052221346869727236,
+          "linear_trough_baseline_slope_per_second": -0.00022640692181398527,
+          "minimum": 1.3544041430661407,
+          "maximum": 1.4069334033495349
+        },
+        {
+          "interval": [
+            109.07999999998306,
+            111.75999999998157
+          ],
+          "peak_time": 110.39999999998233,
+          "raw_peak_to_peak": 0.0521089057194537,
+          "drift_corrected_peak_to_peak": 0.05197613166227266,
+          "linear_trough_baseline_slope_per_second": 0.00010058640695536386,
+          "minimum": 1.3544041430661407,
+          "maximum": 1.4065130487855944
+        }
+      ],
+      "lift_coefficient": [
+        {
+          "interval": [
+            104.79999999998543,
+            110.11999999998248
+          ],
+          "peak_time": 107.43999999998397,
+          "raw_peak_to_peak": 1.057401057894322,
+          "drift_corrected_peak_to_peak": 1.0543637584295529,
+          "linear_trough_baseline_slope_per_second": 0.0011504922215040566,
+          "minimum": -0.5303460180139639,
+          "maximum": 0.5270550398803582
+        }
+      ]
+    },
+    "reference_harmonic": {
+      "drag_coefficient": [
+        {
+          "interval": [
+            103.75999999998601,
+            106.43999999998452
+          ],
+          "peak_time": 105.07999999998528,
+          "raw_peak_to_peak": 0.052538972575283394,
+          "drift_corrected_peak_to_peak": 0.052410545096874595,
+          "linear_trough_baseline_slope_per_second": 9.729354424930733e-05,
+          "minimum": 1.354266450692364,
+          "maximum": 1.4068054232676475
+        },
+        {
+          "interval": [
+            106.43999999998452,
+            109.07999999998306
+          ],
+          "peak_time": 107.75999999998379,
+          "raw_peak_to_peak": 0.052569608209745544,
+          "drift_corrected_peak_to_peak": 0.05227297689329791,
+          "linear_trough_baseline_slope_per_second": -0.0002247206942786378,
+          "minimum": 1.3539339347580568,
+          "maximum": 1.4065035429678023
+        },
+        {
+          "interval": [
+            109.07999999998306,
+            111.75999999998157
+          ],
+          "peak_time": 110.39999999998233,
+          "raw_peak_to_peak": 0.05227838005160845,
+          "drift_corrected_peak_to_peak": 0.052123960508131395,
+          "linear_trough_baseline_slope_per_second": 0.0001169845026341293,
+          "minimum": 1.3539339347580568,
+          "maximum": 1.4062123148096652
+        }
+      ],
+      "lift_coefficient": [
+        {
+          "interval": [
+            104.79999999998543,
+            110.11999999998248
+          ],
+          "peak_time": 107.43999999998397,
+          "raw_peak_to_peak": 1.0728158009194888,
+          "drift_corrected_peak_to_peak": 1.0703314513161009,
+          "linear_trough_baseline_slope_per_second": 0.00094104151643534,
+          "minimum": -0.5373352713266996,
+          "maximum": 0.5354805295927894
+        }
+      ]
+    },
+    "coupled_harmonic": {
+      "drag_coefficient": [
+        {
+          "interval": [
+            103.99999999998587,
+            106.79999999998432
+          ],
+          "peak_time": 105.35999999998512,
+          "raw_peak_to_peak": 0.04116870229599123,
+          "drift_corrected_peak_to_peak": 0.03990197641832016,
+          "linear_trough_baseline_slope_per_second": -0.0008796707483830964,
+          "minimum": 1.273179628169193,
+          "maximum": 1.3143483304651842
+        },
+        {
+          "interval": [
+            106.79999999998432,
+            109.5599999999828
+          ],
+          "peak_time": 108.19999999998355,
+          "raw_peak_to_peak": 0.03752593896683942,
+          "drift_corrected_peak_to_peak": 0.0372543459246224,
+          "linear_trough_baseline_slope_per_second": 0.0001939950301551003,
+          "minimum": 1.273179628169193,
+          "maximum": 1.3107055671360324
+        }
+      ],
+      "lift_coefficient": [
+        {
+          "interval": [
+            104.87999999998539,
+            110.4399999999823
+          ],
+          "peak_time": 107.63999999998386,
+          "raw_peak_to_peak": 0.9701755112287204,
+          "drift_corrected_peak_to_peak": 0.9543684112849413,
+          "linear_trough_baseline_slope_per_second": 0.005727210124560801,
+          "minimum": -0.4977150651748174,
+          "maximum": 0.47246044605390297
+        }
+      ]
+    }
+  },
+  "coupled_harmonic_transient": {
+    "raw_last_to_first": 0.9115161973539662,
+    "drift_last_to_first": 0.9336466327897944,
+    "complete_drag_cycles": 2,
+    "complete_lift_cycles": 1,
+    "interpretation": "The actual-input model decreases drag amplitude over its two complete postsettling cycles. One complete lift cycle cannot establish a lift-amplitude trend or settled saturation. It demonstrates material input dependence but does not yet reproduce the full mature production deficit."
+  }
+}

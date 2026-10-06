@@ -1,0 +1,29 @@
+{
+  "created_utc": "2026-10-06T07:57:47.707071+00:00",
+  "comparison_new_solver_interval_s": [
+    2,
+    3
+  ],
+  "known_original_physical_interval_s": [
+    18,
+    19
+  ],
+  "source_physical_age_s": 16,
+  "new_clock_s": 0,
+  "scope": "New native initial-value problems from simultaneous saved fields; no checkpoint clocks or metadata were altered. Tolerance relaxation is a screening control; final force verification remains strict.",
+  "source_sha256": {
+    "/tmp/openonda-force-precut-baseline16-20261006/samples/forces_history.csv": "f753e3d80594296124c4eff4f776ec8a91dd13f3184edb1511488b43a49d3def",
+    "/tmp/openonda-force-precut-tolerance0001-20261006/samples/forces_history.csv": "8bd33d7665734044c33210babdce1ede51946f7a09920421d84ef180dd204627",
+    "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/samples/forces_history.csv": "b7f6692ef014cc06e1c5bae3cefba899549e9e422fb20daf0dccfe1989f38bc1"
+  },
+  "maximum_absolute_force_errors": {
+    "drag_coefficient": {
+      "initial_conditions": 0.0001289684274485836,
+      "screening_interface_tolerance": 0.0010608601162120923
+    },
+    "lift_coefficient": {
+      "initial_conditions": 0.00023886242919285428,
+      "screening_interface_tolerance": 0.003591668979909632
+    }
+  }
+}

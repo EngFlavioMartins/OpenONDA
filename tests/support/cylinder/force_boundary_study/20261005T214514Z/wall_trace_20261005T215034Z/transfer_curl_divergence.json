@@ -1,0 +1,521 @@
+{
+  "time": 46.0,
+  "step": 1150,
+  "particles": 22152,
+  "particle_spacing": 0.04,
+  "input_sha256": {
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048"
+  },
+  "interpretation": "Accepted post-evolution, post-renewal state; spatial curl and divergence errors do not isolate their evolved force effect. Compatible divergence uses the same half-cell collocated-velocity samples as transferred compatible curl. Native accepted face-flux divergence is computed independently.",
+  "uniform_lattice": {
+    "fluid_transfer_region": {
+      "probe_count": 4596,
+      "untapered": {
+        "fvm_curl": {
+          "weighted_mean": -0.14721328559969185,
+          "weighted_rms": 2.3450806501746397,
+          "maximum_absolute": 23.379153121285704
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -0.14772175413336336,
+          "weighted_rms": 2.3624940433049995,
+          "maximum_absolute": 19.719549046039983
+        },
+        "curl_error": {
+          "weighted_mean": -0.0005084685336714895,
+          "weighted_rms": 0.38161669048536967,
+          "maximum_absolute": 7.4313569495815575
+        },
+        "relative_curl_l2_error": 0.16273073186500023,
+        "best_amplitude_ratio": 0.9942124220876597,
+        "curl_rms_ratio": 1.0074254986194453,
+        "compatible_divergence": {
+          "weighted_mean": -0.0003842164755198728,
+          "weighted_rms": 0.06913703799603481,
+          "maximum_absolute": 1.109561698694792
+        }
+      },
+      "tapered": {
+        "fvm_curl": {
+          "weighted_mean": -0.14688689573442934,
+          "weighted_rms": 2.4473505932826245,
+          "maximum_absolute": 26.19034549151342
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -0.14772175413336336,
+          "weighted_rms": 2.3624940433049995,
+          "maximum_absolute": 19.719549046039983
+        },
+        "curl_error": {
+          "weighted_mean": -0.0008348583989340137,
+          "weighted_rms": 0.34024115214900447,
+          "maximum_absolute": 6.5851087067886525
+        },
+        "relative_curl_l2_error": 0.13902427918700438,
+        "best_amplitude_ratio": 0.9562644057885056,
+        "curl_rms_ratio": 0.9653271786189787,
+        "compatible_divergence": {
+          "weighted_mean": -5.9000243385009775e-05,
+          "weighted_rms": 0.08544601631209918,
+          "maximum_absolute": 1.7156726431539298
+        }
+      }
+    },
+    "wall_distance_below_0.10": {
+      "probe_count": 224,
+      "untapered": {
+        "fvm_curl": {
+          "weighted_mean": 0.18648709280204173,
+          "weighted_rms": 7.733080398823006,
+          "maximum_absolute": 23.379153121285704
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": 0.18165240021986623,
+          "weighted_rms": 7.841694750837828,
+          "maximum_absolute": 19.719549046039983
+        },
+        "curl_error": {
+          "weighted_mean": -0.0048346925821752635,
+          "weighted_rms": 1.72011500442262,
+          "maximum_absolute": 7.4313569495815575
+        },
+        "relative_curl_l2_error": 0.2224359395881137,
+        "best_amplitude_ratio": 0.9894051819794114,
+        "curl_rms_ratio": 1.0140454186964556,
+        "compatible_divergence": {
+          "weighted_mean": 0.0013249034603303822,
+          "weighted_rms": 0.3059891551981332,
+          "maximum_absolute": 1.109561698694792
+        }
+      },
+      "tapered": {
+        "fvm_curl": {
+          "weighted_mean": 0.19318391343037453,
+          "weighted_rms": 8.358036783539832,
+          "maximum_absolute": 26.19034549151342
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": 0.18165240021986623,
+          "weighted_rms": 7.841694750837828,
+          "maximum_absolute": 19.719549046039983
+        },
+        "curl_error": {
+          "weighted_mean": -0.01153151321050812,
+          "weighted_rms": 1.5316603798886073,
+          "maximum_absolute": 6.5851087067886525
+        },
+        "relative_curl_l2_error": 0.18325599893327005,
+        "best_amplitude_ratio": 0.9233389657990648,
+        "curl_rms_ratio": 0.9382220913745104,
+        "compatible_divergence": {
+          "weighted_mean": 0.007997643651811782,
+          "weighted_rms": 0.3812568190188662,
+          "maximum_absolute": 1.7156726431539298
+        }
+      }
+    },
+    "wall_distance_0.10_to_0.50": {
+      "probe_count": 1260,
+      "untapered": {
+        "fvm_curl": {
+          "weighted_mean": 0.13839721334203356,
+          "weighted_rms": 2.03588665893574,
+          "maximum_absolute": 7.707487034960181
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": 0.13872007585526622,
+          "weighted_rms": 2.0296524624533245,
+          "maximum_absolute": 7.76145075628296
+        },
+        "curl_error": {
+          "weighted_mean": 0.00032286251323266626,
+          "weighted_rms": 0.0700022380419795,
+          "maximum_absolute": 0.6658552343969624
+        },
+        "relative_curl_l2_error": 0.03438415283814138,
+        "best_amplitude_ratio": 0.996351400386686,
+        "curl_rms_ratio": 0.9969378469793234,
+        "compatible_divergence": {
+          "weighted_mean": -0.001762819546612136,
+          "weighted_rms": 0.027690154481306684,
+          "maximum_absolute": 0.20233779520808248
+        }
+      },
+      "tapered": {
+        "fvm_curl": {
+          "weighted_mean": 0.13839721334203356,
+          "weighted_rms": 2.03588665893574,
+          "maximum_absolute": 7.707487034960181
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": 0.13872007585526622,
+          "weighted_rms": 2.0296524624533245,
+          "maximum_absolute": 7.76145075628296
+        },
+        "curl_error": {
+          "weighted_mean": 0.00032286251323266626,
+          "weighted_rms": 0.0700022380419795,
+          "maximum_absolute": 0.6658552343969624
+        },
+        "relative_curl_l2_error": 0.03438415283814138,
+        "best_amplitude_ratio": 0.996351400386686,
+        "curl_rms_ratio": 0.9969378469793234,
+        "compatible_divergence": {
+          "weighted_mean": -0.001762819546612136,
+          "weighted_rms": 0.027690154481306684,
+          "maximum_absolute": 0.20233779520808248
+        }
+      }
+    },
+    "body_wake": {
+      "probe_count": 945,
+      "untapered": {
+        "fvm_curl": {
+          "weighted_mean": -0.11695003284604635,
+          "weighted_rms": 2.3386414877636903,
+          "maximum_absolute": 5.128249386310799
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -0.11787196665056132,
+          "weighted_rms": 2.343186323452968,
+          "maximum_absolute": 5.145620563482307
+        },
+        "curl_error": {
+          "weighted_mean": -0.0009219338045149257,
+          "weighted_rms": 0.01624241850901308,
+          "maximum_absolute": 0.285016806234025
+        },
+        "relative_curl_l2_error": 0.00694523662305537,
+        "best_amplitude_ratio": 1.0019211358952533,
+        "curl_rms_ratio": 1.0019433657159753,
+        "compatible_divergence": {
+          "weighted_mean": -0.0003499204812534877,
+          "weighted_rms": 0.007121841309143286,
+          "maximum_absolute": 0.07776917349296086
+        }
+      },
+      "tapered": {
+        "fvm_curl": {
+          "weighted_mean": -0.11681513265460766,
+          "weighted_rms": 2.3388625170886352,
+          "maximum_absolute": 5.128249386310799
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -0.11787196665056132,
+          "weighted_rms": 2.343186323452968,
+          "maximum_absolute": 5.145620563482307
+        },
+        "curl_error": {
+          "weighted_mean": -0.0010568339959536376,
+          "weighted_rms": 0.015593177028639181,
+          "maximum_absolute": 0.271750846742923
+        },
+        "relative_curl_l2_error": 0.006666991717003198,
+        "best_amplitude_ratio": 1.00182816356557,
+        "curl_rms_ratio": 1.001848679147552,
+        "compatible_divergence": {
+          "weighted_mean": -0.0006073268544100502,
+          "weighted_rms": 0.0072817219325310625,
+          "maximum_absolute": 0.07776917349296086
+        }
+      }
+    },
+    "wake_release": {
+      "probe_count": 385,
+      "untapered": {
+        "fvm_curl": {
+          "weighted_mean": -1.8258455574037802,
+          "weighted_rms": 2.3639480840275797,
+          "maximum_absolute": 3.261880551003091
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -1.8303086019621215,
+          "weighted_rms": 2.3705878327971543,
+          "maximum_absolute": 3.2638623208665862
+        },
+        "curl_error": {
+          "weighted_mean": -0.004463044558341146,
+          "weighted_rms": 0.017043343362769376,
+          "maximum_absolute": 0.07693712487258786
+        },
+        "relative_curl_l2_error": 0.0072096944420758,
+        "best_amplitude_ratio": 1.0027867087588644,
+        "curl_rms_ratio": 1.0028087540561643,
+        "compatible_divergence": {
+          "weighted_mean": -3.611138048374317e-05,
+          "weighted_rms": 0.0038072088903753198,
+          "maximum_absolute": 0.015050803294744952
+        }
+      },
+      "tapered": {
+        "fvm_curl": {
+          "weighted_mean": -1.8258455574037802,
+          "weighted_rms": 2.3639480840275797,
+          "maximum_absolute": 3.261880551003091
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -1.8303086019621215,
+          "weighted_rms": 2.3705878327971543,
+          "maximum_absolute": 3.2638623208665862
+        },
+        "curl_error": {
+          "weighted_mean": -0.004463044558341146,
+          "weighted_rms": 0.017043343362769376,
+          "maximum_absolute": 0.07693712487258786
+        },
+        "relative_curl_l2_error": 0.0072096944420758,
+        "best_amplitude_ratio": 1.0027867087588644,
+        "curl_rms_ratio": 1.0028087540561643,
+        "compatible_divergence": {
+          "weighted_mean": -3.611138048374317e-05,
+          "weighted_rms": 0.0038072088903753198,
+          "maximum_absolute": 0.015050803294744952
+        }
+      }
+    },
+    "transfer_blending_belt": {
+      "probe_count": 1584,
+      "untapered": {
+        "fvm_curl": {
+          "weighted_mean": -0.19894946385472229,
+          "weighted_rms": 0.8781648250151481,
+          "maximum_absolute": 3.2484176268575586
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -0.19973177407309292,
+          "weighted_rms": 0.8821432910571861,
+          "maximum_absolute": 3.2505167573339504
+        },
+        "curl_error": {
+          "weighted_mean": -0.0007823102183706077,
+          "weighted_rms": 0.012802546661267768,
+          "maximum_absolute": 0.07693712487258786
+        },
+        "relative_curl_l2_error": 0.014578751387641751,
+        "best_amplitude_ratio": 1.0044344244310774,
+        "curl_rms_ratio": 1.0045304320199449,
+        "compatible_divergence": {
+          "weighted_mean": 3.2923699339063035e-05,
+          "weighted_rms": 0.001736201610339506,
+          "maximum_absolute": 0.015050803294744952
+        }
+      },
+      "tapered": {
+        "fvm_curl": {
+          "weighted_mean": -0.19894946385472229,
+          "weighted_rms": 0.8781648250151481,
+          "maximum_absolute": 3.2484176268575586
+        },
+        "represented_vpm_curl": {
+          "weighted_mean": -0.19973177407309292,
+          "weighted_rms": 0.8821432910571861,
+          "maximum_absolute": 3.2505167573339504
+        },
+        "curl_error": {
+          "weighted_mean": -0.0007823102183706077,
+          "weighted_rms": 0.012802546661267768,
+          "maximum_absolute": 0.07693712487258786
+        },
+        "relative_curl_l2_error": 0.014578751387641751,
+        "best_amplitude_ratio": 1.0044344244310774,
+        "curl_rms_ratio": 1.0045304320199449,
+        "compatible_divergence": {
+          "weighted_mean": 3.2923699339063035e-05,
+          "weighted_rms": 0.001736201610339506,
+          "maximum_absolute": 0.015050803294744952
+        }
+      }
+    }
+  },
+  "native_cell_centres": {
+    "fluid_transfer_region": {
+      "cell_count": 4648,
+      "fvm_curl": {
+        "weighted_mean": -0.14735243186294167,
+        "weighted_rms": 2.405642094657639,
+        "maximum_absolute": 23.690954308051893
+      },
+      "represented_vpm_curl": {
+        "weighted_mean": -0.14831480486739382,
+        "weighted_rms": 2.3615894095056498,
+        "maximum_absolute": 19.450617489283367
+      },
+      "curl_error": {
+        "weighted_mean": -0.0009623730044521729,
+        "weighted_rms": 0.42569932929682347,
+        "maximum_absolute": 7.4286760015818025
+      },
+      "relative_curl_l2_error": 0.17695871311954542,
+      "best_amplitude_ratio": 0.9661982401709464,
+      "curl_rms_ratio": 0.9816877642564453,
+      "lsq_divergence": {
+        "weighted_mean": 0.0005743217287588596,
+        "weighted_rms": 0.09484587590596875,
+        "maximum_absolute": 2.2272389037794174
+      },
+      "accepted_flux_divergence": {
+        "weighted_mean": -3.026293973749917e-14,
+        "weighted_rms": 3.355073834149496e-12,
+        "maximum_absolute": 1.1808017322654092e-10
+      }
+    },
+    "wall_distance_below_0.10": {
+      "cell_count": 280,
+      "fvm_curl": {
+        "weighted_mean": 0.1928675111101299,
+        "weighted_rms": 8.194786370246726,
+        "maximum_absolute": 23.690954308051893
+      },
+      "represented_vpm_curl": {
+        "weighted_mean": 0.1841724030515422,
+        "weighted_rms": 7.8741629103545225,
+        "maximum_absolute": 19.450617489283367
+      },
+      "curl_error": {
+        "weighted_mean": -0.008695108058587555,
+        "weighted_rms": 1.9112259822148385,
+        "maximum_absolute": 7.4286760015818025
+      },
+      "relative_curl_l2_error": 0.2332246254953069,
+      "best_amplitude_ratio": 0.9344432333729331,
+      "curl_rms_ratio": 0.9608747018645525,
+      "lsq_divergence": {
+        "weighted_mean": 0.01468916226813852,
+        "weighted_rms": 0.4310406806885616,
+        "maximum_absolute": 2.2272389037794174
+      },
+      "accepted_flux_divergence": {
+        "weighted_mean": -7.139434452052444e-14,
+        "weighted_rms": 1.500648483856851e-11,
+        "maximum_absolute": 1.1808017322654092e-10
+      }
+    },
+    "wall_distance_0.10_to_0.50": {
+      "cell_count": 1260,
+      "fvm_curl": {
+        "weighted_mean": 0.13595020857020187,
+        "weighted_rms": 2.0134773786418196,
+        "maximum_absolute": 7.279971127523838
+      },
+      "represented_vpm_curl": {
+        "weighted_mean": 0.13627939749879167,
+        "weighted_rms": 2.026473019799308,
+        "maximum_absolute": 7.762486588502062
+      },
+      "curl_error": {
+        "weighted_mean": 0.00032918892858975864,
+        "weighted_rms": 0.1286802243267673,
+        "maximum_absolute": 0.9524037759472632
+      },
+      "relative_curl_l2_error": 0.06390944626036367,
+      "best_amplitude_ratio": 1.0044329473822096,
+      "curl_rms_ratio": 1.006454326875157,
+      "lsq_divergence": {
+        "weighted_mean": -0.0005340254908444968,
+        "weighted_rms": 0.01007259195569695,
+        "maximum_absolute": 0.0864755657612816
+      },
+      "accepted_flux_divergence": {
+        "weighted_mean": -1.1581382772798353e-14,
+        "weighted_rms": 1.097611793122904e-12,
+        "maximum_absolute": 9.272537388695677e-12
+      }
+    },
+    "body_wake": {
+      "cell_count": 957,
+      "fvm_curl": {
+        "weighted_mean": -0.12496098151159456,
+        "weighted_rms": 2.306091179677489,
+        "maximum_absolute": 4.9682766363839335
+      },
+      "represented_vpm_curl": {
+        "weighted_mean": -0.12443444606830541,
+        "weighted_rms": 2.3345957636922665,
+        "maximum_absolute": 5.1498414357216
+      },
+      "curl_error": {
+        "weighted_mean": 0.0005265354432891661,
+        "weighted_rms": 0.050966426266259614,
+        "maximum_absolute": 0.5488096938581327
+      },
+      "relative_curl_l2_error": 0.02210078539625973,
+      "best_amplitude_ratio": 1.0121927318326125,
+      "curl_rms_ratio": 1.012360562438283,
+      "lsq_divergence": {
+        "weighted_mean": 8.067227287095881e-05,
+        "weighted_rms": 0.00476355095538277,
+        "maximum_absolute": 0.06454138587817121
+      },
+      "accepted_flux_divergence": {
+        "weighted_mean": -8.461845191368127e-14,
+        "weighted_rms": 2.3732656864432626e-12,
+        "maximum_absolute": 4.737856797160706e-11
+      }
+    },
+    "wake_release": {
+      "cell_count": 385,
+      "fvm_curl": {
+        "weighted_mean": -1.8225675284387035,
+        "weighted_rms": 2.350699136443094,
+        "maximum_absolute": 3.2502702365071006
+      },
+      "represented_vpm_curl": {
+        "weighted_mean": -1.8335622097055881,
+        "weighted_rms": 2.368583749506213,
+        "maximum_absolute": 3.26361257945726
+      },
+      "curl_error": {
+        "weighted_mean": -0.010994681266883972,
+        "weighted_rms": 0.024433798452944074,
+        "maximum_absolute": 0.08072872979199364
+      },
+      "relative_curl_l2_error": 0.01039426869825439,
+      "best_amplitude_ratio": 1.0075831321843756,
+      "curl_rms_ratio": 1.0076082101643093,
+      "lsq_divergence": {
+        "weighted_mean": 0.00018230720555968412,
+        "weighted_rms": 0.0025255932512878877,
+        "maximum_absolute": 0.01431881379672495
+      },
+      "accepted_flux_divergence": {
+        "weighted_mean": -4.1848212780493066e-14,
+        "weighted_rms": 3.333529773968554e-13,
+        "maximum_absolute": 1.6206111973227138e-12
+      }
+    },
+    "transfer_blending_belt": {
+      "cell_count": 1584,
+      "fvm_curl": {
+        "weighted_mean": -0.19782712761660337,
+        "weighted_rms": 0.8727553711258108,
+        "maximum_absolute": 3.2366641033208783
+      },
+      "represented_vpm_curl": {
+        "weighted_mean": -0.19933679227362772,
+        "weighted_rms": 0.8813408148677924,
+        "maximum_absolute": 3.2495457376700863
+      },
+      "curl_error": {
+        "weighted_mean": -0.0015096646570243281,
+        "weighted_rms": 0.01648661602312347,
+        "maximum_absolute": 0.08072872979199364
+      },
+      "relative_curl_l2_error": 0.018890305999327808,
+      "best_amplitude_ratio": 1.009707134037973,
+      "curl_rms_ratio": 1.009837170902663,
+      "lsq_divergence": {
+        "weighted_mean": 4.956993459043389e-05,
+        "weighted_rms": 0.0009922879202343637,
+        "maximum_absolute": 0.012957010216432918
+      },
+      "accepted_flux_divergence": {
+        "weighted_mean": -1.2830202297463727e-14,
+        "weighted_rms": 3.2610132920825557e-13,
+        "maximum_absolute": 2.804831020220011e-12
+      }
+    }
+  }
+}

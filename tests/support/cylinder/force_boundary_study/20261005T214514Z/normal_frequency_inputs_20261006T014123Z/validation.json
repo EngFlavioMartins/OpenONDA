@@ -1,0 +1,42 @@
+{
+  "status": "all direct phase and field checks passed; no solver advanced",
+  "focused_tests": {
+    "command": "python -m pytest -q tests/coupler/test_normal_frequency_controls.py",
+    "passed": 7
+  },
+  "ruff": "passed for both new files",
+  "checks": {
+    "actual_normal_mode_reference_frequency": {
+      "direct_phase_formula_normal_error_maximum": 3.6637359812630166e-15,
+      "first_normal_endpoint_bitwise_equal": true,
+      "normal_coefficients_bitwise_unchanged": true,
+      "tangential_gradient_bitwise_unchanged": true,
+      "original_actual_source_clock_bitwise_unchanged": true,
+      "endpoint_count": 301,
+      "velocity_tangent_change_maximum": 1.1102230246251565e-16,
+      "signed_flux_maximum": 5.898059818321144e-16,
+      "altered_oscillator_clock_window": [
+        36.25150837993024,
+        48.63650280727114
+      ]
+    },
+    "reference_normal_mode_actual_frequency": {
+      "direct_phase_formula_normal_error_maximum": 6.25888230132432e-15,
+      "first_normal_endpoint_bitwise_equal": true,
+      "normal_coefficients_bitwise_unchanged": true,
+      "tangential_gradient_bitwise_unchanged": true,
+      "original_actual_source_clock_bitwise_unchanged": true,
+      "endpoint_count": 301,
+      "velocity_tangent_change_maximum": 1.1102230246251565e-16,
+      "signed_flux_maximum": 6.140921104957897e-16,
+      "altered_oscillator_clock_window": [
+        99.99999999998809,
+        111.62697333813901
+      ]
+    }
+  },
+  "model_report_sha256": "d187fc79bc50f93ea9079c0fbdc8bfad5114ec398ebf9492acc42ced8116d94b",
+  "preparation_helper_sha256": "eed72b52dcdf8302693b5b105c832d8ca4a2ee5a0ac817133728f9fc4fb3d1de",
+  "adapter_source_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+  "source_hashes_unchanged": true
+}

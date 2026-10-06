@@ -1,0 +1,32 @@
+{
+  "scope": "Isolated strict native continuation from the frozen 46 s production checkpoint; measure planar wall remeshing/diffusion correction. Production remains unchanged.",
+  "candidate_repository": "/home/flavio-martins/.codex/worktrees/planar-wall-diffusion/OpenONDA",
+  "base_commit": "e756ac9f",
+  "physical_case": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow",
+  "snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z",
+  "private_output": "/tmp/openonda-planar-wall-candidate-cycles-20261006",
+  "log": "/tmp/openonda-planar-wall-cycles-20261006.log",
+  "service": "openonda-planar-wall-cycles-20261006.service",
+  "invocation_id": "924fb61580904386bc5a42d4ef42ca02",
+  "main_pid_at_launch": 1277782,
+  "initial_time": 46.0,
+  "requested_exchanges": 300,
+  "exchange_seconds": 0.04,
+  "target_time": 58.0,
+  "comparison_window": [48.0, 58.0],
+  "initial_settling_seconds_excluded": 2.0,
+  "mode": "native",
+  "compute_device_setting": "AUTO",
+  "particle_capacity": 200000,
+  "mpi_ranks": 1,
+  "cpu_quota_percent": 100,
+  "memory_max_bytes": 2621440000,
+  "memory_swap_max_bytes": 0,
+  "environment": {"CUDA_PATH": "/usr", "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "NUMBA_NUM_THREADS": "1"},
+  "candidate_numerical_source_sha256": {
+    "source/solvers/vpm/physics/diffusion/planar.py": "2608f6efe083696c2ebe3d12d0d9aac2f26b3d24de52b171ca0cc517ad74e1dd",
+    "source/solvers/vpm/core/evolution.py": "8e0dd0ba475c590bb779343da9eb3288e175bc844d5ac1e139bd4baee74e270e"
+  },
+  "output_scope_difference": "Candidate keeps the native force sampler and backup cadence; other scientific samplers are disabled. Compare numerical phases and actual interface sweeps, not total output-inclusive runtime alone.",
+  "limitations": "Two GPU smoke exchanges and frozen-field conservation prove execution/operator behavior, not force recovery. Recovery requires completed evolved force cycles; native source and input hashes are checked before and after by the driver."
+}

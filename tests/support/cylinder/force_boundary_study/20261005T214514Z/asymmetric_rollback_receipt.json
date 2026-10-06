@@ -1,0 +1,31 @@
+{
+  "checked_at_utc": "2026-10-05T23:54:09.134691+00:00",
+  "status": "complete",
+  "report": "/tmp/openonda-cylinder-asymmetric-rollback-20261006/report.json",
+  "report_sha256": "53420dfb668fe509edcbcb3c0d09d4d30e8f171262947c8d5374210e9b7ff6fe",
+  "log": "/tmp/openonda-cylinder-asymmetric-rollback-20261006.log",
+  "service": "openonda-cylinder-asymmetric-rollback-20261006.service",
+  "invocation_id": "787d081d7b114fc8aca92e8a02a0ed09",
+  "launch_limits": {
+    "MemoryMax": "1536M",
+    "MemorySwapMax": 0,
+    "CPUQuota": "100%",
+    "RuntimeMaxSec": 300,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "MKL_NUM_THREADS": 1,
+    "NUMBA_NUM_THREADS": 1
+  },
+  "focused_tests_passed": 1,
+  "ruff": "passed",
+  "verification_source_sha256": {
+    "tests/support/cylinder/run_asymmetric_boundary_rollback.py": "568d40171abc53cc91c2b29a466546416365038837783d0e78a1605ef5c0dc54",
+    "tests/coupler/test_asymmetric_boundary_rollback.py": "7b94e6e6b48f1e7d3d96b4effa720c53be0ab89f2f4558379554f0abb6e675c1"
+  },
+  "maximum_repeated_A_difference": 0.0,
+  "unequal_B_coefficient_or_field_difference": 0.021575868705995205,
+  "wall_seconds": 8.379589819000103,
+  "peak_process_memory_bytes": 619843584,
+  "scope": "FVM rollback/cache dependence under unequal mixed traces; no VPM evolution, transfer, feedback or mature force amplitude claim. Sampler and output dispatch deferred; native surface forces evaluated directly.",
+  "source_scope_unchanged": true
+}

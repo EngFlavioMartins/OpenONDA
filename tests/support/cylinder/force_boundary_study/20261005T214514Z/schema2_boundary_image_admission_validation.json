@@ -1,0 +1,30 @@
+{
+  "status": "qualified; adapter frozen, no solver launched",
+  "captured_at_utc": "2026-10-06T01:03:59.753400+00:00",
+  "adapter_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+  "adapter_exact_source_snapshot": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/verified_replay_sources/replay_boundary_inputs_1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca.txt",
+  "historical_adapter_sha256": "bc085b2eed04de1d835dfcaeaecf89bb52e7f3c60b2817350ee8ae6af210f514",
+  "focused_current_admission_tests_passed": 11,
+  "preceding_admission_and_merge_tests_passed": 16,
+  "ruff": "passed",
+  "actual_historical_warm_image": "rejected before creating any output directory",
+  "actual_reference_harmonic_host_preparation": {
+    "directory": "/tmp/openonda-schema2-adapter-harmonic-host-check-final-20261006",
+    "receipt_sha256": "1abed475021365059e2790231da5a1c3b2a9d53542f2f3c3f5cfb2193773ff69",
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+    "clock": {
+      "start_time": 99.99999999998809,
+      "end_time": 111.99999999998144,
+      "native_step_size": 0.008,
+      "accepted_endpoint_step_size": 0.04,
+      "accepted_endpoint_count": 301,
+      "fvm_steps": 1500,
+      "fvm_substeps_per_coupling_interval": 5,
+      "source_time_window": [
+        99.99999999998809,
+        111.99999999998144
+      ]
+    }
+  },
+  "scope": "Host-only admission/receipt tests. No native/tutor changes, solver advance, GPU initialization or force recovery claim. The native0.08 budget is final atomic moment closure, not represented-vorticity residual."
+}

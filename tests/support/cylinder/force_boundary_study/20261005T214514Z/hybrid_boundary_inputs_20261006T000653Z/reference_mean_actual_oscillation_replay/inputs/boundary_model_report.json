@@ -1,0 +1,318 @@
+{
+  "schema": "openonda-paired-hybrid-boundary-input-models/1",
+  "status": "prepared; no solver constructed or advanced",
+  "prepared_at_utc": "2026-10-06T00:06:54.105944+00:00",
+  "source_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/model_report.json": "7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/harmonic_coefficients.npz": "bf7d564eddd8b7e47428e62e6355c67c8092666d3525a85766dce5b9235ca614",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5": "926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b"
+  },
+  "helper_sha256": "a146ba8b4188c0cc57ff2a4803200759449c07ef995946100e439ca4d0e4d1aa",
+  "adapter_source_sha256": "1556069da697715ce7c17d4e69c161643ee1c26ed3ef83b3995df4f67dbe5d4a",
+  "component_models": {
+    "coupled": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5",
+      "sha256": "f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b",
+      "accepted_endpoint_count": 301
+    },
+    "reference": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5",
+      "sha256": "926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572",
+      "accepted_endpoint_count": 301
+    }
+  },
+  "component_frequency_hz": {
+    "coupled": 0.1815070887743629,
+    "reference": 0.18733035691621663
+  },
+  "component_fit_midpoint_clock": {
+    "coupled": 40.0,
+    "reference": 105.99999999998477
+  },
+  "component_source_time_windows": {
+    "reference": [
+      99.99999999998809,
+      111.99999999998144
+    ],
+    "coupled": [
+      36.25150837993024,
+      48.25150837992359
+    ]
+  },
+  "replay_clock": [
+    99.99999999998809,
+    111.99999999998144
+  ],
+  "coupled_global_phase_translation": {
+    "replay_clock_start": 99.99999999998809,
+    "source_clock_start": 36.251508379930236,
+    "source_clock_end": 48.251508379923585,
+    "source_minus_replay_clock": -63.748491620057855,
+    "source_clock_rate": 1.0,
+    "initial_lift_phase_error_radians_modulo_2pi": -2.4492935982947064e-16,
+    "equivalent_source_start_candidates_inside_measured_window": [
+      30.742081686171012,
+      36.251508379930236
+    ],
+    "selection": "Equivalent lift-phase start nearest the measured window midpoint after accounting for replay duration"
+  },
+  "model_components": {
+    "reference_mean_actual_oscillation": {
+      "dc_trend_source": "reference",
+      "oscillation_source": "coupled"
+    },
+    "actual_mean_reference_oscillation": {
+      "dc_trend_source": "coupled",
+      "oscillation_source": "reference"
+    }
+  },
+  "endpoint_models": {
+    "reference_mean_actual_oscillation": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/hybrid_boundary_inputs_20261006T000653Z/reference_mean_actual_oscillation_endpoints.h5",
+      "sha256": "36c9f8add320835e812a2adc96a188cba1531da31cc9a171aca32d7f1bce2689",
+      "accepted_endpoint_count": 301
+    },
+    "actual_mean_reference_oscillation": {
+      "path": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/hybrid_boundary_inputs_20261006T000653Z/actual_mean_reference_oscillation_endpoints.h5",
+      "sha256": "97bd538895939f55b828f9d18951cb0e5241fcc29303e57f8a9ff43c8cd77270",
+      "accepted_endpoint_count": 301
+    }
+  },
+  "projection_checks": {
+    "reference_mean_actual_oscillation": {
+      "velocity_normal_projection_maximum_difference": 6.661338147750939e-16,
+      "gradient_normal_component_maximum": 1.249000902703301e-16,
+      "maximum_signed_normal_flux": 5.065392549852277e-16
+    },
+    "actual_mean_reference_oscillation": {
+      "velocity_normal_projection_maximum_difference": 5.551115123125783e-16,
+      "gradient_normal_component_maximum": 2.0816681711721685e-16,
+      "maximum_signed_normal_flux": 6.522560269672795e-16
+    }
+  },
+  "component_differences": {
+    "velocity": {
+      "upstream": {
+        "reference_minus_actual_dc_trend_rms": 0.022637096652216245,
+        "reference_minus_actual_oscillation_rms": 0.0074888721704573025,
+        "reference_dc_trend_time_and_area_mean": [
+          0.9163885828217417,
+          -0.00030688433223160274,
+          3.733037282432985e-19
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          0.8940083594205696,
+          -0.0002701584365529079,
+          0.0
+        ]
+      },
+      "downstream": {
+        "reference_minus_actual_dc_trend_rms": 0.03460196455670537,
+        "reference_minus_actual_oscillation_rms": 0.1677549538221599,
+        "reference_dc_trend_time_and_area_mean": [
+          0.8062050553835697,
+          -0.0006243139853913907,
+          1.7464611103223756e-18
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          0.783766061223549,
+          -0.0017623859030860827,
+          0.0
+        ]
+      },
+      "lower": {
+        "reference_minus_actual_dc_trend_rms": 0.018158566386660857,
+        "reference_minus_actual_oscillation_rms": 0.029384321429372483,
+        "reference_dc_trend_time_and_area_mean": [
+          1.103948607517661,
+          -0.04368915780307422,
+          6.98746203377319e-18
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          1.085924219354845,
+          -0.04385070071370954,
+          0.0
+        ]
+      },
+      "upper": {
+        "reference_minus_actual_dc_trend_rms": 0.017925464461314145,
+        "reference_minus_actual_oscillation_rms": 0.029654564078198074,
+        "reference_dc_trend_time_and_area_mean": [
+          1.1028683670998318,
+          0.04309255682458147,
+          -9.221238527511082e-18
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          1.0851024673542815,
+          0.042965907156833585,
+          0.0
+        ]
+      },
+      "corners": {
+        "reference_minus_actual_dc_trend_rms": 0.01950152333113746,
+        "reference_minus_actual_oscillation_rms": 0.03205111988536836,
+        "reference_dc_trend_time_and_area_mean": [
+          1.0113963845642975,
+          0.010268272761808781,
+          -4.526473399334914e-18
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          0.9922148426854768,
+          0.011429895617791355,
+          0.0
+        ]
+      },
+      "all": {
+        "reference_minus_actual_dc_trend_rms": 0.023655390362780148,
+        "reference_minus_actual_oscillation_rms": 0.08194945910373684,
+        "reference_dc_trend_time_and_area_mean": [
+          0.9957703145329185,
+          -7.460736824243565e-05,
+          -2.2930137153947334e-19
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          0.9758749827110316,
+          -0.00038411290024939373,
+          0.0
+        ]
+      }
+    },
+    "normal_velocity": {
+      "upstream": {
+        "reference_minus_actual_dc_trend_rms": 0.0224762321626132,
+        "reference_minus_actual_oscillation_rms": 0.0010369941172290171,
+        "reference_dc_trend_time_and_area_mean": -0.9163885828217417,
+        "actual_dc_trend_time_and_area_mean": -0.8940083594205693
+      },
+      "downstream": {
+        "reference_minus_actual_dc_trend_rms": 0.031217831900995842,
+        "reference_minus_actual_oscillation_rms": 0.0996029518645479,
+        "reference_dc_trend_time_and_area_mean": 0.8062050553835696,
+        "actual_dc_trend_time_and_area_mean": 0.7837660612235491
+      },
+      "lower": {
+        "reference_minus_actual_dc_trend_rms": 0.001966282059214315,
+        "reference_minus_actual_oscillation_rms": 0.024160420637640446,
+        "reference_dc_trend_time_and_area_mean": 0.04368915780307421,
+        "actual_dc_trend_time_and_area_mean": 0.04385070071370955
+      },
+      "upper": {
+        "reference_minus_actual_dc_trend_rms": 0.0022082475899046707,
+        "reference_minus_actual_oscillation_rms": 0.024472564803277055,
+        "reference_dc_trend_time_and_area_mean": 0.04309255682458147,
+        "actual_dc_trend_time_and_area_mean": 0.042965907156833585
+      },
+      "corners": {
+        "reference_minus_actual_dc_trend_rms": 0.013729339497836425,
+        "reference_minus_actual_oscillation_rms": 0.025252491168587594,
+        "reference_dc_trend_time_and_area_mean": -0.08379649007553228,
+        "actual_dc_trend_time_and_area_mean": -0.08025323357021755
+      },
+      "all": {
+        "reference_minus_actual_dc_trend_rms": 0.018177205390016445,
+        "reference_minus_actual_oscillation_rms": 0.050223489461270615,
+        "reference_dc_trend_time_and_area_mean": 5.267799515623011e-18,
+        "actual_dc_trend_time_and_area_mean": -1.2172594853263427e-17
+      }
+    },
+    "tangential_gradient": {
+      "upstream": {
+        "reference_minus_actual_dc_trend_rms": 0.00221400037564742,
+        "reference_minus_actual_oscillation_rms": 0.0016161539071052364,
+        "reference_dc_trend_time_and_area_mean": [
+          0.0,
+          0.00021061283451926255,
+          -1.4331306957979594e-19
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          0.0,
+          0.00017492156496538166,
+          0.0
+        ]
+      },
+      "downstream": {
+        "reference_minus_actual_dc_trend_rms": 0.016182511514479133,
+        "reference_minus_actual_oscillation_rms": 0.2420199130872587,
+        "reference_dc_trend_time_and_area_mean": [
+          0.0,
+          0.0019436466443941824,
+          -4.963640560240984e-19
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          0.0,
+          0.0031131811043100346,
+          0.0
+        ]
+      },
+      "lower": {
+        "reference_minus_actual_dc_trend_rms": 0.00307207913974257,
+        "reference_minus_actual_oscillation_rms": 0.024412032931669693,
+        "reference_dc_trend_time_and_area_mean": [
+          -0.04173683593962105,
+          0.0,
+          2.7233560192636074e-18
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          -0.04315320843145418,
+          0.0,
+          0.0
+        ]
+      },
+      "upper": {
+        "reference_minus_actual_dc_trend_rms": 0.003239450813757432,
+        "reference_minus_actual_oscillation_rms": 0.024327852758160354,
+        "reference_dc_trend_time_and_area_mean": [
+          -0.040675559150944604,
+          0.0,
+          -2.8625121916336155e-18
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          -0.04217208874611465,
+          0.0,
+          0.0
+        ]
+      },
+      "corners": {
+        "reference_minus_actual_dc_trend_rms": 0.0029227859025337277,
+        "reference_minus_actual_oscillation_rms": 0.029982811390720433,
+        "reference_dc_trend_time_and_area_mean": [
+          -0.010660855851024857,
+          -0.022374674031488597,
+          9.092627356560904e-18
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          -0.009632302576525538,
+          -0.023326497029436156,
+          0.0
+        ]
+      },
+      "all": {
+        "reference_minus_actual_dc_trend_rms": 0.008028924861809505,
+        "reference_minus_actual_oscillation_rms": 0.11519366089089066,
+        "reference_dc_trend_time_and_area_mean": [
+          -0.022735981659526616,
+          0.000229520636991358,
+          -9.100133103072956e-20
+        ],
+        "actual_dc_trend_time_and_area_mean": [
+          -0.023524401270931562,
+          0.00046947289533611934,
+          0.0
+        ]
+      }
+    }
+  },
+  "component_recombination_maximum_difference_from_original_endpoints": 4.440892098500626e-16,
+  "hybrid_sum_minus_original_sum_maximum_component_difference": 1.1102230246251565e-15,
+  "interpretation_gate": "Do not interpret these hybrid controls unless the reference harmonic replay retains the exact-fed force amplitudes and the actual harmonic replay reproduces the material force deficit. There are no hybrid force results yet.",
+  "scope": "Test-only forcing decomposition. DC/trend and first/second-harmonic components use exactly the original source fits and research-clock translation. No amplitude rescaling or additional phase alignment; no new native or tutorial algorithm.",
+  "limitations": [
+    "The measured VPM field has21 one-second snapshots and a .5Hz Nyquist frequency. Fundamental .1815Hz and second .3630Hz are resolved; higher modes, including the third .5445Hz, are not identifiable without aliasing.",
+    "Residual energy is concentrated at the downstream boundary. The models remove around5%coupled and6%reference Gt fluctuation energy there; this control cannot exclude a causal role for omitted higher modes.",
+    "The actual data originate at30\u201350s; native reference traces and the mapped initialization originate at100\u2013112s. The clock translation is a research control, not a physical-time-identical coupled restart.",
+    "A100s reference interior/BDF state is initialized with a different harmonic boundary input. Initial lift-phase alignment reduces one phase discontinuity but does not make the complete state consistent with the coupled field. Exclude initial settling and compare complete cycles;12s may still be insufficient for a fully equilibrated response.",
+    "One global lift-phase translation preserves the measured drag/lift relative phase, side-to-side phase and frequency differences. It does not enforce the reference's phase relationships.",
+    "This forced-FVM comparison probes measured boundary inputs separately from closed-loop feedback. It does not uniquely isolate particle kernel, transfer, diffusion, tail truncation or a source-state change."
+  ]
+}

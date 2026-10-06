@@ -1,0 +1,134 @@
+{
+  "written_at_utc": "2026-10-06T01:04:36.295237+00:00",
+  "status": "two qualified prepared inputs; sequential native replay running",
+  "service": "openonda-boundary-component-controls-20261006.service",
+  "invocation": "8b5eeb8df6eb46ff9da504c5cbf34902",
+  "log": "/tmp/openonda-boundary-component-controls-20261006.log",
+  "script": "/tmp/openonda-boundary-component-controls-20261006.sh",
+  "script_sha256": "94e957635cd86554a6a8844f7334d732730c3efd871822ade613fa07d254613a",
+  "prepared": {
+    "actual-mean-reference-normal-oscillation": {
+      "schema": "openonda-explicit-boundary-input-replay/1",
+      "status": "prepared; no solver replay performed",
+      "prepared_at_utc": "2026-10-06T01:03:52.750812+00:00",
+      "trace_origin": "actual mean reference normal oscillation; test component forcing; unchanged actual mean and source clocks",
+      "source_hdf5": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/actual_mean_reference_normal_oscillation_endpoints.h5",
+      "source_hdf5_sha256": "0eb6c07161b039464ea9c1893847ef3d86d7e24f4ac55a8f597b2a0ec94d1425",
+      "source_group": "",
+      "source_attributes": {
+        "complete": true,
+        "component_frequency_hz": "{\"coupled\": 0.1815070887743629, \"reference\": 0.18733035691621663}",
+        "dc_trend_source": "coupled",
+        "oscillation_sources": "{\"normal_velocity\": \"reference\", \"tangential_gradient\": \"coupled\"}",
+        "phase_policy": "Original component clocks and global phase; no additional phase or amplitude rescaling",
+        "schema": "openonda-component-harmonic-boundary-endpoint-model/1",
+        "source_sha256": "{\"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5\": \"f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/harmonic_coefficients.npz\": \"bf7d564eddd8b7e47428e62e6355c67c8092666d3525a85766dce5b9235ca614\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/model_report.json\": \"7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5\": \"926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572\"}",
+        "trace_origin": "actual_mean_reference_normal_oscillation",
+        "velocity_policy": "Actual full velocity plus normal*(newUn-actualUn); actual tangent retained"
+      },
+      "particle_image_admission": null,
+      "source_receipt_sha256": "f08b68f48cd75932ea09b095a4a7e23a95f5d13c43817af1ea113c9a7399031a",
+      "adapter_source_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+      "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e",
+      "boundary_trace_sha256": "828caa24d3eb62ded1cf862a1ffa92a9078dd79d8496c9393d6c8e45d9724c6f",
+      "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+      "original_capture_receipt_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+      "native_input_sha256": {
+        "reference_backup.npz": "a517ec6564a6b38430d02571bf7726558cc859240c6cc802189ba13f398dc374",
+        "reference_mesh.npz": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201",
+        "reference_metadata.json": "637a9dc944cca03fcc056f9eddb2217a65060eb1eb44c33b51acb37cd2e3fc01",
+        "small_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+        "small_metadata.json": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+      },
+      "captured_reference_directory": "/tmp/openonda-cylinder-boundary-study-20261005",
+      "clock": {
+        "start_time": 99.99999999998809,
+        "end_time": 111.99999999998144,
+        "native_step_size": 0.008,
+        "accepted_endpoint_step_size": 0.04,
+        "accepted_endpoint_count": 301,
+        "fvm_steps": 1500,
+        "fvm_substeps_per_coupling_interval": 5,
+        "source_time_window": [
+          36.25150837993024,
+          48.25150837992359
+        ]
+      },
+      "geometry": {
+        "face_count": 356,
+        "exact_original_native_face_geometry": true,
+        "maximum_velocity_normal_projection_difference": 6.661338147750939e-16,
+        "maximum_tangential_gradient_normal_component": 1.3877787807814457e-16,
+        "maximum_signed_normal_flux": 6.522560269672795e-16
+      },
+      "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+      "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+    },
+    "actual-mean-reference-gradient-oscillation": {
+      "schema": "openonda-explicit-boundary-input-replay/1",
+      "status": "prepared; no solver replay performed",
+      "prepared_at_utc": "2026-10-06T01:03:54.262617+00:00",
+      "trace_origin": "actual mean reference gradient oscillation; test component forcing; unchanged actual mean and source clocks",
+      "source_hdf5": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_component_inputs_20261006T010013Z/actual_mean_reference_gradient_oscillation_endpoints.h5",
+      "source_hdf5_sha256": "bb0152ed1cd3bdcc84f6307dc4b45df54b6fc3d0e27b50f09851b9fdda5fd6a8",
+      "source_group": "",
+      "source_attributes": {
+        "complete": true,
+        "component_frequency_hz": "{\"coupled\": 0.1815070887743629, \"reference\": 0.18733035691621663}",
+        "dc_trend_source": "coupled",
+        "oscillation_sources": "{\"normal_velocity\": \"coupled\", \"tangential_gradient\": \"reference\"}",
+        "phase_policy": "Original component clocks and global phase; no additional phase or amplitude rescaling",
+        "schema": "openonda-component-harmonic-boundary-endpoint-model/1",
+        "source_sha256": "{\"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/coupled_harmonic_endpoints.h5\": \"f1a1c836d627d24faecbcc2b97d96fb031a19637e8e5f7d131ed6500d9ace00b\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/harmonic_coefficients.npz\": \"bf7d564eddd8b7e47428e62e6355c67c8092666d3525a85766dce5b9235ca614\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/model_report.json\": \"7a2cc26a11ecf5439890481530e85d3f05f4b01da38c64b27d70a0b77f751972\", \"/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5\": \"926b22c24e954ab5bd055bb7e0f4824ae7eb90aa1ce8b6541726960fa3221572\"}",
+        "trace_origin": "actual_mean_reference_gradient_oscillation",
+        "velocity_policy": "Actual full velocity plus normal*(newUn-actualUn); actual tangent retained"
+      },
+      "particle_image_admission": null,
+      "source_receipt_sha256": "f08b68f48cd75932ea09b095a4a7e23a95f5d13c43817af1ea113c9a7399031a",
+      "adapter_source_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+      "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e",
+      "boundary_trace_sha256": "630940987e62df973b260655819ceb26741554f2ee7fc20ce899f87232d76fa9",
+      "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+      "original_capture_receipt_sha256": "7abafbada044e1bacead0754e1b29005427d2d25c2ed5f11bdea5c8cc9d8e95b",
+      "native_input_sha256": {
+        "reference_backup.npz": "a517ec6564a6b38430d02571bf7726558cc859240c6cc802189ba13f398dc374",
+        "reference_mesh.npz": "2fed6fc47d00f03281560d523ed406ef1c9e13bf893b122d9ead9615a6dad201",
+        "reference_metadata.json": "637a9dc944cca03fcc056f9eddb2217a65060eb1eb44c33b51acb37cd2e3fc01",
+        "small_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+        "small_metadata.json": "e4f5bdc153d757dc4f09c5227104108c02f7a280bd80d8e1251b3664a3721be2"
+      },
+      "captured_reference_directory": "/tmp/openonda-cylinder-boundary-study-20261005",
+      "clock": {
+        "start_time": 99.99999999998809,
+        "end_time": 111.99999999998144,
+        "native_step_size": 0.008,
+        "accepted_endpoint_step_size": 0.04,
+        "accepted_endpoint_count": 301,
+        "fvm_steps": 1500,
+        "fvm_substeps_per_coupling_interval": 5,
+        "source_time_window": [
+          36.25150837993024,
+          48.25150837992359
+        ]
+      },
+      "geometry": {
+        "face_count": 356,
+        "exact_original_native_face_geometry": true,
+        "maximum_velocity_normal_projection_difference": 6.661338147750939e-16,
+        "maximum_tangential_gradient_normal_component": 2.0816681711721685e-16,
+        "maximum_signed_normal_flux": 6.557254739192331e-16
+      },
+      "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+      "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt."
+    }
+  },
+  "resource_limits": {
+    "cpu": 13,
+    "cpu_quota_percent": 100,
+    "memory_max_mib": 1500,
+    "swap_max_bytes": 0,
+    "runtime_max_seconds": 1800,
+    "threads": 1
+  },
+  "scope": "Only external oscillatory boundary component differs; same actual mean, source clocks, original native restricted primary/BDF, equations and .04-to-.008 interpolation. No autonomous amplitude recovery claim."
+}

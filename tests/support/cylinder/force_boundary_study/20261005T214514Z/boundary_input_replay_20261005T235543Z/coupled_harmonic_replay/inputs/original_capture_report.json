@@ -1,0 +1,73 @@
+{
+  "status": "complete",
+  "accepted_time": 111.99999999998144,
+  "accepted_new_steps": 1500,
+  "face_count": 356,
+  "step_size": 0.008,
+  "wall_seconds": 693.9206855800003,
+  "strict_native_reference_restart": true,
+  "initial_restriction": {
+    "method": "Native affine reconstruction of each primary and BDF field; matching oriented face fluxes retained, other fluxes reconstructed from their matching velocity history",
+    "comparison": "12-neighbour versus 24-neighbour reconstruction differences; estimates, not rigorous error bounds",
+    "reconstruction_differences": {
+      "velocity": {
+        "all_fluid_cells": {
+          "maximum_absolute_component_difference": 0.010517577396595687,
+          "rms_vector_difference": 0.0020874226541078094
+        },
+        "near_body_cells_r_lt_1": {
+          "maximum_absolute_component_difference": 1.37759821439154e-07,
+          "rms_vector_difference": 1.2607900172228513e-08
+        }
+      },
+      "velocity_old": {
+        "all_fluid_cells": {
+          "maximum_absolute_component_difference": 0.010517577396595687,
+          "rms_vector_difference": 0.0020874226541078094
+        },
+        "near_body_cells_r_lt_1": {
+          "maximum_absolute_component_difference": 1.37759821439154e-07,
+          "rms_vector_difference": 1.2607900172228513e-08
+        }
+      },
+      "velocity_older": {
+        "all_fluid_cells": {
+          "maximum_absolute_component_difference": 0.010557895663930634,
+          "rms_vector_difference": 0.0020882498034237662
+        },
+        "near_body_cells_r_lt_1": {
+          "maximum_absolute_component_difference": 1.377422612636181e-07,
+          "rms_vector_difference": 1.2608111693705192e-08
+        }
+      },
+      "kinematic_pressure": {
+        "all_fluid_cells": {
+          "maximum_absolute_component_difference": 0.0030570862252807807,
+          "rms_vector_difference": 0.00045509699803578324
+        },
+        "near_body_cells_r_lt_1": {
+          "maximum_absolute_component_difference": 6.178221384489646e-08,
+          "rms_vector_difference": 4.127369195111849e-09
+        }
+      }
+    },
+    "fluid_cells": 7741,
+    "maximum_nearest_source_cell_distance": 0.03956296662664638,
+    "maximum_near_body_source_cell_distance": 1.5836124055134848e-07,
+    "matching_oriented_native_faces": 16802,
+    "total_faces": 31194,
+    "matching_face_maximum_centre_distance": 8.849573650682179e-06,
+    "history_clock": {
+      "step": 12500,
+      "time": 99.99999999998809
+    },
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c"
+  },
+  "maximum_trace_reconstruction_differences": {
+    "normal_velocity_correction": 7.899169194598389e-05,
+    "velocity_reconstruction_difference": 0.010617546850699378,
+    "gradient_reconstruction_difference": 0.07503658574056882
+  },
+  "trace_sha256": "bbc2fba359eb0e3119a3002ae2818d05962b5ac933c2ddddd0060c000b33e3e3",
+  "final_checkpoint_sha256": "bd9d1b4e0edfec3a0d2caeea2220ffbcc05cd9a75bd321edebc5a1927b4af9f7"
+}

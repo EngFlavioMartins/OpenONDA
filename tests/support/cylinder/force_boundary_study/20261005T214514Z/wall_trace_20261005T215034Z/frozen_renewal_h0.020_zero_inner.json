@@ -1,0 +1,624 @@
+{
+  "physical_time": 46.0,
+  "physical_time_advanced": 0,
+  "zero_inner_coefficients": true,
+  "original_particle_spacing": 0.04,
+  "renewed_particle_spacing": 0.02,
+  "physical_blend_width": 0.24,
+  "physical_release_width": 0.08,
+  "physical_renewal_buffer": 0.14029925372672533,
+  "fixed_fluid_fvm_target_invariants": {
+    "circulation": -1.3381815386105576,
+    "linear_impulse": [
+      -2.032377662864502,
+      1.366591300579891,
+      0.0
+    ]
+  },
+  "first_blended_target_invariants": {
+    "circulation": -0.7821845691311363,
+    "linear_impulse": [
+      -1.9012836086141154,
+      0.8001065935373257,
+      0.0
+    ]
+  },
+  "fixed_fluid_target_maximum_strength": 0.013680837461523593,
+  "lattice_shape": [
+    185,
+    145,
+    1
+  ],
+  "elapsed_seconds": 10.049840695000967,
+  "input_sha256": {
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/wall_trace_fields.npz": "a82366cb4de2be7a0c421cb31d667b66f0cd9ecea8205a95cf4afa0ae8b210ba"
+  },
+  "interpretation": "Frozen target repeated renewal only, no physical advection or diffusion. Default and zero pruning share geometry, radius, capacity and amplification guards. Pure renewal convergence is not a force-amplitude result. Direct Gaussian outer-face changes are measured against saved accepted state. If spacing is refined, coarse saved coefficients seed the refined inner basis; the exterior untouched sources retain their actual old core radius for induced-field comparisons. This is an offline mixed-resolution mapping, not a supported native continuation. The physical blending, release and renewal-buffer widths stay fixed. Pruning scales with particle volume. A zero-inner-coefficient experiment removes the same physical renewal belt from the saved inputs for both spacings, preserving the exact saved exterior wake. This avoids the coarse-coefficient amplification exemption on the first refined correction, but deliberately starts from an empty VPM-owned release belt. It is not a compatible restart.",
+  "measurements": {
+    "native_pruning": [
+      {
+        "renewal_repetitions": 1,
+        "particle_count": 29069,
+        "renewed_coefficient_invariants": {
+          "circulation": -0.7772229510450545,
+          "linear_impulse": [
+            -1.9180287599635162,
+            0.8011753093483213,
+            0.0
+          ]
+        },
+        "represented_all_node_invariants": {
+          "circulation": -0.7773837611519074,
+          "linear_impulse": [
+            -1.9184256067234209,
+            0.8013410752806482,
+            0.0
+          ]
+        },
+        "represented_fluid_node_invariants": {
+          "circulation": -0.7862108069856318,
+          "linear_impulse": [
+            -1.8937868699732836,
+            0.799191192718212,
+            0.0
+          ]
+        },
+        "maximum_renewed_coefficient_strength": 0.018643835752879846,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.13452846415177702,
+              "weighted_rms": 2.1677862704414776,
+              "maximum_absolute": 34.20209365380898
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.07903840346887904,
+              "weighted_rms": 2.0295356035328793,
+              "maximum_absolute": 24.557941438191772
+            },
+            "curl_error": {
+              "weighted_mean": 0.055490060682897996,
+              "weighted_rms": 0.5352371026738044,
+              "maximum_absolute": 10.542807394511204
+            },
+            "relative_curl_l2_error": 0.2469049232260344,
+            "best_amplitude_ratio": 0.9077775626426742,
+            "curl_rms_ratio": 0.9362249550180781
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.14448300561694086,
+              "weighted_rms": 8.748364477463983,
+              "maximum_absolute": 34.20209365380898
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.13374518361789087,
+              "weighted_rms": 8.137629871624775,
+              "maximum_absolute": 24.557941438191772
+            },
+            "curl_error": {
+              "weighted_mean": -0.010737821999049971,
+              "weighted_rms": 1.6450287251070062,
+              "maximum_absolute": 10.542807394511204
+            },
+            "relative_curl_l2_error": 0.1880384304225828,
+            "best_amplitude_ratio": 0.9149462928436649,
+            "curl_rms_ratio": 0.9301887104255341
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.14603858044610754,
+              "weighted_rms": 2.0604987175015435,
+              "maximum_absolute": 8.707825283616561
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.14597428304650162,
+              "weighted_rms": 2.064571890477745,
+              "maximum_absolute": 8.544214946867005
+            },
+            "curl_error": {
+              "weighted_mean": -6.429739960590301e-05,
+              "weighted_rms": 0.0656144470951956,
+              "maximum_absolute": 0.7649132249388564
+            },
+            "relative_curl_l2_error": 0.03184396405485578,
+            "best_amplitude_ratio": 1.001471724688095,
+            "curl_rms_ratio": 1.0019767898623786
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.08452293875118198,
+              "weighted_rms": 2.335635889744231,
+              "maximum_absolute": 5.342553041894674
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.0851651232300539,
+              "weighted_rms": 2.3394339612376203,
+              "maximum_absolute": 5.2695854008903
+            },
+            "curl_error": {
+              "weighted_mean": -0.0006421844788718421,
+              "weighted_rms": 0.025568419179976702,
+              "maximum_absolute": 0.24040612260272598
+            },
+            "relative_curl_l2_error": 0.010947091236372735,
+            "best_amplitude_ratio": 1.0015675429972342,
+            "curl_rms_ratio": 1.0016261402344717
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.6418350796137995,
+              "weighted_rms": 2.139920212471681,
+              "maximum_absolute": 3.269126234416151
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.7946718951943136,
+              "weighted_rms": 1.5664404329476291,
+              "maximum_absolute": 3.2623275669503164
+            },
+            "curl_error": {
+              "weighted_mean": 0.847163184419486,
+              "weighted_rms": 1.3327592782814872,
+              "maximum_absolute": 3.0536607516340033
+            },
+            "relative_curl_l2_error": 0.6228079301807729,
+            "best_amplitude_ratio": 0.5739735847843445,
+            "curl_rms_ratio": 0.7320088028601481
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.14634684601158146,
+              "weighted_rms": 0.7449999878362792,
+              "maximum_absolute": 3.2532692495127282
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.03585928129274995,
+              "weighted_rms": 0.3287931813935222,
+              "maximum_absolute": 3.2090804297540094
+            },
+            "curl_error": {
+              "weighted_mean": 0.11048756471883149,
+              "weighted_rms": 0.614301459912963,
+              "maximum_absolute": 3.0536607516340033
+            },
+            "relative_curl_l2_error": 0.824565731466779,
+            "best_amplitude_ratio": 0.25743314597282985,
+            "curl_rms_ratio": 0.44133313659298695
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.0709754822843039,
+            "velocity_maximum": 0.12574397528017126,
+            "normal_velocity_rms": 0.035365256348138766,
+            "tangential_velocity_rms": 0.061537124802187246
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.06727725463219103,
+            "velocity_maximum": 0.1289712255398938,
+            "normal_velocity_rms": 0.048502979610942826,
+            "tangential_velocity_rms": 0.04662284804369136
+          },
+          "tangential_normal_gradient_rms": 6.78064790805415,
+          "tangential_normal_gradient_change_rms": 0.6634067570324913
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.011232567844521,
+            "velocity_maximum": 1.2050578272422054,
+            "normal_velocity_rms": 0.5834244621408717,
+            "tangential_velocity_rms": 0.8259583544253661
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.07604714291708696,
+            "velocity_maximum": 0.2194489036283211,
+            "normal_velocity_rms": 0.04872148655322855,
+            "tangential_velocity_rms": 0.058389936580676455
+          },
+          "tangential_normal_gradient_rms": 0.15473639190947666,
+          "tangential_normal_gradient_change_rms": 0.0917786584376279
+        },
+        "circulation": 1.569189975254254,
+        "linear_impulse": [
+          -4.920065954071697,
+          -7.8851825962790105,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.14653671936629714,
+        "representation_residual_after_prune": 0.1461371183250709,
+        "maximum_transfer_amplification": 1.359822986588767,
+        "prune_correction_fraction": 0.00274040150176533
+      },
+      {
+        "renewal_repetitions": 5,
+        "particle_count": 28965,
+        "renewed_coefficient_invariants": {
+          "circulation": -0.8678720481109778,
+          "linear_impulse": [
+            -1.9356155977563032,
+            0.8861877826998769,
+            0.0
+          ]
+        },
+        "represented_all_node_invariants": {
+          "circulation": -0.8680516138283924,
+          "linear_impulse": [
+            -1.936016083293553,
+            0.88637113800589,
+            0.0
+          ]
+        },
+        "represented_fluid_node_invariants": {
+          "circulation": -0.880639369717645,
+          "linear_impulse": [
+            -1.9121605944819453,
+            0.8835433173225113,
+            0.0
+          ]
+        },
+        "maximum_renewed_coefficient_strength": 0.024819729159867254,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.13452846415177702,
+              "weighted_rms": 2.1677862704414776,
+              "maximum_absolute": 34.20209365380898
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.08853138267227423,
+              "weighted_rms": 2.0715330744195666,
+              "maximum_absolute": 28.036154447809377
+            },
+            "curl_error": {
+              "weighted_mean": 0.04599708147950279,
+              "weighted_rms": 0.44057143911720054,
+              "maximum_absolute": 10.49090364760415
+            },
+            "relative_curl_l2_error": 0.2032356441797542,
+            "best_amplitude_ratio": 0.9359317799459111,
+            "curl_rms_ratio": 0.955598392085808
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.14448300561694086,
+              "weighted_rms": 8.748364477463983,
+              "maximum_absolute": 34.20209365380898
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.11845517117565407,
+              "weighted_rms": 8.361178242488435,
+              "maximum_absolute": 28.036154447809377
+            },
+            "curl_error": {
+              "weighted_mean": -0.026027834441286802,
+              "weighted_rms": 0.9201768378418824,
+              "maximum_absolute": 10.49090364760415
+            },
+            "relative_curl_l2_error": 0.10518272760723243,
+            "best_amplitude_ratio": 0.9511895598381476,
+            "curl_rms_ratio": 0.9557418719838491
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.14603858044610754,
+              "weighted_rms": 2.0604987175015435,
+              "maximum_absolute": 8.707825283616561
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.14603256536480655,
+              "weighted_rms": 2.0651013311118387,
+              "maximum_absolute": 8.60280024392463
+            },
+            "curl_error": {
+              "weighted_mean": -6.01508130097103e-06,
+              "weighted_rms": 0.051137357446328476,
+              "maximum_absolute": 0.47796171953943745
+            },
+            "relative_curl_l2_error": 0.024817951601704972,
+            "best_amplitude_ratio": 1.0019282671040672,
+            "curl_rms_ratio": 1.0022337376729242
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.08452293875118198,
+              "weighted_rms": 2.335635889744231,
+              "maximum_absolute": 5.342553041894674
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.08498035696415727,
+              "weighted_rms": 2.339756527609717,
+              "maximum_absolute": 5.289639437277599
+            },
+            "curl_error": {
+              "weighted_mean": -0.00045741821297522005,
+              "weighted_rms": 0.01798526130856913,
+              "maximum_absolute": 0.08129468888274755
+            },
+            "relative_curl_l2_error": 0.00770037033064201,
+            "best_amplitude_ratio": 1.001736155112124,
+            "curl_rms_ratio": 1.0017642466805634
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.6418350796137995,
+              "weighted_rms": 2.139920212471681,
+              "maximum_absolute": 3.269126234416151
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.9164232667455892,
+              "weighted_rms": 1.6984759773854095,
+              "maximum_absolute": 3.264982818727657
+            },
+            "curl_error": {
+              "weighted_mean": 0.7254118128682103,
+              "weighted_rms": 1.2274452411133279,
+              "maximum_absolute": 3.0423811167217734
+            },
+            "relative_curl_l2_error": 0.573593928390249,
+            "best_amplitude_ratio": 0.6504827496727811,
+            "curl_rms_ratio": 0.7937099558602755
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.14634684601158146,
+              "weighted_rms": 0.7449999878362792,
+              "maximum_absolute": 3.2532692495127282
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.05358075110968828,
+              "weighted_rms": 0.43938632829799296,
+              "maximum_absolute": 3.2493017394299306
+            },
+            "curl_error": {
+              "weighted_mean": 0.09276609490189318,
+              "weighted_rms": 0.5691849882244084,
+              "maximum_absolute": 3.0423811167217734
+            },
+            "relative_curl_l2_error": 0.7640067080772788,
+            "best_amplitude_ratio": 0.3820672856180892,
+            "curl_rms_ratio": 0.589780316069686
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.06390953656701791,
+            "velocity_maximum": 0.13421605273001136,
+            "normal_velocity_rms": 0.035719835523018086,
+            "tangential_velocity_rms": 0.052995492397179725
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.07025011060135741,
+            "velocity_maximum": 0.1876727676661653,
+            "normal_velocity_rms": 0.04892238002168106,
+            "tangential_velocity_rms": 0.050415064936159416
+          },
+          "tangential_normal_gradient_rms": 7.21590557243093,
+          "tangential_normal_gradient_change_rms": 1.4579995062078683
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.0124680436801798,
+            "velocity_maximum": 1.1966271862647284,
+            "normal_velocity_rms": 0.583030575202246,
+            "tangential_velocity_rms": 0.8277480823613599
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.06559394840092327,
+            "velocity_maximum": 0.1919595602234095,
+            "normal_velocity_rms": 0.04241858342381216,
+            "tangential_velocity_rms": 0.05003228804622143
+          },
+          "tangential_normal_gradient_rms": 0.15218303494971824,
+          "tangential_normal_gradient_change_rms": 0.08239749727776233
+        },
+        "circulation": 1.4785408781883307,
+        "linear_impulse": [
+          -4.937652791864489,
+          -7.800170122927449,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.08225930542851188,
+        "representation_residual_after_prune": 0.0817425350486486,
+        "maximum_transfer_amplification": 1.8107716170549222,
+        "prune_correction_fraction": 0.002275621464999915
+      },
+      {
+        "renewal_repetitions": 25,
+        "particle_count": 28755,
+        "renewed_coefficient_invariants": {
+          "circulation": -0.9146084782606441,
+          "linear_impulse": [
+            -1.9400220714085552,
+            0.93278974823804,
+            0.0
+          ]
+        },
+        "represented_all_node_invariants": {
+          "circulation": -0.9147977139065063,
+          "linear_impulse": [
+            -1.9404234686603858,
+            0.9329827456513149,
+            0.0
+          ]
+        },
+        "represented_fluid_node_invariants": {
+          "circulation": -0.928034771958591,
+          "linear_impulse": [
+            -1.9182191246331282,
+            0.9301959732886436,
+            0.0
+          ]
+        },
+        "maximum_renewed_coefficient_strength": 0.02546878580497473,
+        "regional_curl": {
+          "fluid_transfer_region": {
+            "fvm_curl": {
+              "weighted_mean": -0.13452846415177702,
+              "weighted_rms": 2.1677862704414776,
+              "maximum_absolute": 34.20209365380898
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.09329608050090393,
+              "weighted_rms": 2.061396813335264,
+              "maximum_absolute": 27.67251379033619
+            },
+            "curl_error": {
+              "weighted_mean": 0.04123238365087308,
+              "weighted_rms": 0.43239274081198337,
+              "maximum_absolute": 11.639670991698171
+            },
+            "relative_curl_l2_error": 0.1994628099217203,
+            "best_amplitude_ratio": 0.9322341265094453,
+            "curl_rms_ratio": 0.9509225339430962
+          },
+          "wall_distance_below_0.10": {
+            "fvm_curl": {
+              "weighted_mean": 0.14448300561694086,
+              "weighted_rms": 8.748364477463983,
+              "maximum_absolute": 34.20209365380898
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.11988481005080107,
+              "weighted_rms": 8.255441315334922,
+              "maximum_absolute": 27.67251379033619
+            },
+            "curl_error": {
+              "weighted_mean": -0.024598195566139736,
+              "weighted_rms": 1.033822323571827,
+              "maximum_absolute": 11.639670991698171
+            },
+            "relative_curl_l2_error": 0.11817321125965663,
+            "best_amplitude_ratio": 0.9382602960343956,
+            "curl_rms_ratio": 0.9436553925709378
+          },
+          "wall_distance_0.10_to_0.50": {
+            "fvm_curl": {
+              "weighted_mean": 0.14603858044610754,
+              "weighted_rms": 2.0604987175015435,
+              "maximum_absolute": 8.707825283616561
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": 0.1459377710613637,
+              "weighted_rms": 2.0631728606914024,
+              "maximum_absolute": 8.690240284146974
+            },
+            "curl_error": {
+              "weighted_mean": -0.00010080938474381157,
+              "weighted_rms": 0.019258691524451435,
+              "maximum_absolute": 0.13255600137405432
+            },
+            "relative_curl_l2_error": 0.009346616603481099,
+            "best_amplitude_ratio": 1.0012549761058176,
+            "curl_rms_ratio": 1.0012978135667567
+          },
+          "body_wake": {
+            "fvm_curl": {
+              "weighted_mean": -0.08452293875118198,
+              "weighted_rms": 2.335635889744231,
+              "maximum_absolute": 5.342553041894674
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.08542449397694125,
+              "weighted_rms": 2.3374527700154752,
+              "maximum_absolute": 5.334140541952048
+            },
+            "curl_error": {
+              "weighted_mean": -0.0009015552257592201,
+              "weighted_rms": 0.007381307330218364,
+              "maximum_absolute": 0.03574978385394789
+            },
+            "relative_curl_l2_error": 0.0031602988131110925,
+            "best_amplitude_ratio": 1.0007732041548614,
+            "curl_rms_ratio": 1.0007778953385766
+          },
+          "wake_release": {
+            "fvm_curl": {
+              "weighted_mean": -1.6418350796137995,
+              "weighted_rms": 2.139920212471681,
+              "maximum_absolute": 3.269126234416151
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.9827053692687358,
+              "weighted_rms": 1.7631344255343369,
+              "maximum_absolute": 3.2692376318811296
+            },
+            "curl_error": {
+              "weighted_mean": 0.659129710345064,
+              "weighted_rms": 1.167666355560662,
+              "maximum_absolute": 3.0002867063212584
+            },
+            "relative_curl_l2_error": 0.5456588281915273,
+            "best_amplitude_ratio": 0.6905546802605128,
+            "curl_rms_ratio": 0.8239253105132626
+          },
+          "transfer_blending_belt": {
+            "fvm_curl": {
+              "weighted_mean": -0.14634684601158146,
+              "weighted_rms": 0.7449999878362792,
+              "maximum_absolute": 3.2532692495127282
+            },
+            "represented_vpm_curl": {
+              "weighted_mean": -0.06312144070445633,
+              "weighted_rms": 0.4874570275274902,
+              "maximum_absolute": 3.2532718128581752
+            },
+            "curl_error": {
+              "weighted_mean": 0.08322540530712512,
+              "weighted_rms": 0.5435903771531377,
+              "maximum_absolute": 3.0002867063212584
+            },
+            "relative_curl_l2_error": 0.7296515248703559,
+            "best_amplitude_ratio": 0.4478616761970557,
+            "curl_rms_ratio": 0.654304745619155
+          }
+        },
+        "cylinder": {
+          "total_particle_velocity": {
+            "velocity_rms": 0.06279211053808897,
+            "velocity_maximum": 0.14712194992725539,
+            "normal_velocity_rms": 0.03304299611385743,
+            "tangential_velocity_rms": 0.0533948457591853
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.07282268482911364,
+            "velocity_maximum": 0.18871773811760006,
+            "normal_velocity_rms": 0.05456297389015677,
+            "tangential_velocity_rms": 0.048228884560836446
+          },
+          "tangential_normal_gradient_rms": 6.927558616255853,
+          "tangential_normal_gradient_change_rms": 1.431662328353409
+        },
+        "numericalBoundary": {
+          "total_particle_velocity": {
+            "velocity_rms": 1.013142793885564,
+            "velocity_maximum": 1.1922592422299887,
+            "normal_velocity_rms": 0.5830220850187429,
+            "tangential_velocity_rms": 0.8285792473762809
+          },
+          "change_from_saved_particle_velocity": {
+            "velocity_rms": 0.059880877051949444,
+            "velocity_maximum": 0.17640637142510465,
+            "normal_velocity_rms": 0.03890246092764602,
+            "tangential_velocity_rms": 0.0455227192760237
+          },
+          "tangential_normal_gradient_rms": 0.15069709691844602,
+          "tangential_normal_gradient_change_rms": 0.0768985817336538
+        },
+        "circulation": 1.4318044480386642,
+        "linear_impulse": [
+          -4.94205926551674,
+          -7.753568157389283,
+          0.0
+        ],
+        "representation_residual_before_prune": 0.09122521770022855,
+        "representation_residual_after_prune": 0.09083043407805624,
+        "maximum_transfer_amplification": 1.8595783837112871,
+        "prune_correction_fraction": 0.0012400970464263234
+      }
+    ]
+  }
+}

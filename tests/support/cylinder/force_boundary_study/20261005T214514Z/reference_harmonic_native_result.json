@@ -1,0 +1,28 @@
+{
+  "schema": "openonda-explicit-boundary-input-result/1",
+  "status": "complete",
+  "trace_origin": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_replay_20261005T235543Z/reference_harmonic_endpoints.h5",
+  "accepted_time": 111.99999999998144,
+  "accepted_new_steps": 1500,
+  "mode": "mixed_subcycled",
+  "operator_backend": "numba",
+  "pressure_condition": "fixedFluxPressure",
+  "frozen_settings_comparison": {
+    "matched": true,
+    "canonical_settings_sha256": "97cea5f0d5d22e877813f6766025f38d5d504adc5a7948f63c470acedf1219e6",
+    "operator_backend": "numba",
+    "comparison": "All equation settings match frozen native case metadata; output controls/horizon excluded and recorded operator backend deliberately varied."
+  },
+  "wall_seconds": 545.099768961998,
+  "maximum_normal_velocity_mismatch": 3.3306690738754696e-16,
+  "finite_primary_and_temporal_fields": true,
+  "boundary_trace_sha256": "8edd7a102364f05e9e30cc84ead7244a632b8f0c50aef5b492a403e0f11fd678",
+  "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+  "final_checkpoint_sha256": "60e6188a9a9c3116786c6a3c1597978b2698f9fd53d12434ee116904725e7bfb",
+  "initialization_and_trace_scope": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+  "source_clock": [
+    99.99999999998809,
+    111.99999999998144
+  ],
+  "limitation": "Forced-input FVM control, not a self-sustained coupled solution or a physical-time-identical restart of the trace's source flow."
+}

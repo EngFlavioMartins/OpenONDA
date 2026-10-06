@@ -1,0 +1,24 @@
+{
+  "observed_utc": "2026-10-06T01:41:32.342446+00:00",
+  "case": "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow",
+  "checkpoint_time": 95.0,
+  "coupling_step": 2375,
+  "metadata_sha256": "59015892e8d3605c8992b6a771e94214b3d14eda3f040038c0b99401205bb753",
+  "native_config_sha256": "f0decdb902d4f1ebcebc5b1bdb01851728ae2677da4f853740152e69576ab625",
+  "checks": {
+    "fvm_hash": true,
+    "fvm_finite": true,
+    "vpm_hash": true,
+    "vpm_finite": true,
+    "vpm_vtu_hash": true,
+    "vpm_boundary_condition_hash": true,
+    "vpm_boundary_condition_finite": true,
+    "unchanged_manifest": true
+  },
+  "vpm": {
+    "particle_count": 22109,
+    "time": 95.0,
+    "step": 2375
+  },
+  "intervention": "none; healthy production preserved during isolated boundary diagnostics"
+}

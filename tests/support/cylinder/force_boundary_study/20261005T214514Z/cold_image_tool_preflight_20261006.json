@@ -1,0 +1,40 @@
+{
+  "schema": "openonda-cylinder-cold-image-tool-preflight/1",
+  "written_at_utc": "2026-10-06T00:50:36.549593+00:00",
+  "status": "passed_read_only_preflight",
+  "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f",
+  "volume_validation": {
+    "frame_count": 301,
+    "physical_cell_count": 12618,
+    "initial_time": 99.99999999998809,
+    "final_time": 111.99999999998144,
+    "gradient_convention": "G[i,j]=d(velocity_j)/d(x_i); native FVM ordering"
+  },
+  "ranges": [
+    [
+      0,
+      101
+    ],
+    [
+      101,
+      201
+    ],
+    [
+      201,
+      301
+    ]
+  ],
+  "source_sha256": {
+    "tests/support/cylinder/project_reference_volume_images.py": "1f64266bfb7b953d46a1be197fa09d046dfcf0b1f062c0daa953421008ed488f",
+    "tests/support/cylinder/audit_reference_particle_image.py": "4e263f3affe32e1d0caad2fab5f5e8559a84d76fca165d4fc419e94493dee134",
+    "tests/support/cylinder/merge_reference_volume_images.py": "49d52f0fa52adf8acca0f648dc3cfd228a0f38579f9cde03e72a7cef80b106fe",
+    "tests/support/cylinder/stream_planar_image_induction.py": "1bda98215bed4bb5880868dac204ef7f5f11223ca3b761dd0ad278e47abff8e4",
+    "tests/coupler/test_reference_image_ranges.py": "fde69ef1a3c5758c8ca11dfef2cf589340b3f7c9326c8be8b97dc9d004c0969d"
+  },
+  "native_sources_unchanged": true,
+  "warm_source_bytes_preserved": true,
+  "projection_history": "independent_zero_coefficients_each_frame",
+  "fixed_internal_inverse_iterations": 10,
+  "tests_scope": "Six manufactured range/admission/merge tests; no new native flow or GPU projection was launched by this agent. Root owns the real two-frame smoke and memory qualification.",
+  "source_ownership_limit": "Native solver tree and the replay adapter are untouched. The adapter currently singles out image schema1 for extra source identity checks; admit schema2 through the root-reviewed schema2 policy before any force replay."
+}

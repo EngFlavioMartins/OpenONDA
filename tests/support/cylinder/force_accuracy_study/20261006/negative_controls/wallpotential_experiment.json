@@ -1,0 +1,38 @@
+{
+  "created_utc": "2026-10-06T04:57:48.833343+00:00",
+  "status": "stopped_after_negative_control",
+  "parameters": {
+    "directory": "/tmp/openonda-force-wallpotential-20261006",
+    "snapshot": "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z",
+    "steps": 600,
+    "end_time": 100.0,
+    "wake_x": 15.0,
+    "particle_ratio": 1.0,
+    "core_ratio": 1.0,
+    "downstream_x": 2.4,
+    "half_width": 1.6,
+    "wall_potential": true
+  },
+  "input_sha256": {
+    "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "398ed628e4458a804b564e9ff23bfd72c24858b0e179abc9828793286a61d45e",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+    "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1"
+  },
+  "restart_changes": [
+    {
+      "path": "coupler.backup_interval_steps",
+      "stored": 25,
+      "current": 0
+    }
+  ],
+  "scope": "Autonomous native FVM/VPM evolution; no reference forcing or force scaling",
+  "initial_time": 46.00000000000204,
+  "fvm_cells": 7741,
+  "compute_device": "CUDA",
+  "stopped_utc": "2026-10-06T06:17:03.847863+00:00",
+  "accepted_time": 64.12,
+  "accepted_exchanges": 453,
+  "unconverged_exchanges": 0,
+  "reason_for_stop": "Three complete lift cycles remain below 82% of reference; eliminating wall penetration does not explain the main deficit.",
+  "frozen_force_sha256": "7ee6598275f6a1ff47b93657901e2db74232b1d256432e519abc063fa5d0c48f"
+}

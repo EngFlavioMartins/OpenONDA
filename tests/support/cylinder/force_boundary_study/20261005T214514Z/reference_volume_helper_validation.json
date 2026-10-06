@@ -1,0 +1,21 @@
+{
+  "checked_at_utc": "2026-10-05T23:36:19.202771+00:00",
+  "focused_tests": {
+    "command": "python -m pytest -q tests/coupler/test_reference_volume_history.py",
+    "passed": 2
+  },
+  "ruff": "passed",
+  "source_sha256": {
+    "tests/support/cylinder/capture_reference_volume_history.py": "09b12ee1b896c6fe552f6faeaff5c37ea14c456ac3f61bfc9cbb7969e9a9878e",
+    "tests/coupler/test_reference_volume_history.py": "198bf1bcae62fb8070e2407c589b80c5262e32432547fe0d712cbab1e472a079"
+  },
+  "preflight": {
+    "native_reference_configuration_matches": true,
+    "frozen_numerical_sources_and_authored_inputs_match": true,
+    "frozen_input_hashes_match": true,
+    "coupling_endpoint_frames": 301,
+    "accepted_native_steps": 1500,
+    "original_native_force_records": 300
+  },
+  "scope": "Verification helper only; no solver constructed, no simulation launched and no numerical/tutorial sources edited."
+}

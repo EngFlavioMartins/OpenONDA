@@ -1,0 +1,33 @@
+{
+  "created_utc": "2026-10-06T01:42:47.177718+00:00",
+  "scope": "Two missing normal-mode by frequency controls; no native numerical edits or production intervention. Each retains actual DC/trend, Ut and Gt; identical unchanged 100s mapped FVM initial history.",
+  "model_report": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/normal_frequency_inputs_20261006T014123Z/normal_frequency_model_report.json",
+  "model_report_sha256": "d187fc79bc50f93ea9079c0fbdc8bfad5114ec398ebf9492acc42ced8116d94b",
+  "frozen_replay_source_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+  "jobs": [
+    {
+      "label": "actual_normal_mode_reference_frequency",
+      "path": "/tmp/openonda-actual-normal-mode-reference-frequency-20261006",
+      "cpu": 10,
+      "invocation_id": "c907508427c54ae28cc3745290db5a84",
+      "unit": "openonda-actual-normal-mode-reference-frequency-20261006.service",
+      "log": "/tmp/openonda-actual-normal-mode-reference-frequency-20261006.log",
+      "script": "/tmp/openonda-actual-normal-mode-reference-frequency-20261006.sh",
+      "memory_max_bytes": 1572864000,
+      "swap_max_bytes": 0,
+      "time_limit_s": 1800
+    },
+    {
+      "label": "reference_normal_mode_actual_frequency",
+      "path": "/tmp/openonda-reference-normal-mode-actual-frequency-20261006",
+      "cpu": 11,
+      "invocation_id": "93987c47928c4a39bd55903e19366eca",
+      "unit": "openonda-reference-normal-mode-actual-frequency-20261006.service",
+      "log": "/tmp/openonda-reference-normal-mode-actual-frequency-20261006.log",
+      "script": "/tmp/openonda-reference-normal-mode-actual-frequency-20261006.sh",
+      "memory_max_bytes": 1572864000,
+      "swap_max_bytes": 0,
+      "time_limit_s": 1800
+    }
+  ]
+}

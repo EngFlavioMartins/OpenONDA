@@ -1,0 +1,45 @@
+{
+  "status": "failed_before_first_endpoint",
+  "started_at": "2026-10-05T23:37:20.060019+00:00",
+  "service": "openonda-cylinder-reference-volumes-20261006.service",
+  "invocation_id": "c39db4f5c0334b01b039bd46e7c00f99",
+  "launcher_pid": 1464140,
+  "repository": "/home/flavio-martins/Projects/OpenONDA",
+  "log": "/tmp/openonda-cylinder-reference-volumes-20261006.log",
+  "output_directory": "/tmp/openonda-cylinder-reference-volumes-20261006",
+  "native_reference_interval": [
+    100,
+    112
+  ],
+  "native_steps": 1500,
+  "saved_endpoint_count": 301,
+  "resource_limits": {
+    "cpu_quota_percent": 100,
+    "memory_max_bytes": 2621440000,
+    "memory_swap_max_bytes": 0,
+    "runtime_max_seconds": 3600,
+    "threads": 1
+  },
+  "program_argv": [
+    "/home/flavio-martins/anaconda3/envs/OpenONDA/bin/python",
+    "-m",
+    "tests.support.cylinder.capture_reference_volume_history",
+    "--capture-directory",
+    "/tmp/openonda-cylinder-boundary-study-20261005",
+    "--directory",
+    "/tmp/openonda-cylinder-reference-volumes-20261006",
+    "--exchange-step-size",
+    "0.04"
+  ],
+  "scope": "Strict native reference recapture into private temporary output, with original reference trace/force/BDF determinism checks. Production is unchanged.",
+  "failure_observed_at": "2026-10-05T23:40:59.310446+00:00",
+  "failure": {
+    "type": "KeyError",
+    "field": "authored_inputs_sha256",
+    "location": "capture_reference_volume_history.py:201",
+    "classification": "verification helper input-schema error, not solver failure",
+    "accepted_new_steps": 0,
+    "evidence_log": "/tmp/openonda-cylinder-reference-volumes-20261006.log",
+    "partial_output_preserved": true
+  }
+}

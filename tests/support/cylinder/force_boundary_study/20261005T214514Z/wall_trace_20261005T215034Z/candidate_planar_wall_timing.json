@@ -1,0 +1,38 @@
+{
+  "physical_time": 46.0,
+  "physical_time_advanced": 0,
+  "input_sha256": {
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/fvm_001150.npz": "6221dfa33a09e95b2e84b0da7a9c7b3bd4f378a26dd3654cbfc9f0935b537475",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint-4a1kdqr4/vpm_001150.h5": "448967c166260949338001dd3dfe40c62c3f3934bdd72b875cf4ff453b9e994b",
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048"
+  },
+  "timing_scope": "Matched host GBD operator on identical frozen 46 s particles, physical parameters, capacity and unchanged threshold. Alternate operator order; exclude first two warmup trials. Candidate adds exact wall links and wall-visible conservative scatter. Does not measure FVM, induction GPU, MPI, I/O or a whole exchange.",
+  "warm_seconds": {
+    "baseline": [
+      0.02410173600219423,
+      0.05397704299684847,
+      0.024740933000430232,
+      0.05211581600087811,
+      0.02382990100159077
+    ],
+    "candidate": [
+      0.17869532700206037,
+      0.1786894540018693,
+      0.1738996469975973,
+      0.1702003259997582,
+      0.23804099599874462
+    ]
+  },
+  "warm_mean_seconds": {
+    "baseline": 0.035753085800388364,
+    "candidate": 0.18790515000000596
+  },
+  "output_particle_counts": {
+    "baseline": 22299,
+    "candidate": 22299
+  },
+  "baseline_sha256": "02cf516552a476081496babd8404218ca46f03724e73a4a4bbfc90af9d6acc13",
+  "candidate_sha256": "2608f6efe083696c2ebe3d12d0d9aac2f26b3d24de52b171ca0cc517ad74e1dd",
+  "candidate_over_baseline_mean": 5.255634466045581
+}

@@ -1,0 +1,451 @@
+{
+  "schema": "openonda-independent-cold-support-force-review/1",
+  "captured_at_utc": "2026-10-06T01:38:02.474190+00:00",
+  "source_sha256": {
+    "tests/support/cylinder/force_boundary_study/20261005T214514Z/boundary_input_force_comparison_20261006T013533Z/comparison.json": "10e41b7dd383781e4ead2931e3ce4bd93808631b013caa3deaa562edfcff6594",
+    "/tmp/openonda-reference-image-cold-full-20261006/particle_image_traces.h5": "43a9018b54b259436abc95aca4ea725b41409164b3004001600931d29caf66dd",
+    "/tmp/openonda-image-cold-reference-support-replay-20261006/inputs/boundary_model_report.json": "c3ee5325572aeea4d6433d27180c7aa61da0dde439ba75b120ec8fb8e106f60e",
+    "/tmp/openonda-image-cold-reference-support-replay-20261006/boundary_trace.h5": "b2b56305e619cadf0eed09d2bc30737905080b769fe5aef9d12ef8985dffedf2",
+    "/tmp/openonda-image-cold-production-support-replay-20261006/boundary_trace.h5": "61143104dc49ac2a49f4faf628bf1a29f84b6751d25ca067fe24261335476116"
+  },
+  "independent_input_checks": {
+    "image_reference_support": {
+      "source_group": "reference_support",
+      "301_source_frames": 301,
+      "1501_native_frames": 1501,
+      "geometry_bitwise_equal": true,
+      "native_interpolation_maximum_errors": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "finite_native_final_time": 111.99999999998144,
+      "accepted_new_steps": 1500
+    },
+    "image_production_support": {
+      "source_group": "production",
+      "301_source_frames": 301,
+      "1501_native_frames": 1501,
+      "geometry_bitwise_equal": true,
+      "native_interpolation_maximum_errors": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "finite_native_final_time": 111.99999999998144,
+      "accepted_new_steps": 1500
+    }
+  },
+  "same_local_renewal_rows_in_both_images": true,
+  "support_bounds": [
+    -5.0,
+    15.0,
+    -5.0,
+    5.0,
+    -0.5,
+    0.5
+  ],
+  "reference_bounds": [
+    -8.0,
+    24.0,
+    -10.0,
+    10.0,
+    -0.5,
+    0.5
+  ],
+  "all301_same_coefficient_support_crop_ranges": {
+    "removed_particle_count": {
+      "minimum": 31885.0,
+      "maximum": 32504.0
+    },
+    "removed_circulation": {
+      "minimum": -0.8724049309042226,
+      "maximum": 0.8732977744911938
+    },
+    "removed_strength_l1": {
+      "minimum": 8.382194440608574,
+      "maximum": 8.800986949003972
+    }
+  },
+  "complete_cycle_statistics": {
+    "image_reference_support": {
+      "drag_coefficient": {
+        "mean": 1.3436443240375096,
+        "whole_window_peak_to_peak": 0.05751256960893247,
+        "rms_fluctuation": 0.01829723773370515,
+        "complete_cycle_count": 3,
+        "cycles": [
+          {
+            "left_trough_time": 104.03999999998585,
+            "peak_time": 105.15999999998523,
+            "right_trough_time": 106.55999999998446,
+            "period": 2.5199999999986034,
+            "peak_to_peak_raw": 0.05529812143900048,
+            "peak_to_peak_drift_corrected": 0.05351545894492826,
+            "minimum_coefficient": 1.3153959513869837,
+            "maximum_coefficient": 1.3706940728259842,
+            "pressure_contribution_at_raw_extrema": 0.050659424768326966,
+            "pressure_contribution_drift_corrected": 0.048952063253582256,
+            "viscous_contribution_at_raw_extrema": 0.00463869667067357,
+            "viscous_contribution_drift_corrected": 0.004563395691346062
+          },
+          {
+            "left_trough_time": 106.55999999998446,
+            "peak_time": 107.83999999998375,
+            "right_trough_time": 109.39999999998288,
+            "period": 2.839999999998426,
+            "peak_to_peak_raw": 0.05236070423500605,
+            "peak_to_peak_drift_corrected": 0.05170774872870787,
+            "minimum_coefficient": 1.3153959513869837,
+            "maximum_coefficient": 1.3677566556219898,
+            "pressure_contribution_at_raw_extrema": 0.048245375907579824,
+            "pressure_contribution_drift_corrected": 0.04747701178069419,
+            "viscous_contribution_at_raw_extrema": 0.0041153283274262265,
+            "viscous_contribution_drift_corrected": 0.004230736948013514
+          },
+          {
+            "left_trough_time": 109.39999999998288,
+            "peak_time": 110.47999999998228,
+            "right_trough_time": 111.87999999998151,
+            "period": 2.4799999999986255,
+            "peak_to_peak_raw": 0.05319420575020528,
+            "peak_to_peak_drift_corrected": 0.05185801462839712,
+            "minimum_coefficient": 1.3144777292865226,
+            "maximum_coefficient": 1.367671935036728,
+            "pressure_contribution_at_raw_extrema": 0.049026810311997515,
+            "pressure_contribution_drift_corrected": 0.04761726414413836,
+            "viscous_contribution_at_raw_extrema": 0.0041673954382077105,
+            "viscous_contribution_drift_corrected": 0.004240750484258482
+          }
+        ],
+        "median_peak_to_peak_raw": 0.05319420575020528,
+        "mean_peak_to_peak_raw": 0.05361767714140394,
+        "median_peak_to_peak_drift_corrected": 0.05185801462839712,
+        "mean_peak_to_peak_drift_corrected": 0.05236040743401108,
+        "median_period": 2.5199999999986034,
+        "mean_period": 2.613333333331885,
+        "median_pressure_contribution_at_raw_extrema": 0.049026810311997515,
+        "mean_pressure_contribution_at_raw_extrema": 0.0493105369959681,
+        "median_viscous_contribution_at_raw_extrema": 0.0041673954382077105,
+        "mean_viscous_contribution_at_raw_extrema": 0.004307140145435835,
+        "median_pressure_contribution_drift_corrected": 0.04761726414413836,
+        "mean_pressure_contribution_drift_corrected": 0.04801544639280494,
+        "median_viscous_contribution_drift_corrected": 0.004240750484258482,
+        "mean_viscous_contribution_drift_corrected": 0.004344961041206019,
+        "mean_pressure_coefficient": 1.043996078525251,
+        "mean_viscous_coefficient": 0.2996482455122589
+      },
+      "lift_coefficient": {
+        "mean": -0.024659175182255372,
+        "whole_window_peak_to_peak": 1.020638502950427,
+        "rms_fluctuation": 0.34470830788552587,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 104.79999999998543,
+            "peak_time": 107.43999999998397,
+            "right_trough_time": 110.15999999998246,
+            "period": 5.359999999997029,
+            "peak_to_peak_raw": 0.9899517783658762,
+            "peak_to_peak_drift_corrected": 0.9809858711824636,
+            "minimum_coefficient": -0.5001486549798396,
+            "maximum_coefficient": 0.48980312338603654,
+            "pressure_contribution_at_raw_extrema": 0.8952800114676834,
+            "pressure_contribution_drift_corrected": 0.8869868747690958,
+            "viscous_contribution_at_raw_extrema": 0.09467176689819275,
+            "viscous_contribution_drift_corrected": 0.09399899641336787
+          }
+        ],
+        "median_peak_to_peak_raw": 0.9899517783658762,
+        "mean_peak_to_peak_raw": 0.9899517783658762,
+        "median_peak_to_peak_drift_corrected": 0.9809858711824636,
+        "mean_peak_to_peak_drift_corrected": 0.9809858711824636,
+        "median_period": 5.359999999997029,
+        "mean_period": 5.359999999997029,
+        "median_pressure_contribution_at_raw_extrema": 0.8952800114676834,
+        "mean_pressure_contribution_at_raw_extrema": 0.8952800114676834,
+        "median_viscous_contribution_at_raw_extrema": 0.09467176689819275,
+        "mean_viscous_contribution_at_raw_extrema": 0.09467176689819275,
+        "median_pressure_contribution_drift_corrected": 0.8869868747690958,
+        "mean_pressure_contribution_drift_corrected": 0.8869868747690958,
+        "median_viscous_contribution_drift_corrected": 0.09399899641336787,
+        "mean_viscous_contribution_drift_corrected": 0.09399899641336787,
+        "mean_pressure_coefficient": -0.023456040244344983,
+        "mean_viscous_coefficient": -0.0012031349379103989
+      }
+    },
+    "image_production_support": {
+      "drag_coefficient": {
+        "mean": 1.3442352287138217,
+        "whole_window_peak_to_peak": 0.050951561607631035,
+        "rms_fluctuation": 0.015035040760864185,
+        "complete_cycle_count": 3,
+        "cycles": [
+          {
+            "left_trough_time": 104.03999999998585,
+            "peak_time": 105.07999999998528,
+            "right_trough_time": 106.55999999998446,
+            "period": 2.5199999999986034,
+            "peak_to_peak_raw": 0.045445584403168926,
+            "peak_to_peak_drift_corrected": 0.0433027607216272,
+            "minimum_coefficient": 1.3218167430844026,
+            "maximum_coefficient": 1.3672623274875715,
+            "pressure_contribution_at_raw_extrema": 0.041689232517305275,
+            "pressure_contribution_drift_corrected": 0.03975986656645203,
+            "viscous_contribution_at_raw_extrema": 0.003756351885863485,
+            "viscous_contribution_drift_corrected": 0.0035428941551750026
+          },
+          {
+            "left_trough_time": 106.55999999998446,
+            "peak_time": 107.75999999998379,
+            "right_trough_time": 109.39999999998288,
+            "period": 2.839999999998426,
+            "peak_to_peak_raw": 0.040966677915979854,
+            "peak_to_peak_drift_corrected": 0.04072977919227072,
+            "minimum_coefficient": 1.3218167430844026,
+            "maximum_coefficient": 1.3627834210003824,
+            "pressure_contribution_at_raw_extrema": 0.038021280942656555,
+            "pressure_contribution_drift_corrected": 0.03764985563652079,
+            "viscous_contribution_at_raw_extrema": 0.0029453969733233554,
+            "viscous_contribution_drift_corrected": 0.003079923555749986
+          },
+          {
+            "left_trough_time": 109.39999999998288,
+            "peak_time": 110.47999999998228,
+            "right_trough_time": 111.87999999998151,
+            "period": 2.4799999999986255,
+            "peak_to_peak_raw": 0.041355925930259385,
+            "peak_to_peak_drift_corrected": 0.039860924713055024,
+            "minimum_coefficient": 1.3197291155267048,
+            "maximum_coefficient": 1.3610850414569642,
+            "pressure_contribution_at_raw_extrema": 0.0380941466719924,
+            "pressure_contribution_drift_corrected": 0.036651574761593864,
+            "viscous_contribution_at_raw_extrema": 0.003261779258266928,
+            "viscous_contribution_drift_corrected": 0.003209349951461271
+          }
+        ],
+        "median_peak_to_peak_raw": 0.041355925930259385,
+        "mean_peak_to_peak_raw": 0.042589396083136055,
+        "median_peak_to_peak_drift_corrected": 0.04072977919227072,
+        "mean_peak_to_peak_drift_corrected": 0.04129782154231765,
+        "median_period": 2.5199999999986034,
+        "mean_period": 2.613333333331885,
+        "median_pressure_contribution_at_raw_extrema": 0.0380941466719924,
+        "mean_pressure_contribution_at_raw_extrema": 0.039268220043984746,
+        "median_viscous_contribution_at_raw_extrema": 0.003261779258266928,
+        "mean_viscous_contribution_at_raw_extrema": 0.003321176039151256,
+        "median_pressure_contribution_drift_corrected": 0.03764985563652079,
+        "mean_pressure_contribution_drift_corrected": 0.038020432321522225,
+        "median_viscous_contribution_drift_corrected": 0.003209349951461271,
+        "mean_viscous_contribution_drift_corrected": 0.00327738922079542,
+        "mean_pressure_coefficient": 1.0443874843616205,
+        "mean_viscous_coefficient": 0.2998477443522013
+      },
+      "lift_coefficient": {
+        "mean": -0.023093859021266348,
+        "whole_window_peak_to_peak": 1.0434398354358774,
+        "rms_fluctuation": 0.343494946861489,
+        "complete_cycle_count": 1,
+        "cycles": [
+          {
+            "left_trough_time": 104.6799999999855,
+            "peak_time": 107.31999999998403,
+            "right_trough_time": 109.99999999998255,
+            "period": 5.3199999999970515,
+            "peak_to_peak_raw": 0.988833305143364,
+            "peak_to_peak_drift_corrected": 0.968666930119969,
+            "minimum_coefficient": -0.5046096805313365,
+            "maximum_coefficient": 0.4842236246120275,
+            "pressure_contribution_at_raw_extrema": 0.8932394990579311,
+            "pressure_contribution_drift_corrected": 0.8749549404458321,
+            "viscous_contribution_at_raw_extrema": 0.09559380608543287,
+            "viscous_contribution_drift_corrected": 0.09371198967413681
+          }
+        ],
+        "median_peak_to_peak_raw": 0.988833305143364,
+        "mean_peak_to_peak_raw": 0.988833305143364,
+        "median_peak_to_peak_drift_corrected": 0.968666930119969,
+        "mean_peak_to_peak_drift_corrected": 0.968666930119969,
+        "median_period": 5.3199999999970515,
+        "mean_period": 5.3199999999970515,
+        "median_pressure_contribution_at_raw_extrema": 0.8932394990579311,
+        "mean_pressure_contribution_at_raw_extrema": 0.8932394990579311,
+        "median_viscous_contribution_at_raw_extrema": 0.09559380608543287,
+        "mean_viscous_contribution_at_raw_extrema": 0.09559380608543287,
+        "median_pressure_contribution_drift_corrected": 0.8749549404458321,
+        "mean_pressure_contribution_drift_corrected": 0.8749549404458321,
+        "median_viscous_contribution_drift_corrected": 0.09371198967413681,
+        "mean_viscous_contribution_drift_corrected": 0.09371198967413681,
+        "mean_pressure_coefficient": -0.021929858707366277,
+        "mean_viscous_coefficient": -0.0011640003139000827
+      }
+    }
+  },
+  "independent_extrema_and_transient": {
+    "image_reference_support": {
+      "maximum_independent_extrema_difference": 9.71445146547012e-17,
+      "statistics": {
+        "drag_coefficient": {
+          "mean_coefficient": 1.3436443240375096,
+          "complete_cycle_count": 3,
+          "cycles": [
+            {
+              "interval": [
+                104.03999999998585,
+                106.55999999998446
+              ],
+              "peak_time": 105.15999999998523,
+              "raw_peak_to_peak": 0.05529812143900048,
+              "drift_corrected_peak_to_peak": 0.05351545894492836,
+              "linear_trough_baseline_slope_per_second": -0.0012733303529093624
+            },
+            {
+              "interval": [
+                106.55999999998446,
+                109.39999999998288
+              ],
+              "peak_time": 107.83999999998375,
+              "raw_peak_to_peak": 0.05236070423500605,
+              "drift_corrected_peak_to_peak": 0.0517077487287078,
+              "linear_trough_baseline_slope_per_second": 0.0005101214892957901
+            },
+            {
+              "interval": [
+                109.39999999998288,
+                111.87999999998151
+              ],
+              "peak_time": 110.47999999998228,
+              "raw_peak_to_peak": 0.05319420575020528,
+              "drift_corrected_peak_to_peak": 0.05185801462839702,
+              "linear_trough_baseline_slope_per_second": -0.0009544222298635729
+            }
+          ],
+          "last_to_first_raw_amplitude": 0.9619532158770342,
+          "last_to_first_drift_corrected_amplitude": 0.9690286816331525
+        },
+        "lift_coefficient": {
+          "mean_coefficient": -0.024659175182255372,
+          "complete_cycle_count": 1,
+          "cycles": [
+            {
+              "interval": [
+                104.79999999998543,
+                110.15999999998246
+              ],
+              "peak_time": 107.43999999998397,
+              "raw_peak_to_peak": 0.9899517783658762,
+              "drift_corrected_peak_to_peak": 0.9809858711824636,
+              "linear_trough_baseline_slope_per_second": 0.0033961769634157325
+            }
+          ],
+          "last_to_first_raw_amplitude": null,
+          "last_to_first_drift_corrected_amplitude": null
+        }
+      }
+    },
+    "image_production_support": {
+      "maximum_independent_extrema_difference": 1.1102230246251565e-16,
+      "statistics": {
+        "drag_coefficient": {
+          "mean_coefficient": 1.3442352287138217,
+          "complete_cycle_count": 3,
+          "cycles": [
+            {
+              "interval": [
+                104.03999999998585,
+                106.55999999998446
+              ],
+              "peak_time": 105.07999999998528,
+              "raw_peak_to_peak": 0.045445584403168926,
+              "drift_corrected_peak_to_peak": 0.04330276072162726,
+              "linear_trough_baseline_slope_per_second": -0.0014478538388803077
+            },
+            {
+              "interval": [
+                106.55999999998446,
+                109.39999999998288
+              ],
+              "peak_time": 107.75999999998379,
+              "raw_peak_to_peak": 0.040966677915979854,
+              "drift_corrected_peak_to_peak": 0.04072977919227069,
+              "linear_trough_baseline_slope_per_second": 0.0001974156030910775
+            },
+            {
+              "interval": [
+                109.39999999998288,
+                111.87999999998151
+              ],
+              "peak_time": 110.47999999998228,
+              "raw_peak_to_peak": 0.041355925930259385,
+              "drift_corrected_peak_to_peak": 0.039860924713055135,
+              "linear_trough_baseline_slope_per_second": -0.0010678580122893448
+            }
+          ],
+          "last_to_first_raw_amplitude": 0.9100097726408736,
+          "last_to_first_drift_corrected_amplitude": 0.9205169381532498
+        },
+        "lift_coefficient": {
+          "mean_coefficient": -0.023093859021266348,
+          "complete_cycle_count": 1,
+          "cycles": [
+            {
+              "interval": [
+                104.6799999999855,
+                109.99999999998255
+              ],
+              "peak_time": 107.31999999998403,
+              "raw_peak_to_peak": 0.988833305143364,
+              "drift_corrected_peak_to_peak": 0.968666930119969,
+              "linear_trough_baseline_slope_per_second": 0.007638778417956902
+            }
+          ],
+          "last_to_first_raw_amplitude": null,
+          "last_to_first_drift_corrected_amplitude": null
+        }
+      }
+    }
+  },
+  "relative_to_native_reference_flow": {
+    "image_reference_support": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.9905563401990893,
+        "median_peak_to_peak_drift_corrected": 0.9657086466653662
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.9176951603979568,
+        "median_peak_to_peak_drift_corrected": 0.9096649418225626
+      }
+    },
+    "image_production_support": {
+      "drag_coefficient": {
+        "median_peak_to_peak_raw": 0.7701097150955067,
+        "median_peak_to_peak_drift_corrected": 0.7584767798111652
+      },
+      "lift_coefficient": {
+        "median_peak_to_peak_raw": 0.9166583245785106,
+        "median_peak_to_peak_drift_corrected": 0.8982416286698236
+      }
+    }
+  },
+  "production_support_relative_to_reference_support": {
+    "drag_coefficient": {
+      "median_peak_to_peak_raw": 0.7774517045044852,
+      "median_peak_to_peak_drift_corrected": 0.7854095357126795
+    },
+    "lift_coefficient": {
+      "median_peak_to_peak_raw": 0.9988701740357914,
+      "median_peak_to_peak_drift_corrected": 0.9874422849254234
+    }
+  },
+  "absolute_raw_median_amplitude_loss_from_crop": {
+    "drag_coefficient": 0.011838279819945896,
+    "lift_coefficient": 0.0011184732225122396
+  },
+  "scope": "Same complete cold reference particle coefficient image and same native local renewal/initialization/settings. Full support restores only coefficients outside production bounds; no separate strength renormalization. These fixed source traces causally measure a finite-support response for the prescribed control, not autonomous VPM wake evolution. Full image remains approximate and finite at reference boundaries.",
+  "interpretation": [
+    "Production-support cropping reduces finite forced drag amplitude by22.25% raw/21.46% drift relative to full support. Its lift change is only0.113% raw/1.256% drift.",
+    "Full-image instantaneous representation has raw Cd ratio0.99056 and Cl0.91770 relative to reference; crop ratios0.77011/0.91666. The full image is therefore not an exact lift oracle.",
+    "Three complete drag cycles and one lift cycle are available. Drag trends change with settling; neither subtraction of conditional errors nor multiplying these ratios identifies the exact decomposition of the mature production36.0%Cd/21.4%Cl deficit.",
+    "Replacing oscillatory Un corrects the finite FVM response while Gt replacement alone does not; stronger full-velocity imposition on identical actual data has negligible benefit. Native representation/evolution and finite support need separate positive production validation."
+  ]
+}

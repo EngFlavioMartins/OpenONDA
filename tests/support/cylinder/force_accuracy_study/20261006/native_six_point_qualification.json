@@ -1,0 +1,79 @@
+{
+  "scope": "Native six-point planar remeshing versus independent experimental operator at two accepted coupled exchanges. This verifies implementation equivalence, not mature force agreement.",
+  "maximum_absolute_differences": {
+    "time": 0.0,
+    "drag_coefficient": 0.0,
+    "lift_coefficient": 0.0
+  },
+  "native_report": {
+    "created_utc": "2026-10-06T05:59:02.822650+00:00",
+    "status": "complete",
+    "parameters": {
+      "directory": "/tmp/openonda-force-remesh6-native-qualification-20261006",
+      "snapshot": "tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z",
+      "mesh": null,
+      "initial_state": null,
+      "backup_steps": 100,
+      "steps": 2,
+      "end_time": 70.0,
+      "wake_x": 15.0,
+      "particle_ratio": 1.0,
+      "core_ratio": 1.0,
+      "exchange_dt": 0.04,
+      "downstream_x": 2.4,
+      "half_width": 1.6,
+      "wall_potential": false,
+      "advection_substeps": 1,
+      "slip_half_width": null,
+      "remeshing_order": 6,
+      "inlet_x": null,
+      "linear_interface_prediction": false
+    },
+    "input_sha256": {
+      "/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "398ed628e4458a804b564e9ff23bfd72c24858b0e179abc9828793286a61d45e",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/coupled_mesh.npz": "62a17f576184eb1d4d0635588d58b3a01ccea402a336ef5a8f27439b5d6e3048",
+      "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_boundary_study/20261005T214514Z/wall_trace_20261005T215034Z/checkpoint/checkpoint_info.json": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1"
+    },
+    "restart_changes": [
+      {
+        "path": "coupler.backup_interval_steps",
+        "stored": 25,
+        "current": 100
+      },
+      {
+        "path": "vpm.viscous.gbd_remeshing_kernel",
+        "stored": "M4_PRIME",
+        "current": "LAGRANGE6"
+      }
+    ],
+    "scope": "Autonomous native FVM/VPM evolution; no reference forcing or force scaling",
+    "initial_time": 46.00000000000204,
+    "fvm_cells": 7741,
+    "compute_device": "CUDA",
+    "accepted_time": 46.080000000002066,
+    "final_coupling_step": 1152,
+    "accepted_exchanges": 2,
+    "unconverged_exchanges": 0,
+    "elapsed_seconds": 60.26752838399989,
+    "force_sha256": "1711fddf2f8c556522ead8f1f40a95159ba6c5351d9c9b7fc8b89a6a23e621a0",
+    "wall_potential": {},
+    "particle_advection": {},
+    "slip_channel": {},
+    "planar_remeshing": {
+      "kernel": "LAGRANGE6"
+    },
+    "interface_prediction": {}
+  },
+  "relevant_tests": {
+    "passed": 24,
+    "skipped": 1,
+    "skip_reason": "Metal device unavailable on Linux"
+  },
+  "source_sha256": {
+    "source/solvers/vpm/config/case.py": "6d9b557018e31079857a37383bfe1aa467e61287036835da9cc8c4edc336e4dd",
+    "source/solvers/vpm/physics/diffusion/planar.py": "b4b17400381bc3fe1704db8307c4877ac694c15c18c5a511d7be932e3c643423",
+    "tests/vpm/test_planar_high_order_remeshing.py": "642082c88f0cda31e9a136d2af759298e8ef92678e0524856dcca0487c252e5a"
+  },
+  "disposition": "Native solver change and its feature test reverted after insufficient autonomous force benefit. The qualification records only the rejected experiment.",
+  "reversion_verification": "/home/flavio-martins/Projects/OpenONDA/tests/support/cylinder/force_accuracy_study/20261006/six_point_solver_change_reverted.json"
+}

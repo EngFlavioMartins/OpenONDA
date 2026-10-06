@@ -1,0 +1,235 @@
+{
+  "status": "passed",
+  "checks": {
+    "reference_support": {
+      "strict_native_input_validation": true,
+      "completed_same_mixed_numba_1500_steps": true,
+      "input_group_identity": true,
+      "unchanged_adapter_helper": true,
+      "source_image_config_identity": true,
+      "trace_and_initial_hashes": true,
+      "output_hash": true,
+      "native_equation_settings": true,
+      "native_periodic_one_layer_mesh": true,
+      "clock_1501_rows": true,
+      "geometry_bitwise_source": true,
+      "endpoint_fields_bitwise_source": true,
+      "every_row_exact_endpoint_linear_interpolation": true,
+      "actual_Un_Gt_pairing": true,
+      "initial_primary_BDF_flux_bitwise": true,
+      "native_saved_clock": true,
+      "native_decoded_fields_finite": true,
+      "native_final_mesh_config_match_initial": true,
+      "final_native_boundary_Un_Gt_flux": true,
+      "initial_native_boundary_Un_Gt": true,
+      "all_1500_native_accepted_diagnostic_clocks": true,
+      "all_native_linear_solves_converged_finite": true,
+      "300_native_force_records_finite_clock": true
+    },
+    "production": {
+      "strict_native_input_validation": true,
+      "completed_same_mixed_numba_1500_steps": true,
+      "input_group_identity": true,
+      "unchanged_adapter_helper": true,
+      "source_image_config_identity": true,
+      "trace_and_initial_hashes": true,
+      "output_hash": true,
+      "native_equation_settings": true,
+      "native_periodic_one_layer_mesh": true,
+      "clock_1501_rows": true,
+      "geometry_bitwise_source": true,
+      "endpoint_fields_bitwise_source": true,
+      "every_row_exact_endpoint_linear_interpolation": true,
+      "actual_Un_Gt_pairing": true,
+      "initial_primary_BDF_flux_bitwise": true,
+      "native_saved_clock": true,
+      "native_decoded_fields_finite": true,
+      "native_final_mesh_config_match_initial": true,
+      "final_native_boundary_Un_Gt_flux": true,
+      "initial_native_boundary_Un_Gt": true,
+      "all_1500_native_accepted_diagnostic_clocks": true,
+      "all_native_linear_solves_converged_finite": true,
+      "300_native_force_records_finite_clock": true
+    },
+    "paired_controls": {
+      "same_canonical_equation_settings": true,
+      "same_native_mapped_initial_histories": true,
+      "same_native_clock": true,
+      "different_paired_Un_Gt_inputs": true
+    }
+  },
+  "control_reports": {
+    "reference_support": {
+      "directory": "/tmp/openonda-image-cold-reference-support-replay-20261006",
+      "result_report_sha256": "f462bdc39cc4d49551ec88d1375db42874f15f580fe69acaa2971bebfdafbb6e",
+      "boundary_input_receipt_sha256": "3f43aafaffd7d07d777cb98a27b89d3db7db8d0dd17f3d1a9abc8dd280d29707",
+      "boundary_trace_sha256": "b2b56305e619cadf0eed09d2bc30737905080b769fe5aef9d12ef8985dffedf2",
+      "final_native_checkpoint_sha256": "cffbf8db1a1e4fb4a714be1a98c71b749e4e6efc124b54ce18afc3888e503be2",
+      "force_history_sha256": "f01c6139d9622af5270c698b314b0f3efdbe71899b426c7dc992f55b295cebc0",
+      "native_initial_metadata": {
+        "config_hash": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+        "format_version": 10,
+        "kinematic_viscosity": 0.006666666666666667,
+        "mesh_hash": "8bee36542bcfa14bcfbc794b931f9242a82d3ccf2cdbe856dcbf4c29fd360670"
+      },
+      "initial_field_identity": {
+        "velocity": true,
+        "velocity_old": true,
+        "velocity_older": true,
+        "kinematic_pressure": true,
+        "volumetric_face_flux": true,
+        "volumetric_face_flux_old": true,
+        "volumetric_face_flux_older": true,
+        "complete_BDF_arrays": true
+      },
+      "all_row_interpolation_maximum_absolute_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "replay_runtime_reinterpolation_maximum_absolute_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "input_pairing": {
+        "maximum_Un_velocity_projection_difference": 3.3306690738754696e-16,
+        "maximum_Gt_normal_component": 6.938893903907228e-17,
+        "maximum_absolute_surface_flux": 5.48172618408671e-16,
+        "Gt_definition": "Gt=P_t(J n), normal derivative of tangential velocity; J[velocity,derivative]."
+      },
+      "native_boundary_checks": {
+        "initial": {
+          "maximum_normal_velocity_error": 1.1102230246251565e-16,
+          "maximum_native_skew_corrected_tangential_derivative_error": 1.73749903353837e-14,
+          "maximum_prescribed_face_flux_error": 0.0010344144386618126
+        },
+        "final": {
+          "maximum_normal_velocity_error": 5.551115123125783e-17,
+          "maximum_native_skew_corrected_tangential_derivative_error": 1.7069679003611782e-14,
+          "maximum_prescribed_face_flux_error": 6.938893903907228e-18
+        }
+      },
+      "canonical_equation_settings_sha256": "97cea5f0d5d22e877813f6766025f38d5d504adc5a7948f63c470acedf1219e6",
+      "final_clock": {
+        "time": 111.99999999998144,
+        "step": 14000,
+        "committed_steps": 14000,
+        "dt": 0.008
+      },
+      "native_final_field_maximum_absolute_values": {
+        "velocity": 1.350777182845456,
+        "velocity_old": 1.350777182845456,
+        "velocity_older": 1.3507582906537448,
+        "kinematic_pressure": 0.6870279650291291,
+        "volumetric_face_flux": 0.05402759687807286,
+        "volumetric_face_flux_old": 0.05402759687807286,
+        "volumetric_face_flux_older": 0.054029102017135094
+      },
+      "diagnostic_summary": {
+        "accepted_records": 1500,
+        "native_linear_solves": 15000,
+        "all_converged": true,
+        "used_fallback": false,
+        "nonfinite_values": 0,
+        "warning_count": 0,
+        "maximum_continuity_error": 4.775930025623256e-09,
+        "maximum_CFL": 0.6167864512686879,
+        "maximum_absolute_net_boundary_flux": 5.867662100162951e-16
+      },
+      "wall_seconds": 470.86490258100093
+    },
+    "production": {
+      "directory": "/tmp/openonda-image-cold-production-support-replay-20261006",
+      "result_report_sha256": "4dcfa997afd62106cc01ab8dc33c82e1e23115006793828620c7b490a95f2b5c",
+      "boundary_input_receipt_sha256": "bfd122722514a973349bde369a617e716ed209ce9270ef3d5a78b6045e88878e",
+      "boundary_trace_sha256": "61143104dc49ac2a49f4faf628bf1a29f84b6751d25ca067fe24261335476116",
+      "final_native_checkpoint_sha256": "6f5085f97de4d87cfd259fe0595f05680f5c363c368498ebdad39cd65a66a5f2",
+      "force_history_sha256": "807491b0b9dabe389d9066b10c6a088897f1f643f1b590aa990b9e298677debf",
+      "native_initial_metadata": {
+        "config_hash": "30e2e2762cf291c74e846bcf38407b84d643d4ea9a8cd4ce4ba8932cb8e8cf89",
+        "format_version": 10,
+        "kinematic_viscosity": 0.006666666666666667,
+        "mesh_hash": "8bee36542bcfa14bcfbc794b931f9242a82d3ccf2cdbe856dcbf4c29fd360670"
+      },
+      "initial_field_identity": {
+        "velocity": true,
+        "velocity_old": true,
+        "velocity_older": true,
+        "kinematic_pressure": true,
+        "volumetric_face_flux": true,
+        "volumetric_face_flux_old": true,
+        "volumetric_face_flux_older": true,
+        "complete_BDF_arrays": true
+      },
+      "all_row_interpolation_maximum_absolute_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "replay_runtime_reinterpolation_maximum_absolute_difference": {
+        "velocity": 0.0,
+        "normal_velocity": 0.0,
+        "tangential_gradient": 0.0
+      },
+      "input_pairing": {
+        "maximum_Un_velocity_projection_difference": 2.220446049250313e-16,
+        "maximum_Gt_normal_component": 6.938893903907228e-17,
+        "maximum_absolute_surface_flux": 5.412337245047638e-16,
+        "Gt_definition": "Gt=P_t(J n), normal derivative of tangential velocity; J[velocity,derivative]."
+      },
+      "native_boundary_checks": {
+        "initial": {
+          "maximum_normal_velocity_error": 1.1102230246251565e-16,
+          "maximum_native_skew_corrected_tangential_derivative_error": 1.5903944827755367e-14,
+          "maximum_prescribed_face_flux_error": 0.0011435200541606433
+        },
+        "final": {
+          "maximum_normal_velocity_error": 1.1102230246251565e-16,
+          "maximum_native_skew_corrected_tangential_derivative_error": 1.650068970349139e-14,
+          "maximum_prescribed_face_flux_error": 6.938893903907228e-18
+        }
+      },
+      "canonical_equation_settings_sha256": "97cea5f0d5d22e877813f6766025f38d5d504adc5a7948f63c470acedf1219e6",
+      "final_clock": {
+        "time": 111.99999999998144,
+        "step": 14000,
+        "committed_steps": 14000,
+        "dt": 0.008
+      },
+      "native_final_field_maximum_absolute_values": {
+        "velocity": 1.349836111133048,
+        "velocity_old": 1.349836111133048,
+        "velocity_older": 1.3499148153602536,
+        "kinematic_pressure": 0.7262503611305005,
+        "volumetric_face_flux": 0.05399313617907306,
+        "volumetric_face_flux_old": 0.05399313617907306,
+        "volumetric_face_flux_older": 0.05399512459203334
+      },
+      "diagnostic_summary": {
+        "accepted_records": 1500,
+        "native_linear_solves": 15000,
+        "all_converged": true,
+        "used_fallback": false,
+        "nonfinite_values": 0,
+        "warning_count": 0,
+        "maximum_continuity_error": 6.881012573410214e-09,
+        "maximum_CFL": 0.6202625031380533,
+        "maximum_absolute_net_boundary_flux": 4.533959955126873e-16
+      },
+      "wall_seconds": 542.9812258799975
+    }
+  },
+  "shared_source": {
+    "path": "/tmp/openonda-reference-image-cold-full-20261006/particle_image_traces.h5",
+    "sha256": "43a9018b54b259436abc95aca4ea725b41409164b3004001600931d29caf66dd",
+    "report_sha256": "c3ee5325572aeea4d6433d27180c7aa61da0dde439ba75b120ec8fb8e106f60e",
+    "configuration_sha256": "2c5d8cfde891552a41470b68d17129c11f5a1c4c6b468cf469416ad203d8bff1",
+    "volume_history_sha256": "be31014470b94ebcc5d9bb1e12611e4167ddcba776be26d40cef47550dae889f",
+    "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+    "adapter_sha256": "1952b837e4a55cdeb9d733540c8c870a597df549f9bc7eedb05aecb60420bdca",
+    "native_replay_helper_sha256": "c7c7ddb8810fb6016f92e071004f8a7d6378e82e9258dcc3b9ddd120a1393c6e"
+  },
+  "independent_review_script_sha256": "72c41e41f3a118014c7a0b1f9a1a54daa91cd8b4696eeda9b4f0b1289bdcc850",
+  "scope": "Both controls admit exactly the same qualified cold reference image, native equation settings, geometry and complete primary/BDF/face-flux histories. Only the selected paired Un/Gt boundary input differs. Every .008 row and replay runtime interpolation matches the declared .04 endpoints exactly. Native initial/final saved fields and all 1500 accepted diagnostics were audited without creating a solver. The final saved mixed face values satisfy both Un and skew-corrected Gt from the selected input, and final face flux matches Un*area. Initial accepted flux histories are intentionally preserved despite imposing a new initial face-velocity trace. No intermediate Gt face arrays are stored, so all-step Gt identity is established through frozen setter/helper/source identity and exact admitted input, with direct initial/final saved-state verification; it is not an independent all-step boundary capture. Force causality is evaluated separately. No source or solver changes and no launches were performed."
+}

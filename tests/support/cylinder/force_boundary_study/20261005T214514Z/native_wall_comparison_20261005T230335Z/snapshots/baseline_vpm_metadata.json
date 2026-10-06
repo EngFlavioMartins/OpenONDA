@@ -1,0 +1,830 @@
+{
+  "case_name": "coupled_cylinder_flow",
+  "configuration": {
+    "backup": {
+      "directory": "solution",
+      "interval_steps": 0,
+      "log_directory": "solution"
+    },
+    "initial_conditions": [],
+    "initial_weak_particle_percent": 0.0,
+    "numerics": {
+      "axisymmetric_no_swirl_axis": null,
+      "compute_device": "AUTO",
+      "cutoff_radius_factor": 100,
+      "debug_mode": false,
+      "diagnostics": {
+        "detailed_timing": false,
+        "type": "DiagnosticsConfig",
+        "validate_stages": false
+      },
+      "domain_bounds": [
+        -5.0,
+        15.0,
+        -5.0,
+        5.0,
+        -0.5,
+        0.5
+      ],
+      "freestream_velocity": [
+        1.0,
+        0.1,
+        0.0
+      ],
+      "induction": {
+        "method": "PLANAR",
+        "stretching_scheme": "DIRECT",
+        "type": "PlanarInduction"
+      },
+      "integrator": {
+        "a": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            0.0
+          ]
+        ],
+        "b": [
+          0.5,
+          0.5
+        ],
+        "c": [
+          0.0,
+          1.0
+        ],
+        "name": "RK2",
+        "order": 2,
+        "type": "RK2"
+      },
+      "max_n_particles": 200000,
+      "particle_kernel": "GAUSSIAN",
+      "precision": "f32",
+      "random_seed": 42,
+      "stabilization": {
+        "divergence_relaxation": {
+          "angular_impulse_reference_scale": null,
+          "angular_impulse_reference_tolerance": 0.01,
+          "grid_spacing": null,
+          "interval_steps": 0,
+          "linear_impulse_reference_scale": null,
+          "linear_impulse_reference_tolerance": 0.01,
+          "max_correction_norm": 0.02,
+          "max_iterations": 30,
+          "max_projection_sweeps": 3,
+          "max_residual_ratio": 0.9,
+          "regularization": 0.1,
+          "solver_relative_tolerance": 1e-05,
+          "spectral_convergence_fraction": 0.1,
+          "start_step": 0,
+          "total_enstrophy_tolerance": 0.0001,
+          "total_helicity_tolerance": 0.0001,
+          "total_kinetic_energy_tolerance": 1e-06,
+          "type": "DivergenceRelaxationConfig",
+          "variation_tolerance": 0.001,
+          "vortex_strength_reference_scale": null,
+          "vortex_strength_reference_tolerance": 0.001
+        },
+        "filament_refinement": {
+          "interval_steps": 0,
+          "max_absolute_vortex_strength": null,
+          "max_vortex_strength_factor": 2.0,
+          "offset_fraction": 0.25,
+          "type": "FilamentRefinementConfig"
+        },
+        "max_vortex_strength_error": 1e-05,
+        "max_vortex_strength_growth": 0.001,
+        "max_vorticity_growth": 0.05,
+        "pedrizzetti_relaxation_end_step": null,
+        "pedrizzetti_relaxation_factor": 0.0,
+        "pedrizzetti_relaxation_interval_steps": 1,
+        "pedrizzetti_relaxation_preserve_moments": false,
+        "pedrizzetti_relaxation_preserve_vortex_strength": true,
+        "pedrizzetti_relaxation_start_step": 0,
+        "regularization_core_radius": null,
+        "regularization_core_radius_trigger": null,
+        "regularization_divergence_trigger": 0.04,
+        "regularization_grid_spacing": null,
+        "regularization_interval_steps": 0,
+        "regularization_misalignment_trigger": 20.0,
+        "regularization_preserve_groups": false,
+        "regularization_projection_max_correction": 0.2,
+        "regularization_projection_trigger": 0.08,
+        "regularization_solenoidal_remesh": false,
+        "regularization_start_step": 0,
+        "regularization_tail_budget": 0.003,
+        "regularization_total_enstrophy_dissipation_limit": 0.15,
+        "regularization_total_kinetic_energy_dissipation_limit": 0.15,
+        "regularization_transfer_only": false,
+        "remove_particles_by_bounds": [
+          -5.0,
+          15.0,
+          -5.0,
+          5.0,
+          -0.5,
+          0.5
+        ],
+        "selective_eddy_viscosity_coefficient": 0.0,
+        "selective_eddy_viscosity_start_step": 0,
+        "type": "StabilizationConfig"
+      },
+      "state_limits": {
+        "divergence": {
+          "maximum": null,
+          "type": "DivergenceLimit"
+        },
+        "finite_state": {
+          "enabled": true,
+          "type": "FiniteStateCheck"
+        },
+        "growth": {
+          "maximum_particle_strength_growth": null,
+          "maximum_vorticity_growth": null,
+          "type": "GrowthLimit"
+        },
+        "lagrangian_cfl": {
+          "maximum": 1.0,
+          "type": "LagrangianCFLLimit"
+        },
+        "maximum_particle_strength": {
+          "maximum": null,
+          "type": "ParticleStrengthLimit"
+        },
+        "misalignment": {
+          "maximum_degrees": null,
+          "type": "MisalignmentLimit"
+        },
+        "type": "ParticleStateLimits"
+      },
+      "time_step_size": 0.04,
+      "turbulence": {
+        "filter_width": null,
+        "flow_model": "INVISCID",
+        "model": "INVISCID",
+        "smagorinsky_coefficient": 0.2,
+        "subgrid_dissipation_coefficient": 1.048,
+        "type": "TurbulenceConfig"
+      },
+      "type": "Numerics",
+      "verbose": true,
+      "viscous": {
+        "core_radius_ratio": 1.0,
+        "dvh_domain_padding": 3.0,
+        "dvh_grid_spacing": null,
+        "dvh_support_radius_ratio": 4,
+        "dvh_threshold": 0.01,
+        "dvh_threshold_mode": "budget",
+        "gbd_domain_padding": 5.0,
+        "gbd_grid_spacing": 0.04,
+        "gbd_remeshing_kernel": "M4_PRIME",
+        "gbd_threshold": 1.6000000000000003e-05,
+        "gbd_threshold_mode": "absolute",
+        "kinematic_viscosity": 0.006666666666666667,
+        "particle_spacing": 0.04,
+        "scheme": "GBD",
+        "type": "ViscousConfig"
+      },
+      "vlm": null,
+      "write_precision": "f32"
+    },
+    "run": {
+      "final_backup": true,
+      "initial_samples": true,
+      "runtime_compute_device": null,
+      "state_limit_action": "RAISE",
+      "steps": 2500,
+      "wall_time_limit_seconds": null
+    },
+    "samplers": {
+      "directory": null,
+      "items": [
+        {
+          "end": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              1.399999976158142,
+              0.6000000238418579,
+              0.0
+            ]
+          },
+          "file_name": "vpm_phase_near_upper",
+          "include_derivatives": true,
+          "initial": false,
+          "length": 0.7999999523162842,
+          "line_points": {
+            "dtype": "float32",
+            "shape": [
+              9,
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              [
+                0.6000000238418579,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                0.7000000476837158,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                0.800000011920929,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                0.8999999761581421,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                1.0,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                1.100000023841858,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                1.2000000476837158,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                1.2999999523162842,
+                0.6000000238418579,
+                0.0
+              ],
+              [
+                1.399999976158142,
+                0.6000000238418579,
+                0.0
+              ]
+            ]
+          },
+          "n_points": 9,
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          },
+          "spacing": 0.1000000000001,
+          "start": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.6000000238418579,
+              0.6000000238418579,
+              0.0
+            ]
+          },
+          "t_param": {
+            "dtype": "float32",
+            "shape": [
+              9
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.0,
+              0.125,
+              0.25,
+              0.375,
+              0.5,
+              0.625,
+              0.75,
+              0.875,
+              1.0
+            ]
+          },
+          "type": "LineSampler"
+        },
+        {
+          "end": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              1.399999976158142,
+              -0.6000000238418579,
+              0.0
+            ]
+          },
+          "file_name": "vpm_phase_near_lower",
+          "include_derivatives": true,
+          "initial": false,
+          "length": 0.7999999523162842,
+          "line_points": {
+            "dtype": "float32",
+            "shape": [
+              9,
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              [
+                0.6000000238418579,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                0.7000000476837158,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                0.800000011920929,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                0.8999999761581421,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                1.0,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                1.100000023841858,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                1.2000000476837158,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                1.2999999523162842,
+                -0.6000000238418579,
+                0.0
+              ],
+              [
+                1.399999976158142,
+                -0.6000000238418579,
+                0.0
+              ]
+            ]
+          },
+          "n_points": 9,
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          },
+          "spacing": 0.1000000000001,
+          "start": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.6000000238418579,
+              -0.6000000238418579,
+              0.0
+            ]
+          },
+          "t_param": {
+            "dtype": "float32",
+            "shape": [
+              9
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.0,
+              0.125,
+              0.25,
+              0.375,
+              0.5,
+              0.625,
+              0.75,
+              0.875,
+              1.0
+            ]
+          },
+          "type": "LineSampler"
+        },
+        {
+          "end": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              8.0,
+              0.6000000238418579,
+              0.0
+            ]
+          },
+          "file_name": "vpm_phase_wake_upper",
+          "include_derivatives": true,
+          "initial": false,
+          "length": 6.400000095367432,
+          "line_points": {
+            "dtype": "float32",
+            "sha256": "17dd507f82afe6784824b799a1f687eba00f1c340c878f7b47369a07bdc61438",
+            "shape": [
+              65,
+              3
+            ],
+            "type": "numpy.ndarray"
+          },
+          "n_points": 65,
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          },
+          "spacing": 0.10000000000010001,
+          "start": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              1.600000023841858,
+              0.6000000238418579,
+              0.0
+            ]
+          },
+          "t_param": {
+            "dtype": "float32",
+            "sha256": "290164b65cc3f0881f9afceb1048a01a2da756e37c7ba0a2d539d2082f67afec",
+            "shape": [
+              65
+            ],
+            "type": "numpy.ndarray"
+          },
+          "type": "LineSampler"
+        },
+        {
+          "end": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              8.0,
+              -0.6000000238418579,
+              0.0
+            ]
+          },
+          "file_name": "vpm_phase_wake_lower",
+          "include_derivatives": true,
+          "initial": false,
+          "length": 6.400000095367432,
+          "line_points": {
+            "dtype": "float32",
+            "sha256": "3c22c4802aa6b52c3ede0779ae9c990dd6e34ed3f704ad75c3f59050e3d7db43",
+            "shape": [
+              65,
+              3
+            ],
+            "type": "numpy.ndarray"
+          },
+          "n_points": 65,
+          "schedule": {
+            "first_step": null,
+            "interval": 1,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          },
+          "spacing": 0.10000000000010001,
+          "start": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              1.600000023841858,
+              -0.6000000238418579,
+              0.0
+            ]
+          },
+          "t_param": {
+            "dtype": "float32",
+            "sha256": "290164b65cc3f0881f9afceb1048a01a2da756e37c7ba0a2d539d2082f67afec",
+            "shape": [
+              65
+            ],
+            "type": "numpy.ndarray"
+          },
+          "type": "LineSampler"
+        },
+        {
+          "end": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              2.0,
+              2.0,
+              0.0
+            ]
+          },
+          "file_name": "vpm_transverse_x2",
+          "include_derivatives": true,
+          "initial": false,
+          "length": 4.0,
+          "line_points": {
+            "dtype": "float32",
+            "sha256": "bb8d81009ada3691a332cfe6b91c8658cc3b3cbcae5897e0339c759b85ba733d",
+            "shape": [
+              51,
+              3
+            ],
+            "type": "numpy.ndarray"
+          },
+          "n_points": 51,
+          "schedule": {
+            "first_step": null,
+            "interval": 5,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          },
+          "spacing": 0.08000000000008001,
+          "start": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              2.0,
+              -2.0,
+              0.0
+            ]
+          },
+          "t_param": {
+            "dtype": "float32",
+            "shape": [
+              51
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.0,
+              0.019999999552965164,
+              0.03999999910593033,
+              0.05999999865889549,
+              0.07999999821186066,
+              0.10000000149011612,
+              0.11999999731779099,
+              0.14000000059604645,
+              0.1599999964237213,
+              0.18000000715255737,
+              0.20000000298023224,
+              0.2199999988079071,
+              0.23999999463558197,
+              0.25999999046325684,
+              0.2800000011920929,
+              0.30000001192092896,
+              0.3199999928474426,
+              0.3400000035762787,
+              0.36000001430511475,
+              0.3799999952316284,
+              0.4000000059604645,
+              0.41999998688697815,
+              0.4399999976158142,
+              0.46000000834465027,
+              0.47999998927116394,
+              0.5,
+              0.5199999809265137,
+              0.5400000214576721,
+              0.5600000023841858,
+              0.5799999833106995,
+              0.6000000238418579,
+              0.6200000047683716,
+              0.6399999856948853,
+              0.6600000262260437,
+              0.6800000071525574,
+              0.699999988079071,
+              0.7200000286102295,
+              0.7400000095367432,
+              0.7599999904632568,
+              0.7799999713897705,
+              0.800000011920929,
+              0.8199999928474426,
+              0.8399999737739563,
+              0.8600000143051147,
+              0.8799999952316284,
+              0.8999999761581421,
+              0.9200000166893005,
+              0.9399999976158142,
+              0.9599999785423279,
+              0.9800000190734863,
+              1.0
+            ]
+          },
+          "type": "LineSampler"
+        },
+        {
+          "end": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              4.0,
+              2.0,
+              0.0
+            ]
+          },
+          "file_name": "vpm_transverse_x4",
+          "include_derivatives": true,
+          "initial": false,
+          "length": 4.0,
+          "line_points": {
+            "dtype": "float32",
+            "sha256": "8459d5d9bdc09dd08cc760c1ede339ef40dc47ffab42f85e658cca7fd3dc894a",
+            "shape": [
+              51,
+              3
+            ],
+            "type": "numpy.ndarray"
+          },
+          "n_points": 51,
+          "schedule": {
+            "first_step": null,
+            "interval": 5,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          },
+          "spacing": 0.08000000000008001,
+          "start": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              4.0,
+              -2.0,
+              0.0
+            ]
+          },
+          "t_param": {
+            "dtype": "float32",
+            "shape": [
+              51
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.0,
+              0.019999999552965164,
+              0.03999999910593033,
+              0.05999999865889549,
+              0.07999999821186066,
+              0.10000000149011612,
+              0.11999999731779099,
+              0.14000000059604645,
+              0.1599999964237213,
+              0.18000000715255737,
+              0.20000000298023224,
+              0.2199999988079071,
+              0.23999999463558197,
+              0.25999999046325684,
+              0.2800000011920929,
+              0.30000001192092896,
+              0.3199999928474426,
+              0.3400000035762787,
+              0.36000001430511475,
+              0.3799999952316284,
+              0.4000000059604645,
+              0.41999998688697815,
+              0.4399999976158142,
+              0.46000000834465027,
+              0.47999998927116394,
+              0.5,
+              0.5199999809265137,
+              0.5400000214576721,
+              0.5600000023841858,
+              0.5799999833106995,
+              0.6000000238418579,
+              0.6200000047683716,
+              0.6399999856948853,
+              0.6600000262260437,
+              0.6800000071525574,
+              0.699999988079071,
+              0.7200000286102295,
+              0.7400000095367432,
+              0.7599999904632568,
+              0.7799999713897705,
+              0.800000011920929,
+              0.8199999928474426,
+              0.8399999737739563,
+              0.8600000143051147,
+              0.8799999952316284,
+              0.8999999761581421,
+              0.9200000166893005,
+              0.9399999976158142,
+              0.9599999785423279,
+              0.9800000190734863,
+              1.0
+            ]
+          },
+          "type": "LineSampler"
+        },
+        {
+          "bounds": {
+            "dtype": "float32",
+            "shape": [
+              4
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              1.600000023841858,
+              8.0,
+              -2.0,
+              2.0
+            ]
+          },
+          "file_name": "vpm_midspan",
+          "grid_layout": "bounded_uniform_v1",
+          "include_derivatives": false,
+          "initial": false,
+          "normal": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "point": {
+            "dtype": "float32",
+            "shape": [
+              3
+            ],
+            "type": "numpy.ndarray",
+            "values": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "schedule": {
+            "first_step": null,
+            "interval": 10,
+            "is_final_only": false,
+            "start_time": null,
+            "type": "EverySteps"
+          },
+          "spacing": 0.1,
+          "type": "SurfaceSampler"
+        }
+      ]
+    }
+  },
+  "run_status": {
+    "status": "created"
+  },
+  "schema_version": 2,
+  "solver": "VPM",
+  "state": {
+    "initial_n_particles_total": 0,
+    "initial_step": 0,
+    "initial_time": 0.0,
+    "n_particles_total": 0,
+    "requested_steps": 2500,
+    "step": 0,
+    "time": 0.0
+  }
+}

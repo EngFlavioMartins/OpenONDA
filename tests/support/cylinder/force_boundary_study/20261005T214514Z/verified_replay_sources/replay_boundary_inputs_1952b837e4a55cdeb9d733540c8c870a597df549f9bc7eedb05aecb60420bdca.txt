@@ -1,0 +1,748 @@
+"""Prepare or replay explicitly identified cylinder boundary-input data.
+
+Preparation is host-only. Generated harmonic models and reconstructed particle
+images retain their own trace receipt; they are never represented as captured
+reference traces. A replay, when explicitly requested, uses the completed
+boundary study's native FVM setup and unchanged mapped reference/BDF state.
+"""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import replace
+from datetime import UTC, datetime
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import time
+
+import h5py
+import numpy as np
+
+FIELDS = ("velocity", "normal_velocity", "tangential_gradient")
+REPOSITORY = Path(__file__).resolve().parents[3]
+
+
+def digest(path):
+    value = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            value.update(block)
+    return value.hexdigest()
+
+
+def write_json(path, value):
+    Path(path).write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+
+
+def json_value(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, bytes):
+        return value.decode()
+    return value
+
+
+def copy_unchanged(source, destination):
+    before = digest(source)
+    shutil.copyfile(source, destination)
+    if digest(source) != before or digest(destination) != before:
+        destination.unlink(missing_ok=True)
+        raise RuntimeError(f"Frozen source changed during copying: {source}")
+    return before
+
+
+def interpolate_endpoint_values(values, substeps):
+    """Apply the coupler's linear accepted-endpoint interpolation exactly."""
+    values = np.asarray(values, dtype=np.float64)
+    if len(values) < 2 or not isinstance(substeps, int) or substeps < 1:
+        raise ValueError("At least two endpoints and positive integer substeps are required")
+    count = (len(values) - 1) * substeps + 1
+    result = np.empty((count, *values.shape[1:]), dtype=np.float64)
+    result[0] = values[0]
+    for step in range(1, count):
+        lower = (step - 1) // substeps
+        fraction = (step - lower * substeps) / substeps
+        result[step] = (1 - fraction) * values[lower] + fraction * values[lower + 1]
+    return result
+
+
+def check_equation_sources(information):
+    differences = [
+        name
+        for table in ("source_sha256", "authored_inputs_sha256")
+        for name, expected in information.get(table, {}).items()
+        if not (REPOSITORY / name).is_file() or digest(REPOSITORY / name) != expected
+    ]
+    if differences:
+        raise RuntimeError("Frozen equation/input sources changed: " + ", ".join(differences))
+
+
+def admit_cold_particle_image(stored, report, *, source, information, original_report, reference):
+    """Admit a complete independently repeated cold image, without a solver."""
+    from .capture_reference_volume_history import validate_volume_history
+    from .merge_reference_volume_images import (
+        SAME_ATTRIBUTES,
+        validate_projection_subsets,
+    )
+    from .project_reference_volume_images import SCHEMA, SUPPORTS, TRACE_FIELDS
+
+    initial_hash = original_report["initial_restriction"]["initial_state_sha256"]
+    if (
+        stored.attrs.get("schema") != SCHEMA
+        or not stored.attrs.get("complete")
+        or not stored.attrs.get("full_reference_horizon_complete")
+        or not stored.attrs.get("merged_independent_ranges")
+        or stored.attrs.get("projection_history") != "cold"
+        or stored.attrs.get("auxiliary_state_policy") != "zero_coefficients_each_frame"
+        or stored.attrs.get("auxiliary_search_policy")
+        != "fixed internal nonphysical coefficient iterations; final atomic replacement guards enforced"
+        or stored.attrs.get("outer_repetitions") != 10
+        or stored.attrs.get("start_frame") != 0
+        or stored.attrs.get("stop_frame") != 301
+        or stored.attrs.get("qualified_reference_frame_count") != 301
+        or stored.attrs.get("mapped_initial_state_sha256") != initial_hash
+        or "frame_index" not in stored
+        or stored["frame_index"].dtype != np.dtype(np.int64)
+        or stored["time"].shape != (301,)
+        or stored["time"].dtype != np.dtype(np.float64)
+        or not np.array_equal(stored["frame_index"][:], np.arange(301, dtype=np.int64))
+    ):
+        raise ValueError(
+            "Particle image requires the complete merged schema-2 independent cold horizon"
+        )
+    if (
+        report.get("status") != "complete"
+        or Path(report["output"]).resolve() != Path(source).resolve()
+        or report.get("frames") != 301
+        or report.get("start_frame") != 0
+        or report.get("stop_frame") != 301
+        or report.get("qualified_reference_frame_count") != 301
+        or not report.get("complete_qualified_horizon")
+        or report.get("projection_history") != "cold"
+        or report.get("outer_repetitions") != 10
+        or report.get("mapped_initial_state_sha256") != initial_hash
+    ):
+        raise ValueError(
+            "Particle-image merge receipt does not qualify the unchanged complete cold horizon"
+        )
+    merge_helper = Path(__file__).with_name("merge_reference_volume_images.py")
+    merge_hash = digest(merge_helper)
+    if (
+        report.get("merge_source_sha256") != merge_hash
+        or stored.attrs.get("merge_source_sha256") != merge_hash
+    ):
+        raise ValueError("Particle-image merge helper differs from its recorded source")
+    provenance = report.get("range_provenance")
+    if (
+        not isinstance(provenance, list)
+        or not provenance
+        or json.loads(stored.attrs.get("range_provenance", "null")) != provenance
+    ):
+        raise ValueError("Particle image lacks identical hashed independent-range provenance")
+    worker_reports = []
+    for entry in provenance:
+        directory = Path(entry["directory"]).resolve()
+        worker_path = directory / "report.json"
+        output = directory / "particle_image_traces.h5"
+        if (
+            Path(entry["report_path"]).resolve() != worker_path
+            or Path(entry["output"]).resolve() != output
+            or digest(worker_path) != entry["report_sha256"]
+            or digest(output) != entry["output_sha256"]
+        ):
+            raise ValueError("Particle-image range artifacts differ from their merged provenance")
+        worker = json.loads(worker_path.read_text())
+        repeated = worker.get("cold_repeat_qualification", {})
+        comparisons = repeated.get("coefficient_comparison", {})
+        if set(comparisons) != {"native_masked", "full_reference_native_masked"} or any(
+            not record.get("positions_bitwise_equal") or not record.get("strengths_bitwise_equal")
+            for record in comparisons.values()
+        ):
+            raise ValueError(
+                "Each cold range must independently repeat coefficients for both supports"
+            )
+        configuration = worker["native_configuration"]
+        if (
+            worker.get("outer_repetitions") != 10
+            or configuration["coupler"]["transfer_discretization_error_limit"] != 0.08
+        ):
+            raise ValueError(
+                "Cold image changed its fixed inverse count or native 0.08 moment-closure budget"
+            )
+        worker_reports.append(worker)
+    volume_paths = {Path(worker["volume_history_path"]).resolve() for worker in worker_reports}
+    if len(volume_paths) != 1:
+        raise ValueError("Cold image ranges consumed different native reference volumes")
+    volume_path = volume_paths.pop()
+    entries, attributes, volume_report = validate_projection_subsets(
+        [entry["directory"] for entry in provenance], volume_path.parent
+    )
+    admitted_provenance = [
+        {name: value for name, value in entry.items() if name != "report"} for entry in entries
+    ]
+    if (
+        admitted_provenance != provenance
+        or [frame for entry in entries for frame in entry["report"]["frame_reports"]]
+        != report["frame_reports"]
+    ):
+        raise ValueError(
+            "Merged image report differs from the independently admitted range reports"
+        )
+    if any(stored.attrs.get(name) != attributes[name] for name in SAME_ATTRIBUTES):
+        raise ValueError("Merged image changed an admitted source, configuration or cold policy")
+    for name, attribute in (
+        ("source_sha256", "source_sha256"),
+        ("native_configuration", "native_configuration"),
+    ):
+        if report[name] != json.loads(stored.attrs[attribute]):
+            raise ValueError("Particle-image merge report and HDF5 source/configuration differ")
+    if (
+        report["configuration_sha256"] != attributes["configuration_sha256"]
+        or report["volume_history_sha256"] != attributes["volume_history_sha256"]
+    ):
+        raise ValueError("Particle-image merge configuration or volume identity differs")
+    if (
+        not volume_report.get("equation_equivalence_verified")
+        or volume_report.get("mapped_initial_state_sha256") != initial_hash
+        or volume_report.get("native_reference_config_hash") != information["reference_config_hash"]
+        or volume_report.get("reference_mesh_sha256")
+        != information["files"]["reference_mesh.npz"]["sha256"]
+        or volume_report.get("original_capture_inputs_sha256")
+        != digest(reference / "inputs/inputs.json")
+        or volume_report.get("accepted_native_steps") != information["steps"]
+        or volume_report.get("endpoint_count") != 301
+        or abs(volume_report["accepted_time"] - information["end_time"]) > 1e-9
+    ):
+        raise ValueError(
+            "Cold image volume receipt differs from the immutable original native reference"
+        )
+    final_fields = {
+        "velocity",
+        "velocity_old",
+        "velocity_older",
+        "kinematic_pressure",
+        "volumetric_face_flux",
+        "volumetric_face_flux_old",
+        "volumetric_face_flux_older",
+    }
+    force = volume_report.get("force_determinism", {})
+    if (
+        set(volume_report.get("maximum_outer_trace_difference", {})) != set(TRACE_FIELDS)
+        or set(volume_report.get("final_primary_and_BDF_difference", {})) != final_fields
+        or any(
+            value != 0.0
+            for table in (
+                volume_report["maximum_outer_trace_difference"],
+                volume_report["final_primary_and_BDF_difference"],
+            )
+            for value in table.values()
+        )
+        or force.get("record_count") != 300
+        or force.get("original_sha256")
+        != digest(reference / "reference/samples/forces_history.csv")
+        or force.get("candidate_sha256") != force.get("original_sha256")
+        or not force.get("maximum_absolute_field_difference")
+        or any(value != 0.0 for value in force["maximum_absolute_field_difference"].values())
+    ):
+        raise ValueError(
+            "Cold image volume lacks exact original force, outer-trace and primary/BDF determinism"
+        )
+    with (
+        h5py.File(volume_path, "r") as volumes,
+        h5py.File(reference / "reference_traces.h5", "r") as exact,
+    ):
+        validation = validate_volume_history(volumes, information, inspect_fields=False)
+        if volumes.attrs.get("mapped_initial_state_sha256") != initial_hash or not np.array_equal(
+            stored["time"][:], volumes["time"][:]
+        ):
+            raise ValueError("Cold image and qualified native volume clocks or mapped state differ")
+        for name in ("face_centre", "face_normal", "face_area"):
+            if not np.array_equal(stored[name][:], exact[name][:]):
+                raise ValueError(
+                    "Cold image face geometry differs from the original native capture"
+                )
+        for entry in entries:
+            start, stop = entry["report"]["start_frame"], entry["report"]["stop_frame"]
+            with h5py.File(entry["output"], "r") as subset:
+                for support in SUPPORTS:
+                    for name in TRACE_FIELDS:
+                        if (
+                            not np.array_equal(
+                                stored[support][name][start:stop], subset[support][name][:]
+                            )
+                            or stored[support][name].dtype != subset[support][name].dtype
+                        ):
+                            raise ValueError(
+                                "Merged image trace differs from its admitted cold range: " + name
+                            )
+        for name in TRACE_FIELDS:
+            if not np.array_equal(stored["exact_reference"][name][:], exact[name][::5]):
+                raise ValueError(
+                    "Cold image exact-reference channel differs from the original native capture"
+                )
+    if digest(volume_path) != report["volume_history_sha256"]:
+        raise ValueError("Qualified native reference volume changed during cold-image admission")
+    return {
+        "status": "qualified independent cold schema-2 merged image",
+        "frame_count": 301,
+        "independent_range_count": len(entries),
+        "fixed_inverse_iterations": 10,
+        "zero_initial_coefficients_each_frame": True,
+        "both_supports_independently_repeated": True,
+        "native_moment_closure_correction_limit": 0.08,
+        "target_relative_coefficient_ratio_limit": 4.0,
+        "target_relative_coefficient_l1_ratio_limit": 10.0,
+        "unchanged_native_volume_validation": validation,
+        "volume_history_sha256": report["volume_history_sha256"],
+        "configuration_sha256": report["configuration_sha256"],
+        "merge_source_sha256": merge_hash,
+        "scope": "Host-only provenance and trace admission. The 0.08 limit bounds the final native atomic moment closure, including storage rounding; it is not a represented-vorticity residual threshold or force-recovery proof.",
+    }
+
+
+def prepare_input(directory, *, source, group, reference, origin, source_receipt=None):
+    """Freeze 301 accepted endpoint traces with the exact original native inputs."""
+    directory = Path(directory).resolve()
+    source = Path(source).resolve()
+    reference = Path(reference).resolve()
+    source_sha256 = digest(source)
+    information = json.loads((reference / "inputs/inputs.json").read_text())
+    original_report = json.loads((reference / "reference/report.json").read_text())
+    check_equation_sources(information)
+    if digest(reference / "reference_traces.h5") != original_report["trace_sha256"]:
+        raise ValueError("The original captured reference trace changed")
+    if (
+        digest(reference / "initial_state.npz")
+        != original_report["initial_restriction"]["initial_state_sha256"]
+    ):
+        raise ValueError("The original complete mapped initial state changed")
+    substeps = round(0.04 / information["step_size"])
+    if substeps < 1 or not np.isclose(
+        substeps * information["step_size"], 0.04, atol=1e-12, rtol=0
+    ):
+        raise ValueError("Native FVM step is not compatible with the .04 s endpoint schedule")
+    if information["steps"] % substeps:
+        raise ValueError("Replay duration does not contain complete coupling intervals")
+    with h5py.File(reference / "reference_traces.h5", "r") as original:
+        geometry = {name: original[name][:] for name in ("face_centre", "face_normal", "face_area")}
+        native_time = original["time"][:]
+    if len(native_time) != information["steps"] + 1:
+        raise ValueError("The original captured native clock differs from its receipt")
+    endpoint_time = native_time[::substeps]
+    if source_receipt is None:
+        raise ValueError("Generated boundary inputs require their explicit qualification receipt")
+    source_receipt = Path(source_receipt).resolve()
+    source_receipt_hash = digest(source_receipt)
+    source_report = json.loads(source_receipt.read_text())
+    if "output_sha256" in source_report:
+        if (
+            source_report.get("status") != "complete"
+            or source_report["output_sha256"] != source_sha256
+            or source_report.get("frames") != len(endpoint_time)
+            or not source_report.get("complete_qualified_horizon", False)
+        ):
+            raise ValueError("Particle-image receipt does not qualify this complete endpoint HDF5")
+    elif "endpoint_models" in source_report:
+        matching = [
+            value
+            for value in source_report["endpoint_models"].values()
+            if value["sha256"] == source_sha256
+        ]
+        if len(matching) != 1 or matching[0]["accepted_endpoint_count"] != len(endpoint_time):
+            raise ValueError(
+                "Generated-model receipt does not identify this complete endpoint HDF5"
+            )
+    else:
+        raise ValueError("Explicit input receipt lacks a qualified output or endpoint-model hash")
+    with h5py.File(source, "r") as stored:
+        if not stored.attrs.get("complete", False):
+            raise ValueError("The explicit input trace is not marked complete")
+        image_admission = None
+        if str(stored.attrs.get("schema", "")).startswith(
+            "openonda-cylinder-reference-particle-image/"
+        ):
+            if group not in ("production", "reference_support", "exact_reference"):
+                raise ValueError(
+                    "Particle images require an explicitly identified qualified support group"
+                )
+            image_admission = admit_cold_particle_image(
+                stored,
+                source_report,
+                source=source,
+                information=information,
+                original_report=original_report,
+                reference=reference,
+            )
+        traces = stored[group] if group else stored
+        time_values = stored["time"][:]
+        if time_values.shape != endpoint_time.shape or not np.allclose(
+            time_values, endpoint_time, atol=1e-9, rtol=0
+        ):
+            raise ValueError("The input trace must contain all 301 .04 s accepted endpoints")
+        if any(not np.array_equal(stored[name][:], value) for name, value in geometry.items()):
+            raise ValueError("Explicit input and original native outer-face geometry differ")
+        endpoint = {name: traces[name][:] for name in FIELDS}
+        expected = {
+            "velocity": (len(endpoint_time), len(geometry["face_area"]), 3),
+            "normal_velocity": (len(endpoint_time), len(geometry["face_area"])),
+            "tangential_gradient": (len(endpoint_time), len(geometry["face_area"]), 3),
+        }
+        for name, values in endpoint.items():
+            if values.shape != expected[name] or not np.isfinite(values).all():
+                raise ValueError(f"Invalid explicit endpoint field: {name}")
+        source_clock = stored["source_time"][:] if "source_time" in stored else None
+        source_attributes = {key: json_value(value) for key, value in stored.attrs.items()}
+    normal = geometry["face_normal"]
+    normal_mismatch = float(
+        np.max(
+            abs(np.einsum("tfi,fi->tf", endpoint["velocity"], normal) - endpoint["normal_velocity"])
+        )
+    )
+    gradient_normal = float(
+        np.max(abs(np.einsum("tfi,fi->tf", endpoint["tangential_gradient"], normal)))
+    )
+    if normal_mismatch > 1e-9 or gradient_normal > 1e-9:
+        raise ValueError(
+            "Explicit trace velocity/normal or tangential-gradient projection is inconsistent"
+        )
+    directory.mkdir(parents=True, exist_ok=False)
+    inputs = directory / "inputs"
+    inputs.mkdir()
+    copied = {}
+    for name, record in information["files"].items():
+        actual = copy_unchanged(reference / "inputs" / name, inputs / name)
+        if actual != record["sha256"]:
+            raise ValueError(f"Original native input does not match its captured hash: {name}")
+        copied[name] = actual
+    copy_unchanged(reference / "inputs/inputs.json", inputs / "inputs.json")
+    capture_receipt_sha256 = copy_unchanged(
+        reference / "reference/report.json", inputs / "original_capture_report.json"
+    )
+    initial_sha256 = copy_unchanged(
+        reference / "initial_state.npz", directory / "initial_state.npz"
+    )
+    if source_receipt:
+        source_receipt = Path(source_receipt).resolve()
+        source_receipt_sha256 = copy_unchanged(
+            source_receipt, inputs / "boundary_model_report.json"
+        )
+    else:
+        source_receipt_sha256 = None
+    if source_receipt_sha256 != source_receipt_hash:
+        raise ValueError("Explicit source qualification receipt changed during preparation")
+    trace_path = directory / "boundary_trace.h5"
+    with h5py.File(trace_path, "w") as trace:
+        trace.attrs["complete"] = False
+        trace.attrs["schema"] = "openonda-explicit-boundary-input/1"
+        trace.attrs["trace_origin"] = origin
+        trace.attrs["source_hdf5_sha256"] = source_sha256
+        trace.attrs["source_group"] = group
+        trace.attrs["initial_state_sha256"] = initial_sha256
+        trace.attrs["endpoint_interpolation"] = (
+            "Linear interpolation of .04 s accepted endpoints to the .008 s FVM clock"
+        )
+        for name, values in geometry.items():
+            trace.create_dataset(name, data=values)
+        trace.create_dataset("time", data=native_time)
+        trace.create_dataset(
+            "accepted_endpoint_index", data=np.arange(0, len(native_time), substeps)
+        )
+        if source_clock is not None:
+            trace.create_dataset("source_time_at_accepted_endpoint", data=source_clock)
+        for name, values in endpoint.items():
+            trace.create_dataset(
+                name,
+                data=interpolate_endpoint_values(values, substeps),
+                compression="gzip",
+                shuffle=True,
+            )
+        trace.attrs["complete"] = True
+    trace_sha256 = digest(trace_path)
+    receipt = {
+        "schema": "openonda-explicit-boundary-input-replay/1",
+        "status": "prepared; no solver replay performed",
+        "prepared_at_utc": datetime.now(UTC).isoformat(),
+        "trace_origin": origin,
+        "source_hdf5": str(source),
+        "source_hdf5_sha256": source_sha256,
+        "source_group": group,
+        "source_attributes": source_attributes,
+        "particle_image_admission": image_admission,
+        "source_receipt_sha256": source_receipt_sha256,
+        "adapter_source_sha256": digest(Path(__file__).resolve()),
+        "native_replay_helper_sha256": digest(
+            Path(__file__).with_name("run_boundary_condition_study.py")
+        ),
+        "boundary_trace_sha256": trace_sha256,
+        "initial_state_sha256": initial_sha256,
+        "original_capture_receipt_sha256": capture_receipt_sha256,
+        "native_input_sha256": copied,
+        "captured_reference_directory": str(reference),
+        "clock": {
+            "start_time": float(native_time[0]),
+            "end_time": float(native_time[-1]),
+            "native_step_size": information["step_size"],
+            "accepted_endpoint_step_size": 0.04,
+            "accepted_endpoint_count": len(endpoint_time),
+            "fvm_steps": information["steps"],
+            "fvm_substeps_per_coupling_interval": substeps,
+            "source_time_window": None
+            if source_clock is None
+            else [float(source_clock[0]), float(source_clock[-1])],
+        },
+        "geometry": {
+            "face_count": len(normal),
+            "exact_original_native_face_geometry": True,
+            "maximum_velocity_normal_projection_difference": normal_mismatch,
+            "maximum_tangential_gradient_normal_component": gradient_normal,
+            "maximum_signed_normal_flux": float(
+                np.max(abs(endpoint["normal_velocity"] @ geometry["face_area"]))
+            ),
+        },
+        "method": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+        "capture_receipt": "The original native reference capture receipt is copied unchanged to inputs/original_capture_report.json. This generated-input receipt is separate and is not a capture receipt.",
+    }
+    write_json(directory / "boundary_trace.json", receipt)
+    if digest(source) != source_sha256:
+        raise RuntimeError("Source boundary trace changed during preparation")
+    validate_input(directory)
+    return receipt
+
+
+def validate_input(directory):
+    directory = Path(directory)
+    receipt = json.loads((directory / "boundary_trace.json").read_text())
+    if receipt["schema"] != "openonda-explicit-boundary-input-replay/1":
+        raise ValueError("Unsupported explicit boundary-input receipt")
+    information = json.loads((directory / "inputs/inputs.json").read_text())
+    check_equation_sources(information)
+    if digest(Path(__file__).resolve()) != receipt["adapter_source_sha256"]:
+        raise ValueError("Explicit replay adapter changed after input preparation")
+    if (
+        digest(Path(__file__).with_name("run_boundary_condition_study.py"))
+        != receipt["native_replay_helper_sha256"]
+    ):
+        raise ValueError("Native replay initialization helper changed after preparation")
+    expected_files = {
+        directory / "boundary_trace.h5": receipt["boundary_trace_sha256"],
+        directory / "initial_state.npz": receipt["initial_state_sha256"],
+        directory / "inputs/original_capture_report.json": receipt[
+            "original_capture_receipt_sha256"
+        ],
+        **{
+            directory / "inputs" / name: value
+            for name, value in receipt["native_input_sha256"].items()
+        },
+    }
+    if receipt["source_receipt_sha256"]:
+        expected_files[directory / "inputs/boundary_model_report.json"] = receipt[
+            "source_receipt_sha256"
+        ]
+    for path, expected in expected_files.items():
+        if digest(path) != expected:
+            raise ValueError(f"Frozen explicit replay input changed: {path}")
+    if str(receipt["source_attributes"].get("schema", "")).startswith(
+        "openonda-cylinder-reference-particle-image/"
+    ):
+        source = Path(receipt["source_hdf5"])
+        if digest(source) != receipt["source_hdf5_sha256"]:
+            raise ValueError("Qualified particle-image source changed after replay preparation")
+        source_report = json.loads((directory / "inputs/boundary_model_report.json").read_text())
+        original_report = json.loads(
+            (directory / "inputs/original_capture_report.json").read_text()
+        )
+        with h5py.File(source, "r") as stored:
+            admission = admit_cold_particle_image(
+                stored,
+                source_report,
+                source=source,
+                information=information,
+                original_report=original_report,
+                reference=Path(receipt["captured_reference_directory"]),
+            )
+        if (
+            admission != receipt.get("particle_image_admission")
+            or digest(source) != receipt["source_hdf5_sha256"]
+        ):
+            raise ValueError("Qualified cold-image admission changed after replay preparation")
+    with np.load(directory / "initial_state.npz", allow_pickle=False) as state:
+        if not all(np.isfinite(state[name]).all() for name in state.files):
+            raise ValueError("Mapped initial primary/BDF state contains a nonfinite field")
+        if (
+            float(state["time"]) != information["start_time"]
+            or int(state["step"]) != information["start_step"]
+        ):
+            raise ValueError("Mapped initial clock differs from original native clock")
+    with h5py.File(directory / "boundary_trace.h5", "r") as trace:
+        if not trace.attrs["complete"] or len(trace["time"]) != information["steps"] + 1:
+            raise ValueError("Explicit trace is incomplete or lacks a native endpoint")
+        if (
+            abs(trace["time"][0] - information["start_time"]) > 1e-9
+            or abs(trace["time"][-1] - information["end_time"]) > 1e-9
+        ):
+            raise ValueError("Explicit trace and original native clocks differ")
+    return information, receipt
+
+
+def replay_input(directory, *, boundary_model="mixed"):
+    """Advance an explicitly requested private forced-FVM control, never production."""
+    directory = Path(directory).resolve()
+    if not directory.is_relative_to(Path("/tmp")):
+        raise ValueError("Native diagnostic replay outputs must use a private /tmp directory")
+    information, receipt = validate_input(directory)
+    if boundary_model not in ("mixed", "full_velocity"):
+        raise ValueError("Boundary model must be mixed or full_velocity")
+    # Native solver imports are confined to the explicitly requested replay path.
+    from . import run_boundary_condition_study as study
+
+    label = (
+        "mixed_subcycled_numba" if boundary_model == "mixed" else "full_velocity_subcycled_numba"
+    )
+    impose_mode = "mixed_subcycled" if boundary_model == "mixed" else "full_velocity"
+    destination = directory / label
+    destination.mkdir(exist_ok=False)
+    module = study.load_case_module(study.CASE)
+    setup, _particles, _exchange, _builder = module.build_case(
+        end_time=information["end_time"], overrides={"cores": 1}
+    )
+    setup = study.quiet_setup(
+        replace(setup, execution=study.reference_setup(information["end_time"]).execution)
+    )
+    setup = replace(setup, execution=replace(setup.execution, operator_backend="numba"))
+    if not np.isclose(module.VPM_TIME_STEP_SIZE, 0.04, rtol=0, atol=1e-12):
+        raise ValueError("Authored coupling interval differs from the explicit endpoint schedule")
+    substeps = receipt["clock"]["fvm_substeps_per_coupling_interval"]
+    started = time.perf_counter()
+    with study.FVMSolver(
+        setup, destination, mesh_data=study.load_native_mesh(directory / "inputs/small_mesh.npz")
+    ) as solver:
+        solver.auto_write = False
+        saved = json.loads((destination / "solution/fvm_metadata.json").read_text())
+        frozen = json.loads((directory / "inputs/small_metadata.json").read_text())
+        settings = study.validate_saved_settings(saved, frozen)
+        with np.load(directory / "initial_state.npz", allow_pickle=False) as stored:
+            state = {name: stored[name].copy() for name in stored.files}
+        accepted = study.validate_restart_state(solver, state)
+        study.restore_restart_state(solver, accepted)
+        with h5py.File(directory / "boundary_trace.h5", "r") as trace:
+            _, points, normals, areas = study.patch_geometry(solver.mesh_data, solver.geo_data)
+            if any(
+                not np.array_equal(value, trace[name][:])
+                for name, value in (
+                    ("face_centre", points),
+                    ("face_normal", normals),
+                    ("face_area", areas),
+                )
+            ):
+                raise ValueError("Replay outer-face geometry differs from its explicit trace")
+            study.impose(
+                solver, study.trace_at_step(trace, 0, coupling_substeps=substeps), impose_mode
+            )
+            solver.save_state(destination / "initial_backup.npz")
+            maximum_normal_mismatch = 0.0
+            for index in range(1, information["steps"] + 1):
+                prescribed = study.trace_at_step(trace, index, coupling_substeps=substeps)
+                study.impose(solver, prescribed, impose_mode)
+                solver.advance()
+                if abs(solver.time - float(trace["time"][index])) > 1e-9:
+                    raise RuntimeError("Replay accepted clock differs from explicit trace")
+                patch = next(item for item in solver.boundaries if item["name"] == study.PATCH)
+                start = (
+                    patch["start_face"]
+                    - solver.mesh_data["n_interior_faces"]
+                    + solver.mesh_data["n_cells"]
+                )
+                ghost = solver.velocity[start : start + patch["n_faces"]]
+                maximum_normal_mismatch = max(
+                    maximum_normal_mismatch,
+                    float(
+                        np.max(
+                            abs(
+                                np.einsum("ni,ni->n", ghost, normals)
+                                - prescribed["normal_velocity"]
+                            )
+                        )
+                    ),
+                )
+                if index % 125 == 0:
+                    print(
+                        f"Explicit {receipt['trace_origin']} replay accepted: {solver.time:.6f} s",
+                        flush=True,
+                    )
+        final_backup = Path(solver.save_state(destination / "final_backup.npz"))
+        accepted_time = solver.time
+        finite_fields = all(
+            np.isfinite(getattr(solver, name)).all()
+            for name in (*study.CELL_FIELDS, *study.FLUX_FIELDS)
+        )
+    validate_input(directory)
+    report = {
+        "schema": "openonda-explicit-boundary-input-result/1",
+        "status": "complete",
+        "trace_origin": receipt["trace_origin"],
+        "accepted_time": accepted_time,
+        "accepted_new_steps": information["steps"],
+        "mode": "mixed_subcycled" if boundary_model == "mixed" else "full_velocity_subcycled",
+        "boundary_model": boundary_model,
+        "label": label,
+        "prescribed_velocity_components": "normal velocity and normal derivative of tangential velocity"
+        if boundary_model == "mixed"
+        else "all velocity components",
+        "trace_schedule": {
+            "method": "Same linear .04 s accepted endpoint interpolation to .008 s native FVM clock for both forms",
+            "coupling_step_size": 0.04,
+            "fvm_step_size": information["step_size"],
+            "fvm_substeps_per_coupling_interval": substeps,
+        },
+        "operator_backend": "numba",
+        "pressure_condition": "fixedFluxPressure",
+        "frozen_settings_comparison": settings,
+        "wall_seconds": time.perf_counter() - started,
+        "maximum_normal_velocity_mismatch": maximum_normal_mismatch,
+        "finite_primary_and_temporal_fields": finite_fields,
+        "boundary_trace_sha256": receipt["boundary_trace_sha256"],
+        "initial_state_sha256": receipt["initial_state_sha256"],
+        "final_checkpoint_sha256": digest(final_backup),
+        "initialization_and_trace_scope": receipt["method"],
+        "source_clock": receipt["clock"]["source_time_window"],
+        "limitation": "Forced-input FVM control, not a self-sustained coupled solution or a physical-time-identical restart of the trace's source flow.",
+    }
+    write_json(destination / "report.json", report)
+    return report
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("mode", choices=("prepare", "validate", "replay"))
+    parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--source", type=Path)
+    parser.add_argument("--group", default="")
+    parser.add_argument("--reference-directory", type=Path)
+    parser.add_argument("--origin")
+    parser.add_argument("--source-receipt", type=Path)
+    parser.add_argument("--boundary-model", choices=("mixed", "full_velocity"), default="mixed")
+    args = parser.parse_args()
+    if args.mode == "prepare":
+        if args.source is None or args.reference_directory is None or not args.origin:
+            parser.error("Preparation requires --source, --reference-directory and --origin")
+        report = prepare_input(
+            args.directory,
+            source=args.source,
+            group=args.group,
+            reference=args.reference_directory,
+            origin=args.origin,
+            source_receipt=args.source_receipt,
+        )
+    elif args.mode == "validate":
+        _, report = validate_input(args.directory)
+    else:
+        report = replay_input(args.directory, boundary_model=args.boundary_model)
+    print(json.dumps({key: report[key] for key in ("schema", "status", "trace_origin")}, indent=2))
+
+
+if __name__ == "__main__":
+    main()

@@ -984,22 +984,24 @@ class ParticleFieldEvaluation:
         """
         planar = getattr(self, "planar_induction", None)
         if planar is not None:
+            channel = hasattr(planar, "channel_half_width")
+            finite_measurement = "planar_channel_energy" if channel else "planar_unbounded_energy"
             count = len(particles)
             if not count:
                 result = self._get_zero_results()
-                result["energy_measurement"] = "planar_unbounded_energy"
+                result["energy_measurement"] = finite_measurement
                 return result
             energy, enstrophy = planar.particle_integrals(particles)
             strength = particles.vortex_strength_cpu()[:count].astype(np.float64)
             position = particles.position_cpu()[:count].astype(np.float64)
             circulation_l1 = np.abs(strength[:, 2]).sum()
             net = strength.sum(0)
-            finite_energy = abs(net[2]) <= 1e-7 * max(circulation_l1, np.finfo(float).tiny)
+            finite_energy = channel or abs(net[2]) <= 1e-7 * max(circulation_l1, np.finfo(float).tiny)
             total_energy = float(energy.sum()) if finite_energy else float("inf")
             viscosity = particles.effective_viscosity_cpu()[:count]
             viscous_rate = -float(np.dot(viscosity, enstrophy))
             measurement = (
-                "planar_unbounded_energy" if finite_energy else "planar_unbounded_energy_diverges"
+                finite_measurement if finite_energy else "planar_unbounded_energy_diverges"
             )
             if record_history and finite_energy:
                 self._update_energy_history(time, total_energy, measurement)

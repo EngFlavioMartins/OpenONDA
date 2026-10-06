@@ -1,0 +1,34 @@
+{
+  "schema": "openonda-explicit-boundary-input-result/1",
+  "status": "complete",
+  "trace_origin": "reference-derived-production-cropped-support-particle-image",
+  "accepted_time": 111.99999999998144,
+  "accepted_new_steps": 1500,
+  "mode": "mixed_subcycled",
+  "boundary_model": "mixed",
+  "label": "mixed_subcycled_numba",
+  "prescribed_velocity_components": "normal velocity and normal derivative of tangential velocity",
+  "trace_schedule": {
+    "method": "Same linear .04 s accepted endpoint interpolation to .008 s native FVM clock for both forms",
+    "coupling_step_size": 0.04,
+    "fvm_step_size": 0.008,
+    "fvm_substeps_per_coupling_interval": 5
+  },
+  "operator_backend": "numba",
+  "pressure_condition": "fixedFluxPressure",
+  "frozen_settings_comparison": {
+    "matched": true,
+    "canonical_settings_sha256": "97cea5f0d5d22e877813f6766025f38d5d504adc5a7948f63c470acedf1219e6",
+    "operator_backend": "numba",
+    "comparison": "All equation settings match frozen native case metadata; output controls/horizon excluded and recorded operator backend deliberately varied."
+  },
+  "wall_seconds": 603.9098023760016,
+  "maximum_normal_velocity_mismatch": 3.3306690738754696e-16,
+  "finite_primary_and_temporal_fields": true,
+  "boundary_trace_sha256": "de055bc73df5c4f1f2434eb37ad4b6629631c1bab95d84cc80d6de8cb177a651",
+  "initial_state_sha256": "06dfb3eb9bb86cda3d7ff9fda91ce05193140d382a298536e9dd6a6e059c609c",
+  "final_checkpoint_sha256": "dd8c77eb549759cf8a4bd12bda9b147ad43d077b527b230e47bcff52db2c9227",
+  "initialization_and_trace_scope": "Complete unchanged reference100s primary/BDF restriction and native settings; prescribed Un/Gt from explicitly identified model/image, with fixedFluxPressure. No VPM evolution, density or force normalization change.",
+  "source_clock": null,
+  "limitation": "Forced-input FVM control, not a self-sustained coupled solution or a physical-time-identical restart of the trace's source flow."
+}
