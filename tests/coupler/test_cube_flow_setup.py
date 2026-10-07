@@ -91,6 +91,31 @@ def test_cube_transfer_blends_pruning_to_the_vpm_release_floor():
     )
 
 
+@pytest.mark.parametrize("cutoff, accepted", [(0.001, True), (0.000999, False)])
+def test_transfer_accepts_equal_physical_vorticity_floors(cutoff, accepted):
+    setup = _load_setup(CASE_DIR / "setup.py", "cube_equal_vorticity_floors")
+    spacing = 0.04
+    numerics = replace(
+        setup.VPM_CASE.numerics,
+        viscous=replace(setup.VPM_CASE.numerics.viscous, gbd_threshold=0.001 * spacing**3),
+    )
+    driver = SimpleNamespace(
+        setup=replace(setup.COUPLER_SETUP, transfer_vorticity_cutoff=cutoff),
+        kinematic_viscosity=setup.KINEMATIC_VISCOSITY,
+        fvm_box=np.asarray(setup.FVM_BOX),
+        vpm_core_radius_ratio=1.0,
+        vpm_particle_spacing=spacing,
+        vpm_time_step_size=setup.VPM_TIME_STEP_SIZE,
+        vpm_solver=SimpleNamespace(viscous_scheme="GBD", setup=numerics),
+    )
+    if accepted:
+        transfer = VorticityTransfer(driver)
+        assert transfer.transfer_prune_threshold_abs == transfer.transfer_release_prune_threshold_abs
+    else:
+        with pytest.raises(ValueError, match="at least the VPM GBD vorticity floor"):
+            VorticityTransfer(driver)
+
+
 def test_cube_uses_only_bounded_domain_stabilization_and_retains_state_limits():
     setup = _load_setup(CASE_DIR / "setup.py", "cube_stabilization")
     numerics = setup.VPM_CASE.numerics

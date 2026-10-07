@@ -305,7 +305,7 @@ def _resolved_coupled_config(
     viscous = numerics.viscous
     induction = numerics.induction
     hxy = float(mesh.source.max_cell_size)
-    span = float(induction.planar_span)
+    span = float(induction.z_max - induction.z_min)
     axial_layers = len(mesh.levels) - 1
     return {
         "kind": "coupled",
@@ -317,8 +317,7 @@ def _resolved_coupled_config(
         "transfer_bounds": list(map(float, coupler_setup.transfer_region_bounds)),
         "span": span,
         "span_layers": axial_layers,
-        "particle_span_layers": 1,
-        "plane_z": float(induction.plane_z),
+        "particle_span_layers": round(span / float(viscous.particle_spacing)),
         "dz": float(span / axial_layers),
         "hp": float(viscous.particle_spacing),
         "exchange_dt": float(numerics.time_step_size),

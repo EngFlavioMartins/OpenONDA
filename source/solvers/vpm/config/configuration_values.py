@@ -25,10 +25,6 @@ def _configuration_value(value: Any) -> Any:
         if hasattr(value, "method"):
             result["method"] = str(value.method)
         for name in (
-            "planar_span",
-            "channel_half_width",
-            "spanwise_tolerance",
-            "plane_z",
             "z_min",
             "z_max",
             "tail_tolerance",

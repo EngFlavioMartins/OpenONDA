@@ -710,12 +710,6 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             diagnostics["boundary_induction"] = _diagnostic_json_value(
                 boundary_induction, "boundary induction diagnostic"
             )
-    spanwise = getattr(coupler.vorticity_transfer, "last_spanwise_metrics", None)
-    if spanwise:
-        values = {str(name): float(value) for name, value in spanwise.items()}
-        if not all(np.isfinite(value) for value in values.values()):
-            raise FloatingPointError("non-finite planar spanwise-consistency diagnostic")
-        diagnostics["planar_spanwise_consistency"] = values
     return diagnostics
 
 

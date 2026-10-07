@@ -450,7 +450,7 @@ class VPMSolver:
         vpm_bounds = final_setup.domain_bounds
         vc = getattr(final_setup, "viscous", None)
         scheme = getattr(vc, "scheme", "").upper() if vc is not None else ""
-        is_grid_diffusion = scheme in {"DVH", "GBD"} and not hasattr(self.induction, "planar_span")
+        is_grid_diffusion = scheme in {"DVH", "GBD"}
         fixed_grid_required = (
             self.compute_device in {"METAL", "VULKAN", "CUDA"} and is_grid_diffusion
         )
@@ -515,9 +515,6 @@ class VPMSolver:
             max_n_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
             event_observer=LoggingPhysicsEventObserver(),
-        )
-        self.field_diagnostics.planar_induction = (
-            self.induction if hasattr(self.induction, "planar_span") else None
         )
         self._flow_integrals: dict = {}
         self._particle_resolution_metrics: dict = {}
@@ -1963,10 +1960,6 @@ class VPMSolver:
         ValueError
             If the temporal method or its required inputs are inconsistent.
         """
-        if hasattr(self.induction, "planar_span"):
-            raise NotImplementedError(
-                "Planar pressure reconstruction is not implemented; use FVM pressure and vorticity_mixed coupling"
-            )
         if kinematic_viscosity is None:
             kinematic_viscosity = (
                 float(np.mean(self.particle_kinematic_viscosity))
@@ -2165,8 +2158,6 @@ class VPMSolver:
         Appends and copies the batch into device fields, resets axisymmetric
         orbit validation, and updates stabilization refinement reference/reference totals.
         """
-        if hasattr(self.induction, "planar_span"):
-            self.induction.validate_source_arrays(position, vortex_strength)
         if kinematic_viscosity is None:
             kinematic_viscosity = getattr(self._viscous_config, "kinematic_viscosity", None)
             if kinematic_viscosity is not None and kinematic_viscosity > 0:
@@ -2249,8 +2240,6 @@ class VPMSolver:
         Clears/repopulates active device fields, invalidates caches, resets
         axisymmetric validation, and notifies stabilization of replacement.
         """
-        if hasattr(self.induction, "planar_span"):
-            self.induction.validate_source_arrays(position, vortex_strength)
         if report_removal:
             vortex_strength_removed = (
                 self.particles.net_vortex_strength()

@@ -974,66 +974,7 @@ class ParticleFieldEvaluation:
         use the documented Fourier measurement path; its measurement tag is
         included in the result. The method updates diagnostic work fields and,
         when requested, energy history, but does not mutate particles.
-
-        PlanarInduction integrates over the infinite XY plane times its represented
-        span. Helicity is zero. Energy is reported as infinity, labelled
-        planar_unbounded_energy_diverges, when |sum(Gamma_z)| exceeds 1e-7 of
-        sum(|Gamma_z|); that diagnostic does not append a finite energy history.
-        The planar impulse is the two-dimensional circulation moment times span,
-        not the half-weighted compact three-dimensional vorticity impulse.
         """
-        planar = getattr(self, "planar_induction", None)
-        if planar is not None:
-            channel = hasattr(planar, "channel_half_width")
-            finite_measurement = "planar_channel_energy" if channel else "planar_unbounded_energy"
-            count = len(particles)
-            if not count:
-                result = self._get_zero_results()
-                result["energy_measurement"] = finite_measurement
-                return result
-            energy, enstrophy = planar.particle_integrals(particles)
-            strength = particles.vortex_strength_cpu()[:count].astype(np.float64)
-            position = particles.position_cpu()[:count].astype(np.float64)
-            circulation_l1 = np.abs(strength[:, 2]).sum()
-            net = strength.sum(0)
-            finite_energy = channel or abs(net[2]) <= 1e-7 * max(circulation_l1, np.finfo(float).tiny)
-            total_energy = float(energy.sum()) if finite_energy else float("inf")
-            viscosity = particles.effective_viscosity_cpu()[:count]
-            viscous_rate = -float(np.dot(viscosity, enstrophy))
-            measurement = (
-                finite_measurement if finite_energy else "planar_unbounded_energy_diverges"
-            )
-            if record_history and finite_energy:
-                self._update_energy_history(time, total_energy, measurement)
-            impulse = planar.planar_span * np.array(
-                [
-                    np.sum(position[:, 1] * strength[:, 2]) / planar.planar_span,
-                    -np.sum(position[:, 0] * strength[:, 2]) / planar.planar_span,
-                    0.0,
-                ]
-            )
-            return {
-                "total_kinetic_energy": total_energy,
-                "energy_measurement": measurement,
-                "total_helicity": 0.0,
-                "total_enstrophy": float(enstrophy.sum()),
-                "test_filtered_enstrophy": float(
-                    planar._filtered_enstrophy.to_numpy()[:count].sum()
-                ),
-                "viscous_kinetic_energy_rate": viscous_rate,
-                "kinetic_energy_rate": self._compute_energy_dissipation_rate()
-                if finite_energy
-                else viscous_rate,
-                "kinetic_energy_rate_source": "planar_energy_backward_difference"
-                if finite_energy
-                else "planar_viscous_rate_only",
-                "vortex_strength_magnitude_sum": float(circulation_l1),
-                "net_vortex_strength": net,
-                "linear_impulse": impulse,
-                "angular_impulse": np.array(
-                    [0.0, 0.0, -0.5 * np.sum(np.sum(position[:, :2] ** 2, axis=1) * strength[:, 2])]
-                ),
-            }
         N = len(particles)
         if N == 0:
             # Return zero values for empty particle system
@@ -1350,12 +1291,6 @@ class ParticleFieldEvaluation:
         Evaluation costs O(N²) and overwrites the owned diagnostic workspace;
         particle state is unchanged.
         """
-        planar = getattr(self, "planar_induction", None)
-        if planar is not None:
-            strength = particles.vortex_strength_cpu()[: len(particles), 2]
-            if abs(strength.sum()) > 1e-7 * max(np.abs(strength).sum(), np.finfo(float).tiny):
-                return np.full(len(particles), np.inf)
-            return planar.particle_integrals(particles)[0]
         N = len(particles)
         if N == 0:
             return np.empty(0, dtype=self._numpy_accumulator_dtype)
@@ -1398,9 +1333,6 @@ class ParticleFieldEvaluation:
         Evaluation costs O(N²) and overwrites the owned diagnostic workspace;
         particle state is unchanged.
         """
-        planar = getattr(self, "planar_induction", None)
-        if planar is not None:
-            return np.zeros(len(particles))
         N = len(particles)
         if N == 0:
             return np.empty(0, dtype=self._numpy_accumulator_dtype)
@@ -1443,9 +1375,6 @@ class ParticleFieldEvaluation:
         Evaluation costs O(N²) and overwrites the owned diagnostic workspace;
         particle state is unchanged.
         """
-        planar = getattr(self, "planar_induction", None)
-        if planar is not None:
-            return planar.particle_integrals(particles)[1]
         N = len(particles)
         if N == 0:
             return np.empty(0, dtype=self._numpy_accumulator_dtype)
@@ -1474,18 +1403,6 @@ class ParticleFieldEvaluation:
         """
         N = particles.n_particles_total
         if N == 0:
-            return
-        planar = getattr(self, "planar_induction", None)
-        if planar is not None:
-            planar.evaluate_vorticity(
-                particles.position,
-                particles.position,
-                particles.vortex_strength,
-                particles.core_radius,
-                out_field,
-                N,
-                N,
-            )
             return
         self.reconstruct_vorticity_kernel(
             particles.position, particles.vortex_strength, particles.core_radius, out_field, N

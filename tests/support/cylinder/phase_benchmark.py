@@ -64,8 +64,7 @@ def comparison_settings():
     assert a.time.adjustment is b.time.adjustment is None
     assert SPAN == reference.SPAN == 1.0
     assert am.levels == bm.levels == (-0.5 * SPAN, 0.5 * SPAN)
-    assert particles.numerics.induction.planar_span == SPAN
-    assert particles.numerics.induction.plane_z == 0.0
+    assert particles.numerics.induction.z_max - particles.numerics.induction.z_min == SPAN
     assert particles.numerics.viscous.particle_spacing == H
     for flow in (a, b):
         boundaries = {patch.name: patch for patch in flow.boundaries}
@@ -93,7 +92,7 @@ def comparison_settings():
         "h": H,
         "span": SPAN,
         "span_layers": 1,
-        "particle_span_layers": 1,
+        "particle_span_layers": round(SPAN / H),
         "spanwise_boundary": "periodic",
         "fvm_dt": DT,
         "exchange_dt": EXCHANGE,

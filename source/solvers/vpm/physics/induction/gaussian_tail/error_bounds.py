@@ -262,6 +262,10 @@ class QueryTailBound:
     diagnostics: dict
 
 
+class ImageTailSeparationError(ValueError):
+    """The retained images do not separate the tail from the source/query box."""
+
+
 def query_tail_bound(snapshot, query_lower, query_upper, *, shells, prefix_terms=1024):
     """Enclose the unchanged finite-image sum's omitted tail over a whole box."""
     _platform()
@@ -328,7 +332,10 @@ def query_tail_bound(snapshot, query_lower, query_upper, *, shells, prefix_terms
         extent_upper = _l1_upper(sub(target, box))
         gap = sub(mul(period, point(float(shells))), point(extent_upper))
         if gap.lower <= 0:
-            raise ValueError("a*K must exceed enclosed query/source L1 extent")
+            raise ImageTailSeparationError("a*K must exceed enclosed query/source L1 extent")
+        core_distance = div_positive(gap, point(snapshot.core_max))
+        if mul(core_distance, core_distance).lower < 1.5:
+            raise ImageTailSeparationError("image tail must lie beyond the Gaussian density maximum")
         gap_squared = mul(point(float(gap.lower)), point(float(gap.lower)))
         gap_fourth = mul(gap_squared, gap_squared)
         # Independent extrema, not a corner maximum of their product.

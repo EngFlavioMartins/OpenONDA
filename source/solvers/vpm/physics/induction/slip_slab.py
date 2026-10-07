@@ -333,8 +333,7 @@ class SlipSlabInduction:
         if velocity_scale <= 0 or gradient_scale <= 0:
             raise ValueError("tail reference scales must be positive")
         if (
-            hasattr(base, "planar_span")
-            or not getattr(base, "supports_target_fields", False)
+            not getattr(base, "supports_target_fields", False)
             or not getattr(base, "supports_gradient", False)
         ):
             raise ValueError("slab requires a full-3D target-capable induction backend")

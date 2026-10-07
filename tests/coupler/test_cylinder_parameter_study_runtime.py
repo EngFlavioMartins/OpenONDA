@@ -194,8 +194,8 @@ def test_coupled_parameter_study_configuration_uses_the_actual_mesh(monkeypatch)
     config = parameter_study._resolved_coupled_config(module, 0.8, {"hxy": 0.048})
     assert config["hxy"] == pytest.approx(0.048)
     assert config["dz"] == config["span"] == pytest.approx(1.0)
-    assert config["span_layers"] == config["particle_span_layers"] == 1
-    assert config["plane_z"] == 0.0
+    assert config["span_layers"] == 1
+    assert config["particle_span_layers"] == round(config["span"] / config["hp"])
     assert config["interface_iterations"] == module.INTERFACE_ITERATIONS == 6
     assert config["exchange_dt"] == pytest.approx(0.04)
 

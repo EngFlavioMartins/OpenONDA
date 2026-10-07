@@ -21,8 +21,7 @@ def test_native_configuration_matches_selected_reference_physics_and_schedules()
     for field in ("schemes", "pimple", "linear", "transport", "turbulence", "time"):
         assert asdict(getattr(flow, field)) == asdict(getattr(control, field))
     assert mesh.levels == control_mesh.levels == (-0.5, 0.5)
-    assert particles.numerics.induction.planar_span == 1.0
-    assert particles.numerics.induction.plane_z == 0.0
+    assert particles.numerics.induction.z_max - particles.numerics.induction.z_min == 1.0
     assert settings.interface_iterations == 6
     assert flow.time.time_step_size == 0.008
     assert particles.numerics.time_step_size == 0.04

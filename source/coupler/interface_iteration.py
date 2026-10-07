@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import hashlib
 import logging
 from time import perf_counter
 from typing import Any, NotRequired, TypeAlias, TypedDict
@@ -35,7 +34,6 @@ _ROLLBACK_ATTRIBUTES = (
 _TRANSFER_ROLLBACK_ATTRIBUTES = (
     "last_interface_flow",
     "last_vortex_line_closure",
-    "last_spanwise_metrics",
 )
 _FVM_ROLLBACK_ATTRIBUTES = ("_last_residuals", "last_diagnostics")
 _VPM_PHYSICS_ROLLBACK_ATTRIBUTES = (
@@ -59,10 +57,6 @@ class IterationRow(TypedDict):
     prediction_probe: NotRequired[bool]
     prediction_rejected: NotRequired[bool]
     picard_sweep: NotRequired[int]
-    particle_count: NotRequired[int]
-    particle_support_digest: NotRequired[str]
-    two_sweep_normal_residual_rms: NotRequired[float]
-    two_sweep_gradient_residual_rms: NotRequired[float]
 
 
 class TrialFallback(TypedDict):
@@ -260,7 +254,6 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     prediction.update(accepted=False, fallback=False)
     fvm_seconds = transfer_seconds = 0.0
     records = []
-    previous_candidate = None
     accepted_row = None
     accepted_sweep = 0
     for sweep in range(1, coupler.setup.interface_iterations + 1 + int(probing)):
@@ -314,25 +307,6 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
                     prediction_rejected=prediction_probe and not row["converged"],
                     picard_sweep=picard_sweep,
                 )
-            if getattr(getattr(vpm, "induction", None), "planar_span", None) is not None:
-                position = np.ascontiguousarray(vpm.particles.position_cpu())
-                row["particle_count"] = int(vpm.particles.n_particles_total)
-                row["particle_support_digest"] = hashlib.sha256(position.tobytes()).hexdigest()[:16]
-                if previous_candidate is not None:
-                    row["two_sweep_normal_residual_rms"] = float(
-                        np.sqrt(
-                            np.average((post[1] - previous_candidate[1]) ** 2, weights=geometry[2])
-                        )
-                    )
-                    row["two_sweep_gradient_residual_rms"] = float(
-                        np.sqrt(
-                            np.average(
-                                np.sum((post[2] - previous_candidate[2]) ** 2, axis=1),
-                                weights=geometry[2],
-                            )
-                        )
-                    )
-                previous_candidate = candidate
             if prediction_probe and not row["converged"]:
                 # This speculative solve is outside the original allowance.
                 # A rejected probe never supplies the next Picard input.
@@ -349,7 +323,6 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
             with collective_phase(comm, "interface seed rejection restore"):
                 _restore_trial_fallback(coupler, seed_fallback)
             candidate = raw_predictor
-            previous_candidate = None
             elapsed = perf_counter() - started
             phase_seconds["state_restore"] += elapsed
             transfer_seconds += elapsed

@@ -67,7 +67,7 @@ def _study_overrides(requested, *, cores=4, compute_device="CPU"):
         "requested_particle_spacing": hxy * hp_ratio,
         "particle_spacing_ratio": hp / hxy,
         "span": span,
-        "particle_span_layers": 1,
+        "particle_span_layers": round(span / hp),
         "sigma_over_hp": physical["core_radius"] / hp,
         "exchange_dt": float(requested.get("exchange_dt", 0.04)),
     }

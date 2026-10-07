@@ -143,6 +143,12 @@ class FVMVelocityInterpolator:
         """
         self.cell_centre = np.asarray(cell_centre, dtype=np.float64).reshape(-1, 3)
         self.tree = tree
+        self._donor_origin = self.cell_centre.mean(axis=0)
+        relative = self.cell_centre - self._donor_origin
+        _, singular_values, basis = np.linalg.svd(relative, full_matrices=False)
+        tolerance = max(relative.shape) * np.finfo(float).eps * singular_values.max(initial=0)
+        resolved = basis[singular_values > tolerance]
+        self._distance_projection = None if len(resolved) == 3 else resolved.T @ resolved
         self.neighbour_count = min(max(int(neighbour_count), 1), len(self.cell_centre))
         self.solid_boundary = solid_boundary
         self._fluid_donors = (
@@ -150,14 +156,26 @@ class FVMVelocityInterpolator:
         )
         self._cache: OrderedDict[bytes, tuple[np.ndarray, np.ndarray]] = OrderedDict()
 
+    def _distance_position(self, position):
+        """Measure donor distances in directions resolved by their geometry.
+
+        A displacement normal to a donor plane cannot change its curvature
+        weights. Reconstruction still uses the original 3D position and all
+        supplied gradient components.
+        """
+        if self._distance_projection is None:
+            return position
+        return self._donor_origin + (position - self._donor_origin) @ self._distance_projection
+
     def _visible_stencil(self, positions):
         """Find complete distance shells without borrowing through a wall."""
+        search_positions = self._distance_position(positions)
         rows = np.arange(len(positions))
         selected = [None] * len(rows)
         count = self.neighbour_count
         query_count = min(max(2 * count, 8), len(self.cell_centre))
         while len(rows):
-            distance, donors = self.tree.query(positions[rows], k=query_count, workers=-1)
+            distance, donors = self.tree.query(search_positions[rows], k=query_count, workers=-1)
             distance = np.asarray(distance).reshape(len(rows), query_count)
             donors = np.asarray(donors).reshape(len(rows), query_count)
             targets = np.broadcast_to(positions[rows, None, :], (*donors.shape, 3))
@@ -254,7 +272,8 @@ class FVMVelocityInterpolator:
         # changes reconstructed curvature under cell reordering/reflection.
         count = self.neighbour_count
         query_count = min(count + 1, len(self.cell_centre))
-        distance, indices = self.tree.query(evaluation_position, k=query_count, workers=-1)
+        search_position = self._distance_position(evaluation_position)
+        distance, indices = self.tree.query(search_position, k=query_count, workers=-1)
         distance = np.asarray(distance, dtype=np.float64).reshape(
             len(evaluation_position), query_count
         )
@@ -269,7 +288,7 @@ class FVMVelocityInterpolator:
             )
         if len(tied_rows):
             neighbours = self.tree.query_ball_point(
-                evaluation_position[tied_rows],
+                search_position[tied_rows],
                 r=cutoff[tied_rows] + tolerance[tied_rows],
                 workers=-1,
             )
@@ -282,7 +301,7 @@ class FVMVelocityInterpolator:
                 donors = np.asarray(donors, dtype=np.int32)
                 complete_indices[row, : len(donors)] = donors
                 complete_distance[row, : len(donors)] = np.linalg.norm(
-                    evaluation_position[row] - self.cell_centre[donors], axis=1
+                    search_position[row] - self.cell_centre[donors], axis=1
                 )
             distance, indices = complete_distance, complete_indices
         else:

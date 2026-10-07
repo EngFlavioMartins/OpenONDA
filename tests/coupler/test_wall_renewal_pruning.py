@@ -14,7 +14,7 @@ from source.coupler.stable_renewal import (
 )
 
 
-def thin_wall_lattice(*, planar=False):
+def thin_wall_lattice():
     boundary = SolidBoundary(
         (TriangulatedWall.from_box((-0.01, 0.01, -4.0, 4.0, -4.0, 4.0), (-5.0, 5.0) * 3),)
     )
@@ -26,7 +26,6 @@ def thin_wall_lattice(*, planar=False):
         lattice_anchor=np.full(3, 0.5),
         interior_at_node=boundary.contains,
         solid_boundary=boundary,
-        planar_span=1.0 if planar else None,
     )
     assert not lattice.solid_interior.any()
     assert np.count_nonzero(lattice.wall_links & 1) > 0
@@ -103,9 +102,8 @@ def test_wall_renewal_capacity_does_not_trigger_global_recovery():
         renew(lattice, maximum_particle_count=4)
 
 
-@pytest.mark.parametrize("planar", [False, True])
-def test_wall_scatter_snaps_only_storage_roundoff_to_the_cardinal_node(planar):
-    lattice, _ = thin_wall_lattice(planar=planar)
+def test_wall_scatter_snaps_only_storage_roundoff_to_the_cardinal_node():
+    lattice, _ = thin_wall_lattice()
     displacement = np.array([1000.0, 0.0, 0.0])
     lattice = replace(
         lattice,
@@ -113,7 +111,7 @@ def test_wall_scatter_snaps_only_storage_roundoff_to_the_cardinal_node(planar):
         positions=lattice.positions + displacement,
         renewal_bounds=lattice.renewal_bounds + np.repeat(displacement, 2),
     )
-    exact = np.array([999.5, -0.5, 0.0 if planar else -0.5])
+    exact = np.array([999.5, -0.5, -0.5])
     stored = exact.astype(np.float32)
     stored[0] = np.nextafter(stored[0], np.float32(np.inf))
     assert stored[0] - exact[0] > 1e-5 * lattice.particle_spacing
@@ -133,14 +131,13 @@ def test_wall_scatter_snaps_only_storage_roundoff_to_the_cardinal_node(planar):
     np.testing.assert_array_equal(renewed.vortex_strength, [[0.0, 0.0, 1.0]])
 
 
-@pytest.mark.parametrize("planar", [False, True])
-def test_wall_scatter_rejects_off_lattice_sources_before_wall_crossing(planar):
-    lattice, _ = thin_wall_lattice(planar=planar)
-    position = np.array([[-0.25, -0.5, 0.0 if planar else -0.5]])
+def test_wall_scatter_rejects_off_lattice_sources_before_wall_crossing():
+    lattice, _ = thin_wall_lattice()
+    position = np.array([[-0.25, -0.5, -0.5]])
     strength = np.array([[0.0, 0.0, 1.0]])
     with pytest.raises(ValueError, match="GBD-aligned particles"):
         scatter_m4_prime_to_lattice(position, strength, lattice)
-    np.testing.assert_array_equal(position, [[-0.25, -0.5, 0.0 if planar else -0.5]])
+    np.testing.assert_array_equal(position, [[-0.25, -0.5, -0.5]])
     np.testing.assert_array_equal(strength, [[0.0, 0.0, 1.0]])
 
 

@@ -183,7 +183,6 @@ def test_finite_immersed_body_with_les_uses_three_dimensional_exchange(tmp_path)
         position, strength = particle_state(driver)
         assert np.ptp(position[:, 2]) > 0.5
         assert np.all(np.isfinite(strength))
-        assert driver.vorticity_transfer._planar_span is None
         diagnostics = driver._last_transfer_result
         assert diagnostics.transfer_method == "buffered_m4_renewal"
         assert (

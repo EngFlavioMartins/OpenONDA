@@ -6,7 +6,7 @@ Start with a case matching your physical problem:
 
 | Case | Physics and setup |
 | --- | --- |
-| [Cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$; one periodic FVM layer and planar VPM filaments. |
+| [Cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$; one periodic FVM layer and three-dimensional VPM particles. |
 | [Cube](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated flow at $Re=1000$; body-fitted wall and equilibrium Smagorinsky LES. |
 | [NACA 4412](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | Finite-span airfoil at $10^\circ$, $Re=1000$; immersed boundary and Smagorinsky LES. |
 
@@ -43,11 +43,11 @@ For a resolved free-slip span, match the FVM slip faces, `vpm.SlipSlabInduction`
 
 The slab model retains all three velocity and vorticity components. Coupled runs use laminar GBD diffusion in the slab, without LES. Use M4-prime remeshing, at least three grid cells of padding, and a spacing placing the slip planes on grid nodes or half nodes. The coupler anchors its slab lattice half a particle spacing above the lower plane.
 
-`tail_tolerance` and `max_shells` control image-sum convergence. Check sensitivity to these settings on a developed wake. Images enforce slip conditions; they are not physical particles or part of the force reference area.
+`tail_tolerance` controls image-sum convergence. The Gaussian slab evaluator selects complete reflected shells until both velocity and gradient remainder bounds satisfy that tolerance; `max_shells` is the hard limit. Check sensitivity to these settings on a developed wake. Images enforce slip conditions; they are not physical particles or part of the force reference area.
 
 ### Planar flow
 
-The [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) uses one periodic FVM layer across a unit span and `vpm.PlanarInduction` with one particle layer. This model assumes span-invariant flow and excludes spanwise velocity and vortex stretching.
+The [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) uses one periodic FVM layer across a unit span and three-dimensional cubic VPM particles. `vpm.SlipSlabInduction` applies full-vector reflected sources at the span boundaries. Induction, stretching and diffusion retain the common three-dimensional physics.
 
 ## Boundary conditions
 

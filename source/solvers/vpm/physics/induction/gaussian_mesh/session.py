@@ -20,6 +20,7 @@ import numpy as np
 from ....numerics.ieee import ieee_arithmetic, require_round_to_nearest
 from ..gaussian_tail import prepare_tail_source, query_tail_bound, validate_source_values
 from ..gaussian_tail._interval import add, mul, point
+from ..gaussian_tail.error_bounds import ImageTailSeparationError
 from .error_bounds import finite_image_correction_bound
 from .parameters import GaussianMeshParameters
 
@@ -201,6 +202,7 @@ class GaussianSlabFieldSession:
         self.velocity_scale, self.gradient_scale = float(velocity_scale), float(gradient_scale)
         self.dtype = dtype
         self._snapshot = self._field = self._role = self._bounds = None
+        self._shells = None
         self._failed_field = None
         self._cleanup_uncertain = False
         self.closed = False
@@ -232,6 +234,7 @@ class GaussianSlabFieldSession:
     def _close_field(self):
         field, self._field = self._field, None
         self._role = self._bounds = None
+        self._shells = None
         if field is not None:
             try:
                 field.close()
@@ -296,47 +299,51 @@ class GaussianSlabFieldSession:
             )
         source = _source_arrays(snapshot)
         lower, upper = query.min(axis=0), query.max(axis=0)
-        # Keep EVERY finite shell allowed by the explicit ceiling. No source,
-        # descriptor, or primary query contribution is silently discarded.
-        shells = self.max_shells - 1
-        images = tuple(
-            (k, odd)
-            for k in range(-shells, shells + 1)
-            for odd in (False, True)
-            if source_only or (k, odd) != (0, False)
-        )
-        with ieee_arithmetic():
-            resolved = self.settings.mesh.resolve(source[2])
-            tail = query_tail_bound(snapshot, lower, upper, shells=shells)
-            classification = _classification(
-                snapshot, lower, upper, cutoff=resolved.correction_cutoff, images=images
+        # Select complete reflected shells with the same whole-tail and local
+        # correction bounds. The explicit maximum remains a hard ceiling.
+        shells = min(3, self.max_shells - 1)
+        if self._field is not None and self._role == source_only:
+            shells = max(shells, self._shells)
+        while True:
+            images = tuple(
+                (k, odd)
+                for k in range(-shells, shells + 1)
+                for odd in (False, True)
+                if source_only or (k, odd) != (0, False)
             )
-            omitted_radius = classification.omitted_distance_lower
-            correction = finite_image_correction_bound(
-                snapshot,
-                lower,
-                upper,
-                images=images,
-                tau=resolved.tau,
-                omitted_distance_lower=omitted_radius,
-                max_images=len(images),
-            )
-            velocity_error = float(
-                add(point(tail.velocity_upper), point(correction.velocity_upper)).upper
-            )
-            gradient_error = float(
-                add(point(tail.gradient_upper), point(correction.gradient_upper)).upper
-            )
-            # Division is not used to approve the check: multiply the threshold
-            # outward DOWN so a rounded quotient cannot accept an over-budget sum.
-            velocity_limit = float(mul(point(self.tolerance), point(self.velocity_scale)).lower)
-            gradient_limit = float(mul(point(self.tolerance), point(self.gradient_scale)).lower)
-        if velocity_error > velocity_limit or gradient_error > gradient_limit:
-            self._close_field()
-            raise RuntimeError(
-                "Gaussian slab truncation exceeds unchanged velocity/gradient budget: "
-                f"u={velocity_error}, J={gradient_error}, shells={shells}"
-            )
+            try:
+                with ieee_arithmetic():
+                    resolved = self.settings.mesh.resolve(source[2])
+                    tail = query_tail_bound(snapshot, lower, upper, shells=shells)
+                    classification = _classification(
+                        snapshot, lower, upper, cutoff=resolved.correction_cutoff, images=images
+                    )
+                    omitted_radius = classification.omitted_distance_lower
+                    correction = finite_image_correction_bound(
+                        snapshot, lower, upper, images=images, tau=resolved.tau,
+                        omitted_distance_lower=omitted_radius, max_images=len(images),
+                    )
+                    velocity_error = float(
+                        add(point(tail.velocity_upper), point(correction.velocity_upper)).upper
+                    )
+                    gradient_error = float(
+                        add(point(tail.gradient_upper), point(correction.gradient_upper)).upper
+                    )
+                    velocity_limit = float(mul(point(self.tolerance), point(self.velocity_scale)).lower)
+                    gradient_limit = float(mul(point(self.tolerance), point(self.gradient_scale)).lower)
+                if velocity_error <= velocity_limit and gradient_error <= gradient_limit:
+                    break
+                if shells == self.max_shells - 1:
+                    self._close_field()
+                    raise RuntimeError(
+                        "Gaussian slab truncation exceeds unchanged velocity/gradient budget: "
+                        f"u={velocity_error}, J={gradient_error}, shells={shells}"
+                    )
+            except ImageTailSeparationError:
+                if shells == self.max_shells - 1:
+                    self._close_field()
+                    raise
+            shells = min(2 * shells + 1, self.max_shells - 1)
         error_bound_finished = perf_counter()
         field_reused = False
         field_close_seconds = field_build_seconds = field_prepare_seconds = 0.0
@@ -346,6 +353,8 @@ class GaussianSlabFieldSession:
                 field_rebuild_reason = "absent" if source_hit else "initial_or_changed_source"
             elif self._role != source_only:
                 field_rebuild_reason = "role_changed"
+            elif self._shells != shells:
+                field_rebuild_reason = "image_shells_changed"
             elif not self._field.can_evaluate_targets(query):
                 field_rebuild_reason = "outside_logical_stencil_domain"
             else:
@@ -398,6 +407,7 @@ class GaussianSlabFieldSession:
                     raise
                 phase_started = perf_counter()
                 self._field.prepare(images)
+                self._shells = shells
                 field_prepare_seconds = perf_counter() - phase_started
                 # The field's retained stencil domain decides reuse; these
                 # initial query bounds are descriptive only.

@@ -8,20 +8,21 @@ from source.coupler.stable_renewal import (
     build_stable_renewal_lattice,
     gaussian_represented_vortex_strength,
     renew_stable_overlap,
+    scatter_m4_prime_to_lattice,
 )
 
 
 @pytest.mark.parametrize("slab", [False, True])
 def test_matching_state_is_fixed_point_through_blend_weight_ramp_and_wall(slab):
     h = 0.04
-    shape = (35, 27, 6 if slab else 1)
+    shape = (35, 27, 6)
     indices = np.indices(shape)
     strength = np.zeros((*shape, 3))
     strength[..., 2] = np.exp(-((indices[0] - 20) ** 2 + (indices[1] - 13) ** 2) / 35)
     wall_weight = (indices[0] >= 9).astype(float).reshape(-1)
     strength = strength.reshape(-1, 3) * wall_weight[:, None]
     blend_weight = np.broadcast_to(np.linspace(0, 1, shape[0])[:, None, None], shape).ravel()
-    options = {"dimensions": 3 if slab else 2}
+    options = {}
     if slab:
         options.update(slip_slab_bounds=(-0.12, 0.12), lattice_origin_z=-0.10)
     physical = gaussian_represented_vortex_strength(strength, shape, h, core_radius=h, **options)
@@ -55,7 +56,10 @@ def test_repeated_matching_renewals_do_not_damp_resolved_wake_mode():
     blend_weight = np.full(len(strength), 0.5)
     for _ in range(25):
         physical = gaussian_represented_vortex_strength(
-            strength, shape, h, core_radius=h, dimensions=2
+            strength,
+            shape,
+            h,
+            core_radius=h,
         )
         strength = blend_represented_state(
             strength,
@@ -65,13 +69,12 @@ def test_repeated_matching_renewals_do_not_damp_resolved_wake_mode():
             h,
             core_radius=h,
             amplification_cap=1.8,
-            dimensions=2,
         ).vortex_strength
     np.testing.assert_array_equal(strength, initial)
 
 
 def test_repeated_unresolved_wall_target_remains_bounded():
-    shape, h = (25, 25, 1), 0.04
+    shape, h = (25, 25, 5), 0.04
     indices = np.indices(shape)
     wall_weight = (indices[0] >= 11).astype(float).ravel()
     target = np.zeros((*shape, 3))
@@ -88,7 +91,6 @@ def test_repeated_unresolved_wall_target_remains_bounded():
             h,
             core_radius=h,
             amplification_cap=1.8,
-            dimensions=2,
             output_weight=wall_weight,
         )
         strength = result.vortex_strength
@@ -99,12 +101,15 @@ def test_repeated_unresolved_wall_target_remains_bounded():
 
 
 def test_one_saturated_node_does_not_stop_remote_correction():
-    shape, h = (31, 31, 1), 0.04
+    shape, h = (31, 31, 5), 0.04
     strength = np.zeros((*shape, 3))
     strength[8, 15, 0, 2] = 10.0
     strength = strength.reshape(-1, 3)
     physical = gaussian_represented_vortex_strength(
-        strength, shape, h, core_radius=h, dimensions=2
+        strength,
+        shape,
+        h,
+        core_radius=h,
     ).reshape(*shape, 3)
     physical[8, 15, 0, 2] += 0.01
     physical[23, 15, 0, 2] += 0.01
@@ -116,7 +121,6 @@ def test_one_saturated_node_does_not_stop_remote_correction():
         h,
         core_radius=h,
         amplification_cap=1.8,
-        dimensions=2,
     ).vortex_strength.reshape(*shape, 3)
     assert result[8, 15, 0, 2] == 10.0
     assert result[23, 15, 0, 2] > 0.01
@@ -139,7 +143,6 @@ def test_renewal_ignores_fractional_taper_inside_actual_solid(slab):
         fluid_weight_at_node=lambda points: np.clip(1 + points[:, 0] / h, 0, 1),
         interior_at_node=boundary.contains,
         solid_boundary=boundary,
-        planar_span=None if slab else 0.24,
         slip_slab=slab,
     )
     partial_solid = lattice.solid_interior & (lattice.fluid_weight > 0)
@@ -149,13 +152,14 @@ def test_renewal_ignores_fractional_taper_inside_actual_solid(slab):
         (points[:, 0] > 0)
         & (points[:, 0] < 0.24)
         & (np.abs(points[:, 1]) < 0.24)
+        & (np.abs(points[:, 2]) < 0.08)
         & (lattice.fluid_weight == 1)
     )
     strength = np.zeros_like(points)
     strength[active, 2] = np.exp(
         -((points[active, 0] - 0.08) ** 2 + points[active, 1] ** 2) / 0.08**2
     )
-    options = {"dimensions": 3 if slab else 2}
+    options = {}
     if slab:
         options.update(slip_slab_bounds=(-0.12, 0.12), lattice_origin_z=lattice.origin[2])
     raw_target = gaussian_represented_vortex_strength(
@@ -173,7 +177,8 @@ def test_renewal_ignores_fractional_taper_inside_actual_solid(slab):
         prune_threshold=0.0,
         compute_diagnostics=True,
     )
-    np.testing.assert_array_equal(result.position, points[active])
-    np.testing.assert_allclose(result.vortex_strength, strength[active], rtol=0, atol=1e-14)
+    renewed = scatter_m4_prime_to_lattice(result.position, result.vortex_strength, lattice)
+    np.testing.assert_allclose(renewed, strength, rtol=0, atol=1e-14)
+    assert not np.any(boundary.contains(result.position))
     assert result.representation_residual_before_prune < 1e-14
     assert result.representation_residual_after_prune < 1e-14

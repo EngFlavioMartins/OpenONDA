@@ -36,7 +36,6 @@ def runtime():
 
 def _backend(name, physics):
     from source.solvers.vpm.physics.induction.direct import DirectInduction
-    from source.solvers.vpm.physics.induction.planar import PlanarInduction
     from source.solvers.vpm.physics.induction.slip_slab import SlipSlabInduction
 
     if "fmm" in name:
@@ -47,14 +46,12 @@ def _backend(name, physics):
         base = DirectInduction()
     if name.startswith("slab"):
         base = SlipSlabInduction(base, z_min=-0.5, z_max=0.5, max_shells=129, tail_tolerance=1e-4)
-    elif name == "planar":
-        base = PlanarInduction()
     physics.induction = base.bind(physics)
     physics.velocity_method = "DIRECT" if name == "direct" else name.upper()
     return physics.induction
 
 
-@pytest.mark.parametrize("name", ["direct", "planar", "slab-direct", "fmm", "slab-fmm"])
+@pytest.mark.parametrize("name", ["direct", "slab-direct", "fmm", "slab-fmm"])
 def test_fused_backend_fields_and_mixed_trace_match_separate_calls(runtime, name):
     cloud = _Cloud(4)
     positions = np.array([[0, 0, 0], [0.2, -0.1, 0], [-0.15, 0.2, 0], [0.1, 0.1, 0]], np.float32)
@@ -62,9 +59,6 @@ def test_fused_backend_fields_and_mixed_trace_match_separate_calls(runtime, name
         [[0.01, 0.02, 0.03], [-0.02, 0.01, 0.01], [0.01, -0.01, 0.02], [0.02, 0.01, -0.03]],
         np.float32,
     )
-    if name == "planar":
-        strengths[:, :2] = 0
-        cloud.velocity_background[None] = [0.2, -0.1, 0.0]
     cloud.position.from_numpy(positions)
     cloud.vortex_strength.from_numpy(strengths)
     cloud.core_radius.from_numpy(np.array([0.08, 0.12, 0.2, 0.1], np.float32))

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Two-dimensional coupled FVM–VPM cylinder flow at Re = 150.
 
-The FVM has one periodic cell across a unit span. A single plane of VPM
-filaments carries the two-dimensional outer wake. Forces use unit-span area.
+The FVM has one periodic cell across a unit span. The VPM uses cubic 3D
+particles with reflected sources at the span boundaries. Forces use unit-span area.
 
 Usage:
     ./allrun.sh
@@ -63,8 +63,8 @@ TRANSFER_REGION_BOX = (
 # VPM domain and resolution.
 VPM_DOMAIN = (*(-5.0, 15.0, -5.0, 5.0), -FVM_HALF_SPAN, FVM_HALF_SPAN)
 # Keep renewal and grid-based diffusion on one VPM lattice.
-# The full bounded XY lattice has about 125,000 nodes; retain halo headroom.
-PARTICLE_LIMIT = 200_000
+# Resolve the unit span with the same particle spacing as the XY plane.
+PARTICLE_LIMIT = 1_000_000
 PARTICLE_SPACING_RATIO = 1.0
 CORE_RADIUS_RATIO = 1.0
 BLEND_WIDTH_RATIO = 6.0
@@ -336,12 +336,14 @@ def build_case(
                 padding=5.0,
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 threshold_mode="absolute",
-                threshold=GBD_VORTICITY_FLOOR * particle_spacing**2 * span,
+                threshold=GBD_VORTICITY_FLOOR * particle_spacing**3,
                 core_radius_ratio=core_ratio,
             ),
             integrator=vpm.RK2(),
             turbulence=vpm.TurbulenceConfig.inviscid(),
-            induction=vpm.PlanarInduction(span=span, plane_z=0.0),
+            induction=vpm.SlipSlabInduction(
+                vpm.FMMInduction(), z_min=-half_span, z_max=half_span
+            ),
             stabilization=vpm.StabilizationConfig.bounded_domain(vpm_domain),
             max_n_particles=particle_limit,
             domain_bounds=vpm_domain,

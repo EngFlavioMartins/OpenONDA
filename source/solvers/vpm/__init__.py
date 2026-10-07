@@ -62,8 +62,6 @@ from .physics.induction.direct import DirectInduction
 from .physics.induction.fmm import FMMInduction
 from .physics.induction.gaussian_mesh.parameters import GaussianMeshParameters
 from .physics.induction.gaussian_mesh.session import GaussianSlabSettings
-from .physics.induction.planar import PlanarInduction
-from .physics.induction.planar_channel import PlanarChannelInduction
 from .physics.induction.slip_slab import SlipSlabInduction
 from .physics.induction.treecode import TreecodeInduction
 from .stabilization import (
@@ -75,8 +73,6 @@ from .stabilization import (
 
 __all__ = [
     "DirectInduction",
-    "PlanarInduction",
-    "PlanarChannelInduction",
     "SlipSlabInduction",
     "FMMInduction",
     "GaussianMeshParameters",

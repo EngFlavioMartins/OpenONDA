@@ -65,35 +65,6 @@ def required_renewal_buffer_length(
     return safety * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
 
 
-def _planar_cell_stack_groups(
-    cell_centre: np.ndarray, cell_volume: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Identify complete straight extrusions, including a single FVM layer.
-
-    Every XY column must contain the same unique z levels. Its normalized
-    layer volumes must also agree with the other columns, allowing unequal
-    layer heights and unequal in-plane cell areas. Coordinates and positive
-    volumes have already been validated by transfer setup. The source-plane
-    coordinate and represented filament span are independent of layer count.
-    """
-    coordinates = np.round(cell_centre, 11)
-    _, groups, counts = np.unique(
-        coordinates[:, :2], axis=0, return_inverse=True, return_counts=True
-    )
-    _, layers = np.unique(coordinates[:, 2], return_inverse=True)
-    layer_count = int(layers.max()) + 1
-    if np.any(counts != layer_count) or len(np.unique(coordinates, axis=0)) != len(coordinates):
-        raise ValueError("Planar coupling requires complete extruded FVM cell stacks")
-
-    column_volume = np.bincount(groups, weights=cell_volume)
-    fractions = cell_volume / column_volume[groups]
-    first_column = np.flatnonzero(groups == 0)
-    profile = fractions[first_column[np.argsort(layers[first_column])]]
-    if not np.allclose(fractions, profile[layers], rtol=1e-8, atol=1e-12):
-        raise ValueError("Planar FVM cell stacks must share one extruded layer-volume profile")
-    return groups, counts
-
-
 @dataclass(frozen=True)
 class TransferResult:
     """Particle population, represented-state and conservation budgets for renewal.
@@ -826,20 +797,16 @@ class VorticityTransfer:
             raise RuntimeError("VorticityTransfer requires the resolved VPM particle spacing")
         self.particle_spacing = float(coupler.vpm_particle_spacing)
         induction = getattr(candidate_vpm, "induction", None)
-        self._planar_span = getattr(induction, "planar_span", None)
         self._slip_slab = getattr(induction, "method", None) == "SLIP_SLAB"
         self._slip_z = (
             (float(induction.z_min), float(induction.z_max))
             if self._slip_slab and induction is not None
             else None
         )
-        self._planar_induction = induction if self._planar_span is not None else None
         self.eta_blend_width = float(cfg.eta_blend_width)
         self.vpm_only_width = float(cfg.vpm_only_width)
         self.transfer_prune_threshold_abs = (
-            float(cfg.transfer_vorticity_cutoff)
-            * self.particle_spacing**2
-            * (self.particle_spacing if self._planar_span is None else self._planar_span)
+            float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
         )
         self.transfer_release_prune_threshold_abs = self.transfer_prune_threshold_abs
         if candidate_vpm is not None:
@@ -1129,13 +1096,6 @@ class VorticityTransfer:
             def interior_at_node(points: np.ndarray) -> np.ndarray:
                 return self._points_in_solid(points, include_boundary=False)
 
-            if self._planar_induction is not None:
-                self._planar_groups, self._planar_group_counts = _planar_cell_stack_groups(
-                    self._cell_centre, self._cell_volume
-                )
-                self.last_spanwise_metrics = {}
-                self._planar_induction.lattice_anchor = self._lattice_anchor.copy()
-                self._planar_induction.solid_at = interior_at_node if has_solid else None
             self._stable_renewal_lattice = build_stable_renewal_lattice(
                 self._box,
                 self.particle_spacing,
@@ -1148,9 +1108,7 @@ class VorticityTransfer:
                 interior_at_node=interior_at_node if has_solid else None,
                 solid_boundary=self.solid_boundary,
                 wall_scatter_correction=self._wall_scatter_correction,
-                planar_span=self._planar_span,
                 slip_slab=self._slip_slab,
-                plane_z=getattr(self._planar_induction, "plane_z", 0.0),
             )
             self._fvm_solid_mask = self._points_in_solid(
                 self._cell_centre,
@@ -1285,32 +1243,6 @@ class VorticityTransfer:
         """Run the recovered synchronized velocity-trace whole-belt renewal."""
         if self._stable_renewal_lattice is None or self._velocity_trace is None:
             raise RuntimeError("buffered M4' renewal lattice was not initialized")
-        if self._planar_induction is not None:
-            groups = self._planar_groups
-            counts = self._planar_group_counts
-            mean = np.column_stack(
-                [
-                    np.bincount(groups, weights=fvm_velocity[:, axis], minlength=len(counts))
-                    / counts
-                    for axis in range(3)
-                ]
-            )
-            variation = float(np.max(np.abs(fvm_velocity - mean[groups]), initial=0))
-            span_velocity = float(np.max(np.abs(fvm_velocity[:, 2]), initial=0))
-            scale = max(
-                float(np.linalg.norm(self.config.freestream_velocity_vector)),
-                float(np.linalg.norm(mean, axis=1).max(initial=0)),
-                1e-12,
-            )
-            self.last_spanwise_metrics = {
-                "span_velocity_max": span_velocity,
-                "span_variation_max": variation,
-                "velocity_scale": scale,
-            }
-            if max(variation, span_velocity) > self._planar_induction.spanwise_tolerance * scale:
-                raise RuntimeError(
-                    f"Planar FVM donor state lost spanwise invariance: {self.last_spanwise_metrics}"
-                )
         has_solid = self.solid_boundary is not None
 
         def fluid_weight(points: np.ndarray) -> np.ndarray:
@@ -1336,7 +1268,7 @@ class VorticityTransfer:
         if self._buffered_trace_stencils is None:
             stencils = []
             positions = lattice.positions[needed]
-            for axis in range(3 if self._planar_span is None else 2):
+            for axis in range(3):
                 for sign in (1.0, -1.0):
                     query = positions.copy()
                     query[:, axis] += sign * 0.5 * self.particle_spacing
@@ -1385,9 +1317,6 @@ class VorticityTransfer:
                 strength += self.particle_spacing**2 * np.cross(
                     normal, velocities[0] - velocities[1]
                 )
-            if self._planar_span is not None:
-                strength[:, :2] = 0.0
-                strength *= self._planar_span / self.particle_spacing
             target = np.zeros_like(points)
             target[needed] = strength
             return target

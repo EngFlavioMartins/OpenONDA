@@ -32,8 +32,6 @@ from source.solvers.vpm import (
     ParticleDistribution,
     ParticleStateLimits,
     ParticleStrengthLimit,
-    PlanarChannelInduction,
-    PlanarInduction,
     RectangularDistribution,
     RestartState,
     RingDiagnosticsSampler,
@@ -71,8 +69,6 @@ from source.solvers.vpm.io.sampling import LineSampler, SurfaceSampler
 
 __all__ = [
     "DirectInduction",
-    "PlanarInduction",
-    "PlanarChannelInduction",
     "SlipSlabInduction",
     "FMMInduction",
     "GaussianMeshParameters",

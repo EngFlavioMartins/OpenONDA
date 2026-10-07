@@ -1,6 +1,6 @@
 # Cylinder shedding at $Re=150$
 
-A no-slip cylinder sheds vorticity into a laminar wake. FVM resolves the wall and near wake; VPM transports the outer wake. The FVM mesh has one cell across a unit span, $z∈[-0.5,0.5]$ m, with periodic `zmin`/`zmax` patches. VPM carries one particle layer at $z=0$ using infinite-span Gaussian filaments. Force coefficients use frontal area $Db=1$ m².
+A no-slip cylinder sheds vorticity into a laminar wake. FVM resolves the wall and near wake; VPM transports the outer wake. The FVM mesh has one cell across a unit span, $z∈[-0.5,0.5]$ m, with periodic `zmin`/`zmax` patches. VPM resolves the span with cubic three-dimensional particles and reflected sources at the span boundaries. Force coefficients use frontal area $Db=1$ m².
 
 | Quantity | Default |
 | --- | --- |
@@ -10,16 +10,16 @@ A no-slip cylinder sheds vorticity into a laminar wake. FVM resolves the wall an
 | Transfer region | $[-1.25,2.05]\times[-1.25,1.25]\times[-0.5,0.5]$ m |
 | VPM domain | $[-5,15]\times[-5,5]\times[-0.5,0.5]$ m |
 | In-plane FVM/particle spacing | 0.04 m |
-| Spanwise resolution | One FVM cell of width 1 m; one VPM layer at $z=0$ |
+| Spanwise resolution | One FVM cell of width 1 m; 25 VPM layers at 0.04 m spacing |
 | FVM/exchange step | 0.008 s / 0.04 s |
 | End time | 100 s |
 | Startup freestream | $(1,0.1,0)$ m/s through 1 s; smooth taper to $(1,0,0)$ by 2 s |
 
 ## Models and mesh
 
-The [body-fitted mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cylinder_long.stl`, whose $1.2$ m length keeps both caps outside the resolved span. The cylinder is no-slip; `zmin` and `zmax` form a reciprocal periodic pair; the remaining box faces form `numericalBoundary`. VPM uses RK2, infinite-span Gaussian filaments with core radius equal to the in-plane spacing, and planar GBD diffusion. Stored particle volume is $h^2b$ and axial vortex strength is circulation times $b$. No spanwise velocity, vortex stretching or SGS closure is included.
+The [body-fitted mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cylinder_long.stl`, whose $1.2$ m length keeps both caps outside the resolved span. The cylinder is no-slip; `zmin` and `zmax` form a reciprocal periodic pair; the remaining box faces form `numericalBoundary`. VPM uses RK2, the three-dimensional Gaussian kernel, vector stretching and three-dimensional GBD diffusion. Particle volume is $h^3$ and vortex strength is the vector vorticity volume integral. `SlipSlabInduction` reflects full vector sources at $z=±0.5$ m; it does not constrain particle velocities or strengths to a plane.
 
-`PlanarInduction` supplies the span-invariant velocity and its gradient at the FVM boundary, without a truncated set of periodic images. [Mixed vorticity boundaries](../../../docs/coupling.md#boundary-conditions) and [buffered M4-prime renewal](../../../docs/coupling.md#vorticity-transfer) use a $6h$ blend width, a $2h$ VPM-only band and up to six Picard sweeps at the existing $10^{-5}$ tolerances. Iteration stops early when both residuals meet tolerance; an exchange that reaches the cap without passing is flagged unconverged. Converged exchanges enable the safeguarded predictor; successful predictions can finish in one sweep, while a rejected prediction adds one trial sweep before Picard iteration. Physical inputs belong to `setup.py`; `assets/` contains the initial disturbance and scientific plots.
+[Mixed vorticity boundaries](../../../docs/coupling.md#boundary-conditions) and [buffered M4-prime renewal](../../../docs/coupling.md#vorticity-transfer) use a $6h$ blend width, a $2h$ VPM-only band and up to six Picard sweeps at $10^{-5}$ tolerances. Iteration stops when both residuals meet tolerance. Exchanges that reach the cap are flagged unconverged. Physical inputs belong to `setup.py`; `assets/` contains the initial disturbance and scientific plots.
 
 The downstream extension places unit FVM blending weight through $x/D=1.81$, beyond the saved reference's mean recirculation closure near $1.55$. At the default $h=0.04$, the requested box is exact. Other spacings can expand the box to Cartesian cell planes; for example, $h=0.064$ resolves the downstream edge at $2.432$. Check the recorded mesh bounds before interpreting a grid study.
 
@@ -29,9 +29,7 @@ The velocity ramp is declared as a physical input and saved in the native checkp
 
 The reference case uses the same single periodic FVM layer, unit-span force normalization, startup velocity, taper interval and initial disturbance. This is a strictly two-dimensional model; it does not resolve three-dimensional wake instabilities.
 
-One layer replaces the previous 24 FVM layers at the same in-plane mesh resolution. VPM also retains one particle layer. This reduces cell and particle counts; the wall-time saving still depends on induction, pressure solving and output costs. The planar induction backend evaluates source/target pairs directly, so a 24-fold runtime gain is not assumed.
-
-Both cases default to one FVM process because periodic MPI currently replicates the full mesh and solver workspace on every rank. The coupled particle capacity is 200,000, with room beyond the roughly 125,000-node bounded XY lattice for renewal and diffusion halos. This is an allocation ceiling; it does not discard active particles or change mesh spacing, physical models or convergence tolerances. After changing the allocation from the former million-particle setting, use `--fresh` to preserve the earlier output and start with the new defaults.
+Both cases default to one FVM process. The coupled particle capacity is 1,000,000; this is an allocation ceiling and does not discard active particles. The particle spacing resolves the span independently of the single FVM layer.
 
 ## Run and compare
 
@@ -43,7 +41,7 @@ From this directory in an [installed environment](../../../docs/installation.md)
 ./allplot.sh
 ```
 
-The [standalone FVM reference](reference_flow/README.md) is needed for force/profile comparison, but the coupled solver runs independently. Both cases use the same smooth startup. `./allrun.sh --fresh` archives previous coupled outputs, including the native mesh, under `previous_runs/` and starts at zero. It leaves `reference_flow/`, `drag_recovery/`, assets and study results untouched. Stop an active run before requesting a fresh one. The earlier multi-layer/slip checkpoint is a different model and cannot be continued with this setup; use `--fresh` to preserve it and start the planar case.
+The [standalone FVM reference](reference_flow/README.md) is needed for force/profile comparison, but the coupled solver runs independently. Both cases use the same smooth startup. `./allrun.sh --fresh` archives previous coupled outputs, including the native mesh, under `previous_runs/` and starts at zero. It leaves `reference_flow/`, `drag_recovery/`, assets and study results untouched. Stop an active run before requesting a fresh one. Earlier planar-particle checkpoints use different numerical physics. Use `--fresh` to preserve those outputs and start the three-dimensional particle case.
 
 Without `--fresh`, `./allrun.sh` preserves outputs and resumes a compatible backup; `./allcontinue.sh` does the same. `./allcontinue.sh --max-coupling-steps 25` performs up to 25 further accepted exchanges and saves a checkpoint. `./allclean.sh` deletes generated results.
 

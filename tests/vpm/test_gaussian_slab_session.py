@@ -94,10 +94,11 @@ def test_exact_snapshot_and_role_storage(harness):
     assert not first["source_snapshot_hit"] and not first["field_reused"]
     assert second["source_snapshot_hit"] and second["field_reused"]
     json.dumps(second, allow_nan=False)
-    assert len(fields) == 1 and len(fields[0].images) == 513
+    assert len(fields) == 1 and len(fields[0].images) == 4 * first["shell"] + 1
+    assert first["shell"] < engine.max_shells - 1
     _, _, third = engine.evaluate(x, g, sigma, x, source_only=True)
     assert third["source_snapshot_hit"] and not third["field_reused"]
-    assert third["finite_images"] == 514
+    assert third["finite_images"] == 4 * third["shell"] + 2
     assert fields[1].images.count((0, False)) == 1
     assert events[-4:] == ["close", "create", "prepare", "query"]
 
@@ -115,6 +116,41 @@ def test_source_mutation_replaces_before_allocation(harness, which):
     for expected, captured in zip(saved, fields[0].sources, strict=True):
         np.testing.assert_array_equal(expected, captured)
         assert not captured.flags.writeable
+
+
+def test_image_selection_requires_both_velocity_and_gradient_bounds(harness, monkeypatch):
+    engine, x, g, sigma, fields, _ = harness
+    monkeypatch.setattr(
+        session, "query_tail_bound",
+        lambda *args, shells, **kwargs: SimpleNamespace(
+            velocity_upper=2e-5, gradient_upper=1e-3 * (7 / shells)**4,
+        ),
+    )
+    _, _, result = engine.evaluate(x, g, sigma, x)
+    assert result["shell"] == 15
+    assert result["velocity_tail_bound"] <= engine.tolerance
+    assert result["gradient_tail_bound"] <= engine.tolerance
+    assert len(fields[0].images) == 61
+
+
+def test_wider_query_tail_replaces_images_and_retains_larger_valid_sum(harness, monkeypatch):
+    engine, x, g, sigma, fields, _ = harness
+
+    def bound(snapshot, lower, upper, *, shells):
+        required = 15 if upper[0] > 0.05 else 3
+        return SimpleNamespace(
+            velocity_upper=2e-4 if shells < required else 2e-5, gradient_upper=0.0,
+        )
+
+    monkeypatch.setattr(session, "query_tail_bound", bound)
+    _, _, near = engine.evaluate(x, g, sigma, x[:1])
+    _, _, wider = engine.evaluate(x, g, sigma, x[1:])
+    assert near["shell"] == 3 and wider["shell"] == 15
+    assert wider["field_rebuild_reason"] == "image_shells_changed"
+    assert fields[0].closed
+    _, _, reused = engine.evaluate(x, g, sigma, x[:1])
+    assert reused["shell"] == 15 and reused["field_reused"]
+    assert len(fields) == 2
 
 
 def test_particle_growth_and_query_enlargement(harness):

@@ -29,9 +29,8 @@ def test_builder_keeps_default_span_force_area_and_interface_iterations():
     assert fvm.samplers[0].reference_velocity == pytest.approx(1.0)
     assert fvm.transport.kinematic_viscosity == pytest.approx(1 / 150)
     assert coupler.transfer_region_bounds[:4] == pytest.approx((-1.25, 2.05, -1.25, 1.25))
-    assert isinstance(vpm.numerics.induction, module.vpm.PlanarInduction)
-    assert vpm.numerics.induction.planar_span == pytest.approx(1.0)
-    assert vpm.numerics.induction.plane_z == pytest.approx(0.0)
+    assert isinstance(vpm.numerics.induction, module.vpm.SlipSlabInduction)
+    assert vpm.numerics.induction.z_max - vpm.numerics.induction.z_min == pytest.approx(1.0)
     assert vpm.numerics.viscous.particle_spacing == pytest.approx(0.04)
     assert isinstance(mesh, module.msh.ExtrudedCartesianMesher)
     assert mesh.levels == (-0.5, 0.5)
@@ -41,7 +40,7 @@ def test_builder_keeps_default_span_force_area_and_interface_iterations():
     assert periodic["zmax"].neighbour_patch == "zmin"
     assert all(patch.pressure_type == "cyclic" for patch in periodic.values())
     assert vpm.numerics.compute_device == "AUTO"
-    assert vpm.numerics.viscous.gbd_threshold == pytest.approx(0.01 * 0.04**2)
+    assert vpm.numerics.viscous.gbd_threshold == pytest.approx(0.01 * 0.04**3)
 
 
 def test_builder_resolves_independent_span_and_in_plane_particle_spacing():
@@ -81,9 +80,8 @@ def test_builder_resolves_independent_span_and_in_plane_particle_spacing():
     )
     assert profile.schedule.interval == 2
     assert vpm.run.steps % vpm.samplers.samples[0].schedule.interval == 0
-    assert vpm.numerics.induction.planar_span == pytest.approx(0.48)
-    assert vpm.numerics.induction.plane_z == 0.0
-    assert vpm.numerics.viscous.gbd_threshold == pytest.approx(0.01 * 0.1**2 * 0.48)
+    assert vpm.numerics.induction.z_max - vpm.numerics.induction.z_min == pytest.approx(0.48)
+    assert vpm.numerics.viscous.gbd_threshold == pytest.approx(0.01 * 0.1**3)
     assert coupler.eta_blend_width == pytest.approx(0.6)
     assert coupler.vpm_only_width == pytest.approx(0.2)
     assert coupler.interface_iterations == module.INTERFACE_ITERATIONS
@@ -98,7 +96,7 @@ def test_overridden_mesh_keeps_one_periodic_layer_independent_of_xy_spacing():
     assert mesh.source.requested_domain.bounds[:4] == pytest.approx((-1.6, 2.4, -1.6, 1.6))
     assert mesh.domain.bounds[:4] == pytest.approx((-1.6, 2.432, -1.6, 1.6))
     assert mesh.levels == (-0.5, 0.5)
-    assert vpm.numerics.induction.planar_span == pytest.approx(1.0)
+    assert vpm.numerics.induction.z_max - vpm.numerics.induction.z_min == pytest.approx(1.0)
     assert vpm.numerics.viscous.particle_spacing == pytest.approx(0.064)
 
 

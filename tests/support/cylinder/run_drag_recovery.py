@@ -108,14 +108,15 @@ def build_experiment(options):
             for boundary in setup.boundaries
         ],
     )
-    # Planar strengths integrate over h²L, so preserve the same 0.01 s^-1
-    # pruning floor rather than accidentally keeping the cubic h³ threshold.
-    viscous = replace(particles.numerics.viscous, gbd_threshold=0.01 * H**2 * SPAN)
+    # Preserve the physical vorticity floor for cubic particle volume h³.
+    viscous = replace(particles.numerics.viscous, gbd_threshold=0.01 * H**3)
     particles = replace(
         particles,
         numerics=replace(
             particles.numerics,
-            induction=vpm.PlanarInduction(span=SPAN),
+            induction=vpm.SlipSlabInduction(
+                vpm.FMMInduction(), z_min=-SPAN / 2, z_max=SPAN / 2
+            ),
             viscous=viscous,
             freestream_velocity=background,
         ),

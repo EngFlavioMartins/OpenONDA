@@ -1098,16 +1098,7 @@ class PhysicsBase:
         through the configured target backend. This retains the pair filter
         with the backend's approximation. Nonuniform target cores and the
         default use the direct reference operator.
-
-        With PlanarInduction, the source-only Gaussian filament radius defines
-        the field; target_core_radius and use_induction_backend do not change
-        that operator. The result remains span-invariant and uses the requested
-        freestream setting.
         """
-        if hasattr(getattr(self, "induction", None), "planar_span"):
-            return self.compute_target_velocity(
-                particles, target_position, include_freestream=include_freestream
-            )
         targets = np.asarray(target_position, dtype=self.np_dtype).reshape(-1, 3)
         radii = np.broadcast_to(
             np.asarray(target_core_radius, dtype=self.np_dtype), (len(targets),)
@@ -1199,15 +1190,7 @@ class PhysicsBase:
         pair-radius rule in bounded host chunks.  It is an exact reference for
         the direct pair operator and is labelled as such in diagnostics for
         hierarchical backends.
-
-        PlanarInduction instead evaluates its source-radius Gaussian filament
-        field directly; target_core_radius does not change the planar operator.
-        That branch is span-invariant and retains optional freestream.
         """
-        if hasattr(getattr(self, "induction", None), "planar_span"):
-            return self.compute_target_velocity(
-                particles, target_position, include_freestream=include_freestream
-            )
         targets = np.asarray(target_position, dtype=np.float64).reshape(-1, 3)
         radii = np.broadcast_to(
             np.asarray(target_core_radius, dtype=np.float64), (len(targets),)
@@ -1242,8 +1225,6 @@ class PhysicsBase:
 
     def transport_target_operator_label(self, *, use_induction_backend: bool = False) -> str:
         """Return the operator label stored beside finite-target diagnostics."""
-        if hasattr(getattr(self, "induction", None), "planar_span"):
-            return "source_radius:GAUSSIAN:PlanarInduction:infinite_span"
         if use_induction_backend and getattr(self, "induction", None) is not None:
             return f"symmetric_pair_radius:{self.particle_kernel}:{type(self.induction).__name__}:uniform_target_core"
         return f"symmetric_pair_radius:{self.particle_kernel}:taichi_direct_reference"
@@ -1418,35 +1399,20 @@ class PhysicsBase:
         )
 
         # Compute with filtered particles in the fixed target workspace.
-        backend = getattr(self, "induction", None)
         result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
         for start, stop in self._target_batch_slices(M):
             count = stop - start
             self._upload_vector_array(target_position[start:stop], self.target_position, count)
-            if hasattr(backend, "planar_span"):
-                backend.evaluate_targets(
-                    target_position=self.target_position,
-                    source_position=self._filtered_pos,
-                    source_vortex_strength=self._filtered_vortex_strength,
-                    source_core_radius=self._filtered_rad,
-                    target_velocity=self.target_velocity,
-                    target_velocity_gradient=None,
-                    target_count=count,
-                    source_count=N_filtered,
-                    include_freestream=include_freestream,
-                    background_velocity=background_velocity,
-                )
-            else:
-                self.compute_target_velocity_kernel(
-                    self.target_position,
-                    self._filtered_pos,
-                    self._filtered_vortex_strength,
-                    self._filtered_rad,
-                    self.target_velocity,
-                    background_velocity,
-                    count,
-                    N_filtered,
-                )
+            self.compute_target_velocity_kernel(
+                self.target_position,
+                self._filtered_pos,
+                self._filtered_vortex_strength,
+                self._filtered_rad,
+                self.target_velocity,
+                background_velocity,
+                count,
+                N_filtered,
+            )
             if target_velocity is not None:
                 self._copy_vec3_offset(self.target_velocity, target_velocity, start, count)
             elif result is not None:
@@ -1505,35 +1471,20 @@ class PhysicsBase:
         self._upload_scalar_array(source_core_radius, self._filtered_rad, N)
 
         # Call Taichi kernel (no background velocity) in bounded target batches.
-        backend = getattr(self, "induction", None)
         result = np.empty((M, 3), dtype=self.np_dtype)
         for start, stop in self._target_batch_slices(M):
             count = stop - start
             self._upload_vector_array(target_position[start:stop], self.target_position, count)
-            if hasattr(backend, "planar_span"):
-                backend.evaluate_targets(
-                    target_position=self.target_position,
-                    source_position=self._filtered_pos,
-                    source_vortex_strength=self._filtered_vortex_strength,
-                    source_core_radius=self._filtered_rad,
-                    target_velocity=self.target_velocity,
-                    target_velocity_gradient=None,
-                    target_count=count,
-                    source_count=N,
-                    include_freestream=False,
-                    background_velocity=self._zero_velocity,
-                )
-            else:
-                self.compute_target_velocity_kernel(
-                    self.target_position,
-                    self._filtered_pos,
-                    self._filtered_vortex_strength,
-                    self._filtered_rad,
-                    self.target_velocity,
-                    self._zero_velocity,
-                    count,
-                    N,
-                )
+            self.compute_target_velocity_kernel(
+                self.target_position,
+                self._filtered_pos,
+                self._filtered_vortex_strength,
+                self._filtered_rad,
+                self.target_velocity,
+                self._zero_velocity,
+                count,
+                N,
+            )
             result[start:stop] = self.extract_target_velocity(count)
         return result
 
@@ -1553,18 +1504,6 @@ class PhysicsBase:
 
         self._resize_temp_fields(N)
 
-        backend = getattr(self, "induction", None)
-        if hasattr(backend, "planar_span"):
-            backend.evaluate_vorticity(
-                particles.position,
-                particles.position,
-                particles.vortex_strength,
-                particles.core_radius,
-                particles.vorticity,
-                N,
-                N,
-            )
-            return
         if self.particle_kernel == "GAUSSIAN" and self.accumulator_dtype == ti.f32 and N >= 2048:
             self._compute_gaussian_vorticities(particles)
             return
@@ -1632,31 +1571,19 @@ class PhysicsBase:
         if N == 0 or M == 0:
             return np.zeros((M, 3), dtype=self.np_dtype)
 
-        backend = getattr(self, "induction", None)
         result = np.empty((M, 3), dtype=self.np_dtype)
         for start, stop in self._target_batch_slices(M):
             count = stop - start
             self._upload_vector_array(target_position[start:stop], self.target_position, count)
-            if hasattr(backend, "planar_span"):
-                backend.evaluate_vorticity(
-                    self.target_position,
-                    particles.position,
-                    particles.vortex_strength,
-                    particles.core_radius,
-                    self.target_vorticity,
-                    count,
-                    N,
-                )
-            else:
-                self.compute_target_vorticity_kernel(
-                    self.target_position,
-                    particles.position,
-                    particles.vortex_strength,
-                    particles.core_radius,
-                    self.target_vorticity,
-                    count,
-                    N,
-                )
+            self.compute_target_vorticity_kernel(
+                self.target_position,
+                particles.position,
+                particles.vortex_strength,
+                particles.core_radius,
+                self.target_vorticity,
+                count,
+                N,
+            )
             result[start:stop] = self._download_vector_field(self.target_vorticity, count)
         return result
 

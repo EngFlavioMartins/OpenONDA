@@ -48,7 +48,7 @@ class Numerics:
         Accepted VPM macro-step in seconds.
     integrator : RKTableau
         Explicit tableau shared by position and vortex-strength updates.
-    induction : InductionMethod or PlanarInduction
+    induction : InductionMethod
         Backend/formulation construction object, cloned/bound for runtime use.
     axisymmetric_no_swirl_axis : {'x', 'y', 'z'} or None
         Optional rotational orbit projection axis.
@@ -72,14 +72,6 @@ class Numerics:
         Optional body and diffusion-domain configuration. Bounds use
         ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in metres.
 
-    Notes
-    -----
-    PlanarInduction selects infinite-span Gaussian filaments, planar GBD and
-    zero stretching. It requires zero spanwise freestream and rejects VLM,
-    axisymmetric projection, LES and three-dimensional
-    stabilization/pressure combinations. Its positive represented span
-    converts stored strengths (m³/s) to filament circulation (m²/s); see
-    PlanarInduction for the complete source-plane and field conventions.
     """
 
     time_step_size: float = DEFAULT_TIME_STEP
@@ -171,26 +163,6 @@ class Numerics:
                 raise ValueError("Slip-slab GBD requires M4_PRIME remeshing")
             if self.turbulence.flow_model == "LES":
                 raise ValueError("Slip-slab diffusion currently supports laminar flow only")
-        if hasattr(self.induction, "planar_span"):
-            if self.viscous.scheme not in {"GBD", "NONE"}:
-                raise ValueError("Planar induction supports GBD or NONE diffusion")
-            if self.viscous.gbd_remeshing_kernel != "M4_PRIME":
-                raise ValueError("Planar GBD currently requires M4_PRIME remeshing")
-            if self.axisymmetric_no_swirl_axis is not None:
-                raise ValueError("Planar induction cannot use axisymmetric projection")
-            if self.turbulence.flow_model == "LES":
-                raise ValueError("Planar induction currently supports laminar flow only")
-            if self.vlm is not None:
-                raise ValueError("Planar induction cannot be combined with 3D boundary elements")
-            if abs(self.freestream_velocity[2]) > 1e-14:
-                raise ValueError("Planar induction requires zero spanwise freestream")
-            if (
-                self.stabilization.regularization_interval_steps > 0
-                or self.stabilization.divergence_relaxation.enabled
-            ):
-                raise ValueError(
-                    "Planar induction must not use 3D regularization/divergence relaxation"
-                )
         device = self.compute_device.upper()
         supported_devices = getattr(self.induction, "supported_devices", None)
         if supported_devices is not None and device not in supported_devices:
@@ -202,9 +174,7 @@ class Numerics:
         object.__setattr__(self, "precision", self.precision.lower())
         if self.precision == "f64" and not getattr(self.induction, "supports_f64", True):
             raise ValueError(f"{type(self.induction).__name__} does not support precision='f64'")
-        planar_gbd = self.viscous.scheme == "GBD" and hasattr(self.induction, "planar_span")
-        # Planar GBD uses a float64 host grid and retains particle storage dtype.
-        if self.precision == "f64" and self.viscous.scheme in {"DVH", "GBD"} and not planar_gbd:
+        if self.precision == "f64" and self.viscous.scheme in {"DVH", "GBD"}:
             raise ValueError(
                 f"viscous scheme {self.viscous.scheme} uses an f32 diffusion grid; "
                 "select precision='f32' or use CS/RWM for a nominal f64 case"
