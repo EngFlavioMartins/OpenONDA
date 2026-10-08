@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
+# Resume the latest native checkpoint.
 cd "$(dirname "$0")"
 
-# Resume the latest native checkpoint.
-python -m openonda.tutorial_runner . setup "$@"
+./allclean.sh
+
+python setup.py "$@"

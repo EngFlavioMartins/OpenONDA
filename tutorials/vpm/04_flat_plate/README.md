@@ -7,8 +7,8 @@ Compare a stationary plate in inclined flow with the same plate moving through s
 From this directory:
 
 ```bash
-python -m openonda.tutorial_runner . setup --mode static --angle 5
-python -m openonda.tutorial_runner . setup --mode moving --angle 5
+python setup.py --mode static --angle 5
+python setup.py --mode moving --angle 5
 ```
 
 `./allrun.sh` removes previous output and runs ten angles in each frame, from −10° to 15°. `./allcontinue.sh` resumes saved native backups. `./allplot.sh` produces figures; add `pdf` for PDF exports.

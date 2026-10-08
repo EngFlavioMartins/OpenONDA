@@ -14,7 +14,7 @@ def structured_box(
     """Build a small native rectilinear box for FVM consistency checks."""
     if min(nx, ny, nz) < 1 or min(lx, ly, lz) <= 0.0:
         raise ValueError("Cell counts and box lengths must be positive")
-    from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
+    from openonda.fvm.mesh.rectilinear import box_mesh_3d
 
     mesh = box_mesh_3d(
         np.linspace(0.0, lx, nx + 1),

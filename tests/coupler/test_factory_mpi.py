@@ -27,7 +27,7 @@ import json
 import sys
 import numpy as np
 from openonda import coupler, fvm, vpm
-from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
+from openonda.fvm.mesh.rectilinear import coupling_box_mesh
 
 directory = Path(sys.argv[1])
 flow = fvm.FVMSetup(
@@ -102,8 +102,8 @@ import sys
 import numpy as np
 from openonda import coupler, fvm, vpm
 from openonda.runtime import worker_thread_count
-from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
-import source.solvers.vpm as vpm_api
+from openonda.fvm.mesh.rectilinear import coupling_box_mesh
+import openonda.vpm as vpm_api
 
 directory = Path(sys.argv[1])
 mode = sys.argv[2]

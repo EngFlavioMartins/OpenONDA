@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import pytest
 
-from source.solvers.fvm import (
+from openonda.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMCase,
@@ -25,11 +25,11 @@ from source.solvers.fvm import (
     TimeConfig,
     TransportConfig,
 )
-from source.solvers.fvm.factory import create_fvm_solver
-from source.solvers.fvm.io.backup import decode_state, encode_state
-from source.solvers.fvm.io.mesh_storage import load_native_mesh, save_native_mesh
-from source.solvers.fvm.mesh.validation import validate_topology
-from source.solvers.fvm.sampling.base import write_pvd
+from openonda.fvm.factory import create_fvm_solver
+from openonda.fvm.io.backup import decode_state, encode_state
+from openonda.fvm.io.mesh_storage import load_native_mesh, save_native_mesh
+from openonda.fvm.mesh.validation import validate_topology
+from openonda.fvm.sampling.base import write_pvd
 from tests.support.fvm_mesh import structured_box
 
 
@@ -97,7 +97,7 @@ def test_restart_restores_backward_time_history(tmp_path):
 
 
 def test_memory_snapshot_replays_the_same_step_as_disk_restart(tmp_path):
-    from source.solvers.fvm.io.backup import capture_restart_state, restore_restart_state
+    from openonda.fvm.io.backup import capture_restart_state, restore_restart_state
 
     solver = _solver(tmp_path / "memory")
     with contextlib.redirect_stdout(io.StringIO()):
@@ -190,7 +190,9 @@ def test_native_mesh_archive_round_trips_without_pickle(tmp_path):
     assert restored["boundary"] == mesh["boundary"]
 
 
-def test_solver_factory_persists_generated_mesh_in_solution_directory(tmp_path):
+def test_solver_factory_keeps_generated_mesh_with_case_assets(tmp_path):
+    from openonda.fvm.factory import mesh_asset_path
+
     solution = tmp_path / "solution" / "generated"
     with contextlib.redirect_stdout(io.StringIO()):
         solver = create_fvm_solver(
@@ -201,8 +203,10 @@ def test_solver_factory_persists_generated_mesh_in_solution_directory(tmp_path):
         )
     solver.close()
 
-    native = solution / "fvm" / "mesh.npz"
-    paraview = solution / "fvm" / "mesh.vtu"
+    native = mesh_asset_path(tmp_path, _setup().case_name)
+    paraview = native.with_suffix(".vtu")
+    assert native.parent == tmp_path / "assets"
+    assert not (solution / "fvm" / "mesh.npz").exists()
     assert native.is_file()
     assert paraview.is_file()
     validate_topology(load_native_mesh(native))
@@ -229,12 +233,15 @@ def test_solver_factory_builds_mesher_objects_and_persists_the_result(tmp_path):
         )
     solver.close()
 
-    assert (solution / "fvm" / "mesh.npz").is_file()
-    assert (solution / "fvm" / "mesh.vtu").is_file()
+    from openonda.fvm.factory import mesh_asset_path
+
+    native = mesh_asset_path(tmp_path, _setup().case_name)
+    assert native.is_file()
+    assert native.with_suffix(".vtu").is_file()
 
 
 def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_path, monkeypatch):
-    from source.solvers.fvm.io import logging as fvm_logging
+    from openonda.fvm.io import logging as fvm_logging
 
     solution = tmp_path / "solution" / "startup"
     samples = tmp_path / "samples" / "startup"
@@ -272,7 +279,7 @@ def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_p
     assert "done" in console.getvalue()
     completed_log = (solution / "mesher.log").read_text(encoding="utf-8")
     assert "mesh construction" in completed_log
-    assert "mesh backup export" in completed_log
+    assert "mesh export" in completed_log
     assert "complete" in completed_log
 
 
@@ -333,18 +340,20 @@ def test_public_fvm_case_uses_same_default_solution_mesher_log(tmp_path):
 
 
 @pytest.mark.parametrize("source_kind", ["dictionary", "file"])
-def test_factory_backs_up_loaded_mesh_before_solver_validation(tmp_path, monkeypatch, source_kind):
-    from source.solvers.fvm.core import solver as solver_module
+def test_factory_writes_loaded_mesh_before_solver_validation(tmp_path, monkeypatch, source_kind):
+    from openonda.fvm.core import solver as solver_module
+    from openonda.fvm.factory import mesh_asset_path
 
     mesh = structured_box(2, 2, 2)
     source = save_native_mesh(mesh, tmp_path / "input.npz") if source_kind == "file" else mesh
     solution = tmp_path / "solution" / source_kind
+    native = mesh_asset_path(tmp_path, _setup().case_name)
 
     def reject(*args, **kwargs):
         import pyvista as pv
 
-        assert pv.read(solution / "fvm" / "mesh.vtu").n_cells == 8
-        validate_topology(load_native_mesh(solution / "fvm" / "mesh.npz"))
+        assert pv.read(native.with_suffix(".vtu")).n_cells == 8
+        validate_topology(load_native_mesh(native))
         raise ValueError("deliberate production validation failure")
 
     monkeypatch.setattr(solver_module, "FVMSolver", reject)
@@ -352,17 +361,14 @@ def test_factory_backs_up_loaded_mesh_before_solver_validation(tmp_path, monkeyp
         create_fvm_solver(_setup(), case_dir=tmp_path, solution_dir=solution, mesh=source)
 
 
-def test_mesh_backup_preserves_previous_pair_on_repeated_startup(tmp_path):
-    from source.solvers.fvm.factory import _save_generated_mesh
+def test_repeated_startup_replaces_the_case_mesh(tmp_path):
+    from openonda.fvm.factory import _save_generated_mesh
 
-    _save_generated_mesh(structured_box(2, 2, 2), tmp_path, _setup().output)
-    previous = {name: (tmp_path / "fvm" / name).read_bytes() for name in ("mesh.npz", "mesh.vtu")}
-    _save_generated_mesh(structured_box(3, 2, 2), tmp_path, _setup().output)
-    archives = list((tmp_path / "fvm").glob("mesh-backup-*"))
-    assert len(archives) == 1
-    for name, content in previous.items():
-        assert (archives[0] / name).read_bytes() == content
-    assert load_native_mesh(tmp_path / "fvm" / "mesh.npz")["n_cells"] == 12
+    path = tmp_path / "assets" / "case_mesh.npz"
+    _save_generated_mesh(structured_box(2, 2, 2), path, _setup().output)
+    _save_generated_mesh(structured_box(3, 2, 2), path, _setup().output)
+    assert sorted(item.name for item in path.parent.iterdir()) == ["case_mesh.npz", "case_mesh.vtu"]
+    assert load_native_mesh(path)["n_cells"] == 12
 
 
 def test_pvd_index_merges_existing_frames_across_restart(tmp_path):

@@ -2,12 +2,12 @@
 """Velocity-magnitude snapshot around the airfoil from the final VTU."""
 
 import matplotlib.pyplot as plt
-from openonda.results import section_polygons
+from assets.output_files import section_polygons
 from matplotlib.collections import PolyCollection
 import numpy as np
 import pyvista as pv
 
-from ._common import (  # noqa: E402
+from assets._common import (  # noqa: E402
     COLORMAPS,
     FIGURES_DIR,
     FREESTREAM_SPEED,

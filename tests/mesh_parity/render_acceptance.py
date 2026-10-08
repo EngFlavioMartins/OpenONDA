@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-from source.solvers.fvm.io.mesh_storage import load_native_mesh
+from openonda.fvm.io.mesh_storage import load_native_mesh
 
 
 def _face_centres(mesh: dict[str, Any]) -> np.ndarray:
@@ -79,7 +79,7 @@ def _save_overview(mesh: dict[str, Any], result: dict[str, Any], path: Path) -> 
 
     centres = np.asarray(mesh.get("cell_centre", ()), dtype=np.float64)
     if centres.shape != (int(mesh["n_cells"]), 3):
-        from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+        from openonda.fvm.mesh.geometry import compute_mesh_geometry
 
         centres = np.asarray(compute_mesh_geometry(mesh, compute_lsq=False)["cell_centre"])
     wall = _face_centres(mesh)[_wall_face_ids(mesh)]
@@ -107,7 +107,7 @@ def _save_sections(mesh: dict[str, Any], result: dict[str, Any], path: Path) -> 
 
     centres = np.asarray(mesh.get("cell_centre", ()), dtype=np.float64)
     if centres.shape != (int(mesh["n_cells"]), 3):
-        from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+        from openonda.fvm.mesh.geometry import compute_mesh_geometry
 
         centres = np.asarray(compute_mesh_geometry(mesh, compute_lsq=False)["cell_centre"])
     levels = np.asarray(mesh.get("cell_levels", np.zeros(len(centres))), dtype=np.int64)
@@ -179,7 +179,7 @@ def _save_transitions(mesh: dict[str, Any], result: dict[str, Any], path: Path) 
 
     centres = np.asarray(mesh.get("cell_centre", ()), dtype=np.float64)
     if centres.shape != (int(mesh["n_cells"]), 3):
-        from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+        from openonda.fvm.mesh.geometry import compute_mesh_geometry
 
         centres = np.asarray(compute_mesh_geometry(mesh, compute_lsq=False)["cell_centre"])
     transition_ids = _transition_cell_ids(mesh)

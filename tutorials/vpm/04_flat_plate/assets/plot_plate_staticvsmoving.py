@@ -2,7 +2,7 @@
 
 import argparse
 
-from ._plot_theme import (
+from assets._plot_theme import (
     FIG_DIR,
     SAMPLES_DIR,
     centered_subplots_adjust,
@@ -11,8 +11,8 @@ from ._plot_theme import (
     validation_legend,
     validation_subplots,
 )
-from .results import load_forces, parameters
-from .theoretical_model import lifting_line_polar
+from assets.results import load_forces, parameters
+from assets.theoretical_model import lifting_line_polar
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")

@@ -3,7 +3,7 @@
 import numpy as np
 import taichi as ti
 
-from source.solvers.vpm.physics.diffusion.grid import _GridDiffusionMixin
+from openonda.vpm.physics.diffusion.grid import _GridDiffusionMixin
 
 
 def test_real_gbd_kernel_executes_the_componentwise_variable_heat_operator():

@@ -11,7 +11,7 @@ from openonda.plotting import centered_subplots_adjust
 import numpy as np
 import pyvista as pv
 
-from ._common import (  # noqa: E402
+from assets._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
     FREESTREAM_SPEED,

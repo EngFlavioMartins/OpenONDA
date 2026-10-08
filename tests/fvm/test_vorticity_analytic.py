@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from source.solvers.fvm.fields.diagnostics import compute_vorticity
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
+from openonda.fvm.fields.diagnostics import compute_vorticity
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.mesh.rectilinear import box_mesh_3d
 
 
 @pytest.mark.parametrize("stretch", [1.0, 2.0])

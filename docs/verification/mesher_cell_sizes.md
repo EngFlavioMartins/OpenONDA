@@ -127,6 +127,11 @@ or claim convergence of those differently configured saved simulations.
 
 ## Validation
 
+The focused regression files cited below were retired on 2026-10-08, when
+the test suite was reduced to solver and installation checks. Mesher
+acceptance remains in `tests/fvm/test_mesh_consistency.py` and
+`tests/fvm/test_cartesian_config.py`.
+
 The focused regression run passed 39 tests, including five fresh reference
 templates, a complete reference mesher build, native cfMesh octree tests,
 serial and asynchronous solver output, both partition ghost-layer settings,

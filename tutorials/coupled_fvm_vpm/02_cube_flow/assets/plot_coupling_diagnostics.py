@@ -2,14 +2,14 @@
 """Plot coupled-run timing, particle population, and transfer diagnostics."""
 
 import argparse
-from openonda.results import read_json_lines
+from assets.output_files import read_json_lines
 
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.ticker import MaxNLocator, ScalarFormatter  # noqa: E402
 
-from . import postprocess as util  # noqa: E402
+from assets import postprocess as util  # noqa: E402
 
 FIGURE_FORMAT = "png"
 FIGURE_DPI = util.FIGURE_DPI

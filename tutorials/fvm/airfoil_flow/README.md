@@ -1,6 +1,6 @@
 # Laminar NACA 0012 flow
 
-This case measures pressure and forces on a symmetric NACA 0012 surface. See [FVM units](../../../docs/fvm.md#physical-model-and-units), [STL mesh setup](../../../docs/fvm.md#mesh-setup), and [external-flow boundaries](../../../docs/fvm.md#boundary-conditions). For a turbulent airfoil example, use [the coupled NACA 4412 case](../../coupled_fvm_vpm/03_naca4412_flow/README.md).
+This case measures pressure and forces on a symmetric NACA 0012 surface. See [FVM units](../../../docs/fvm.md#physical-model-and-units), [STL mesh setup](../../../docs/fvm.md#mesh-setup), and [external-flow boundaries](../../../docs/fvm.md#boundary-conditions).
 
 From the repository root:
 

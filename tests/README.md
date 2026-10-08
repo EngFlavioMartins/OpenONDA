@@ -1,34 +1,32 @@
 # Test suite index
 
-This index describes the current test coverage, runtime requirements and
-commands for selecting checks.
+The suite proves that the solvers compute the right physics and that an
+installation works. Each test compares against an analytic result, an
+independent reference, a conservation law or a complete solver run. Regression
+checks for individual past defects are not kept.
 
 | Location | Coverage |
 | --- | --- |
-| [vpm/](vpm/) | Particle methods, Taichi kernels, stage integration, induction, diffusion, turbulence, stabilization, boundary elements, particle state checks and restart/output. |
-| [fvm/](fvm/) | Mesh/field validity, discretization, pressure–velocity solution, time-step control, boundaries and restart. |
-| [coupler/](coupler/) | Transfers, interpolation, cell partitions, synchronization, conservation and coupled restart/failure behavior. |
-| [tutorials/](tutorials/) | Case construction, installed entry points, samples, source selection and tutorial/figure behavior. |
-| [mesh_parity/](mesh_parity/) | Native mesh checks and comparisons requiring their declared reference runtimes. |
-| Root test modules | Public imports/API, installation, process runtime, storage and shared plotting. |
+| Root modules | Public API, documented examples, installers, MPI runtime, Numba cache, slip-slab images and ParaView-readable output. |
+| [vpm/](vpm/) | Biot–Savart, treecode and FMM accuracy, kernel conformance, Runge–Kutta order, free-space energy, DVH/GBD diffusion, LES, slip-slab (planar) physics, Gaussian image mesh, VLM lifting line and restart. |
+| [fvm/](fvm/) | Manufactured gradients and curl, PISO correctors, slip walls, mixed and non-orthogonal boundaries, time-step control, cyclic planar flow, mesher acceptance, MPI and restart. |
+| [coupler/](coupler/) | Transfer and interpolation accuracy, renewal conservation, interface iteration, coupled MPI launch, end-to-end coupled runs and restart. |
+| [tutorials/](tutorials/) | Every tutorial setup reaches its solver, launchers clean, run and continue, and the tutorial style rule. |
+| [support/](support/), [mesh_parity/](mesh_parity/) | Verification tools for tutorial results and the cfMesh reference; not collected as tests. |
 
-Select a test file or marker using normal pytest arguments:
+Run one file per process; Taichi and CUDA runtimes are process-global:
 
 ```bash
-python -m pytest tests/vpm/test_taichi_kernels.py
-python -m pytest tests/tutorials/test_tutorial_style.py
-python -m pytest tests -m "unit and not gpu"
+python -m pytest tests/vpm/test_core_numerical_qualification.py
+python -m pytest tests -m "not gpu and not slow"
 ```
 
-Available markers are declared in [pyproject.toml](../pyproject.toml): `unit`,
-`integration`, `qualification`, `tutorial`, `slow`, `gpu` and `stochastic`.
-A marker describes the check; it does not establish the software's physical scope.
-
-GPU checks require a supported device. MPI and external OpenFOAM/cfMesh
-comparisons require their separate runtimes. These are not prerequisites for
-native serial installation. [conftest.py](conftest.py) defines shared fixtures
-and reporting options; numerical qualifications can write a report with
+Markers are declared in [pyproject.toml](../pyproject.toml) and assigned in
+[conftest.py](conftest.py): `unit`, `integration`, `qualification`,
+`tutorial`, `slow`, `gpu` and `stochastic`. GPU tests need a CUDA device
+(set `CUDA_PATH=/usr` for the Gaussian image mesh); MPI tests need `mpiexec`.
+Numerical qualifications can write a report with
 `--numerical-report=numerical-results.json`.
 
-For FVM capability-specific evidence, see the
+For FVM capability evidence, see the
 [qualification reference](../docs/validation/fvm_qualification.md).

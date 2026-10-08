@@ -6,7 +6,7 @@ Saves: figures/vortex_ring_circulation.png
 
 import matplotlib.pyplot as plt
 
-from ..assets.ring_metrics import (
+from assets.ring_metrics import (
     FIGURES_DIR,
     SAMPLES_DIR,
     VARIANT_LABEL,

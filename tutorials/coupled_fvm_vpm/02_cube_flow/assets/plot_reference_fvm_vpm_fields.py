@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 
-from .plot_coupled_fvm_vpm_fields import main
+from assets.plot_coupled_fvm_vpm_fields import main
 
 
 if __name__ == "__main__":

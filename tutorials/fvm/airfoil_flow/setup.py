@@ -3,7 +3,7 @@
 
 At zero angle of attack, lift and upper/lower pressure asymmetry should vanish.
 
-Run with ``python -m openonda.tutorial_runner . setup``.
+Run with ``python setup.py``.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from pathlib import Path
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
-from .assets.generate_surface import create_airfoil_surface
-from .assets.surface_pressure import write_surface_cp
+from assets.generate_surface import create_airfoil_surface
+from assets.surface_pressure import write_surface_cp
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.

@@ -11,7 +11,7 @@ From this directory:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous generated output. `./allcontinue.sh` resumes saved native backups; `python -m openonda.tutorial_runner . setup` also continues automatically. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous generated output. `./allcontinue.sh` resumes saved native backups; `python setup.py` also continues automatically. `./allplot.sh pdf` exports PDF.
 
 ## Geometry and resolution
 

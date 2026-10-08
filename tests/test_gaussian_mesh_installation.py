@@ -20,7 +20,7 @@ def test_optional_extra_is_separate_and_fenv_is_installation_time():
     extra = project["optional-dependencies"]["gaussian-mesh-cuda12"]
     assert extra == ["cupy-cuda12x[ctk]>=14.2,<15; platform_system=='Linux'"]
     setup = (ROOT / "setup.py").read_text()
-    assert '"source.solvers.vpm.numerics._fenv"' in setup and "optional=True" in setup
+    assert '"openonda.vpm.numerics._fenv"' in setup and "optional=True" in setup
 
 
 def test_installer_optional_extra_and_explicit_gpu_verification(monkeypatch):
@@ -31,7 +31,7 @@ def test_installer_optional_extra_and_explicit_gpu_verification(monkeypatch):
         lambda command, **kwargs: calls.append(command) or SimpleNamespace(returncode=0),
     )
     assert install.main(["--gaussian-mesh-cuda12"]) == 0
-    expected = f"{ROOT}[dev,gaussian-mesh-cuda12]"
+    expected = f"{ROOT}[gaussian-mesh-cuda12]"
     assert calls[0][4:] == ["-e", expected]
     assert calls[-1][-1] == "--with-gaussian-mesh"
     assert "--require-site-packages" not in calls[-1]
@@ -46,7 +46,7 @@ class RejectOptional:
             raise AssertionError('optional runtime imported: '+fullname)
 sys.meta_path.insert(0, RejectOptional())
 from openonda import vpm
-from source.solvers.vpm.physics.induction import GaussianSlabSettings, GaussianMeshParameters
+from openonda.vpm.physics.induction import GaussianSlabSettings, GaussianMeshParameters
 assert vpm.GaussianSlabSettings is GaussianSlabSettings
 assert vpm.GaussianMeshParameters is GaussianMeshParameters
 backend = vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=-.5, z_max=.5,
@@ -78,7 +78,6 @@ def test_verifier_gpu_execution_is_explicit_opt_in(monkeypatch, capsys, enabled)
     monkeypatch.setattr(verifier, "_verify_package_location", lambda flag: "/installed/openonda")
     for name in (
         "_verify_distribution_resources",
-        "_verify_tutorial_commands",
         "_verify_cartesian_mesher",
         "_verify_native_fvm",
         "_verify_native_vpm",

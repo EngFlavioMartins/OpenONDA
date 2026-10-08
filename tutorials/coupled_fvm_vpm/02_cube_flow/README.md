@@ -16,7 +16,7 @@ FVM resolves separation from the no-slip faces of a unit cube; VPM carries the o
 
 ## Models and mesh
 
-The [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cube.stl` with uniform spacing. The solver stores it in `solution/fvm/mesh.npz` and reuses it when the configured geometry and meshing controls match. The cube is no-slip; all outer FVM faces belong to `numericalBoundary`.
+The [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cube.stl` with uniform spacing. The solver stores it as `assets/<case_name>_mesh.npz` and reuses it while the geometry and meshing controls are unchanged. The cube is no-slip; all outer FVM faces belong to `numericalBoundary`.
 
 See [FVM LES](../../../docs/fvm.md#turbulence-and-les) and [VPM diffusion and LES](../../../docs/vpm.md#diffusion-and-les) for the closures. Particles use RK2, Gaussian cores of radius $1.05h$, GBD diffusion and free-space FMM induction. [Mixed vorticity boundaries](../../../docs/coupling.md#boundary-conditions) and [buffered M4-prime renewal](../../../docs/coupling.md#vorticity-transfer) use a $6h$ blend width, a $2h$ VPM-only band and up to three interface sweeps. Edit constants and configurations in `setup.py` to change the problem.
 
@@ -26,14 +26,14 @@ From this directory in an [installed environment](../../../docs/installation.md)
 
 ```bash
 ./allrun.sh
-python -m openonda.tutorial_runner . assets.postprocess
+python -m assets.postprocess
 ./allplot.sh
 ```
 
-`./allrun.sh`, `./allcontinue.sh` and `python -m openonda.tutorial_runner . setup` preserve outputs and resume compatible coupled backups. `./allclean.sh` deletes generated results and the mesh cache. See [continuation](../../../docs/continuation.md) before changing a saved configuration.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` and `python setup.py` resume the latest coupled backup. The mesh is kept as `assets/coupled_cube_flow_mesh.npz`. See [continuation](../../../docs/continuation.md) before changing a saved configuration.
 
 Forces and profiles are sampled every 0.05 s; retained fields and coupled backups every 0.25 s. Read histories under `samples/`, plots under `figures/` and convergence in `solution/coupler_diagnostics.jsonl`. ParaView opens `solution/fvm.pvd` and `solution/vpm.pvd`.
 
 Run the [three-grid FVM reference](reference_flow/README.md) for comparison. `./allplot.sh` uses a completed reference and common saved physical times. Compare force statistics and wake profiles while refining FVM spacing, particle spacing and exchange step; matching LES coefficients alone does not establish coupled accuracy.
 
-`assets.postprocess` samples raw saved FVM volumes on the common comparison lattice. Run it explicitly after new solver output is ready. `./allplot.sh` reads the recorded comparison arrays, including those restored with the scientific result bundle.
+`assets.postprocess` samples raw saved FVM volumes on the common comparison lattice. Run it explicitly after new solver output is ready. `./allplot.sh` reads the recorded comparison arrays.

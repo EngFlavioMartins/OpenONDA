@@ -12,30 +12,30 @@ import pytest
 import pyvista as pv
 import taichi as ti
 
-from source.solvers.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
-from source.solvers.vpm.boundary_elements.vlm.coupling.kinematics import (
+from openonda.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
+from openonda.vpm.boundary_elements.vlm.coupling.kinematics import (
     SmoothRampVLM,
     TranslatingVLM,
 )
-from source.solvers.vpm.boundary_elements.vlm.kernels.biot_savart import (
+from openonda.vpm.boundary_elements.vlm.kernels.biot_savart import (
     regularized_segment_velocity_and_gradient,
 )
-from source.solvers.vpm.boundary_elements.vlm.solver.linear_solvers import (
+from openonda.vpm.boundary_elements.vlm.solver.linear_solvers import (
     ScipySolver,
     TaichiBiCGSTABSolver,
 )
-from source.solvers.vpm.boundary_elements.vlm.solver.loading_distribution import (
+from openonda.vpm.boundary_elements.vlm.solver.loading_distribution import (
     VLMLoadingDistribution,
 )
-from source.solvers.vpm.boundary_elements.vlm.solver.restart import (
+from openonda.vpm.boundary_elements.vlm.solver.restart import (
     restore_vlm_restart,
     validate_vlm_restart,
     write_vlm_restart,
 )
-from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
-from source.solvers.vpm.config.output import Backup, Samplers
-from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
-from source.solvers.vpm.io.sampling import EverySteps, VLMSampler
+from openonda.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from openonda.vpm.config.output import Backup, Samplers
+from openonda.vpm.io.sampler import OutputEvent, OutputManager
+from openonda.vpm.io.sampling import EverySteps, VLMSampler
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -132,7 +132,7 @@ def _solve_steady(solver, incident):
 
 @pytest.mark.parametrize("moving", [False, True])
 def test_conservation_tracker_records_dimensional_surface_force(moving, monkeypatch):
-    from source.solvers.vpm.diagnostics.conservation import ConservationTracker
+    from openonda.vpm.diagnostics.conservation import ConservationTracker
 
     motion = TranslatingVLM(velocity=[-10.0, 0.0, 0.0]) if moving else None
     vlm = _plate(nc=2, ns=3, motion=motion)
@@ -205,7 +205,7 @@ def test_bound_impulse_matches_filament_quadrature_and_translation(coupled):
 def test_conservation_export_distinguishes_wake_bound_and_total_impulse(tmp_path):
     import pandas as pd
 
-    from source.solvers.vpm.diagnostics.conservation import ConservationState, ConservationTracker
+    from openonda.vpm.diagnostics.conservation import ConservationState, ConservationTracker
 
     tracker = ConservationTracker()
     tracker.history.append(
@@ -224,7 +224,7 @@ def test_conservation_export_distinguishes_wake_bound_and_total_impulse(tmp_path
 
 
 def test_mesh_honors_initial_trailing_leg_length():
-    from source.solvers.vpm.boundary_elements.vlm.solver.mesh import generate_vlm_mesh
+    from openonda.vpm.boundary_elements.vlm.solver.mesh import generate_vlm_mesh
 
     solver = _plate(nc=2, ns=2)
     generate_vlm_mesh(solver.aircraft, solver.lattice, trailing_edge_infty=23.0)
@@ -264,7 +264,7 @@ def test_coupled_bound_strength_includes_the_on_wing_trailing_legs(tmp_path):
 
     from collections import defaultdict
 
-    from source.solvers.vpm.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
+    from openonda.vpm.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 
     history = defaultdict(list)
     solver._last_forces = {"lift_coefficient": 0.0, "drag_coefficient": 0.0}
@@ -567,7 +567,7 @@ def test_vlm_sampler_and_backup_use_distinct_field_series(tmp_path, monkeypatch)
     monkeypatch.setattr(solver, "save_results", counted_save_results)
 
     def write_backup():
-        from source.solvers.vpm.io.vlm_backup import write_vlm_backup
+        from openonda.vpm.io.vlm_backup import write_vlm_backup
 
         write_vlm_backup(
             runtime.vlm_solver,
@@ -597,7 +597,7 @@ def test_vlm_sampler_and_backup_use_distinct_field_series(tmp_path, monkeypatch)
         "vlm_000004.vtp",
     ]
     assert pv.get_reader(sample_folder / "vlm.pvd").time_values == [0.2, 0.4]
-    from source.solvers.vpm.io.vlm_backup import write_vlm_backup
+    from openonda.vpm.io.vlm_backup import write_vlm_backup
 
     write_vlm_backup(runtime.vlm_solver, folder, step=4, time=0.4)
     assert pv.get_reader(folder / "vlm.pvd").time_values == [0.3, 0.4]

@@ -11,12 +11,12 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import numpy as np
 
-from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
+from openonda.vpm.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
     WingSegment,
 )
-from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
+from openonda.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
 
 
 def create_flat_plate_vertices(

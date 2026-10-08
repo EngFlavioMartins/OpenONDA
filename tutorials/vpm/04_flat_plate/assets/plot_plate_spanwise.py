@@ -8,12 +8,12 @@ from __future__ import annotations
 import argparse
 
 
-from openonda.results import read_csv_table
+from assets.output_files import read_csv_table
 
 import numpy as np
 import pandas as pd
 
-from ._plot_theme import (
+from assets._plot_theme import (
     FIG_DIR,
     SAMPLES_DIR,
     color,
@@ -21,8 +21,8 @@ from ._plot_theme import (
     validation_legend,
     validation_subplots,
 )
-from .results import parameters
-from .theoretical_model import spanwise_reference
+from assets.results import parameters
+from assets.theoretical_model import spanwise_reference
 
 parser = argparse.ArgumentParser(description="Flat plate spanwise lift distribution")
 parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")

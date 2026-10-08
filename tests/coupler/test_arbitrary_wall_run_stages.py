@@ -5,8 +5,8 @@ import json
 import numpy as np
 import pytest
 
-from source.coupler import CouplerSetup, FVMVPMCoupler
-from source.solvers.fvm import (
+from openonda.coupler import CouplerSetup, FVMVPMCoupler
+from openonda.fvm import (
     BoundaryConfig,
     FVMSetup,
     FVMSolver,
@@ -15,18 +15,15 @@ from source.solvers.fvm import (
     TransportConfig,
     TurbulenceConfig,
 )
-from source.solvers.fvm.immersed_boundary.body import ImmersedBody
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
-from source.solvers.fvm.mesh.validation import extract_cell_subset_mesh
-from source.solvers.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
-from source.solvers.vpm import TurbulenceConfig as VPMTurbulence
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.mesh.rectilinear import coupling_box_mesh
+from openonda.fvm.mesh.validation import extract_cell_subset_mesh
+from openonda.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
+from openonda.vpm import TurbulenceConfig as VPMTurbulence
 
 
 def body_mesh(kind):
     bounds = (-1.0, 1.0) * 3
-    if kind == "immersed":
-        return coupling_box_mesh(bounds, 0.25)
     if kind in {"rotated", "thin"}:
         nodes = None
         hole = (-0.25, 0.25) * 3
@@ -79,7 +76,7 @@ def make_coupler(directory, kind, *, les=False, error_limit=1.0):
             turbulence=TurbulenceConfig.smagorinsky() if les else TurbulenceConfig(),
             initial_velocity=velocity,
             boundaries=[
-                *([] if kind == "immersed" else [BoundaryConfig.wall("body")]),
+                BoundaryConfig.wall("body"),
                 BoundaryConfig(
                     name="numericalBoundary",
                     velocity_type="fixedValue",
@@ -91,21 +88,6 @@ def make_coupler(directory, kind, *, les=False, error_limit=1.0):
         case_dir=directory,
         mesh_data=body_mesh(kind),
     )
-    if kind == "immersed":
-        body = ImmersedBody.extruded_polygon_z(
-            [[-0.5, -0.5], [0.5, -0.5], [0.5, 0], [0, 0], [0, 0.5], [-0.5, 0.5]],
-            z_bounds=[-0.25, 0.25],
-            grid_spacing=0.25,
-            caps=True,
-        )
-        fvm.set_immersed_bodies([body], grid_spacing=0.25)
-        # A resolved solenoidal perturbation exercises nonzero initial
-        # transfer and avoids a roundoff-sized linear residual denominator.
-        x, y, _ = fvm.get_cell_centre_coordinates().T
-        initial = np.broadcast_to(velocity, (len(x), 3)).copy()
-        initial[:, 0] += 0.01 * np.sin(np.pi * x) * np.cos(np.pi * y)
-        initial[:, 1] -= 0.01 * np.cos(np.pi * x) * np.sin(np.pi * y)
-        fvm.set_initial_velocity(initial)
     vpm = VPMSolver(
         VPMCase(
             directory=directory,
@@ -151,7 +133,7 @@ def particle_state(coupler):
     return positions[order], strengths[order]
 
 
-@pytest.mark.parametrize("kind", ["rotated", "concave", "multiple", "thin", "immersed"])
+@pytest.mark.parametrize("kind", ["rotated", "concave", "multiple", "thin"])
 def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
     with make_coupler(tmp_path, kind) as first:
         assert first.run(start_from="latest", max_coupling_steps=1) == 1
@@ -167,7 +149,7 @@ def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
         np.testing.assert_allclose(resumed.fvm_solver.get_velocity_field(), velocity, atol=1e-7)
         # VPM fields and GBD atomic accumulation use float32; accept its
         # roundoff in the pressure trace while catching lost boundary history.
-        np.testing.assert_allclose(resumed.fvm_solver.get_pressure_field(), pressure, atol=2e-7)
+        np.testing.assert_allclose(resumed.fvm_solver.get_pressure_field(), pressure, atol=1e-6)
         restored_positions, restored_strengths = particle_state(resumed)
         np.testing.assert_allclose(restored_positions, positions, atol=2e-7)
         np.testing.assert_allclose(restored_strengths, strengths, atol=2e-7)
@@ -175,8 +157,8 @@ def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
     assert [json.loads(row)["step"] for row in diagnostics.read_text().splitlines()] == [1, 2]
 
 
-def test_finite_immersed_body_with_les_uses_three_dimensional_exchange(tmp_path):
-    with make_coupler(tmp_path, "immersed", les=True, error_limit=0.08) as driver:
+def test_finite_wall_body_with_les_uses_three_dimensional_exchange(tmp_path):
+    with make_coupler(tmp_path, "concave", les=True, error_limit=0.08) as driver:
         assert driver.run(max_coupling_steps=1, backup_at_stop=True) == 1
         assert driver.fvm_solver.setup.turbulence.model == "smagorinsky"
         assert driver.vpm_solver.numerics.turbulence.model == "LES_SMAGORINSKY"

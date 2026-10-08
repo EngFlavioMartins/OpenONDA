@@ -7,12 +7,12 @@ from matplotlib.legend_handler import HandlerTuple
 
 from openonda import plotting as theme
 from openonda.plotting import centered_subplots_adjust
-from openonda.results import read_pvd_frames
-from openonda.rotor_theory import axial_induction_factor_from_thrust_coefficient
+from assets.output_files import read_pvd_frames
+from assets.rotor_theory import axial_induction_factor_from_thrust_coefficient
 from openonda.validation import time_mean as _time_weighted_mean
-from source.solvers.vpm.io.postprocess import surface_series
+from openonda.vpm.io.postprocess import surface_series
 
-from ._common import (
+from assets._common import (
     FIELD_STATIONARITY_COMPARISON_REVOLUTIONS,
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
@@ -22,7 +22,7 @@ from ._common import (
     rotor_subplots,
     save_rotor_figure,
 )
-from .finite_distance_theory import build_system, induced_velocity
+from assets.finite_distance_theory import build_system, induced_velocity
 
 
 def relative_drift(values):

@@ -4,14 +4,14 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.kernels.base import make_vortex_kernel
-from source.solvers.vpm.physics.induction.direct import DirectInduction
-from source.solvers.vpm.physics.induction.fmm import FMMInduction, FMMTree, interaction_lists
-from source.solvers.vpm.physics.induction.fmm.local_expansions import l2l, l2p, m2l
-from source.solvers.vpm.physics.induction.fmm.multipoles import m2m, p2m
-from source.solvers.vpm.physics.induction.fmm.near_field import p2p_velocity
-from source.solvers.vpm.physics.induction.fmm.reference import HostFMMReference
-from source.solvers.vpm.physics.induction.treecode import TreecodeInduction
+from openonda.vpm.kernels.base import make_vortex_kernel
+from openonda.vpm.physics.induction.direct import DirectInduction
+from openonda.vpm.physics.induction.fmm import FMMInduction, FMMTree, interaction_lists
+from openonda.vpm.physics.induction.fmm.local_expansions import l2l, l2p, m2l
+from openonda.vpm.physics.induction.fmm.multipoles import m2m, p2m
+from openonda.vpm.physics.induction.fmm.near_field import p2p_velocity
+from openonda.vpm.physics.induction.fmm.reference import HostFMMReference
+from openonda.vpm.physics.induction.treecode import TreecodeInduction
 
 
 class _Field:

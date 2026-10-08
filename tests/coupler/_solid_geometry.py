@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from source.coupler.geometry import SolidBoundary, TriangulatedWall
+from openonda.coupler.geometry import SolidBoundary, TriangulatedWall
 
 
 def voxel_wall(cells, *, origin=(0, 0, 0), spacing=1.0, rotation=None):

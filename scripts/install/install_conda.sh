@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACTIVATION_FILE="${1:?Run source install.sh from the repository root.}"
+shift
 
 # Pin the bootstrap and its upstream SHA-256 together. The unversioned
 # Miniforge asset has no .sha256 companion, and "latest" can change mid-download.
@@ -21,6 +22,8 @@ case "$(uname -s):$(uname -m)" in
     *) echo 'OpenONDA supports Linux x86-64 and macOS (Intel/Apple Silicon).' >&2; exit 1 ;;
 esac
 
+# Only a Conda that the user's shell cannot already run needs shell start-up lines.
+CONDA_IN_SHELL="${CONDA_EXE:-$(type -P conda || true)}"
 CONDA_COMMAND=""
 for candidate in \
     "${CONDA_EXE:-}" \
@@ -104,10 +107,12 @@ fi
 HOOK
 source "$CONDA_PREFIX/etc/conda/activate.d/openonda.sh"
 "$CONDA_PREFIX/bin/python" "$REPO_ROOT/scripts/install/install_tex.py"
-"$CONDA_PREFIX/bin/python" "$REPO_ROOT/install.py" --with-environment
+"$CONDA_PREFIX/bin/python" "$REPO_ROOT/install.py" --with-environment "$@"
 
-case "${SHELL:-/bin/bash}" in
-    */zsh) "$CONDA_COMMAND" init --quiet zsh ;;
-    *) "$CONDA_COMMAND" init --quiet bash ;;
-esac
+if [[ -z "$CONDA_IN_SHELL" ]]; then
+    case "${SHELL:-/bin/bash}" in
+        */zsh) "$CONDA_COMMAND" init --quiet zsh ;;
+        *) "$CONDA_COMMAND" init --quiet bash ;;
+    esac
+fi
 printf '%s\n' "$CONDA_ROOT" > "$ACTIVATION_FILE"

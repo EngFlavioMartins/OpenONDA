@@ -1,0 +1,22 @@
+% Friendly typography for the OpenONDA manual
+\usepackage{graphicx}
+\usepackage{xcolor}
+\definecolor{onda}{HTML}{1F5F99}
+\usepackage{titlesec}
+\titleformat{\chapter}[display]{\sffamily\bfseries\color{onda}}{\large\MakeUppercase{\chaptertitlename}\ \thechapter}{4pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{-10pt}{24pt}
+\titleformat{\section}{\sffamily\bfseries\Large\color{onda}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\sffamily\bfseries\large}{\thesubsection}{0.8em}{}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\small\color{gray}OpenONDA user manual}
+\fancyhead[R]{\sffamily\small\color{gray}\leftmark}
+\fancyfoot[C]{\sffamily\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\sffamily\small\thepage}\renewcommand{\headrulewidth}{0pt}}
+\usepackage{etoolbox}
+\AtBeginEnvironment{longtable}{\small}
+\setlength{\parskip}{0.55em}
+\setlength{\parindent}{0pt}
+\renewcommand{\arraystretch}{1.25}

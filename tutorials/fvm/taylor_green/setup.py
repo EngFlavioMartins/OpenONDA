@@ -3,20 +3,19 @@
 
 The velocity decays as exp(-2 nu t), providing exact total_kinetic_energy and error checks.
 
-Run with ``python -m openonda.tutorial_runner . setup``.
+Run with ``python setup.py``.
 """
 
 from __future__ import annotations
 
-from functools import partial
 from pathlib import Path
 
 import numpy as np
 
 import openonda.fvm as fvm
-from openonda.fvm.mesher import periodic_square_mesh
+from openonda.fvm.mesher import box_mesh_3d
 
-from .assets.decay_errors import flow_integrals, history_row
+from assets.decay_errors import flow_integrals, history_row
 
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
@@ -50,10 +49,25 @@ def exact_velocity(centres: np.ndarray, time: float, kinematic_viscosity: float)
     )
 
 
+def periodic_square_mesh() -> dict:
+    """Square of side 2 pi with one cell across the span.
+
+    The x and y patches are paired by cyclic boundaries; z-min/z-max are empty.
+    """
+    spacing = 2.0 * np.pi / NUMBER_OF_CELLS
+    axis = np.linspace(0.0, 2.0 * np.pi, NUMBER_OF_CELLS + 1)
+    mesh = box_mesh_3d(axis, axis, np.array([0.0, spacing]))
+    for patch in mesh["boundary"]:
+        patch["name"] = {"inlet": "xmin", "outlet": "xmax"}.get(patch["name"], patch["name"])
+        if patch["name"].startswith("z"):
+            patch["type"] = "empty"
+    return mesh
+
+
 def main() -> None:
     nsteps = int(round(FINAL_TIME / TIME_STEP_SIZE))
 
-    mesh = partial(periodic_square_mesh, NUMBER_OF_CELLS)
+    mesh = periodic_square_mesh
 
     schemes = fvm.DiscretizationConfig(convection_scheme=CONVECTION_SCHEME, time_scheme=TIME_SCHEME)
     linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)

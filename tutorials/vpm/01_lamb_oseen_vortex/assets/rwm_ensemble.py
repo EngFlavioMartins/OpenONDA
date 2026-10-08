@@ -2,7 +2,7 @@
 
 import argparse
 
-from ..setup import (
+from setup import (
     MERGING_SAMPLE_INTERVAL_STEPS,
     RWM_ENSEMBLE_SIZE,
     SAMPLE_INTERVAL_TIME,

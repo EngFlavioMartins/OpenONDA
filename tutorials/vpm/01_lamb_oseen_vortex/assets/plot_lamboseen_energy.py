@@ -24,7 +24,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-from .postprocess import (
+from assets.postprocess import (
     ENERGY_CASES,
     SCHEME_DRAW_ORDER,
     SCHEMES,

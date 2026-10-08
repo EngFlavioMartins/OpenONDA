@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.physics.diffusion.grid import _GridDiffusionMixin
+from openonda.vpm.physics.diffusion.grid import _GridDiffusionMixin
 from tests.coupler._solid_geometry import wall_case
 
 
@@ -117,7 +117,7 @@ def test_wall_adjacent_m4_preserves_local_strength_and_first_moment(phase):
     base = np.floor(fractional).astype(int)
     grid = np.stack(np.meshgrid(*([np.arange(-1, 3)] * 3), indexing="ij"), axis=-1)
     all_indices = base + grid.reshape(-1, 3)
-    from source.solvers.vpm.physics.diffusion.grid import _m4_prime_1d
+    from openonda.vpm.physics.diffusion.grid import _m4_prime_1d
 
     weights = np.prod(_m4_prime_1d(fractional - all_indices), axis=1)
     nodes = origin + 0.25 * all_indices

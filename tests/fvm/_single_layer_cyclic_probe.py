@@ -7,9 +7,9 @@ import sys
 import numpy as np
 
 from openonda import fvm
+from openonda.fvm.fields.gradients import compute_lsq_gradient
+from openonda.fvm.mesh.rectilinear import box_mesh_3d
 from openonda.runtime import RunConfig
-from source.solvers.fvm.fields.gradients import compute_lsq_gradient
-from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
 
 
 def main():

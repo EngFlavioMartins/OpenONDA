@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from source.solvers.vpm.io.sampling import LineSampler, SurfaceSampler
-from source.solvers.vpm.io.sampling.field_samplers import SAMPLER_BASE_CSV_COLUMNS
-from source.write_precision import cast_for_write
+from openonda.core.write_precision import cast_for_write
+from openonda.vpm.io.sampling import LineSampler, SurfaceSampler
+from openonda.vpm.io.sampling.field_samplers import SAMPLER_BASE_CSV_COLUMNS
 from tests._tutorial_helpers import load_tutorial_module
 
 
@@ -90,8 +90,8 @@ def test_surface_sampler_writes_compact_paraview_readable_vts(tmp_path):
 def test_fvm_export_writes_compact_paraview_readable_vtu(tmp_path):
     import pyvista as pv
 
-    from source.solvers.fvm.config.types import OutputConfig
-    from source.solvers.fvm.io.vtk_exporter import VTKExporter
+    from openonda.fvm.config.types import OutputConfig
+    from openonda.fvm.io.vtk_exporter import VTKExporter
     from tests.support.fvm_mesh import structured_box
 
     mesh = structured_box(2, 2, 2)
@@ -110,10 +110,10 @@ def test_fvm_export_writes_compact_paraview_readable_vtu(tmp_path):
 def test_owned_only_partition_vtu_excludes_incomplete_halo_cells(tmp_path):
     import pyvista as pv
 
-    from source.solvers.fvm.config.types import OutputConfig
-    from source.solvers.fvm.io.vtk_exporter import VTKExporter
-    from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-    from source.solvers.fvm.mesh.partition import localize_mesh_and_geometry
+    from openonda.fvm.config.types import OutputConfig
+    from openonda.fvm.io.vtk_exporter import VTKExporter
+    from openonda.fvm.mesh.geometry import compute_mesh_geometry
+    from openonda.fvm.mesh.partition import localize_mesh_and_geometry
     from tests.support.fvm_mesh import structured_box
 
     mesh = structured_box(4, 2, 1)
@@ -167,9 +167,9 @@ def test_scheduled_line_retains_native_times_across_output_manager_restart(tmp_p
     import pandas as pd
     import pytest
 
-    from source.solvers.vpm.config.output import Backup, Samplers
-    from source.solvers.vpm.io.sampler import OutputEvent, OutputManager
-    from source.solvers.vpm.io.sampling import EverySteps
+    from openonda.vpm.config.output import Backup, Samplers
+    from openonda.vpm.io.sampler import OutputEvent, OutputManager
+    from openonda.vpm.io.sampling import EverySteps
 
     line = LineSampler(
         [0, 0, 0],

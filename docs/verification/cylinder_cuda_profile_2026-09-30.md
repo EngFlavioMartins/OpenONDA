@@ -91,7 +91,7 @@ fixed donor stencils. These did not recur in the measured advancement steps.
 The new connected-component bookkeeping took about 0.015 s in step 1.
 
 One small shared-code optimization was applied in
-`source/coupler/geometry.py::TriangulatedWall.first_intersections`: consecutive
+`openonda/coupler/geometry.py::TriangulatedWall.first_intersections`: consecutive
 segments with exactly identical starts reuse that start's signed distance.
 Distinct starts retain the existing path; query order, triangle intersection
 tests, cache bounds, and numerical tolerances are preserved. Temporary storage

@@ -20,6 +20,7 @@ import numpy as np
 import taichi as ti
 
 import openonda
+from openonda.core.solution_layout import vpm_backup_files
 import openonda.coupler
 from openonda.fvm import (
     BoundaryConfig,
@@ -34,9 +35,7 @@ from openonda.fvm import (
     create_fvm_solver,
 )
 import openonda.fvm.mesher as msh
-from openonda.tutorials import TUTORIALS, copy_tutorial
 import openonda.vpm
-from source.solution_layout import vpm_backup_files
 
 
 def _verify_package_location(require_site_packages: bool) -> Path:
@@ -89,10 +88,10 @@ def _verify_gaussian_mesh() -> dict[str, object]:
     No global allocator/FFT cache is cleared, and no process-global device or
     stream is selected. Discretization accuracy is tested separately.
     """
-    from source.solvers.vpm.physics.induction.gaussian_mesh.availability import (
+    from openonda.vpm.physics.induction.gaussian_mesh.availability import (
         require_gaussian_mesh_runtime,
     )
-    from source.solvers.vpm.physics.induction.gaussian_mesh.runtime import (
+    from openonda.vpm.physics.induction.gaussian_mesh.runtime import (
         CUDAMemoryPool,
         FFTPlanPair,
     )
@@ -138,15 +137,34 @@ def _verify_gaussian_mesh() -> dict[str, object]:
             memory_pool.close()
 
 
-def _verify_cartesian_mesher() -> dict[str, str | int]:
-    """Exercise the installed, compiled octree using packaged STL geometry."""
-    from source.solvers.fvm.mesh.cartesian.cfmesh_octree import _balance_selection_kernel
-
-    surface = msh.STLSurface(
-        Path(resources.files("tutorials"))
-        / "coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/assets/cylinder_long.stl",
-        patch="body",
+def _write_cube_stl(path: Path, half_width: float) -> None:
+    """Write an outward-oriented ASCII STL cube centred at the origin."""
+    corners = half_width * np.array(
+        [[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=float
     )
+    faces = ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3))
+    lines = ["solid cube"]
+    for a, b, c, d in faces:
+        for triangle in ((a, b, c), (a, c, d)):
+            vertices = corners[list(triangle)]
+            normal = np.cross(vertices[1] - vertices[0], vertices[2] - vertices[0])
+            lines.append("facet normal " + " ".join(f"{value:g}" for value in normal))
+            lines.append("outer loop")
+            lines.extend(
+                "vertex " + " ".join(f"{value:g}" for value in vertex) for vertex in vertices
+            )
+            lines.extend(("endloop", "endfacet"))
+    lines.append("endsolid cube")
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def _verify_cartesian_mesher() -> dict[str, str | int]:
+    """Exercise the installed, compiled octree on a cube surface."""
+    from openonda.fvm.mesh.cartesian.cfmesh_octree import _balance_selection_kernel
+
+    directory = Path(tempfile.mkdtemp(prefix="openonda-mesher-"))
+    _write_cube_stl(directory / "cube.stl", 0.5)
+    surface = msh.STLSurface(directory / "cube.stl", patch="body")
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(
             bounds=(-2.0, 2.0, -2.0, 2.0, -1.0, 1.0),
@@ -155,8 +173,8 @@ def _verify_cartesian_mesher() -> dict[str, str | int]:
         surfaces=(surface,),
         max_cell_size=0.5,
         patch_refinements=(msh.PatchRefinement("body", 0.125),),
-        surface_may_cross_domain_boundary=True,
     ).build(stop_after="templateGeneration")
+    shutil.rmtree(directory)
     if not getattr(_balance_selection_kernel, "nopython_signatures", ()):
         raise RuntimeError(
             "Cartesian octree acceleration is inactive; check that NUMBA_DISABLE_JIT is unset"
@@ -345,40 +363,12 @@ def _verify_native_coupled() -> dict[str, object]:
     return {"n_cells": int(mesh["n_cells"]), "fvm_step": fvm_step, "vpm_step": vpm_step}
 
 
-def _verify_tutorial_source_paths(tutorial_root: Path) -> None:
-    """Inspect only tutorial files selected for installation and copying.
-
-    Editable installations may contain the user's generated results beside
-    maintained templates. They are not shipped tutorial code and must neither
-    be verified as such nor exempt any included source from the path check.
-    """
-    from pathlib import PurePosixPath
-
-    from openonda.tutorials import _include_resource
-
-    path_markers = ("/" + "Users/", "/" + "home/")
-    for source in tutorial_root.rglob("*"):
-        relative = PurePosixPath(source.relative_to(tutorial_root).as_posix())
-        if (
-            not source.is_file()
-            or source.suffix not in {".py", ".sh"}
-            or not _include_resource(relative)
-        ):
-            continue
-        text = source.read_text(encoding="utf-8")
-        if any(marker in text for marker in path_markers):
-            raise RuntimeError(f"Installed tutorial contains a machine-specific path: {source}")
-
-
 def _verify_distribution_resources() -> dict[str, object]:
-    """Verify typing, tutorial, and plotting resources from the installation."""
+    """Verify typing and plotting resources from the installation."""
     if not (resources.files("openonda") / "py.typed").is_file():
         raise RuntimeError("The installed distribution is missing openonda/py.typed")
-
-    tutorial_root = resources.files("tutorials")
-    if not isinstance(tutorial_root, Path):
-        raise RuntimeError("OpenONDA tutorials require an unpacked installation")
-    _verify_tutorial_source_paths(tutorial_root)
+    if not (resources.files("openonda") / "_resources/DejaVuSerif.ttf").is_file():
+        raise RuntimeError("The installed distribution is missing the plotting font")
 
     with tempfile.TemporaryDirectory(prefix="openonda-installed-resources-") as directory:
         workspace = Path(directory) / "workspace"
@@ -394,17 +384,7 @@ def _verify_distribution_resources() -> dict[str, object]:
         matplotlib.use("Agg")
         from matplotlib import pyplot as plt
 
-        case_path = copy_tutorial("fvm/taylor_green", workspace)
-        required = (
-            case_path / "setup.py",
-            case_path / "allrun.sh",
-            case_path / "allplot.sh",
-            Path(resources.files("openonda")) / "_resources/DejaVuSerif.ttf",
-        )
-        missing = [str(path) for path in required if not path.is_file()]
-        if missing:
-            raise RuntimeError(f"Installed tutorial resources are incomplete: {missing}")
-
+        workspace.mkdir()
         from openonda import plotting as theme
 
         theme.set_style()
@@ -428,64 +408,10 @@ def _verify_distribution_resources() -> dict[str, object]:
             os.environ["XDG_CACHE_HOME"] = previous_xdg_cache
 
     return {
-        "tutorial_count": len(TUTORIALS),
         "typed_package": True,
         "matplotlib_backend": str(matplotlib.get_backend()),
         "latex_rendering": bool(matplotlib.rcParams["text.usetex"]),
     }
-
-
-def _verify_tutorial_commands() -> int:
-    """Exercise installed module commands in copied user-owned cases."""
-    modules = {
-        "vpm/lamb_oseen_vortex": (
-            "setup",
-            "assets.rwm_ensemble",
-            "assets.postprocess",
-            "assets.plot_merging_snapshots",
-        ),
-        "vpm/vortex_ring": ("setup",),
-        "vpm/vortex_interactions": (
-            "setup",
-            "assets.plot_core_sections",
-            "assets.plot_core_trajectories",
-        ),
-        "coupled_fvm_vpm/cube_flow": ("assets.plot_velocity_profiles",),
-    }
-    checked = 0
-    with tempfile.TemporaryDirectory(prefix="openonda-tutorial-commands-") as directory:
-        workspace = Path(directory) / "case with spaces"
-        environment = os.environ.copy()
-        environment.pop("PYTHONPATH", None)
-        environment["MPLCONFIGDIR"] = str(Path(directory) / "matplotlib")
-        for tutorial, commands in modules.items():
-            case = copy_tutorial(tutorial, workspace)
-            for module in commands:
-                result = subprocess.run(
-                    [
-                        sys.executable,
-                        "-I",
-                        "-B",
-                        "-m",
-                        "openonda.tutorial_runner",
-                        str(case),
-                        module,
-                        "--help",
-                    ],
-                    cwd=directory,
-                    env=environment,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    check=False,
-                )
-                if result.returncode or "usage:" not in result.stdout:
-                    raise RuntimeError(
-                        f"Tutorial module command failed: {tutorial}/{module} --help\n"
-                        f"{result.stdout}\n{result.stderr}"
-                    )
-                checked += 1
-    return checked
 
 
 def _verify_environment() -> dict[str, object]:
@@ -581,11 +507,9 @@ def _verify_environment() -> dict[str, object]:
 def main() -> int:
     """Run the command-line installation verification suite.
 
-    The check validates that the imported package, distribution resources, direct
-    tutorial entry points, Cartesian meshing, FVM iterative solves, and VPM
-    stepping/output/restart, and coupled continuation are usable from an installed environment. It removes
-    ``PYTHONPATH`` while exercising tutorial scripts so a source checkout cannot
-    mask packaging errors.
+    The check validates that the imported package, distribution resources,
+    Cartesian meshing, FVM iterative solves, VPM stepping/output/restart, and
+    coupled continuation are usable from an installed environment.
 
     Returns
     -------
@@ -597,7 +521,7 @@ def main() -> int:
     Raises
     ------
     RuntimeError
-        If a package, tutorial, meshing, runtime, or native-extension check fails.
+        If a package, meshing, runtime, or native-extension check fails.
     ImportError
         If an optional dependency required by a requested check is unavailable.
 
@@ -634,7 +558,6 @@ def main() -> int:
         "openonda_version": openonda.__version__,
         "package_path": str(_verify_package_location(args.require_site_packages)),
         "distribution": _verify_distribution_resources(),
-        "tutorial_commands": _verify_tutorial_commands(),
         "cartesian_mesher": _verify_cartesian_mesher(),
     }
     if args.with_meshing:

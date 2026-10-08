@@ -47,9 +47,9 @@ def main() -> int:
     import numba
     import numpy as np
 
-    from source.solvers.fvm.io.mesh_storage import save_native_mesh
-    from source.solvers.fvm.mesh.cache import meshing_input_hash
-    from source.solvers.fvm.mesh.progress import mesher_log_session
+    from openonda.fvm.io.mesh_storage import save_native_mesh
+    from openonda.fvm.mesh.cache import meshing_input_hash
+    from openonda.fvm.mesh.progress import mesher_log_session
 
     output = (args.output or Path(tempfile.mkdtemp(prefix="openonda-mesher-"))).resolve()
     output.mkdir(parents=True, exist_ok=True)

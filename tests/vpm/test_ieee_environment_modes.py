@@ -16,15 +16,15 @@ import sys
 import numpy as np
 import pytest
 
-from source.solvers.vpm.numerics import ieee
-from source.solvers.vpm.physics.induction.gaussian_tail._interval import _platform
+from openonda.vpm.numerics import ieee
+from openonda.vpm.physics.induction.gaussian_tail._interval import _platform
 
 
 @pytest.fixture
 def compiled_bridge(monkeypatch):
     path = os.environ.get("OPENONDA_TEST_FENV_EXTENSION")
     if path:
-        name = "source.solvers.vpm.numerics._fenv"
+        name = "openonda.vpm.numerics._fenv"
         spec = importlib.util.spec_from_file_location(name, Path(path).resolve(strict=True))
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -146,7 +146,7 @@ def test_rounding_inspection_preserves_modes_and_flags(mode_probe, compiled_brid
 def test_production_tail_after_taichi_restores_actual_host_environment(mode_probe):
     import taichi as ti
 
-    from source.solvers.vpm.physics.induction.gaussian_tail import (
+    from openonda.vpm.physics.induction.gaussian_tail import (
         prepare_tail_source,
         query_tail_bound,
         validate_source_values,

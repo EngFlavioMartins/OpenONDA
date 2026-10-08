@@ -8,7 +8,7 @@ from packaging.specifiers import SpecifierSet
 import pytest
 
 import install
-from source.version import PYTHON_REQUIRES
+from openonda.core.version import PYTHON_REQUIRES
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,9 +71,20 @@ def test_installer_runs_install_check_and_isolated_verification(monkeypatch):
     monkeypatch.setattr(install.subprocess, "run", run)
     assert install.main([]) == 0
     assert calls[0][:4] == [install.sys.executable, "-m", "pip", "install"]
-    assert calls[0][4:] == ["-e", f"{ROOT}[dev]"]
+    assert calls[0][4:] == ["-e", str(ROOT)]
     assert calls[1] == [install.sys.executable, "-m", "pip", "check"]
     assert calls[2] == [install.sys.executable, "-I", "-m", "openonda.verify_install"]
+
+
+def test_installer_adds_developer_tools_on_request(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        install.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append(command) or SimpleNamespace(returncode=0),
+    )
+    assert install.main(["--dev"]) == 0
+    assert calls[0][4:] == ["-e", f"{ROOT}[dev]"]
 
 
 def test_installer_stops_after_failed_install(monkeypatch):

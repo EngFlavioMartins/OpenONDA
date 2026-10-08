@@ -6,8 +6,8 @@ import numpy as np
 from scipy.linalg import expm
 import taichi as ti
 
-from source.solvers.vpm.numerics.rk_tableaux import RK2
-from source.solvers.vpm.numerics.runge_kutta import RungeKutta
+from openonda.vpm.numerics.rk_tableaux import RK2
+from openonda.vpm.numerics.runge_kutta import RungeKutta
 
 
 class StrainRHS:

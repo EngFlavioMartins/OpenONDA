@@ -1,10 +1,9 @@
 # Tutorial data and portability audit — 29 September 2026
 
-This is the pre-archive inventory and decision record. The approved lossless
-implementation and clone checks are recorded in
-[the archive report](tutorial_results_archive.md); measured cadence screening is
-recorded in [the loading study](../../studies/loading_cadence_report.md).
-Statements below about pending archives describe the state at this initial audit.
+This is the pre-archive inventory and decision record. The result archives it
+led to have since been retired: each tutorial now produces its own results
+through `allrun.sh`. Measured cadence screening is recorded in
+[the loading study](../../studies/loading_cadence_report.md).
 
 ## Status and scope
 

@@ -3,46 +3,9 @@ include license
 include citation.cff
 include pyproject.toml
 include install.py
-recursive-include openonda *.py *.ttf py.typed
-recursive-include source *.py *.md *.json py.typed
+recursive-include openonda *.py *.md *.json *.ttf py.typed
 
-# Install the runnable tutorial sources and their compact input assets.  Solver
-# output, publication figures, movies, ParaView sessions, papers, and obsolete
-# pre-generated meshes do not belong in the distribution wheel.
-recursive-include tutorials *.py *.sh *.md *.json *.csv *.stl *.vsp3
-
-prune tutorials/*/*/solution
-prune tutorials/*/*/samples
-prune tutorials/*/*/figures
-prune tutorials/*/*/.matplotlib
-prune tutorials/*/*/*/solution
-prune tutorials/*/*/*/samples
-prune tutorials/*/*/*/figures
-prune tutorials/*/*/*/.matplotlib
-
-global-exclude .DS_Store *.py[cod] *.gif *.png *.pdf *.pvsm *.msh *.pvd *.vts *.so
-global-exclude paraview_state.py paraview_tracer.py
-global-exclude run_manifest.json
-
-# Exclude generated trees at every depth, including parameter-study runs.
-recursive-exclude tutorials **/solutions/* **/solution/* **/samples/* **/figures/* **/study_results/* **/animation/*
-recursive-exclude tutorials **/previous_runs/* **/drag_recovery/* **/frames/*
-
-prune tutorials/*/*/previous_runs
-prune tutorials/*/*/drag_recovery
-prune tutorials/*/*/assets/frames
-prune tutorials/*/*/*/previous_runs
-prune tutorials/*/*/*/drag_recovery
-prune tutorials/*/*/*/assets/frames
-
-prune tutorials/*/*/study_results
-prune tutorials/*/*/solutions
-prune tutorials/*/*/animation
-prune tutorials/*/*/*/study_results
-prune tutorials/*/*/*/solutions
-prune tutorials/*/*/*/animation
-prune tutorials/*/*/assets/results
-prune tutorials/*/*/*/assets/results
+global-exclude .DS_Store *.py[cod] *.so
 
 # Archived illustration referenced by the package README.
 include tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif

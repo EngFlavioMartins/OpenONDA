@@ -1,4 +1,4 @@
-"""Shared plotting style and figure helpers for installed OpenONDA tutorials."""
+"""Shared figure style for OpenONDA plots: palette, sizes, line styles and export."""
 
 from collections.abc import Iterable
 from pathlib import Path
@@ -12,118 +12,8 @@ from matplotlib.text import Text
 from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 import numpy as np
 
-from source.solution_layout import collection_path
-
-
-def read_vlm_surface(surface_record: dict) -> dict:
-    """Read the geometry snapshot recorded by the run.
-
-    VPM metadata embeds the geometry loaded by the solver, so plotting
-    remains valid after input files change or disappear.
-    """
-    return surface_record["geometry"]
-
-
-def latest_fvm_snapshot(solution_directory: str | Path) -> Path | None:
-    """Return the latest field snapshot in the solver's recorded time series.
-
-    Parameters
-    ----------
-    solution_directory : str or pathlib.Path
-        FVM output directory containing ``fvm_metadata.json`` and the case's
-        ``fvm.pvd`` index. Geometry-only ``fvm/mesh.vtu`` files are never selected.
-
-    Returns
-    -------
-    pathlib.Path or None
-        Snapshot with the greatest recorded physical time, or ``None`` when
-        the solver has not yet saved a field time series.
-
-    Raises
-    ------
-    ValueError, KeyError
-        If saved metadata or a time-series record is malformed.
-    """
-    import json
-
-    from defusedxml import ElementTree
-
-    directory = Path(solution_directory)
-    metadata_path = directory / "fvm_metadata.json"
-    if not metadata_path.is_file():
-        return None
-    json.loads(metadata_path.read_text())
-    series = collection_path(directory, "fvm")
-    if not series.is_file():
-        return None
-    frames = ElementTree.parse(series).findall(".//DataSet")
-    if not frames:
-        return None
-    latest = max(frames, key=lambda frame: float(frame.attrib["timestep"]))
-    return directory / latest.attrib["file"]
-
-
-def theoretical_ring_trajectory(
-    kinematic_viscosity: float,
-    initial_core_radius: float,
-    initial_ring_radius: float,
-    tube_circulation: float,
-    time: np.ndarray,
-):
-    """
-    Computes the theoretical trajectory and speed of a vortex ring over time.
-
-    Arguments:
-    ----------
-    kinematic_viscosity : float
-        The kinematic viscosity of the fluid.
-    initial_core_radius : float
-        The initial core radius of the vortex ring.
-    initial_ring_radius : float
-        The initial radius of the vortex ring.
-    tube_circulation : float
-        The vortex-ring tube circulation.
-    time : np.ndarray
-        Array of time points at which to compute the trajectory.
-
-    Returns:
-    --------
-    theoretical_ring_position : np.ndarray
-        Theoretical cumulative distance traveled by the ring over time.
-    theoretical_ring_velocity : np.ndarray
-        Theoretical speed of the ring at each time point.
-    """
-    # Calculate ring thickness over time
-    ring_core_radius = np.sqrt(4 * kinematic_viscosity * time + initial_core_radius**2)
-
-    # Core thickness ratio
-    core_to_ring_radius_ratio = ring_core_radius / initial_ring_radius
-
-    # Empirical correction factor for finite core thickness
-    correction_coefficient = (
-        -0.558 - 1.12 * core_to_ring_radius_ratio**2 - 5.0 * core_to_ring_radius_ratio**4
-    )
-
-    # Term A based on initial circulation and radius
-    circulation_velocity_scale = tube_circulation / (4 * np.pi * initial_ring_radius)
-
-    # Term B includes the logarithmic factor and correction coefficient
-    logarithmic_correction = np.log(8 / core_to_ring_radius_ratio) + correction_coefficient
-
-    # Compute theoretical ring speed
-    theoretical_ring_velocity = circulation_velocity_scale * logarithmic_correction
-
-    # Calculate time step from the time array
-    time_increment = np.gradient(time)
-
-    # Compute theoretical ring location by cumulative sum of speed * time_step
-    theoretical_ring_position = np.cumsum(theoretical_ring_velocity * time_increment)
-
-    return theoretical_ring_position, theoretical_ring_velocity
-
-
 # Plot style.
-# All tutorial plot presentation lives here: palette, font sizes, figure sizes,
+# All plot presentation lives here: palette, font sizes, figure sizes,
 # markers, line widths, reference styles, and export defaults.
 CM = 1 / 2.54
 THESIS_FONT_SIZE_PT = 10.95  # \normalsize in the thesis's 11pt class
@@ -226,7 +116,7 @@ COLORMAPS.update(
     vorticity="thesis_signed", error_diverging="thesis_signed", streamlines="thesis_amber"
 )
 
-# Method identity is stable across tutorials. VLM+VPM remains the VPM method;
+# Method identity is stable across plots. VLM+VPM remains the VPM method;
 # hybrid means FVM+VPM. Different physical components may omit markers when dense.
 METHOD_STYLE = {
     "fvm": {"color": COLORS["fvm"], "marker": "s", "linestyle": "-"},
@@ -247,82 +137,6 @@ def method_style(method, *, markers=True):
     return style
 
 
-# Vortex-interaction ladder. The two interaction families are plotted in
-# separate panels, so each method keeps the same style in both panels.
-VORTEX_INTERACTION_VARIANT_STYLE = {
-    "dns": {"label": "DNS", "color": COLORS["dark"], "marker": "o"},
-    "les": {"label": "LES", "color": COLORS["teal"], "marker": "s"},
-    "les_stabilized": {
-        "label": "LES + stabilization",
-        "color": COLORS["vpm"],
-        "marker": "D",
-    },
-}
-INTENDED_CASE_ORDER = {
-    f"{family}_{variant}": order
-    for order, (family, variant) in enumerate(
-        (family, variant)
-        for family in ("leapfrog", "collide")
-        for variant in VORTEX_INTERACTION_VARIANT_STYLE
-    )
-}
-
-VORTEX_RING_VARIANT_STYLE = {
-    "dns_direct": {"color": COLORS["dark"], "marker": "o", "linestyle": "-"},
-    "dns_transposed": {"color": COLORS["vpm"], "marker": "s", "linestyle": "-"},
-    "dns_mixed": {"color": PALETTE["amber"], "marker": "^", "linestyle": "-"},
-    "les_transposed": {"color": COLORS["teal"], "marker": "v", "linestyle": "-"},
-}
-for _style in VORTEX_RING_VARIANT_STYLE.values():
-    _style["linewidth"] = LINE_WIDTH
-    _style["markersize"] = MARKER_SIZE
-    _style["markeredgewidth"] = MARKER_EDGE_WIDTH
-VORTEX_RING_VARIANT_LABEL = {
-    "dns_direct": "DNS Direct",
-    "dns_transposed": "DNS Transposed",
-    "dns_mixed": "DNS Mixed",
-    "les_transposed": "LES Transposed",
-}
-
-LAMB_OSEEN_SCHEME_STYLE = {
-    "cs": {"label": "CS", "color": COLORS["hybrid"], "marker": "o"},
-    "rwm": {"label": "RWM", "color": COLORS["dark"], "marker": "^"},
-    "dvh": {"label": "DVH", "color": COLORS["teal"], "marker": "v"},
-    "gbd": {"label": "GBD", "color": COLORS["vpm"], "marker": "D"},
-}
-
-ROTOR_STYLE = {
-    "vpm": {
-        "color": COLORS["vpm"],
-        "marker": "o",
-        "markersize": 1.5,
-        "linewidth": 1.0,
-        "label": "VLM-VPM",
-    },
-    "bem": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0, "label": "BEM"},
-    "theory": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0},
-    "reference": {"color": COLORS["reference"], "linestyle": "--", "linewidth": 1.0},
-    "thrust_coefficient": {
-        "color": COLORS["vpm"],
-        "marker": "o",
-        "markersize": 1.5,
-        "linewidth": 1.0,
-        "label": r"$C_T$",
-    },
-    "power_coefficient": {
-        "color": COLORS["vpm"],
-        "marker": "s",
-        "markersize": 1.5,
-        "linewidth": 1.0,
-        "label": r"$C_P$",
-    },
-    "plane_0": {"color": COLORS["vpm"], "linewidth": 1.0},
-    "plane_1": {"color": COLORS["vpm"], "linewidth": 1.0},
-    "plane_2": {"color": COLORS["vpm"], "linewidth": 1.0},
-    "plane_3": {"color": COLORS["vpm"], "linewidth": 1.0},
-    "plane_4": {"color": COLORS["vpm"], "linewidth": 1.0},
-}
-
 REFERENCE_STYLE = {
     "color": COLORS["reference"],
     "linestyle": "--",
@@ -341,14 +155,14 @@ REFERENCE_STRONG_FILL_STYLE = {
 
 
 def get_color(name: str, fallback: str | None = None) -> str:
-    """Return a named color from the central tutorial palette."""
+    """Return a named color from the central palette."""
     if fallback is None:
         fallback = COLORS["reference"]
     return COLORS.get(name, fallback)
 
 
 def get_colormap(name: str) -> str:
-    """Return a named colormap from the central tutorial palette."""
+    """Return a named colormap from the central palette."""
     return COLORMAPS[name]
 
 
@@ -626,24 +440,6 @@ def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
                     f"text overlap between {previous.get_text()!r} and {item.get_text()!r}"
                 )
         painted_text.append((item, bounds))
-
-
-def case_style(name: str) -> dict:
-    """Return the shared style for a vortex-interaction case name."""
-    _, _, variant = name.partition("_")
-    style = VORTEX_INTERACTION_VARIANT_STYLE.get(
-        variant,
-        {"label": variant.replace("_", " ").title(), "color": COLORS["reference"], "marker": "o"},
-    )
-    return {
-        "color": style["color"],
-        "linestyle": "-",
-        "linewidth": LINE_WIDTH,
-        "marker": style["marker"],
-        "markersize": MARKER_SIZE,
-        "markeredgewidth": MARKER_EDGE_WIDTH,
-        "label": style["label"],
-    }
 
 
 def legend_handle_style(style: dict) -> dict:

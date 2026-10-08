@@ -12,7 +12,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-from .postprocess import (
+from assets.postprocess import (
     MERGING_NORMALIZED_END_TIME,
     SCHEME_DRAW_ORDER,
     build_arg_parser,

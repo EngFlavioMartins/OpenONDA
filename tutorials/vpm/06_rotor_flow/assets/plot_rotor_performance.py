@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from ._common import (
+from assets._common import (
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
     bem_reference,

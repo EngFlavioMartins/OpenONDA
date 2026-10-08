@@ -1,0 +1,655 @@
+"""Numerical operations for the VPM trace imposed on the FVM boundary."""
+
+from __future__ import annotations
+
+import logging
+import time
+
+import numpy as np
+
+from openonda.coupler.reporting import boundary_induction_summary, format_coupler_log
+
+logger = logging.getLogger("coupler")
+
+_MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
+
+
+def _record_boundary_induction(coupler, phase: str, summary: dict) -> None:
+    if phase == "initial":
+        coupler._last_boundary_induction_diagnostics = {"initial": summary}
+        return
+    diagnostics = getattr(coupler, "_last_boundary_induction_diagnostics", None)
+    if diagnostics is None:
+        diagnostics = coupler._last_boundary_induction_diagnostics = {}
+    refresh = diagnostics.setdefault("refresh", {"calls": 0, "execution_backends": {}})
+    refresh["calls"] += 1
+    backend = summary["execution_backend"] or "unspecified"
+    counts = refresh["execution_backends"]
+    counts[backend] = counts.get(backend, 0) + 1
+    for name, value in summary.items():
+        if name.endswith("_seconds"):
+            refresh[name] = refresh.get(name, 0.0) + value
+    refresh["last"] = summary
+
+
+def outflow_axis_sign(freestream_velocity: np.ndarray) -> tuple[int, float]:
+    """Return the box axis and sign most closely aligned with the freestream."""
+    velocity = np.asarray(freestream_velocity, dtype=np.float64).reshape(-1)
+    if velocity.size != 3 or not np.any(velocity != 0.0):
+        return 0, 1.0
+    axis = int(np.argmax(np.abs(velocity)))
+    return axis, float(np.sign(velocity[axis]))
+
+
+def _log_outflow_velocity(
+    face_centre: np.ndarray,
+    velocity: np.ndarray,
+    *,
+    freestream_velocity: np.ndarray,
+    fvm_box: np.ndarray,
+) -> None:
+    """Log the streamwise velocity on the downstream face of the FVM box."""
+    axis, sign = outflow_axis_sign(freestream_velocity)
+    freestream_speed = float(np.linalg.norm(freestream_velocity)) + 1.0e-30
+    face_lo, face_hi = fvm_box[2 * axis], fvm_box[2 * axis + 1]
+    if sign >= 0.0:
+        mask = face_centre[:, axis] >= face_hi - 1.0e-6
+    else:
+        mask = face_centre[:, axis] <= face_lo + 1.0e-6
+    if not mask.any():
+        return
+    streamwise_velocity = velocity[mask] @ (np.asarray(freestream_velocity) / freestream_speed)
+    face_name = f"{'xyz'[axis]}{'+' if sign >= 0.0 else '-'}"
+    logger.info(
+        format_coupler_log(
+            f"vpm target at outflow, face {face_name}",
+            ("faces", f"{int(mask.sum()):,}"),
+            (
+                "streamwise velocity, min",
+                f"{streamwise_velocity.min() / freestream_speed:.3f}",
+                "U_inf",
+            ),
+            (
+                "streamwise velocity, mean",
+                f"{streamwise_velocity.mean() / freestream_speed:.3f}",
+                "U_inf",
+            ),
+            (
+                "streamwise velocity, max",
+                f"{streamwise_velocity.max() / freestream_speed:.3f}",
+                "U_inf",
+            ),
+        )
+    )
+
+
+def boundary_flux_tolerance(particle_spacing: float, fvm_box: np.ndarray) -> float:
+    """Return the resolution-based allowance for the dimensionless flux residual.
+
+    The face-centre trace is a second-order surface quadrature.  Its expected
+    normalized residual therefore scales as ``(h/L)^2``.  The allowance is
+    bounded above by one percent so a genuinely non-solenoidal upstream field
+    still stops the coupled run instead of being silently projected away.
+    """
+    spacing = float(particle_spacing)
+    if not np.isfinite(spacing) or spacing <= 0.0:
+        raise ValueError("particle_spacing must be finite and positive")
+    bounds = np.asarray(fvm_box, dtype=np.float64).reshape(6)
+    extent = bounds[1::2] - bounds[::2]
+    length = float(np.min(extent))
+    if length <= 0.0:
+        raise ValueError("FVM box extents must be positive")
+    second_order = (spacing / length) ** 2
+    return float(
+        max(
+            4096.0 * np.finfo(float).eps,
+            min(second_order, _MAX_BOUNDARY_FLUX_TOLERANCE),
+        )
+    )
+
+
+def tangential_normal_velocity_gradient(
+    target_velocity_gradient: np.ndarray, face_normal: np.ndarray
+) -> np.ndarray:
+    r"""Return the tangential component of ``du/dn`` on each boundary face.
+
+    The VPM Jacobian uses ``J[i,j] = d(u_i)/d(x_j)``, hence ``du/dn = J n``.
+    """
+    normal = np.asarray(face_normal, dtype=np.float64).reshape(-1, 3)
+    jacobian = np.asarray(target_velocity_gradient, dtype=np.float64)
+    if jacobian.size != 9 * len(normal):
+        raise ValueError("VPM velocity-gradient count does not match boundary faces")
+    jacobian = jacobian.reshape(-1, 3, 3)
+    if not np.all(np.isfinite(jacobian)):
+        raise RuntimeError("VPM target-gradient evaluation returned non-finite data")
+    normal_velocity_gradient = np.einsum("fij,fj->fi", jacobian, normal)
+    return (
+        normal_velocity_gradient
+        - np.einsum("fi,fi->f", normal_velocity_gradient, normal)[:, np.newaxis] * normal
+    )
+
+
+def evaluate_vpm_velocity(
+    vpm,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    face_area: np.ndarray,
+    *,
+    freestream_velocity: np.ndarray,
+    fvm_box: np.ndarray,
+    particle_spacing: float,
+    evaluated_velocity: np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, float]]:
+    """Evaluate the VPM trace and correct only a discretization-scale flux residual.
+
+    Face coordinates are in metres, velocities in m/s, normal are unit vectors,
+    and areas are in m². The returned trace has shape ``(N, 3)``.
+    """
+    normal = np.asarray(face_normal, dtype=np.float64).reshape(-1, 3)
+    areas = np.asarray(face_area, dtype=np.float64).reshape(-1)
+    if evaluated_velocity is None:
+        evaluated_velocity = vpm.compute_velocity_at_points(
+            face_centre,
+            include_freestream=True,
+            zone_mask=None,
+            include_body=True,
+        )
+    velocity = np.asarray(evaluated_velocity, dtype=np.float64).reshape(-1, 3)
+    if len(velocity) != len(face_centre):
+        raise ValueError(
+            "evaluated VPM boundary-condition velocity count does not match boundary faces"
+        )
+
+    raw_flux = 0.0
+    raw_relative = 0.0
+    correction = 0.0
+    corrected_flux = 0.0
+    tolerance = boundary_flux_tolerance(particle_spacing, fvm_box)
+    total_area = float(np.sum(areas))
+    if areas.size:
+        raw_flux = float(np.dot(np.einsum("ij,ij->i", velocity, normal), areas))
+        if total_area > 0.0:
+            freestream_speed = float(np.linalg.norm(freestream_velocity))
+            scale = (
+                max(
+                    freestream_speed,
+                    float(np.sqrt(np.mean(np.einsum("ij,ij->i", velocity, velocity)))),
+                    np.finfo(float).tiny,
+                )
+                * total_area
+            )
+            raw_relative = abs(raw_flux) / scale
+            if raw_relative > tolerance:
+                raise RuntimeError(
+                    "VPM boundary trace has a physically significant net flux: "
+                    f"|integral(u.n dA)|/(U_ref A_coupling)={raw_relative:.3e}, "
+                    f"acceptance limit={tolerance:.3e}. Refusing to hide the "
+                    "upstream boundary-field error with a projection."
+                )
+            correction = raw_flux / total_area
+            velocity = velocity - correction * normal
+        corrected_flux = float(np.dot(np.einsum("ij,ij->i", velocity, normal), areas))
+        logger.info(
+            format_coupler_log(
+                "vpm boundary flux",
+                ("particles", f"{int(vpm.particles.n_particles_total):,}"),
+                ("raw flux", f"{raw_flux:.3e}", "m^3/s"),
+                ("relative to inflow", f"{raw_relative:.3e}"),
+                ("acceptance limit", f"{tolerance:.3e}"),
+                ("correction, normal velocity", f"{correction:.3e}", "m/s"),
+                ("residual flux", f"{corrected_flux:.3e}", "m^3/s"),
+            )
+        )
+
+    _log_outflow_velocity(
+        face_centre,
+        velocity,
+        freestream_velocity=np.asarray(freestream_velocity, dtype=np.float64),
+        fvm_box=np.asarray(fvm_box, dtype=np.float64),
+    )
+    diagnostics = {
+        "raw_mismatch": abs(raw_flux),
+        "raw_relative": raw_relative,
+        "acceptance_limit": tolerance,
+        "applied_correction": abs(correction),
+        "corrected_mismatch": abs(corrected_flux),
+    }
+    return velocity, diagnostics
+
+
+def evaluate_vpm_boundary(
+    coupler,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    face_area: np.ndarray,
+):
+    """Construct the next VPM boundary-condition trace."""
+    boundary_condition_wall_time = time.perf_counter()
+    vpm_boundary_condition_velocity = None
+    tangential_normal_gradient: np.ndarray | None = None
+    from .parallel import collective_phase
+
+    comm = getattr(getattr(coupler.fvm_solver, "parallel", None), "comm", None)
+    with collective_phase(comm, "VPM boundary evaluation"):
+        if coupler._is_master:
+            assert coupler.vpm_solver is not None
+            query_started = time.perf_counter()
+            vpm_boundary_condition_velocity, tangential_normal_gradient = (
+                coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
+                    face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
+                )
+            )
+            _record_boundary_induction(
+                coupler,
+                "initial",
+                boundary_induction_summary(
+                    coupler.vpm_solver,
+                    target_count=len(face_centre),
+                    wall_seconds=time.perf_counter() - query_started,
+                ),
+            )
+            vpm_boundary_condition_velocity = np.asarray(
+                vpm_boundary_condition_velocity, dtype=np.float64
+            ).reshape(-1, 3)
+            if vpm_boundary_condition_velocity.shape != face_centre.shape:
+                raise RuntimeError(
+                    "VPM target evaluation returned an invalid shape: "
+                    f"expected {face_centre.shape}, got {vpm_boundary_condition_velocity.shape}"
+                )
+            if not np.all(np.isfinite(vpm_boundary_condition_velocity)):
+                raise RuntimeError("VPM target evaluation returned non-finite velocities")
+            freestream_speed = float(np.linalg.norm(coupler.freestream_velocity))
+            if (
+                len(face_centre) > 0
+                and freestream_speed > 0.0
+                and float(np.max(np.linalg.norm(vpm_boundary_condition_velocity, axis=1)))
+                <= 1.0e-6 * freestream_speed
+            ):
+                raise RuntimeError(
+                    "VPM target evaluation returned an identically zero field despite a "
+                    "nonzero freestream; aborting before the corrupted VPM boundary-condition data reaches the FVM"
+                )
+        if coupler._is_master:
+            assert coupler.fvm_box is not None
+            velocity_boundary_condition, coupler._last_vpm_boundary_condition_flux_diagnostics = (
+                evaluate_vpm_velocity(
+                    coupler.vpm_solver,
+                    face_centre,
+                    face_normal,
+                    face_area,
+                    freestream_velocity=coupler.freestream_velocity,
+                    fvm_box=coupler.fvm_box,
+                    particle_spacing=coupler.vpm_particle_spacing,
+                    evaluated_velocity=vpm_boundary_condition_velocity,
+                )
+            )
+            if coupler._velocity_boundary_condition_old is None:
+                coupler._velocity_boundary_condition_old = velocity_boundary_condition.copy()
+            assert tangential_normal_gradient is not None
+            normal_velocity_boundary_condition = np.einsum(
+                "ij,ij->i", velocity_boundary_condition, face_normal
+            )
+            tangential_gradient_boundary_condition = tangential_normal_gradient
+            coupler._normal_velocity_boundary_condition = normal_velocity_boundary_condition
+            coupler._tangential_gradient_boundary_condition = tangential_gradient_boundary_condition
+            if coupler._normal_velocity_boundary_condition_old is None:
+                coupler._normal_velocity_boundary_condition_old = (
+                    normal_velocity_boundary_condition.copy()
+                )
+            if coupler._tangential_gradient_boundary_condition_old is None:
+                coupler._tangential_gradient_boundary_condition_old = (
+                    tangential_gradient_boundary_condition.copy()
+                )
+        else:
+            velocity_boundary_condition = np.zeros_like(face_centre)
+            if coupler._velocity_boundary_condition_old is None:
+                coupler._velocity_boundary_condition_old = np.zeros_like(face_centre)
+            coupler._normal_velocity_boundary_condition = np.zeros(
+                len(face_centre), dtype=np.float64
+            )
+            coupler._tangential_gradient_boundary_condition = np.zeros_like(face_centre)
+            if coupler._normal_velocity_boundary_condition_old is None:
+                coupler._normal_velocity_boundary_condition_old = (
+                    coupler._normal_velocity_boundary_condition.copy()
+                )
+            if coupler._tangential_gradient_boundary_condition_old is None:
+                coupler._tangential_gradient_boundary_condition_old = (
+                    coupler._tangential_gradient_boundary_condition.copy()
+                )
+    boundary_condition_wall_time = time.perf_counter() - boundary_condition_wall_time
+    return (
+        coupler._velocity_boundary_condition_old,
+        velocity_boundary_condition,
+        boundary_condition_wall_time,
+    )
+
+
+def initialize_vpm_boundary_history(
+    coupler,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    face_area: np.ndarray,
+) -> None:
+    """Evaluate the physical ``t_n`` trace before the first VPM advance."""
+    needs_boundary_history = coupler._velocity_boundary_condition_old is None
+    # Every rank enters the same boundary evaluation after restart.
+    comm = getattr(getattr(coupler.fvm_solver, "parallel", None), "comm", None)
+    if comm is not None and comm.Get_size() > 1:
+        needs_boundary_history = comm.bcast(
+            needs_boundary_history if coupler._is_master else None, root=0
+        )
+    if not needs_boundary_history:
+        return
+    evaluate_vpm_boundary(coupler, face_centre, face_normal, face_area)
+    logger.info(format_coupler_log("coupling history, initial time level stored"))
+
+
+def advance_fvm(
+    coupler,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    face_area: np.ndarray,
+    velocity_boundary_condition_old: np.ndarray,
+    velocity_boundary_condition: np.ndarray,
+) -> float:
+    """Run FVM sub-cycles and refresh its velocity snapshot."""
+    fvm_wall_time_start = time.perf_counter()
+    advance_fvm_substeps(
+        coupler,
+        coupler.setup.coupling_patch,
+        face_centre,
+        face_normal,
+        face_area,
+        velocity_boundary_condition_old,
+        velocity_boundary_condition,
+        coupler._normal_velocity_boundary_condition_old,
+        coupler._normal_velocity_boundary_condition,
+        coupler._tangential_gradient_boundary_condition_old,
+        coupler._tangential_gradient_boundary_condition,
+    )
+    _record_fvm_boundary_trace(
+        coupler,
+        face_centre,
+        face_normal,
+        velocity_boundary_condition,
+    )
+    if coupler._is_master:
+        coupler._velocity_boundary_condition_old = velocity_boundary_condition
+        if coupler._normal_velocity_boundary_condition is not None:
+            coupler._normal_velocity_boundary_condition_old = (
+                coupler._normal_velocity_boundary_condition
+            )
+        if coupler._tangential_gradient_boundary_condition is not None:
+            coupler._tangential_gradient_boundary_condition_old = (
+                coupler._tangential_gradient_boundary_condition
+            )
+    return time.perf_counter() - fvm_wall_time_start
+
+
+def update_boundary_history_after_replacement(
+    coupler,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    face_area: np.ndarray,
+) -> None:
+    """Re-evaluate the VPM boundary-condition trace from the corrected particle field.
+
+    Otherwise each interval starts from a stale prediction. Not a Picard
+    sweep: the FVM is not re-solved.
+    """
+    if coupler._is_master:
+        assert coupler.vpm_solver is not None
+        tangential_normal_gradient: np.ndarray | None = None
+        query_started = time.perf_counter()
+        corrected_boundary, tangential_normal_gradient = (
+            coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
+                face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
+            )
+        )
+        _record_boundary_induction(
+            coupler,
+            "refresh",
+            boundary_induction_summary(
+                coupler.vpm_solver,
+                target_count=len(face_centre),
+                wall_seconds=time.perf_counter() - query_started,
+            ),
+        )
+        corrected_boundary = np.asarray(corrected_boundary, dtype=np.float64).reshape(-1, 3)
+        if corrected_boundary.shape != face_centre.shape or not np.all(
+            np.isfinite(corrected_boundary)
+        ):
+            raise RuntimeError(
+                "VPM boundary-condition resynchronisation returned invalid velocities"
+            )
+
+        assert coupler.fvm_box is not None
+        corrected_boundary, coupler._last_vpm_boundary_condition_flux_diagnostics = (
+            evaluate_vpm_velocity(
+                coupler.vpm_solver,
+                face_centre,
+                face_normal,
+                face_area,
+                freestream_velocity=coupler.freestream_velocity,
+                fvm_box=coupler.fvm_box,
+                particle_spacing=coupler.vpm_particle_spacing,
+                evaluated_velocity=corrected_boundary,
+            )
+        )
+        freestream_speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
+        drift = (
+            float(
+                np.max(
+                    np.linalg.norm(
+                        corrected_boundary - coupler._velocity_boundary_condition_old, axis=1
+                    )
+                )
+            )
+            / freestream_speed
+            if coupler._velocity_boundary_condition_old is not None and len(face_centre)
+            else 0.0
+        )
+        coupler._velocity_boundary_condition_old = corrected_boundary
+        assert tangential_normal_gradient is not None
+        coupler._normal_velocity_boundary_condition_old = np.einsum(
+            "ij,ij->i", corrected_boundary, face_normal
+        )
+        coupler._tangential_gradient_boundary_condition_old = tangential_normal_gradient
+        logger.info(
+            format_coupler_log(
+                "boundary update, post transfer",
+                ("velocity difference, max", f"{drift:.3e}", "U_inf"),
+            )
+        )
+
+
+def _record_fvm_boundary_trace(
+    coupler,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    vpm_target_velocity: np.ndarray,
+) -> None:
+    """Record the actual reconstructed FVM face trace, not merely its input data."""
+    assert coupler.fvm_solver is not None
+    face_velocity = coupler.fvm_solver.get_boundary_face_velocity(coupler.setup.coupling_patch)
+    if not coupler._is_master:
+        return
+    difference = np.asarray(face_velocity) - np.asarray(vpm_target_velocity)
+    speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1.0e-30
+    magnitude = np.linalg.norm(difference, axis=1)
+    normal_mismatch = np.abs(np.einsum("ij,ij->i", difference, face_normal))
+    axis, sign = outflow_axis_sign(coupler.freestream_velocity)
+    assert coupler.fvm_box is not None
+    boundary_coordinate = coupler.fvm_box[2 * axis + (1 if sign >= 0.0 else 0)]
+    if sign >= 0.0:
+        outflow = face_centre[:, axis] >= boundary_coordinate - 1.0e-6
+    else:
+        outflow = face_centre[:, axis] <= boundary_coordinate + 1.0e-6
+    outflow_magnitude = magnitude[outflow]
+    diagnostics = {
+        "mean_velocity_mismatch": float(np.mean(magnitude) / speed) if len(magnitude) else 0.0,
+        "maximum_velocity_mismatch": float(np.max(magnitude) / speed) if len(magnitude) else 0.0,
+        "maximum_normal_velocity_mismatch": (
+            float(np.max(normal_mismatch) / speed) if len(normal_mismatch) else 0.0
+        ),
+        "mean_outflow_velocity_mismatch": (
+            float(np.mean(outflow_magnitude) / speed) if len(outflow_magnitude) else 0.0
+        ),
+        "maximum_outflow_velocity_mismatch": (
+            float(np.max(outflow_magnitude) / speed) if len(outflow_magnitude) else 0.0
+        ),
+    }
+    coupler._last_fvm_boundary_trace_diagnostics = diagnostics
+    logger.info(
+        format_coupler_log(
+            "actual fvm boundary trace",
+            ("velocity mismatch, mean", f"{diagnostics['mean_velocity_mismatch']:.3e}", "U_inf"),
+            (
+                "velocity mismatch, max",
+                f"{diagnostics['maximum_velocity_mismatch']:.3e}",
+                "U_inf",
+            ),
+            (
+                "normal mismatch, max",
+                f"{diagnostics['maximum_normal_velocity_mismatch']:.3e}",
+                "U_inf",
+            ),
+            (
+                "outflow mismatch, mean",
+                f"{diagnostics['mean_outflow_velocity_mismatch']:.3e}",
+                "U_inf",
+            ),
+            (
+                "outflow mismatch, max",
+                f"{diagnostics['maximum_outflow_velocity_mismatch']:.3e}",
+                "U_inf",
+            ),
+        )
+    )
+
+
+def apply_fvm_boundary(
+    coupler,
+    patch: str,
+    prescribed_velocity: np.ndarray,
+    normal_velocity: np.ndarray | None = None,
+    tangential_gradient: np.ndarray | None = None,
+) -> None:
+    """Apply the configured VPM boundary condition trace and advance one FVM step."""
+    assert coupler.fvm_solver is not None
+    freestream_velocity = np.asarray(coupler.freestream_velocity, dtype=np.float64)
+    freestream_speed = float(np.linalg.norm(freestream_velocity)) + 1e-30
+    prescribed_velocity = np.ascontiguousarray(prescribed_velocity, dtype=np.float64)
+    if normal_velocity is None or tangential_gradient is None:
+        raise RuntimeError(
+            "Mixed vorticity boundaries require normal velocity and tangential gradient"
+        )
+    coupler.fvm_solver.set_normal_velocity_tangential_gradient_boundary_condition(
+        np.ascontiguousarray(normal_velocity, dtype=np.float64),
+        np.ascontiguousarray(tangential_gradient, dtype=np.float64),
+        patch,
+    )
+    coupler.fvm_solver.set_flux_consistent_pressure_boundary_condition(patch)
+
+    step_time_step_size = coupler.fvm_solver.time_step_size
+    step_wall_time_start = time.perf_counter()
+    coupler.fvm_solver.logger.step_begin(
+        coupler.fvm_solver.step + 1,
+        coupler.fvm_solver.time + step_time_step_size,
+        step_time_step_size,
+    )
+
+    coupler.fvm_solver.solve_pimple()
+
+    time_config = coupler.fvm_solver._time_config
+    adjustment = time_config.adjustment
+    coupler.fvm_solver.logger.courant_info(
+        coupler.fvm_solver.max_courant_number,
+        adjustment.maximum if adjustment is not None else None,
+    )
+
+    if getattr(coupler.setup, "interface_iterations", 1) > 1:
+        coupler.fvm_solver.advance_time(defer_output=True)
+    else:
+        coupler.fvm_solver.advance_time()
+    coupler.fvm_solver.logger.step_end(time.perf_counter() - step_wall_time_start)
+
+    if prescribed_velocity.shape[0] > 0:
+        streamwise = prescribed_velocity @ (freestream_velocity / freestream_speed)
+        logger.info(
+            format_coupler_log(
+                f"vpm target, fvm substep {int(coupler.fvm_solver.step):,}",
+                ("streamwise velocity, min", f"{streamwise.min() / freestream_speed:.3f}", "U_inf"),
+                (
+                    "streamwise velocity, mean",
+                    f"{streamwise.mean() / freestream_speed:.3f}",
+                    "U_inf",
+                ),
+                ("streamwise velocity, max", f"{streamwise.max() / freestream_speed:.3f}", "U_inf"),
+            )
+        )
+
+
+def advance_fvm_substeps(
+    coupler,
+    patch: str,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    face_area: np.ndarray,
+    previous_velocity: np.ndarray,
+    next_velocity: np.ndarray,
+    previous_normal_velocity: np.ndarray | None = None,
+    next_normal_velocity: np.ndarray | None = None,
+    previous_tangential_gradient: np.ndarray | None = None,
+    next_tangential_gradient: np.ndarray | None = None,
+) -> None:
+    """Advance FVM substeps with interpolated VPM boundary condition data."""
+    n_substeps = coupler.n_fvm_substeps
+    freestream_speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
+    if n_substeps > 1 and next_velocity.shape[0] > 0:
+        boundary_velocity_difference_ratio = (
+            float(np.max(np.linalg.norm(next_velocity - previous_velocity, axis=1)))
+            / freestream_speed
+        )
+        is_large_boundary_velocity_difference = boundary_velocity_difference_ratio > 0.5
+        topic = "time interpolation"
+        if is_large_boundary_velocity_difference:
+            topic = "warning  time interpolation, boundary velocity change exceeds limit"
+        logger.log(
+            logging.WARNING if is_large_boundary_velocity_difference else logging.INFO,
+            format_coupler_log(
+                topic,
+                ("fvm substeps", n_substeps),
+                ("fvm time step", f"{coupler.fvm_time_step_size:.3e}", "s"),
+                (
+                    "boundary velocity change",
+                    f"{boundary_velocity_difference_ratio:.3f}",
+                    "U_inf",
+                ),
+                ("warning limit", "0.500", "U_inf"),
+            ),
+        )
+
+    for substep in range(n_substeps):
+        alpha = (substep + 1) / n_substeps
+        interpolated_velocity = (1.0 - alpha) * previous_velocity + alpha * next_velocity
+        normal_velocity = None
+        interpolated_tangential_gradient = None
+        if (
+            previous_normal_velocity is None
+            or next_normal_velocity is None
+            or previous_tangential_gradient is None
+            or next_tangential_gradient is None
+        ):
+            raise RuntimeError("vorticity_mixed subcycling received an incomplete trace")
+        normal_velocity = (1.0 - alpha) * previous_normal_velocity + alpha * next_normal_velocity
+        interpolated_tangential_gradient = (
+            1.0 - alpha
+        ) * previous_tangential_gradient + alpha * next_tangential_gradient
+        apply_fvm_boundary(
+            coupler,
+            patch,
+            interpolated_velocity,
+            normal_velocity=normal_velocity,
+            tangential_gradient=interpolated_tangential_gradient,
+        )

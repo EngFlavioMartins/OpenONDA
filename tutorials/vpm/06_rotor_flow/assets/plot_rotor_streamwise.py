@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 
 from openonda.plotting import centered_subplots_adjust
-from openonda.results import read_csv_table
-from source.solvers.vpm.io.postprocess import profile_mean
+from assets.output_files import read_csv_table
+from openonda.vpm.io.postprocess import profile_mean
 
-from ..setup import STREAMWISE_STATIONS
-from ._common import (
+from setup import STREAMWISE_STATIONS
+from assets._common import (
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
     accepted_history,

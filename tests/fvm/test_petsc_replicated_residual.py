@@ -10,7 +10,7 @@ from scipy.sparse import diags, eye, kron
 pytest.importorskip("petsc4py")
 from petsc4py import PETSc
 
-from source.solvers.fvm.solve.linear_interface import (
+from openonda.fvm.solve.linear_interface import (
     _solve_petsc,
     normalized_residual_target,
     solve_linear_system,

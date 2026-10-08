@@ -121,29 +121,21 @@ Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/development/d
 "Bug Reports" = "https://github.com/EngFlavioMartins/OpenONDA/issues"
 
 [tool.setuptools.dynamic]
-version = {attr = "source.version.__version__"}
+version = {attr = "openonda.core.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["openonda*", "source*", "tutorials*"]
-exclude = ["tests*", "examples*", "*.solution*", "*.samples*", "*.figures*", "*.study_results*", "*.previous_runs*", "*.drag_recovery*", "*.animation*", "*.frames*", "*.__pycache__*"]
+include = ["openonda*"]
+exclude = ["tests*", "*.__pycache__*"]
 
 [tool.setuptools]
 include-package-data = false
 
 [tool.setuptools.package-data]
-"openonda" = ["py.typed", "_resources/*.ttf"]
-"source" = ["py.typed", "**/*.md", "**/*.json"]
-"tutorials" = ["**/*.sh", "**/*.md", "**/*.json", "**/*.csv", "**/*.stl", "**/*.vsp3", "vpm/05_delta_wing/assets/delta_wing_30fps.gif"]
+"openonda" = ["py.typed", "_resources/*.ttf", "*/**/*.md", "*/**/*.json"]
 
 [tool.setuptools.exclude-package-data]
-"*" = [
-    "**/solution/*", "**/solutions/*", "**/samples/*", "**/figures/*",
-    "**/solution_*/*", "**/solutions_*/*",
-    "**/study_results/*", "**/animation/*", "**/assets/results/*", "**/__pycache__/*",
-    "**/previous_runs/*", "**/drag_recovery/*", "**/frames/*",
-    "**/run_manifest.json", "**/paraview_state.py", "**/paraview_tracer.py",
-]
+"*" = ["**/__pycache__/*"]
 
 # Development tools configuration
 [tool.ruff]
@@ -203,14 +195,14 @@ disable_error_code = ["valid-type"]
 # When running mypy on coupler/, ignore errors in imported solver code
 # so that only genuine coupler/ issues are reported.
 [[tool.mypy.overrides]]
-module = "source.solvers.fvm.*"
+module = "openonda.fvm.*"
 ignore_errors = true
 
 [tool.ty]
 
 [tool.ty.environment]
 python-version = "3.11"
-root = ["source/"]
+root = ["."]
 
 [tool.ty.rules]
 unresolved-import = "ignore"
@@ -240,8 +232,8 @@ missing-argument = "ignore"
 # same reason [tool.ty] / [tool.mypy] suppress it.
 [tool.pyrefly]
 project-includes = [
-    "source/solvers/fvm",
-    "source/coupler",
+    "openonda/fvm",
+    "openonda/coupler",
 ]
 project-excludes = [
     "**/__pycache__",
@@ -265,7 +257,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["source"]
+source = ["openonda"]
 omit = [
     "*/tests/*",
     "*/examples/*",
@@ -291,7 +283,7 @@ max_complexity = 15
 exclude = ["tests/*", "tutorials/*", "scripts/*"]
 
 [tool.skylos]
-include = ["source/"]
+include = ["openonda/"]
 exclude = ["tests/", "tutorials/", "scripts/", "**/__pycache__/"]
 min_confidence = 80
 

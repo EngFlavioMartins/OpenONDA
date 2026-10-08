@@ -9,11 +9,11 @@ import pytest
 
 from openonda import vpm
 from tests.vpm._flat_plate_geometry import create_flat_plate
-from tests.vpm.test_backup_storage import _add_counter_rotating_pair, _case
+from tests.vpm._vpm_case import add_counter_rotating_pair, small_case
 
 
 def _build(directory, with_vlm):
-    case = _case(directory)
+    case = small_case(directory)
     if with_vlm:
         vlm = vpm.VLMSetup(
             surfaces=(
@@ -56,13 +56,13 @@ def _state(directory):
 @pytest.mark.parametrize("with_vlm", [False, True])
 def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monkeypatch, with_vlm):
     reference = vpm.VPMSolver(_build(tmp_path / "reference", with_vlm))
-    _add_counter_rotating_pair(reference)
+    add_counter_rotating_pair(reference)
     reference.run(start_from="latest")
     expected = _state(tmp_path / "reference")
 
     directory = tmp_path / "continued"
     interrupted = vpm.VPMSolver(_build(directory, with_vlm))
-    _add_counter_rotating_pair(interrupted)
+    add_counter_rotating_pair(interrupted)
     advance = interrupted.advance
 
     def fail_after_unsaved_output():
@@ -73,7 +73,7 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monke
     interrupted.advance = fail_after_unsaved_output
     with pytest.raises(RuntimeError, match="interrupted after samples"):
         interrupted.run(start_from="latest")
-    log = (directory / "solution/vpm.log").read_text()
+    log = (directory / "solution/vpm.log").read_text(encoding="utf-8")
     assert not (directory / "solution/vpm/vpm_000003.h5").exists()
     # An unfinished newer checkpoint must never win discovery.
     (directory / "solution/vpm/vpm_999999.h5.tmp").write_text("unfinished")
@@ -88,7 +88,7 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monke
     for name, values in _state(directory).items():
         if values.dtype.kind in "fiu":
             np.testing.assert_allclose(values, expected[name], rtol=1e-6, atol=1e-8)
-    assert (directory / "solution/vpm.log").read_text().startswith(log)
+    assert (directory / "solution/vpm.log").read_text(encoding="utf-8").startswith(log)
     for path in (directory / "samples").glob("*.csv"):
         actual = pd.read_csv(path)
         wanted = pd.read_csv(tmp_path / "reference/samples" / path.name)
@@ -96,7 +96,7 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monke
     histories = {path: path.read_bytes() for path in (directory / "samples").glob("*.csv")}
     backup = directory / "solution/vpm/vpm_000003.h5"
     stamp = backup.stat().st_mtime_ns
-    from source.solvers.vpm.io.backup import _BackupIO
+    from openonda.vpm.io.backup import _BackupIO
 
     def reject_numerical_load(*args, **kwargs):
         raise AssertionError("a completed continuation must not allocate particle fields")
@@ -107,7 +107,7 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monke
     assert done.step == 3
     assert backup.stat().st_mtime_ns == stamp
     assert all(path.read_bytes() == data for path, data in histories.items())
-    assert list((directory / "samples/restart_history").glob("before-*"))
+    assert not (directory / "samples/restart_history").exists()
 
 
 def test_latest_does_not_fall_back_from_corrupt_committed_backup(tmp_path):
@@ -123,12 +123,12 @@ def test_latest_does_not_fall_back_from_corrupt_committed_backup(tmp_path):
 def test_initial_ignores_old_native_backup_and_restarts_output_history(tmp_path):
     case = _build(tmp_path, False)
     previous = vpm.VPMSolver(case)
-    _add_counter_rotating_pair(previous)
+    add_counter_rotating_pair(previous)
     previous.run(start_from="latest")
     assert previous.step == 3
 
     fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
-    _add_counter_rotating_pair(fresh)
+    add_counter_rotating_pair(fresh)
     fresh.run(start_from="initial")
     assert fresh.step == 1
     table = pd.read_csv(tmp_path / "samples/flow_integrals.csv")
@@ -145,25 +145,23 @@ def test_initial_ignores_corrupt_old_backup(tmp_path):
     backup.parent.mkdir(parents=True)
     backup.write_text("not a native backup")
     solver = vpm.VPMSolver(replace(_build(tmp_path, False), run=vpm.RunPlan(steps=1)))
-    _add_counter_rotating_pair(solver)
+    add_counter_rotating_pair(solver)
     solver.run(start_from="initial")
     assert solver.step == 1
-    assert list(
-        (tmp_path / "solution/restart_history").glob("initial-before-*/solution/vpm/vpm_000010.h5")
-    )
+    assert not backup.exists()
 
 
 def test_latest_without_backup_replaces_prior_output_history(tmp_path):
     case = _build(tmp_path, False)
     previous = vpm.VPMSolver(case)
-    _add_counter_rotating_pair(previous)
+    add_counter_rotating_pair(previous)
     previous.run(start_from="latest")
-    from source.solution_layout import vpm_backup_files
+    from openonda.core.solution_layout import vpm_backup_files
 
     for path in vpm_backup_files(tmp_path / "solution"):
         path.unlink()
     fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
-    _add_counter_rotating_pair(fresh)
+    add_counter_rotating_pair(fresh)
     fresh.run(start_from="latest")
     assert fresh.step == 1
     assert pd.read_csv(tmp_path / "samples/flow_integrals.csv")["step"].tolist() == [0, 1]

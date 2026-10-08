@@ -5,6 +5,7 @@ import pytest
 import taichi as ti
 
 from openonda import vpm
+from openonda.core.slip_slab_images import slab_image_lattice
 
 
 def _m4(distance):
@@ -175,24 +176,18 @@ def test_retreated_slab_diffusion_matches_padded_mirror_reference(tmp_path, phas
             0,
             1,
         )
-        for plane in (-0.24, 0.24):
-            physics._m4_scatter_slip_image_kernel(
-                position_field,
-                strength_field,
-                physics._grid_a,
-                *map(float, origin),
-                h,
-                nx,
-                ny,
-                nz,
-                0,
-                1,
-                plane,
-            )
+        physics._add_slab_images_kernel(
+            physics._grid_a,
+            physics._grid_b,
+            nx,
+            ny,
+            nz,
+            *slab_image_lattice(origin[2], h, (-0.24, 0.24)),
+        )
         alpha = viscosity * (dt / 2.0) / h**2
         physics._laplacian_step_gpu_kernel(
-            physics._grid_a,
             physics._grid_b,
+            physics._grid_a,
             physics._body_mask_grid,
             alpha,
             nx,
@@ -200,15 +195,15 @@ def test_retreated_slab_diffusion_matches_padded_mirror_reference(tmp_path, phas
             nz,
         )
         physics._laplacian_step_gpu_kernel(
-            physics._grid_b,
             physics._grid_a,
+            physics._grid_b,
             physics._body_mask_grid,
             alpha,
             nx,
             ny,
             nz,
         )
-        actual = physics._grid_a.to_numpy()[:nx, :ny, :nz]
+        actual = physics._grid_b.to_numpy()[:nx, :ny, :nz]
         reference_origin = origin.astype(np.float64).copy()
         reference_origin[2] -= 3 * h
         reference, _ = _padded_mirror_reference(
@@ -228,5 +223,85 @@ def test_retreated_slab_diffusion_matches_padded_mirror_reference(tmp_path, phas
             rtol=0.0,
             atol=2.0e-6,
         )
+    finally:
+        solver.close()
+
+
+def test_one_layer_slab_diffusion_is_the_two_dimensional_laplacian(tmp_path):
+    h = 0.08
+    viscosity = 1.0 / 150.0
+    dt = 0.12  # two explicit stages, within the three-cell halo
+    planes = (-0.5 * h, 0.5 * h)
+    solver = vpm.VPMSolver(
+        vpm.VPMCase(
+            directory=tmp_path,
+            backup=vpm.Backup(interval_steps=0),
+            numerics=vpm.Numerics(
+                time_step_size=dt,
+                compute_device="CPU",
+                precision="f32",
+                max_n_particles=1024,
+                domain_bounds=(-0.8, 0.8, -0.8, 0.8, *planes),
+                induction=vpm.SlipSlabInduction(
+                    vpm.DirectInduction(), z_min=planes[0], z_max=planes[1]
+                ),
+                viscous=vpm.ViscousConfig.gbd(
+                    particle_spacing=h,
+                    padding=3.0,
+                    kinematic_viscosity=viscosity,
+                ),
+                verbose=False,
+            ),
+        )
+    )
+    try:
+        physics = solver.physics
+        physics.configure_grid_lattice_anchor((0.0, 0.0, 0.0), h)
+
+        # Axial Gaussian vortex on the single particle layer
+        x, y = np.meshgrid(h * np.arange(-4, 5), h * np.arange(-4, 5), indexing="ij")
+        omega = np.exp(-(x**2 + y**2) / (2 * h) ** 2).ravel()
+        count = omega.size
+        position = np.column_stack((x.ravel(), y.ravel(), np.zeros(count)))
+        strength = np.zeros((count, 3))
+        strength[:, 2] = omega * h**3
+        solver.add_vortex_particles(
+            position, np.zeros((count, 3)), strength, np.full(count, h), np.full(count, h**3)
+        )
+        result = physics.gbd_diffusion(
+            solver.particles,
+            time_step_size=dt,
+            particle_spacing=h,
+            kinematic_viscosity=viscosity,
+            regen_threshold=1.0e-30,
+            regen_threshold_mode="absolute",
+        )
+
+        # The same explicit stages of the five-point Laplacian on the active plane
+        grid_min, shape = physics._lattice_aligned_bounds(position, h, 3.0)
+        stages = physics.last_gbd_diffusion_substeps
+        alpha = viscosity * dt / stages / h**2
+        index = np.rint((position[:, :2] - grid_min[:2]) / h).astype(int)
+        reference = np.zeros(shape[:2])
+        reference[index[:, 0], index[:, 1]] = strength[:, 2]
+        for _ in range(stages):
+            padded = np.pad(reference, 1, mode="edge")
+            reference = reference + alpha * (
+                padded[:-2, 1:-1]
+                + padded[2:, 1:-1]
+                + padded[1:-1, :-2]
+                + padded[1:-1, 2:]
+                - 4.0 * reference
+            )
+        nodes = np.rint((result["position"][:, :2] - grid_min[:2]) / h).astype(int)
+        np.testing.assert_allclose(result["position"][:, 2], 0.0, atol=1e-7)
+        np.testing.assert_allclose(result["vortex_strength"][:, :2], 0.0, atol=1e-12)
+        np.testing.assert_allclose(
+            result["vortex_strength"][:, 2],
+            reference[nodes[:, 0], nodes[:, 1]],
+            rtol=1e-5,
+            atol=1e-6 * h**3,
+        )
+        assert stages >= 2 and len(result["position"]) > count
     finally:
         solver.close()

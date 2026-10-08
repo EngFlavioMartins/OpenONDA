@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.coupler.boundary import advance_fvm_substeps
-from source.coupler.vorticity_transfer import VorticityTransfer, required_renewal_buffer_length
+from openonda.coupler.boundary import advance_fvm_substeps
+from openonda.coupler.vorticity_transfer import VorticityTransfer, required_renewal_buffer_length
 
 
 def test_renewal_buffer_covers_release_travel_plus_complete_m4_support():
@@ -57,7 +57,7 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
     ):
         recorded.append((velocity.copy(), normal_velocity.copy(), tangential_gradient.copy()))
 
-    monkeypatch.setattr("source.coupler.boundary.apply_fvm_boundary", record_step)
+    monkeypatch.setattr("openonda.coupler.boundary.apply_fvm_boundary", record_step)
     face_centre = np.zeros((3, 3))
     face_normal = np.tile([1.0, 0.0, 0.0], (3, 1))
     face_area = np.ones(3)

@@ -4,11 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from source.coupler import CouplerSetup, create_coupler
-from source.solvers.fvm import FVMSetup
-import source.solvers.fvm.factory as fvm_factory
-import source.solvers.vpm as vpm_api
-from source.solvers.vpm import Numerics, VPMCase
+from openonda.coupler import CouplerSetup, create_coupler
+from openonda.fvm import FVMSetup
+import openonda.fvm.factory as fvm_factory
+import openonda.vpm as vpm_api
+from openonda.vpm import Numerics, VPMCase
 
 
 @pytest.mark.parametrize("rank", [0, 1])
@@ -106,7 +106,7 @@ def test_driver_uses_the_supplied_fvm_communicator(tmp_path, monkeypatch):
 
 
 def test_worker_receives_local_phase_failure():
-    from source.coupler.parallel import collective_phase
+    from openonda.coupler.parallel import collective_phase
 
     comm = SimpleNamespace(
         Get_size=lambda: 2,

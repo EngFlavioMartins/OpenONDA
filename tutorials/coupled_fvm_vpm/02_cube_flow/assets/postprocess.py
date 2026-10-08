@@ -7,7 +7,7 @@ import numpy as np
 import pyvista as pv
 
 from openonda import plotting as _THEME
-from openonda.results import (
+from assets.output_files import (
     NativeVelocity,
     load_vpm_particles,
     read_csv_table,
@@ -23,6 +23,7 @@ from openonda.saved_times import match_saved_times, same_saved_time
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
+COUPLED_MESH = CASE_DIR / "assets" / "coupled_cube_flow_mesh.npz"
 SAMPLES = CASE_DIR / "samples"
 REFERENCE_SAMPLES = CASE_DIR / "reference_flow/samples/fine"
 _DEFAULT_REFERENCE_SAMPLES = REFERENCE_SAMPLES
@@ -65,11 +66,8 @@ def reference_run():
         name=name,
         solution=root / "solution" / name,
         samples=root / "samples" / name,
+        mesh=root / "assets" / f"{name}_mesh.npz",
     )
-
-
-def _fvm_output_files(solution):
-    return solution / "fvm.pvd", solution / "fvm/mesh.npz"
 
 
 def fluid_points(points):
@@ -198,12 +196,12 @@ def _frame_at_time(frames, time):
 
 def prepare_comparison_fields():
     meshes = {
-        "reference": _fvm_output_files(reference_run().solution)[1],
-        "fvm": _fvm_output_files(SOLUTION)[1],
+        "reference": reference_run().mesh,
+        "fvm": COUPLED_MESH,
     }
     volumes = {
-        "reference": read_pvd_frames(_fvm_output_files(reference_run().solution)[0]),
-        "fvm": read_pvd_frames(_fvm_output_files(SOLUTION)[0]),
+        "reference": read_pvd_frames(reference_run().solution / "fvm.pvd"),
+        "fvm": read_pvd_frames(SOLUTION / "fvm.pvd"),
     }
     slices = slice_frames("fvm")
     times = common_times(

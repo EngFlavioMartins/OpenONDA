@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import numpy as np
 
-from ._common import (  # noqa: E402
+from assets._common import (  # noqa: E402
     COLORMAPS,
     FIGURES_DIR,
     SOLUTION_DIR,

@@ -132,7 +132,10 @@ cat "$INSTALL_TEST_ARCHIVE" > "$destination"
 @pytest.mark.parametrize("failure", ["", "conda", "tex", "package"])
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
 @pytest.mark.parametrize("egl_dirs", [None, "", "/custom/gpu"])
-def test_sourced_install_activates_only_after_success(tmp_path, failure, shell, egl_dirs):
+@pytest.mark.parametrize("conda_in_shell", [True, False])
+def test_sourced_install_activates_only_after_success(
+    tmp_path, failure, shell, egl_dirs, conda_in_shell
+):
     shell_executable = shutil.which(shell)
     if shell_executable is None:
         pytest.skip(f"{shell} is not installed")
@@ -140,7 +143,8 @@ def test_sourced_install_activates_only_after_success(tmp_path, failure, shell, 
     (checkout / "scripts/install").mkdir(parents=True)
     shutil.copy(ROOT / "install.sh", checkout / "install.sh")
     shutil.copy(ROOT / "scripts/install/install_conda.sh", checkout / "scripts/install")
-    conda_root = tmp_path / "conda with spaces"
+    home = tmp_path / "home with spaces"
+    conda_root = home / "miniforge3"
     environment = conda_root / "envs/OpenONDA"
     mesa = environment / "share/glvnd/egl_vendor.d/50_mesa.json"
     mesa.parent.mkdir(parents=True)
@@ -158,7 +162,8 @@ esac
     )
     hook = conda_root / "etc/profile.d/conda.sh"
     hook.parent.mkdir(parents=True)
-    hook.write_text("""conda() {
+    hook.write_text("""export CONDA_EXE="$INSTALL_TEST_ROOT/bin/conda"
+conda() {
   if [[ "$1" == activate ]]; then
     export PATH="$INSTALL_TEST_ENV/bin:$PATH"
     export CONDA_DEFAULT_ENV="$2"
@@ -184,7 +189,7 @@ esac
     )
     process_environment = {
         **os.environ,
-        "CONDA_EXE": str(conda_root / "bin/conda"),
+        "HOME": str(home),
         "CONDA_DEFAULT_ENV": "previous",
         "SHELL": f"/bin/{shell}",
         "INSTALL_TEST_ROOT": str(conda_root),
@@ -202,6 +207,18 @@ esac
         process_environment.pop(variable, None)
     if egl_dirs is not None:
         process_environment["__EGL_VENDOR_LIBRARY_DIRS"] = egl_dirs
+    if conda_in_shell:
+        process_environment["CONDA_EXE"] = str(conda_root / "bin/conda")
+    else:
+        # A fresh shell: Conda exists only in its default location under HOME
+        process_environment.pop("CONDA_EXE", None)
+        process_environment["PATH"] = os.pathsep.join(
+            entry
+            for entry in process_environment["PATH"].split(os.pathsep)
+            if not os.access(os.path.join(entry, "conda"), os.X_OK)
+        )
+    # Inherited caller arguments are ignored; explicit installer options pass on
+    options = "" if conda_in_shell else " --dev"
     result = subprocess.run(
         [
             shell_executable,
@@ -209,7 +226,7 @@ esac
             "-c",
             """
 before_flags=$-
-source "$1/install.sh"
+source "$1/install.sh"OPTIONS
 install_exit=$?
 printf 'status=%s env=%s cwd=%s flags=%s/%s\n' "$install_exit" "$CONDA_DEFAULT_ENV" "$PWD" "$before_flags" "$-"
 printf 'first_path=%s\n' "${PATH%%:*}"
@@ -224,7 +241,7 @@ printf 'egl_files=%s\n' "$__EGL_VENDOR_LIBRARY_FILENAMES"
 [[ "${_OPENONDA_EGL_DIRS_SAVED+x}" == x ]] && exit 81
 type _openonda_install >/dev/null 2>&1 && exit 80
 exit "$install_exit"
-""",
+""".replace("OPTIONS", options),
             shell,
             str(checkout),
         ],
@@ -251,8 +268,8 @@ exit "$install_exit"
         assert result.returncode == 0, result.stderr
         assert "env=OpenONDA" in result.stdout
         assert f"first_path={environment / 'bin'}" in result.stdout
-        assert "install.py --with-environment" in calls
-        assert f"conda:init --quiet {shell}" in calls
+        assert f"install.py --with-environment{options}\n" in calls
+        assert (f"conda:init --quiet {shell}" in calls) is not conda_in_shell
         assert calls.index("install_tex.py") < calls.index("install.py --with-environment")
         drivers = (
             "/etc/glvnd/egl_vendor.d:/usr/share/glvnd/egl_vendor.d"

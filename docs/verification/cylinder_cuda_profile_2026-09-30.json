@@ -30,13 +30,13 @@
     "python": "3.11.15 | packaged by conda-forge | (main, Jun 11 2026, 03:34:02) [GCC 14.3.0]",
     "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
     "source_hashes": {
-      "source/coupler/geometry.py": "932f217179a34b1d4d335eafa90b5c48080d9fd3c450281dd7b0bf50ee8caee2",
-      "source/coupler/stable_renewal.py": "2ed32a78d53a351bba20454acb8f921ebf1415ac9e8ad23f714e61471e5dbe71",
-      "source/coupler/vorticity_transfer.py": "c72f589745c3674af3ebf87416c507cb6676c275ece64e32558bba259170ad3f",
-      "source/coupler/interface_iteration.py": "fc86b1adcb7bc7e40a1d84cdaf85450c7431d729c0cf694c932b6b4fac1a65fa",
-      "source/coupler/solver.py": "4c622e04ba7aa636af385a3125aa4de5fc0012ac4f46107bfca6cba609bb1f36",
-      "source/solvers/vpm/physics/diffusion/grid.py": "26bcac3fdcbe310ed1f595350a3bc0d964b726a2df9a1bf18c2c922b4daa8a1a",
-      "source/grid_connectivity.py": "51366487ee5d5632f086ebd9147b5c9579be1196954fe9eb817ad346fd0ab8d1",
+      "openonda/coupler/geometry.py": "932f217179a34b1d4d335eafa90b5c48080d9fd3c450281dd7b0bf50ee8caee2",
+      "openonda/coupler/stable_renewal.py": "2ed32a78d53a351bba20454acb8f921ebf1415ac9e8ad23f714e61471e5dbe71",
+      "openonda/coupler/vorticity_transfer.py": "c72f589745c3674af3ebf87416c507cb6676c275ece64e32558bba259170ad3f",
+      "openonda/coupler/interface_iteration.py": "fc86b1adcb7bc7e40a1d84cdaf85450c7431d729c0cf694c932b6b4fac1a65fa",
+      "openonda/coupler/solver.py": "4c622e04ba7aa636af385a3125aa4de5fc0012ac4f46107bfca6cba609bb1f36",
+      "openonda/vpm/physics/diffusion/grid.py": "26bcac3fdcbe310ed1f595350a3bc0d964b726a2df9a1bf18c2c922b4daa8a1a",
+      "openonda/core/grid_connectivity.py": "51366487ee5d5632f086ebd9147b5c9579be1196954fe9eb817ad346fd0ab8d1",
       "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "cff3da2488182d2701aaa6d7083a21f3d841bf08c44fad39b2f475e86f74df44"
     },
     "packages": {
@@ -53,13 +53,13 @@
     "python": "3.11.15 | packaged by conda-forge | (main, Jun 11 2026, 03:34:02) [GCC 14.3.0]",
     "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",
     "source_hashes": {
-      "source/coupler/geometry.py": "8ef974b01939bedcefe964b9d4bf7ad7d4d3f17f0a6d84ba23d01284a3192786",
-      "source/coupler/stable_renewal.py": "2ed32a78d53a351bba20454acb8f921ebf1415ac9e8ad23f714e61471e5dbe71",
-      "source/coupler/vorticity_transfer.py": "c72f589745c3674af3ebf87416c507cb6676c275ece64e32558bba259170ad3f",
-      "source/coupler/interface_iteration.py": "fc86b1adcb7bc7e40a1d84cdaf85450c7431d729c0cf694c932b6b4fac1a65fa",
-      "source/coupler/solver.py": "4c622e04ba7aa636af385a3125aa4de5fc0012ac4f46107bfca6cba609bb1f36",
-      "source/solvers/vpm/physics/diffusion/grid.py": "26bcac3fdcbe310ed1f595350a3bc0d964b726a2df9a1bf18c2c922b4daa8a1a",
-      "source/grid_connectivity.py": "51366487ee5d5632f086ebd9147b5c9579be1196954fe9eb817ad346fd0ab8d1",
+      "openonda/coupler/geometry.py": "8ef974b01939bedcefe964b9d4bf7ad7d4d3f17f0a6d84ba23d01284a3192786",
+      "openonda/coupler/stable_renewal.py": "2ed32a78d53a351bba20454acb8f921ebf1415ac9e8ad23f714e61471e5dbe71",
+      "openonda/coupler/vorticity_transfer.py": "c72f589745c3674af3ebf87416c507cb6676c275ece64e32558bba259170ad3f",
+      "openonda/coupler/interface_iteration.py": "fc86b1adcb7bc7e40a1d84cdaf85450c7431d729c0cf694c932b6b4fac1a65fa",
+      "openonda/coupler/solver.py": "4c622e04ba7aa636af385a3125aa4de5fc0012ac4f46107bfca6cba609bb1f36",
+      "openonda/vpm/physics/diffusion/grid.py": "26bcac3fdcbe310ed1f595350a3bc0d964b726a2df9a1bf18c2c922b4daa8a1a",
+      "openonda/core/grid_connectivity.py": "51366487ee5d5632f086ebd9147b5c9579be1196954fe9eb817ad346fd0ab8d1",
       "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/setup.py": "cff3da2488182d2701aaa6d7083a21f3d841bf08c44fad39b2f475e86f74df44"
     },
     "packages": {

@@ -22,7 +22,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-from .postprocess import (
+from assets.postprocess import (
     SCHEME_DRAW_ORDER,
     SCHEMES,
     build_arg_parser,

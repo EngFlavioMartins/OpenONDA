@@ -1,0 +1,750 @@
+"""Logging, metadata, and per-step diagnostics for coupled runs."""
+
+from collections.abc import Mapping
+from dataclasses import asdict, fields
+from datetime import UTC, datetime
+import json
+import logging
+import os
+from pathlib import Path
+import sys
+import time
+
+import numpy as np
+
+from openonda.core import log_style
+from openonda.coupler.backup import BACKUP_DIRECTORY
+
+_REAL_STDOUT = sys.stdout
+
+
+def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
+    """Copy structured evidence into JSON types, rejecting every nonfinite leaf.
+
+    Counts, flags, optional values, ordered lists and nested mappings retain
+    their meaning. NumPy scalar/array values are supported without coercing
+    lists to scalars, dropping details, stringifying objects, or mutating the
+    producer. Non-string mapping keys and cycles are rejected explicitly.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, bool | np.bool_):
+        return bool(value)
+    if isinstance(value, int | np.integer):
+        return int(value)
+    if isinstance(value, float | np.floating):
+        result = float(value)
+        if not np.isfinite(result):
+            raise FloatingPointError(f"non-finite diagnostic at {path}")
+        return result
+    if not isinstance(value, Mapping | list | tuple | np.ndarray):
+        raise TypeError(f"unsupported diagnostic value {type(value).__name__} at {path}")
+    active = set() if _active is None else _active
+    object_id = id(value)
+    if object_id in active:
+        raise ValueError(f"cyclic diagnostic structure at {path}")
+    active.add(object_id)
+    try:
+        if isinstance(value, np.ndarray):
+            return _diagnostic_json_value(value.tolist(), path, _active=active)
+        if isinstance(value, Mapping):
+            result = {}
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    raise TypeError(f"diagnostic mapping key must be a string at {path}: {key!r}")
+                result[key] = _diagnostic_json_value(child, f"{path}[{key!r}]", _active=active)
+            return result
+        return [
+            _diagnostic_json_value(child, f"{path}[{index}]", _active=active)
+            for index, child in enumerate(value)
+        ]
+    finally:
+        active.remove(object_id)
+
+
+class OutputRedirector:
+    """Temporarily redirect Python and native stdout/stderr to a case log.
+
+    Parameters
+    ----------
+    logfile : str, os.PathLike, or None, optional
+        Text-file destination. ``None`` makes the context manager a no-op,
+        which is used on non-owner MPI ranks.
+    append : bool, default=True
+        Append to an existing file when true; truncate it on entry otherwise.
+
+    Notes
+    -----
+    Entering duplicates file descriptors 1 and 2 so native numerical-library
+    output is captured as well as Python writes. Exiting restores both
+    descriptors and closes the file opened by this object, including after an
+    exception.
+    """
+
+    def __init__(
+        self,
+        logfile: str | os.PathLike[str] | None = None,
+        append: bool = True,
+    ) -> None:
+        """Configure a temporary output redirection context."""
+        self.logfile = logfile
+        self.append = append
+        self._log_fd = None
+        self._saved_stdout_fd = None
+        self._saved_stderr_fd = None
+        self.log_file = None
+
+    def __enter__(self):
+        """Open the configured log and return this context manager."""
+        if not self.logfile:
+            return self
+
+        mode = "a" if self.append else "w"
+        self.log_file = open(self.logfile, mode)
+        self._log_fd = self.log_file.fileno()
+
+        self._saved_stdout_fd = os.dup(1)
+        self._saved_stderr_fd = os.dup(2)
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        os.dup2(self._log_fd, 1)
+        os.dup2(self._log_fd, 2)
+        return self
+
+    def __exit__(self, _exc_type, _exc_value, traceback):
+        """Restore stdout/stderr and close the opened log file."""
+        if not self.logfile:
+            return
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        if self._saved_stdout_fd is not None:
+            os.dup2(self._saved_stdout_fd, 1)
+            os.close(self._saved_stdout_fd)
+
+        if self._saved_stderr_fd is not None:
+            os.dup2(self._saved_stderr_fd, 2)
+            os.close(self._saved_stderr_fd)
+
+        if self.log_file:
+            self.log_file.close()
+
+
+class _CaseFileHandler(logging.FileHandler):
+    """File handler used for the per-case coupler log."""
+
+
+def configure_logging(solution_dir: Path, logger: logging.Logger) -> logging.FileHandler:
+    """Attach the case log while preserving caller-installed handlers."""
+    log_path = (solution_dir / "coupler.log").resolve()
+    for handler in list(logger.handlers):
+        if isinstance(handler, _CaseFileHandler):
+            logger.removeHandler(handler)
+            handler.close()
+
+    for progress_filter in list(logger.filters):
+        if isinstance(progress_filter, _CouplingProgress):
+            logger.removeFilter(progress_filter)
+    logger.addFilter(_CouplingProgress())
+    has_external_handlers = bool(logger.handlers)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    file_handler = _CaseFileHandler(log_path, mode="a")
+    file_handler.setFormatter(log_style.Formatter())
+    logger.addHandler(file_handler)
+    if not has_external_handlers:
+        console_handler = logging.StreamHandler(_REAL_STDOUT)
+        console_handler.setFormatter(log_style.Formatter())
+        logger.addHandler(console_handler)
+    return file_handler
+
+
+def flush_log(logger: logging.Logger) -> None:
+    """Flush all handlers attached to a logger.
+
+    Parameters
+    ----------
+    logger : logging.Logger
+        Coupler logger whose file and console handlers should publish buffered
+        records before a barrier, backup, or process exit.
+    """
+    for handler in logger.handlers:
+        handler.flush()
+
+
+class _CouplingProgress(logging.Filter):
+    """Keep only this coupling interval's latest module records until acceptance.
+
+    Capturing host rows is independent of particle/mesh size. No formatting,
+    numerical work or growing cross-step history occurs on skipped reports.
+    Warnings bypass the buffer immediately; scientific JSONL is independent.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = time.perf_counter()
+        self.last_report: float | None = None
+        self.context: tuple[int, int, float] | None = None
+        self.records: dict[str, log_style.Event] = {}
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if (
+            self.context is not None
+            and record.levelno < logging.WARNING
+            and isinstance(record.msg, log_style.Event)
+        ):
+            self.records[record.msg.topic] = record.msg
+            return False
+        return True
+
+    def begin(self, step: int, total_steps: int, flow_time: float) -> None:
+        """Start a tentative interval without publishing a completed-step banner."""
+        self.context = (step, total_steps, flow_time)
+        self.records.clear()
+
+    def finish(self, logger: logging.Logger, *, final: bool = False) -> None:
+        """Publish one accepted block when due, retaining immediate warnings."""
+        context, self.context = self.context, None
+        if context is None:
+            return
+        now = time.perf_counter()
+        step, total_steps, flow_time = context
+        if (
+            self.last_report is None
+            or now - self.last_report >= 30.0
+            or final
+            or step == total_steps
+        ):
+            report: list[str] = [
+                log_style.step_header(
+                    step, flow_time, now - self.started, scope="COUPLER", total_steps=total_steps
+                )
+            ]
+            report.extend(
+                str(event)
+                for event in sorted(
+                    self.records.values(),
+                    key=lambda event: log_style.step_section_order(event.topic),
+                )
+            )
+            logger.info(log_style.FormattedText("\n".join(report)))
+            self.last_report = now
+        self.records.clear()
+
+
+def begin_coupling_step(logger: logging.Logger, step: int, n_steps: int, time_end: float) -> None:
+    """Collect the next coupling interval without claiming its acceptance."""
+    for progress_filter in logger.filters:
+        if isinstance(progress_filter, _CouplingProgress):
+            progress_filter.begin(step, n_steps, time_end)
+
+
+def finish_coupling_step(logger: logging.Logger, *, final: bool = False) -> None:
+    """Close accepted console reporting independently of native diagnostic output."""
+    for progress_filter in logger.filters:
+        if isinstance(progress_filter, _CouplingProgress):
+            progress_filter.finish(logger, final=final)
+
+
+def format_coupler_log(topic: str, *rows: log_style.Row) -> log_style.Event:
+    """Collect already-computed host rows; formatting is deferred until emission."""
+    return log_style.Event(topic, rows)
+
+
+def _domain_dict(box: np.ndarray) -> dict[str, float]:
+    return dict(
+        zip(
+            ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+            (float(value) for value in box),
+            strict=True,
+        )
+    )
+
+
+def write_run_metadata(
+    coupler,
+    *,
+    start_step: int = 0,
+    stop_step: int | None = None,
+) -> None:
+    """Write the resolved solver and coupling state used by post-processing."""
+    assert coupler.fvm_box is not None
+    assert coupler.vpm_solver is not None
+    viscous_config = asdict(coupler.vpm_solver.setup.viscous)
+    configured_end_step = coupler._derive_coupling_step_count(
+        coupler.end_time,
+        coupler.vpm_time_step_size,
+    )
+    resolved_stop_step = configured_end_step if stop_step is None else int(stop_step)
+    metadata = {
+        "schema_version": 3,
+        "coupling_method": "buffered_m4_renewal",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "case_dir": str(coupler.case_dir),
+        "physics": {
+            "freestream_velocity": coupler.setup.freestream_velocity,
+            "kinematic_viscosity": coupler.kinematic_viscosity,
+            "density": coupler.density,
+            "fvm_time_step_size": coupler.fvm_time_step_size,
+            "vpm_time_step_size": coupler.vpm_time_step_size,
+            "end_time": coupler.end_time,
+            "backup_interval_steps": coupler.setup.backup_interval_steps,
+            "backup_interval_time": (
+                None
+                if coupler.setup.backup_interval_steps == 0
+                else coupler.setup.backup_interval_steps * coupler.vpm_time_step_size
+            ),
+        },
+        "fvm_solver": {
+            "coupling_patch": coupler.setup.coupling_patch,
+            "boundary_condition_mode": "vorticity_mixed",
+            "fvm_domain": _domain_dict(coupler.fvm_box),
+        },
+        "vpm_solver": {
+            "vpm_particle_spacing": coupler.vpm_particle_spacing,
+            "vpm_core_radius_ratio": coupler.vpm_core_radius_ratio,
+            "eta_blend_width": coupler.setup.eta_blend_width,
+            "viscous_scheme": coupler.vpm_solver.setup.viscous.scheme,
+            "viscous_config": viscous_config,
+        },
+        **coupler.setup.to_dict(),
+        "vpm_time_step_size": coupler.vpm_time_step_size,
+        "n_fvm_substeps": coupler.n_fvm_substeps,
+        "execution": {
+            "start_coupling_step": int(start_step),
+            "stop_coupling_step": resolved_stop_step,
+            "configured_end_coupling_step": configured_end_step,
+            "start_time": float(start_step * coupler.vpm_time_step_size),
+            "stop_time": float(resolved_stop_step * coupler.vpm_time_step_size),
+            "is_limited": resolved_stop_step < configured_end_step,
+        },
+    }
+    (coupler.solution_dir / "run_metadata.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
+
+
+def boundary_induction_summary(vpm_solver, *, target_count: int, wall_seconds: float) -> dict:
+    """Capture scalar query evidence before another operation replaces it.
+
+    Backend timings are nested parts of the measured query wall time. Image
+    descriptors, source arrays and allocator histories are deliberately omitted.
+    """
+    induction = getattr(getattr(vpm_solver, "physics", None), "induction", None)
+    tail = getattr(induction, "last_tail", None) or {}
+    mesh = tail.get("mesh") or {}
+    finite = mesh.get("finite_evaluation") or {}
+    summary = {
+        "target_count": int(target_count),
+        "wall_seconds": float(wall_seconds),
+        "operator": type(induction).__name__ if induction is not None else None,
+        "execution_backend": finite.get("execution_backend"),
+        "memory_fallback": finite.get("memory_fallback"),
+    }
+    if isinstance(summary["memory_fallback"], str):
+        summary["memory_fallback"] = summary["memory_fallback"][:512]
+    if "seconds" in tail:
+        summary["induction_seconds"] = tail["seconds"]
+    for name in (
+        "source_snapshot_seconds",
+        "tail_bound_seconds",
+        "field_build_seconds",
+        "field_prepare_seconds",
+        "field_close_seconds",
+        "field_reused",
+        "finite_images",
+    ):
+        if name in mesh:
+            summary[name] = mesh[name]
+    for name in ("query_seconds", "gather_seconds", "query_batches", "source_count"):
+        if name in finite:
+            summary[name] = finite[name]
+    return _diagnostic_json_value(summary, "boundary induction")
+
+
+def _transfer_record(result) -> dict[str, object]:
+    """Flatten a transfer result; 3-vectors become ``_x``, ``_y``, ``_z`` scalars.
+
+    ``None`` (no transfer yet) gives zero counts and budgets with method ``none``.
+    """
+    from .vorticity_transfer import TransferResult
+
+    if result is None:
+        result = TransferResult(0, 0, 0, 0, 0, 0, 0.0, transfer_method="none")
+    record: dict[str, object] = {}
+    for item in fields(result):
+        value = getattr(result, item.name)
+        if isinstance(value, np.ndarray):
+            for axis, component in zip("xyz", np.asarray(value, dtype=np.float64), strict=True):
+                record[f"{item.name}_{axis}"] = float(component)
+        else:
+            record[item.name] = value
+    if not all(np.isfinite(value) for value in record.values() if isinstance(value, int | float)):
+        raise FloatingPointError("non-finite transfer diagnostic")
+    return record
+
+
+def compute_diagnostics(coupler, transfer_result=None) -> dict:
+    """Flatten the latest coupling state into JSON-safe diagnostic values.
+
+    Parameters
+    ----------
+    coupler : FVMVPMCoupler-compatible object
+        Driver exposing the latest boundary, transfer, solver, and recovery
+        state.
+    transfer_result : TransferResult or None, optional
+        Result for the current replacement. ``None`` uses the coupler cache;
+        before the first transfer, zero/``None`` placeholders are returned.
+
+    Returns
+    -------
+    dict[str, object]
+        Nested boundary, transfer, interface, and recovery records. Vector
+        quantities are split into scalar components for JSONL serialization;
+        strengths use m³/s, velocities m/s, and normalized errors are
+        dimensionless.
+
+    Notes
+    -----
+    The function is read-only. :func:`record_step` appends its result to the
+    in-memory history and ``coupler_diagnostics.jsonl``.
+    """
+    result = transfer_result if transfer_result is not None else coupler._last_transfer_result
+    transfer = _transfer_record(result)
+    particle_count = transfer["n_particles_after"]
+    boundary_flux = {
+        name: float(coupler._last_vpm_boundary_condition_flux_diagnostics[name])
+        for name in (
+            "raw_mismatch",
+            "raw_relative",
+            "acceptance_limit",
+            "applied_correction",
+            "corrected_mismatch",
+        )
+    }
+    if not all(np.isfinite(value) for value in boundary_flux.values()):
+        raise FloatingPointError("non-finite VPM boundary-flux diagnostic")
+    boundary_trace = {
+        str(name): float(value)
+        for name, value in getattr(coupler, "_last_fvm_boundary_trace_diagnostics", {}).items()
+    }
+    if not all(np.isfinite(value) for value in boundary_trace.values()):
+        raise FloatingPointError("non-finite FVM boundary-trace diagnostic")
+
+    interface = {}
+    closure = {}
+    if coupler.vorticity_transfer is not None:
+        interface = {
+            str(name): float(value)
+            for name, value in coupler.vorticity_transfer.last_interface_flow.items()
+        }
+        closure = {
+            str(name): float(value)
+            for name, value in coupler.vorticity_transfer.last_vortex_line_closure.items()
+        }
+    gbd_moment_recovery = {
+        "applied": False,
+        "nonzero_node_count": 0,
+        "retained_node_count": 0,
+        "pruned_node_count": 0,
+        "support_augmented_node_count": 0,
+        "correction_fraction": 0.0,
+        "normalized_vortex_strength_residual": 0.0,
+        "normalized_linear_impulse_residual": 0.0,
+        "normalized_angular_impulse_residual": 0.0,
+    }
+    vpm_solver = getattr(coupler, "vpm_solver", None)
+    if vpm_solver is not None:
+        recovery = getattr(vpm_solver.physics, "last_gbd_moment_recovery", None)
+        if recovery is not None:
+            gbd_moment_recovery = {
+                "applied": bool(recovery["applied"]),
+                "nonzero_node_count": int(recovery["nonzero_node_count"]),
+                "retained_node_count": int(recovery["retained_node_count"]),
+                "pruned_node_count": int(recovery["pruned_node_count"]),
+                "support_augmented_node_count": int(
+                    recovery.get("support_augmented_node_count", 0)
+                ),
+                "correction_fraction": float(recovery["correction_fraction"]),
+                "normalized_vortex_strength_residual": float(
+                    recovery["normalized_vortex_strength_residual"]
+                ),
+                "normalized_linear_impulse_residual": float(
+                    recovery["normalized_linear_impulse_residual"]
+                ),
+                "normalized_angular_impulse_residual": float(
+                    recovery["normalized_angular_impulse_residual"]
+                ),
+            }
+            numeric_recovery = [
+                value for name, value in gbd_moment_recovery.items() if name != "applied"
+            ]
+            if not all(np.isfinite(value) for value in numeric_recovery):
+                raise FloatingPointError("non-finite GBD moment-recovery diagnostic")
+    diagnostics = {
+        "vpm_boundary_condition_flux": boundary_flux,
+        "fvm_boundary_trace": boundary_trace,
+        "transfer": transfer,
+        "boundary_normal_velocity": interface,
+        "vortex_line_closure": closure,
+        "gbd_moment_recovery": gbd_moment_recovery,
+        "n_fvm_substeps": int(coupler.n_fvm_substeps),
+        "n_transfer_particles": int(particle_count),
+    }
+    if vpm_solver is not None:
+        physics = vpm_solver.physics
+        projection = getattr(physics, "last_solid_projection", None)
+        if projection is not None:
+            projection_record = {
+                "stage_count": int(projection["stage_count"]),
+                "accepted_count": int(projection["accepted_count"]),
+                "stage_displacement_l1": float(projection["stage_displacement_l1"]),
+                "accepted_displacement_l1": float(projection["accepted_displacement_l1"]),
+                "stage_impulse_change": np.asarray(
+                    projection["stage_impulse_change"], dtype=np.float64
+                ).tolist(),
+                "accepted_impulse_change": np.asarray(
+                    projection["accepted_impulse_change"], dtype=np.float64
+                ).tolist(),
+            }
+            if not all(
+                np.isfinite(value)
+                for value in (
+                    projection_record["stage_displacement_l1"],
+                    projection_record["accepted_displacement_l1"],
+                    *projection_record["stage_impulse_change"],
+                    *projection_record["accepted_impulse_change"],
+                )
+            ):
+                raise FloatingPointError("non-finite solid-projection budget")
+            diagnostics["solid_projection"] = projection_record
+        wall_transfer = getattr(physics, "last_gbd_wall_transfer", None)
+        if wall_transfer is not None:
+            wall_record = {
+                "wall_adjacent_particles": int(wall_transfer["wall_adjacent_particles"]),
+                "excluded_signed_weight_l1": float(wall_transfer["excluded_signed_weight_l1"]),
+                "fluid_correction_l1": float(wall_transfer["fluid_correction_l1"]),
+            }
+            if not all(np.isfinite(value) for value in wall_record.values()):
+                raise FloatingPointError("non-finite GBD wall-transfer budget")
+            diagnostics["gbd_wall_transfer"] = wall_record
+        induction = getattr(vpm_solver.physics, "induction", None)
+        tail = getattr(induction, "last_tail", None)
+        if tail is not None:
+            # This describes only the most recent image query, not the total
+            # induction work across the coupling step. Its bound and mesh
+            # records are structured evidence and must stay intact.
+            diagnostics["last_induction_image_call"] = _diagnostic_json_value(
+                tail, "slip-slab image diagnostic"
+            )
+        # Cumulative counts: a hit means an RK stage reused the accepted-state
+        # particle evaluation instead of repeating a full induction sum.
+        stage_rhs = getattr(vpm_solver, "stage_rhs", None)
+        reuse = getattr(stage_rhs, "induction_reuse_statistics", None)
+        if reuse is not None:
+            diagnostics["induction_reuse"] = {
+                name: int(getattr(reuse, name))
+                for name in ("requests", "hits", "misses", "bypasses")
+            }
+        boundary_induction = getattr(coupler, "_last_boundary_induction_diagnostics", None)
+        if boundary_induction is not None:
+            diagnostics["boundary_induction"] = _diagnostic_json_value(
+                boundary_induction, "boundary induction diagnostic"
+            )
+    return diagnostics
+
+
+def record_step(
+    coupler,
+    step: int,
+    time_end: float,
+    timing: tuple[float, float, float, float],
+    transfer_result,
+    *,
+    logger: logging.Logger,
+    comm=None,
+    exchange_started: float | None = None,
+    state_checks_and_sampling_seconds: float = 0.0,
+) -> None:
+    """Report one accepted exchange through its scheduled checkpoint attempt.
+
+    Boundary time includes the initial trace and all post-renewal refreshes.
+    Transfer includes renewal and interface state capture/restoration. The four
+    evolution timers exclude state checks/output and backup. The end-to-end
+    clock includes those phases, reporting preparation, logging and collective
+    waits. Publishing this final timing record itself is outside its scope.
+    Nested breakdowns (for example donor gather) are descriptive, not additive.
+    A failed checkpoint does not undo the accepted numerical step. Preserve one
+    diagnostic row for it, then re-raise the checkpoint failure on every rank.
+    """
+    from .parallel import collective_phase
+
+    reporting_started = time.perf_counter()
+    with collective_phase(comm, "coupled step reporting"):
+        t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
+        diagnostics = compute_diagnostics(coupler, transfer_result)
+        interface_iteration = getattr(coupler, "_last_interface_iteration_diagnostics", None)
+        if interface_iteration is not None:
+            diagnostics["interface_iteration"] = interface_iteration
+        diagnostics = _diagnostic_json_value(diagnostics, "coupled step diagnostic")
+        timing_data = {
+            "vpm": float(t_vpm),
+            "vpm_boundary_condition": float(t_vpm_boundary_condition),
+            "fvm": float(t_fvm),
+            "transfer": float(t_transfer),
+            "evolution_total": float(sum(timing)),
+            "state_checks_and_samplers": float(state_checks_and_sampling_seconds),
+        }
+        stats = getattr(coupler, "_step_transfer_stats", None) or {}
+        timing_data["last_sweep_donor_gather"] = float(stats.get("donor_gather_seconds", 0.0))
+        if coupler._is_master:
+            logger.info(
+                format_coupler_log(
+                    "FVM",
+                    ("accepted substep", coupler.fvm_solver.step),
+                    ("physical time", coupler.fvm_solver.time, "s"),
+                    ("substeps per coupling step", coupler.n_fvm_substeps),
+                    ("Courant, max", coupler.fvm_solver.max_courant_number),
+                )
+            )
+            stats = coupler._step_transfer_stats or {}
+            logger.info(
+                format_coupler_log(
+                    "VPM",
+                    ("particles, before", log_style.count(stats.get("n_before", 0))),
+                    ("particles, after", log_style.count(stats.get("n_after", 0))),
+                    (
+                        "vortex strength, before",
+                        f"{float(stats.get('sum_before', 0.0)):.4e}",
+                        "m^3/s",
+                    ),
+                    (
+                        "vortex strength, after",
+                        f"{float(stats.get('sum_after', 0.0)):.4e}",
+                        "m^3/s",
+                    ),
+                )
+            )
+            finish_coupling_step(logger, final=step == coupler._log_stop_step)
+            flush_log(logger)
+
+    reporting_time = time.perf_counter() - reporting_started
+    backup_started = time.perf_counter()
+    backup_due = (
+        coupler.setup.backup_interval_steps > 0 and step % coupler.setup.backup_interval_steps == 0
+    )
+    backup_failure = None
+    try:
+        if backup_due:
+            backup_directory = coupler.solution_dir / BACKUP_DIRECTORY
+            coupler.save_backup(backup_directory, coupling_step=step)
+            if coupler._is_master:
+                logger.info(
+                    format_coupler_log(
+                        "coupled backup",
+                        ("coupling step", step),
+                        ("flow time", coupler.vpm_time_step_size * step, "s"),
+                        ("directory", str(backup_directory)),
+                    )
+                )
+                flush_log(logger)
+    except BaseException as error:
+        backup_failure = error
+    backup_time = time.perf_counter() - backup_started
+    # save_backup already owns its MPI collectives. Only propagate the captured
+    # local failure here, after that call has returned/raised on every rank; no
+    # rank skips output writing while another is entering its collective.
+    try:
+        with collective_phase(comm, "accepted exchange backup completion"):
+            if backup_failure is not None:
+                raise backup_failure
+    except BaseException as error:
+        backup_failure = error
+    measured_end = time.perf_counter()
+    phases = float(sum(timing) + state_checks_and_sampling_seconds + reporting_time + backup_time)
+    total = phases if exchange_started is None else measured_end - exchange_started
+    timing_data.update(
+        {
+            "reporting": float(reporting_time),
+            "backup": float(backup_time),
+            "coupling_control_and_wait": float(total - phases),
+            "total": float(total),
+        }
+    )
+    try:
+        with collective_phase(comm, "accepted exchange timing output writing"):
+            if coupler._is_master:
+                diagnostics.update(
+                    {
+                        "step": int(step),
+                        "time": float(time_end),
+                        "timing_seconds": timing_data,
+                        "timing_scope": "accepted exchange through checkpoint attempt, before timing output writing",
+                        "backup_phase": {
+                            "scheduled": backup_due,
+                            "status": (
+                                "failed"
+                                if backup_failure is not None
+                                else "complete"
+                                if backup_due
+                                else "not_scheduled"
+                            ),
+                            "error": (
+                                None
+                                if backup_failure is None
+                                else f"{type(backup_failure).__name__}: {backup_failure}"
+                            ),
+                        },
+                    }
+                )
+                diagnostics = _diagnostic_json_value(diagnostics, "accepted exchange diagnostic")
+                encoded = json.dumps(diagnostics, separators=(",", ":"), allow_nan=False)
+                coupler.coupling_diagnostics.append(diagnostics)
+                with (coupler.solution_dir / "coupler_diagnostics.jsonl").open(
+                    "a", encoding="utf-8"
+                ) as stream:
+                    stream.write(encoded + "\n")
+                logger.info(
+                    format_coupler_log(
+                        "timing",
+                        ("wall time", f"{timing_data['total']:.3f}", "s"),
+                        ("  vpm", f"{timing_data['vpm']:.3f}", "s"),
+                        ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
+                        ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
+                        ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
+                        (
+                            "  state checks and samplers",
+                            f"{state_checks_and_sampling_seconds:.3f}",
+                            "s",
+                        ),
+                        ("  reporting", f"{reporting_time:.3f}", "s"),
+                        ("  backup", f"{backup_time:.3f}", "s"),
+                        ("  control and wait", f"{total - phases:.3f}", "s"),
+                    )
+                )
+                flush_log(logger)
+    except BaseException as output_failure:
+        if backup_failure is None:
+            raise
+        backup_failure.add_note(
+            "Accepted-step diagnostic output writing also failed: "
+            f"{type(output_failure).__name__}: {output_failure}"
+        )
+    if backup_failure is not None:
+        raise backup_failure.with_traceback(backup_failure.__traceback__)
+
+
+__all__ = [
+    "OutputRedirector",
+    "compute_diagnostics",
+    "configure_logging",
+    "flush_log",
+    "format_coupler_log",
+    "begin_coupling_step",
+    "finish_coupling_step",
+    "record_step",
+    "write_run_metadata",
+]

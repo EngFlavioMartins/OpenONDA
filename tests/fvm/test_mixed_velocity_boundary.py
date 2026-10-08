@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from source.coupler.boundary import tangential_normal_velocity_gradient
-from source.solvers.fvm.fields.mixed_velocity_boundary import (
+from openonda.coupler.boundary import tangential_normal_velocity_gradient
+from openonda.fvm.fields.mixed_velocity_boundary import (
     reconstruct_normal_velocity_tangential_gradient,
 )
 

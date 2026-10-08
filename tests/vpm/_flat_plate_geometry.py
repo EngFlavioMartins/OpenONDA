@@ -15,8 +15,8 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 
-from source.solvers.vpm.boundary_elements.vlm.geometry import surface_io
-from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
+from openonda.vpm.boundary_elements.vlm.geometry import surface_io
+from openonda.vpm.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
     WingSegment,

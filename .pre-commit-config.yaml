@@ -18,7 +18,7 @@ repos:
         additional_dependencies: ["vulture>=2"]
         types: [python]
         pass_filenames: false
-        args: [source/solvers/fvm, source/solvers/vpm, --min-confidence, "90"]
+        args: [openonda/fvm, openonda/vpm, --min-confidence, "90"]
 
   - repo: local
     hooks:
@@ -31,8 +31,8 @@ repos:
         pass_filenames: false
         args:
           - -r
-          - source/solvers/fvm
-          - source/solvers/vpm
+          - openonda/fvm
+          - openonda/vpm
           - --skip
           - B101       # assert_used (fine in tests and physics kernels)
           - -ll        # report only medium/high severity

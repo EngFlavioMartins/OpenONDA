@@ -89,5 +89,5 @@ geometry, and applies one consistent mixed boundary condition at every
 exchange and restart.
 
 **Relevant changes:** `24a2be62` (29 Sep), `b1ff9eb6` (3 Oct), `379697e4` (5
-Oct).  Main implementation: `source/coupler/stable_renewal.py`,
-`source/coupler/boundary.py`, and `source/coupler/vorticity_transfer.py`.
+Oct).  Main implementation: `openonda/coupler/stable_renewal.py`,
+`openonda/coupler/boundary.py`, and `openonda/coupler/vorticity_transfer.py`.

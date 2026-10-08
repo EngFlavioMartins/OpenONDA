@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.solvers.vpm.numerics.fourier_integrals import CartesianGrid, gaussian_fourier_integrals
+from openonda.vpm.numerics.fourier_integrals import CartesianGrid, gaussian_fourier_integrals
 
 
 def _integrals(position, strength, sigma, *, shape=(15, 17, 19)):
@@ -89,7 +89,7 @@ def test_componentwise_fft_padding_preserves_mixed_core_and_viscosity_integrals(
 
     from scipy import fft
 
-    from source.solvers.vpm.numerics.fourier_integrals import gaussian_fourier_integrals
+    from openonda.vpm.numerics.fourier_integrals import gaussian_fourier_integrals
 
     rng = np.random.default_rng(8921)
     position = rng.uniform([-0.6, -0.3, -0.2], [0.8, 0.4, 0.3], (24, 3))
@@ -121,7 +121,7 @@ def test_componentwise_fft_padding_preserves_mixed_core_and_viscosity_integrals(
 @pytest.mark.parametrize("padded_shape", [(35, 37, 263), (34, 36, 262)])
 def test_blocked_fourier_reductions_match_full_volume_quadratic_forms(padded_shape):
     """Exercise block boundaries, zero mode, Nyquist and variable viscosity."""
-    from source.solvers.vpm.numerics.fourier_integrals import _quadratic_integrals, _wave_numbers
+    from openonda.vpm.numerics.fourier_integrals import _quadratic_integrals, _wave_numbers
 
     rng = np.random.default_rng(902)
     shape = (*padded_shape[:2], padded_shape[2] // 2 + 1)

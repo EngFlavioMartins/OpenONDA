@@ -7,10 +7,9 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
-from source.coupler.geometry import SolidBoundary, TriangulatedWall
-from source.coupler.interpolation import FVMVelocityInterpolator
-from source.coupler.solid import SolidParticleGuard
-from source.solvers.fvm.immersed_boundary.body import ImmersedBody
+from openonda.coupler.geometry import TriangulatedWall
+from openonda.coupler.interpolation import FVMVelocityInterpolator
+from openonda.coupler.solid import SolidParticleGuard
 from tests.coupler._solid_geometry import wall_case
 
 
@@ -158,33 +157,6 @@ def test_stage_and_accepted_motion_share_geometry_and_report_impulse(shape):
     assert physics.last_solid_projection["accepted_count"] == 1
 
 
-@pytest.mark.parametrize(
-    "geometry",
-    [
-        {"type": "sphere", "centre": [0, 0, 0], "radius": 0.5},
-        {"type": "cylinder_z", "centre": [0, 0, 0], "radius": 0.5, "z_bounds": [-0.5, 0.5]},
-        {"type": "rectangle_z", "centre": [0, 0, 0], "size": [1, 1], "z_bounds": [-0.5, 0.5]},
-        {
-            "type": "polygon_z",
-            "vertex_position": [[-0.5, -0.5], [0.5, -0.5], [0.5, 0], [0, 0], [0, 0.5], [-0.5, 0.5]],
-            "z_bounds": [-0.5, 0.5],
-        },
-    ],
-)
-def test_immersed_geometry_segments_handle_entries_tangency_and_extrusion(geometry):
-    body = ImmersedBody("geometry", [[0, 0, 0]], geometry=geometry)
-    boundary = SolidBoundary((body,))
-    starts = np.array([[-0.6, -0.1, 0], [-0.6, -0.5, 0], [-0.6, -0.1, 1], [-0.6, -0.6, 0]])
-    ends = starts.copy()
-    ends[:, 0] = 0.6
-    np.testing.assert_array_equal(
-        boundary.blocks_segments(starts, ends), [True, False, False, False]
-    )
-    fraction, normals = boundary.first_intersections(starts[:1], ends[:1])
-    assert 0 < fraction[0] < 0.5
-    assert normals[0, 0] < 0
-
-
 def test_velocity_trace_uses_visible_donors_without_mixing_opposite_wall_sides():
     boundary, *_ = wall_case("thin")
     left = np.array([[-0.2, y, z] for y in (-0.1, 0.1) for z in (-0.1, 0.1)])
@@ -200,13 +172,6 @@ def test_velocity_trace_uses_visible_donors_without_mixing_opposite_wall_sides()
     np.testing.assert_allclose(sampled[:, 0], [1, 100], atol=1e-13)
     gradient = np.broadcast_to(np.eye(3), (8, 3, 3))
     np.testing.assert_allclose(trace.sample(targets, donors, gradient), targets, atol=1e-13)
-
-
-def test_unbounded_immersed_extrusion_does_not_invent_a_finite_query_box():
-    body = ImmersedBody.cylinder_z([0, 0, 0], diameter=1, grid_spacing=0.1)
-    boundary = SolidBoundary((body,))
-    assert boundary.bounds is None
-    assert boundary.blocks_segments([[-1, 0, 100]], [[1, 0, 100]])[0]
 
 
 def test_long_thin_wall_keeps_its_resolved_interior():
@@ -231,7 +196,7 @@ def test_float32_surface_roundoff_needs_only_a_small_projection(shape):
 
 
 def test_wall_distance_cache_has_bounded_storage_and_independent_results(monkeypatch):
-    monkeypatch.setattr("source.coupler.geometry._DISTANCE_CACHE_MAX_BYTES", 32)
+    monkeypatch.setattr("openonda.coupler.geometry._DISTANCE_CACHE_MAX_BYTES", 32)
     wall = TriangulatedWall.from_box([-0.5, 0.5] * 3, [-2, 2] * 3)
     for coordinate in (0.6, 0.7, 0.8):
         query = np.array([[coordinate, 0, 0], [0, coordinate, 0]])

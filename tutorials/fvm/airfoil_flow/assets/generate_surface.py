@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.results import write_text
+from assets.output_files import write_text
 
 
 def create_airfoil_surface(

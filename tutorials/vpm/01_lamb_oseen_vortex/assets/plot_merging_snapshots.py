@@ -15,19 +15,19 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.scenes import (
+from assets.scenes import (
     render_spheres,
     render_streamlines,
     sample_axial_velocity,
     sample_axial_vorticity,
 )
-from source.solvers.vpm.io.postprocess import particle_state
+from openonda.vpm.io.postprocess import particle_state
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.ticker import FormatStrFormatter
 
-from .postprocess import _metadata, load_theme
+from assets.postprocess import _metadata, load_theme
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 OUT = CASE_DIR / "figures"

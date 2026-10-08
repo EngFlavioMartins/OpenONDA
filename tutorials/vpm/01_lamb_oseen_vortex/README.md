@@ -11,7 +11,7 @@ From this directory with OpenONDA installed:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes saved native backups. For one case, use `python -m openonda.tutorial_runner . setup vortex CS`; physical choices are `vortex`, `dipole`, `merging`, and methods are `CS`, `RWM`, `DVH`, `GBD`. A single RWM run is one realization; use `python -m openonda.tutorial_runner . assets.rwm_ensemble vortex --number-of-realizations 10` for the ensemble comparison. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes saved native backups. For one case, use `python setup.py vortex CS`; physical choices are `vortex`, `dipole`, `merging`, and methods are `CS`, `RWM`, `DVH`, `GBD`. A single RWM run is one realization; use `python -m assets.rwm_ensemble vortex --number-of-realizations 10` for the ensemble comparison. `./allplot.sh pdf` exports PDF.
 
 ## Physical and numerical inputs
 

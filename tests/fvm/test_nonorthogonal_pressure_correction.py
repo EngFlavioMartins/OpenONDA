@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 
 from openonda import fvm
-from source.solvers.fvm.core.solver import FVMSolver
-from source.solvers.fvm.solve.simple_solver import (
+from openonda.fvm.core.solver import FVMSolver
+from openonda.fvm.solve.simple_solver import (
     _pressure_interior_flux_scalar,
     _pressure_interior_flux_vector,
     _process_boundary_faces_jit,

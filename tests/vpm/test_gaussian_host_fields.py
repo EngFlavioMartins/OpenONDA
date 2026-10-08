@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.vpm.physics.induction.gaussian_mesh import host_fields
-from source.solvers.vpm.physics.induction.gaussian_mesh.host_fields import GaussianHostImageFields
+from openonda.vpm.physics.induction.gaussian_mesh import host_fields
+from openonda.vpm.physics.induction.gaussian_mesh.host_fields import GaussianHostImageFields
 from tests.vpm._direct_gaussian_reference import direct_finite_images
 
 
@@ -117,7 +117,7 @@ def test_host_import_and_execution_do_not_import_cupy():
         [
             sys.executable,
             "-c",
-            "from source.solvers.vpm.physics.induction.gaussian_mesh.host_fields import GaussianHostImageFields; import sys; assert not any(n == 'cupy' or n.startswith('cupy.') for n in sys.modules)",
+            "from openonda.vpm.physics.induction.gaussian_mesh.host_fields import GaussianHostImageFields; import sys; assert not any(n == 'cupy' or n.startswith('cupy.') for n in sys.modules)",
         ],
         capture_output=True,
         text=True,

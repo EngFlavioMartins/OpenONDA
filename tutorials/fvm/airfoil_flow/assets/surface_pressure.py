@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from openonda.results import write_csv_table
+from assets.output_files import write_csv_table
 
 
 def write_surface_cp(fields, sol_dir, chord: float, freestream_velocity: float) -> None:

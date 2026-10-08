@@ -5,10 +5,10 @@ import json
 import numpy as np
 import pytest
 
-from source.coupler import CouplerSetup, FVMVPMCoupler
-from source.solvers.fvm import BoundaryConfig, FVMSetup, FVMSolver, TimeConfig, TransportConfig
-from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
-from source.solvers.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
+from openonda.coupler import CouplerSetup, FVMVPMCoupler
+from openonda.fvm import BoundaryConfig, FVMSetup, FVMSolver, TimeConfig, TransportConfig
+from openonda.fvm.mesh.rectilinear import coupling_box_mesh
+from openonda.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
 
 
 def _coupler(directory):

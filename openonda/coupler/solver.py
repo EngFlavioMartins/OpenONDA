@@ -1,0 +1,1294 @@
+"""FVM–VPM coupling driver with VPM boundary conditions and state replacement."""
+
+from __future__ import annotations
+
+from collections.abc import Collection, Mapping
+from contextlib import ExitStack
+from dataclasses import replace
+import logging
+from numbers import Integral
+from pathlib import Path
+import time
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+from openonda.coupler.backup import (
+    BACKUP_DIRECTORY,
+    load_coupled_backup,
+    publish_vpm_snapshot,
+    save_coupled_backup,
+)
+from openonda.coupler.boundary import (
+    advance_fvm,
+    evaluate_vpm_boundary,
+    initialize_vpm_boundary_history,
+    update_boundary_history_after_replacement,
+)
+from openonda.coupler.config.types import CouplerSetup
+from openonda.coupler.parallel import collective_phase
+from openonda.coupler.reporting import (
+    OutputRedirector,
+    begin_coupling_step,
+    configure_logging,
+    flush_log,
+    format_coupler_log,
+    record_step,
+    write_run_metadata,
+)
+from openonda.coupler.vorticity_transfer import VorticityTransfer
+from openonda.runtime import detected_world_size
+
+if TYPE_CHECKING:
+    from openonda.fvm import FVMSolver
+    from openonda.vpm import VPMSolver
+
+logger = logging.getLogger("coupler")
+
+
+def _validate_gbd_moment_recovery(
+    recovery: Mapping[str, bool | int | float] | None,
+    correction_limit: float,
+) -> None:
+    """Fail fast when the just-completed GBD prune is not trustworthy."""
+    if recovery is None:
+        return
+    numeric_names = (
+        "nonzero_node_count",
+        "retained_node_count",
+        "pruned_node_count",
+        "correction_fraction",
+        "normalized_vortex_strength_residual",
+        "normalized_linear_impulse_residual",
+        "normalized_angular_impulse_residual",
+    )
+    try:
+        values = {name: float(recovery[name]) for name in numeric_names}
+        values["support_augmented_node_count"] = float(
+            recovery.get("support_augmented_node_count", 0)
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError("GBD moment-recovery diagnostics are incomplete or invalid") from error
+    for name, value in values.items():
+        if not np.isfinite(value):
+            raise RuntimeError(f"GBD moment-recovery diagnostic {name!r} is non-finite")
+    for name in (
+        "nonzero_node_count",
+        "retained_node_count",
+        "pruned_node_count",
+        "support_augmented_node_count",
+    ):
+        if values[name] < 0.0:
+            raise RuntimeError(f"GBD moment-recovery diagnostic {name!r} is negative")
+
+    if values["pruned_node_count"] > 0.0 and not bool(recovery.get("applied", False)):
+        raise RuntimeError("GBD pruned vortex nodes without conservative moment recovery")
+    maximum_residual = max(
+        values["normalized_vortex_strength_residual"],
+        values["normalized_linear_impulse_residual"],
+        values["normalized_angular_impulse_residual"],
+    )
+    if maximum_residual > 1.0e-5:
+        raise RuntimeError("GBD moment recovery exceeds its precision-aware residual tolerance")
+    if values["correction_fraction"] > float(correction_limit):
+        raise RuntimeError(
+            "GBD pruning required an excessive particle-strength correction: "
+            f"fraction={values['correction_fraction']:.6e}, "
+            f"limit={float(correction_limit):.6e}"
+        )
+
+
+class FVMVPMCoupler:
+    """Synchronize an inner FVM solution with an outer VPM wake.
+
+    The driver samples the VPM field on an outer FVM patch, subcycles the FVM
+    to the next VPM time, then replaces or blends the FVM-derived
+    vorticity into the particle cloud. It owns the exchange sequence and
+    coupled restart state; the injected solvers manage their
+    respective meshes, fields, particles, and numerical models.
+
+    Parameters
+    ----------
+    fvm_solver : FVMSolver
+        Native incompressible FVM solver on this rank. In MPI execution every
+        rank supplies its local solver and enters collective calls in the same
+        order.
+    vpm_solver : VPMSolver or None
+        Particle solver on rank zero. Non-owner ranks pass ``None`` or an
+        inactive-rank placeholder. The active solver's domain, freestream,
+        viscosity, and time step must be compatible with the FVM case.
+    coupler_setup : CouplerSetup
+        Immutable coupling-owned transfer, boundary, diagnostic, and backup
+        settings.
+
+    Attributes
+    ----------
+    setup : CouplerSetup
+        Retained coupling settings.
+    fvm_solver : FVMSolver or None
+        Adopted solver after :meth:`initialize`; ``None`` beforehand.
+    vpm_solver : VPMSolver or None
+        Rank-zero adopted particle solver after initialization. It remains
+        ``None`` on other MPI ranks.
+    vorticity_transfer : VorticityTransfer or None
+        Prepared FVM-to-VPM transfer component.
+    fvm_time_step_size, vpm_time_step_size : float or None
+        Accepted FVM substep and VPM/coupling-step durations in s.
+    n_fvm_substeps : int
+        Exact integer number of FVM steps per VPM coupling step.
+    end_time : float or None
+        Physical FVM end time in s after initialization.
+    kinematic_viscosity : float or None
+        Shared fluid kinematic viscosity in m²/s.
+    density : float or None
+        FVM reference density in kg/m³.
+    fvm_box : ndarray or None, shape (6,)
+        Outer FVM bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m.
+    coupling_diagnostics : list[dict]
+        Accepted-step diagnostic records. The list is reset when a run is
+        prepared and mutated as coupling steps complete.
+
+    Notes
+    -----
+    Construction does not advance either solver, but on rank zero it creates
+    ``<fvm case>/solution`` and configures coupled logging. :meth:`run` is the
+    normal entry point; it calls :meth:`initialize` idempotently. A coupled
+    step is persistent state: VPM advance, VPM boundary trace, FVM substeps,
+    absolute vorticity transfer, scheduled VPM output, diagnostics, and backup.
+
+    Examples
+    --------
+    >>> setup = CouplerSetup(coupling_patch="numericalBoundary")
+    >>> driver = FVMVPMCoupler(fvm_solver, vpm_solver, setup)
+    >>> completed_step = driver.run(max_coupling_steps=2, backup_at_stop=True)
+    """
+
+    def __init__(
+        self,
+        fvm_solver: FVMSolver,
+        vpm_solver: VPMSolver | None,
+        coupler_setup: CouplerSetup,
+    ) -> None:
+        """Retain externally configured solvers and prepare coupled output.
+
+        Parameters
+        ----------
+        fvm_solver : FVMSolver
+            FVM instance required on every rank. The object is referenced, not
+            copied, and its accepted state will be mutated during a run.
+        vpm_solver : VPMSolver or None
+            VPM instance required on rank zero and referenced directly. It is
+            intentionally absent on other ranks.
+        coupler_setup : CouplerSetup
+            Validated coupling settings retained by reference.
+
+        Raises
+        ------
+        ValueError
+            If no FVM solver is supplied. Cross-solver constraints are deferred
+            to :meth:`initialize`, when mesh and runtime data are available.
+
+        Notes
+        -----
+        The constructor creates the coupled solution directory and log files
+        on rank zero. It does not initialize exchange geometry or advance the
+        accepted time of either solver.
+        """
+        if fvm_solver is None:
+            raise ValueError(
+                "FVMVPMCoupler requires an FVM solver. Use create_coupler with "
+                "FVMSetup, VPMCase and CouplerSetup for automatic MPI rank assignment."
+            )
+        self.setup = coupler_setup
+        # Converged interface-trace change of the previous exchange; the next
+        # Picard iteration starts from it. Iteration history, not restart state.
+        self.interface_trace_correction: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self._cleanup_stack = ExitStack()
+        self._closed = False
+        self.case_dir = Path(fvm_solver.case_dir).expanduser().absolute()
+
+        self._injected_fvm = fvm_solver
+        self._injected_vpm = vpm_solver
+
+        parallel = getattr(fvm_solver, "parallel", None)
+        self._comm = getattr(parallel, "comm", None)
+        self._mpi_rank = int(getattr(parallel, "rank", 0))
+        self._is_master = self._mpi_rank == 0
+
+        self.solution_dir = self.case_dir / "solution"
+        self._log_handler = None
+        if self._is_master:
+            self.solution_dir.mkdir(parents=True, exist_ok=True)
+            self._log_handler = configure_logging(self.solution_dir, logger)
+
+        if self._is_master:
+            self.vpm_redirector = OutputRedirector(
+                logfile=str(self.solution_dir / "vpm.log"), append=True
+            )
+        else:
+            self.vpm_redirector = OutputRedirector()  # no-op
+
+        self.vpm_solver: VPMSolver | None = None
+        self.fvm_solver: FVMSolver | None = None
+        self.vorticity_transfer: VorticityTransfer | None = None
+        self._velocity_boundary_condition_old: np.ndarray | None = None
+        self._normal_velocity_boundary_condition_old: np.ndarray | None = None
+        self._normal_velocity_boundary_condition: np.ndarray | None = None
+        self._tangential_gradient_boundary_condition_old: np.ndarray | None = None
+        self._tangential_gradient_boundary_condition: np.ndarray | None = None
+        self._velocity_global_buffer: np.ndarray | None = None
+        self._velocity_gradient_global_buffer: np.ndarray | None = None
+        self._last_vpm_boundary_condition_flux_diagnostics = {
+            "raw_mismatch": 0.0,
+            "raw_relative": 0.0,
+            "acceptance_limit": 0.0,
+            "applied_correction": 0.0,
+            "corrected_mismatch": 0.0,
+        }
+        self._last_fvm_boundary_trace_diagnostics = {
+            "mean_velocity_mismatch": 0.0,
+            "maximum_velocity_mismatch": 0.0,
+            "maximum_normal_velocity_mismatch": 0.0,
+            "mean_outflow_velocity_mismatch": 0.0,
+            "maximum_outflow_velocity_mismatch": 0.0,
+        }
+        self.coupling_diagnostics: list[dict] = []
+        self._last_transfer_result = None
+
+        self.fvm_time_step_size: float | None = None
+        self.vpm_time_step_size: float | None = None
+        self.end_time: float | None = None
+        self.kinematic_viscosity: float | None = None
+        self.density: float | None = None
+        self.fvm_box: np.ndarray | None = None
+        self.vpm_particle_spacing = float("nan")
+        self.vpm_diffusion_grid_spacing = float("nan")
+        self.vpm_core_radius_ratio = float("nan")
+        self.n_fvm_substeps = 1
+        self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
+
+    def close(self, *, failure: BaseException | None = None) -> None:
+        """Close factory-owned solvers and this driver's log; safe to repeat.
+
+        Externally supplied solvers remain caller-owned. Every MPI rank must
+        close its driver because native FVM resources are collective.
+        """
+        if self._closed:
+            return
+        cleanup_failures = []
+        try:
+            self._cleanup_stack.__exit__(
+                type(failure) if failure is not None else None,
+                failure,
+                failure.__traceback__ if failure is not None else None,
+            )
+        except BaseException as error:
+            cleanup_failures.append(error)
+        finally:
+            if self._log_handler is not None:
+                for cleanup in (
+                    lambda: logger.removeHandler(self._log_handler),
+                    self._log_handler.close,
+                ):
+                    try:
+                        cleanup()
+                    except BaseException as error:
+                        cleanup_failures.append(error)
+            self._closed = True
+        if failure is not None:
+            for error in cleanup_failures:
+                failure.add_note(f"Coupled driver cleanup also failed: {error!r}")
+        elif cleanup_failures:
+            primary_failure, *additional_failures = cleanup_failures
+            for error in additional_failures:
+                primary_failure.add_note(f"Coupled driver cleanup also failed: {error!r}")
+            raise primary_failure
+
+    def __enter__(self):
+        """Return this live driver for an automatically closed run."""
+        if self._closed:
+            raise RuntimeError("The coupled driver is closed")
+        return self
+
+    def __exit__(self, _exc_type, exc_value, _traceback):
+        """Close resources on success or failure without suppressing errors."""
+        self.close(failure=exc_value)
+
+    @staticmethod
+    def _validate_vpm(vpm, cfg: CouplerSetup, box: np.ndarray, kinematic_viscosity: float) -> None:
+        """Validate the injected VPM against the coupling discretization."""
+        vsc = vpm.setup.viscous
+        if vsc.particle_spacing is None:
+            raise ValueError(
+                "Coupled VPM runs require viscous.particle_spacing so injected FVM "
+                "cell particles and boundary derivatives use the VPM discretization."
+            )
+        induction = getattr(vpm.setup, "induction", None)
+        if getattr(induction, "method", None) == "SLIP_SLAB":
+            # The FVM extrusion, transfer region and VPM slab share one span.
+            planes = np.array([induction.z_min, induction.z_max], dtype=np.float64)
+            tolerance = 1.0e-9 * max(1.0, float(np.max(np.abs(planes))))
+            transfer = box if cfg.transfer_region_bounds is None else cfg.transfer_region_bounds
+            for name, bounds in (("FVM box", box), ("transfer_region_bounds", transfer)):
+                z_bounds = np.asarray(bounds, dtype=np.float64)[4:6]
+                if np.any(np.abs(z_bounds - planes) > tolerance):
+                    raise ValueError(
+                        f"{name} z {tuple(z_bounds.tolist())} must equal the VPM slip "
+                        f"planes {tuple(planes.tolist())}"
+                    )
+        dom = vpm.setup.domain_bounds
+        if dom is not None:
+            # Native projected wall vertices can move an outer face by a few
+            # picometres; the VPM domain is specified at the intended plane.
+            containment_tolerance = 1.0e-9 * max(
+                1.0, float(np.max(np.abs(np.asarray(box, dtype=np.float64))))
+            )
+            contains = (
+                dom[0] <= box[0] + containment_tolerance
+                and dom[1] >= box[1] - containment_tolerance
+                and dom[2] <= box[2] + containment_tolerance
+                and dom[3] >= box[3] - containment_tolerance
+                and dom[4] <= box[4] + containment_tolerance
+                and dom[5] >= box[5] - containment_tolerance
+            )
+            if not contains:
+                raise ValueError(
+                    f"Injected VPM domain {tuple(dom)} does not contain the FVM "
+                    f"box {tuple(box)}. The near-body particles the coupler replaces "
+                    "would be removed by the VPM's out-of-bounds cull every step. "
+                    "Widen domain_bounds (or the VPM stabilization "
+                    "remove_particles_by_bounds) to enclose fvm_box."
+                )
+        stabilization = vpm.setup.stabilization
+        fringe = getattr(stabilization, "outflow_fringe_depth", None)
+        if fringe is not None:
+            depth = np.asarray(fringe, dtype=np.float64)
+            keep = np.asarray(stabilization.remove_particles_by_bounds, dtype=np.float64)
+            inner = keep + depth * np.array([1.0, -1.0] * 3)
+            lower_overlap = (depth[::2] > 0.0) & (inner[::2] > box[::2])
+            upper_overlap = (depth[1::2] > 0.0) & (inner[1::2] < box[1::2])
+            if np.any(lower_overlap) or np.any(upper_overlap):
+                raise ValueError(
+                    f"VPM outflow fringes {tuple(fringe)} reach the FVM box {tuple(box)}. "
+                    "Fringes damp vorticity that the coupler renews from the FVM; "
+                    "place each fringe outside the FVM box."
+                )
+        vpm_kinematic_viscosity = vsc.kinematic_viscosity
+        if (
+            vpm_kinematic_viscosity is not None
+            and abs(float(vpm_kinematic_viscosity) - kinematic_viscosity) > 1e-12
+        ):
+            raise ValueError(
+                f"Incompatible kinematic viscosity: VPM viscous.kinematic_viscosity="
+                f"{float(vpm_kinematic_viscosity):g} but the Eulerian solver uses "
+                f"kinematic_viscosity={float(kinematic_viscosity):g}. "
+                "The two solvers must model the same fluid."
+            )
+        bg = np.asarray(vpm.freestream_velocity, dtype=np.float64)
+        if not np.allclose(bg, np.asarray(cfg.freestream_velocity), atol=1e-9):
+            raise ValueError(
+                f"Incompatible freestream: VPM freestream_velocity {tuple(bg)} "
+                f"!= coupling freestream_velocity {tuple(cfg.freestream_velocity)}. "
+                "The VPM far-field and "
+                "the VPM advection frame must agree."
+            )
+
+    @staticmethod
+    def _derive_n_fvm_substeps(vpm_time_step_size: float, fvm_time_step_size: float) -> int:
+        """Return the integer FVM sub-cycle count implied by solver time steps."""
+        if fvm_time_step_size <= 0.0:
+            raise ValueError(f"FVM time step must be positive, got {fvm_time_step_size!r}.")
+        if vpm_time_step_size <= 0.0:
+            raise ValueError(f"VPM time step must be positive, got {vpm_time_step_size!r}.")
+        ratio = vpm_time_step_size / fvm_time_step_size
+        n_fvm_substeps = max(1, int(round(ratio)))
+        if not np.isclose(ratio, n_fvm_substeps, rtol=1e-9, atol=1e-12):
+            raise ValueError(
+                "The VPM time step must be an integer multiple of the FVM time "
+                "step for sub-cycling. Got "
+                f"vpm_time_step_size={vpm_time_step_size:.12g}, "
+                f"fvm_time_step_size={fvm_time_step_size:.12g}, ratio={ratio:.12g}."
+            )
+        return n_fvm_substeps
+
+    @staticmethod
+    def _derive_coupling_step_count(end_time: float, vpm_time_step_size: float) -> int:
+        """Return the number of VPM/coupling intervals for a given end time.
+
+        The end time need not be an exact multiple of the VPM step size; the
+        count is rounded to the nearest integer, landing on the closest
+        coupling-step boundary.
+
+        Args:
+            end_time: Requested simulation end time.
+            vpm_time_step_size: VPM (coupling) time-step size.
+
+        Returns:
+            Integer number of coupling steps.
+        """
+        if vpm_time_step_size <= 0.0:
+            raise ValueError(f"VPM time step must be positive, got {vpm_time_step_size!r}.")
+        if end_time < 0.0:
+            raise ValueError(f"Coupling end time must be non-negative, got {end_time!r}.")
+        return max(0, int(round(end_time / vpm_time_step_size)))
+
+    def _derive_fvm_box(self) -> np.ndarray:
+        """Bounds of the coupling patch, from the injected solver's geometry.
+
+        The patch faces lie exactly on the six box planes, so the per-axis
+        min/max of the face centres reproduce the box bounds to round-off.
+        Collective (all ranks) — the face-geometry getter gathers globally.
+        """
+        assert self.fvm_solver is not None
+        fc = np.asarray(
+            self.fvm_solver.get_boundary_face_centre_coordinates(self.setup.coupling_patch),
+            dtype=np.float64,
+        ).reshape(-1, 3)
+        resolved_setup = getattr(self.fvm_solver, "_resolved_setup", self.fvm_solver.setup)
+        outer_faces = [fc]
+        for boundary in resolved_setup.boundaries:
+            if boundary.name == self.setup.coupling_patch or boundary.mesh_type == "wall":
+                continue
+            outer_faces.append(
+                np.asarray(
+                    self.fvm_solver.get_boundary_face_centre_coordinates(boundary.name),
+                    dtype=np.float64,
+                ).reshape(-1, 3)
+            )
+        box = None
+        error = None
+        collective = self._comm is not None and self._comm.Get_size() > 1
+        if self._is_master or not collective:
+            if fc.shape[0] == 0:
+                error = (
+                    f"Coupling patch {self.setup.coupling_patch!r} has no faces on the "
+                    "injected Eulerian solver."
+                )
+            else:
+                all_outer_faces = np.concatenate(outer_faces)
+                box = np.array(
+                    [
+                        all_outer_faces[:, 0].min(),
+                        all_outer_faces[:, 0].max(),
+                        all_outer_faces[:, 1].min(),
+                        all_outer_faces[:, 1].max(),
+                        all_outer_faces[:, 2].min(),
+                        all_outer_faces[:, 2].max(),
+                    ]
+                )
+        if collective:
+            assert self._comm is not None
+            error, box = self._comm.bcast((error, box) if self._is_master else None, root=0)
+        if error is not None:
+            raise ValueError(error)
+        return np.asarray(box, dtype=np.float64)
+
+    def _read_fvm_state(self) -> None:
+        """Read fluid properties, time integration, and domain from the FVM."""
+        assert self.fvm_solver is not None
+        fvm_cfg = getattr(self.fvm_solver, "_resolved_setup", self.fvm_solver.setup)
+        time_config = self.fvm_solver._time_config
+        if time_config.adjustment is not None:
+            raise ValueError(
+                "FVM-VPM coupling currently requires a fixed FVM time step: "
+                "adaptive FVM substeps would no longer partition each immutable "
+                "VPM coupling interval exactly. Use MaximumCourantTimeStep only "
+                "for standalone FVM and reference-flow runs."
+            )
+        self.fvm_time_step_size = float(time_config.time_step_size)
+        self.end_time = float(time_config.end_time)
+        self.kinematic_viscosity = float(
+            getattr(self.fvm_solver, "_kinematic_viscosity", fvm_cfg.transport.kinematic_viscosity)
+        )
+        self.density = float(fvm_cfg.transport.density)
+        self.fvm_box = self._derive_fvm_box()
+        self.setup.validate_transfer_region_box(self.fvm_box)
+
+    def initialize(self) -> None:
+        """Validate both solvers and build immutable coupling geometry.
+
+        The injected FVM solver's configuration owns the FVM step; the
+        injected VPM solver's ``time_step_size`` configures the
+        coupling/VPM step.  After both are known, the coupler derives
+        ``n_fvm_substeps = round(vpm_time_step_size / fvm_time_step_size)``
+        internally.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If the master has no active VPM solver, the solver time steps do
+            not form an integer subcycling ratio, freestream/viscosity/domain
+            time-step settings disagree, adaptive FVM stepping is configured, or a
+            configured transfer region is invalid.
+        RuntimeError
+            If MPI and FVM execution sizes disagree or a transfer component
+            cannot be prepared from the available mesh/particle settings.
+
+        Notes
+        -----
+        This method reads collective FVM geometry, constructs transfer
+        lattices and boundary history, configures VPM diffusion anchors/body
+        masks, and resets run diagnostics. It does not advance accepted time.
+        It is idempotent: subsequent calls are no-ops once
+        :attr:`vorticity_transfer` exists.
+        """
+        if self.vorticity_transfer is not None:
+            return  # already initialized
+        cfg = self.setup
+
+        self.fvm_solver = self._injected_fvm
+
+        world_size = int(self._comm.Get_size()) if self._comm is not None else detected_world_size()
+        if world_size > 1 and int(self.fvm_solver.n_procs()) == 1:
+            raise RuntimeError(
+                f"Launched under MPI (world size {world_size}) but the injected "
+                "Eulerian solver is serial (n_procs() == 1). Configure a parallel "
+                "solver or launch one process."
+            )
+
+        self._read_fvm_state()
+
+        candidate_vpm = self._injected_vpm
+        inactive_rank = bool(getattr(candidate_vpm, "_openonda_inactive_rank", False))
+        self.vpm_solver = candidate_vpm if self._is_master and not inactive_rank else None
+        with collective_phase(self._comm, "VPM configuration validation"):
+            if self._is_master:
+                if self.vpm_solver is None:
+                    raise ValueError(
+                        "vpm_solver is None on the master rank. "
+                        "Build the VPM on the master (the Coupler's internal VPM-owner rank)."
+                    )
+                assert self.fvm_box is not None and self.kinematic_viscosity is not None
+                self._validate_vpm(self.vpm_solver, cfg, self.fvm_box, self.kinematic_viscosity)
+
+        assert self.fvm_time_step_size is not None
+        vpm_particle_spacing = self.fvm_time_step_size
+        vpm_diffusion_grid_spacing = vpm_particle_spacing
+        vpm_core_radius_ratio = 1.0
+        if self._is_master:
+            assert self.vpm_solver is not None
+            viscous = self.vpm_solver.setup.viscous
+            assert viscous.particle_spacing is not None
+            vpm_particle_spacing = float(viscous.particle_spacing)
+            if viscous.scheme == "GBD" and viscous.gbd_grid_spacing is not None:
+                vpm_diffusion_grid_spacing = float(viscous.gbd_grid_spacing)
+            elif viscous.scheme == "DVH" and viscous.dvh_grid_spacing is not None:
+                vpm_diffusion_grid_spacing = float(viscous.dvh_grid_spacing)
+            else:
+                vpm_diffusion_grid_spacing = vpm_particle_spacing
+            vpm_core_radius_ratio = float(viscous.core_radius_ratio)
+        if self._comm is not None and self._comm.Get_size() > 1:
+            (
+                vpm_particle_spacing,
+                vpm_diffusion_grid_spacing,
+                vpm_core_radius_ratio,
+            ) = self._comm.bcast(
+                (
+                    vpm_particle_spacing,
+                    vpm_diffusion_grid_spacing,
+                    vpm_core_radius_ratio,
+                )
+                if self._is_master
+                else None,
+                root=0,
+            )
+        self.vpm_particle_spacing = float(vpm_particle_spacing)
+        self.vpm_diffusion_grid_spacing = float(vpm_diffusion_grid_spacing)
+        self.vpm_core_radius_ratio = float(vpm_core_radius_ratio)
+
+        vpm_time_step_size = self.fvm_time_step_size
+        if self._is_master:
+            assert self.vpm_solver is not None
+            vpm_time_step_size = float(self.vpm_solver.time_step_size)
+        if self._comm is not None and self._comm.Get_size() > 1:
+            vpm_time_step_size = float(
+                self._comm.bcast(vpm_time_step_size if self._is_master else None, root=0)
+            )
+
+        self.vpm_time_step_size = vpm_time_step_size
+        self.n_fvm_substeps = self._derive_n_fvm_substeps(
+            self.vpm_time_step_size, self.fvm_time_step_size
+        )
+        if cfg.interface_iterations > 1:
+            from .interface_iteration import validate_output_schedules
+
+            validate_output_schedules(self)
+        if self._is_master:
+            backup_interval_steps = self.setup.backup_interval_steps
+            backup_interval_time = (
+                None
+                if backup_interval_steps == 0
+                else backup_interval_steps * self.vpm_time_step_size
+            )
+            logger.info(
+                format_coupler_log(
+                    "time stepping",
+                    ("fvm time step", f"{self.fvm_time_step_size:.4e}", "s"),
+                    ("vpm time step", f"{self.vpm_time_step_size:.4e}", "s"),
+                    ("fvm substeps per coupling step", self.n_fvm_substeps),
+                    ("coupled backup interval", backup_interval_steps, "coupling steps"),
+                    ("coupled backup physical interval", backup_interval_time, "s"),
+                )
+            )
+
+        self.vorticity_transfer = VorticityTransfer(self)
+        self.vorticity_transfer.setup(self.fvm_solver)
+        with collective_phase(self._comm, "VPM grid configuration"):
+            boundary = self.vorticity_transfer.solid_boundary
+            if self._is_master and boundary is not None:
+                from .solid import SolidParticleGuard
+
+                assert self.vpm_solver is not None
+                self.vpm_solver.physics.configure_body_classifier(
+                    boundary.contains,
+                    revision=boundary.revision,
+                    query_bounds=boundary.bounds,
+                    blocks_segments=boundary.blocks_segments,
+                    geometry_queries=boundary.grid_geometry_queries(),
+                )
+                guard = SolidParticleGuard(
+                    boundary,
+                    self.vpm_solver.physics,
+                    self.vpm_particle_spacing,
+                    logger,
+                )
+                self.vpm_solver.stage_rhs.position_guard = guard.stage
+                self.vpm_solver.stage_rhs.accepted_position_projector = guard.accepted
+                logger.info(
+                    format_coupler_log(
+                        "vpm diffusion grid",
+                        ("solid mask", "FVM wall geometry"),
+                        ("geometry revision", repr(boundary.revision)),
+                    )
+                )
+            if self._is_master:
+                anchor = self.vorticity_transfer._lattice_anchor
+                if (
+                    anchor is None
+                    and self.vorticity_transfer._cell_centre is not None
+                    and len(self.vorticity_transfer._cell_centre) > 0
+                ):
+                    anchor = self.vorticity_transfer._cell_centre[0]
+                if anchor is not None:
+                    assert self.vpm_solver is not None
+                    self.vpm_solver.physics.configure_grid_lattice_anchor(
+                        anchor, self.vpm_diffusion_grid_spacing
+                    )
+                    anchor_text = ", ".join(
+                        f"{value:.6g}" for value in np.asarray(anchor, dtype=np.float64)
+                    )
+                    logger.info(
+                        format_coupler_log(
+                            "vpm diffusion lattice",
+                            ("anchor", f"[{anchor_text}]", "m"),
+                            ("spacing", f"{self.vpm_diffusion_grid_spacing:.6g}", "m"),
+                        )
+                    )
+
+            if self._is_master:
+                logger.info(
+                    format_coupler_log(
+                        "initial state",
+                        ("start", "impulsive"),
+                        ("particles", 0),
+                    )
+                )
+                logger.info(format_coupler_log("initialization complete"))
+
+        self._initialize_run_state()
+
+    def apply_vpm(self, callback, *args, **kwargs):
+        """Run application instrumentation once with the owned VPM solver.
+
+        Callbacks may inspect the VPM state or install diagnostic hooks. The
+        library selects its owner and propagates callback failures. Collective
+        FVM field queries belong outside the callback. The result is shared.
+        """
+        result = None
+        with collective_phase(self._comm, "VPM application callback"):
+            if self._is_master:
+                vpm = self.vpm_solver if self.vpm_solver is not None else self._injected_vpm
+                result = callback(vpm, *args, **kwargs)
+        return self._comm.bcast(result, root=0) if self._comm is not None else result
+
+    def run(
+        self,
+        start_step: int = 0,
+        restart_from: str | Path | None = None,
+        *,
+        start_from: str | Path | None = None,
+        restart_allowed_config_differences: Collection[str] = (),
+        restart_expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
+        max_coupling_steps: int | None = None,
+        backup_at_stop: bool = False,
+        initial_velocity=None,
+    ) -> int:
+        """Initialize and run a complete or explicitly bounded coupling segment.
+
+        Parameters
+        ----------
+        start_step : int, default=0
+            Previously completed coupling step for an already-restored in-memory
+            state. The FVM step must equal ``start_step * n_fvm_substeps`` and
+            the master VPM step must equal ``start_step``.
+        restart_from : str, pathlib.Path, or None, default=None
+            Coupled-backup directory to restore before solving. It is mutually
+            exclusive with a non-zero ``start_step``.
+        start_from : {"latest", "initial"}, path, or None, default=None
+            Discover the committed coupled bundle in the case solution root,
+            start a clean case, or select an explicit bundle. It is mutually
+            exclusive with ``restart_from`` and a non-zero ``start_step``.
+        restart_allowed_config_differences : collection[str], default=()
+            Exact dotted configuration paths permitted to differ from the
+            backup metadata. This is accepted only with ``restart_from``;
+            output file hashes and all unlisted settings remain strict.
+        restart_expected_config_differences : mapping or None, default=None
+            Exact ``path: (stored_value, current_value)`` expectations for the
+            explicitly permitted differences. Required for structural or
+            absent-key changes; never grants a parent/wildcard exemption.
+        max_coupling_steps : int or None, default=None
+            Positive cap on accepted coupling steps performed by this call.
+            ``None`` advances to the configured physical end time.
+        backup_at_stop : bool, default=False
+            Write an atomic coupled backup if a bounded segment stops at a step
+            not already covered by scheduled backup cadence.
+        initial_velocity : callable or None, default=None
+            Physical velocity field evaluated at local FVM cell centres before
+            initial output. It is applied only to a fresh state; continuation
+            restores the native checkpoint field.
+
+        Returns
+        -------
+        int
+            Final completed coupling-step index, including any restored prefix.
+
+        Raises
+        ------
+        TypeError
+            If a step limit/index is not an integer.
+        ValueError
+            If restart arguments conflict, step state is inconsistent, no
+            steps remain under a requested limit, or solver configurations are
+            incompatible.
+        RuntimeError
+            If initialization, stepping, transfer, output, or backup fails.
+
+        Notes
+        -----
+        ``max_coupling_steps`` is an execution limit, not part of the physical
+        configuration, so strict same-configuration restarts can continue a
+        bounded run without changing its end time. Both injected solvers,
+        boundary-history arrays, diagnostics, files, and clocks are mutated.
+        """
+        if self.vorticity_transfer is None:
+            self.initialize()
+        if start_from is not None:
+            if restart_from is not None or start_step:
+                raise ValueError("start_from cannot be combined with restart_from or start_step")
+            from openonda.core.restart import reset_run_outputs, select_backup
+
+            with collective_phase(self._comm, "coupled restart selection"):
+                selected = (
+                    select_backup(start_from, directory=self.solution_dir, kind="coupled")
+                    if self._is_master
+                    else None
+                )
+            if self._comm is not None:
+                selected = self._comm.bcast(selected, root=0)
+            if start_from == "initial" or (start_from == "latest" and selected is None):
+                with collective_phase(self._comm, "coupled initial output reset"):
+                    fvm = self.fvm_solver
+                    assert fvm is not None
+                    used_state = bool(fvm.step or getattr(fvm, "_restart_loaded", False))
+                    if self._is_master:
+                        assert self.vpm_solver is not None
+                        used_state |= bool(
+                            self.vpm_solver.step
+                            or getattr(self.vpm_solver, "_restart_loaded", False)
+                        )
+                    if used_state:
+                        raise RuntimeError(
+                            "start_from='initial' requires a new coupled solver before advancing"
+                        )
+                    if self._is_master:
+                        reset_run_outputs(self.solution_dir, kind="coupled")
+                fvm.start_from("initial")
+                with collective_phase(self._comm, "initial VPM output reset"):
+                    if self._is_master:
+                        assert self.vpm_solver is not None
+                        self.vpm_solver.start_from("initial")
+
+            restart_from = selected
+        if restart_from is not None:
+            if start_step:
+                raise ValueError("start_step and restart_from are mutually exclusive")
+            start_step = self.load_backup(
+                restart_from,
+                allowed_config_differences=restart_allowed_config_differences,
+                expected_config_differences=restart_expected_config_differences,
+            )
+        elif restart_allowed_config_differences or restart_expected_config_differences:
+            raise ValueError("restart configuration permissions require restart_from")
+        from openonda.core.simulation.forcing import apply_velocity_boundaries
+
+        apply_velocity_boundaries(self.fvm_solver, self.fvm_solver.time)
+        with collective_phase(self._comm, "initial freestream history"):
+            self._update_freestream(self.fvm_solver.time)
+        if initial_velocity is not None and start_step == 0 and restart_from is None:
+            from openonda.core.simulation.forcing import apply_initial_velocity
+
+            apply_initial_velocity(self.fvm_solver, initial_velocity)
+        if (
+            start_step == 0
+            and restart_from is None
+            and getattr(self.fvm_solver, "auto_write", False)
+        ):
+            self.fvm_solver.write_vtk()
+        return self.solve(
+            start_step=start_step,
+            max_coupling_steps=max_coupling_steps,
+            backup_at_stop=backup_at_stop or start_from is not None,
+            backup_at_start=start_from is not None and restart_from is None,
+        )
+
+    @staticmethod
+    def _validate_step_limit(max_coupling_steps: int | None) -> int | None:
+        if max_coupling_steps is None:
+            return None
+        if isinstance(max_coupling_steps, bool) or not isinstance(max_coupling_steps, Integral):
+            raise TypeError("max_coupling_steps must be a positive integer or None")
+        limit = int(max_coupling_steps)
+        if limit <= 0:
+            raise ValueError("max_coupling_steps must be positive")
+        return limit
+
+    def _validate_start_step(self, start_step: int, configured_end_step: int) -> int:
+        if isinstance(start_step, bool) or not isinstance(start_step, Integral):
+            raise TypeError("start_step must be a non-negative integer")
+        step = int(start_step)
+        if not 0 <= step <= configured_end_step:
+            raise ValueError(f"start_step must lie in [0, {configured_end_step}], got {step}")
+        assert self.fvm_solver is not None
+        expected_fvm_step = step * self.n_fvm_substeps
+        if int(self.fvm_solver.step) != expected_fvm_step:
+            raise ValueError(
+                "FVM state does not match start_step: "
+                f"step={self.fvm_solver.step}, expected={expected_fvm_step}"
+            )
+        if self._is_master:
+            assert self.vpm_solver is not None
+            if int(self.vpm_solver.step) != step:
+                raise ValueError(
+                    "VPM state does not match start_step: "
+                    f"step={self.vpm_solver.step}, expected={step}"
+                )
+        return step
+
+    def solve(
+        self,
+        start_step: int = 0,
+        *,
+        max_coupling_steps: int | None = None,
+        backup_at_stop: bool = False,
+        backup_at_start: bool = False,
+    ) -> int:
+        """Advance an initialized coupled state through accepted macro-steps.
+
+        Parameters
+        ----------
+        start_step : int, default=0
+            Number of coupling steps already represented by both solver states.
+            At zero, an initial FVM-to-VPM synchronization is performed before
+            any time advance.
+        max_coupling_steps : int or None, default=None
+            Optional positive execution cap for this invocation.
+        backup_at_stop : bool, default=False
+            Persist a coupled backup at a bounded stop unless that step was
+            already saved by the configured cadence.
+
+        Returns
+        -------
+        int
+            Last completed coupling-step index.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`initialize` has not prepared the transfer component or a
+            numerical/transfer/output operation fails.
+        TypeError
+            If either step argument has an invalid type.
+        ValueError
+            If the in-memory solver steps disagree with ``start_step`` or the
+            execution cap is invalid.
+
+        Notes
+        -----
+        Unlike :meth:`run`, this method does not initialize or load a restart.
+        Each iteration mutates both accepted solver states and their clocks,
+        updates boundary history and transfer diagnostics, executes due VPM
+        samplers, and may write logs/backups. MPI ranks must call it
+        collectively and in the same order.
+        """
+        # A new invocation starts the interface iteration cold.
+        self.interface_trace_correction = None
+        face_geometry, n_steps = self._prepare_run()
+        with collective_phase(self._comm, "coupled start state"):
+            start_step = self._validate_start_step(start_step, n_steps)
+            self._update_freestream(self.fvm_solver.time)
+        step_limit = self._validate_step_limit(max_coupling_steps)
+        stop_step = n_steps if step_limit is None else min(n_steps, start_step + step_limit)
+        self._n_steps = stop_step
+        with collective_phase(self._comm, "coupled run metadata"):
+            if self._is_master:
+                write_run_metadata(self, start_step=start_step, stop_step=stop_step)
+                if stop_step < n_steps:
+                    logger.info(
+                        format_coupler_log(
+                            "execution limit",
+                            ("start step", f"{start_step:,}"),
+                            ("stop step", f"{stop_step:,}"),
+                            ("steps this invocation", f"{stop_step - start_step:,}"),
+                            ("backup at stop", "enabled" if backup_at_stop else "disabled"),
+                        )
+                    )
+        if start_step == 0 and not getattr(self, "_restart_loaded", False):
+            # Every VPM interval must start from the FVM state at the same
+            # physical time. This first synchronization also supports non-zero
+            # user-supplied initial FVM vorticity while preserving any outer
+            # particles already present in the VPM cloud.
+            initial_result, _ = self._transfer_vorticity_to_vpm(*face_geometry)
+            self._last_transfer_result = initial_result
+        initialize_vpm_boundary_history(self, *face_geometry)
+        if backup_at_start and start_step == 0:
+            self.save_backup(self.solution_dir / BACKUP_DIRECTORY, coupling_step=0)
+        assert self.vpm_time_step_size is not None
+        self._log_stop_step = stop_step
+        for step in range(1 + start_step, stop_step + 1):
+            exchange_started = time.perf_counter()
+            time_end = step * self.vpm_time_step_size
+            with collective_phase(self._comm, "accepted-endpoint freestream"):
+                self._update_freestream(time_end)
+            vpm_time = self._advance_vpm(step, time_end)
+            velocity_boundary_condition_old, next_velocity, boundary_time = evaluate_vpm_boundary(
+                self, *face_geometry
+            )
+            if self.setup.interface_iterations > 1:
+                from .interface_iteration import advance_iterated_interface
+
+                transfer_result, fvm_time, transfer_time = advance_iterated_interface(
+                    self, face_geometry, next_velocity
+                )
+                boundary_time += self._last_interface_iteration_diagnostics["phase_seconds"][
+                    "boundary_refresh"
+                ]
+            else:
+                fvm_time = advance_fvm(
+                    self, *face_geometry, velocity_boundary_condition_old, next_velocity
+                )
+                transfer_result, transfer_time = self._transfer_vorticity_to_vpm(*face_geometry)
+                refresh_started = time.perf_counter()
+                update_boundary_history_after_replacement(self, *face_geometry)
+                boundary_time += time.perf_counter() - refresh_started
+            state_checks_and_sampling_started = time.perf_counter()
+            with collective_phase(self._comm, "VPM particle-state check and output"):
+                if self._is_master:
+                    assert self.vpm_solver is not None
+                    self.vpm_solver.execute_scheduled_samplers()
+            state_checks_and_sampling_seconds = (
+                time.perf_counter() - state_checks_and_sampling_started
+            )
+            self._last_transfer_result = transfer_result
+            record_step(
+                self,
+                step,
+                time_end,
+                (vpm_time, boundary_time, fvm_time, transfer_time),
+                transfer_result,
+                logger=logger,
+                comm=self._comm,
+                exchange_started=exchange_started,
+                state_checks_and_sampling_seconds=state_checks_and_sampling_seconds,
+            )
+        backup_was_scheduled = (
+            self.setup.backup_interval_steps > 0
+            and stop_step > start_step
+            and stop_step % self.setup.backup_interval_steps == 0
+        )
+        if backup_at_stop and stop_step > start_step and not backup_was_scheduled:
+            self.save_backup(
+                self.solution_dir / BACKUP_DIRECTORY,
+                coupling_step=stop_step,
+            )
+        if self._is_master:
+            flush_log(logger)
+        return stop_step
+
+    def _initialize_run_state(self) -> None:
+        self._step_transfer_stats: dict[str, float | int] | None = None
+        self.coupling_diagnostics = []
+
+    def _prepare_run(self):
+        """Validate a run and collect the immutable interface geometry."""
+        if self.vorticity_transfer is None:
+            raise RuntimeError(
+                "solve() called before initialize(); call coupler.initialize() "
+                "first, or use coupler.run() which does both."
+            )
+        assert self._is_master == (self.vpm_solver is not None)
+        assert self.fvm_solver is not None
+
+        assert self.end_time is not None and self.vpm_time_step_size is not None
+        n_steps = self._derive_coupling_step_count(self.end_time, self.vpm_time_step_size)
+        patch = self.setup.coupling_patch
+        if self._is_master:
+            logger.info(
+                format_coupler_log(
+                    "run",
+                    ("coupling steps", f"{n_steps:,}"),
+                    ("end time", f"{self.end_time:.6g}", "s"),
+                    ("boundary mode", "vorticity_mixed"),
+                    ("coupling patch", patch),
+                    (
+                        "coupled backup directory",
+                        str(self.solution_dir / BACKUP_DIRECTORY),
+                    ),
+                )
+            )
+
+        face_centre = np.asarray(
+            self.fvm_solver.get_boundary_face_centre_coordinates(patch), dtype=np.float64
+        ).reshape(-1, 3)
+        face_normal = np.asarray(
+            self.fvm_solver.get_boundary_face_normal(patch), dtype=np.float64
+        ).reshape(-1, 3)
+        face_area = np.asarray(
+            self.fvm_solver.get_boundary_face_area(patch), dtype=np.float64
+        ).ravel()
+        self._n_steps = n_steps
+        return (face_centre, face_normal, face_area), n_steps
+
+    def _update_freestream(self, time: float) -> None:
+        if self.setup.freestream is not None:
+            self.freestream_velocity = self.setup.freestream.at(time)
+            self.vorticity_transfer.config = replace(
+                self.setup, freestream_velocity=self.freestream_velocity.tolist()
+            )
+            if self._is_master:
+                self.vpm_solver._set_freestream_velocity(self.freestream_velocity)
+
+    def _advance_vpm(self, step: int, time_end: float) -> float:
+        t0 = time.perf_counter()
+        with collective_phase(self._comm, "VPM advance"):
+            if self._is_master:
+                assert self.vpm_solver is not None
+                self.vpm_solver.physics.last_solid_projection = {
+                    "stage_count": 0,
+                    "accepted_count": 0,
+                    "stage_displacement_l1": 0.0,
+                    "accepted_displacement_l1": 0.0,
+                    "stage_impulse_change": np.zeros(3),
+                    "accepted_impulse_change": np.zeros(3),
+                }
+                with self.vpm_redirector:
+                    self.vpm_solver._set_freestream_velocity(self.freestream_velocity)
+                begin_coupling_step(logger, step, self._n_steps, time_end)
+
+                with self.vpm_redirector:
+                    self.vpm_solver.advance(defer_output=True)
+                self.vpm_solver.synchronize()
+                if str(getattr(self.vpm_solver, "viscous_scheme", "")).upper() == "GBD":
+                    _validate_gbd_moment_recovery(
+                        getattr(
+                            self.vpm_solver.physics,
+                            "last_gbd_moment_recovery",
+                            None,
+                        ),
+                        self.setup.transfer_discretization_error_limit,
+                    )
+        return time.perf_counter() - t0
+
+    def _transfer_vorticity_to_vpm(
+        self,
+        face_centre: np.ndarray,
+        _face_normals: np.ndarray,
+        _face_area: np.ndarray,
+    ):
+        """Replace the FVM-derived part of the particle cloud."""
+        t_transfer = time.perf_counter()
+        velocity_global = self._get_velocity_field_buffer()
+        gradient_global = self._get_velocity_gradient_field_buffer()
+        gather_seconds = time.perf_counter() - t_transfer
+        transfer_result = None
+        with collective_phase(self._comm, "vorticity transfer"):
+            if self._is_master:
+                assert self.vpm_solver is not None
+                assert self.vorticity_transfer is not None
+                vpm = self.vpm_solver
+                transfer = self.vorticity_transfer
+                n_before = vpm.particles.n_particles_total
+                sum_before = (
+                    float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
+                    if n_before > 0
+                    else 0.0
+                )
+                transfer_result = transfer.transfer(
+                    vpm,
+                    velocity=velocity_global,
+                    velocity_gradient=gradient_global,
+                )
+                n_after = vpm.particles.n_particles_total
+                sum_after = (
+                    float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
+                    if n_after > 0
+                    else 0.0
+                )
+                self._step_transfer_stats = {
+                    "n_before": n_before,
+                    "n_after": n_after,
+                    "sum_before": sum_before,
+                    "sum_after": sum_after,
+                    "face_count": len(face_centre),
+                    "donor_gather_seconds": gather_seconds,
+                }
+        return transfer_result, time.perf_counter() - t_transfer
+
+    def _get_velocity_field_buffer(self) -> np.ndarray:
+        assert self.fvm_solver is not None
+        if self._velocity_global_buffer is None:
+            self._velocity_global_buffer = np.ascontiguousarray(
+                self.fvm_solver.get_velocity_field(), dtype=np.float64
+            ).reshape(-1, 3)
+        else:
+            self.fvm_solver.get_velocity_field_into(self._velocity_global_buffer)
+        return self._velocity_global_buffer
+
+    def _get_velocity_gradient_field_buffer(self) -> np.ndarray:
+        assert self.fvm_solver is not None
+        if self._velocity_gradient_global_buffer is None:
+            self._velocity_gradient_global_buffer = np.ascontiguousarray(
+                self.fvm_solver.get_velocity_gradient_field(), dtype=np.float64
+            ).reshape(-1, 3, 3)
+        else:
+            self.fvm_solver.get_velocity_gradient_field_into(self._velocity_gradient_global_buffer)
+        return self._velocity_gradient_global_buffer
+
+    def save_backup(
+        self,
+        directory: str | Path,
+        *,
+        coupling_step: int | None = None,
+    ) -> Path:
+        """Save one coupled checkpoint and publish both solvers at its time.
+
+        Parameters
+        ----------
+        directory : str or pathlib.Path
+            Destination directory. It is created if needed. A rolling metadata
+            and referenced FVM, VPM, VTU, and boundary-history output files are
+            stored below it.
+        coupling_step : int or None, default=None
+            Step label for the checkpoint. ``None`` derives it from the FVM
+            accepted step and :attr:`n_fvm_substeps`.
+
+        Returns
+        -------
+        pathlib.Path
+            Backup directory. Retained FVM and VPM frames are also indexed in
+            ``solution/fvm.pvd`` and ``solution/vpm.pvd`` at the saved time.
+
+        Raises
+        ------
+        RuntimeError
+            If the coupler is not initialized on a rank that owns a required
+            solver.
+        OSError
+            If an output file cannot be written, synchronized, or committed.
+
+        Notes
+        -----
+        The FVM save and visualization write are collective. The metadata is
+        committed before visualization output writing; successful return also
+        confirms both retained frames are published. An already-written FVM
+        frame is reused. This method does not change physical time.
+        """
+        with collective_phase(self._comm, "coupled backup"):
+            backup = save_coupled_backup(self, directory, coupling_step=coupling_step)
+
+        assert self.fvm_solver is not None
+        fvm = self.fvm_solver
+        write_fvm = getattr(fvm, "_last_vtk_state", None) != (
+            fvm.step,
+            fvm.time,
+            fvm._state_revision,
+        )
+        if self._comm is not None and self._comm.Get_size() > 1:
+            write_fvm = self._comm.bcast(write_fvm if self._is_master else None, root=0)
+        if write_fvm:
+            fvm.write_vtk()
+        with collective_phase(self._comm, "coupled FVM snapshot flush"):
+            fvm.flush_output()
+        with collective_phase(self._comm, "coupled VPM snapshot output writing"):
+            if self._is_master:
+                publish_vpm_snapshot(backup, self.solution_dir)
+        return backup
+
+    def load_backup(
+        self,
+        directory: str | Path,
+        *,
+        allowed_config_differences: Collection[str] = (),
+        expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
+    ) -> int:
+        """Restore a complete coupled checkpoint into initialized solvers.
+
+        Parameters
+        ----------
+        directory : str or pathlib.Path
+            Directory containing the committed coupled ``checkpoint_info.json`` and
+            all output files named by it.
+        allowed_config_differences : collection[str], default=()
+            Exact recursive configuration paths permitted to differ for a
+            controlled restart. All other configuration and output file hashes
+            remain strict.
+        expected_config_differences : mapping or None, default=None
+            Exact ``path: (stored_value, current_value)`` expectations, required
+            for structured or absent-key changes. VPM native validation runs
+            before FVM fields or observation histories can be loaded.
+
+        Returns
+        -------
+        int
+            Restored coupling-step index, suitable as ``start_step`` for
+            :meth:`solve`.
+
+        Raises
+        ------
+        RuntimeError
+            If the coupler is not initialized, the metadata/output files are
+            incomplete or inconsistent, or restored solver clocks disagree.
+        ValueError
+            If configuration differs outside the explicit allow-list.
+        OSError
+            If required files cannot be read.
+
+        Notes
+        -----
+        This method mutates FVM fields/history, the VPM particle state and
+        clock, and all stored VPM boundary-condition history. In partitioned
+        execution every rank must participate collectively.
+        """
+        self.interface_trace_correction = None
+        step = load_coupled_backup(
+            self,
+            directory,
+            comm=self._comm,
+            allowed_config_differences=allowed_config_differences,
+            expected_config_differences=expected_config_differences,
+        )
+        self._restart_loaded = True
+        return step

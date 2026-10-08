@@ -10,10 +10,10 @@ import numpy as np
 import pandas as pd
 
 from openonda import plotting as theme
-from openonda.results import read_csv_table, read_json
-from source.solvers.vpm.io.postprocess import accepted_history
+from assets.output_files import read_csv_table, read_json
+from openonda.vpm.io.postprocess import accepted_history
 
-from ..setup import ROTOR_RADIUS, WAKE_PLANE_DIAMETERS
+from setup import ROTOR_RADIUS, WAKE_PLANE_DIAMETERS
 
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
@@ -26,7 +26,7 @@ REQUIRED_PLANE_NAMES = tuple((f"wake_{distance}D" for distance in WAKE_PLANE_DIA
 
 def blade_geometry(vlm):
     """Read the actual first blade's radial chord/pitch schedule, without regenerating it."""
-    geometry = theme.read_vlm_surface(vlm["surfaces"][0])
+    geometry = vlm["surfaces"][0]["geometry"]
     rows = []
     for wing in geometry["wings"]:
         for segment in wing["segments"]:
@@ -80,7 +80,7 @@ def rotor_inputs():
 
 
 def bem_reference():
-    from openonda.rotor_theory import solve_blade_element_momentum
+    from assets.rotor_theory import solve_blade_element_momentum
 
     p = rotor_inputs()
     return solve_blade_element_momentum(
@@ -177,4 +177,14 @@ def build_arg_parser(description):
 
 
 def build_rotor_style_map(colors):
-    return {name: dict(style) for name, style in theme.ROTOR_STYLE.items()}
+    vpm = {"color": colors["vpm"], "markersize": 1.5, "linewidth": 1.0}
+    reference = {"color": colors["reference"], "linestyle": "--", "linewidth": 1.0}
+    return {
+        "vpm": {**vpm, "marker": "o", "label": "VLM-VPM"},
+        "bem": {**reference, "label": "BEM"},
+        "theory": dict(reference),
+        "reference": dict(reference),
+        "thrust_coefficient": {**vpm, "marker": "o", "label": r"$C_T$"},
+        "power_coefficient": {**vpm, "marker": "s", "label": r"$C_P$"},
+        **{f"plane_{index}": {"color": colors["vpm"], "linewidth": 1.0} for index in range(5)},
+    }

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from source.solvers.vpm.turbulence.turbulence import ParticlesLES
+from openonda.vpm.turbulence.turbulence import ParticlesLES
 
 
 def test_zero_smagorinsky_skips_viscosity_kernels():
@@ -23,7 +23,7 @@ def test_fixed_les_filter_preserves_closure_under_particle_volume_changes():
     import numpy as np
     import taichi as ti
 
-    from source.solvers.vpm.config.turbulence import TurbulenceConfig
+    from openonda.vpm.config.turbulence import TurbulenceConfig
 
     ti.init(arch=ti.cpu, offline_cache=False)
     try:

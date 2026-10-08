@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from source import _numba
+from openonda.core import _numba
 
 
 def test_cacheable_njit_falls_back_only_when_no_cache_locator_exists(monkeypatch):

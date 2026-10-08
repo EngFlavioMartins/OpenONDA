@@ -20,11 +20,10 @@ from paraview.simple import (
     XMLPolyDataReader,
 )
 
-from openonda.results import read_json
 
 out = Path(sys.argv[1])
 rgb_points = json.loads(sys.argv[2])
-scene = read_json(out / "scene.json")
+scene = json.loads((out / "scene.json").read_text(encoding="utf-8"))
 schematic_only = "--schematic-only" in sys.argv[3:]
 view = CreateView("RenderView")
 layout = CreateLayout("Vortex ring render")

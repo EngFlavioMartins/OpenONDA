@@ -17,11 +17,11 @@ import pyvista as pv
 from matplotlib import colormaps
 
 from openonda import plotting as theme
-from openonda.results import read_json, write_text
-from openonda.scenes import export_scene
-from source.solvers.vpm.io.postprocess import particle_state
+from assets.output_files import read_json, write_text
+from assets.scenes import export_scene
+from openonda.vpm.io.postprocess import particle_state
 
-from .. import setup as s
+import setup as s
 
 CASE = Path(__file__).resolve().parents[1]
 

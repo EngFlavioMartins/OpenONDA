@@ -15,8 +15,8 @@ from pathlib import Path
 import numpy as np
 import taichi as ti
 
-from source.solvers.vpm.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
-from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from openonda.vpm.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
+from openonda.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from tests._tutorial_helpers import load_tutorial_module
 
 create_flat_plate = load_tutorial_module(

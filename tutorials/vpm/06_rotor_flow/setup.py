@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.results import read_json
+from assets.output_files import read_json
 from openonda.vpm import Backup, Samplers
 
 CASE_NAME = "rotor"

@@ -50,12 +50,11 @@ def _moving_coupled_case(directory):
 
 
 def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_removed(tmp_path):
-    from openonda.plotting import read_vlm_surface
-    from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import (
+    from openonda.vpm.boundary_elements.vlm.geometry.surface_io import (
         save_surface,
         surface_to_dict,
     )
-    from source.solvers.vpm.io.metadata import build_metadata
+    from openonda.vpm.io.metadata import build_metadata
 
     plate = create_flat_plate(
         chord=1,
@@ -84,7 +83,7 @@ def test_native_metadata_preserves_loaded_geometry_when_the_input_file_is_remove
         path.unlink()
         record = build_metadata(solver)["configuration"]["numerics"]["vlm"]["surfaces"][0]
         assert record["geometry"] == surface_to_dict(plate)
-        assert read_vlm_surface(record) == surface_to_dict(plate)
+        assert record["geometry"] == surface_to_dict(plate)
     finally:
         solver.close()
 
@@ -221,7 +220,7 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
         checkpoint = tmp_path / "first/solution/vpm/vpm_000002.h5"
         # The solver-free export must reproduce the live companion, including
         # area-dependent normal loading, from the persisted VLM state alone.
-        from source.solvers.vpm.io.vlm_backup import export_vlm_backup
+        from openonda.vpm.io.vlm_backup import export_vlm_backup
 
         export_directory = tmp_path / "solver_free_export"
         export_directory.mkdir()

@@ -1,0 +1,583 @@
+"""Owned-row PETSc assembly for partitioned sparse systems."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+import time
+from types import ModuleType
+from typing import TYPE_CHECKING
+
+import numpy as np
+from scipy import sparse
+
+from openonda.core._numba import cacheable_njit as njit
+
+from ..mesh.partition import cell_partition_offsets
+from .linear_interface import (
+    LINEAR_RESIDUAL_FLOOR,
+    LINEAR_VERIFICATION_FACTOR,
+    LinearSolveError,
+    LinearSolveResult,
+)
+
+if TYPE_CHECKING:
+    from ..core.parallel import ParallelContext
+    from ..mesh.partition import CellPartition
+
+
+@njit(cache=True)
+def _petsc_row_preallocation(
+    indptr: np.ndarray, indices: np.ndarray, row_start: int, row_end: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Count on-rank and off-rank entries without an nnz-sized temporary."""
+    n_rows = len(indptr) - 1
+    diagonal = np.empty(n_rows, dtype=np.int32)
+    off_diagonal = np.empty(n_rows, dtype=np.int32)
+    for row in range(n_rows):
+        local_count = 0
+        for position in range(indptr[row], indptr[row + 1]):
+            column = indices[position]
+            if row_start <= column < row_end:
+                local_count += 1
+        diagonal[row] = local_count
+        off_diagonal[row] = indptr[row + 1] - indptr[row] - local_count
+    return diagonal, off_diagonal
+
+
+@njit(cache=True)
+def _maximum_relative_row_change(
+    indptr: np.ndarray, data: np.ndarray, previous: np.ndarray
+) -> float:
+    maximum = 0.0
+    for row in range(len(indptr) - 1):
+        difference = 0.0
+        norm = 0.0
+        for position in range(indptr[row], indptr[row + 1]):
+            reference = previous[position]
+            difference += abs(data[position] - reference)
+            norm += abs(reference)
+        relative = difference / max(norm, 1e-300)
+        if not np.isfinite(relative):
+            return np.inf
+        maximum = max(maximum, relative)
+    return maximum
+
+
+@dataclass(frozen=True)
+class OwnedRowsCSR:
+    """Owned-row slice of a global CSR matrix with local RHS.
+
+    Each MPI rank stores the rows of the global sparse matrix that it owns
+    (determined by contiguous rank assignment ranges).  Column indices reference
+    global cell IDs so that the PETSc matrix can be assembled with global
+    indexing.  The local RHS vector is the corresponding slice of the
+    global right-hand side.
+
+    Constructed via :meth:`from_global` for test/reference use or directly
+    assembled by the partitioned assembly routines.
+
+    Attributes
+    ----------
+    global_size : int
+        Total number of rows in the unpartitioned matrix.
+    row_start : int
+        First owned row index (global, inclusive).
+    row_end : int
+        One past the last owned row index (global, exclusive).
+    indptr : np.ndarray
+        CSR row pointers for the local block, shape ``(n_local_rows + 1,)``.
+    indices : np.ndarray
+        CSR column indices (global IDs), shape ``(n_nonzeros,)``.
+    data : np.ndarray
+        CSR coefficient values, shape ``(n_nonzeros,)``.
+    rhs : np.ndarray
+        Local right-hand side values, shape ``(n_local_rows,)``.
+    """
+
+    global_size: int
+    row_start: int
+    row_end: int
+    indptr: np.ndarray
+    indices: np.ndarray
+    data: np.ndarray
+    rhs: np.ndarray
+
+    @classmethod
+    def from_global(
+        cls, matrix: sparse.spmatrix, rhs: np.ndarray, rank: int, size: int
+    ) -> OwnedRowsCSR:
+        """Create a test/reference partition without retaining the global matrix."""
+        matrix = matrix.tocsr()
+        offsets = cell_partition_offsets(matrix.shape[0], size)
+        start, end = int(offsets[rank]), int(offsets[rank + 1])
+        local = matrix[start:end].tocsr()
+        return cls(
+            global_size=matrix.shape[0],
+            row_start=start,
+            row_end=end,
+            indptr=np.asarray(local.indptr, dtype=np.int64),
+            indices=np.asarray(local.indices, dtype=np.int64),
+            data=np.asarray(local.data, dtype=np.float64),
+            rhs=np.asarray(rhs[start:end], dtype=np.float64),
+        )
+
+    @classmethod
+    def from_local(
+        cls, matrix: sparse.spmatrix, rhs: np.ndarray, partition: CellPartition
+    ) -> OwnedRowsCSR:
+        """Convert owned local rows and local columns to global PETSc indices."""
+        matrix = matrix.tocsr()
+        n_local = len(partition.local_global_ids)
+        n_owned = len(partition.owned_global_ids)
+        if matrix.shape != (n_local, n_local) or np.asarray(rhs).shape != (n_local,):
+            raise ValueError("Local matrix/RHS does not match the partition field layout")
+        owned = partition.owned_global_ids
+        if n_owned and not np.array_equal(owned, np.arange(owned[0], owned[0] + n_owned)):
+            raise ValueError("PETSc owned rows must be contiguous global cell IDs")
+        start = int(owned[0]) if n_owned else int(partition.n_global_cells)
+        end = start + n_owned
+        # Owned cells are the first rows in the local CSR layout.  Slice the
+        # structural arrays by view instead of materialising another sparse
+        # matrix just before PETSc duplicates the coefficients internally.
+        owned_nnz = int(matrix.indptr[n_owned])
+        local_indices = matrix.indices[:owned_nnz]
+        global_indices = np.asarray(partition.local_global_ids[local_indices], dtype=np.int32)
+        return cls(
+            global_size=partition.n_global_cells,
+            row_start=start,
+            row_end=end,
+            indptr=np.asarray(matrix.indptr[: n_owned + 1], dtype=np.int32),
+            indices=global_indices,
+            data=np.asarray(matrix.data[:owned_nnz], dtype=np.float64),
+            rhs=np.asarray(rhs[:n_owned], dtype=np.float64),
+        )
+
+    def validate(self) -> None:
+        """Validate CSR pointer, index, and owned-row consistency.
+
+        Raises
+        ------
+        ValueError
+            If the owned row interval, CSR arrays, RHS length, or global column
+            indices are inconsistent with this partition.
+        """
+        local_rows = self.row_end - self.row_start
+        if not 0 <= self.row_start <= self.row_end <= self.global_size:
+            raise ValueError("Invalid owned row range")
+        if self.indptr.shape != (local_rows + 1,) or self.rhs.shape != (local_rows,):
+            raise ValueError("Owned CSR row pointers or RHS have an invalid shape")
+        if self.indptr[0] != 0 or self.indptr[-1] != len(self.indices):
+            raise ValueError("Owned CSR row pointers do not cover all entries")
+        if len(self.indices) != len(self.data):
+            raise ValueError("Owned CSR indices and data lengths differ")
+        if np.any(self.indices < 0) or np.any(self.indices >= self.global_size):
+            raise ValueError("Owned CSR contains an out-of-range global column")
+
+
+class PartitionedLinearWorkspace:
+    """Persistent PETSc objects for one partitioned equation family.
+
+    Coefficients and RHS values are replaced for every solve; rank assignment,
+    topology, KSP method, and null-space treatment define the allocation
+    signature. Retaining the allocation removes collective object churn.
+    Optional preconditioner reuse keeps the equation and verified convergence
+    tolerances unchanged, with a fresh setup if the lagged hierarchy fails.
+    """
+
+    def __init__(self, context: ParallelContext) -> None:
+        """Create an unallocated PETSc workspace for one partitioned solve.
+
+        Parameters
+        ----------
+        context : ParallelContext
+            Partitioned MPI context owning the communicator and local mesh.
+
+        Notes
+        -----
+        PETSc matrices, vectors, KSP objects, and null spaces are allocated
+        lazily by :meth:`_build` and reused while their topology signature is
+        unchanged. Call :meth:`close` to release them.
+        """
+        self.context = context
+        self.matrix = None
+        self.rhs = None
+        self.solution = None
+        self.residual = None
+        self._operator_guess = None
+        self._reference = None
+        self._uniform = None
+        self.ksp = None
+        self.pc = None
+        self.nullspace = None
+        self._signature = None
+        self._preconditioner_data = None
+
+    def _destroy_objects(self) -> None:
+        for name in (
+            "pc",
+            "ksp",
+            "residual",
+            "_operator_guess",
+            "_reference",
+            "_uniform",
+            "solution",
+            "rhs",
+            "matrix",
+            "nullspace",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                value.destroy()
+                setattr(self, name, None)
+        self._signature = None
+        self._preconditioner_data = None
+
+    def _can_reuse_preconditioner(self, system: OwnedRowsCSR, tolerance: float | None) -> bool:
+        """Bound every row's change against the matrix that built the PC.
+
+        Using the preceding solve would allow cumulative drift without rebuild.
+        Every rank makes the same decision, including ranks with no owned rows.
+        """
+        previous = self._preconditioner_data
+        if tolerance is None or previous is None:
+            return False
+        local_change = _maximum_relative_row_change(system.indptr, system.data, previous)
+        change = self.context.global_max(float(local_change))
+        return bool(np.isfinite(change) and change <= tolerance)
+
+    def _remember_preconditioner_matrix(self, system: OwnedRowsCSR) -> None:
+        self._preconditioner_data = system.data.copy()
+
+    def close(self) -> None:
+        """Collectively destroy PETSc objects owned by this workspace."""
+        self._destroy_objects()
+
+    def _build(
+        self, system: OwnedRowsCSR, method: str, constant_nullspace: bool, PETSc: ModuleType
+    ) -> bool:
+        # A workspace belongs to one solver/partition, whose mesh topology is
+        # immutable.  Scalar sizes are sufficient here; retaining a Python
+        # tuple containing every row width cost tens of MiB on large meshes.
+        signature = (
+            system.global_size,
+            system.row_start,
+            system.row_end,
+            len(system.indptr),
+            len(system.indices),
+            method,
+            constant_nullspace,
+        )
+        if self._signature == signature:
+            return False
+        self._destroy_objects()
+        diagonal_nnz, off_diagonal_nnz = _petsc_row_preallocation(
+            np.asarray(system.indptr, dtype=np.int32),
+            np.asarray(system.indices, dtype=np.int32),
+            system.row_start,
+            system.row_end,
+        )
+        matrix = PETSc.Mat().createAIJ(
+            size=(system.global_size, system.global_size),
+            nnz=(diagonal_nnz, off_diagonal_nnz),
+            comm=PETSc.COMM_WORLD,
+        )
+        matrix.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+        actual_start, actual_end = matrix.getOwnershipRange()
+        if (actual_start, actual_end) != (system.row_start, system.row_end):
+            matrix.destroy()
+            raise RuntimeError(
+                f"PETSc owns rows {(actual_start, actual_end)}, supplied "
+                f"{(system.row_start, system.row_end)}"
+            )
+        self.matrix = matrix
+        self.rhs = PETSc.Vec().createMPI(system.global_size, comm=PETSc.COMM_WORLD)
+        self.solution = self.rhs.duplicate()
+        self.residual = self.rhs.duplicate()
+        self._operator_guess = self.rhs.duplicate()
+        self._reference = self.rhs.duplicate()
+        self._uniform = self.rhs.duplicate()
+        if constant_nullspace:
+            self.nullspace = PETSc.NullSpace().create(constant=True, comm=PETSc.COMM_WORLD)
+            matrix.setNullSpace(self.nullspace)
+            matrix.setNearNullSpace(self.nullspace)
+        ksp = PETSc.KSP().create(comm=PETSc.COMM_WORLD)
+        self.ksp = ksp
+        ksp.setOperators(matrix)
+        self.pc = ksp.getPC()
+        methods = {
+            "cg": PETSc.KSP.Type.CG,
+            "gmres": PETSc.KSP.Type.GMRES,
+            "bicgstab": PETSc.KSP.Type.BCGS,
+        }
+        if method == "amg":
+            ksp.setType(PETSc.KSP.Type.CG)
+            self.pc.setType(PETSc.PC.Type.GAMG)
+        else:
+            try:
+                ksp.setType(methods[method])
+            except KeyError as error:
+                self._destroy_objects()
+                raise ValueError(f"Unsupported partitioned PETSc method {method!r}") from error
+            self.pc.setType(PETSc.PC.Type.JACOBI if constant_nullspace else PETSc.PC.Type.BJACOBI)
+        ksp.setNormType(PETSc.KSP.NormType.UNPRECONDITIONED)
+        # Equation-specific prefixes prevent pressure-PC experiments from
+        # silently replacing the momentum preconditioner (and vice versa).
+        ksp.setOptionsPrefix("fvm_kinematic_pressure_" if method == "amg" else "fvm_momentum_")
+        ksp.setFromOptions()
+        self.ksp = ksp
+        self._signature = signature
+        return True
+
+    def solve(
+        self,
+        system: OwnedRowsCSR,
+        *,
+        method: str,
+        tolerance: float,
+        relative_tolerance: float = 0.0,
+        max_iterations: int,
+        constant_nullspace: bool,
+        initial_guess: np.ndarray | None,
+        matrix_values_unchanged: bool = False,
+        preconditioner_reuse_tolerance: float | None = None,
+    ) -> tuple[np.ndarray, LinearSolveResult]:
+        """Update numeric values and solve using persistent PETSc objects."""
+        try:
+            from petsc4py import PETSc
+        except ImportError as error:
+            raise RuntimeError("Owned-row solves require petsc4py") from error
+        system.validate()
+        if self.context.size != PETSc.COMM_WORLD.getSize():
+            raise RuntimeError("mpi4py and PETSc communicator sizes differ")
+        setup_start = time.perf_counter()
+        objects_rebuilt = self._build(system, method, constant_nullspace, PETSc)
+        assert self.matrix is not None
+        assert self.rhs is not None
+        assert self.solution is not None
+        assert self.residual is not None
+        assert self.ksp is not None
+
+        matrix_unchanged = bool(matrix_values_unchanged and not objects_rebuilt)
+        reuse_preconditioner = matrix_unchanged or self._can_reuse_preconditioner(
+            system, preconditioner_reuse_tolerance
+        )
+        # A reusable PC must never prevent updating the actual equation.
+        if not matrix_unchanged:
+            self.matrix.zeroEntries()
+            self.matrix.setValuesCSR(
+                np.asarray(system.indptr, dtype=PETSc.IntType),
+                np.asarray(system.indices, dtype=PETSc.IntType),
+                system.data,
+            )
+            self.matrix.assemblyBegin()
+            self.matrix.assemblyEnd()
+
+        self.rhs.set(0.0)
+        rows = np.arange(system.row_start, system.row_end, dtype=PETSc.IntType)
+        if system.row_end > system.row_start:
+            self.rhs.setValues(rows, system.rhs)
+        self.rhs.assemblyBegin()
+        self.rhs.assemblyEnd()
+        if self.nullspace is not None:
+            self.nullspace.remove(self.rhs)
+
+        self.solution.set(0.0)
+        if initial_guess is not None:
+            guess = np.asarray(initial_guess, dtype=np.float64)
+            if guess.shape != system.rhs.shape:
+                raise ValueError("Partitioned initial guess must contain one value per owned row")
+            if system.row_end > system.row_start:
+                self.solution.setValues(rows, guess)
+        self.solution.assemblyBegin()
+        self.solution.assemblyEnd()
+        self.ksp.setOperators(self.matrix)
+        self.pc.setReusePreconditioner(reuse_preconditioner)
+        # PETSc's convergence test is relative to ||b||, which carries the
+        # transport of the solution's mean (for x-momentum in a free stream it
+        # dwarfs the near-wall dynamics).  Rescale so ``tolerance`` targets the
+        # deviation-based norm factor. The configured ``relTol`` is
+        # a reduction from the residual at solve entry, not an absolute target.
+        rhs_norm_pre = max(float(self.rhs.norm()), 1e-30)
+        initial_residual_norm = rhs_norm_pre
+        norm_factor = rhs_norm_pre
+        if initial_guess is not None:
+            # Keep A*x0 for both residual and deviation norms. These norms
+            # describe the same current equation and initial guess, so a
+            # second sparse matrix-vector product is redundant.
+            operator_guess = self._operator_guess
+            reference = self._reference
+            uniform = self._uniform
+            assert operator_guess is not None and reference is not None and uniform is not None
+            self.matrix.mult(self.solution, operator_guess)
+            operator_guess.copy(self.residual)
+            self.residual.axpy(-1.0, self.rhs)
+            initial_residual_norm = float(self.residual.norm())
+            n_global = float(system.global_size)
+            x_mean = float(self.solution.sum()) / max(n_global, 1.0)
+            uniform.set(x_mean)
+            self.matrix.mult(uniform, reference)
+            reference_norm = float(reference.norm())
+            operator_guess.copy(self.residual)
+            self.residual.axpy(-1.0, reference)
+            deviation = float(self.residual.norm())
+            reference.aypx(-1.0, self.rhs)  # reference := b - A(x_mean)
+            # Match deviation_norm_factor in the serial/replicated path.
+            # A constant solution can leave only assembly roundoff; dividing
+            # that residual by another roundoff-sized number reports O(1).
+            norm_factor = max(
+                deviation + float(reference.norm()),
+                1e-12 * max(rhs_norm_pre, reference_norm, 1.0),
+            )
+        initial_residual = initial_residual_norm / norm_factor
+        residual_target = max(float(tolerance), float(relative_tolerance) * initial_residual)
+        rtol_eff = float(
+            np.clip(
+                residual_target * norm_factor / rhs_norm_pre,
+                1e-14,
+                0.99,
+            )
+        )
+        self.ksp.setTolerances(rtol=rtol_eff, max_it=max_iterations)
+        self.ksp.setInitialGuessNonzero(initial_guess is not None)
+        setup_seconds = time.perf_counter() - setup_start
+
+        solve_start = time.perf_counter()
+        self.ksp.solve(self.rhs, self.solution)
+        solve_seconds = time.perf_counter() - solve_start
+        reason_code = int(self.ksp.getConvergedReason())
+        self.matrix.mult(self.solution, self.residual)
+        self.residual.axpy(-1.0, self.rhs)
+        residual_norm = float(self.residual.norm())
+        relative_residual = residual_norm / norm_factor
+        result = LinearSolveResult(
+            backend="petsc-partitioned",
+            method=method,
+            preconditioner=str(self.pc.getType()),
+            nullspace="constant" if constant_nullspace else None,
+            converged=(
+                reason_code > 0
+                and np.isfinite(relative_residual)
+                and relative_residual
+                <= max(
+                    LINEAR_VERIFICATION_FACTOR * residual_target,
+                    LINEAR_RESIDUAL_FLOOR,
+                )
+            ),
+            reason=str(self.ksp.getConvergedReason()),
+            iterations=int(self.ksp.getIterationNumber()),
+            initial_residual=initial_residual,
+            final_residual=relative_residual,
+            setup_seconds=setup_seconds,
+            solve_seconds=solve_seconds,
+            preconditioner_rebuilt=not reuse_preconditioner,
+        )
+        if not result.converged:
+            if reuse_preconditioner:
+                # A changed matrix can make a lagged PC ineffective. Rebuild
+                # once, keeping the same equation and convergence tolerances.
+                solution, retry = self.solve(
+                    system,
+                    method=method,
+                    tolerance=tolerance,
+                    relative_tolerance=relative_tolerance,
+                    max_iterations=max_iterations,
+                    constant_nullspace=constant_nullspace,
+                    initial_guess=initial_guess,
+                )
+                if preconditioner_reuse_tolerance is not None:
+                    self._remember_preconditioner_matrix(system)
+                return solution, replace(
+                    retry,
+                    setup_seconds=result.setup_seconds + retry.setup_seconds,
+                    solve_seconds=result.solve_seconds + retry.solve_seconds,
+                    iterations=result.iterations + retry.iterations,
+                )
+            raise LinearSolveError(
+                f"Partitioned PETSc {method} failed after {result.iterations} iterations: "
+                f"{result.reason}"
+            )
+        if not reuse_preconditioner:
+            if preconditioner_reuse_tolerance is not None:
+                self._remember_preconditioner_matrix(system)
+            else:
+                self._preconditioner_data = None
+        return self.solution.getArray(readonly=True).copy(), result
+
+
+def solve_owned_rows(
+    system: OwnedRowsCSR,
+    context: ParallelContext,
+    *,
+    method: str = "cg",
+    tolerance: float = 1e-10,
+    relative_tolerance: float = 0.0,
+    max_iterations: int = 500,
+    constant_nullspace: bool = False,
+    initial_guess: np.ndarray | None = None,
+) -> tuple[np.ndarray, LinearSolveResult]:
+    """Solve one owned-row system without retaining a PETSc workspace."""
+    workspace = PartitionedLinearWorkspace(context)
+    try:
+        return workspace.solve(
+            system,
+            method=method,
+            tolerance=tolerance,
+            relative_tolerance=relative_tolerance,
+            max_iterations=max_iterations,
+            constant_nullspace=constant_nullspace,
+            initial_guess=initial_guess,
+        )
+    finally:
+        workspace.close()
+
+
+def solve_local_partitioned_system(
+    matrix: sparse.spmatrix,
+    rhs: np.ndarray,
+    context: ParallelContext,
+    *,
+    method: str,
+    tolerance: float,
+    relative_tolerance: float = 0.0,
+    max_iterations: int,
+    constant_nullspace: bool,
+    initial_guess: np.ndarray | None = None,
+    workspace: PartitionedLinearWorkspace | None = None,
+    matrix_values_unchanged: bool = False,
+    preconditioner_reuse_tolerance: float | None = None,
+) -> tuple[np.ndarray, LinearSolveResult]:
+    """Solve owned rows and return a refreshed owned-plus-halo local vector."""
+    if context.partition is None:
+        raise RuntimeError("Partitioned PETSc solve requires partition metadata")
+    system = OwnedRowsCSR.from_local(matrix, rhs, context.partition)
+    n_owned = len(context.partition.owned_global_ids)
+    guess = None if initial_guess is None else np.asarray(initial_guess)[:n_owned]
+    if workspace is None:
+        owned, result = solve_owned_rows(
+            system,
+            context,
+            method=method,
+            tolerance=tolerance,
+            relative_tolerance=relative_tolerance,
+            max_iterations=max_iterations,
+            constant_nullspace=constant_nullspace,
+            initial_guess=guess,
+        )
+    else:
+        owned, result = workspace.solve(
+            system,
+            method=method,
+            tolerance=tolerance,
+            relative_tolerance=relative_tolerance,
+            max_iterations=max_iterations,
+            constant_nullspace=constant_nullspace,
+            initial_guess=guess,
+            matrix_values_unchanged=matrix_values_unchanged,
+            preconditioner_reuse_tolerance=preconditioner_reuse_tolerance,
+        )
+    local = np.empty(len(context.partition.local_global_ids), dtype=np.float64)
+    local[:n_owned] = owned
+    context.exchange_halo(local)
+    if constant_nullspace:
+        local -= context.global_sum(float(np.sum(local[:n_owned]))) / system.global_size
+    return local, result

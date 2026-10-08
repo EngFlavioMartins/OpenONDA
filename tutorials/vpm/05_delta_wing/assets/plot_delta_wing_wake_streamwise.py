@@ -5,7 +5,7 @@ from pathlib import Path
 
 from openonda import plotting as _theme
 
-from .postprocess import FIGURES_DIR, _plot_wake_field
+from assets.postprocess import FIGURES_DIR, _plot_wake_field
 
 
 def plot_wake_streamwise(

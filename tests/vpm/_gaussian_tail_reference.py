@@ -1,7 +1,11 @@
-"""Independent direct shell sums and small clouds for tail validation."""
+"""Direct shell sums, the closed-form tail completion and small clouds for tail validation."""
 
 import numpy as np
 
+from openonda.vpm.physics.induction.gaussian_mesh.host_fields import (
+    _COMPONENTS,
+    _image_tail_completion,
+)
 from tests.vpm._slip_periodic_gaussian_reference import gaussian_pairs
 
 
@@ -24,6 +28,47 @@ def explicit_tail(x, gamma, sigma, targets, zmin, zmax, first, last):
             u += du.sum(axis=(1, 2))
             j += dj.sum(axis=(1, 2))
     return u, j
+
+
+def completed_rows(x, gamma, targets, zmin, zmax, shells):
+    """Closed-form completion of every image row beyond the shells |k| <= ``shells``."""
+    u, j = np.zeros((len(targets), 3)), np.zeros((len(targets), 3, 3))
+    period = 2 * (zmax - zmin)
+    for odd in (False, True):
+        source, strength = x.astype(np.float64), gamma.astype(np.float64)
+        if odd:
+            source[:, 2] = 2 * zmin - source[:, 2]
+            strength[:, :2] *= -1
+        for index, target in enumerate(np.asarray(targets, dtype=np.float64)):
+            for position, g in zip(source, strength, strict=True):
+                values = np.zeros(9)
+                offset = target - position
+                _image_tail_completion(
+                    values,
+                    offset[0],
+                    offset[1],
+                    offset[2] + (shells + 0.5) * period,
+                    offset[2] - (shells + 0.5) * period,
+                    period,
+                )
+                kernel, hessian = np.zeros(3), np.zeros((3, 3))
+                for channel, (axis, derivative) in enumerate(_COMPONENTS):
+                    if derivative < 0:
+                        kernel[axis] = values[channel]
+                    else:
+                        hessian[axis, derivative] = hessian[derivative, axis] = values[channel]
+                # Channels hold -a r and b r r - a I; the velocity is Gamma x (a r).
+                u[index] -= np.cross(g, kernel)
+                j[index] -= np.cross(g[None, :], hessian.T).T
+    return u, j
+
+
+def completed_tail_error(x, gamma, sigma, targets, zmin, zmax, shells, last):
+    """Omitted image rows minus their completion; rows beyond ``last`` use the completion."""
+    u, j = explicit_tail(x, gamma, sigma, targets, zmin, zmax, shells + 1, last)
+    u_far, j_far = completed_rows(x, gamma, targets, zmin, zmax, last)
+    u_done, j_done = completed_rows(x, gamma, targets, zmin, zmax, shells)
+    return u + u_far - u_done, j + j_far - j_done
 
 
 def cloud(kind):

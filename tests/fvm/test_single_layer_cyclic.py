@@ -11,12 +11,12 @@ import tracemalloc
 import numpy as np
 import pytest
 
-from source.solvers.fvm.assemble.diffusion import assemble_diffusion_term
-from source.solvers.fvm.assemble.matrix_assembly import MatrixAssemblyWorkspace
-from source.solvers.fvm.fields.gradients import compute_lsq_geometry, compute_lsq_gradient
-from source.solvers.fvm.mesh.coupled import configure_cyclic_boundaries
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.validation import MeshValidationError
+from openonda.fvm.assemble.diffusion import assemble_diffusion_term
+from openonda.fvm.assemble.matrix_assembly import MatrixAssemblyWorkspace
+from openonda.fvm.fields.gradients import compute_lsq_geometry, compute_lsq_gradient
+from openonda.fvm.mesh.coupled import configure_cyclic_boundaries
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.mesh.validation import MeshValidationError
 from tests.support.fvm_mesh import structured_box
 
 

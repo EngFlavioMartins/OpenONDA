@@ -22,3 +22,16 @@ Use `method_style()` for consistent series:
 Keep variant colours and markers consistent across a case's figures. Space markers with `markevery`; retain all samples in the line. Plot unordered surface samples with markers alone.
 
 Use `thesis_blue` for magnitudes, `thesis_signed` for signed fields with a meaningful zero, and `thesis_amber` for streamlines over particle scenes. The colour bar must use the rendered field's normalization and limits. Figure styling does not change the physical data or establish simulation accuracy; see [flow comparisons](visualization.md).
+
+## Layout
+
+Author each layout at its native 125 mm width; do not let tight cropping or automatic layout resize the canvas.
+
+- Measure the final left y-label at production font size and choose a left margin `x` that leaves 2–3 pt of clearance; set the right boundary to `1 - x`. Time-series families share one margin sized for their longest labels.
+- Put titles 2–3 pt below the top; keep them short ("Aspect ratio", "Co-rotating"). Leave a small gap between the bottom x label and the legend frame.
+- Hard-code subplot, colour-bar and legend positions per figure, compacting unused gaps while keeping room for labels and ticks.
+- Draw visible curves, axes, ticks, marker edges and annotations at least 0.6 pt wide; ordinary curves use 1 pt.
+- Show at most two significant digits in ticks, colour bars, annotations, legends and times; keep full precision in the data. Use shared exponents or offsets when rounding would hide small changes.
+- Use snake_case file names. Rendered 3-D views fill the width on a shorter canvas, with colour limits, glyph scales and camera kept identical between compared states.
+
+Validate exports with `validate_thesis_figure()` and inspect them at print size. Scientific renders use saved solver states; never rerun a simulation only to restyle a figure.

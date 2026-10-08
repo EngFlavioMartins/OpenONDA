@@ -8,7 +8,7 @@ import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
 # Physical problem
-START_FROM = "latest"  # Both launchers preserve outputs; allclean.sh is explicit.
+START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = 1.0

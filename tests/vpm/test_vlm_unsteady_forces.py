@@ -9,12 +9,12 @@ from scipy.spatial.transform import Rotation
 import taichi as ti
 
 import openonda.vpm as vpm
-from source.solvers.vpm.boundary_elements.vlm.solver.influence import compute_panel_force_coupled
-from source.solvers.vpm.boundary_elements.vlm.solver.loading_distribution import (
+from openonda.vpm.boundary_elements.vlm.solver.influence import compute_panel_force_coupled
+from openonda.vpm.boundary_elements.vlm.solver.loading_distribution import (
     VLMLoadingDistribution,
 )
-from source.solvers.vpm.boundary_elements.vlm.solver.unsteady import add_unsteady_pressure_loads
-from source.solvers.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
+from openonda.vpm.boundary_elements.vlm.solver.unsteady import add_unsteady_pressure_loads
+from openonda.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
 
 @pytest.fixture(autouse=True)

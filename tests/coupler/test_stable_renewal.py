@@ -7,9 +7,9 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from source.coupler import vorticity_transfer as transfer_module
-from source.coupler.solver import _validate_gbd_moment_recovery
-from source.coupler.stable_renewal import (
+from openonda.coupler import vorticity_transfer as transfer_module
+from openonda.coupler.solver import _validate_gbd_moment_recovery
+from openonda.coupler.stable_renewal import (
     blend_represented_state,
     build_stable_renewal_lattice,
     gaussian_represented_vortex_strength,
@@ -21,7 +21,7 @@ from source.coupler.stable_renewal import (
     vortex_invariants,
     vortex_strength_from_velocity_trace,
 )
-from source.coupler.vorticity_transfer import replace_particles_from_buffered_m4_renewal
+from openonda.coupler.vorticity_transfer import replace_particles_from_buffered_m4_renewal
 
 BOX = np.array([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
 

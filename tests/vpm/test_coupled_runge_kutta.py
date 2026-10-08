@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.numerics.rk_tableaux import RK2, RK4, SSPRK3
-from source.solvers.vpm.numerics.runge_kutta import RungeKutta
-from source.solvers.vpm.physics.induction.base import StageRates, StageState
+from openonda.vpm.numerics.rk_tableaux import RK2, RK4, SSPRK3
+from openonda.vpm.numerics.runge_kutta import RungeKutta
+from openonda.vpm.physics.induction.base import StageRates, StageState
 
 
 def _ensure_taichi_cpu() -> None:

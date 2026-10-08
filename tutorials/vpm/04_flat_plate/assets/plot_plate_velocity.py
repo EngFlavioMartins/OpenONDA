@@ -5,9 +5,9 @@ import argparse
 import numpy as np
 import pandas as pd
 
-from openonda.results import read_csv_table
+from assets.output_files import read_csv_table
 
-from ._plot_theme import (
+from assets._plot_theme import (
     FIG_DIR,
     SAMPLES_DIR,
     centered_subplots_adjust,
@@ -17,8 +17,8 @@ from ._plot_theme import (
     validation_legend,
     validation_subplots,
 )
-from .results import parameters
-from .theoretical_model import lifting_line_circulation
+from assets.results import parameters
+from assets.theoretical_model import lifting_line_circulation
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")

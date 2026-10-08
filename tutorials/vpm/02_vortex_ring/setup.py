@@ -3,8 +3,8 @@
 
 Examples (from this case directory)::
 
-    python -m openonda.tutorial_runner . setup --variant dns_direct
-    python -m openonda.tutorial_runner . setup --variant les_transposed
+    python setup.py --variant dns_direct
+    python setup.py --variant les_transposed
 """
 
 from __future__ import annotations
@@ -16,7 +16,8 @@ import numpy as np
 
 import openonda.vpm as vpm
 
-from .assets.ring_diagnostics import (
+from assets.initial_conditions import ToroidalDistribution, VortexRing, WidnallDisturbance
+from assets.ring_diagnostics import (
     RingDiagnosticsSampler,
     RingModeDiagnosticsSampler,
 )
@@ -91,24 +92,23 @@ def build_case(
     particle_core_radius = 2.0 * PARTICLE_SPACING
     represented_core_sq = CORE_RADIUS**2 - particle_core_radius**2
     tube_radius = np.sqrt(represented_core_sq) * np.sqrt(-np.log(TOROIDAL_TAIL_FRACTION))
-    distribution = vpm.ToroidalDistribution(
+    distribution = ToroidalDistribution(
         ring_radius=RING_RADIUS,
         tube_radius=tube_radius,
         spacing=PARTICLE_SPACING,
         core_radius_ratio=particle_core_radius / PARTICLE_SPACING,
     )
-    initial_condition = vpm.VortexRing(
+    initial_condition = VortexRing(
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         centre=(0.0, 0.0, 0.0),
         radius=RING_RADIUS,
         circulation=RING_STRENGTH,
         vortex_core_radius=CORE_RADIUS,
-        disturbance=vpm.WidnallDisturbance.broadband(
+        disturbance=WidnallDisturbance(
             amplitude=DEFAULT_WIDNALL_AMPLITUDE,
             number_of_modes=WIDNALL_MODES,
             seed=RANDOM_SEED,
         ),
-        core_compensation=vpm.ParticleCoreCompensation(),
         distribution=distribution,
         group_id=0,
     )

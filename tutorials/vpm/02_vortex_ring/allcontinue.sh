@@ -3,7 +3,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-python -m openonda.tutorial_runner . setup --variant dns_direct
-python -m openonda.tutorial_runner . setup --variant dns_transposed
-python -m openonda.tutorial_runner . setup --variant dns_mixed
-python -m openonda.tutorial_runner . setup --variant les_transposed
+python setup.py --variant dns_direct
+python setup.py --variant dns_transposed
+python setup.py --variant dns_mixed
+python setup.py --variant les_transposed

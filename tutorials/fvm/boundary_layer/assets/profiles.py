@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.results import write_csv_table
+from assets.output_files import write_csv_table
 
 
 def write_profiles(

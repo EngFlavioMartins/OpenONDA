@@ -1,101 +1,176 @@
 # Vortex particles and lifting surfaces
 
-The VPM transports a three-dimensional vorticity field with regularized Biot–Savart velocity, vortex stretching and viscous diffusion. A vortex-lattice model (VLM) adds lifting surfaces and sheds their circulation into the particle wake. Use SI units throughout.
+The vortex-particle method (VPM) follows vorticity instead of velocity. Each particle carries a small, smoothed blob of vorticity; the particles move with the flow they induce, their strengths stretch and tilt, and viscosity diffuses them. Lifting surfaces, represented by a vortex-lattice model (VLM), shed their circulation into the particle wake. There is no volume mesh, so a wake can travel far from the body at no extra cost.
 
-## Variables and units
+| To learn | Start with |
+| --- | --- |
+| Building particle fields; the four diffusion schemes | [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md) |
+| Vortex stretching formulations; LES | [Vortex ring](../tutorials/vpm/02_vortex_ring/README.md) |
+| Stabilization and particle regularization | [Leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) |
+| Lifting surfaces, startup loads and wakes | [Flat plate](../tutorials/vpm/04_flat_plate/README.md) |
+| Prescribed wing motion | [Heaving delta wings](../tutorials/vpm/05_delta_wing/README.md) |
+| Rotating blades, wake refinement | [Wind turbine](../tutorials/vpm/06_rotor_flow/README.md), [quadcopter](../tutorials/vpm/07_quadcopter/README.md) |
+| Planar flow with one particle layer | [Coupled cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) |
 
-| Input or field | Symbol | Unit | Meaning |
-| --- | --- | --- | --- |
-| `position`, distribution bounds | $\boldsymbol{x}$ | m | Particle coordinates in the fixed spatial frame. |
-| `velocity`, `freestream_velocity` | $\boldsymbol{u}$ | m/s | Transport velocity, including imposed flow and lifting surfaces. |
-| Initializer `circulation` | $\Gamma_0$ | m²/s | Scalar circulation of a filament or ring. |
-| `vortex_strength` | $\boldsymbol{\Gamma}_p$ | m³/s | Particle vector strength: $\boldsymbol{\omega}_p V_p$. |
-| `vorticity` | $\boldsymbol{\omega}$ | s⁻¹ | Reconstructed vorticity; particle and probe definitions below. |
-| `particle_volume` | $V_p$ | m³ | Integration weight of a particle. |
-| `core_radius` | $\sigma$ | m | Regularization radius of a particle. |
-| Initializer `vortex_core_radius` | $a$ | m | Physical Gaussian vortex-core radius. |
-| Distribution `spacing` | $h$ | m | Nominal particle spacing. |
-| `kinematic_viscosity` | $\nu$ | m²/s | Molecular viscosity. |
-| `eddy_viscosity`, `effective_viscosity` | $\nu_t$, $\nu_{\rm eff}$ | m²/s | LES viscosity and $\nu+\nu_t$. |
-| `velocity_gradient`, `strain_rate` | $J$, $S$ | s⁻¹ | $J_{ij}=\partial u_i/\partial x_j$, $S=(J+J^T)/2$. |
-| `time_step_size` | $\Delta t$ | s | Physical time increment. |
+## Physical model and units
 
-A particle strength is a vector volume integral; its quadrature vorticity is $\boldsymbol{\Gamma}_p/V_p$. Saved particle `vorticity` reconstructs the regularized blob field at particle locations; line/surface samples use $\nabla\times\boldsymbol{u}$. These differ when the particle field is not divergence-free. Scalar filament circulation and physical vortex-core radius differ from particle strength and particle core radius.
-
-## Particle distributions
-
-VPM uses particle quadrature in place of a volume mesh. A distribution sets positions, volumes and $\sigma/h$; a flow initializer sets vorticity and viscosity.
-
-| Distribution | Geometry and inputs | Example |
-| --- | --- | --- |
-| `RectangularDistribution` | Cartesian box; `bounds=((xmin,xmax), (ymin,ymax), (zmin,zmax))`. Weights are $h^3$. | Runnable box below. |
-| `CylindricalDistribution` | Cartesian points inside a cylinder; `radius`, `length`, `centre`, `axis`. Weights sum to the cylinder volume. | [Constructor](../source/solvers/vpm/initialization/distributions/cylindrical.py). |
-| `TriangularPrismDistribution` | Triangular transverse lattice extruded along `axis`; box `bounds`, optional `axial_spacing`. | [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md). |
-| `ToroidalDistribution` | Ring with a hexagonal cross-section; `ring_radius`, `tube_radius`, `centre`, `axis`. Curved-cell weights include the cylindrical Jacobian. | [Single ring](../tutorials/vpm/02_vortex_ring/README.md), [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md). |
-
-Choose $h$ small enough to resolve the physical core and retain overlapping particles. `core_radius_ratio` sets $\sigma/h$. Large cores smooth small structures; small cores leave gaps between particles. Refine spacing and core ratio together and compare physical observables.
-
-For Gaussian filaments and rings, `ParticleCoreCompensation()` accounts for particle smoothing when initializing a requested physical core. This requires $a^2>\sigma^2$: the initializer represents the remaining width $\sqrt{a^2-\sigma^2}$. Set the distribution support wide enough to include the Gaussian tail. Ring `tube_radius` is the support radius, not $a$.
-
-`VortexFilament`, `VortexRing`, `VortexDoublet`, `TaylorGreenVortex` and `IsotropicTurbulence` build initial fields. Optional `group_id` labels distinguish vortex contributions; remeshed particle indices do not track fluid parcels.
-
-## Induction and stretching
-
-For constant viscosity, the incompressible vorticity equation is
+For constant viscosity, the vorticity $\boldsymbol{\omega}=\nabla\times\mathbf{u}$ obeys
 
 $$
 \frac{D\boldsymbol{\omega}}{Dt}
-= (\boldsymbol{\omega}\cdot\nabla)\boldsymbol{u}
-+ \nu\nabla^2\boldsymbol{\omega}.
+= (\boldsymbol{\omega}\cdot\nabla)\mathbf{u}
++ \nu\nabla^2\boldsymbol{\omega},
 $$
 
-The Gaussian or Winckelmans particle kernel regularizes the velocity near each source. `DirectInduction` sums every pair and is useful for small reference cases. `TreecodeInduction` and `FMMInduction` approximate distant interactions; check their tolerances against direct results. Treecode currently uses f32 with Gaussian or Winckelmans kernels; check the selected backend before changing precision or kernel.
+and the velocity follows from the vorticity through the Biot–Savart law. A particle at $\mathbf{x}_p$ carries the vector strength $\boldsymbol{\Gamma}_p=\boldsymbol{\omega}_pV_p$: the vorticity integrated over its volume $V_p$. A radial kernel of core radius $\sigma_p$ spreads it in space, which keeps the induced velocity finite.
 
-`stretching_scheme` selects a discrete strength update: `DIRECT` uses $J\boldsymbol{\Gamma}$, `TRANSPOSED` uses $J^T\boldsymbol{\Gamma}$, and `MIXED` uses $S\boldsymbol{\Gamma}$. The default is `TRANSPOSED`, which conserves the summed vector strength under the symmetric pair formulation. The [single-ring case](../tutorials/vpm/02_vortex_ring/README.md) compares these choices.
+| Quantity | Symbol | Unit |
+| --- | --- | --- |
+| `position` | $\mathbf{x}$ | m |
+| `velocity`, `freestream_velocity` | $\mathbf{u}$ | m/s |
+| `vortex_strength` | $\boldsymbol{\Gamma}_p=\boldsymbol{\omega}_pV_p$ | m³/s |
+| `vorticity` | $\boldsymbol{\omega}$ | 1/s |
+| `particle_volume` | $V_p$ | m³ |
+| `core_radius` | $\sigma$ | m |
+| `spacing` | $h$ | m |
+| `kinematic_viscosity`, `eddy_viscosity` | $\nu$, $\nu_t$ | m²/s |
+| `time_step_size` | $\Delta t$ | s |
 
-`SlipSlabInduction` adds image vortices between free-slip span planes. See [coupling](coupling.md) for the boundary conditions and compatible diffusion. `domain_bounds` alone does not impose walls or periodic induction.
+A filament or ring circulation (m²/s) and its physical core radius belong to the flow you model; particle strength and particle core radius belong to its discretisation.
+
+## Particle distributions
+
+`VPMCase.initial_conditions` holds objects whose `build()` returns a `vpm.VortexParticleSet`: positions, volumes, core radii, strengths $\boldsymbol{\omega}V_p$, viscosity, the nominal spacing and optional `group_id` labels that tag each vortex in diagnostics. The tutorials build theirs in `assets/initial_conditions.py`: Gaussian filaments on a triangular lattice for the [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md), and Gaussian rings on a toroidal lattice with Widnall disturbances for the [single](../tutorials/vpm/02_vortex_ring/README.md) and [leapfrogging](../tutorials/vpm/03_vortex_interactions/readme.md) rings. Copy one as a template; the [run example](#run-and-inspect) builds a vortex column in a few lines.
+
+Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above one so that neighbouring blobs overlap; `core_radius_ratio` in the viscous settings sets it (default 2.5). Large cores smooth small structures; small cores leave holes between particles. Because the blobs themselves smooth the field, a Gaussian vortex of radius $a$ is sampled with the remaining width $\sqrt{a^2-\sigma^2}$, which needs $a>\sigma$. Refine $h$ and $\sigma$ together and compare physical observables.
+
+## Induction and stretching
+
+| Setting | Options |
+| --- | --- |
+| `particle_kernel` | `GAUSSIAN` (default), `HIGH_ORDER_GAUSSIAN`, `SUPER_GAUSSIAN`, `WINCKELMANS` (algebraic). |
+| `induction` | `DirectInduction()`: exact sum over all pairs, for small or reference cases. `TreecodeInduction(theta=..., multipole_order=...)`: hierarchical far field for Gaussian and Winckelmans kernels; a smaller `theta` is more accurate. `FMMInduction()`: fast multipole method, every kernel. `SlipSlabInduction(base, z_min, z_max)`: free-slip span planes, see [planar flow](#planar-flow). |
+| `stretching_scheme` | `TRANSPOSED` (default) uses $J^T\boldsymbol{\Gamma}$ and conserves total strength; `DIRECT` uses $J\boldsymbol{\Gamma}$; `MIXED` uses the symmetric part $S\boldsymbol{\Gamma}$. The [vortex ring](../tutorials/vpm/02_vortex_ring/README.md) compares them. |
+| `integrator` | `RK2()`, `SSPRK3()` or `RK4()`, advancing positions and strengths together. |
+| `compute_device`, `precision` | `AUTO`, `CPU`, `CUDA`, `VULKAN` or `METAL`; `f32` or `f64`. |
+
+Check the fast methods against `DirectInduction` on a small case before trusting forces or instability growth. `freestream_velocity` adds a uniform background flow.
 
 ## Diffusion and LES
 
-| `ViscousConfig` factory | Physical approximation | Example |
+| `ViscousConfig` | Physical model | Tutorial |
 | --- | --- | --- |
-| `inviscid()` | No viscous diffusion. | Use only when viscosity is intentionally neglected. |
-| `cs()` | Core spreading: $d\sigma^2/dt=4\nu_{\rm eff}$. Exact Gaussian heat spreading for uniform viscosity; a second-moment model for Winckelmans cores. | [Ring](../tutorials/vpm/02_vortex_ring/README.md), [flat plate](../tutorials/vpm/04_flat_plate/README.md). |
-| `rwm()` | Brownian displacement with coordinate variance $2\nu\Delta t$. Requires uniform viscosity and an ensemble for mean-flow comparisons. | [Lamb–Oseen](../tutorials/vpm/01_lamb_oseen_vortex/README.md). |
-| `dvh()` | Heat-kernel diffusion and particle regeneration; may accumulate steps before diffusion. Requires uniform viscosity. | [Lamb–Oseen](../tutorials/vpm/01_lamb_oseen_vortex/README.md). |
-| `gbd()` | Grid diffusion followed by particle regeneration; supports spatially varying effective viscosity. | [Lamb–Oseen](../tutorials/vpm/01_lamb_oseen_vortex/README.md), [coupled cases](coupling.md). |
+| `cs()` | Core spreading: $d\sigma^2/dt=4\nu_\mathrm{eff}$, exact heat spreading of a Gaussian. Cores grow, so long runs need regularization. | [Ring](../tutorials/vpm/02_vortex_ring/README.md), [flat plate](../tutorials/vpm/04_flat_plate/README.md) |
+| `rwm()` | Random walk: Brownian steps of variance $2\nu\Delta t$. Uniform viscosity; average an ensemble. | [Lamb–Oseen](../tutorials/vpm/01_lamb_oseen_vortex/README.md) |
+| `dvh()` | Diffused vortex hydrodynamics: heat-kernel spreading onto a grid, then regeneration. Uniform viscosity. | [Lamb–Oseen](../tutorials/vpm/01_lamb_oseen_vortex/README.md) |
+| `gbd()` | Grid-based diffusion: strengths diffuse on a grid with an explicit Laplacian, then regenerate as particles. Supports variable viscosity and LES. | [Lamb–Oseen](../tutorials/vpm/01_lamb_oseen_vortex/README.md), [coupled cases](coupling.md) |
+| `inviscid()` | No diffusion. | — |
 
-`TurbulenceConfig.dns()` adds no subgrid closure; sufficient resolution still needs checking. `les_smagorinsky()` uses
+The grid schemes (`dvh`, `gbd`) need a `padding` around the particles, in grid cells, and a vorticity `threshold` below which regenerated particles are dropped (`threshold_mode="absolute"` in m³/s, or a `"budget"` fraction of the total).
+
+`TurbulenceConfig.dns()` adds no model. `les_smagorinsky()` and `equilibrium_smagorinsky()` add an eddy viscosity
 
 $$
-\nu_t=(C_s\Delta)^2\sqrt{2S:S},\qquad
-\Delta=V_p^{1/3},\qquad \nu_{\rm eff}=\nu+\nu_t.
+\nu_t=(C_s\Delta)^2\sqrt{2S:S},\qquad \Delta=V_p^{1/3},\qquad \nu_\mathrm{eff}=\nu+\nu_t,
 $$
 
-The default $C_s=0.20$; `filter_width` can fix $\Delta$ in metres. LES with CS spreads each core using its local effective viscosity; GBD applies $\nabla\cdot(\nu_{\rm eff}\nabla\boldsymbol{\omega})$. Neither is the complete variable-viscosity stress-curl operator. RWM and DVH reject LES. See the [ring](../tutorials/vpm/02_vortex_ring/README.md) for DNS/LES comparison and [rotor](../tutorials/vpm/06_rotor_flow/README.md) for LES wake inputs.
+with $C_s=0.20$ by default; `filter_width` fixes $\Delta$ in metres. LES works with core spreading and grid-based diffusion. See the [ring](../tutorials/vpm/02_vortex_ring/README.md) for a DNS/LES comparison and the [wind turbine](../tutorials/vpm/06_rotor_flow/README.md) for an LES wake.
 
-Core spreading eventually needs redistribution to retain resolution. Selective eddy viscosity, strength alignment and filament splitting change numerical evolution; the [leapfrogging case](../tutorials/vpm/03_vortex_interactions/readme.md) compares them separately. Check time-step, spacing, core overlap and diffusion convergence before interpreting forces or instability growth.
+## Stabilization
+
+Particles drift apart and stretch, so a long run gradually loses resolution. `StabilizationConfig` gathers the remedies. Each changes the numerical evolution, so compare with a baseline as the [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) do.
+
+| Mechanism | Effect |
+| --- | --- |
+| `bounded_domain(bounds)` | Removes particles that leave a keep box; `outflow_fringe_depth` fades them out first (below). |
+| `selective_eddy_viscosity(coefficient)` | Damps small-scale noise only. |
+| `pedrizzetti_relaxation(factor, interval_steps)` | Aligns strengths with the local vorticity. |
+| `conservative_filter(...)` | Regenerates the particles on a regular lattice at intervals, conserving total strength and impulse within energy and enstrophy loss limits. |
+| `filament_refinement` | Splits over-stretched particles along their vortex lines: `FilamentRefinementConfig.adaptive(interval_steps=...)`. |
+| `divergence_relaxation` | Reduces the divergence of the particle vorticity field: `DivergenceRelaxationConfig(...)`. |
+
+Deleting a shed vortex abruptly at the domain face changes the circulation left behind, which induces a spurious alternating velocity at the body. Outflow fringes instead damp strengths smoothly over a depth $L$ inside a face,
+
+$$
+\frac{d\boldsymbol{\Gamma}}{dt}=-\lambda(s)\boldsymbol{\Gamma},\qquad
+\lambda=\frac{2A\lVert\mathbf{U}_\infty\rVert}{L}s^3(10-15s+6s^2),
+$$
+
+with $s\in[0,1]$ the normalized depth and $A$ the number of e-folds (`outflow_fringe_attenuation`, 8 by default). Make a fringe at least two wake wavelengths deep, as in the [coupled cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md).
+
+`ParticleStateLimits` checks every accepted step: finite values, a Lagrangian Courant limit, maximum strength, divergence, strength–vorticity misalignment and growth rates. `RunPlan(state_limit_action="STOP")` ends a run cleanly at a crossed limit instead of raising an error.
+
+## Planar flow
+
+`SlipSlabInduction(base, z_min=..., z_max=...)` bounds the span with two free-slip planes. Each particle then has an infinite row of mirror images: a reflection keeps the spanwise strength and reverses the in-plane components. One particle layer between planes one spacing apart, with all its images, induces the velocity of planar vortices; a Gaussian layer gives planar Gaussian vortices. There is no separate two-dimensional solver: the three-dimensional operators act on the image-complete field, so every kernel, integrator, diffusion scheme and stabilization mechanism carries over.
+
+```python
+h = 0.04  # particle spacing, m
+span = (-0.5 * h, 0.5 * h)  # slip planes, m
+plane = (-5.0, 30.0, -5.0, 5.0)  # x and y bounds, m
+
+numerics = vpm.Numerics(
+    induction=vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=span[0], z_max=span[1]),
+    viscous=vpm.ViscousConfig.gbd(particle_spacing=h, kinematic_viscosity=nu),
+    domain_bounds=(*plane, *span),
+    stabilization=vpm.StabilizationConfig.bounded_domain((*plane, *span)),
+)
+```
+
+Place the particles on $z=0$ with volume $h^3$ and spanwise strength $\Gamma_z=\omega_zh^3$. Then:
+
+- repeat the planes in `domain_bounds` and in any keep box, and keep z-face fringe depths at zero;
+- make the slab width a multiple of half the spacing of any grid in use (diffusion, regularization), so the planes fall on nodes or half nodes;
+- with `dvh()`, set `padding` to at least `dvh_support_radius_ratio`; LES uses `gbd()`;
+- for the algebraic Winckelmans kernel, use $\sigma\ge2h$: a discrete layer of algebraic cores ripples along the span.
+
+`Numerics` rejects inconsistent settings with a message naming both values. The distant images are summed in closed form with a rigorous error bound checked against `tail_tolerance`, so even one layer needs only a few image shells. Thicker slabs model a spanwise-periodic segment between free-slip walls.
 
 ## VLM surfaces and wakes
 
-Surface JSON defines quadrilateral segments with vertices `a,b` on the leading edge and `d,c` on the trailing edge, plus `n_chordwise_panels` and `n_spanwise_panels`. The [flat-plate setup](../tutorials/vpm/04_flat_plate/setup.py) generates this geometry. Change its chord, span and panel counts to build a new wing. `VLMMeshSetup.geometric(ratio=3, region="end")` clusters panels toward the selected edge; `ratio` is largest/smallest panel spacing.
+A lifting surface is a lattice of vortex rings whose circulation cancels the normal velocity on the surface; changes of bound circulation are shed into the particle wake.
 
-Pass surfaces through `VLMSetup(surfaces=(VLMSurfaceSetup(...),))` in `Numerics.vlm`. Supply matching VPM/VLM viscosity and fluid `density` in kg/m³. `translation` and `rotation_centre` use metres; `rotation_degrees` uses degrees. Motion objects specify translation, rotation or prescribed maneuvers.
+- **Geometry:** a JSON surface of quadrilateral segments with vertices `a,b` on the leading edge and `d,c` on the trailing edge, and `n_chordwise_panels`, `n_spanwise_panels`. The [flat-plate setup](../tutorials/vpm/04_flat_plate/setup.py) writes one; `VLMMeshSetup.geometric(ratio, region)` clusters panels toward an edge.
+- **Placement:** `VLMSurfaceSetup(surface, translation=..., rotation_degrees=..., rotation_centre=..., kinematics=...)`, collected in `Numerics(vlm=VLMSetup(surfaces=(...), density=..., kinematic_viscosity=...))`.
+- **Motion:** `StaticVLM`, `TranslatingVLM`, `SmoothRampVLM`, `RotatingVLM`, `PitchingVLM`, or `ManeuverVLM` driven by your own velocity functions.
+- **Loads:** `ForceConfig.kutta_joukowski(unsteady=True)` adds the unsteady pressure load to the bound-vortex forces; `VLMSampler` writes surface geometry, circulation and loads.
+- **Wake:** `wake_core_overlap` (default 2.5) sets the core of shed particles relative to the panel and row size; refine $\Delta t$ with the panels.
 
-`wake_core_overlap=2.5` sets both trailing and transverse emitted cores to 2.5 times the larger local span spacing or convected row length. Resolve wake rows by refining $\Delta t$ together with the surface panels.
-
-VLM solves bound circulation and sheds its spanwise differences and time changes into the wake. `ForceConfig.kutta_joukowski(unsteady=True)` adds the pressure-time load from changing surface potential jump. The default boundary response holds bound circulation during each particle step; `boundary_response="responsive"` is experimental and needs coupled time-convergence checks.
-
-VLM assumes attached inviscid flow. It does not resolve boundary layers, skin friction, stall, separated delta-wing leading-edge vortices or viscous particle–wall collision. Start with the [flat plate](../tutorials/vpm/04_flat_plate/README.md), then [moving delta wings](../tutorials/vpm/05_delta_wing/README.md), [wind turbine](../tutorials/vpm/06_rotor_flow/README.md) or [quadcopter](../tutorials/vpm/07_quadcopter/README.md).
+VLM assumes attached, inviscid flow: it does not model boundary layers, skin friction, stall or leading-edge separation. Progress from the [flat plate](../tutorials/vpm/04_flat_plate/README.md) to [moving wings](../tutorials/vpm/05_delta_wing/README.md), the [wind turbine](../tutorials/vpm/06_rotor_flow/README.md) and the [quadcopter](../tutorials/vpm/07_quadcopter/README.md).
 
 ## Run and inspect
 
-This two-step example advances a finite Gaussian vortex column for 0.02 s, with circulation 1 m²/s and viscosity 0.01 m²/s. Increase `RunPlan.steps` for a longer physical horizon:
+This example advances a Gaussian vortex column ($\Gamma=1$ m²/s, core radius 0.35 m, $\nu=0.01$ m²/s) by two steps:
 
 ```python
+import numpy as np
+
 from openonda import vpm
 
-h, nu = 0.2, 0.01
+h, a, nu = 0.2, 0.35, 0.01  # particle spacing [m], core radius [m], viscosity [m²/s]
+
+
+class GaussianColumn:
+    """Vortex column of unit circulation along z, sampled on a cubic lattice."""
+
+    def build(self):
+        x = np.arange(-1.0, 1.0 + h / 2, h)
+        position = np.stack(np.meshgrid(x, x, x, indexing="ij"), axis=-1).reshape(-1, 3)
+        n = len(position)
+        radius_squared = position[:, 0] ** 2 + position[:, 1] ** 2
+        strength = np.zeros((n, 3))
+        strength[:, 2] = np.exp(-radius_squared / a**2) / (np.pi * a**2) * h**3  # omega * V
+        return vpm.VortexParticleSet(
+            position=position,
+            velocity=np.zeros((n, 3)),
+            vortex_strength=strength,
+            core_radius=np.full(n, 1.2 * h),
+            particle_volume=np.full(n, h**3),
+            kinematic_viscosity=np.full(n, nu),
+            spacing=h,
+        )
+
+
 case = vpm.VPMCase(
     directory="first-vpm-case",
     numerics=vpm.Numerics(
@@ -106,16 +181,7 @@ case = vpm.VPMCase(
         induction=vpm.DirectInduction(stretching_scheme="TRANSPOSED"),
         viscous=vpm.ViscousConfig.cs(kinematic_viscosity=nu, particle_spacing=h),
     ),
-    initial_conditions=(vpm.VortexFilament(
-        circulation=1.0,
-        vortex_core_radius=0.35,
-        kinematic_viscosity=nu,
-        distribution=vpm.RectangularDistribution(
-            bounds=((-1, 1), (-1, 1), (-1, 1)),
-            spacing=h, core_radius_ratio=1.2,
-        ),
-        core_compensation=vpm.ParticleCoreCompensation(),
-    ),),
+    initial_conditions=(GaussianColumn(),),
     backup=vpm.Backup(interval_steps=10),
     samplers=vpm.Samplers(samples=(
         vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10)),
@@ -125,8 +191,8 @@ case = vpm.VPMCase(
 vpm.VPMSolver(case).run(start_from="latest")
 ```
 
-Backups are in `solution/`; open `solution/vpm.pvd` in ParaView. Diagnostics are in `samples/`. Energy, impulse and enstrophy are per unit density: m⁵/s², m⁴/s and m³/s² respectively; VPM enstrophy uses $\int|\boldsymbol{\omega}|^2\,dV$ without a one-half factor. `SurfaceSampler` and `LineSampler` add field probes in metres.
+`RunPlan.steps` is the total number of steps, so a resumed run continues to it; see [continuation](continuation.md). Set `max_n_particles` for the largest cloud the run will reach.
 
-Tutorials use `allrun.sh` to run or resume a case, `allcontinue.sh` for continuation and `allplot.sh` for figures. Set capacity for the full shed/regenerated cloud. `RunPlan.steps` is the total step target, including restored steps; see [continuation](continuation.md). A particle state limit stop produces a partial trajectory. A completed run still needs physical convergence checks.
+Samplers write to `samples/` on an `EverySteps`, `EveryTime` or `FinalOnly` schedule. `FlowIntegralsSampler` records the global invariants per unit density: total strength, linear and angular impulse, kinetic energy and enstrophy. `LineSampler` and `SurfaceSampler` record velocity and vorticity on probes. Particles are written to `solution/vpm.pvd` for ParaView.
 
-[Numerical references](../source/solvers/vpm/REFERENCES.md).
+[Numerical references](../openonda/vpm/REFERENCES.md).

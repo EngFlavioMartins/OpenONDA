@@ -11,14 +11,14 @@ import json
 from pathlib import Path
 
 
-from openonda.results import write_text
-from source.solvers.vpm.io.postprocess import saved_frame
+from assets.postprocess import write_text
+from openonda.vpm.io.postprocess import saved_frame
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .. import setup
-from .postprocess import (
+import setup
+from assets.postprocess import (
     CASES,
     case_style,
     discover_core_sections,
@@ -28,7 +28,7 @@ from .postprocess import (
     read_core_section,
     save_figure,
 )
-from .postprocess import theme as plotting_theme
+from assets.postprocess import theme as plotting_theme
 
 
 def arrange_records(records, runs, times):

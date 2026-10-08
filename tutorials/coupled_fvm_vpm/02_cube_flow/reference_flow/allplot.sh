@@ -3,5 +3,4 @@ set -e
 
 cd "$(dirname "$0")"
 
-python -m openonda.results restore ..
-python -m openonda.tutorial_runner . postprocess_grid_study
+python -m assets.postprocess_grid_study

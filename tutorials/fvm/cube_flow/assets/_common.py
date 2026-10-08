@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from openonda.results import latest_fvm_frame, read_grouped_csv, snapshot_vector_field
+from assets.output_files import latest_fvm_frame, read_grouped_csv, snapshot_vector_field
 
 import numpy as np
 

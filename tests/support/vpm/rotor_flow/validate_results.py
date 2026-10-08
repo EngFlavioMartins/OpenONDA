@@ -16,7 +16,7 @@ OPERATING_WINDOW_REVOLUTIONS = load_tutorial_module(
 ).OPERATING_WINDOW_REVOLUTIONS
 REQUIRED_PLANE_NAMES = load_tutorial_module("vpm/rotor_flow", "assets._common").REQUIRED_PLANE_NAMES
 bem_reference = load_tutorial_module("vpm/rotor_flow", "assets._common").bem_reference
-from source.solvers.vpm.io.postprocess import impulse_history
+from openonda.vpm.io.postprocess import impulse_history
 
 performance = load_tutorial_module("vpm/rotor_flow", "assets._common").performance
 rotor_inputs = load_tutorial_module("vpm/rotor_flow", "assets._common").rotor_inputs

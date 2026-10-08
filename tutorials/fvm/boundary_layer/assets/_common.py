@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from openonda.results import read_csv_columns
+from assets.output_files import read_csv_columns
 
 import numpy as np
 

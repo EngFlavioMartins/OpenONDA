@@ -34,7 +34,7 @@ def _has_cuda() -> bool:
 @pytest.mark.slow
 @pytest.mark.qualification
 @pytest.mark.skipif(not _has_cuda(), reason="CUDA device unavailable")
-@pytest.mark.parametrize("scenario", ("numerics", "targets", "overflow", "restart"))
+@pytest.mark.parametrize("scenario", ("numerics", "targets", "restart"))
 def test_cuda_fmm_qualification_in_isolated_runtime(tmp_path, scenario):
     """Keep CUDA and CPU Taichi initialization independent across test files."""
     root = Path(__file__).resolve().parents[2]
@@ -55,14 +55,14 @@ def test_cuda_fmm_qualification_in_isolated_runtime(tmp_path, scenario):
 
 
 def _restart_case(root: Path) -> None:
-    from source.solvers.vpm import FMMInduction, ViscousConfig, VPMSolver
-    from tests.vpm.test_backup_storage import _add_counter_rotating_pair, _case
+    from openonda.vpm import FMMInduction, ViscousConfig, VPMSolver
+    from tests.vpm._vpm_case import add_counter_rotating_pair, small_case
 
     assert "CUDA" in FMMInduction.supported_devices
     solvers = []
 
     def build(name):
-        case = _case(
+        case = small_case(
             root / name,
             max_n_particles=8,
             viscous=ViscousConfig.inviscid(particle_spacing=0.2),
@@ -78,7 +78,7 @@ def _restart_case(root: Path) -> None:
     try:
         continuous, interrupted = build("continuous"), build("interrupted")
         for solver in (continuous, interrupted):
-            _add_counter_rotating_pair(solver)
+            add_counter_rotating_pair(solver)
         with contextlib.redirect_stdout(io.StringIO()):
             for _ in range(4):
                 continuous.advance(defer_output=True)
@@ -110,9 +110,7 @@ def _worker(scenario: str, workdir: Path) -> None:
         test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inactive_storage,
         test_device_fmm_is_permutation_translation_and_axis_rotation_covariant,
         test_device_fmm_meets_all_kernel_gates_with_near_pairs_and_far_clusters,
-        test_device_fmm_recovers_overflow_without_changing_stage_results,
         test_device_hierarchy_handles_edge_cases_and_rebuilds_stage_metadata,
-        test_fmm_grows_real_pair_arrays_and_matches_oversized_control,
     )
 
     ti.init(arch=ti.cuda, default_fp=ti.f32, device_memory_fraction=0.02, offline_cache=False)
@@ -126,9 +124,6 @@ def _worker(scenario: str, workdir: Path) -> None:
             test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inactive_storage(
                 kernel
             )
-    elif scenario == "overflow":
-        test_device_fmm_recovers_overflow_without_changing_stage_results()
-        test_fmm_grows_real_pair_arrays_and_matches_oversized_control()
     elif scenario == "restart":
         _restart_case(workdir)
     else:

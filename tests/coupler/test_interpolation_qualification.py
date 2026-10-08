@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree
 
-from source.coupler.interpolation import FVMVelocityInterpolator
+from openonda.coupler.interpolation import FVMVelocityInterpolator
 
 
 def _quadratic_velocity(position: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

@@ -11,8 +11,6 @@ from scipy.integrate import trapezoid
 from scipy.signal import find_peaks
 from scipy.stats import t as student_t
 
-from openonda.reference_grid import plot_force_grids
-
 CASE_DIR = (
     Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow"
 ) / "reference_flow"
@@ -222,7 +220,54 @@ def write_csv(grids: list[dict], path: Path) -> None:
 
 
 def plot_forces(grids: list[dict], path: Path) -> None:
-    plot_force_grids(grids, path)
+    """Save mean/shedding metrics and the two remaining force RMS measures."""
+    import matplotlib.pyplot as plt
+
+    from openonda.plotting import (
+        COLORS,
+        centered_subplots_adjust,
+        export_figure,
+        figure_size,
+        fit_thesis_y_label_margins,
+        set_thesis_style,
+        validate_thesis_figure,
+    )
+
+    set_thesis_style()
+    labels = {
+        "mean_drag": r"$\overline{C_D}$",
+        "rms_drag": r"$C_{D,\mathrm{rms}}$",
+        "rms_lift": r"$C_{L,\mathrm{rms}}$",
+        "rms_side": r"$C_{S,\mathrm{rms}}$",
+        "strouhal": r"$St$",
+    }
+    for output, metrics, size in (
+        (path, ("mean_drag", "rms_lift", "strouhal"), "stacked"),
+        (
+            path.with_name(path.stem + "_fluctuations" + path.suffix),
+            ("rms_drag", "rms_side"),
+            "wide_short",
+        ),
+    ):
+        figure, axes = plt.subplots(len(metrics), 1, figsize=figure_size(size), sharex=True)
+        if not all(grid.get("qualified_statistics", True) for grid in grids):
+            print("Force statistics unqualified: see the grid qualification report.")
+        for axis, metric in zip(axes, metrics, strict=True):
+            axis.plot(
+                [grid["h"] for grid in grids],
+                [grid[metric] for grid in grids],
+                "o-",
+                color=COLORS["fvm"],
+            )
+            axis.set_ylabel(labels[metric])
+            axis.grid(False)
+        axes[-1].invert_xaxis()
+        axes[-1].set_xlabel("h / D")
+        centered_subplots_adjust(figure, outer=0.18, bottom=0.16, top=0.92, hspace=0.26)
+        fit_thesis_y_label_margins(figure, axes)
+        validate_thesis_figure(figure, axes)
+        export_figure(figure, output)
+        plt.close(figure)
 
 
 def analyse_forces(

@@ -5,17 +5,17 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.coupler.boundary import apply_fvm_boundary, tangential_normal_velocity_gradient
-from source.coupler.config.types import CouplerSetup
-from source.coupler.geometry import TriangulatedWall
-from source.coupler.stable_renewal import (
+from openonda.coupler.boundary import apply_fvm_boundary, tangential_normal_velocity_gradient
+from openonda.coupler.config.types import CouplerSetup
+from openonda.coupler.geometry import TriangulatedWall
+from openonda.coupler.stable_renewal import (
     gaussian_represented_vortex_strength,
     recover_vortex_invariants,
     vortex_invariants,
     vortex_strength_from_velocity_trace,
 )
-from source.coupler.vorticity_transfer import VorticityTransfer
-from source.solvers.fvm import (
+from openonda.coupler.vorticity_transfer import VorticityTransfer
+from openonda.fvm import (
     BoundaryConfig,
     DiscretizationConfig,
     FVMSetup,
@@ -26,8 +26,8 @@ from source.solvers.fvm import (
     TransportConfig,
     create_fvm_solver,
 )
-from source.solvers.fvm.coupling.coupler_interface import CouplerInterfaceMixin
-from source.solvers.fvm.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
+from openonda.fvm.coupling.coupler_interface import CouplerInterfaceMixin
+from openonda.fvm.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
 
 
 def _taylor_green_fields(position, time, viscosity=0.01):
@@ -118,7 +118,12 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         initial_velocity=[1, 0, 0],
     )
     with create_fvm_solver(setup, case_dir=output / f"{mode}_{n}", mesh=mesh) as solver:
-        coupler = SimpleNamespace(fvm_solver=solver, setup=CouplerSetup())
+        coupler_setup = CouplerSetup()
+        coupler = SimpleNamespace(
+            fvm_solver=solver,
+            setup=coupler_setup,
+            freestream_velocity=coupler_setup.freestream_velocity_vector,
+        )
         centre = solver.get_cell_centre_coordinates()
         face = solver.get_boundary_face_centre_coordinates("numericalBoundary")
         normal = solver.get_boundary_face_normal("numericalBoundary")

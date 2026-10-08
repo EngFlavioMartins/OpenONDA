@@ -5,10 +5,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from openonda.fvm.mesh.cartesian.mesher import _box_patch_point_constraints
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.mesh.rectilinear import box_mesh_3d
 import openonda.fvm.mesher as msh
-from source.solvers.fvm.mesh.cartesian.mesher import _box_patch_point_constraints
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
 
 
 def _wall_faces(mesh):

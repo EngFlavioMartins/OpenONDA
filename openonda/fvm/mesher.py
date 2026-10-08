@@ -1,19 +1,13 @@
-"""Public mesh-construction namespace for :mod:`openonda.fvm`.
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Public mesher namespace for the finite-volume solver.
 
-Use this module for all meshing objects and helpers::
-
-    import openonda.fvm.mesher as msh
-
-    mesh = msh.CartesianMesher(
-        domain=msh.BoxDomain(...),
-        surfaces=(msh.STLSurface(...),),
-    )
-
-The solver facade intentionally does not re-export these names at
-``openonda.fvm.BoxRefinement`` or similar flat paths.
+This module is the single import surface for mesh construction. It keeps
+typed geometry, sizing, layer, report, and mesh-import objects together while
+leaving :mod:`openonda.fvm` focused on solver configuration and runtime.
 """
 
-from source.solvers.fvm.mesher import (
+from .mesh import geometry
+from .mesh.cartesian import (
     BoundaryLayers,
     BoxDomain,
     BoxPatches,
@@ -23,17 +17,17 @@ from source.solvers.fvm.mesher import (
     ConeRefinement,
     ExtrudedCartesianMesher,
     FeatureRefinement,
-    GenerationReport,
-    GmshImporter,
     LineRefinement,
     PatchRefinement,
     SizeField,
-    SizeReport,
     SphereRefinement,
     STLSurface,
+)
+from .mesh.cartesian.report import GenerationReport, SizeReport
+from .mesh.gmsh_importer import GmshImporter
+from .mesh.rectilinear import (
+    box_mesh_3d,
     coupling_box_mesh,
-    geometry,
-    periodic_square_mesh,
     stretched,
     wall_refined_axis,
 )
@@ -56,9 +50,9 @@ __all__ = [
     "SizeReport",
     "SphereRefinement",
     "STLSurface",
+    "box_mesh_3d",
     "coupling_box_mesh",
     "geometry",
-    "periodic_square_mesh",
     "stretched",
     "wall_refined_axis",
 ]

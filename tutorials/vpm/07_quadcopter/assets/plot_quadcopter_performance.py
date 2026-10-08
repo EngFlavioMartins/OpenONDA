@@ -2,7 +2,7 @@
 
 import argparse
 
-from ._quadcopter_plots import FIGURES_DIR, SAMPLES_DIR, _theme, plot_performance
+from assets._quadcopter_plots import FIGURES_DIR, SAMPLES_DIR, _theme, plot_performance
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

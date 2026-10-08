@@ -80,18 +80,23 @@ def _checked_inputs(position, strength, radius, targets, z_min, z_max):
     )
 
 
-def gaussian_pairs(displacement, strength, radius):
-    """Independent normalized Gaussian velocity and full row-major Jacobian.
+def _assemble(r, g, first, second):
+    """Velocity Gamma x (a r) and full row-major Jacobian from radial factors."""
+    skew = np.zeros((*r.shape[:-1], 3, 3))
+    skew[..., 0, 1], skew[..., 0, 2] = -g[..., 2], g[..., 1]
+    skew[..., 1, 0], skew[..., 1, 2] = g[..., 2], -g[..., 0]
+    skew[..., 2, 0], skew[..., 2, 1] = -g[..., 1], g[..., 0]
+    velocity = np.cross(g, r) * first[..., None]
+    gradient = (
+        skew * first[..., None, None]
+        + np.cross(r, g)[..., :, None] * r[..., None, :] * second[..., None, None]
+    )
+    if not np.isfinite(velocity).all() or not np.isfinite(gradient).all():
+        raise FloatingPointError("reference scale overflow: rescale this qualification problem")
+    return velocity, gradient
 
-    The incomplete gamma expression avoids erf cancellation in q. A convergent
-    18-term integrated-density series evaluates the small-core radial factors;
-    at rho<=1/2 its first omitted dimensionless terms are below 2e-28.
-    Coincident velocity is zero and its finite nonzero self-Jacobian is included.
-    """
-    r = np.asarray(displacement, dtype=np.float64)
-    g = np.broadcast_to(np.asarray(strength, dtype=np.float64), r.shape)
-    sigma = np.broadcast_to(np.asarray(radius, dtype=np.float64), r.shape[:-1])
-    distance = np.linalg.norm(r, axis=-1)
+
+def _gaussian_factors(distance, sigma):
     rho2 = (distance / sigma) ** 2
     small = rho2 <= 0.25
     first = np.zeros_like(distance)
@@ -108,18 +113,47 @@ def gaussian_pairs(displacement, strength, radius):
         b = -rho2[small] * b + 2 / (math.factorial(n) * (2 * n + 5))
     first[small] = a / (np.pi**1.5 * sigma[small] ** 3)
     second[small] = b / (np.pi**1.5 * sigma[small] ** 5)
-    skew = np.zeros((*r.shape[:-1], 3, 3))
-    skew[..., 0, 1], skew[..., 0, 2] = -g[..., 2], g[..., 1]
-    skew[..., 1, 0], skew[..., 1, 2] = g[..., 2], -g[..., 0]
-    skew[..., 2, 0], skew[..., 2, 1] = -g[..., 1], g[..., 0]
-    velocity = np.cross(g, r) * first[..., None]
-    gradient = (
-        skew * first[..., None, None]
-        + np.cross(r, g)[..., :, None] * r[..., None, :] * second[..., None, None]
-    )
-    if not np.isfinite(velocity).all() or not np.isfinite(gradient).all():
-        raise FloatingPointError("reference scale overflow: rescale this qualification problem")
-    return velocity, gradient
+    return first, second
+
+
+def _radial_factors(kernel, distance, sigma):
+    """Closed-form q/r^3 and (3q - rho^3 zeta)/r^5 of each particle kernel."""
+    if kernel == "GAUSSIAN":
+        return _gaussian_factors(distance, sigma)
+    if kernel in {"HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"}:
+        # q = q_G + rho^3 exp(-rho^2)/(2 pi^1.5); the super-Gaussian is its
+        # sqrt(2)-wider core.
+        width = sigma * (math.sqrt(2.0) if kernel == "SUPER_GAUSSIAN" else 1.0)
+        first, second = _gaussian_factors(distance, width)
+        correction = np.exp(-((distance / width) ** 2)) / (2 * np.pi**1.5)
+        return first + correction / width**3, second + 2 * correction / width**5
+    if kernel == "WINCKELMANS":
+        base = (distance / sigma) ** 2 + 1
+        return (
+            ((distance / sigma) ** 2 + 2.5) / (4 * np.pi * sigma**3 * base**2.5),
+            (3 * (distance / sigma) ** 2 + 10.5) / (4 * np.pi * sigma**5 * base**3.5),
+        )
+    raise ValueError(f"no closed-form reference for kernel {kernel!r}")
+
+
+def kernel_pairs(displacement, strength, radius, kernel="GAUSSIAN"):
+    """Independent velocity and full Jacobian of one particle kernel's pairs."""
+    r = np.asarray(displacement, dtype=np.float64)
+    g = np.broadcast_to(np.asarray(strength, dtype=np.float64), r.shape)
+    sigma = np.broadcast_to(np.asarray(radius, dtype=np.float64), r.shape[:-1])
+    first, second = _radial_factors(kernel, np.linalg.norm(r, axis=-1), sigma)
+    return _assemble(r, g, first, second)
+
+
+def gaussian_pairs(displacement, strength, radius):
+    """Independent normalized Gaussian velocity and full row-major Jacobian.
+
+    The incomplete gamma expression avoids erf cancellation in q. A convergent
+    18-term integrated-density series evaluates the small-core radial factors;
+    at rho<=1/2 its first omitted dimensionless terms are below 2e-28.
+    Coincident velocity is zero and its finite nonzero self-Jacobian is included.
+    """
+    return kernel_pairs(displacement, strength, radius, "GAUSSIAN")
 
 
 def image_remainder_bounds(position, strength, radius, targets, *, z_min, z_max, shells):

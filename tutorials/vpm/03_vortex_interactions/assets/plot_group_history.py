@@ -6,13 +6,13 @@ import argparse
 from pathlib import Path
 
 
-from openonda.results import read_csv_table
+from assets.postprocess import read_csv_table
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from .. import setup
-from .postprocess import case_style, comparison_legend, figure_size, save_figure, theme
+import setup
+from assets.postprocess import case_style, comparison_legend, figure_size, save_figure, theme
 
 FIGURE_NAME = "group_history"
 

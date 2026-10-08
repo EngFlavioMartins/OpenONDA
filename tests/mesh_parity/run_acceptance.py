@@ -30,15 +30,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
-import openonda.fvm.mesher as msh
-from source.solvers.fvm.io.mesh_storage import save_native_mesh
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.validation import (
+from openonda.fvm.io.mesh_storage import save_native_mesh
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.mesh.validation import (
     validate_cell_area_closure,
     validate_geometry,
     validate_single_fluid_component,
     validate_topology,
 )
+import openonda.fvm.mesher as msh
 
 
 def _load_fixture_builder():
@@ -89,7 +89,7 @@ def _diff_hash() -> str:
         in_scope = path_text in {"CFMESH_MESHER_COMPLETION_PLAN.md", "pyproject.toml"} or any(
             path_text.startswith(prefix)
             for prefix in (
-                "source/solvers/fvm/",
+                "openonda/fvm/",
                 "openonda/fvm/",
                 "tests/fvm/",
                 "tests/mesh_parity/",

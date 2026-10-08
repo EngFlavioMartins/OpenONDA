@@ -11,9 +11,9 @@ from matplotlib.colors import Normalize
 from scipy.signal import find_peaks
 
 from openonda import plotting as _theme
-from openonda.results import read_csv_table, read_json, read_pvd_frames
-from openonda.scenes import export_animation, figure_frame
-from source.solvers.vpm.io.postprocess import backup_frames, surface_mean, vlm_surface
+from assets.output_files import read_csv_table, read_json, read_pvd_frames
+from assets.scenes import export_animation, figure_frame
+from openonda.vpm.io.postprocess import backup_frames, surface_mean, vlm_surface
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution"

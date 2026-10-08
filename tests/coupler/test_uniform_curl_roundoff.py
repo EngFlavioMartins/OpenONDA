@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.coupler import CouplerSetup
-from source.coupler import vorticity_transfer as module
+from openonda.coupler import CouplerSetup
+from openonda.coupler import vorticity_transfer as module
 
 
 @pytest.mark.parametrize("axis", range(3))

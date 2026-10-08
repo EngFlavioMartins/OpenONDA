@@ -36,6 +36,6 @@ Force/loading/motion tables are in `samples/delta_wing/`, with wake planes and i
 
 Figures show vertical forces, motion power, the last three heave cycles, particle strength and three downstream wake planes. The strength sum is $\sum_p|\boldsymbol{\Gamma}_p|$ in m³/s, not conserved scalar circulation. Wake fields average one full measured heave cycle.
 
-Compare successive heave cycles and refine the time step, wing panels and wake cores before interpreting interaction loads. `python -m openonda.tutorial_runner . assets.postprocess render-gif` exports an animation from the saved native frames.
+Compare successive heave cycles and refine the time step, wing panels and wake cores before interpreting interaction loads. `python -m assets.postprocess render-gif` exports an animation from the saved native frames.
 
 This attached-flow VLM does not model separated leading-edge vortices, stall or viscous particle–wall interaction. The initial 15° incidence is a prescribed demonstration, not validation of separated delta-wing aerodynamics. The animation reads the saved native wing panels and their bound circulation.

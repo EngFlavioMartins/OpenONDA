@@ -5,9 +5,9 @@ import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
-from openonda.results import matched_surface_vectors, write_csv_table
+from assets.output_files import matched_surface_vectors, write_csv_table
 
-from . import postprocess as util
+from assets import postprocess as util
 
 
 COMPARISONS = {

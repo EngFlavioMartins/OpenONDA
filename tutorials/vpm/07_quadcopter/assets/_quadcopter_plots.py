@@ -7,7 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from openonda.results import read_csv_table, read_json
+from assets.output_files import read_csv_table, read_json
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = CASE_DIR / "samples" / "quadcopter"
@@ -58,7 +58,7 @@ def rotor_inputs(metadata_path: Path | None = None):
     config = metadata["configuration"]
     vlm = config["numerics"]["vlm"]
     first = vlm["surfaces"][0]
-    geometry = _theme.read_vlm_surface(first)
+    geometry = first["geometry"]
     segment = geometry["wings"][0]["segments"][0]
     a, b, c, d = (np.asarray(segment["vertex_position"][key]) for key in "abcd")
     root, tip = sorted(
@@ -92,7 +92,7 @@ def rotor_inputs(metadata_path: Path | None = None):
 
 
 def bem_reference(p):
-    from openonda.rotor_theory import solve_blade_element_momentum
+    from assets.rotor_theory import solve_blade_element_momentum
 
     return solve_blade_element_momentum(
         p.radial_position,
@@ -192,7 +192,7 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
 
 def wake_windows(samples_dir, period, revolutions=6):
     """Read the final window of each published native velocity plane."""
-    from source.solvers.vpm.io.postprocess import surface_series
+    from openonda.vpm.io.postprocess import surface_series
 
     records = []
     for pvd in sorted(samples_dir.glob("sampled_zplane*.pvd")):

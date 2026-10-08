@@ -2,11 +2,11 @@
 
 import numpy as np
 
-from source.coupler.lattice_transfer import m4_prime
+from openonda.coupler.lattice_transfer import m4_prime
 
 
 def test_coupler_m4_prime_matches_the_grid_diffusion_kernel():
-    from source.solvers.vpm.physics.diffusion.grid import _m4_prime_1d
+    from openonda.vpm.physics.diffusion.grid import _m4_prime_1d
 
     rng = np.random.default_rng(116)
     distance = rng.uniform(-2.5, 2.5, size=10_000)

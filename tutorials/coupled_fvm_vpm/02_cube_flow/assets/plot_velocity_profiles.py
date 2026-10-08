@@ -6,7 +6,7 @@ import argparse
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import numpy as np
-from . import postprocess as util
+from assets import postprocess as util
 
 
 def _force_series(source: str, end_time: float):

@@ -8,6 +8,9 @@ from pathlib import Path
 import numpy as np
 import openonda.vpm as vpm
 
+from assets.initial_conditions import ToroidalDistribution, VortexRing, WidnallDisturbance
+from assets.ring_diagnostics import RingDiagnosticsSampler
+
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 RING_RADIUS = 1.0
@@ -39,7 +42,7 @@ CASES = (
 def create_ring(x, group):
     centre = (x, 0.0, 0.0)
     disturbance = (
-        vpm.WidnallDisturbance.single_mode(
+        WidnallDisturbance(
             amplitude=DISTURBANCE_AMPLITUDE,
             mode=DISTURBANCE_MODE,
             direction="axial",
@@ -50,15 +53,14 @@ def create_ring(x, group):
     tube = np.sqrt(CORE_RADIUS**2 - PARTICLE_CORE_RADIUS**2) * np.sqrt(
         -np.log(TOROIDAL_TAIL_FRACTION)
     )
-    return vpm.VortexRing(
+    return VortexRing(
         centre=centre,
         radius=RING_RADIUS,
         circulation=RING_CIRCULATION,
         vortex_core_radius=CORE_RADIUS,
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         disturbance=disturbance,
-        core_compensation=vpm.ParticleCoreCompensation(),
-        distribution=vpm.ToroidalDistribution(
+        distribution=ToroidalDistribution(
             centre=centre,
             ring_radius=RING_RADIUS,
             tube_radius=tube,
@@ -136,8 +138,8 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
             directory=name,
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10), initial=True),
-                vpm.RingDiagnosticsSampler(schedule=vpm.EverySteps(10), initial=True),
-                vpm.RingDiagnosticsSampler(schedule=vpm.FinalOnly()),
+                RingDiagnosticsSampler(schedule=vpm.EverySteps(10), initial=True),
+                RingDiagnosticsSampler(schedule=vpm.FinalOnly()),
                 *core_section_samplers(),
             ),
         ),

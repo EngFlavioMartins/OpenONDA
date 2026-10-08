@@ -75,7 +75,7 @@ def test_initial_ignores_corrupt_old_backup(tmp_path):
     solver = _solver(directory, end_time=0.01)
     solver.run(start_from="initial")
     assert solver.step == 1
-    assert list((directory / "solution/restart_history").glob("initial-before-*/backup/backup"))
+    assert not (directory / "solution/restart_history").exists()
 
 
 def test_latest_without_backup_replaces_prior_output_history(tmp_path):
@@ -87,7 +87,7 @@ def test_latest_without_backup_replaces_prior_output_history(tmp_path):
     assert fresh.step == 1
     history = tmp_path / "solution/diagnostics.jsonl"
     assert [json.loads(row)["time"] for row in history.read_text().splitlines()] == [0.01]
-    assert list((tmp_path / "solution/restart_history").glob("initial-before-*"))
+    assert not (tmp_path / "solution/restart_history").exists()
 
 
 def test_none_start_preserves_in_memory_state(tmp_path):

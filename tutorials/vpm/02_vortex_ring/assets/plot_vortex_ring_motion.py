@@ -10,7 +10,7 @@ Saves: figures/vortex_ring_motion.png
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..assets.ring_metrics import (
+from assets.ring_metrics import (
     FIGURES_DIR,
     REFERENCE_TIME,
     REFERENCE_VELOCITY,

@@ -7,14 +7,14 @@ import json
 from pathlib import Path
 
 
-from openonda.results import read_csv_table, write_csv_table, write_text
+from assets.postprocess import read_csv_table, write_csv_table, write_text
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.lines import Line2D
 
-from .. import setup
-from .postprocess import (
+import setup
+from assets.postprocess import (
     case_style,
     comparison_legend,
     core_peak_history,

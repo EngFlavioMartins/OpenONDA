@@ -8,8 +8,8 @@ New simulations save these surface frames at the VPM output cadence.
 import argparse
 from pathlib import Path
 
-from source.solvers.vpm.io.logging import Logging
-from source.solvers.vpm.io.vlm_backup import export_vlm_backup
+from openonda.vpm.io.logging import Logging
+from openonda.vpm.io.vlm_backup import export_vlm_backup
 
 
 def main():

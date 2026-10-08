@@ -1,165 +1,27 @@
 """Device-hierarchy and covariance tests for production VPM FMM."""
 
 import math
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.io.logging import Logging
-from source.solvers.vpm.kernels.base import make_vortex_kernel
-from source.solvers.vpm.numerics.rk_tableaux import RK2, RK4, SSPRK3
-from source.solvers.vpm.numerics.runge_kutta import RungeKutta
-from source.solvers.vpm.particles import Particles
-from source.solvers.vpm.physics.base import PhysicsBase
-from source.solvers.vpm.physics.induction.base import StageRates, StageState
-from source.solvers.vpm.physics.induction.fmm import FMMInduction
-from source.solvers.vpm.physics.induction.fmm.device import (
+from openonda.vpm.kernels.base import make_vortex_kernel
+from openonda.vpm.numerics.rk_tableaux import RK2, RK4, SSPRK3
+from openonda.vpm.numerics.runge_kutta import RungeKutta
+from openonda.vpm.physics.base import PhysicsBase
+from openonda.vpm.physics.induction.base import StageRates, StageState
+from openonda.vpm.physics.induction.fmm import FMMInduction
+from openonda.vpm.physics.induction.fmm.device import (
     _DERIVATIVE_INDICES,
     _MULTI_INDICES,
-    _InteractionListCapacityError,
     _translation_tables,
-)
-from source.solvers.vpm.physics.induction.treecode.lbvh import (
-    _TRAVERSAL_BATCH_SIZE,
-    TaichiTreecode,
 )
 
 
 def _ensure_taichi_cpu() -> None:
     if ti.lang.impl.get_runtime().prog is None:
         ti.init(arch=ti.cpu, offline_cache=False, cpu_max_num_threads=2)
-
-
-@ti.kernel
-def _add_p2p_diagnostic(workspace: ti.template(), particle_pairs: ti.i32):
-    workspace._record_p2p_particle_count(particle_pairs)
-
-
-def test_fmm_workspace_estimate_accounts_for_padded_sort_capacity():
-    induction = FMMInduction()
-    estimates = [induction.estimated_workspace_bytes(capacity) for capacity in (1, 2, 4)]
-    assert estimates[1] > estimates[0]
-    assert estimates[2] > estimates[1]
-    assert estimates[2] - estimates[1] == 2 * (estimates[1] - estimates[0])
-    sizes = [induction.estimated_workspace_bytes(capacity) for capacity in (7, 8, 9)]
-    assert sizes[2] - sizes[1] == sizes[1] - sizes[0] + 8 * 2 * 4
-    assert induction.estimated_workspace_bytes(
-        100, max_evaluation_points=10
-    ) < induction.estimated_workspace_bytes(100)
-    assert induction.estimated_workspace_bytes(
-        100_000, max_evaluation_points=100_000
-    ) == induction.estimated_workspace_bytes(100_000, max_evaluation_points=_TRAVERSAL_BATCH_SIZE)
-
-
-def test_fmm_does_not_force_the_unqualified_vulkan_sort():
-    harness = _DeviceFMMHarness(capacity=8)
-    assert harness.induction.workspace.tree.device_sort_only is False
-
-
-def test_fmm_scratch_grows_with_active_sources_and_releases_old_fields():
-    harness = _DeviceFMMHarness(capacity=16, max_evaluation_points=10000)
-    induction = harness.induction
-    assert induction.workspace.max_n_particles == 1
-    assert induction.workspace.target_batch_capacity == _TRAVERSAL_BATCH_SIZE
-    assert induction._estimate_memory_bytes() < induction.estimated_workspace_bytes(16)
-
-    position = np.array([[0.0, 0.0, 0.0], [0.3, -0.1, 0.2]], dtype=np.float32)
-    strength = np.array([[0.0, 0.02, 0.01], [0.01, -0.01, 0.0]], dtype=np.float32)
-    radius = np.array([0.08, 0.1], dtype=np.float32)
-    before = harness.evaluate(position, strength, radius)
-    assert induction.workspace.max_n_particles == 2
-    previous = induction.workspace
-
-    expanded_position = np.vstack((position, np.eye(3, dtype=np.float32)))
-    expanded_strength = np.vstack((strength, np.full((3, 3), 0.002, dtype=np.float32)))
-    expanded_radius = np.concatenate((radius, np.full(3, 0.1, dtype=np.float32)))
-    harness.evaluate(expanded_position, expanded_strength, expanded_radius)
-    assert induction.workspace.max_n_particles == 5
-    assert previous._device_fields.tree is None
-    assert previous.tree._device_fields.tree is None
-    after = harness.evaluate(position, strength, radius)
-    for first, second in zip(before, after, strict=True):
-        np.testing.assert_array_equal(first, second)
-
-    active = induction.workspace
-    with pytest.raises(ValueError, match="exceeds FMM capacity"):
-        induction._ensure_workspace(17)
-    assert induction.workspace is active
-
-
-def test_external_target_traversal_is_bounded_per_gpu_dispatch():
-    calls = []
-    target_count = 2 * _TRAVERSAL_BATCH_SIZE + 17
-    tree = SimpleNamespace(
-        max_evaluation_points=target_count,
-        theta_sq=0.01,
-        _external_target_traversal_error={None: 0},
-        _reset_external_target_traversal_error=lambda: None,
-        compute_external_target_fields_kernel=lambda *args: calls.append((args[5], args[6])),
-    )
-
-    TaichiTreecode.compute_external_target_fields(
-        tree,
-        None,
-        None,
-        None,
-        None,
-        target_count,
-        target_count,
-        write_velocity=True,
-        write_gradient=False,
-    )
-
-    assert calls == [
-        (0, _TRAVERSAL_BATCH_SIZE),
-        (_TRAVERSAL_BATCH_SIZE, _TRAVERSAL_BATCH_SIZE),
-        (2 * _TRAVERSAL_BATCH_SIZE, 17),
-    ]
-
-
-def test_particle_capacity_warning_is_emitted_at_eighty_percent(monkeypatch):
-    _ensure_taichi_cpu()
-    warnings = []
-    monkeypatch.setattr(Logging, "warning", lambda text, **kwargs: warnings.append(text))
-    particles = Particles(max_n_particles=10, float_dtype="f32")
-    particles.add_vortex_particles(
-        position=np.zeros((8, 3), dtype=np.float32),
-        velocity=np.zeros((8, 3), dtype=np.float32),
-        vortex_strength=np.ones((8, 3), dtype=np.float32),
-        core_radius=np.ones(8, dtype=np.float32),
-        particle_volume=np.ones(8, dtype=np.float32),
-        kinematic_viscosity=np.zeros(8, dtype=np.float32),
-    )
-    assert len(warnings) == 1
-    assert "active particle count=8" in warnings[0]
-
-
-def test_particle_capacity_error_precedes_overflow():
-    _ensure_taichi_cpu()
-    particles = Particles(max_n_particles=2, float_dtype="f32")
-    with pytest.raises(ValueError, match="current particle count=0.*requested new particles=3"):
-        particles.add_vortex_particles(
-            position=np.zeros((3, 3), dtype=np.float32),
-            velocity=np.zeros((3, 3), dtype=np.float32),
-            vortex_strength=np.ones((3, 3), dtype=np.float32),
-            core_radius=np.ones(3, dtype=np.float32),
-            particle_volume=np.ones(3, dtype=np.float32),
-            kinematic_viscosity=np.zeros(3, dtype=np.float32),
-        )
-
-
-def test_p2p_diagnostic_retains_exact_counts_across_a_u32_carry():
-    harness = _DeviceFMMHarness(capacity=2)
-    assert harness.induction.workspace is not None
-    workspace = harness.induction.workspace
-    workspace._p2p_particle_count_low[None] = np.uint32(0xFFFFFFFE)
-    workspace._p2p_particle_count_high[None] = np.uint32(7)
-
-    _add_p2p_diagnostic(workspace, 3)
-
-    assert workspace.p2p_particle_count() == (8 << 32) + 1
 
 
 class _DeviceFMMHarness:
@@ -545,116 +407,6 @@ def test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inacti
     assert np.isfinite(gradient).all()
 
 
-def test_device_fmm_recovers_overflow_without_changing_stage_results():
-    harness = _DeviceFMMHarness(capacity=64)
-    rng = np.random.default_rng(20260916)
-    position = rng.normal(size=(64, 3)).astype(np.float32)
-    strength = rng.normal(scale=0.01, size=(64, 3)).astype(np.float32)
-    radius = np.full(64, 0.02, dtype=np.float32)
-
-    reference = _DeviceFMMHarness(capacity=64).evaluate(position, strength, radius)
-    # Allocate genuinely undersized lists. The evaluator must discard their
-    # truncated contents, not advance a partial stage.
-    assert harness.induction.workspace is not None
-    harness.induction._replace_workspace(64, 1)
-    old = harness.induction.workspace
-    old.profile_passes = True
-    with pytest.warns(RuntimeWarning, match="Growing FMM interaction-list storage"):
-        result = harness.evaluate(position, strength, radius)
-    for expected, actual in zip(reference, result, strict=True):
-        np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-7)
-    np.testing.assert_array_equal(harness.position.to_numpy(), position)
-    np.testing.assert_array_equal(harness.strength.to_numpy(), strength)
-    np.testing.assert_array_equal(harness.radius.to_numpy(), radius)
-    assert old._device_fields.tree is None and old.tree._device_fields.tree is None
-    assert harness.induction.workspace.max_n_particles == 64
-    assert harness.induction.workspace.max_pairs > 1
-    assert harness.induction.workspace.profile_passes
-    assert 1 <= harness.induction.diagnostics.interaction_list_resizes <= 4
-    assert harness.induction.diagnostics.stage_evaluations == 1
-    assert harness.induction.diagnostics.host_particle_transfers == 0
-
-
-def test_fmm_capacity_retry_is_bounded_and_never_publishes_partial_outputs(monkeypatch):
-    from source.solvers.vpm.physics.induction.fmm import device
-
-    induction = FMMInduction()
-    attempts, published = [], []
-
-    def overflow(*args):
-        attempts.append(1)
-        raise _InteractionListCapacityError(1, m2l=0, near=2, queue_a=0, queue_b=0)
-
-    induction.physics = SimpleNamespace(_copy_vec3=lambda *args: published.append(args))
-    induction.workspace = SimpleNamespace(evaluate=overflow)
-    monkeypatch.setattr(induction, "_ensure_workspace", lambda count: None)
-    monkeypatch.setattr(induction, "_grow_interaction_lists", lambda error: None)
-    with pytest.raises(RuntimeError, match="no stage output was published"):
-        induction.evaluate_stage(
-            position=None,
-            vortex_strength=None,
-            core_radius=None,
-            velocity_out=None,
-            vortex_strength_rate_out=None,
-            count=1,
-            stage_time=0.0,
-        )
-    assert len(attempts) == device._MAX_LIST_GROWTH_RETRIES + 1
-    assert not published and induction.diagnostics.stage_evaluations == 0
-
-
-def test_fmm_incomplete_traversal_is_not_misclassified_as_capacity_overflow():
-    harness = _DeviceFMMHarness(capacity=2)
-    workspace = harness.induction.workspace
-    workspace._list_error[None] = 0
-    workspace._queue_count_a[None] = 1
-    workspace._queue_count_b[None] = 0
-    workspace._finalize_interaction_lists()
-    assert int(workspace._list_error[None]) == 2
-    workspace._list_error[None] = 1
-    workspace._finalize_interaction_lists()
-    assert int(workspace._list_error[None]) == 1
-
-
-def test_fmm_memory_estimate_includes_grown_interaction_storage():
-    induction = FMMInduction()
-    # Above the derivative-cache batch ceiling only the eight pair arrays grow.
-    base = induction.estimated_workspace_bytes(2048, max_pairs=65536)
-    grown = induction.estimated_workspace_bytes(2048, max_pairs=98304)
-    assert grown - base == (98304 - 65536) * 8 * 4
-
-
-def test_fmm_grows_real_pair_arrays_and_matches_oversized_control():
-    from source.solvers.vpm.physics.induction.fmm import device
-
-    # One particle per leaf and overlapping cores force all 64**2 near pairs,
-    # exceeding the REAL initial allocation of 32*64, not just a logical cap.
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(device, "_FMM_LEAF_CAPACITY", 1)
-        rng = np.random.default_rng(20261001)
-        position = rng.uniform(-0.1, 0.1, (64, 3)).astype(np.float32)
-        strength = rng.normal(0, 0.01, (64, 3)).astype(np.float32)
-        radius = np.ones(64, dtype=np.float32)
-        control = _DeviceFMMHarness(capacity=64)
-        control.induction._replace_workspace(64, 8192)
-        expected = control.evaluate(position, strength, radius)
-        subject = _DeviceFMMHarness(capacity=64)
-        subject.induction._ensure_workspace(64)
-        old = subject.induction.workspace
-        assert old.near_source.shape == (2048,)
-        with pytest.warns(RuntimeWarning, match="Growing FMM interaction-list storage"):
-            actual = subject.evaluate(position, strength, radius)
-        assert subject.induction.workspace.near_source.shape[0] >= 4096
-        assert old._device_fields.tree is None
-        assert int(subject.induction.workspace._near_count[None]) == 4096
-        for first, second in zip(expected, actual, strict=True):
-            np.testing.assert_allclose(second, first, rtol=2e-6, atol=2e-7)
-        # A later evaluation reuses the expanded allocation without another retry.
-        resizes = subject.induction.diagnostics.interaction_list_resizes
-        subject.evaluate(position, strength, radius)
-        assert subject.induction.diagnostics.interaction_list_resizes == resizes
-
-
 def test_device_fmm_target_queries_preserve_exact_non_lbvh_kernel_physics():
     harness = _DeviceFMMHarness(capacity=2, kernel_name="HIGH_ORDER_GAUSSIAN")
     position = np.array([[0.0, 0.0, 0.0], [0.3, -0.1, 0.2]], dtype=np.float32)
@@ -682,33 +434,6 @@ def test_device_fmm_target_queries_preserve_exact_non_lbvh_kernel_physics():
     ).sum(axis=1)
     np.testing.assert_allclose(velocity, reference_velocity, rtol=2e-5, atol=1e-7)
     np.testing.assert_allclose(gradient, reference_gradient, rtol=2e-5, atol=1e-7)
-
-
-def test_device_fmm_target_query_with_no_sources_writes_only_freestream_and_zero_gradient():
-    harness = _DeviceFMMHarness(capacity=8, max_evaluation_points=2)
-    target_position = ti.Vector.field(3, dtype=ti.f32, shape=3)
-    target_velocity = ti.Vector.field(3, dtype=ti.f32, shape=3)
-    target_gradient = ti.Matrix.field(3, 3, dtype=ti.f32, shape=3)
-    background_velocity = ti.Vector.field(3, dtype=ti.f32, shape=())
-    target_position.from_numpy(np.zeros((3, 3), dtype=np.float32))
-    background = np.array([0.2, -0.1, 0.05], dtype=np.float32)
-    background_velocity[None] = background
-
-    harness.induction.evaluate_targets(
-        target_position=target_position,
-        source_position=harness.position,
-        source_vortex_strength=harness.strength,
-        source_core_radius=harness.radius,
-        target_velocity=target_velocity,
-        target_velocity_gradient=target_gradient,
-        target_count=3,
-        source_count=0,
-        include_freestream=True,
-        background_velocity=background_velocity,
-    )
-
-    np.testing.assert_array_equal(target_velocity.to_numpy(), np.broadcast_to(background, (3, 3)))
-    np.testing.assert_array_equal(target_gradient.to_numpy(), np.zeros((3, 3, 3), dtype=np.float32))
 
 
 @pytest.mark.parametrize(

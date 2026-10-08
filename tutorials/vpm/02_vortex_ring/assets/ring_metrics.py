@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 
 from openonda import plotting as theme
-from openonda.results import read_history_table, read_json
-from source.solvers.vpm.io.postprocess import particle_state
+from assets.output_files import read_history_table, read_json
+from openonda.vpm.io.postprocess import particle_state
 
 ASSETS_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = ASSETS_DIR.parent
@@ -34,8 +34,28 @@ def _theme():
     return theme
 
 
-VARIANT_STYLE = _theme().VORTEX_RING_VARIANT_STYLE
-VARIANT_LABEL = _theme().VORTEX_RING_VARIANT_LABEL
+VARIANT_STYLE = {
+    name: {
+        "color": theme.COLORS[color],
+        "marker": marker,
+        "linestyle": "-",
+        "linewidth": theme.LINE_WIDTH,
+        "markersize": theme.MARKER_SIZE,
+        "markeredgewidth": theme.MARKER_EDGE_WIDTH,
+    }
+    for name, color, marker in (
+        ("dns_direct", "dark", "o"),
+        ("dns_transposed", "vpm", "s"),
+        ("dns_mixed", "amber", "^"),
+        ("les_transposed", "teal", "v"),
+    )
+}
+VARIANT_LABEL = {
+    "dns_direct": "DNS Direct",
+    "dns_transposed": "DNS Transposed",
+    "dns_mixed": "DNS Mixed",
+    "les_transposed": "LES Transposed",
+}
 CURRENT_VARIANTS = ("dns_direct", "dns_transposed", "dns_mixed", "les_transposed")
 EXPECTED_STRETCHING_SCHEME = {
     "dns_direct": "DIRECT",

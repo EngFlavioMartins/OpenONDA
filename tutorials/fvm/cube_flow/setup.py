@@ -4,7 +4,7 @@
 The quasi-two-dimensional body-fitted case targets St = 0.140--0.150 and
 mean Cd = 1.45--1.58 at 5% blockage.
 
-Run with ``python -m openonda.tutorial_runner . setup``.
+Run with ``python setup.py``.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 
-from .assets.mesh_square import square_cylinder_mesh
+from assets.mesh_square import square_cylinder_mesh
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.

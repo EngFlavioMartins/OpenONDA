@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from openonda.results import write_csv_table
+from assets.output_files import write_csv_table
 
 
 class RotorBladeDesign:
@@ -119,11 +119,11 @@ def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Pa
 
 
 def import_openvsp_blade(csv_path: Path, json_path: Path):
-    from source.solvers.vpm.boundary_elements.vlm.geometry.openvsp_io import (
+    from openonda.vpm.boundary_elements.vlm.geometry.openvsp_io import (
         OpenVSPImportConfig,
         load_degengeom_csv,
     )
-    from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import (
+    from openonda.vpm.boundary_elements.vlm.geometry.surface_io import (
         save_surface,
     )
 

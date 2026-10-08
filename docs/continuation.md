@@ -1,33 +1,32 @@
 # Continue or extend a simulation
 
-From a tutorial directory:
+Every tutorial starts its solver from the latest backup (`start_from="latest"`, set in `setup.py` directly or through a `START_FROM` constant): if a numerical backup exists the run resumes from it, otherwise it starts from the initial conditions. From a case directory:
 
 ```bash
-python -m openonda.tutorial_runner . setup  # Run or resume the default case.
-./allcontinue.sh      # Run or resume the tutorial's case set.
-./allrun.sh           # Run the case launcher; most clean previous output.
+./allrun.sh        # delete solution/, samples/ and figures/, then run from t = 0
+./allcontinue.sh   # resume from the latest backup
 ```
 
-Tutorials set `START_FROM = "latest"` in `setup.py`. If a numerical backup exists, the solver restores it; otherwise it starts from the configured initial conditions. A completed run adds no steps. To extend it, increase the FVM/coupled end time or the VPM **total** `RunPlan.steps`.
+A finished run adds nothing when resumed. To extend it, raise the end time in `setup.py` (`END_TIME` for FVM and coupled cases) or the **total** step count (`RunPlan.steps`) for VPM cases, then run `./allcontinue.sh`. Outputs written after the restored time are trimmed first, so the histories stay continuous. Regenerate the figures afterwards with `./allplot.sh`.
 
-Set `START_FROM = "initial"` to start again with the configured initial conditions. Previous solver output is moved into `restart_history/`. Most `allrun.sh` launchers call `allclean.sh` and delete generated output; the coupled cylinder, cube, and their FVM references preserve results and resume. Variant arguments resume that variant's own case; see the [tutorial index](tutorials.md).
+In your own script, pass `start_from` to `run()`:
 
-## Preserve the physical case
-
-Keep the mesh, geometry, boundary conditions, viscosity, particle distribution, and numerical model compatible with the saved state. Use a separate case directory when changing these inputs for a comparison. An incompatible or corrupt backup raises an error.
-
-| Solver | Numerical backup |
+| `start_from` | Behaviour |
 | --- | --- |
-| FVM | `BackupConfig.path`, normally `solution/backup`; MPI backups require the original rank count. |
-| VPM/VLM | Latest accepted `solution/vpm/vpm_*.h5`; includes particle and attached lifting-surface state. |
-| FVM–VPM | `solution/backups/checkpoint_info.json` and both component states; keep the bundle together. |
+| `"latest"` | Resume the most recent backup in `solution/`, or start fresh |
+| `"initial"` | Start a new history from the initial conditions, replacing earlier output |
+| a path | Resume from that backup |
 
-ParaView files alone cannot restore a simulation. Backup cadence determines how much work is repeated after an interruption. Continuation preserves the model; it does not resolve a numerical instability.
+## What a backup contains
 
-Restarts require the current checkpoint formats: FVM serial version 10, FVM partitioned version 9, VPM/VLM version 10.3, and coupled version 13 with boundary-state format 4. Run metadata uses format 2. Checkpoints must use the current file format, and numerical configuration changes require explicit permission. Earlier saved formats require the code version that wrote them.
+| Solver | Backup |
+| --- | --- |
+| FVM | `solution/backup`: velocity, pressure and fluxes. An MPI run restarts with the same core count. |
+| VPM/VLM | The latest `solution/vpm/vpm_*.h5`: particles and lifting-surface state. |
+| Coupled | `solution/backups/`: both solver states and the coupling state; keep the folder together. |
 
-## After resuming
+The backup interval sets how much work an interruption costs. ParaView files alone cannot restore a run.
 
-The solver trims histories and visualization frames to the restored time before advancing again. Regenerate plots with `./allplot.sh`, where provided, after extending a run. See [saved fields](solution_layout.md) and [physical comparisons](visualization.md).
+## Keep the case compatible
 
-For a custom script, call `solver.run(start_from="latest")` on a newly configured solver. Without `start_from`, VPM's programmatic `run()` advances the requested number of additional steps instead of treating the step count as a total destination.
+A backup restores the numerical state of one physical problem. Keep the mesh, geometry, boundary conditions, viscosity and numerical model unchanged when resuming; the solver refuses a backup whose configuration differs. To compare a variant, copy the case to a new directory. Backups written by a different version of the solver may need that version to restart.

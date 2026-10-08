@@ -7,7 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from openonda.plotting import centered_subplots_adjust
 
-from ._common import (  # noqa: E402
+from assets._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
     RE,

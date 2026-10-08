@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Copy-and-run STL to Cartesian FVM tutorial.
 
-Run ``python -m openonda.tutorial_runner . setup`` from this directory.  The ordinary public API builds
-the mesh, writes ``solution/fvm/mesh.npz`` and ``solution/fvm/mesh.vtu``, and advances
+Run ``python setup.py`` from this directory.  The ordinary public API builds
+the mesh, writes ``assets/cartesian_mesher_mesh.npz`` and its ``.vtu`` view, and advances
 the short inlet/wall flow case for twenty steps.
 """
 

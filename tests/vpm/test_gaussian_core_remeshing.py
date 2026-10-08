@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from source.solvers.vpm.stabilization.remeshing import gaussian_core_remesh
+from openonda.vpm.stabilization.remeshing import gaussian_core_remesh
 
 
 def test_grid_projection_removes_gradient_preserves_solenoidal_field_and_mean():
-    from source.solvers.vpm.stabilization.remeshing import project_grid_strength
+    from openonda.vpm.stabilization.remeshing import project_grid_strength
 
     n = 16
     x = np.arange(n) * 2 * np.pi / n
@@ -56,8 +56,8 @@ def test_variable_core_reset_preserves_resolved_gaussian_field_and_second_moment
     assert error < 0.003
     # Crossing the 10,000-particle diagnostic threshold must not change the
     # quadratic form used to decide whether this representation change passes.
-    from source.solvers.vpm.numerics.fourier_integrals import _grid_for_particles
-    from source.solvers.vpm.stabilization.regularization import _transfer_integrals
+    from openonda.vpm.numerics.fourier_integrals import _grid_for_particles
+    from openonda.vpm.stabilization.regularization import _transfer_integrals
 
     grid = _grid_for_particles(np.vstack((source["position"], remapped["position"])), 0.035)
     before = _transfer_integrals(
@@ -134,7 +134,7 @@ def test_group_remap_preserves_overlapping_contributions_and_material_properties
 
 
 def test_group_remap_cannot_enable_unconstrained_projection():
-    from source.solvers.vpm.config.stabilization import StabilizationConfig
+    from openonda.vpm.config.stabilization import StabilizationConfig
 
     with pytest.raises(ValueError, match="transfer-only"):
         StabilizationConfig(regularization_preserve_groups=True)
@@ -158,8 +158,8 @@ def test_reset_to_the_configured_core_accepts_float32_storage_roundoff():
 
 
 def test_gaussian_reconstruction_is_not_silently_used_for_other_kernels():
-    from source.solvers.vpm.config.case import Numerics
-    from source.solvers.vpm.config.stabilization import StabilizationConfig
+    from openonda.vpm.config.case import Numerics
+    from openonda.vpm.config.stabilization import StabilizationConfig
 
     with pytest.raises(ValueError, match="require GAUSSIAN"):
         Numerics(
@@ -175,8 +175,8 @@ def test_gaussian_reconstruction_is_not_silently_used_for_other_kernels():
 def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
     monkeypatch, transfer, preserve_groups
 ):
-    from source.solvers.vpm.config.stabilization import StabilizationConfig
-    from source.solvers.vpm.stabilization import regularization
+    from openonda.vpm.config.stabilization import StabilizationConfig
+    from openonda.vpm.stabilization import regularization
 
     arrays, _ = _solver()
     arrays.update(particle_volume=np.ones(2), velocity=np.zeros((2, 3)))
@@ -205,13 +205,13 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
     monkeypatch.setattr(
         regularization,
         "particle_resolution_metrics",
-        lambda *args: {
+        lambda *args, **kwargs: {
             "vorticity_divergence_error": 1.0,
             "vortex_strength_misalignment_degrees": 90.0,
         },
     )
     monkeypatch.setattr(
-        "source.solvers.vpm.stabilization.divergence_relaxation.constrained_divergence_relaxation",
+        "openonda.vpm.stabilization.divergence_relaxation.constrained_divergence_relaxation",
         lambda *args, **kwargs: pytest.fail("transfer-only mode must not project"),
     )
     cfg = StabilizationConfig(
@@ -224,6 +224,7 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
         regularization_total_enstrophy_dissipation_limit=0.01,
     )
     ctx = SimpleNamespace(
+        slip_slab=None,
         particles=particles,
         np_dtype=np.float32,
         mutations=SimpleNamespace(replace=replace),
@@ -244,7 +245,7 @@ def test_transfer_only_remap_keeps_cores_and_rolls_back_excess_transfer(
         assert len(replacements) == 1  # No adaptive broadening or enstrophy adjustment.
         assert len(calls) == 2
         if preserve_groups:
-            from source.solvers.vpm.stabilization.filament_refinement import (
+            from openonda.vpm.stabilization.filament_refinement import (
                 gaussian_particle_moments,
             )
 

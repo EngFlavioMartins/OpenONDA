@@ -19,9 +19,9 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import Normalize
 
 from openonda import plotting as theme
-from openonda.results import read_pvd_frames, write_text
-from openonda.scenes import export_animation, figure_frame
-from source.solvers.vpm.io.postprocess import coupled_frames, vlm_surface
+from assets.output_files import read_pvd_frames, write_text
+from assets.scenes import export_animation, figure_frame
+from openonda.vpm.io.postprocess import coupled_frames, vlm_surface
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = CASE_DIR / "figures" / "rotor_30fps.gif"

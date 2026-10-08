@@ -5,7 +5,7 @@ import h5py
 import numpy as np
 import pyvista as pv
 
-from source.solution_layout import vpm_backup_files
+from openonda.core.solution_layout import vpm_backup_files
 from tests._tutorial_helpers import load_tutorial_module
 
 _physics = load_tutorial_module("vpm/rotor_flow", "assets.plot_rotor_wake_planes")
@@ -198,7 +198,7 @@ def native_plane_windows(
     required_names=None,
 ):
     """Read native planes and qualify one exact, bracketed five-revolution window."""
-    from source.solvers.vpm.io.sampling import EverySteps, EveryTime
+    from openonda.vpm.io.sampling import EverySteps, EveryTime
 
     config, state = p.metadata["configuration"], p.metadata["state"]
     dt = config["numerics"]["time_step_size"]

@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from openonda.results import read_csv_table
+from assets.output_files import read_csv_table
 
-from ..assets.ring_metrics import (
+from assets.ring_metrics import (
     FIGURES_DIR,
     P_REF,
     REFERENCE_TIME,

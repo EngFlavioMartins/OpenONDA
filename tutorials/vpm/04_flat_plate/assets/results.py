@@ -5,10 +5,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from openonda.plotting import read_vlm_surface
-from openonda.results import read_csv_table, read_json
+from assets.output_files import read_csv_table, read_json
 
-from .kinematics import distance_travelled
+from assets.kinematics import distance_travelled
 
 
 def parameters(case_dir: Path, name: str | None = None) -> dict:
@@ -21,7 +20,7 @@ def parameters(case_dir: Path, name: str | None = None) -> dict:
     metadata = read_json(record)
     vlm = metadata["configuration"]["numerics"]["vlm"]
     surface = vlm["surfaces"][0]
-    refs = read_vlm_surface(surface)["refs"]
+    refs = surface["geometry"]["refs"]
     motion = surface["kinematics"]
     return {
         "status": metadata["run_status"]["status"],

@@ -12,7 +12,7 @@ deliberately presentation-only.
     merger and over the full circle after merger;
   * vortex_separation and orbital angle (dipole/merging pair).
 
-Run ``python -m openonda.tutorial_runner . assets.postprocess --extract-fields`` to rebuild deterministic feature CSVs,
+Run ``python -m assets.postprocess --extract-fields`` to rebuild deterministic feature CSVs,
 or aggregate independent random walks of the same initial field.
 """
 
@@ -30,7 +30,7 @@ from scipy import ndimage, signal, stats
 from scipy.special import expi
 
 from openonda import plotting as theme
-from openonda.results import (
+from assets.output_files import (
     read_csv_table,
     read_history_table,
     read_json,
@@ -40,19 +40,19 @@ from openonda.results import (
     write_csv_table,
     write_text,
 )
-from source.solution_layout import vpm_backup_files
-from source.solvers.vpm.io.ensemble import (
+from openonda.core.solution_layout import vpm_backup_files
+from openonda.vpm.io.ensemble import (
     field_ensemble,
     mean_standard_error,
     realization_metadata,
     table_ensemble,
 )
-from source.solvers.vpm.io.postprocess import (
+from openonda.vpm.io.postprocess import (
     common_frame_time,
     particle_state,
     saved_frame,
 )
-from source.vtk_output import write_vtk_dataset
+from openonda.core.vtk_output import write_vtk_dataset
 
 ASSETS_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = ASSETS_DIR.parent
@@ -732,7 +732,12 @@ def load_theme() -> tuple[dict[str, str], object | None]:
 
 def build_style_map(colors: dict[str, str]) -> dict[str, dict]:
     """Map scheme names to plot style dicts (color, marker, label)."""
-    return {name: dict(style) for name, style in _theme().LAMB_OSEEN_SCHEME_STYLE.items()}
+    return {
+        "cs": {"label": "CS", "color": colors["hybrid"], "marker": "o"},
+        "rwm": {"label": "RWM", "color": colors["dark"], "marker": "^"},
+        "dvh": {"label": "DVH", "color": colors["teal"], "marker": "v"},
+        "gbd": {"label": "GBD", "color": colors["vpm"], "marker": "D"},
+    }
 
 
 def scheme_zorder(scheme: str, offset: int = 0) -> int:

@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 
 from openonda.plotting import centered_subplots_adjust
-from openonda.results import read_csv_table
+from assets.output_files import read_csv_table
 from openonda.validation import time_mean
-from source.solvers.vpm.io.postprocess import chord_panel_indices, loading_window
+from openonda.vpm.io.postprocess import chord_panel_indices, loading_window
 
-from ._common import (
+from assets._common import (
     FIGURES_DIR,
     OPERATING_WINDOW_REVOLUTIONS,
     accepted_history,

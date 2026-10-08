@@ -17,16 +17,16 @@ H = 0.125
 def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
-    from source.coupler import CouplerSetup, FVMVPMCoupler
-    from source.solvers.fvm import (
+    from openonda.coupler import CouplerSetup, FVMVPMCoupler
+    from openonda.fvm import (
         BoundaryConfig,
         FVMSetup,
         FVMSolver,
         TimeConfig,
         TransportConfig,
     )
-    from source.solvers.fvm.mesh.rectilinear import coupling_box_mesh
-    from source.solvers.vpm import Numerics, ViscousConfig, VPMCase, VPMSolver
+    from openonda.fvm.mesh.rectilinear import coupling_box_mesh
+    from openonda.vpm import Numerics, ViscousConfig, VPMCase, VPMSolver
 
     # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
     setup = CouplerSetup(
@@ -215,7 +215,7 @@ def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("value", [True, False, 0, -1, 1.5, "2"])
 def test_coupling_step_limit_rejects_invalid_values(value):
-    from source.coupler import FVMVPMCoupler
+    from openonda.coupler import FVMVPMCoupler
 
     error = TypeError if isinstance(value, bool | float | str) else ValueError
     with pytest.raises(error):

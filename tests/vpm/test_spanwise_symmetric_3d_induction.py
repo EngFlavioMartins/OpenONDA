@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.physics.base import PhysicsBase
-from source.solvers.vpm.physics.induction.direct import DirectInduction
-from source.solvers.vpm.physics.induction.slip_slab import SlipSlabInduction
+from openonda.vpm.physics.base import PhysicsBase
+from openonda.vpm.physics.induction.direct import DirectInduction
+from openonda.vpm.physics.induction.slip_slab import SlipSlabInduction
 
 
 @pytest.fixture(scope="module", autouse=True)

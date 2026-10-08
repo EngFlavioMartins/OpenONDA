@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from source.coupler.stable_renewal import (
+from openonda.coupler.stable_renewal import (
     blend_represented_state,
     build_stable_renewal_lattice,
     gaussian_represented_vortex_strength,
@@ -128,7 +128,7 @@ def test_one_saturated_node_does_not_stop_remote_correction():
 
 @pytest.mark.parametrize("slab", [False, True])
 def test_renewal_ignores_fractional_taper_inside_actual_solid(slab):
-    from source.coupler.geometry import SolidBoundary, TriangulatedWall
+    from openonda.coupler.geometry import SolidBoundary, TriangulatedWall
 
     h = 0.04
     boundary = SolidBoundary(

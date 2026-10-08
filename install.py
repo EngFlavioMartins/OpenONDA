@@ -18,6 +18,9 @@ def main(arguments=None) -> int:
         action="store_true",
         help="install the optional CUDA 12 Gaussian mesh backend and verify its GPU runtime",
     )
+    parser.add_argument(
+        "--dev", action="store_true", help="also install the test, lint and packaging tools"
+    )
     parser.add_argument("--with-environment", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(arguments)
     if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 11):
@@ -26,7 +29,9 @@ def main(arguments=None) -> int:
         )
     root = Path(__file__).resolve().parent
     install = [sys.executable, "-m", "pip", "install"]
-    extras = ["dev"] + (["gaussian-mesh-cuda12"] if args.gaussian_mesh_cuda12 else [])
+    extras = (["dev"] if args.dev else []) + (
+        ["gaussian-mesh-cuda12"] if args.gaussian_mesh_cuda12 else []
+    )
     target = str(root) + ("[" + ",".join(extras) + "]" if extras else "")
     install += ["-e", target]
     verify = [sys.executable, "-I", "-m", "openonda.verify_install"]
@@ -43,9 +48,7 @@ def main(arguments=None) -> int:
             if result.returncode:
                 return result.returncode
     print(f"OpenONDA is installed and verified for {sys.executable}.")
-    print(
-        "Run your case with this environment's python: python -m openonda.tutorial_runner . setup"
-    )
+    print("Run your case with this environment's python: python setup.py")
     return 0
 
 

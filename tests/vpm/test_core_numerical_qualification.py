@@ -89,7 +89,7 @@ def _single_gaussian_field(
 
 def test_unbounded_fft_energy_converges_to_direct_particle_integrals(tmp_path, record_property):
     """Independent direct pair sums qualify the FFT tensor and its cross terms."""
-    from source.solvers.vpm.numerics.fourier_integrals import gaussian_fourier_integrals
+    from openonda.vpm.numerics.fourier_integrals import gaussian_fourier_integrals
 
     solver = _solver(tmp_path, "free_space_integrals", DirectInduction(), precision="f64")
     rng = np.random.default_rng(83)

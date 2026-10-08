@@ -4,14 +4,15 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.config.case import Numerics
-from source.solvers.vpm.config.viscous import ViscousConfig
-from source.solvers.vpm.kernels.base import make_device_vortex_kernels, make_vortex_kernel
-from source.solvers.vpm.physics.induction.direct import DirectInduction
-from source.solvers.vpm.physics.induction.fmm import FMMInduction
-from source.solvers.vpm.physics.induction.treecode import TreecodeInduction
+from openonda.vpm.config.case import Numerics
+from openonda.vpm.config.viscous import ViscousConfig
+from openonda.vpm.kernels.base import make_device_vortex_kernels, make_vortex_kernel
+from openonda.vpm.kernels.registry import kernel_names
+from openonda.vpm.physics.induction.direct import DirectInduction
+from openonda.vpm.physics.induction.fmm import FMMInduction
+from openonda.vpm.physics.induction.treecode import TreecodeInduction
 
-KERNELS = ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS")
+KERNELS = tuple(sorted(kernel_names()))
 
 
 @ti.data_oriented
@@ -161,7 +162,7 @@ def test_kernel_gradient_matches_a_finite_difference_of_pair_velocity():
 
 @pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
 def test_stretching_choice_is_independent_of_backend_and_survives_build(induction_type):
-    from source.solvers.vpm.config.configuration_values import numerical_configuration
+    from openonda.vpm.config.configuration_values import numerical_configuration
 
     configurations = []
     for scheme in ("DIRECT", "TRANSPOSED", "MIXED"):

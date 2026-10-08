@@ -7,12 +7,12 @@ Positive pitch raises the leading edge and produces upward thrust in climb.
 
 import numpy as np
 
-from source.solvers.vpm.boundary_elements.vlm.geometry.aircraft import (
+from openonda.vpm.boundary_elements.vlm.geometry.aircraft import (
     Aircraft,
     Wing,
     WingSegment,
 )
-from source.solvers.vpm.boundary_elements.vlm.geometry.surface_io import (
+from openonda.vpm.boundary_elements.vlm.geometry.surface_io import (
     save_surface as save_blade,
 )
 

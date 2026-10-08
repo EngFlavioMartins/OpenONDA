@@ -19,7 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 
-from .postprocess import (
+from assets.postprocess import (
     SCHEMES,
     build_arg_parser,
     build_style_map,

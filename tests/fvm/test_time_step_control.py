@@ -9,9 +9,9 @@ import io
 import pytest
 
 from openonda import fvm
-from source.solvers.fvm.assemble.time_integration import backward_coefficients
-from source.solvers.fvm.core.solver import FVMSolver
-from source.solvers.fvm.core.time_step import maximum_courant_time_step_size
+from openonda.fvm.assemble.time_integration import backward_coefficients
+from openonda.fvm.core.solver import FVMSolver
+from openonda.fvm.core.time_step import maximum_courant_time_step_size
 from tests.support.fvm_mesh import structured_box
 
 

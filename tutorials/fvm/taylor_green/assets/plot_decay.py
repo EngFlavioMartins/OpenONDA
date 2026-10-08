@@ -10,7 +10,7 @@ from openonda.plotting import centered_subplots_adjust
 import numpy as np
 
 from openonda import plotting as theme
-from openonda.results import read_history_table
+from assets.output_files import read_history_table
 
 
 def main() -> None:

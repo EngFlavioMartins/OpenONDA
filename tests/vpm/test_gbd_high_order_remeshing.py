@@ -4,12 +4,28 @@ import numpy as np
 import pytest
 import taichi as ti
 
-from source.solvers.vpm.config.viscous import ViscousConfig
-from source.solvers.vpm.physics.diffusion.grid import (
+from openonda.vpm.config.viscous import ViscousConfig
+from openonda.vpm.physics.diffusion.grid import (
     _GridDiffusionMixin,
-    _lagrange6_weights,
     _m4_prime_1d,
 )
+
+
+def _lagrange6_weights(fraction: np.ndarray) -> np.ndarray:
+    """Six cardinal weights on offsets -2,...,3; reproduce degrees 0--5.
+
+    This is the local degree-five Lagrange interpolant, not Monaghan's M6
+    kernel. Signed lobes preserve moments; positivity is not guaranteed.
+    """
+    fraction = np.asarray(fraction, dtype=float)
+    nodes = np.arange(-2, 4)
+    return np.stack(
+        [
+            np.prod(np.stack([(fraction - k) / (j - k) for k in nodes if j != k]), axis=0)
+            for j in nodes
+        ],
+        axis=-1,
+    )
 
 
 def test_six_point_weights_reproduce_polynomials_through_degree_five():

@@ -20,7 +20,6 @@ import pytest
         "public_case",
         "mesh_failure",
         "analysis_failure",
-        "immersed_body",
         "four_ranks",
         "freestream",
     ],
@@ -48,7 +47,7 @@ def build_mesh():
         raise ValueError("injected meshing failure")
     return coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5), .25)
 
-velocity = [0.,0.,0.] if mode == "immersed_body" else [1.,0.,0.]
+velocity = [1.,0.,0.]
 boundaries = [fvm.BoundaryConfig(name="numericalBoundary",
     velocity_type="fixedValue", velocity_value=velocity,
     pressure_type="fixedFluxPressure")]
@@ -75,17 +74,11 @@ try:
             backup=backup,
         ))
     else:
-        body_options = {}
-        if mode == "immersed_body":
-            body = fvm.ImmersedBody.cylinder_z(centre=[0.,0.,0.], diameter=.3, grid_spacing=.25)
-            body_options = {"immersed_bodies": body, "grid_spacing": .25}
         solver = fvm.create_fvm_solver(fvm.FVMSetup(
             case_name="runtime", cores=cores, boundaries=boundaries,
             initial_velocity=velocity, execution=execution, backup=backup,
             time=fvm.TimeConfig(time_step_size=.01, end_time=.01, output_schedule=fvm.RunSchedule(every_n_steps=1)),
-        ), case_dir=directory, mesh=build_mesh, **body_options)
-    if mode == "immersed_body":
-        assert solver.parallel.mode == "petsc_replicated"
+        ), case_dir=directory, mesh=build_mesh)
     assert solver.parallel.size == cores
     with solver:
         row = solver.evaluate(analyse)

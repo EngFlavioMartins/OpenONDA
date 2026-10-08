@@ -3,12 +3,12 @@
 
 Examples (from this case directory)::
 
-    python -m openonda.tutorial_runner . setup vortex CS
-    python -m openonda.tutorial_runner . setup dipole DVH
-    python -m openonda.tutorial_runner . setup merging GBD
+    python setup.py vortex CS
+    python setup.py dipole DVH
+    python setup.py merging GBD
 
 Independent RWM ensembles use
-``python -m openonda.tutorial_runner . assets.rwm_ensemble CASE``.
+``python -m assets.rwm_ensemble CASE``.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ import numpy as np
 
 import openonda.vpm as vpm
 from openonda.vpm import Backup, Samplers
+
+from assets.initial_conditions import TriangularPrismDistribution, VortexFilament
 
 
 # Physics (Lamb--Oseen benchmark)
@@ -124,7 +126,7 @@ def _initial_conditions(physics: str, kinematic_viscosity: float):
         -column_half_length,
         column_half_length,
     ]
-    distribution = vpm.TriangularPrismDistribution(
+    distribution = TriangularPrismDistribution(
         bounds=(
             (initial_bounds[0], initial_bounds[1]),
             (initial_bounds[2], initial_bounds[3]),
@@ -134,18 +136,15 @@ def _initial_conditions(physics: str, kinematic_viscosity: float):
         core_radius_ratio=PARTICLE_RADIUS / SPACING,
     )
     conditions = tuple(
-        vpm.VortexFilament(
+        VortexFilament(
             kinematic_viscosity=kinematic_viscosity,
             centre=(0.0, y_position, 0.0),
-            direction=(0.0, 0.0, 1.0),
             circulation=circulation,
             vortex_core_radius=GAUSSIAN_CORE_RADIUS,
             distribution=distribution,
             group_id=group_id,
-            core_compensation=vpm.ParticleCoreCompensation(),
             tail_minimum_relative_strength=INITIAL_STRENGTH_CUTOFF,
-            tail_circulation_per_length=circulation,
-            tail_represented_length=COLUMN_LENGTH,
+            represented_length=COLUMN_LENGTH,
         )
         for group_id, (circulation, y_position) in enumerate(
             zip(circulations, y_positions, strict=True)

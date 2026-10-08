@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from openonda import plotting as _theme
 
-from .postprocess import (
+from assets.postprocess import (
     FIGURES_DIR,
     _save_figure,
     force_history,

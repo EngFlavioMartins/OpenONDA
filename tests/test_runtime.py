@@ -21,7 +21,7 @@ import openonda.fvm
 import openonda.vpm
 import openonda.coupler
 import openonda.verify_install
-from source.solvers.fvm.core.parallel import ParallelContext
+from openonda.fvm.core.parallel import ParallelContext
 assert ParallelContext.create(openonda.fvm.ComputeConfig()).comm is None
 """
     environment = os.environ.copy()
@@ -106,18 +106,8 @@ def test_existing_wrong_mpi_world_is_rejected(monkeypatch):
 def test_mpi_relaunch_preserves_module_execution_and_case_arguments(tmp_path, monkeypatch):
     import openonda.runtime as runtime
 
-    script = tmp_path / "setup.py"
-    invocation = [
-        sys.executable,
-        "-B",
-        "-m",
-        "openonda.tutorial_runner",
-        "--execute",
-        str(tmp_path),
-        "setup",
-        "--name",
-        "fine",
-    ]
+    script = tmp_path / "assets" / "study.py"
+    invocation = [sys.executable, "-B", "-m", "assets.study", "--name", "fine"]
     captured = {}
     monkeypatch.setattr(runtime, "_world_size", lambda: 1)
     monkeypatch.setattr(runtime, "_mpi_executable", lambda: "/mpi/mpiexec")
@@ -158,9 +148,9 @@ def test_mpi_worker_suppresses_only_uncaught_exception_rendering(monkeypatch, ra
 
 
 def test_resource_allocation_does_not_impersonate_an_mpi_launch(monkeypatch):
+    from openonda.fvm.config import ComputeConfig
+    from openonda.fvm.core.parallel import ParallelContext, detected_world_size
     import openonda.runtime as runtime
-    from source.solvers.fvm.config import ComputeConfig
-    from source.solvers.fvm.core.parallel import ParallelContext, detected_world_size
 
     for key in runtime._MPI_SIZE_VARIABLES:
         monkeypatch.delenv(key, raising=False)

@@ -9,12 +9,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from openonda.fvm.mesh.cartesian.config import CompositeSizeField
+from openonda.fvm.mesh.cartesian.features import classify_features
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.mesh.surface_classification import SurfaceIndex
+from openonda.fvm.mesh.validation import validate_geometry, validate_topology
 import openonda.fvm.mesher as msh
-from source.solvers.fvm.mesh.cartesian.config import CompositeSizeField
-from source.solvers.fvm.mesh.cartesian.features import classify_features
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.surface_classification import SurfaceIndex
-from source.solvers.fvm.mesh.validation import validate_geometry, validate_topology
 from tests.fvm.cartesian_acceptance_fixtures import make_acceptance_fixtures
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]

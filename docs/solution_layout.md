@@ -1,18 +1,18 @@
-# Saved simulation fields
+# Saved results
 
-A case writes its field time series beneath `solution/`:
+A case writes its results next to its `setup.py`:
 
-| File | Meaning |
+| Location | Contents |
 | --- | --- |
-| `fvm.pvd` | Mesh velocity and pressure; open in ParaView. |
-| `vpm.pvd` | Particle positions and fields; open in ParaView. |
-| `vlm.pvd` | Lifting-surface geometry and loading, when present. |
-| `fvm/mesh.npz`, `fvm/mesh.vtu` | Native FVM mesh for Python and ParaView. |
-| `fvm/fvm_*.vtu` or `*.pvtu` | Saved FVM field frames. |
-| `vpm/vpm_*.h5` | Particle state and standalone VPM/VLM restart data. |
-| `vpm/vpm_*.vtu`, `vlm/vlm_*.vtp` | Particle and surface visualization frames. |
-| `fvm_metadata.json`, `vpm_metadata.json`, `run_metadata.json` | Executed configuration and saved run timing; present for the relevant solver. |
+| `solution/fvm.pvd` | FVM velocity, kinematic pressure, vorticity and eddy viscosity at saved times |
+| `solution/vpm.pvd` | Particle positions, strengths, vorticity and core radii |
+| `solution/vlm.pvd` | Lifting-surface geometry, circulation and loads, when present |
+| `solution/fvm/`, `solution/vpm/`, `solution/vlm/` | The individual frames referenced by the `.pvd` files |
+| `solution/*_metadata.json` | The configuration that ran and its timing |
+| `solution/*.log` | Solver logs |
+| `solution/coupler_diagnostics.jsonl` | Coupled cases: per-exchange boundary convergence, particle counts and timings |
+| `samples/` | Sampler histories as CSV: forces, line and plane probes, global invariants |
+| `figures/` | Plots written by `./allplot.sh` |
+| `assets/<case_name>_mesh.npz` | The generated FVM mesh (with a `.vtu` copy), reused while its inputs are unchanged |
 
-Open the root `.pvd` collection to load all saved times. Copy the entire `solution/` directory when moving results so its relative frame paths remain valid. Tutorial plots also read case-specific histories in `samples/` or `solution/`.
-
-Use the solver guides for [FVM field units](fvm.md), [particle strength and vorticity](vpm.md), and [coupled fields](coupling.md). See [visualization](visualization.md) for comparisons and [continuation](continuation.md) for numerical backups.
+Open a root `.pvd` file in ParaView to load every saved time. Copy the whole `solution/` folder when moving results, so the relative frame paths stay valid. Backups for restarting are described in [continuation](continuation.md); field units are in the [FVM](fvm.md) and [VPM](vpm.md) guides.

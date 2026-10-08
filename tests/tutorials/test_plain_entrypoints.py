@@ -1,9 +1,8 @@
-"""Exercise every copied default setup and shell launcher without production runs."""
+"""Exercise every default setup and shell launcher without production runs."""
 
 import ast
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -11,13 +10,13 @@ import sys
 
 import pytest
 
-from openonda.tutorials import _EXCLUDED_PARTS, TUTORIALS, copy_tutorial
+from tests._tutorial_helpers import GENERATED, TUTORIALS, copy_tutorial, tutorial_cases
 
 
 def test_fvm_tutorials_use_native_mpi_setup_and_rank_assignment():
     """Guard setups, launchers and assets against reintroducing MPI workarounds."""
-    root = Path(__file__).resolve().parents[2] / "tutorials"
-    runtime_modules = ("mpi4py", "petsc4py", "source.solvers.fvm.core.parallel")
+    root = TUTORIALS
+    runtime_modules = ("mpi4py", "petsc4py", "openonda.fvm.core.parallel")
     runtime_attributes = {
         "COMM_WORLD",
         "Get_rank",
@@ -34,7 +33,7 @@ def test_fvm_tutorials_use_native_mpi_setup_and_rank_assignment():
     )
     for family in ("fvm", "coupled_fvm_vpm"):
         for path in (root / family).rglob("*"):
-            if any(part in _EXCLUDED_PARTS for part in path.relative_to(root).parts):
+            if set(GENERATED).intersection(path.relative_to(root).parts):
                 continue
             # Parameter studies are research tools, outside the direct
             # tutorial setup/launcher learning surface checked here.
@@ -77,18 +76,15 @@ def test_fvm_tutorials_use_native_mpi_setup_and_rank_assignment():
 
 
 @pytest.mark.parametrize(
-    "tutorial",
-    TUTORIALS,
-    ids=lambda tutorial: tutorial.name,
+    "case", tutorial_cases(), ids=lambda case: str(case.relative_to(TUTORIALS))
 )
-def test_default_setup_reaches_solver_without_environment_knobs(tmp_path, tutorial):
-    case = copy_tutorial(tutorial.name, tmp_path / "workspace with spaces")
+def test_default_setup_reaches_solver_without_environment_knobs(tmp_path, case):
+    case = copy_tutorial(case, tmp_path / "workspace with spaces")
     probe = tmp_path / "probe.py"
     probe.write_text("""
+import runpy
 import sys
 from openonda import coupler, fvm, vpm
-from openonda.tutorial_runner import run_case
-from pathlib import Path
 
 class Constructed(Exception):
     pass
@@ -99,9 +95,11 @@ fvm.create_fvm_solver = capture
 fvm.FVMSolver = capture
 vpm.VPMSolver = capture
 coupler.create_coupler = capture
-sys.argv = [sys.argv[1]]
+setup = sys.argv[1]
+sys.argv = [setup]
+sys.path.insert(0, str(__import__("pathlib").Path(setup).parent))
 try:
-    run_case(Path(sys.argv[0]).parent, "setup")
+    runpy.run_path(setup, run_name="__main__")
 except Constructed:
     pass
 else:
@@ -111,7 +109,7 @@ else:
     environment.pop("PYTHONPATH", None)
     result = subprocess.run(
         [sys.executable, "-I", "-B", str(probe), str(case / "setup.py")],
-        cwd=tmp_path,
+        cwd=case,
         env=environment,
         text=True,
         capture_output=True,
@@ -122,15 +120,13 @@ else:
 
 
 def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path):
-    root = Path(__file__).resolve().parents[2] / "tutorials"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     python = bin_dir / "python"
     python.write_text(
         f"#!{sys.executable}\n"
         "import json, os, sys\n"
-        "from pathlib import Path\n"
-        "assert sys.argv[1:4] == ['-m', 'openonda.results', 'restore'] or sys.argv[1:3] == ['-m', 'openonda.tutorial_runner'], sys.argv[1:]\n"
+        "assert sys.argv[1] == 'setup.py' or sys.argv[1:3] == ['-m', sys.argv[2]] and sys.argv[2].startswith('assets.'), sys.argv[1:]\n"
         "with open(os.environ['CALLS'], 'a') as out:\n"
         "    out.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         "raise SystemExit(int(os.environ['FAIL']))\n"
@@ -139,8 +135,8 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
     for i, original in enumerate(
         sorted(
             path
-            for path in root.rglob("all*.sh")
-            if not any(part in _EXCLUDED_PARTS for part in path.relative_to(root).parts)
+            for path in TUTORIALS.rglob("all*.sh")
+            if not set(GENERATED).intersection(path.relative_to(TUTORIALS).parts)
         )
     ):
         if original.name == "allclean.sh":
@@ -151,11 +147,9 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
         shutil.copy2(original, script)
         (case / "allclean.sh").write_text("#!/bin/bash\nexit 0\n")
         (case / "allclean.sh").chmod(0o755)
-        # Stub every executable Python asset, never call its real solver/plotter.
-        for source in original.parent.rglob("*.py"):
-            dest = case / source.relative_to(original.parent)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.touch()
+        # A parameter study copies the case into one directory per run
+        (case / "setup.py").write_text("")
+        (case / "assets").mkdir()
         formats = (None, "png", "pdf", "both") if original.name == "allplot.sh" else (None,)
         for figure_format in formats:
             for fail in (0, 23):
@@ -181,3 +175,16 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
                 for record in records:
                     if "--format" in record:
                         assert record[record.index("--format") + 1] == (figure_format or "both")
+
+
+def test_allclean_removes_only_generated_output(tmp_path):
+    for original in sorted(TUTORIALS.rglob("allclean.sh")):
+        case = tmp_path / original.parent.relative_to(TUTORIALS)
+        (case / "assets").mkdir(parents=True)
+        shutil.copy2(original, case / "allclean.sh")
+        for name in ("solution", "samples", "figures"):
+            (case / name).mkdir()
+        (case / "assets" / "case_mesh.npz").touch()
+        subprocess.run(["bash", str(case / "allclean.sh")], check=True, cwd=tmp_path)
+        assert sorted(path.name for path in case.iterdir()) == ["allclean.sh", "assets"]
+        assert (case / "assets" / "case_mesh.npz").is_file()

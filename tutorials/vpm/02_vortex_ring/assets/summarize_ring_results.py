@@ -5,9 +5,9 @@ import json
 import numpy as np
 import pandas as pd
 
-from openonda.results import read_history_table, write_text
+from assets.output_files import read_history_table, write_text
 
-from ..assets import ring_metrics as rm
+from assets import ring_metrics as rm
 
 
 def summarize():

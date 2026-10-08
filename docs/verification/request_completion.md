@@ -15,6 +15,5 @@ Fixed-plane sampling uses the bounded uniform grid and versioned frame metadata.
 Continuation validates the declared geometry and exact stored coordinates before
 changing sample indexes or histories. Frames without current metadata are rejected.
 
-Focused executable checks live in `tests/vpm/test_backup_storage.py`,
-`test_restart_config_changes.py`, `test_restart_config_changes_hdf5.py`,
-`test_surface_sampling_bounds.py`, and `test_surface_sampling_resume.py`.
+Executable restart checks live in `tests/vpm/test_start_latest.py` and
+`tests/vpm/test_vlm_coupled_restart.py`.

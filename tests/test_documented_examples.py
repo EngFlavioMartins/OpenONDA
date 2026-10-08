@@ -14,7 +14,7 @@ import pytest
     "document,solver,directory,steps,time",
     [
         ("README.md", "fvm", "fvm-example", 5, 0.05),
-        ("README.md", "vpm", "vpm-example", 5, 0.05),
+        ("README.md", "vpm", "vpm-example", 2, 0.02),
         ("docs/fvm.md", "fvm", "first-fvm-case", 100, 0.1),
         ("docs/vpm.md", "vpm", "first-vpm-case", 2, 0.02),
     ],

@@ -1,9 +1,8 @@
-"""Tutorial launchers retain their configured fresh and continuation behavior."""
+"""allrun.sh cleans then runs; allcontinue.sh resumes the latest native backup."""
 
 import ast
 from importlib.util import find_spec
 import os
-from pathlib import Path
 import shlex
 import subprocess
 import sys
@@ -11,34 +10,23 @@ import sys
 import numpy as np
 import pytest
 
-from openonda.tutorials import TUTORIALS, copy_tutorial
+from tests._tutorial_helpers import TUTORIALS, copy_tutorial, tutorial_cases
 
-ROOT = Path(__file__).resolve().parents[2] / "tutorials"
-CASES = [tutorial.relative_path for tutorial in TUTORIALS]
-PRESERVING_RUNS = {
-    "coupled_fvm_vpm/01_cylinder_shedding_flow",
-    "coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow",
-    "coupled_fvm_vpm/02_cube_flow",
-    "coupled_fvm_vpm/02_cube_flow/reference_flow",
-}
+CASES = [case.relative_to(TUTORIALS) for case in tutorial_cases()]
 
 
 def _variants():
     for case in CASES:
-        for line in (ROOT / case / "allcontinue.sh").read_text().splitlines():
+        for line in (TUTORIALS / case / "allcontinue.sh").read_text().splitlines():
             command = shlex.split(line)
-            if command[:5] == ["python", "-m", "openonda.tutorial_runner", ".", "setup"]:
-                yield case, [arg for arg in command[5:] if arg != "$@"]
+            if command[:2] == ["python", "setup.py"]:
+                yield case, [arg for arg in command[2:] if arg != "$@"]
 
 
 @pytest.mark.parametrize("relative,arguments", list(_variants()))
 def test_every_launcher_variant_reaches_the_latest_restart_selection(tmp_path, relative, arguments):
 
-    case = tmp_path / "case"
-    # Copy through the public tutorial catalog to exclude retained simulation data.
-    public = next((item for item in TUTORIALS if item.relative_path == relative), None)
-    assert public is not None
-    case = copy_tutorial(public.name, tmp_path)
+    case = copy_tutorial(TUTORIALS / relative, tmp_path / "case")
     probe = tmp_path / "probe.py"
     probe.write_text("""
 import sys
@@ -46,8 +34,8 @@ import numpy as np
 from openonda import fvm, vpm, coupler
 from pathlib import Path
 from types import SimpleNamespace
-import source.restart
-from openonda.tutorial_runner import run_case
+import runpy
+import openonda.core.restart
 class Done(Exception):
     pass
 def selected(value):
@@ -77,10 +65,11 @@ def fvm_driver(setup, *args, **kwargs):
 fvm.create_fvm_solver = fvm_driver
 vpm.VPMSolver = lambda *args, **kwargs: Driver()
 coupler.create_coupler = lambda *args, **kwargs: Driver()
-source.restart.select_backup = lambda selection, **kwargs: selected(selection)
+openonda.core.restart.select_backup = lambda selection, **kwargs: selected(selection)
 sys.argv = sys.argv[1:]
+sys.path.insert(0, str(Path(sys.argv[0]).parent))
 try:
-    run_case(Path(sys.argv[0]).parent, "setup", sys.argv[1:])
+    runpy.run_path(sys.argv[0], run_name="__main__")
 except Done:
     pass
 else:
@@ -88,6 +77,7 @@ else:
 """)
     result = subprocess.run(
         [sys.executable, str(probe), str(case / "setup.py"), *arguments],
+        cwd=case,
         capture_output=True,
         text=True,
         timeout=60,
@@ -97,8 +87,8 @@ else:
 
 
 @pytest.mark.parametrize("relative", CASES, ids=str)
-def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
-    directory = ROOT / relative
+def test_fresh_runs_clean_first_and_setups_select_latest(relative):
+    directory = TUTORIALS / relative
 
     def commands(path):
         return [
@@ -109,19 +99,12 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
 
     fresh = commands(directory / "allrun.sh")
     continuing = commands(directory / "allcontinue.sh")
-    assert fresh[:2] == continuing[:2] == ["set -e", 'cd "$(dirname "$0")"']
-    if relative.as_posix() in PRESERVING_RUNS:
-        assert "./allclean.sh" not in fresh
-        fresh_runs = [shlex.split(command) for command in fresh[2:]]
-    else:
-        assert fresh[2] == "./allclean.sh"
-        fresh_runs = [shlex.split(command) for command in fresh[3:]]
-    continuing_runs = [shlex.split(command) for command in continuing[2:]]
-    assert len(fresh_runs) == len(continuing_runs) > 0
-    for fresh_run, continuing_run in zip(fresh_runs, continuing_runs, strict=True):
-        assert fresh_run == continuing_run
-        assert continuing_run[:4] == ["python", "-m", "openonda.tutorial_runner", "."]
-        assert continuing_run[4] in {"setup", "assets.rwm_ensemble", "assets.postprocess"}
+    assert fresh[:3] == ["set -e", 'cd "$(dirname "$0")"', "./allclean.sh"]
+    assert continuing[:2] == fresh[:2]
+    assert fresh[3:] == continuing[2:] and continuing[2:]
+    for command in continuing[2:]:
+        words = shlex.split(command)
+        assert words[:2] == ["python", "setup.py"] or words[:2] == ["python", "-m"]
     assert os.access(directory / "allcontinue.sh", os.X_OK)
     tree = ast.parse((directory / "setup.py").read_text())
     assert any(
@@ -129,31 +112,12 @@ def test_launchers_clean_only_for_fresh_runs_and_setups_select_latest(relative):
         and isinstance(node.value, ast.Constant)
         and node.value.value == "latest"
         and any(isinstance(t, ast.Name) and t.id == "START_FROM" for t in node.targets)
-        for node in tree.body
+        or isinstance(node, ast.keyword)
+        and node.arg == "start_from"
+        and isinstance(node.value, ast.Constant)
+        and node.value.value == "latest"
+        for node in ast.walk(tree)
     )
-
-
-@pytest.mark.parametrize("relative", CASES, ids=str)
-def test_cleanup_removes_copied_restart_data_only(tmp_path, relative):
-    """Exercise cleanup only in a throw-away tutorial copy, never in the repository."""
-    public = next((item for item in TUTORIALS if item.relative_path == relative), None)
-    assert public is not None
-    case = copy_tutorial(public.name, tmp_path)
-
-    backup = case / "solution" / "backup" / "restart.bin"
-    backup.parent.mkdir(parents=True)
-    backup.write_bytes(b"temporary restart state")
-    for output in (case / "samples", case / "figures"):
-        output.mkdir()
-        (output / "generated.txt").write_text("temporary output")
-
-    result = subprocess.run(
-        [str(case / "allclean.sh")], cwd=case, capture_output=True, text=True, timeout=30
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert not (case / "solution").exists()
-    assert not (case / "samples").exists()
-    assert not (case / "figures").exists()
 
 
 @pytest.mark.parametrize("name", ["taylor_green", "step_profile"])
@@ -161,12 +125,12 @@ def test_cleanup_removes_copied_restart_data_only(tmp_path, relative):
 def test_custom_history_continues_and_completed_invocation_is_idle(tmp_path, name, cores):
     if cores > 1 and (find_spec("mpi4py") is None or find_spec("petsc4py") is None):
         pytest.skip("MPI and PETSc required")
-    case = copy_tutorial(f"fvm/{name}", tmp_path)
+    case = copy_tutorial(f"fvm/{name}", tmp_path / name)
     wrapper = tmp_path / "small_case.py"
     wrapper.write_text("""
 import sys
-from openonda.tutorial_runner import load_case_module
-case = load_case_module(sys.argv[1])
+sys.path.insert(0, sys.argv[1])
+import setup as case
 case.NUMBER_OF_CELLS = 8
 case.N_UPSTREAM, case.N_DOWNSTREAM, case.N_HEIGHT = 4, 8, 4
 case.FINAL_TIME = float(sys.argv[3])

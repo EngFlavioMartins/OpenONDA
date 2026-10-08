@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from source.solvers.vpm.physics.induction.gaussian_mesh.coordinates import (
+from openonda.vpm.physics.induction.gaussian_mesh.coordinates import (
     finite_images,
 )
-from source.solvers.vpm.physics.induction.gaussian_mesh.fields import GaussianImageFields
+from openonda.vpm.physics.induction.gaussian_mesh.fields import GaussianImageFields
 
 
 def _case():
@@ -168,7 +168,7 @@ def test_cuda_fields_match_independent_direct_gaussian_sums(dtype):
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
 def test_native_channel_subsets_preserve_scalar_radial_fields(dtype):
     cp = pytest.importorskip("cupy")
-    from source.solvers.vpm.physics.induction.gaussian_mesh.fields import _CHANNEL_COMPONENTS
+    from openonda.vpm.physics.induction.gaussian_mesh.fields import _CHANNEL_COMPONENTS
 
     x, gamma, sigma, q, _ = _case()
     with (

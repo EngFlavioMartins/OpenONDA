@@ -9,8 +9,8 @@ from scipy.integrate import trapezoid
 from scipy.signal import find_peaks
 from scipy.stats import t as student_t
 
-from openonda.reference_grid import plot_force_grids, relative_change, richardson_gci
-from openonda.results import (
+from assets.grid_convergence import plot_force_grids, relative_change, richardson_gci
+from assets.output_files import (
     history_window,
     read_history_table,
     read_json,
@@ -18,7 +18,7 @@ from openonda.results import (
     write_json,
 )
 
-CASE_DIR = Path(__file__).resolve().parent
+CASE_DIR = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = CASE_DIR / "samples"
 OUTPUT_DIR = CASE_DIR / "figures"
 STATISTICS_START = 15.0

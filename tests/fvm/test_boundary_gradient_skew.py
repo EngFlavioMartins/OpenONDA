@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from source.solvers.fvm.assemble.momentum import compute_dev2_stress_source
-from source.solvers.fvm.fields.gradients import _resolve_gradient_fn
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.assemble.momentum import compute_dev2_stress_source
+from openonda.fvm.fields.gradients import _resolve_gradient_fn
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
 from tests.support.fvm_mesh import structured_box
 
 

@@ -3,7 +3,7 @@
 
 Velocity profiles and skin friction are compared with the Blasius solution.
 
-Run with ``python -m openonda.tutorial_runner . setup``.
+Run with ``python setup.py``.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from pathlib import Path
 
 import openonda.fvm as fvm
 
-from .assets.mesh_plate import flat_plate_mesh
-from .assets.profiles import write_profiles
+from assets.mesh_plate import flat_plate_mesh
+from assets.profiles import write_profiles
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.

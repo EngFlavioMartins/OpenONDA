@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from source.solvers.fvm.fields.gradients import compute_lsq_gradient
-from source.solvers.fvm.mesh.geometry import compute_mesh_geometry
-from source.solvers.fvm.mesh.rectilinear import box_mesh_3d
+from openonda.fvm.fields.gradients import compute_lsq_gradient
+from openonda.fvm.mesh.geometry import compute_mesh_geometry
+from openonda.fvm.mesh.rectilinear import box_mesh_3d
 
 
 def _gradient_error(n_cells_per_axis: int) -> float:

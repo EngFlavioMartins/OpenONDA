@@ -35,7 +35,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 
-from .postprocess import (
+from assets.postprocess import (
     build_arg_parser,
     load_theme,
     resolve_runtime_physics,

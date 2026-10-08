@@ -11,8 +11,8 @@ import numpy as np
 import pyvista as pv
 
 from openonda import plotting as theme
-from openonda.scenes import export_scene
-from source.solvers.vpm.io.postprocess import coupled_frames, particle_state
+from assets.scenes import export_scene
+from openonda.vpm.io.postprocess import coupled_frames, particle_state
 
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent

@@ -16,30 +16,31 @@ import pytest
 
 QUALIFICATION_MODULES = frozenset(
     {
-        "test_cube_reference_grid_study.py",
-        "test_interpolation_qualification.py",
-        "test_transfer_representation_qualification.py",
         "test_core_numerical_qualification.py",
+        "test_interpolation_qualification.py",
         "test_manufactured_gradient_qualification.py",
+        "test_transfer_representation_qualification.py",
     }
 )
 
 INTEGRATION_MODULES = frozenset(
     {
         "test_arbitrary_wall_run_stages.py",
-        "test_coupled_backup.py",
-        "test_cube_start_latest.py",
         "test_fvm_vpm_smoke.py",
         "test_physical_coupling.py",
         "test_stable_renewal.py",
     }
 )
 
+# Files taking about two minutes or more on one CPU process.
 SLOW_MODULES = QUALIFICATION_MODULES | frozenset(
     {
         "test_arbitrary_wall_run_stages.py",
-        "test_backup_storage.py",
-        "test_cube_start_latest.py",
+        "test_continuation.py",
+        "test_mesh_consistency.py",
+        "test_start_latest.py",
+        "test_vlm_coupled_restart.py",
+        "test_vlm_qualification.py",
     }
 )
 
