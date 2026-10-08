@@ -14,8 +14,6 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [
     {name = "Flavio Martins", email = "f.m.martins@tudelft.nl"},
-    {name = "Artur Palha"},
-    {name = "Rention Pasolari"},
 ]
 maintainers = [
     {name = "Flavio Martins", email = "f.m.martins@tudelft.nl"},

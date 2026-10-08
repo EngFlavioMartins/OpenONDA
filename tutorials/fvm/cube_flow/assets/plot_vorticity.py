@@ -47,12 +47,12 @@ def main():
     ax.add_patch(
         mpatches.Rectangle((-0.5, -0.5), 1.0, 1.0, facecolor="0.2", edgecolor="k", zorder=5)
     )
-    plt.colorbar(sc, ax=ax, label=r"$\omega_z$ [1/s]")
+    fig.colorbar(sc, ax=ax, location="top", shrink=0.6, label=r"$\omega_z$ [1/s]")
     ax.set_xlabel("x / D")
     ax.set_ylabel("y / D")
     ax.set_aspect("equal")
 
-    centered_subplots_adjust(plt.gcf(), outer=0.16, bottom=0.22, top=0.96)
+    centered_subplots_adjust(plt.gcf(), outer=0.16, bottom=0.22, top=0.84)
     save_fig(fig, "cube_vorticity_street.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
 

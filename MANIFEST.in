@@ -2,6 +2,7 @@ include README.md
 include LICENSE
 include CITATION.cff
 include CHANGELOG.md
+include KNOWN_ISSUES.md
 include pyproject.toml
 include install.py
 recursive-include openonda *.py *.md *.json *.ttf py.typed

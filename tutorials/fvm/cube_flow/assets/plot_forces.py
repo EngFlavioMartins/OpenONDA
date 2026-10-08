@@ -37,10 +37,13 @@ def main():
     )
     strouhal_number = strouhal_from_lift(t, lift_coefficient)  # f*D/U with D = U = 1
 
+    # Plot the developed flow: the impulsive start spikes C_D to ~10^2 within one D/U.
+    developed = t >= 1.0
+
     fig, axes = plt.subplots(2, 1, figsize=figure_size("stacked"), sharex=True)
 
     ax = axes[0]
-    ax.plot(t, drag_coefficient, color=COLORS["fvm"], linewidth=0.9)
+    ax.plot(t[developed], drag_coefficient[developed], color=COLORS["fvm"], linewidth=0.9)
     if "drag_coefficient" in ref:
         ax.axhspan(
             *ref["drag_coefficient"],
@@ -54,7 +57,7 @@ def main():
     ax.grid(False)
 
     ax = axes[1]
-    ax.plot(t, lift_coefficient, color=COLORS["fvm"], linewidth=0.9)
+    ax.plot(t[developed], lift_coefficient[developed], color=COLORS["fvm"], linewidth=0.9)
     label = rf"$C_{{L,\mathrm{{rms}}}}$ = {lift_coefficient_rms:.2g}"
     if strouhal_number is not None:
         label += f"\n$St$ = {strouhal_number:.2g}"
@@ -65,7 +68,7 @@ def main():
     ax.set_xlabel("t [s]")
     ax.grid(False)
 
-    centered_subplots_adjust(fig, outer=0.18, bottom=0.12, top=0.96, hspace=0.30)
+    centered_subplots_adjust(fig, outer=0.18, bottom=0.12, top=0.93, hspace=0.30)
     save_fig(fig, "forces_cube.png", FIGURES_DIR, dpi=args.dpi, figure_format=args.format)
 
     print(f"  cube: mean drag_coefficient = {drag_coefficient_mean:.4f}", end="")

@@ -165,6 +165,7 @@ Inputs are in SI units. Open `vpm-example/solution/vpm.pvd` or
 - [Finite volumes](docs/fvm.md), [vortex particles and lifting surfaces](docs/vpm.md) and [FVM–VPM coupling](docs/coupling.md): the models and their settings.
 - [Continuing runs](docs/continuation.md), [saved results](docs/solution_layout.md) and [visualization](docs/visualization.md).
 - The full manual as one PDF: [`docs/OpenONDA_manual.pdf`](docs/OpenONDA_manual.pdf).
+- [Known issues](KNOWN_ISSUES.md): current limitations and workarounds.
 
 ## Citing OpenONDA
 

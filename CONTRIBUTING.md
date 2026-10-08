@@ -5,7 +5,8 @@ welcome. Please follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Reporting a problem
 
-Open a [GitHub issue](https://github.com/EngFlavioMartins/OpenONDA/issues) and
+Check [KNOWN_ISSUES.md](KNOWN_ISSUES.md) first; it may already describe the
+problem and a workaround. Otherwise, open a [GitHub issue](https://github.com/EngFlavioMartins/OpenONDA/issues) and
 include:
 
 - the output of `openonda info` and `openonda-verify-install`;
