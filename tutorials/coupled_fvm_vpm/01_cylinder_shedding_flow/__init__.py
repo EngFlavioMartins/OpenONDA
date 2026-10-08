@@ -1,1 +1,0 @@
-"""Cylinder-shedding coupling tutorials."""
