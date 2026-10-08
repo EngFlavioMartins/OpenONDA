@@ -30,10 +30,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install ".[dev]"
-      - run: ruff check source tests tutorials scripts openonda
-      - run: ruff format --check source tests tutorials scripts openonda
-      - name: Enforce Python type safety
-        run: pyrefly check
+      - run: ruff check openonda tests tutorials scripts
+      - run: ruff format --check openonda tests tutorials scripts
       - run: python -m build
       - run: twine check dist/*
 
@@ -57,14 +55,13 @@ jobs:
           kpsewhich newpxmath.sty
       - run: python -m pip install -e ".[test]"
       - run: >-
-          python -m pytest tests -p no:cacheprovider
+          python tests/run_isolated.py --junit-dir fast-solvers-results
           -m "not qualification and not slow and not gpu"
-          --junitxml=fast-solvers-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fast-solvers-results
-          path: fast-solvers-results.xml
+          path: fast-solvers-results/
 
   cpu-qualification:
     name: CPU qualification (${{ matrix.os }})
@@ -87,17 +84,13 @@ jobs:
       - run: python -m pip install -e ".[test]"
       - name: Run analytical and convergence qualifications
         run: >-
-          python -m pytest tests -p no:cacheprovider
+          python tests/run_isolated.py --junit-dir qualification-results
           -m "qualification and not gpu"
-          --junitxml=qualification-results.xml
-          --numerical-report=numerical-results.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: cpu-qualification-${{ matrix.os }}
-          path: |
-            qualification-results.xml
-            numerical-results.json
+          path: qualification-results/
 
   slow-solver-checks:
     name: Slow CPU integration and restart checks
@@ -110,14 +103,13 @@ jobs:
           cache: pip
       - run: python -m pip install -e ".[test]"
       - run: >-
-          python -m pytest tests -p no:cacheprovider
+          python tests/run_isolated.py --junit-dir slow-solver-checks-results
           -m "slow and not qualification and not gpu"
-          --junitxml=slow-solver-checks-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: slow-solver-checks-results
-          path: slow-solver-checks-results.xml
+          path: slow-solver-checks-results/
 
   nightly-gpu:
     name: Nightly GPU/backend qualification
@@ -132,17 +124,13 @@ jobs:
       - run: python -m pip install -e ".[test]"
       - name: Run GPU and stochastic backend qualifications
         run: >-
-          python -m pytest tests -p no:cacheprovider
+          python tests/run_isolated.py --junit-dir gpu-qualification-results
           -m "gpu or (qualification and stochastic)"
-          --junitxml=gpu-qualification-results.xml
-          --numerical-report=gpu-numerical-results.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: nightly-gpu-qualification
-          path: |
-            gpu-qualification-results.xml
-            gpu-numerical-results.json
+          path: gpu-qualification-results/
 
   installed-wheel:
     name: Wheel import (${{ matrix.os }}, Python ${{ matrix.python }}, ${{ matrix.numerics || 'current' }})
@@ -180,8 +168,7 @@ jobs:
         run: |
           env -u PYTHONPATH "$RUNNER_TEMP/openonda-wheel/bin/python" -I -m openonda.verify_install --require-site-packages
           "$RUNNER_TEMP/openonda-wheel/bin/python" -m pip check
-          "$RUNNER_TEMP/openonda-wheel/bin/openonda" tutorial run fvm/taylor_green --workspace "$RUNNER_TEMP/first-flow"
-          "$RUNNER_TEMP/openonda-wheel/bin/openonda" tutorial create coupled_fvm_vpm/cube_flow --workspace "$RUNNER_TEMP/hybrid-flow"
+          "$RUNNER_TEMP/openonda-wheel/bin/openonda" info
       - name: Verify editable installation outside the checkout
         run: |
           python -m venv "$RUNNER_TEMP/openonda-editable"

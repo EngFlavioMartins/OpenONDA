@@ -1,9 +1,9 @@
 {
   "description": "Latest jointly published accepted moving-flat-plate wake rendering",
   "input": {
-    "particles": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vpm/vpm_000197.h5",
+    "particles": "tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vpm/vpm_000197.h5",
     "particles_sha256": "5c8f89fb69d9da4cfd85710f7b61a4cf3c57610ebe60f6fe87af3f982a94d4ce",
-    "vlm_surface": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp",
+    "vlm_surface": "tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp",
     "vlm_surface_sha256": "9a3eb4cb930a42d526555f9b9dbfb576e8889077f080363bf2a98daf4f4260a3"
   },
   "state": {
@@ -92,13 +92,13 @@
     ]
   },
   "output": {
-    "raw_png": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake_raw.png",
+    "raw_png": "tutorials/vpm/04_flat_plate/figures/flat_plate_wake_raw.png",
     "raw_png_sha256": "fbdfef54f2932c332564c4958e768a8e7c1c6e430b141439b40aa90dec4fad33",
-    "overlay_tex": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake.tex",
-    "paraview_state": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/flat_plate_wake.pvsm",
-    "particle_glyph_input": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/particles.vtp",
-    "motion_arrow_input": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/motion_arrow.vtp",
-    "final_both": "/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/flat_plate_wake.pdf",
+    "overlay_tex": "tutorials/vpm/04_flat_plate/figures/flat_plate_wake.tex",
+    "paraview_state": "tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/flat_plate_wake.pvsm",
+    "particle_glyph_input": "tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/particles.vtp",
+    "motion_arrow_input": "tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/motion_arrow.vtp",
+    "final_both": "tutorials/vpm/04_flat_plate/figures/flat_plate_wake.pdf",
     "final_both_sha256": "21d3482f8440a460e0c87a93ea37638049be4cf439a12e1cb78e9ff96084cd48"
   }
 }

@@ -336,7 +336,13 @@ def _verify_native_coupled() -> dict[str, object]:
             domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
             freestream_velocity=velocity,
             induction=vpm.DirectInduction(),
-            viscous=vpm.ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.25),
+            # The coupled transfer remeshes onto the GBD lattice.
+            viscous=vpm.ViscousConfig.gbd(
+                kinematic_viscosity=0.01,
+                particle_spacing=0.25,
+                threshold=1e-5,
+                threshold_mode="absolute",
+            ),
         ),
     )
     exchange = coupler.CouplerSetup(freestream_velocity=velocity)

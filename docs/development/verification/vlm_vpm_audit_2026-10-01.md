@@ -75,7 +75,7 @@ Reproduce the numerical isolation study from the repository root:
 
 ```sh
 python tutorials/vpm/04_flat_plate/assets/verify_steady_vlm.py \
-  --output docs/verification/vlm_vpm_steady_comparison_2026-10-01.json
+  --output docs/development/verification/vlm_vpm_steady_comparison_2026-10-01.json
 ```
 
 The adjacent [JSON](vlm_vpm_steady_comparison_2026-10-01.json) contains every mesh,

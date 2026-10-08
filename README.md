@@ -1,77 +1,69 @@
+<p align="center">
+  <img src="docs/logos/Logo_V7_Color.png" alt="OpenONDA logo" width="720">
+</p>
+
+<p align="center">
+  <a href="https://github.com/EngFlavioMartins/OpenONDA/actions/workflows/ci.yml"><img src="https://github.com/EngFlavioMartins/OpenONDA/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
+  <a href="https://doi.org/10.5281/zenodo.15111460"><img src="https://zenodo.org/badge/947793258.svg" alt="DOI"></a>
+  <img src="https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white" alt="Python 3.11">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555555" alt="Linux and macOS">
+  <img src="https://img.shields.io/badge/GPU-accelerated-76B900?logo=nvidia&logoColor=white" alt="GPU accelerated">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-2E7D32" alt="GPL-3.0-or-later"></a>
+</p>
+
 # OpenONDA
 
+**Simulate vortices, wakes, wings and rotors in a few lines of Python.**
+
+OpenONDA, the *Operator for Numerical Design and Aerodynamics* (*onda* is
+Portuguese for "wave"), brings three flow solvers into one Python package:
+
+- **Finite volumes (FVM)** resolve viscous flow around walls on a mesh.
+- **Vortex particles (VPM)** carry vorticity freely through space, so wakes travel far without a mesh.
+- **Vortex lattices (VLM)** turn wings and rotor blades into lifting surfaces that shed those wakes.
+
+Use each on its own, or let FVM resolve the flow near a body while particles
+carry its wake. The solvers run on your CPU or GPU, and every case is a short,
+readable script.
+
 <p align="center">
-  <img src="docs/logos/Logo_V7_Color.png" alt="OpenONDA logo" width="900">
+  <img src="tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif" alt="Wake shed by two heaving delta wings" width="900">
+  <br><em>Two heaving delta wings and their wake, from the <a href="tutorials/vpm/05_delta_wing/README.md">delta-wing tutorial</a>.</em>
 </p>
-
-**OpenONDA (Operator for Numerical Design and Aerodynamics)** simulates incompressible viscous flows, vortex wakes, wings, and rotors with finite-volume (FVM), vortex-particle (VPM), and vortex-lattice (VLM) methods.
-
-<p align="center">
-  <img src="tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif"
-       alt="Looping visualization of the wake from two heaving delta wings"
-       width="960">
-</p>
-<p align="center"><em>Wake from the <a href="tutorials/vpm/05_delta_wing/README.md">two heaving delta wings</a> tutorial.</em></p>
-
-## Choose a model
-
-- **FVM:** resolve velocity and pressure on a mesh, including viscous flow around walls.
-- **VPM/VLM:** evolve vorticity on particles; use lifting surfaces to generate wing and rotor wakes.
-- **FVM–VPM:** resolve the flow near a body with FVM and carry its outer wake with particles.
 
 ## Installation
 
-On Linux x86-64 or macOS, clone the repository and install:
+On Linux or macOS, run:
 
 ```bash
-git clone --depth 1 --branch development https://github.com/EngFlavioMartins/OpenONDA.git
+git clone --depth 1 https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 source install.sh
 ```
 
-The installer creates and activates the **OpenONDA** Conda environment, installs the checkout editably, and supplies solver and plotting dependencies. In a new terminal, run `conda activate OpenONDA`. See [installation](docs/installation.md) for requirements.
+That's it. The installer sets up an `OpenONDA` Conda environment (installing
+Miniforge first if you have no Conda), installs OpenONDA, and finishes by
+solving and restarting a tiny case with every solver. Next time, start with
+`conda activate OpenONDA`. Details and the optional CUDA extras are in the
+[installation guide](docs/installation.md).
 
-## Examples
+## Your first simulation
 
-Run these short examples as Python scripts in a writable directory. Inputs use SI units: lengths in m, time in s, velocity in m/s, kinematic viscosity in m²/s, and circulation in m²/s.
+Every tutorial is a ready-to-run case:
 
-### FVM: uniform flow through a box
-
-This flow has $U=1$ m/s and $\nu=0.01$ m²/s. It enters at `inlet`, leaves at `outlet` and slips along the sides; `empty` span faces make the case two-dimensional. See [FVM physics, meshes, and boundaries](docs/fvm.md).
-
-```python
-import numpy as np
-
-from openonda import fvm
-
-x = np.linspace(0.0, 2.0, 17)  # m, 16 cells along x and y
-mesh = fvm.mesher.box_mesh_3d(x, x, np.array([0.0, 0.125]), empty_spanwise=True)
-
-case = fvm.FVMCase(
-    name="uniform-flow",
-    directory="fvm-example",
-    mesh=mesh,
-    numerics=fvm.Numerics(
-        transport=fvm.TransportConfig(kinematic_viscosity=0.01),
-    ),
-    boundaries=(
-        fvm.BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
-        fvm.BoundaryConfig.outlet("outlet"),
-        fvm.BoundaryConfig.slip("ymin"),
-        fvm.BoundaryConfig.slip("ymax"),
-        fvm.BoundaryConfig.empty("zmin"),
-        fvm.BoundaryConfig.empty("zmax"),
-    ),
-    initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
-    run=fvm.RunPlan(end_time=0.05, time_step_size=0.01),
-)
-with fvm.FVMSolver(case) as solver:
-    solver.run()
+```bash
+cd tutorials/fvm/taylor_green
+./allrun.sh     # run the simulation
+./allplot.sh    # make the figures
 ```
 
-### VPM: viscous vortex column
+Then open `solution/fvm.pvd` in ParaView, or edit `setup.py` to change the
+physics. The [tutorial index](docs/tutorials.md) suggests where to go next.
 
-The Gaussian column has circulation $\Gamma=1$ m²/s, core radius $a=0.35$ m and $\nu=0.01$ m²/s. An initial condition is any object whose `build()` returns a `vpm.VortexParticleSet`: here particles sit on a lattice of spacing $h$ with strengths $\boldsymbol{\Gamma}_p=\boldsymbol{\omega}V_p$ and core radius $1.2h$. Core spreading models viscous diffusion. See [particle distributions and diffusion](docs/vpm.md) and the [vortex-ring tutorial](tutorials/vpm/02_vortex_ring/README.md).
+## Write your own
+
+A viscous vortex column, with particles on a lattice and core spreading for
+viscosity:
 
 ```python
 import numpy as np
@@ -116,27 +108,71 @@ case = vpm.VPMCase(
 vpm.VPMSolver(case).run()
 ```
 
-Open `fvm-example/solution/fvm.pvd` or `vpm-example/solution/vpm.pvd` in ParaView to inspect the flow.
+<details>
+<summary>And a finite-volume flow through a box</summary>
 
-## Tutorials
+```python
+import numpy as np
 
-```bash
-cd tutorials/fvm/taylor_green
-./allrun.sh
-./allplot.sh
+from openonda import fvm
+
+x = np.linspace(0.0, 2.0, 17)  # m, 16 cells along x and y
+mesh = fvm.mesher.box_mesh_3d(x, x, np.array([0.0, 0.125]), empty_spanwise=True)
+
+case = fvm.FVMCase(
+    name="uniform-flow",
+    directory="fvm-example",
+    mesh=mesh,
+    numerics=fvm.Numerics(
+        transport=fvm.TransportConfig(kinematic_viscosity=0.01),
+    ),
+    boundaries=(
+        fvm.BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
+        fvm.BoundaryConfig.outlet("outlet"),
+        fvm.BoundaryConfig.slip("ymin"),
+        fvm.BoundaryConfig.slip("ymax"),
+        fvm.BoundaryConfig.empty("zmin"),
+        fvm.BoundaryConfig.empty("zmax"),
+    ),
+    initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
+    run=fvm.RunPlan(end_time=0.05, time_step_size=0.01),
+)
+with fvm.FVMSolver(case) as solver:
+    solver.run()
 ```
 
-Choose a physical problem in the [tutorial index](docs/tutorials.md), then edit its `setup.py` for geometry, viscosity, resolution, and run duration. Each case guide links to the relevant model definitions.
+</details>
 
-## Documentation
+Inputs are in SI units. Open `vpm-example/solution/vpm.pvd` or
+`fvm-example/solution/fvm.pvd` in ParaView to see the flow.
 
-- [Learning with the tutorials](docs/tutorials.md): the recommended starting point.
-- [Finite-volume flow](docs/fvm.md): equations, meshing, boundary conditions, schemes and turbulence models.
-- [Vortex particles and lifting surfaces](docs/vpm.md): particle fields, induction, diffusion, LES, stabilization, planar flow and wings.
-- [FVM–VPM coupling](docs/coupling.md): combining a resolved near field with a particle wake.
-- [Continuing simulations](docs/continuation.md), [saved results](docs/solution_layout.md) and [visualization](docs/visualization.md).
-- [Installation](docs/installation.md) and [numerical references](openonda/vpm/REFERENCES.md).
+## Gallery
 
-The complete manual is also available as a single PDF, `docs/OpenONDA_manual.pdf`; rebuild it with `python docs/manual/build_manual.py` (requires pandoc and XeLaTeX).
+<table>
+  <tr>
+    <td width="50%"><a href="tutorials/vpm/02_vortex_ring/README.md"><img src="tutorials/vpm/02_vortex_ring/figures/vortex_ring_snapshots.png" alt="Vortex ring particles before and after its instability"></a><br><sub><b>Vortex ring</b>: a ring travels and develops its azimuthal instability.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/04_flat_plate/README.md"><img src="tutorials/vpm/04_flat_plate/figures/flat_plate_wake.png" alt="Particle wake behind a moving flat plate"></a><br><sub><b>Flat plate</b>: a lifting surface sheds its tip vortices.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="tutorials/vpm/01_lamb_oseen_vortex/README.md"><img src="tutorials/vpm/01_lamb_oseen_vortex/figures/merging_render_final.png" alt="Two co-rotating vortices merging"></a><br><sub><b>Vortex merging</b>: two co-rotating vortices become one.</sub></td>
+    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/figures_v1/coupled_fvm_vpm_fields_t10.00.png" alt="Coupled FVM and VPM velocity around a cube"></a><br><sub><b>Flow past a cube</b>: FVM near the body, particles in the wake.</sub></td>
+  </tr>
+</table>
 
-Report problems through [GitHub issues](https://github.com/EngFlavioMartins/OpenONDA/issues); contributors can use the [test guide](tests/README.md). License: [GPL-3.0-or-later](license). Research citation: [citation.cff](citation.cff).
+## Learn more
+
+- [Tutorials](docs/tutorials.md): the best place to start.
+- [Finite volumes](docs/fvm.md), [vortex particles and lifting surfaces](docs/vpm.md) and [FVM–VPM coupling](docs/coupling.md): the models and their settings.
+- [Continuing runs](docs/continuation.md), [saved results](docs/solution_layout.md) and [visualization](docs/visualization.md).
+- The full manual as one PDF: [`docs/OpenONDA_manual.pdf`](docs/OpenONDA_manual.pdf).
+
+## Citing OpenONDA
+
+If OpenONDA helps your research, please cite it. GitHub's *Cite this
+repository* button uses [CITATION.cff](CITATION.cff), and every release is
+archived on [Zenodo](https://doi.org/10.5281/zenodo.15111460).
+
+## License
+
+Copyright © 2024–2026 Flavio Martins.
+OpenONDA is free software under the [GNU General Public License v3.0 or later](LICENSE).

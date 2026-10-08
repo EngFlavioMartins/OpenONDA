@@ -11,6 +11,7 @@ from openonda.vpm.physics.induction.gaussian_mesh.session import (
     GaussianSlabFieldSession,
     GaussianSlabSettings,
 )
+from tests.vpm._cuda import require_gaussian_cuda
 from tests.vpm._slip_periodic_gaussian_reference import gaussian_pairs
 
 pytestmark = pytest.mark.qualification
@@ -102,22 +103,20 @@ def _planar_circulation_fraction(kernel, rho):
     "backend,kernel,core_over_layer,tolerance",
     [
         ("cpu", "GAUSSIAN", 1.0, 2e-5),
-        ("cupy_cuda", "GAUSSIAN", 1.0, 2e-5),
+        pytest.param("cupy_cuda", "GAUSSIAN", 1.0, 2e-5, marks=pytest.mark.gpu),
         # The corrected Gaussian's span spectrum carries (1 + k^2 sigma^2/4).
         ("cpu", "HIGH_ORDER_GAUSSIAN", 1.5, 2e-5),
         ("cpu", "SUPER_GAUSSIAN", 1.0, 2e-5),
         # An algebraic core ripples along the span like exp(-2 pi sigma/h).
         ("cpu", "WINCKELMANS", 3.0, 1e-5),
-        ("cupy_cuda", "WINCKELMANS", 3.0, 1e-5),
+        pytest.param("cupy_cuda", "WINCKELMANS", 3.0, 1e-5, marks=pytest.mark.gpu),
     ],
 )
 def test_one_layer_slab_query_field_is_the_two_dimensional_vortex(
     backend, kernel, core_over_layer, tolerance
 ):
     if backend == "cupy_cuda":
-        cupy = pytest.importorskip("cupy")
-        if not cupy.cuda.is_available():
-            pytest.skip("CUDA device unavailable")
+        require_gaussian_cuda()
     pytest.importorskip("openonda.vpm.numerics._fenv")
     radius = np.array([0.02, 0.05, 0.1, 0.3, 1.0, 5.0, 30.0])
     targets = np.column_stack((radius, np.zeros((len(radius), 2))))

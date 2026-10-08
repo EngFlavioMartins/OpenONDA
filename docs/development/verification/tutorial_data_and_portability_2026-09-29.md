@@ -3,7 +3,7 @@
 This is the pre-archive inventory and decision record. The result archives it
 led to have since been retired: each tutorial now produces its own results
 through `allrun.sh`. Measured cadence screening is recorded in
-[the loading study](../../studies/loading_cadence_report.md).
+the loading study (`studies/loading_cadence_report.md`, no longer in the repository).
 
 ## Status and scope
 

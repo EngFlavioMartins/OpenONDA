@@ -63,7 +63,7 @@ The first IBM execution exposed inconsistent mixed-boundary branch selection
 during pressure correction. The shared FVM fix passed the unchanged 12,642-cell
 case through t=0.6 s, beyond its original t=0.15546 s failure. This is a bounded
 regression, not completion of its 60 s horizon. See the
-[projection audit](../../studies/fvm_ibm_projection_audit.md).
+projection audit (`studies/fvm_ibm_projection_audit.md`, no longer in the repository).
 
 A subsequent full IBM/cube/airfoil batch was deliberately interrupted during IBM
 startup to avoid overlapping memory peaks with existing user simulations and
@@ -77,7 +77,7 @@ Boundary-layer and step were rerun unchanged using the wheel exported from
 A fresh Git export with no samples or solution directories restored each bundle
 through ordinary `allplot.sh`; both launchers returned zero and all four image
 hashes matched the original runs. See the
-[execution and archive record](../../studies/fvm_small_cases_archive_verification_2026-09-29.json).
+execution and archive record (`studies/fvm_small_cases_archive_verification_2026-09-29.json`, no longer in the repository).
 
 ## Subsequent real boundary-layer and step execution
 

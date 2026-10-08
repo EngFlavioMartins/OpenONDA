@@ -11,7 +11,7 @@ dynamic = ["version"]
 description = "Native finite-volume and vortex-particle CFD solvers with hybrid coupling"
 readme = "README.md"
 license = "GPL-3.0-or-later"
-license-files = ["license"]
+license-files = ["LICENSE"]
 authors = [
     {name = "Flavio Martins", email = "f.m.martins@tudelft.nl"},
     {name = "Artur Palha"},
@@ -117,8 +117,9 @@ ignore_names = ["b_vec"]
 [project.urls]
 Homepage = "https://github.com/EngFlavioMartins/OpenONDA"
 Repository = "https://github.com/EngFlavioMartins/OpenONDA"
-Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/development/docs"
+Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/main/docs"
 "Bug Reports" = "https://github.com/EngFlavioMartins/OpenONDA/issues"
+Changelog = "https://github.com/EngFlavioMartins/OpenONDA/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = {attr = "openonda.core.version.__version__"}

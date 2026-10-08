@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use OpenONDA in your research, please cite it using the following metadata."
+title: "OpenONDA: Operator for Numerical Design and Aerodynamics"
+abstract: >-
+  OpenONDA simulates incompressible viscous flows, vortex wakes, wings and
+  rotors in Python with native finite-volume (FVM), vortex-particle (VPM) and
+  vortex-lattice (VLM) solvers, and couples a resolved FVM near field to a
+  particle wake.
+type: software
+version: "0.1.1"
+doi: 10.5281/zenodo.15111460
+date-released: "2025-03-31"
+authors:
+  - family-names: "Martins"
+    given-names: "Flavio A. C."
+    affiliation: "Wind Energy Section, Faculty of Aerospace Engineering, TU Delft, The Netherlands"
+    orcid: "https://orcid.org/0000-0002-1374-5760"
+repository-code: "https://github.com/EngFlavioMartins/OpenONDA"
+license: "GPL-3.0-or-later"
+keywords:
+  - computational fluid dynamics
+  - finite volume method
+  - vortex particle method
+  - vortex lattice method
+  - hybrid coupling
+  - GPU computing

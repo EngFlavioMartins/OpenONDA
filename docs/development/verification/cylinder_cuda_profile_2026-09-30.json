@@ -25,7 +25,7 @@
     "bounded_stop_time": 0.36,
     "max_particles": 1000000
   },
-  "result_directory": "/home/flavio-martins/Projects/OpenONDA/tmp/cylinder_cuda_profile_20260930",
+  "result_directory": "tmp/cylinder_cuda_profile_20260930",
   "source_before": {
     "python": "3.11.15 | packaged by conda-forge | (main, Jun 11 2026, 03:34:02) [GCC 14.3.0]",
     "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.43",

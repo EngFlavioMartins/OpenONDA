@@ -8,6 +8,7 @@ from openonda.vpm.physics.induction.gaussian_mesh.session import (
     GaussianSlabFieldSession,
     GaussianSlabSettings,
 )
+from tests.vpm._cuda import require_gaussian_cuda
 from tests.vpm._gaussian_tail_reference import completed_rows
 from tests.vpm._slip_periodic_gaussian_reference import kernel_pairs
 
@@ -95,11 +96,10 @@ def test_only_an_algebraic_core_widens_the_local_correction():
     assert cutoffs["WINCKELMANS"] > 15.0
 
 
+@pytest.mark.gpu
 @pytest.mark.parametrize("kernel", KERNELS)
 def test_cuda_correction_matches_the_host_for_every_kernel(kernel):
-    cupy = pytest.importorskip("cupy")
-    if not cupy.cuda.is_available():
-        pytest.skip("CUDA device unavailable")
+    require_gaussian_cuda()
     planes = (-0.02, 0.02)
     x, g, sigma = _cloud(*planes)
     fields = []

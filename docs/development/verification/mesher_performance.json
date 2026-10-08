@@ -190,7 +190,7 @@
     ]
   },
   "updated_first_compile": {
-    "case": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
+    "case": "tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
     "threads": 4,
     "mesh_cache": "bypassed",
     "numba_cache_dir": "/tmp/openonda-mesher-perf/final-jit-cache",
@@ -388,7 +388,7 @@
     ]
   },
   "updated_one_thread": {
-    "case": "/Users/flaviomartins/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
+    "case": "tutorials/coupled_fvm_vpm/02_cube_flow/setup.py",
     "threads": 1,
     "mesh_cache": "bypassed",
     "numba_cache_dir": "/tmp/openonda-mesher-perf/final-jit-cache",

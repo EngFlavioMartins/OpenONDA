@@ -1,6 +1,6 @@
 # VPM numerical references
 
-Physical models and numerical methods used by OpenONDA. See the [VPM guide](../../../docs/vpm.md) for variables, units, configuration and tutorial cases.
+Physical models and numerical methods used by OpenONDA. See the [VPM guide](../../docs/vpm.md) for variables, units, configuration and tutorial cases.
 
 ## Particle approximation and regularization
 
@@ -18,7 +18,7 @@ Physical models and numerical methods used by OpenONDA. See the [VPM guide](../.
 
 ## Viscous diffusion
 
-The [Lamb–Oseen tutorial](../../../tutorials/vpm/01_lamb_oseen_vortex/README.md) compares the implemented diffusion schemes.
+The [Lamb–Oseen tutorial](../../tutorials/vpm/01_lamb_oseen_vortex/README.md) compares the implemented diffusion schemes.
 
 - **[Leonard1980]** Leonard, A. (1980). Vortex methods for flow simulation. *Journal of Computational Physics* 37(3), 289–335. Core spreading. OpenONDA uses $d\sigma^2/dt=4\nu$: exact uniform-viscosity Gaussian heat spreading, but a second-moment model for Winckelmans cores.
 - **[Chorin1973]** Chorin, A. J. (1973). Numerical study of slightly viscous flow. *Journal of Fluid Mechanics* 57(4), 785–796. Random walk with displacement covariance $2\nu\Delta t\,I$.
@@ -28,7 +28,7 @@ The [Lamb–Oseen tutorial](../../../tutorials/vpm/01_lamb_oseen_vortex/README.m
 
 ## LES
 
-The [ring](../../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [rotor](../../../tutorials/vpm/06_rotor_flow/README.md) uses an LES wake.
+The [ring](../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [rotor](../../tutorials/vpm/06_rotor_flow/README.md) uses an LES wake.
 
 - **[Smagorinsky1963]** Smagorinsky, J. (1963). General circulation experiments with the primitive equations. *Monthly Weather Review* 91(3), 99–164. Strain-based eddy viscosity.
 - **[Lilly1966]** Lilly, D. K. (1966). On the application of the eddy viscosity concept in the inertial subrange of turbulence. NCAR Manuscript 123. Coefficient scaling.
@@ -38,11 +38,11 @@ The [ring](../../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; th
 ## Vortex lattice method
 
 - **[KP2001]** Katz, J. & Plotkin, A. (2001). *Low-Speed Aerodynamics*, 2nd ed. Cambridge University Press. Lattice geometry, quarter-/three-quarter-chord rule, Kutta condition and horseshoe influence coefficients.
-- **Kelvin's circulation theorem:** spanwise circulation differences and temporal bound-circulation changes supply the emitted wake. The [flat-plate case](../../../tutorials/vpm/04_flat_plate/README.md) checks bound/wake closure and force/impulse balance.
+- **Kelvin's circulation theorem:** spanwise circulation differences and temporal bound-circulation changes supply the emitted wake. The [flat-plate case](../../tutorials/vpm/04_flat_plate/README.md) checks bound/wake closure and force/impulse balance.
 
 ## Redistribution and stabilization
 
-The [leapfrogging tutorial](../../../tutorials/vpm/03_vortex_interactions/readme.md) compares stabilization models separately.
+The [leapfrogging tutorial](../../tutorials/vpm/03_vortex_interactions/readme.md) compares stabilization models separately.
 
 - **[Pedrizzetti1992]** Pedrizzetti, G. (1992). Insight into singular vortex flows. *Fluid Dynamics Research* 10, 101–115. Strength alignment toward local vorticity. OpenONDA's optional global moment restoration is an additional correction.
 - **[vR2011]** van Rees, W. M., Leonard, A., Pullin, D. I. & Koumoutsakos, P. (2011). [A comparison of vortex and pseudo-spectral methods for the simulation of periodic vortical flows at high Reynolds numbers](https://doi.org/10.1016/j.jcp.2010.11.031). *Journal of Computational Physics* 230, 2794–2805. Remeshing and solenoidal reprojection; OpenONDA's padded-grid adaptation remains experimental.

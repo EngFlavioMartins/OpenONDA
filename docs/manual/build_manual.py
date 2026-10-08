@@ -13,7 +13,7 @@ import tempfile
 
 DOCS = Path(__file__).resolve().parents[1]
 ROOT = DOCS.parent
-REPOSITORY = "https://github.com/EngFlavioMartins/OpenONDA/blob/development/"
+REPOSITORY = "https://github.com/EngFlavioMartins/OpenONDA/blob/main/"
 
 # Reading order of the manual
 CHAPTERS = (

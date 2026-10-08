@@ -3,7 +3,7 @@
 On Linux x86-64 or macOS (Intel or Apple Silicon), use Bash or Zsh:
 
 ```bash
-git clone --depth 1 --branch development https://github.com/EngFlavioMartins/OpenONDA.git
+git clone --depth 1 https://github.com/EngFlavioMartins/OpenONDA.git
 cd OpenONDA
 source install.sh
 ```

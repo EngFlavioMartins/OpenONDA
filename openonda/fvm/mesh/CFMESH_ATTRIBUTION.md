@@ -1,23 +1,29 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-# cfMesh attribution and current-scope note
+# cfMesh attribution
 
-OpenONDA's `CartesianMesher` is an independent, solver-native
-implementation inspired by the openly documented **cfMesh** Cartesian
-workflow. The principal cfMesh developer is Dr. Franjo Juretić and the
-original copyright holder is Creative Fields. See
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the source links and the
-Phase 0 source information boundary.
+OpenONDA's `CartesianMesher` follows the Cartesian workflow of **cfMesh**,
+developed principally by Dr. Franjo Juretić; the original copyright holder is
+Creative Fields, Ltd. cfMesh is free software distributed under the GNU
+General Public License, version 3 or (at your option) any later version.
 
-The typed implementation lives in `mesh/cartesian/` and is the production
-path used by the migrated tutorials. The former adaptive monolith and
-cylinder-specific O-grid class are no longer defined or exported from the
-solver. General Cartesian construction is exposed only through
-`openonda.fvm.mesher.CartesianMesher`.
+The `cfmesh_*` modules in `mesh/cartesian/` adapt cfMesh algorithms to Python
+and Numba on OpenONDA's face-based mesh. Where they follow cfMesh's
+implementation closely they are derivative works of cfMesh, and they are
+distributed under GPL-3.0-or-later, the license of both projects.
 
-The implementation must distinguish architectural inspiration from any
-source translated or adapted directly. No cfMesh source has been copied or
-translated in Phase 0. It must not describe silent partial snapping, Gmsh
-delegation, or cylinder-only layers as a cfMesh robustness behavior. The exact
-upstream study commit and file-level source information must be added before direct
-translation, if any, is introduced.
+| Module | cfMesh counterpart |
+| --- | --- |
+| `cfmesh_octree.py` | serial `meshOctreeModifier` refinement and regularity |
+| `cfmesh_automatic_refinement.py` | `meshOctreeAutomaticRefinement`, `triSurfaceCurvatureEstimator` |
+| `cfmesh_template.py` | Cartesian template extraction from the octree (`cartesianMeshGenerator`) |
+| `cfmesh_boundary_layer.py` | `boundaryLayers::addLayerForAllPatches` |
+| `cfmesh_edge_extraction.py` | `meshSurfaceEdgeExtractor` (`edgeExtraction` stage) |
+| `cfmesh_surface_optimisation.py` | `meshSurfaceOptimizer` (`edgeExtraction` stage) |
+| `cfmesh_mesh_optimisation.py` | `meshOptimizer` (`meshOptimisation` stage) |
+| `cfmesh_volume_optimisation.py` | `volumeOptimizer`, upstream commit `3ff855551482` |
+
+The other mesher modules (configuration, size fields, surface queries,
+extrusion and reporting) are OpenONDA's own. OpenONDA has no runtime
+dependency on cfMesh or OpenFOAM. Source links are listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

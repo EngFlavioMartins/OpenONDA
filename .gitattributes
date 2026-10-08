@@ -1,5 +1,4 @@
-# Large tutorial archives are downloaded from versioned releases by openonda.results.
-# Historical commits retain their original LFS pointers without history rewriting.
+# Figures are binary; LaTeX build logs of tutorial figures are not diffed.
 *.pdf binary
 tutorials/**/figures/**/*.log -diff
 tutorials/**/figures/**/*.aux -diff

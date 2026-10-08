@@ -8316,11 +8316,11 @@
     </Proxy>
     <Proxy group="sources" type="XMLPolyDataReader" id="320" servers="1">
       <Property name="FileName" id="320.FileName" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/particles.vtp"/>
+        <Element index="0" value="tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/particles.vtp"/>
         <Domain name="files" id="320.FileName.files"/>
       </Property>
       <Property name="FileNameInfo" id="320.FileNameInfo" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/particles.vtp"/>
+        <Element index="0" value="tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/particles.vtp"/>
       </Property>
       <Property name="TimestepValues" id="320.TimestepValues"/>
       <Property name="CellArrayInfo" id="320.CellArrayInfo"/>
@@ -8353,11 +8353,11 @@
     </Proxy>
     <Proxy group="sources" type="XMLPolyDataReader" id="763" servers="1">
       <Property name="FileName" id="763.FileName" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp"/>
+        <Element index="0" value="tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp"/>
         <Domain name="files" id="763.FileName.files"/>
       </Property>
       <Property name="FileNameInfo" id="763.FileNameInfo" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp"/>
+        <Element index="0" value="tutorials/vpm/04_flat_plate/solution/exp_moving_aoa12/vlm/vlm_000197.vtp"/>
       </Property>
       <Property name="TimestepValues" id="763.TimestepValues" number_of_elements="1">
         <Element index="0" value="2.4625"/>
@@ -8519,11 +8519,11 @@
     </Proxy>
     <Proxy group="sources" type="XMLPolyDataReader" id="1004" servers="1">
       <Property name="FileName" id="1004.FileName" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/motion_arrow.vtp"/>
+        <Element index="0" value="tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/motion_arrow.vtp"/>
         <Domain name="files" id="1004.FileName.files"/>
       </Property>
       <Property name="FileNameInfo" id="1004.FileNameInfo" number_of_elements="1">
-        <Element index="0" value="/home/flavio-martins/Projects/OpenONDA/tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/motion_arrow.vtp"/>
+        <Element index="0" value="tutorials/vpm/04_flat_plate/figures/auxiliary/flat_plate_wake/motion_arrow.vtp"/>
       </Property>
       <Property name="TimestepValues" id="1004.TimestepValues"/>
       <Property name="CellArrayInfo" id="1004.CellArrayInfo"/>

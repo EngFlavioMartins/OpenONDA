@@ -6,7 +6,7 @@ The approved Thesis palette and figure rules were read before this migration:
 and `reference_style.py`.
 
 The reusable implementation is `openonda/plotting.py`; the figure layout requirements is
-[the tutorial figure standard](../tutorial-figure-style.md). All 18 active
+[the tutorial figure standard](../../tutorial-figure-style.md). All 18 active
 `allplot.sh` launchers now default to PNG and PDF. Archived source snapshots under
 `solution/` and `study_results/` were not migrated.
 

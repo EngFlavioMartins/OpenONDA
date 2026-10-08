@@ -107,12 +107,12 @@ radius grew by only 1.71 times. The setup now uses conservative filament
 refinement at each step. This changes its numerical configuration: do not bypass
 the restart mismatch to apply it to the old cloud, whose disabled refinement
 never recorded refinement-reference values. An isolated clean run is required before the
-new setup can be called stable. See [the diagnosis](../../studies/quadcopter_stability_audit.md).
+new setup can be called stable. See the diagnosis (`studies/quadcopter_stability_audit.md`, no longer in the repository).
 
 The isolated clean CUDA qualification has since passed the original step-296
 failure with the corrected refinement-reference initialization. Its bounded 384-step run is
 still active, and the full 2304-step particle capacity is not qualified. See
-[the growth audit](../../studies/quadcopter_refinement_growth_audit_2026-09-29.json).
+the growth audit (`studies/quadcopter_refinement_growth_audit_2026-09-29.json`, no longer in the repository).
 The protected rotor history has not yet passed 7.5 s; its current refinement
 and runtime evidence are recorded in
-[the rotor audit](../../studies/rotor_refinement_status_2026-09-29.md).
+the rotor audit (`studies/rotor_refinement_status_2026-09-29.md`, no longer in the repository).

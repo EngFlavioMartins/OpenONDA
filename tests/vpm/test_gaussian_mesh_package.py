@@ -7,6 +7,7 @@ from openonda.vpm.physics.induction.gaussian_mesh.coordinates import (
     finite_images,
 )
 from openonda.vpm.physics.induction.gaussian_mesh.fields import GaussianImageFields
+from tests.vpm._cuda import require_gaussian_cuda
 
 
 def _case():
@@ -125,8 +126,9 @@ def test_kernel_coordinate_guard_includes_all_signed_lags(dtype, bits):
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.gpu
 def test_cuda_fields_match_independent_direct_gaussian_sums(dtype):
-    cp = pytest.importorskip("cupy")
+    cp = require_gaussian_cuda()
     from tests.vpm._direct_gaussian_reference import direct_finite_images
 
     x, gamma, sigma, q, images = _case()
@@ -166,8 +168,9 @@ def test_cuda_fields_match_independent_direct_gaussian_sums(dtype):
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.gpu
 def test_native_channel_subsets_preserve_scalar_radial_fields(dtype):
-    cp = pytest.importorskip("cupy")
+    cp = require_gaussian_cuda()
     from openonda.vpm.physics.induction.gaussian_mesh.fields import _CHANNEL_COMPONENTS
 
     x, gamma, sigma, q, _ = _case()
@@ -223,8 +226,9 @@ def test_native_channel_subsets_preserve_scalar_radial_fields(dtype):
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
+@pytest.mark.gpu
 def test_explicit_fft_plans_preserve_foreign_cache_and_live_buffers(dtype):
-    cp = pytest.importorskip("cupy")
+    cp = require_gaussian_cuda()
     from cupyx.scipy.fft import get_fft_plan
 
     x, gamma, sigma, q, images = _case()
@@ -276,8 +280,9 @@ def test_explicit_fft_plans_preserve_foreign_cache_and_live_buffers(dtype):
     cache.clear()
 
 
+@pytest.mark.gpu
 def test_plan_allocation_and_mid_capture_failures_revoke_fields(monkeypatch):
-    cp = pytest.importorskip("cupy")
+    cp = require_gaussian_cuda()
     x, gamma, sigma, q, images = _case()
     with GaussianImageFields(
         x,
@@ -321,8 +326,9 @@ def test_plan_allocation_and_mid_capture_failures_revoke_fields(monkeypatch):
         del u, j
 
 
+@pytest.mark.gpu
 def test_explicit_source_only_primary_is_not_a_particle_core_shortcut():
-    cp = pytest.importorskip("cupy")
+    cp = require_gaussian_cuda()
     from tests.vpm._direct_gaussian_reference import direct_finite_images
 
     x, gamma, sigma, q, images = _case()
