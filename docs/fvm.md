@@ -118,7 +118,15 @@ A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..
 | `gradient_scheme` | `lsq` (default) or `gauss`. |
 | `TimeConfig(adjustment=MaximumCourantTimeStep(maximum, maximum_time_step_size))` | Adapts the step to a Courant limit. |
 
-`LinearSolverConfig` sets the momentum and pressure solver tolerances; `ComputeConfig(operator_backend="numba")` speeds up the discrete operators. Repeat a case with finer cells and a smaller step before treating drag, shedding frequency or wall shear as converged; `fvm.update_grid_study` and `fvm.analyse_grid_study` estimate the discretisation error from a grid family, as in the [cube reference flow](../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/README.md).
+`LinearSolverConfig` sets the momentum and pressure solver tolerances; `ComputeConfig(operator_backend="numba")` speeds up the discrete operators. `LinearSolverConfig(momentum_preconditioner=...)` selects the preconditioner of the BiCGStab momentum solve:
+
+| Option | Preconditioner |
+| --- | --- |
+| `dilu` (default) | Diagonal incomplete LU, $(D^*+L)\,D^{*-1}(D^*+U)$ with the original off-diagonal coefficients, as in OpenFOAM. Rebuilt from the current matrix in one sweep; suited to the diagonally dominant transient momentum matrices. |
+| `jacobi` | Diagonal scaling only. Cheapest per iteration, but needs more iterations. |
+| `ilu` | SciPy's thresholded incomplete LU (`ilu_drop_tolerance`, `ilu_fill_factor`, `reuse_ilu`). Stronger for poorly conditioned steady solves; its triangular solves cost far more per application. |
+
+The preconditioner changes only the iterations, not the converged tolerance; the PETSc backend uses its own block-Jacobi preconditioner. The default `momentum_tolerance=1e-9` converges each momentum predictor well below the discretisation error: on the cylinder reference a looser `1e-6` with `momentum_relative_tolerance=0.05` shifted the developed lift amplitude by 2.6 %, while DILU keeps the tight solve cheaper than the old loose ILU one. Repeat a case with finer cells and a smaller step before treating drag, shedding frequency or wall shear as converged; `fvm.update_grid_study` and `fvm.analyse_grid_study` estimate the discretisation error from a grid family, as in the [cube reference flow](../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/README.md).
 
 ## Turbulence and LES
 

@@ -720,6 +720,7 @@ def solve_momentum_predictor(
             {name: mom_eqs[name]["A"] for name in "xyz"} if return_operator else None,
         )
 
+    preconditioner = solver_kwargs.pop("momentum_preconditioner", "dilu")
     requested_ilu_key = solver_kwargs.pop("ilu_key", None)
     shared_ilu_key = requested_ilu_key
     if shared_ilu_key is None and matrix_workspace is not None:
@@ -773,6 +774,7 @@ def solve_momentum_predictor(
             tol=momentum_tolerance,
             rel_tol=momentum_relative_tolerance,
             x0=x0_vec,
+            preconditioner=preconditioner,
             ilu_key=component_ilu_key,
             backend=linear_backend,
             parallel_context=parallel_context,

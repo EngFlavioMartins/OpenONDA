@@ -83,8 +83,6 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
             pressure_solver="amg",
             pressure_tolerance=1.0e-6,
             pressure_relative_tolerance=0.01,
-            momentum_tolerance=1.0e-6,
-            momentum_relative_tolerance=0.1,
             momentum_max_iterations=2000,
         ),
         pimple=fvm.PimpleControl(

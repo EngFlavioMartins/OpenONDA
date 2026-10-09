@@ -17,6 +17,7 @@ from ..fields.mixed_velocity_boundary import (
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
+from ..utils.vector_algebra import vector_dot, vector_magnitude
 from .diagnostics import OuterCorrectorDiagnostics
 from .linear_interface import solve_linear_system
 
@@ -367,8 +368,8 @@ def _compute_pressure_face_conductance(
         face_slice = slice(start, stop)
         sf_block = sf[face_slice]
         cf_block = cf_vec[face_slice]
-        mag_sf = np.linalg.norm(sf_block, axis=1)
-        mag_cf = np.linalg.norm(cf_block, axis=1)
+        mag_sf = vector_magnitude(sf_block)
+        mag_cf = vector_magnitude(cf_block)
         if np.any(mag_sf <= 1e-30) or np.any(mag_cf <= 1e-30):
             raise ValueError("Pressure conductance requires non-zero face area and cell distance")
 
@@ -402,11 +403,11 @@ def _compute_pressure_face_conductance(
             effective_pressure_velocity_coefficient = face_pressure_velocity_coefficient
         else:
             normal = sf_block / mag_sf[:, np.newaxis]
-            effective_pressure_velocity_coefficient = np.sum(
-                normal * normal * face_pressure_velocity_coefficient, axis=1
+            effective_pressure_velocity_coefficient = vector_dot(
+                normal * normal, face_pressure_velocity_coefficient
             )
         edge = cf_block / mag_cf[:, np.newaxis]
-        orthogonal_area = np.sum(sf_block * edge, axis=1)
+        orthogonal_area = vector_dot(sf_block, edge)
         conductance[face_slice] = effective_pressure_velocity_coefficient * orthogonal_area / mag_cf
 
     if np.any(conductance < -1e-14):
@@ -1466,7 +1467,7 @@ def assemble_pressure_correction_equation_rhie_chow(
             weight_b = weight_b_scalar[:, np.newaxis]
             sf_b = geo_data["face_area_vector"][cyclic_faces]
             cf_b = geo_data["cell_connection_vector"][cyclic_faces]
-            mag_cf_b = np.linalg.norm(cf_b, axis=1)
+            mag_cf_b = vector_magnitude(cf_b)
             edge_b = cf_b / mag_cf_b[:, np.newaxis]
             if scalar_diagonal:
                 boundary_pressure_velocity_coefficient = (
@@ -1485,22 +1486,22 @@ def assemble_pressure_correction_equation_rhie_chow(
                 weight_b * kinematic_pressure_gradient[nei_b]
                 + (1.0 - weight_b) * kinematic_pressure_gradient[own_b]
             )
-            orthogonal_area = np.sum(sf_b * edge_b, axis=1)
+            orthogonal_area = vector_dot(sf_b, edge_b)
             nonorthogonal = sf_b - orthogonal_area[:, np.newaxis] * edge_b
             conductance_b = face_conductance[cyclic_faces]
             if not reuse_matrix:
                 assert flux_cf is not None and flux_ff is not None
                 flux_cf[cyclic_faces] = conductance_b
                 flux_ff[cyclic_faces] = -conductance_b
-            velocity_h_over_a_face_flux = np.sum(hbya_b * sf_b, axis=1)
+            velocity_h_over_a_face_flux = vector_dot(hbya_b, sf_b)
             compact = conductance_b * (kinematic_pressure[own_b] - kinematic_pressure[nei_b])
             if scalar_diagonal:
-                nonorthogonal_flux = -boundary_pressure_velocity_coefficient * np.sum(
-                    nonorthogonal * grad_b, axis=1
+                nonorthogonal_flux = -boundary_pressure_velocity_coefficient * vector_dot(
+                    nonorthogonal, grad_b
                 )
             else:
-                nonorthogonal_flux = -np.sum(
-                    nonorthogonal * boundary_pressure_velocity_coefficient * grad_b, axis=1
+                nonorthogonal_flux = -vector_dot(
+                    nonorthogonal * boundary_pressure_velocity_coefficient, grad_b
                 )
             flux_vf[cyclic_faces] = velocity_h_over_a_face_flux + compact + nonorthogonal_flux
 
@@ -2361,6 +2362,7 @@ class SIMPLESolver:
             log_sink=self.params.get("_logger"),
             momentum_tolerance=self.params.get("momentum_tolerance", 1e-4),
             maxiter=self.params.get("momentum_max_iterations", 1000),
+            momentum_preconditioner=self.params.get("momentum_preconditioner", "dilu"),
             reuse_ilu=self.params.get("reuse_ilu", False),
             ilu_drop_tolerance=self.params.get("ilu_drop_tolerance", 1e-4),
             ilu_fill_factor=self.params.get("ilu_fill_factor", 10),

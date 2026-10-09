@@ -155,10 +155,7 @@ FVM_SETUP = fvm.FVMSetup(
         pressure_solver="amg",
         pressure_tolerance=1.0e-6,
         pressure_relative_tolerance=0.01,
-        momentum_tolerance=1.0e-6,
-        momentum_relative_tolerance=0.1,
         momentum_max_iterations=2000,
-        ilu_reuse_tolerance=0.05,
     ),
     pimple=fvm.PimpleControl(
         n_outer_correctors=2,

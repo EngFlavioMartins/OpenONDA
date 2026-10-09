@@ -141,8 +141,6 @@ def build_case(
         linear=fvm.LinearSolverConfig(
             pressure_tolerance=1.0e-7,
             pressure_relative_tolerance=0.005,
-            momentum_tolerance=1.0e-6,
-            momentum_relative_tolerance=0.05,
         ),
         pimple=fvm.PimpleControl(
             n_outer_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3

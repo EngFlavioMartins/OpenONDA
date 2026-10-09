@@ -11,6 +11,7 @@ from openonda.core._numba import cacheable_njit as njit
 
 from ..fields.mixed_velocity_boundary import boundary_skew_velocity_increment
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..utils.vector_algebra import vector_dot, vector_magnitude
 
 
 @njit(cache=True)
@@ -375,11 +376,11 @@ def assemble_diffusion_term(
                 raise ValueError("Cyclic diffusion faces are missing paired owner cells")
             sf = geo_data["face_area_vector"][indices]
             cf_vector = geo_data["cell_connection_vector"][indices]
-            mag_cf = np.linalg.norm(cf_vector, axis=1)
+            mag_cf = vector_magnitude(cf_vector)
             e = cf_vector / mag_cf[:, None]
-            sf_dot_e = np.sum(sf * e, axis=1)
+            sf_dot_e = vector_dot(sf, e)
             sf_dot_e = np.where(np.abs(sf_dot_e) < 1e-30, 1e-30, sf_dot_e)
-            ef_mag = np.sum(sf * sf, axis=1) / sf_dot_e
+            ef_mag = vector_dot(sf, sf) / sf_dot_e
             tf = sf - ef_mag[:, None] * e
             weights = geo_data["face_interpolation_weight"][indices]
             face_diffusivity = (
@@ -398,7 +399,7 @@ def assemble_diffusion_term(
             coefficient = face_diffusivity * ef_mag / mag_cf
             flux_cf[indices] = coefficient
             flux_ff[indices] = -coefficient
-            flux_vf[indices] = -face_diffusivity * np.sum(grad_f * tf, axis=1)
+            flux_vf[indices] = -face_diffusivity * vector_dot(grad_f, tf)
             if flux_tf is not None:
                 flux_tf[indices] = (
                     coefficient * scalar_field[owners_b]

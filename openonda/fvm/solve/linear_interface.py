@@ -18,6 +18,8 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import LinearOperator, bicgstab, cg, gmres, spilu, splu, spsolve
 
+from openonda.core._numba import cacheable_njit as njit
+
 if TYPE_CHECKING:
     from ..assemble.matrix_assembly import MatrixAssemblyWorkspace
     from ..core.parallel import ParallelContext
@@ -798,6 +800,128 @@ def _solve_pressure(
         }
 
 
+@njit(cache=True)
+def _dilu_reciprocal_diagonal(
+    indptr: np.ndarray, indices: np.ndarray, data: np.ndarray
+) -> np.ndarray:
+    """Return ``1/r`` for the diagonal-based incomplete LU of a CSR matrix.
+
+    The DILU diagonal is ``r_jj = a_jj - sum_{i<j} a_ji a_ij / r_ii``; the
+    off-diagonal coefficients are kept unchanged, so the preconditioner is
+    ``(R + L) R^-1 (R + U)``. The CSR matrix must be canonical: sorted column
+    indices without duplicates.
+    """
+    n_rows = indptr.size - 1
+    reciprocal = np.zeros(n_rows)
+    diagonal = np.zeros(n_rows)
+    for row in range(n_rows):
+        for entry in range(indptr[row], indptr[row + 1]):
+            if indices[entry] == row:
+                diagonal[row] = data[entry]
+    for row in range(n_rows):
+        if diagonal[row] == 0.0 or not np.isfinite(diagonal[row]):
+            return reciprocal[:0]
+        reciprocal[row] = 1.0 / diagonal[row]
+        for entry in range(indptr[row + 1] - 1, indptr[row] - 1, -1):
+            column = indices[entry]
+            if column <= row:
+                break
+            # Lower coefficient a_(column,row) of the transposed position.
+            for transposed in range(indptr[column], indptr[column + 1]):
+                if indices[transposed] == row:
+                    diagonal[column] -= data[transposed] * data[entry] * reciprocal[row]
+                    break
+                if indices[transposed] > row:
+                    break
+    return reciprocal
+
+
+@njit(cache=True)
+def _apply_dilu(
+    indptr: np.ndarray,
+    indices: np.ndarray,
+    data: np.ndarray,
+    reciprocal_diagonal: np.ndarray,
+    residual: np.ndarray,
+) -> np.ndarray:
+    """Apply ``((R + L) R^-1 (R + U))^-1`` by forward and backward sweeps."""
+    n_rows = residual.size
+    correction = np.empty(n_rows)
+    for row in range(n_rows):
+        value = residual[row]
+        for entry in range(indptr[row], indptr[row + 1]):
+            column = indices[entry]
+            if column >= row:
+                break
+            value -= data[entry] * correction[column]
+        correction[row] = value * reciprocal_diagonal[row]
+    for row in range(n_rows - 1, -1, -1):
+        value = 0.0
+        for entry in range(indptr[row + 1] - 1, indptr[row] - 1, -1):
+            column = indices[entry]
+            if column <= row:
+                break
+            value += data[entry] * correction[column]
+        correction[row] -= value * reciprocal_diagonal[row]
+    return correction
+
+
+def _build_krylov_preconditioner(
+    A: sparse.spmatrix,
+    preconditioner: str,
+    reuse_ilu: bool,
+    ilu_key: tuple[str, int] | None,
+    ilu_drop_tolerance: float,
+    ilu_fill_factor: float,
+    ilu_reuse_tolerance: float | None,
+) -> tuple[LinearOperator, bool]:
+    """Return the requested Krylov preconditioner and whether it was rebuilt.
+
+    ``dilu`` and ``jacobi`` cost one sweep over the current coefficients and
+    are rebuilt on every call. ``ilu`` is SciPy's thresholded incomplete LU,
+    optionally cached between solves.
+    """
+    if preconditioner == "jacobi":
+        reciprocal = 1.0 / A.diagonal()
+        if not np.all(np.isfinite(reciprocal)):
+            raise ValueError("Jacobi preconditioner requires a nonzero finite diagonal")
+        return LinearOperator(
+            A.shape,
+            matvec=lambda residual: reciprocal * residual,
+            dtype=A.dtype,  # type: ignore[call-arg]
+        ), True
+    if preconditioner == "dilu":
+        matrix = A.tocsr()
+        if not matrix.has_canonical_format:
+            matrix = matrix.copy()
+            matrix.sum_duplicates()
+        indptr, indices = matrix.indptr, matrix.indices
+        data = np.asarray(matrix.data, dtype=np.float64)
+        reciprocal = _dilu_reciprocal_diagonal(indptr, indices, data)
+        if reciprocal.size != A.shape[0] or not np.all(np.isfinite(reciprocal)):
+            raise ValueError("DILU preconditioner produced a zero or non-finite diagonal")
+        return LinearOperator(
+            A.shape,
+            matvec=lambda residual: _apply_dilu(
+                indptr, indices, data, reciprocal, np.asarray(residual, dtype=np.float64).ravel()
+            ),
+            dtype=A.dtype,  # type: ignore[call-arg]
+        ), True
+    if preconditioner != "ilu":
+        raise ValueError(f"Unknown Krylov preconditioner {preconditioner!r}")
+    ilu, rebuilt = _get_or_build_ilu(
+        A.tocsc(),
+        reuse_ilu,
+        ilu_key,
+        ilu_drop_tolerance,
+        ilu_fill_factor,
+        ilu_reuse_tolerance,
+        A,
+    )
+    # An explicit dtype stops SciPy from probing it with an extra ILU solve.
+    return LinearOperator(A.shape, matvec=ilu.solve, dtype=A.dtype), rebuilt  # type: ignore[call-arg]
+
+
 def _get_or_build_ilu(
     A_csc: sparse.spmatrix,
     reuse_ilu: bool,
@@ -908,13 +1032,14 @@ def _iterative_solve_with_M(
     return x, iterations, False, "Krylov solver converged"
 
 
-def _solve_with_ilu(
+def _solve_preconditioned_krylov(
     A: sparse.spmatrix,
     b: np.ndarray,
     method: str,
     tol: float,
     maxiter: int,
     x0: np.ndarray | None,
+    preconditioner: str,
     reuse_ilu: bool,
     ilu_key: tuple[str, int] | None,
     ilu_drop_tolerance: float,
@@ -923,11 +1048,11 @@ def _solve_with_ilu(
     failure_action: str,
     log_sink: "Logging | None",
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Solve a linear system with ILU-preconditioned iterative solver.
+    """Solve a linear system with a preconditioned Krylov method.
 
-    Builds or retrieves an ILU preconditioner, then runs the selected
-    iterative method.  Falls back to plain iterative or ``spsolve``
-    on failure.
+    Builds the selected preconditioner (``dilu``, ``jacobi`` or a cached
+    ``ilu``), then runs the selected iterative method. A failure falls back to
+    ``spsolve`` only with ``failure_action='direct_fallback'``.
 
     Args:
         A:               Sparse matrix.
@@ -936,6 +1061,7 @@ def _solve_with_ilu(
         tol:             Relative tolerance.
         maxiter:         Max iterations.
         x0:              Initial guess.
+        preconditioner:  ``"dilu"``, ``"jacobi"`` or ``"ilu"``.
         reuse_ilu:       Whether to cache ILU.
         ilu_key:         ILU cache key.
         ilu_drop_tolerance: ILU drop tolerance.
@@ -949,7 +1075,7 @@ def _solve_with_ilu(
     x_early = _trivial_solution(A, b, x0, tol)
     if x_early is not None:
         return x_early, {
-            "preconditioner": "ilu",
+            "preconditioner": preconditioner,
             "iterations": 0,
             "reason": "initial residual satisfied tolerance",
             "setup_seconds": time.perf_counter() - setup_start,
@@ -957,14 +1083,16 @@ def _solve_with_ilu(
             "used_fallback": False,
         }
     try:
-        A_csc = A.tocsc()
-        ilu, rebuilt = _get_or_build_ilu(
-            A_csc, reuse_ilu, ilu_key, ilu_drop_tolerance, ilu_fill_factor, ilu_reuse_tolerance, A
+        M, rebuilt = _build_krylov_preconditioner(
+            A,
+            preconditioner,
+            reuse_ilu,
+            ilu_key,
+            ilu_drop_tolerance,
+            ilu_fill_factor,
+            ilu_reuse_tolerance,
         )
         setup_seconds = time.perf_counter() - setup_start
-
-        # An explicit dtype stops SciPy from probing it with an extra ILU solve.
-        M = LinearOperator(A.shape, matvec=ilu.solve, dtype=A.dtype)  # type: ignore[call-arg]
         solve_start = time.perf_counter()
         x, iterations, used_fallback, reason = _iterative_solve_with_M(
             A,
@@ -979,7 +1107,7 @@ def _solve_with_ilu(
         )
         solve_seconds = time.perf_counter() - solve_start
         return x, {
-            "preconditioner": "ilu",
+            "preconditioner": preconditioner,
             "iterations": iterations,
             "reason": reason,
             "setup_seconds": setup_seconds,
@@ -991,19 +1119,22 @@ def _solve_with_ilu(
         if isinstance(e, LinearSolveError):
             raise
         if failure_action == "raise":
-            raise LinearSolveError(f"{method} ILU setup or solve failed") from e
+            raise LinearSolveError(
+                f"{method} with {preconditioner} preconditioner setup or solve failed"
+            ) from e
         _emit_warning(
             log_sink,
-            "ILU setup or solve failed; using the direct solver. Error: %r",
+            "%s preconditioner setup or solve failed; using the direct solver. Error: %r",
+            preconditioner,
             e,
         )
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
         x = spsolve(A, b)
         return x, {
-            "preconditioner": "ilu",
+            "preconditioner": preconditioner,
             "iterations": 0,
-            "reason": f"ILU failed; configured direct fallback converged: {e}",
+            "reason": f"{preconditioner} solve failed; configured direct fallback converged: {e}",
             "setup_seconds": setup_seconds,
             "solve_seconds": time.perf_counter() - solve_start,
             "used_fallback": True,
@@ -1019,6 +1150,7 @@ def solve_linear_system(
     rel_tol: float = 0.0,
     maxiter: int = 1000,
     x0: np.ndarray | None = None,
+    preconditioner: str = "ilu",
     reuse_ilu: bool = False,
     ilu_key: tuple[str, int] | None = None,
     ilu_drop_tolerance: float = 1e-4,
@@ -1038,7 +1170,9 @@ def solve_linear_system(
 ) -> "np.ndarray | tuple[np.ndarray, LinearSolveResult]":
     """Solve ``A·x = b`` using the explicitly selected serial or PETSc path.
 
-    Cached ILU/AMG setup is controlled by the reuse arguments. A direct solve
+    ``preconditioner`` selects the SciPy Krylov preconditioner (``dilu``,
+    ``jacobi`` or ``ilu``); PETSc uses its own block-Jacobi or Jacobi
+    preconditioner. Cached ILU/AMG setup is controlled by the reuse arguments. A direct solve
     after iterative failure is permitted only with
     ``failure_action="direct_fallback"`` and is reported in returned telemetry.
     """
@@ -1170,14 +1304,17 @@ def solve_linear_system(
         )
         return finish(solution, metadata)
 
-    if equation_type in ("momentum", "scalar") and method in ("bicgstab", "gmres", "cg"):
-        solution, metadata = _solve_with_ilu(
+    if method in ("bicgstab", "gmres") or (
+        equation_type in ("momentum", "scalar") and method == "cg"
+    ):
+        solution, metadata = _solve_preconditioned_krylov(
             A,
             b,
             method,
             tol,
             maxiter,
             x0,
+            str(preconditioner).lower(),
             reuse_ilu,
             ilu_key,
             ilu_drop_tolerance,
@@ -1188,26 +1325,8 @@ def solve_linear_system(
         )
         return finish(solution, metadata)
 
-    if method in ("bicgstab", "gmres"):
-        solution, metadata = _solve_with_ilu(
-            A,
-            b,
-            method,
-            tol,
-            maxiter,
-            x0,
-            reuse_ilu,
-            ilu_key,
-            ilu_drop_tolerance,
-            ilu_fill_factor,
-            ilu_reuse_tolerance,
-            failure_action,
-            log_sink,
-        )
-        return finish(solution, metadata)
-
-    # Generic method selector (no ILU)
-    if method not in {"cg", "gmres", "bicgstab"}:
+    # Unpreconditioned CG
+    if method != "cg":
         raise ValueError(f"Unknown solver method: {method}")
     solve_start = time.perf_counter()
     x, info, iterations = _run_krylov(A, b, method, None, tol, maxiter, x0)

@@ -14,6 +14,7 @@ import numpy as np
 
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..schemes.limiters import apply_limiter, is_limited_scheme
+from ..utils.vector_algebra import gathered_vector_dot
 
 
 def _convection_boundary_strategy(boundary_patch: dict[str, object]) -> "BoundaryStrategy":
@@ -200,9 +201,8 @@ def _tvd_face_psi(
     scalar_field_n = scalar_field[neighbours]
     gradf = scalar_field_n - scalar_field_p
 
-    grad_cp = np.sum(scalar_field_gradient[owners] * cf_vector, axis=1)
-    grad_cn = np.sum(scalar_field_gradient[neighbours] * cf_vector, axis=1)
-    grad_cf = np.where(interior_advective_face_flux >= 0.0, grad_cp, grad_cn)
+    upwind = np.where(interior_advective_face_flux >= 0.0, owners, neighbours)
+    grad_cf = gathered_vector_dot(scalar_field_gradient, upwind, cf_vector)
 
     small = np.abs(gradf) < 1e-30 * np.maximum(np.abs(grad_cf), 1.0)
     r = np.full_like(gradf, -1.0, dtype=np.float64)

@@ -456,10 +456,19 @@ class LinearSolverConfig:
     linear_failure_action : {'raise', 'direct_fallback'}
         Action when an iterative solve does not converge. The default
         ``raise`` never silently replaces the configured numerical method.
+    momentum_preconditioner : {'dilu', 'jacobi', 'ilu'}
+        Preconditioner of the SciPy Krylov momentum solve. ``dilu`` is the
+        diagonal incomplete LU (``(D* + L) D*^-1 (D* + U)``, off-diagonal
+        coefficients unchanged), rebuilt from the current matrix in one sweep;
+        ``jacobi`` divides by the diagonal; ``ilu`` is SciPy's thresholded
+        incomplete LU controlled by the ``ilu_*`` settings. The PETSc backend
+        uses its own block-Jacobi preconditioner.
     reuse_ilu : bool
         Reuse an ILU preconditioner while matrix-change checks permit it.
     momentum_tolerance, pressure_tolerance : float
         Positive absolute residual tolerances in assembled equation units.
+        The default momentum tolerance of ``1e-9`` converges the predictor
+        well below the discretisation error; DILU keeps it inexpensive.
     momentum_relative_tolerance, pressure_relative_tolerance : float
         Non-negative residual reductions relative to each solve's initial norm.
     momentum_final_relative_tolerance, pressure_final_relative_tolerance : float or None
@@ -526,9 +535,14 @@ class LinearSolverConfig:
         "raise",
         "direct_fallback",
     ] = "raise"
+    momentum_preconditioner: Literal[
+        "dilu",
+        "jacobi",
+        "ilu",
+    ] = "dilu"
     reuse_ilu: bool = True
 
-    momentum_tolerance: float = 1e-4
+    momentum_tolerance: float = 1e-9
     momentum_relative_tolerance: float = 0.0
     momentum_final_relative_tolerance: float | None = 0.0
     momentum_max_iterations: int = 1000
@@ -572,6 +586,12 @@ class LinearSolverConfig:
                 "LinearSolverConfig.linear_failure_action must be raise or direct_fallback"
             )
         self.linear_failure_action = failure_action
+        preconditioner = str(self.momentum_preconditioner).lower()
+        if preconditioner not in {"dilu", "jacobi", "ilu"}:
+            raise ValueError(
+                "LinearSolverConfig.momentum_preconditioner must be dilu, jacobi, or ilu"
+            )
+        self.momentum_preconditioner = preconditioner
         if not isinstance(self.reuse_ilu, bool):
             raise TypeError("LinearSolverConfig.reuse_ilu must be a boolean")
         for name in (

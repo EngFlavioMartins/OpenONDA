@@ -288,6 +288,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     ddt_scheme=ddt_scheme,
                     source_explicit=src_explicit,
                     source_implicit=source_implicit,
+                    momentum_preconditioner=self.params.get("momentum_preconditioner", "dilu"),
                     reuse_ilu=self.params.get("reuse_ilu", False),
                     ilu_key=self.params.get("ilu_key", None),
                     ilu_drop_tolerance=self.params.get("ilu_drop_tolerance", 1e-4),

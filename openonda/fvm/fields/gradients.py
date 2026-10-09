@@ -3,6 +3,7 @@
 from collections.abc import Callable
 
 import numpy as np
+from scipy import sparse
 
 from openonda.core._numba import cacheable_njit as njit
 
@@ -445,12 +446,6 @@ def compute_lsq_geometry(
     w2 = 1.0 / np.maximum(distance_squared, 1e-60)
     nei_w2_dr = w2[:, np.newaxis] * dr
 
-    sum_w2dr = np.column_stack(
-        [
-            np.bincount(owner_cell, weights=nei_w2_dr[:, axis], minlength=n_cells)
-            for axis in range(3)
-        ]
-    )
     moment = np.empty((n_cells, 3, 3), dtype=np.float64)
     for row in range(3):
         for column in range(row, 3):
@@ -478,12 +473,25 @@ def compute_lsq_geometry(
         M_inv[~well_conditioned] = np.linalg.pinv(moment[~well_conditioned])
     lsq_solver_method = np.where(well_conditioned, "qr", "svd")
 
+    # grad(c) = sum_k M^-1 w^2 dr_k (phi_n - phi_c): one sparse row per owned
+    # cell and spatial direction, applied to all field components at once.
+    n_owned = int(mesh_data.get("_n_owned", n_cells))
+    owned = owner_cell < n_owned
+    stencil_owner = owner_cell[owned]
+    coefficient = np.einsum("kde,ke->kd", M_inv[stencil_owner], nei_w2_dr[owned]).ravel()
+    rows = np.repeat(3 * stencil_owner, 3) + np.tile(np.arange(3), stencil_owner.size)
+    columns = np.concatenate([np.repeat(nei_phi_idx[owned], 3), np.repeat(stencil_owner, 3)])
+    gradient_operator = sparse.csr_matrix(
+        (np.concatenate([coefficient, -coefficient]), (np.concatenate([rows, rows]), columns)),
+        shape=(3 * n_owned, n_cells + mesh_data["n_faces"] - n_interior),
+    )
+
     return {
         "least_squares_neighbour_field_index": nei_phi_idx,
         "least_squares_owner_cell": owner_cell,
         "least_squares_neighbour_weighted_displacement": nei_w2_dr,
-        "least_squares_weighted_displacement_sum": sum_w2dr,
         "least_squares_normal_matrix_inverse": M_inv,
+        "least_squares_gradient_operator": gradient_operator,
         "lsq_condition": lsq_condition,
         "lsq_rank": lsq_rank,
         "lsq_solver_method": lsq_solver_method,
@@ -528,39 +536,12 @@ def compute_lsq_gradient(
     n_faces = mesh_data["n_faces"]
     n_boundary = n_faces - n_interior
 
-    nei_phi_idx = geo_data["least_squares_neighbour_field_index"]
-    owner_cell = geo_data["least_squares_owner_cell"]
-    nei_w2_dr = geo_data["least_squares_neighbour_weighted_displacement"]
-    sum_w2dr = geo_data["least_squares_weighted_displacement_sum"]
-    M_inv = geo_data["least_squares_normal_matrix_inverse"]
+    gradient_operator = geo_data["least_squares_gradient_operator"]
 
     grad = np.zeros((n_total, 3, n_components), dtype=np.float64)
-
-    owned_stencil = owner_cell < n_owned
-    owner_owned = owner_cell[owned_stencil]
-    nei_owned = nei_phi_idx[owned_stencil]
-    w2dr_owned = nei_w2_dr[owned_stencil]
-
-    for ic in range(n_components):
-        # RHS = Σ w²·φ_n·dr  −  φ_c · Σ w²·dr
-        neighbour_field_values = field_values[nei_owned, ic]
-        rhs = np.column_stack(
-            [
-                np.bincount(
-                    owner_owned,
-                    weights=neighbour_field_values * w2dr_owned[:, dimension],
-                    minlength=n_owned,
-                )
-                for dimension in range(3)
-            ]
-        )
-        rhs[:, 0] -= field_values[:n_owned, ic] * sum_w2dr[:n_owned, 0]
-        rhs[:, 1] -= field_values[:n_owned, ic] * sum_w2dr[:n_owned, 1]
-        rhs[:, 2] -= field_values[:n_owned, ic] * sum_w2dr[:n_owned, 2]
-
-        # grad = M⁻¹ · rhs   (vectorised 3×3 matmul)
-        g = M_inv[:n_owned] @ rhs[..., np.newaxis]
-        grad[:n_owned, :, ic] = g.squeeze(-1)
+    grad[:n_owned] = (gradient_operator @ field_values[: gradient_operator.shape[1]]).reshape(
+        n_owned, 3, n_components
+    )
 
     parallel = mesh_data.get("_parallel_context")
     if parallel is not None and parallel.is_partitioned:
