@@ -94,6 +94,10 @@ def build_case(
     transfer_region = (-inner, inner + 2.0 * DIAMETER, -inner, inner)
     exchange_time_step = fvm_substeps * FVM_TIME_STEP
 
+    # Observations fall on exchanges, where both solvers hold the same time
+    def on_exchanges(interval):
+        return max(1, round(interval / exchange_time_step)) * exchange_time_step
+
     # Explicit GBD diffusion keeps 12 x Fourier number below one per stage; each
     # stage reaches one more grid cell beyond the span planes
     fourier_number = KINEMATIC_VISCOSITY * exchange_time_step / CELL_SIZE**2
@@ -131,7 +135,7 @@ def build_case(
         time=fvm.TimeConfig(
             time_step_size=FVM_TIME_STEP,
             end_time=end_time,
-            output_schedule=fvm.RunSchedule(every_time=VOLUME_INTERVAL),
+            output_schedule=fvm.RunSchedule(every_time=on_exchanges(VOLUME_INTERVAL)),
         ),
         schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         linear=fvm.LinearSolverConfig(
@@ -164,7 +168,7 @@ def build_case(
                 reference_velocity=FREESTREAM_VELOCITY[0],
                 reference_area=DIAMETER * span,
                 reference_length=DIAMETER,
-                schedule=fvm.RunSchedule(every_time=FORCE_INTERVAL),
+                schedule=fvm.RunSchedule(every_time=on_exchanges(FORCE_INTERVAL)),
             ),
             # Near-wake profile inside the FVM box
             fvm.LineSampler(
@@ -174,7 +178,7 @@ def build_case(
                 k=12,
                 reconstruction="affine",
                 file_name="fvm_transverse_x2",
-                schedule=fvm.RunSchedule(every_time=PROFILE_INTERVAL),
+                schedule=fvm.RunSchedule(every_time=on_exchanges(PROFILE_INTERVAL)),
             ),
         ),
     )
@@ -213,7 +217,7 @@ def build_case(
                     spacing=0.1,
                     include_derivatives=False,
                     file_name=f"vpm_transverse_x{x:g}",
-                    schedule=vpm.EveryTime(PROFILE_INTERVAL),
+                    schedule=vpm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
                 )
                 for x in (2.0, 4.0)
             )

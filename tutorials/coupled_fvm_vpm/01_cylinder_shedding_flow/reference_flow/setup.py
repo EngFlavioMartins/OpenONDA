@@ -103,6 +103,7 @@ def build_case():
 
     flow = fvm.FVMSetup(
         case_name="reference_cylinder_flow",
+        execution=fvm.ComputeConfig(operator_backend="numba"),
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP,
             end_time=END_TIME,

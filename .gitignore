@@ -76,6 +76,7 @@ processor*/
 
 # Volume solutions and raw data; sample retention is documented below.
 **/solution/
+**/sensitivity/
 **/Solution/
 # Fully-meshed reference setups are versioned; their solution/ data remain ignored above.
 Data/
