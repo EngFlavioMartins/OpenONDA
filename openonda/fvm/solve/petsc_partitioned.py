@@ -15,6 +15,7 @@ from openonda.core._numba import cacheable_njit as njit
 from ..mesh.partition import cell_partition_offsets
 from .linear_interface import (
     LINEAR_RESIDUAL_FLOOR,
+    LINEAR_ROUNDOFF_RESIDUAL,
     LINEAR_VERIFICATION_FACTOR,
     LinearSolveError,
     LinearSolveResult,
@@ -400,6 +401,7 @@ class PartitionedLinearWorkspace:
         rhs_norm_pre = max(float(self.rhs.norm()), 1e-30)
         initial_residual_norm = rhs_norm_pre
         norm_factor = rhs_norm_pre
+        algebraic_norm = rhs_norm_pre
         if initial_guess is not None:
             # Keep A*x0 for both residual and deviation norms. These norms
             # describe the same current equation and initial guess, so a
@@ -412,6 +414,7 @@ class PartitionedLinearWorkspace:
             operator_guess.copy(self.residual)
             self.residual.axpy(-1.0, self.rhs)
             initial_residual_norm = float(self.residual.norm())
+            algebraic_norm = max(rhs_norm_pre, float(operator_guess.norm()))
             n_global = float(system.global_size)
             x_mean = float(self.solution.sum()) / max(n_global, 1.0)
             uniform.set(x_mean)
@@ -429,7 +432,11 @@ class PartitionedLinearWorkspace:
                 1e-12 * max(rhs_norm_pre, reference_norm, 1.0),
             )
         initial_residual = initial_residual_norm / norm_factor
-        residual_target = max(float(tolerance), float(relative_tolerance) * initial_residual)
+        residual_target = max(
+            float(tolerance),
+            float(relative_tolerance) * initial_residual,
+            LINEAR_ROUNDOFF_RESIDUAL * algebraic_norm / norm_factor,
+        )
         rtol_eff = float(
             np.clip(
                 residual_target * norm_factor / rhs_norm_pre,

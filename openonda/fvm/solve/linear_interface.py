@@ -33,6 +33,8 @@ _AMG_BUILD_SEED = 0
 _FALLBACK_WARN_COUNT = 0
 LINEAR_VERIFICATION_FACTOR = 10.0
 LINEAR_RESIDUAL_FLOOR = 1.0e-12
+# Smallest residual double precision resolves, relative to max(||b||, ||A x0||).
+LINEAR_ROUNDOFF_RESIDUAL = 1.0e-13
 
 
 class _DirectFactorization:
@@ -248,8 +250,12 @@ def normalized_residual_target(
 
     A solve stops when either its absolute normalized tolerance is met or the
     residual has fallen by ``relTol`` from the value at entry to that solve.
-    ``relTol`` is therefore *not* itself an absolute residual target. Keeping
-    this conversion next to
+    ``relTol`` is therefore *not* itself an absolute residual target. The
+    target never asks for less than ``LINEAR_ROUNDOFF_RESIDUAL`` times the
+    larger of ``||b||`` and ``||A x0||``: when the initial guess already solves
+    the equation (a uniform free stream), the deviation norm collapses to its
+    floor and a tight tolerance would otherwise demand sub-roundoff residuals.
+    Keeping this conversion next to
     :func:`deviation_norm_factor` gives every serial/replicated backend the
     same semantics; the partitioned PETSc path performs the equivalent global
     calculation with distributed vectors.
@@ -257,8 +263,18 @@ def normalized_residual_target(
     b_array = np.asarray(b, dtype=np.float64)
     initial = np.zeros_like(b_array) if x0 is None else np.asarray(x0, dtype=np.float64)
     norm_factor = deviation_norm_factor(A, b_array, initial)
-    initial_residual = float(np.linalg.norm(b_array - A @ initial) / norm_factor)
-    target = max(float(absolute_tolerance), float(relative_tolerance) * initial_residual)
+    operator_initial = A @ initial
+    initial_residual = float(np.linalg.norm(b_array - operator_initial) / norm_factor)
+    roundoff_residual = (
+        LINEAR_ROUNDOFF_RESIDUAL
+        * max(float(np.linalg.norm(b_array)), float(np.linalg.norm(operator_initial)))
+        / norm_factor
+    )
+    target = max(
+        float(absolute_tolerance),
+        float(relative_tolerance) * initial_residual,
+        roundoff_residual,
+    )
     return initial_residual, target, norm_factor
 
 

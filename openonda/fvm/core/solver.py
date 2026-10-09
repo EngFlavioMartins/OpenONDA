@@ -1730,7 +1730,9 @@ class FVMSolver(CouplerInterfaceMixin):
         control = self._time_config.adjustment
         time_until_event = None
         if control is None:
-            selected = float(self.time_step_size)
+            # The configured step, never the stored one: a horizon-clipped
+            # final step must not carry into a restarted run.
+            selected = float(self._time_config.time_step_size)
         else:
             current_courant_number = self._measure_maximum_courant_number(self.time_step_size)
             selected = maximum_courant_time_step_size(
