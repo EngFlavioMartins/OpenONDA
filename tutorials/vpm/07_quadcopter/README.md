@@ -19,7 +19,7 @@ Edit [setup.py](setup.py). Each rotor has radius $R=0.15$ m, hub radius 0.03 m a
 
 The speed is 4000 rpm and axial climb speed is 0.8 m/s. Density is 1.225 kg/m³ and viscosity is $1.5\times10^{-5}$ m²/s. Blade chord Reynolds numbers are approximately 22,000–63,000. Rotation starts at operating speed, with the leading edges facing the rotational relative wind.
 
-The wake uses Winckelmans particles, transposed treecode induction, core spreading and $C_s=0.20$ Smagorinsky LES. Core spreading with this algebraic kernel is a second-moment diffusion model. Adaptive splitting checks each step when strength doubles. Particles outside $x,y\in[-1.5,1.5]$ m and $z\in[-3,1]$ m are removed; enlarge this region before studying a longer retained wake.
+The wake uses Winckelmans particles, transposed fast-multipole (FMM) induction, core spreading and $C_s=0.20$ Smagorinsky LES. Core spreading with this algebraic kernel is a second-moment diffusion model. Adaptive splitting checks each step when strength doubles. Particles outside $x,y\in[-1.5,1.5]$ m and $z\in[-3,1]$ m are removed; enlarge this region before studying a longer retained wake.
 
 There are 96 steps per revolution (3.75° per step), with $\Delta t=0.00015625$ s. The run spans 24 revolutions, or 0.36 s. Fields are sampled eight times per revolution; coupled backups occur every three steps.
 

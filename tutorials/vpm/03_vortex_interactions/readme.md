@@ -17,7 +17,7 @@ From this directory:
 
 Edit [setup.py](setup.py): both rings have radius $R_0=1$ m, scalar circulation $\Gamma_0=\pi$ m²/s and Gaussian core $a_0=0.1$ m. Their centres start at $x=\pm0.5$ m. $Re_\Gamma=3000$ gives $\nu=\pi/3000$ m²/s. There is no imposed perturbation.
 
-Toroidal particles have $h=\sigma=0.05$ m with physical-core compensation. All cases use transposed treecode induction, SSPRK3 and core spreading at $\Delta t=0.00375$ s, requesting 2400 steps (9 s). Conservative group-preserving redistribution is common to every case.
+Toroidal particles have $h=\sigma=0.05$ m with physical-core compensation. All cases use transposed direct induction, SSPRK3 and core spreading at $\Delta t=0.00375$ s, requesting 2400 steps (9 s). Conservative group-preserving redistribution is common to every case.
 
 | Variant | Added numerical model |
 | --- | --- |

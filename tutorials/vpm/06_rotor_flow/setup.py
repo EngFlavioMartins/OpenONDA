@@ -129,7 +129,7 @@ def build_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=wake_spacing,
             ),
-            induction=vpm.TreecodeInduction(),
+            induction=vpm.FMMInduction(),
             max_n_particles=MAX_N_PARTICLES,
         ),
         backup=Backup(

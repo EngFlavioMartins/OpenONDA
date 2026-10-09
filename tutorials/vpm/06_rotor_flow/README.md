@@ -17,7 +17,7 @@ From this directory:
 
 Edit [setup.py](setup.py) and [blade.json](assets/blade.json). The JSON contains chord/twist geometry and chordwise/spanwise panel counts. Inputs are rotor radius $R=6$ m, hub radius 1 m, wind speed $U=7$ m/s, density $\rho=1.225$ kg/m³ and viscosity $\nu=1.5\times10^{-5}$ m²/s. Tip-speed ratio $\lambda=\Omega R/U=7$ gives $\Omega=8.167$ rad/s; rotation ramps over one nominal revolution. Blade chord Reynolds numbers are approximately 0.47–1.15 million.
 
-The authored step is 0.006 s and duration 15 s (2500 steps). The Gaussian wake uses treecode induction, core spreading, Smagorinsky LES with $C_s=0.20$, and wake-core overlap 2.5. Selective viscosity uses coefficient 0.5; filament splitting checks every five steps when strength doubles. These numerical models require resolution checks together with the blade panels and time step.
+The authored step is 0.006 s and duration 15 s (2500 steps). The Gaussian wake uses fast-multipole (FMM) induction, core spreading, Smagorinsky LES with $C_s=0.20$, and wake-core overlap 2.5. Selective viscosity uses coefficient 0.5; filament splitting checks every five steps when strength doubles. These numerical models require resolution checks together with the blade panels and time step.
 
 ## Loads and wake interpretation
 
