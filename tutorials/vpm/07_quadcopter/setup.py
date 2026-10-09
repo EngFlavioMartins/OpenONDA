@@ -113,9 +113,7 @@ def run() -> None:
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.TreecodeInduction(
-                stretching_scheme="transposed", theta=0.3, multipole_order=3
-            ),
+            induction=vpm.TreecodeInduction(stretching_scheme="transposed"),
             turbulence=vpm.TurbulenceConfig.les_smagorinsky(),
             particle_kernel="WINCKELMANS",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],

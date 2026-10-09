@@ -112,9 +112,7 @@ def baseline_case(name, *, n_steps=N_STEPS, compute_device="AUTO"):
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             compute_device=compute_device,
-            induction=vpm.TreecodeInduction(
-                theta=0.5, multipole_order=3, stretching_scheme="TRANSPOSED"
-            ),
+            induction=vpm.TreecodeInduction(stretching_scheme="TRANSPOSED"),
             viscous=vpm.ViscousConfig.cs(
                 particle_spacing=PARTICLE_SPACING,
                 kinematic_viscosity=KINEMATIC_VISCOSITY,

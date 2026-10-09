@@ -49,10 +49,12 @@ Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above
 | Setting | Options |
 | --- | --- |
 | `particle_kernel` | `GAUSSIAN` (default), `HIGH_ORDER_GAUSSIAN`, `SUPER_GAUSSIAN`, `WINCKELMANS` (algebraic). |
-| `induction` | `DirectInduction()`: exact sum over all pairs, for small or reference cases. `TreecodeInduction(theta=..., multipole_order=...)`: hierarchical far field for Gaussian and Winckelmans kernels; a smaller `theta` is more accurate. `FMMInduction()`: fast multipole method, every kernel. `SlipSlabInduction(base, z_min, z_max)`: free-slip span planes, see [planar flow](#planar-flow). |
+| `induction` | `DirectInduction()`: exact sum over all pairs, for small or reference cases. `TreecodeInduction(theta=0.4, multipole_order=3)`: hierarchical far field for Gaussian and Winckelmans kernels; a smaller `theta` is more accurate. `FMMInduction()`: fast multipole method, every kernel. `SlipSlabInduction(base, z_min, z_max)`: free-slip span planes, see [planar flow](#planar-flow). |
 | `stretching_scheme` | `TRANSPOSED` (default) uses $J^T\boldsymbol{\Gamma}$ and conserves total strength; `DIRECT` uses $J\boldsymbol{\Gamma}$; `MIXED` uses the symmetric part $S\boldsymbol{\Gamma}$. The [vortex ring](../tutorials/vpm/02_vortex_ring/README.md) compares them. |
 | `integrator` | `RK2()`, `SSPRK3()` or `RK4()`, advancing positions and strengths together. |
 | `compute_device`, `precision` | `AUTO`, `CPU`, `CUDA`, `VULKAN` or `METAL`; `f32` or `f64`. |
+
+Choose the induction backend by particle count. On a GPU, `DirectInduction` is the fastest up to a few tens of thousands of particles; use `TreecodeInduction()` for larger clouds. Its defaults keep the velocity within $3\times10^{-4}$ and its gradient within $7\times10^{-4}$ of direct summation (relative $L_2$ error on vortex rings of 8.8k and 81k particles), about fifty times below the particle discretization error of the 8.8k-particle ring. Second-order multipoles are cheaper but more than ten times less accurate. On a CPU the fast methods already pay off below 10k particles, and `FMMInduction()` was about twice as fast as the treecode at 81k particles, with errors of $3\times10^{-4}$ (velocity) and $1.4\times10^{-3}$ (gradient).
 
 Check the fast methods against `DirectInduction` on a small case before trusting forces or instability growth. `freestream_velocity` adds a uniform background flow.
 

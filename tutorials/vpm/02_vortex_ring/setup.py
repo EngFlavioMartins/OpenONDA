@@ -121,7 +121,7 @@ def build_case(
             time_step_size=TIME_STEP_SIZE,
             compute_device=compute_device,
             turbulence=turbulence_config(variant),
-            induction=vpm.TreecodeInduction(stretching_scheme=stretching_scheme(variant)),
+            induction=vpm.DirectInduction(stretching_scheme=stretching_scheme(variant)),
             max_n_particles=MAX_N_PARTICLES,
             random_seed=RANDOM_SEED,
             state_limits=vpm.ParticleStateLimits(

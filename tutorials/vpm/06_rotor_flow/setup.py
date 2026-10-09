@@ -129,10 +129,7 @@ def build_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=wake_spacing,
             ),
-            induction=vpm.TreecodeInduction(
-                theta=0.3,
-                multipole_order=3,
-            ),
+            induction=vpm.TreecodeInduction(),
             max_n_particles=MAX_N_PARTICLES,
         ),
         backup=Backup(
