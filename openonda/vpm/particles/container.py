@@ -446,6 +446,15 @@ class Particles:
                     dst[i, j, k] = src[start_idx + i][j, k]
 
     @ti.kernel
+    def _extract_velocity_curl_prefix(self, dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32):
+        """Copy curl(u) of the first n velocity Jacobians to a NumPy array."""
+        for i in range(n):
+            gradient = self.velocity_gradient[start_idx + i]
+            dst[i, 0] = gradient[2, 1] - gradient[1, 2]
+            dst[i, 1] = gradient[0, 2] - gradient[2, 0]
+            dst[i, 2] = gradient[1, 0] - gradient[0, 1]
+
+    @ti.kernel
     def _extract_int_prefix(
         self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
     ):
@@ -832,6 +841,23 @@ class Particles:
     def vorticity_cpu(self) -> np.ndarray:
         """Return vorticity vectors as a CPU copy, shape ``(N, 3)`` in 1/s."""
         return self._extract_vector(self.vorticity, self.n_particles_total)
+
+    def velocity_curl_cpu(self) -> np.ndarray:
+        """Return curl(u) from the current velocity Jacobians, shape ``(N, 3)`` in 1/s.
+
+        The curl is formed on the device, so only three of the nine Jacobian
+        entries per particle are transferred. Velocity refreshes do not change
+        the source-state revision, so this transfer is never cached.
+        """
+        n = self.n_particles_total
+        out = np.empty((n, 3), dtype=self._np_float_dtype)
+        buf = self._host_transfer_buffer("vector", self.velocity_gradient, "curl download")
+        for lo in range(0, n, self._COPY_CHUNK_SIZE):
+            count = min(self._COPY_CHUNK_SIZE, n - lo)
+            self._extract_velocity_curl_prefix(buf, lo, count)
+            ti.sync()
+            out[lo : lo + count] = buf[:count]
+        return out
 
     @cached_particle_property
     def zone_id_cpu(self) -> np.ndarray:

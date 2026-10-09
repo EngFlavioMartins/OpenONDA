@@ -205,22 +205,25 @@ class ParticleStateMetrics:
     strain_increment_spectral_particle: int = -1
 
 
-def strain_increments(
-    velocity_gradient: np.ndarray, time_step_size: float
-) -> tuple[float, float, int, int]:
-    """Return infinity/spectral strain increments and their particle indices."""
-    gradient = np.asarray(velocity_gradient, dtype=np.float64)
-    if gradient.size == 0:
-        return 0.0, 0.0, -1, -1
-    strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
-    infinity_values = float(time_step_size) * np.abs(strain).sum(axis=2).max(axis=1)
-    spectral_values = float(time_step_size) * np.linalg.norm(strain, ord=2, axis=(1, 2))
-    return (
-        float(infinity_values.max(initial=0.0)),
-        float(spectral_values.max(initial=0.0)),
-        int(np.argmax(infinity_values)),
-        int(np.argmax(spectral_values)),
-    )
+@dataclass(frozen=True, slots=True)
+class MeasuredParticleState:
+    """Device-reduced accepted particle state used to enforce the limits.
+
+    Parameters
+    ----------
+    invalid_fields : tuple of str
+        Particle fields holding non-finite values, or non-positive core radii
+        and volumes.
+    metrics : ParticleStateMetrics
+        Accepted-step extrema and the particles attaining the strain extrema.
+    strain_limiting_position : tuple of float
+        Position in m of the particle with the largest infinity-norm strain
+        increment.
+    """
+
+    invalid_fields: tuple[str, ...]
+    metrics: ParticleStateMetrics
+    strain_limiting_position: tuple[float, float, float]
 
 
 class ParticleStateError(RuntimeError):
@@ -253,63 +256,22 @@ def check_accepted_particle_state(
     limits: ParticleStateLimits,
     step: int,
     time_step_size: float,
-    position: np.ndarray,
-    velocity: np.ndarray,
-    velocity_gradient: np.ndarray,
-    vortex_strength: np.ndarray,
-    core_radius: np.ndarray,
-    particle_volume: np.ndarray,
+    state: MeasuredParticleState,
     resolution: dict[str, float],
     previous: ParticleStateMetrics | None,
 ) -> ParticleStateMetrics:
-    """Measure and enforce ``limits`` for one fully refreshed accepted state."""
-    arrays = {
-        "position": np.asarray(position),
-        "velocity": np.asarray(velocity),
-        "velocity_gradient": np.asarray(velocity_gradient),
-        "vortex_strength": np.asarray(vortex_strength),
-        "core_radius": np.asarray(core_radius),
-        "particle_volume": np.asarray(particle_volume),
-    }
-    count = len(arrays["position"])
-    if limits.finite_state.enabled:
-        invalid = [name for name, value in arrays.items() if not np.isfinite(value).all()]
-        if np.any(arrays["core_radius"] <= 0.0):
-            invalid.append("core_radius")
-        if np.any(arrays["particle_volume"] <= 0.0):
-            invalid.append("particle_volume")
-        if invalid:
-            raise ParticleStateError(
-                f"VPM accepted state at step {step} is invalid: " + ", ".join(sorted(set(invalid))),
-                restartable=False,
-            )
-
-    if count:
-        (
-            strain_increment_infinity,
-            strain_increment_spectral,
-            infinity_particle,
-            spectral_particle,
-        ) = strain_increments(arrays["velocity_gradient"], time_step_size)
-        strength = np.linalg.norm(arrays["vortex_strength"], axis=1)
-        maximum_strength = float(strength.max(initial=0.0))
-        maximum_vorticity = float(
-            (strength / np.maximum(arrays["particle_volume"], np.finfo(float).tiny)).max(
-                initial=0.0
-            )
+    """Enforce ``limits`` on one fully refreshed and measured accepted state."""
+    if limits.finite_state.enabled and state.invalid_fields:
+        raise ParticleStateError(
+            f"VPM accepted state at step {step} is invalid: "
+            + ", ".join(sorted(set(state.invalid_fields))),
+            restartable=False,
         )
-    else:
-        strain_increment_infinity = strain_increment_spectral = 0.0
-        infinity_particle = spectral_particle = -1
-        maximum_strength = maximum_vorticity = 0.0
-    snapshot = ParticleStateMetrics(
-        strain_increment_infinity,
-        strain_increment_spectral,
-        maximum_strength,
-        maximum_vorticity,
-        infinity_particle,
-        spectral_particle,
-    )
+
+    snapshot = state.metrics
+    strain_increment_infinity = snapshot.strain_increment_infinity
+    infinity_particle = snapshot.strain_increment_infinity_particle
+    maximum_strength = snapshot.maximum_particle_strength
 
     if (
         limits.lagrangian_cfl.maximum is not None
@@ -317,8 +279,9 @@ def check_accepted_particle_state(
     ):
         maximum = limits.lagrangian_cfl.maximum
         strain_rate = strain_increment_infinity / float(time_step_size)
-        limiting_position = arrays["position"][infinity_particle]
-        position_text = ", ".join(f"{coordinate:.9g}" for coordinate in limiting_position)
+        position_text = ", ".join(
+            f"{coordinate:.9g}" for coordinate in state.strain_limiting_position
+        )
         raise ParticleStateError(
             f"VPM accepted state at step {step}: Lagrangian CFL number "
             f"{strain_increment_infinity:.9g} (strain increment infinity norm) exceeds "

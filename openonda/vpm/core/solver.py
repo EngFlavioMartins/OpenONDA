@@ -35,6 +35,7 @@ from ..config.state_limits import (
     check_accepted_particle_state,
 )
 from ..coupling import CouplingStepper
+from ..diagnostics.particle_state import measure_particle_state
 from ..diagnostics.resolution import particle_resolution_metrics
 from ..io.backup import _BackupIO
 from ..io.logging import Logging, print_openonda_header
@@ -1107,12 +1108,7 @@ class VPMSolver:
             limits=self.state_limits,
             step=self.step,
             time_step_size=self.time_step_size,
-            position=self.particle_position,
-            velocity=self.particle_velocity,
-            velocity_gradient=self.particle_velocity_gradient,
-            vortex_strength=self.particle_vortex_strength,
-            core_radius=self.particle_core_radius,
-            particle_volume=self.particle_volume,
+            state=measure_particle_state(self.particles, self.time_step_size),
             resolution=self._particle_resolution_metrics,
             previous=self._accepted_state_metrics,
         )
@@ -1265,14 +1261,7 @@ class VPMSolver:
         # initially contains Gamma/V. It is not an accepted-step field. Use
         # curl(u) from the freshly evaluated Jacobian, as the P-relaxation
         # operator does; otherwise the particle-state stop depends on backup cadence.
-        gradient = self.particles.velocity_gradient_cpu(use_cache=False)
-        vorticity = np.column_stack(
-            (
-                gradient[:, 2, 1] - gradient[:, 1, 2],
-                gradient[:, 0, 2] - gradient[:, 2, 0],
-                gradient[:, 1, 0] - gradient[:, 0, 1],
-            )
-        )
+        vorticity = self.particles.velocity_curl_cpu()
         position = self.particle_position
         strength = self.particle_vortex_strength
         core_radius = self.particle_core_radius
