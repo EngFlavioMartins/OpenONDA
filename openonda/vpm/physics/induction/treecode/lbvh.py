@@ -7,7 +7,7 @@ binary-tree traversal using Taichi for GPU acceleration.
 The tree is built on-device via:
   1. AABB computation (parallel min/max reduction)
   2. Morton-code encoding (30-bit, 10 bits/axis)
-  3. Active-prefix on-device Morton sort (CPU argsort fallback)
+  3. Stable on-device radix sort of the active Morton keys
   4. GPU Karras radix tree (O(N), fully parallel — one thread per internal node)
   5. Level-synchronous bottom-up multipole moments (one kernel per tree level)
 
@@ -18,9 +18,9 @@ node solved independently (no serial stack, no shared scratch, Vulkan-portable):
     exponential/binary search
   - internal node 0 is the root (covers [0, N-1])
 
-On CUDA the Morton sort uses an active-prefix odd-even network on device; other
-backends use a deterministic active-key CPU argsort unless device sorting was
-explicitly required. The level bound is derived from N.
+The Morton sort is a least-significant-digit radix sort over the active keys
+in a single kernel launch on every backend. It is stable, so equal Morton keys
+keep ascending particle index. The level bound is derived from N.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 Date: February 2026
@@ -28,6 +28,7 @@ Date: February 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
+import math
 import time
 
 import numpy as np
@@ -54,6 +55,15 @@ _TRAVERSAL_BATCH_SIZE = 4096
 # Topology passes are cheap relative to traversal, but a malformed parent link
 # must never leave one giant Vulkan kernel spinning until the driver resets.
 _TOPOLOGY_BATCH_SIZE = 4096
+# Radix sort of the 30-bit Morton keys: four 8-bit digits, an even pass count
+# so the permutation ends in ``sorted_indices``.  Each block of particles is
+# counted and scattered by one sequential walk, which keeps the scatter stable
+# without atomics; a block of 128 bounds that walk while the digit-by-block
+# offset table stays at two entries per particle.
+_RADIX_BITS = 8
+_RADIX_DIGITS = 1 << _RADIX_BITS
+_RADIX_PASSES = 4
+_RADIX_BLOCK = 128
 
 
 class _DeviceFields:
@@ -118,7 +128,6 @@ class TaichiTreecode:
         multipole_order: int = 1,
         sort_particle_targets: bool = False,
         traversal_block_dim: int = 128,
-        device_sort_only: bool = False,
         hierarchy_only: bool = False,
         max_evaluation_points: int | None = None,
     ):
@@ -147,9 +156,6 @@ class TaichiTreecode:
         traversal_block_dim : int, default=128
             Optional Taichi block size.  Zero leaves backend selection
             automatic.
-        device_sort_only : bool, default=False
-            Require device sorting and surface sorting/backend failures rather
-            than using the deterministic host fallback.
         hierarchy_only : bool, default=False
             Allocate source hierarchy fields without particle-evaluation
             outputs and stacks. FMM uses this mode because it owns its p=3
@@ -187,12 +193,6 @@ class TaichiTreecode:
         if traversal_block_dim < 0:
             raise ValueError(f"traversal_block_dim must be >= 0, got {traversal_block_dim}")
         self.traversal_block_dim = int(traversal_block_dim)
-        # Production FMM uses the hierarchy only.  It cannot accept the
-        # NumPy sorting fallback used by standalone treecode evaluation because
-        # an RK stage must remain device-resident.  When enabled, a sort or
-        # backend failure is surfaced to the caller instead of downloading
-        # Morton keys.
-        self.device_sort_only = bool(device_sort_only)
         self.hierarchy_only = bool(hierarchy_only)
         evaluation_capacity = (
             max_n_particles if max_evaluation_points is None else int(max_evaluation_points)
@@ -254,23 +254,18 @@ class TaichiTreecode:
 
         # LBVH BUILD FIELDS
         self.morton_codes = fields.scalar(dtype=ti.u32, shape=max_n_particles)
-        # The sort network needs a power-of-two prefix. Pad these two scratch
-        # fields once, instead of sorting the entire particle capacity for
-        # every small active cloud (or allocating a field per active count).
-        self._sort_capacity = 1 << (max_n_particles - 1).bit_length()
-        self.sorted_indices = fields.scalar(dtype=ti.i32, shape=self._sort_capacity)
-        # GPU-sort scratch (a permutable copy of the keys) — lets the Morton sort
-        # run on-device, removing the per-build CPU argsort host round-trip.
-        self._sort_keys = fields.scalar(dtype=ti.u32, shape=self._sort_capacity)
-        # Taichi 1.7's Vulkan parallel_sort can fail only for particular active
-        # lengths even after an earlier invocation validated successfully.  A
-        # bad permutation creates malformed Karras parent links; the subsequent
-        # depth walk then triggers an i915 fence reset and zeroes unrelated
-        # fields.  Keep the fast device sort on CUDA, where it is stable, and
-        # use deterministic NumPy argsort on Vulkan/Metal/CPU.  The O(N) key
-        # transfer is small beside the O(N log N) tree traversal.
-        self._gpu_sort = ti.lang.impl.current_cfg().arch == ti.cuda
-        self._sort_validated = False
+        # Radix-sort scratch: the particle permutation alternates between
+        # sorted_indices and its swap buffer from one digit pass to the next.
+        # The offset table holds one counter per (digit, particle block), and
+        # its exclusive scan is split into chunks of about sqrt(size) entries
+        # with one partial sum each.
+        self.sorted_indices = fields.scalar(dtype=ti.i32, shape=max_n_particles)
+        self._sorted_indices_swap = fields.scalar(dtype=ti.i32, shape=max_n_particles)
+        radix_offset_capacity = _RADIX_DIGITS * (-(-max_n_particles // _RADIX_BLOCK))
+        self._radix_offsets = fields.scalar(dtype=ti.i32, shape=radix_offset_capacity)
+        self._radix_chunk_offsets = fields.scalar(
+            dtype=ti.i32, shape=math.isqrt(radix_offset_capacity) + 2
+        )
         # Node particle range in sorted order
         self._node_first = fields.scalar(dtype=ti.i32, shape=max_nodes)
         self._node_last = fields.scalar(dtype=ti.i32, shape=max_nodes)
@@ -332,8 +327,6 @@ class TaichiTreecode:
         self._host_vector_chunks = {}
         self._host_scalar_chunks = {}
         self._host_matrix_chunks = {}
-        self._host_u32_chunks = {}
-        self._host_i32_chunks = {}
 
         # Topology-reuse state (see refit()): last built particle count and the
         # combine-level bound.  None until the first build().
@@ -562,13 +555,6 @@ class TaichiTreecode:
             dst[start_idx + i] = src[i]
 
     @ti.kernel
-    def _copy_ndarray_to_i32_field(
-        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
-    ):
-        for i in range(n):
-            dst[start_idx + i] = src[i]
-
-    @ti.kernel
     def _extract_vec3_field_prefix(
         self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
     ):
@@ -585,13 +571,6 @@ class TaichiTreecode:
                 for k in ti.static(range(3)):
                     dst[i, j, k] = src[start_idx + i][j, k]
 
-    @ti.kernel
-    def _extract_u32_field_prefix(
-        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
-    ):
-        for i in range(n):
-            dst[i] = src[start_idx + i]
-
     def _host_transfer_buffer(self, family: str, field: ti.Field, direction: str) -> np.ndarray:
         """Return a fixed staging array unique to a field and direction."""
         key = (direction, id(field))
@@ -607,14 +586,6 @@ class TaichiTreecode:
             buffers = self._host_matrix_chunks
             shape = (_HOST_TRANSFER_CHUNK_SIZE, 3, 3)
             dtype = np.float32
-        elif family == "u32":
-            buffers = self._host_u32_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
-            dtype = np.uint32
-        elif family == "i32":
-            buffers = self._host_i32_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
-            dtype = np.int32
         else:
             raise ValueError(f"Unknown host transfer buffer family {family!r}")
         if key not in buffers:
@@ -647,19 +618,6 @@ class TaichiTreecode:
             self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
             ti.sync()
 
-    def _upload_i32_array(self, src: np.ndarray, dst: ti.Field, n: int | None = None) -> None:
-        arr = np.ascontiguousarray(src, dtype=np.int32)
-        if arr.ndim != 1:
-            raise ValueError(f"Expected int array with shape (N,), got {arr.shape}")
-        count = arr.shape[0] if n is None else n
-        buf = self._host_transfer_buffer("i32", dst, "upload")
-        for lo in range(0, count, _HOST_TRANSFER_CHUNK_SIZE):
-            hi = min(lo + _HOST_TRANSFER_CHUNK_SIZE, count)
-            n_chunk = hi - lo
-            buf[:n_chunk] = arr[lo:hi]
-            self._copy_ndarray_to_i32_field(buf, dst, lo, n_chunk)
-            ti.sync()
-
     def _download_vector_field(self, src: ti.Field, n: int) -> np.ndarray:
         if n == 0:
             return np.empty((0, 3), dtype=np.float32)
@@ -680,18 +638,6 @@ class TaichiTreecode:
         for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
             count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
             self._extract_mat3_field_prefix(src, buf, lo, count)
-            ti.sync()
-            out[lo : lo + count] = buf[:count]
-        return out
-
-    def _download_u32_field(self, src: ti.Field, n: int) -> np.ndarray:
-        if n == 0:
-            return np.empty((0,), dtype=np.uint32)
-        out = np.empty((n,), dtype=np.uint32)
-        buf = self._host_transfer_buffer("u32", src, "download")
-        for lo in range(0, n, _HOST_TRANSFER_CHUNK_SIZE):
-            count = min(_HOST_TRANSFER_CHUNK_SIZE, n - lo)
-            self._extract_u32_field_prefix(src, buf, lo, count)
             ti.sync()
             out[lo : lo + count] = buf[:count]
         return out
@@ -823,78 +769,67 @@ class TaichiTreecode:
                 self._root[None] = N  # internal node 0 is the root
 
     @ti.kernel
-    def _init_sort_pairs_kernel(self, N: ti.i32, prefix: ti.i32):
-        """Seed (key, data) pairs for the on-device Morton sort.
+    def _radix_sort_kernel(
+        self, N: ti.i32, n_blocks: ti.i32, chunk_length: ti.i32, n_chunks: ti.i32
+    ):
+        """Stable LSD radix sort of the active Morton keys into ``sorted_indices``.
 
-        Real particles get their Morton key + their own index; the unused tail is
-        keyed 0xFFFFFFFF so it sorts after all 30-bit real keys, leaving the first
-        N slots as the Morton-ordered permutation."""
-        for i in range(prefix):
-            if i < N:
-                self._sort_keys[i] = self.morton_codes[i]
-                self.sorted_indices[i] = i
-            else:
-                self._sort_keys[i] = ti.u32(0xFFFFFFFF)
-                self.sorted_indices[i] = i
-
-    @ti.kernel
-    def _sort_prefix_stage_kernel(self, prefix: ti.i32, p: ti.i32, k: ti.i32, invocations: ti.i32):
-        """Taichi 1.7 odd-even merge stage restricted to the initialized prefix."""
-        for inv in range(invocations):
-            j = k % p + inv * 2 * k
-            for i in range(0, ti.min(k, prefix - j - k)):
-                a = i + j
-                b = a + k
-                if int(a / (p * 2)) == int(b / (p * 2)):  # noqa: SIM102 - Taichi kernel
-                    if self._sort_keys[a] > self._sort_keys[b]:
-                        key = self._sort_keys[a]
-                        self._sort_keys[a] = self._sort_keys[b]
-                        self._sort_keys[b] = key
-                        index = self.sorted_indices[a]
-                        self.sorted_indices[a] = self.sorted_indices[b]
-                        self.sorted_indices[b] = index
-
-    def _sort_active_prefix(self, N: int) -> None:
-        """Sort active keys and maximal sentinels without touching unused capacity."""
-        prefix = 1 << (N - 1).bit_length()
-        self._init_sort_pairs_kernel(N, prefix)
-        p = 1
-        while p < prefix:
-            k = p
-            while k >= 1:
-                invocations = int((prefix - k - k % p) / (2 * k)) + 1
-                self._sort_prefix_stage_kernel(prefix, p, k, invocations)
-                ti.sync()
-                k //= 2
-            p *= 2
-
-    def _cpu_argsort(self, N: int) -> None:
-        """CPU fallback: argsort Morton keys → sorted_indices (host round-trip)."""
-        morton_np = self._download_u32_field(self.morton_codes, N)
-        sorted_idx = np.argsort(morton_np, kind="mergesort")
-        self._upload_i32_array(sorted_idx.astype(np.int32), self.sorted_indices, N)
+        Each pass orders the particles by one 8-bit digit.  One thread per block
+        of ``_RADIX_BLOCK`` particles counts its digits into the digit-major
+        offset table, the table is exclusively scanned (partial sums per chunk,
+        then a scan over the chunks), and the same thread scatters its block in
+        sequence, so equal digits keep their order and equal Morton keys end in
+        ascending particle index.  The top-level loops run in order on the
+        device, so the whole sort needs no host synchronisation.
+        """
+        n_slots = _RADIX_DIGITS * n_blocks
+        buffers = ti.static((self.sorted_indices, self._sorted_indices_swap))
+        for sweep in ti.static(range(_RADIX_PASSES)):
+            source = ti.static(buffers[sweep % 2])
+            target = ti.static(buffers[1 - sweep % 2])
+            shift = ti.static(sweep * _RADIX_BITS)
+            for block in range(n_blocks):
+                for digit in range(_RADIX_DIGITS):
+                    self._radix_offsets[digit * n_blocks + block] = 0
+                for slot in range(block * _RADIX_BLOCK, ti.min((block + 1) * _RADIX_BLOCK, N)):
+                    particle = slot
+                    if ti.static(sweep > 0):
+                        particle = source[slot]
+                    digit = ti.i32((self.morton_codes[particle] >> shift) & (_RADIX_DIGITS - 1))
+                    entry = digit * n_blocks + block
+                    self._radix_offsets[entry] = self._radix_offsets[entry] + 1
+            for chunk in range(n_chunks):
+                partial_sum = 0
+                for entry in range(
+                    chunk * chunk_length, ti.min((chunk + 1) * chunk_length, n_slots)
+                ):
+                    count = self._radix_offsets[entry]
+                    self._radix_offsets[entry] = partial_sum
+                    partial_sum += count
+                self._radix_chunk_offsets[chunk] = partial_sum
+            for _ in range(1):
+                chunk_sum = 0
+                for chunk in range(n_chunks):
+                    count = self._radix_chunk_offsets[chunk]
+                    self._radix_chunk_offsets[chunk] = chunk_sum
+                    chunk_sum += count
+            for block in range(n_blocks):
+                for slot in range(block * _RADIX_BLOCK, ti.min((block + 1) * _RADIX_BLOCK, N)):
+                    particle = slot
+                    if ti.static(sweep > 0):
+                        particle = source[slot]
+                    digit = ti.i32((self.morton_codes[particle] >> shift) & (_RADIX_DIGITS - 1))
+                    entry = digit * n_blocks + block
+                    rank = self._radix_offsets[entry]
+                    target[self._radix_chunk_offsets[entry // chunk_length] + rank] = particle
+                    self._radix_offsets[entry] = rank + 1
 
     def _sort_morton(self, N: int) -> None:
-        """Morton sort → sorted_indices, on-device when the backend supports it."""
-        if self.device_sort_only:
-            self._sort_active_prefix(N)
-            return
-        if self._gpu_sort:
-            try:
-                self._sort_active_prefix(N)
-            except Exception:
-                self._gpu_sort = False
-            else:
-                if not self._sort_validated:
-                    # One-time correctness check: catch a backend whose
-                    # parallel_sort silently misbehaves (e.g. on Vulkan) and fall
-                    # back permanently to CPU argsort.
-                    keys = self._download_u32_field(self._sort_keys, N)
-                    if N > 1 and bool(np.any(np.diff(keys.astype(np.int64)) < 0)):
-                        self._gpu_sort = False
-                    self._sort_validated = True
-        if not self._gpu_sort:
-            self._cpu_argsort(N)
+        """Sort particle indices by Morton key into ``sorted_indices``."""
+        n_blocks = -(-N // _RADIX_BLOCK)
+        n_slots = _RADIX_DIGITS * n_blocks
+        chunk_length = max(_RADIX_BLOCK, math.isqrt(n_slots))
+        self._radix_sort_kernel(N, n_blocks, chunk_length, -(-n_slots // chunk_length))
 
     def _build_lbvh(self, N: int) -> None:
         """Internal LBVH build sequence (all steps after data upload)."""
@@ -934,9 +869,7 @@ class TaichiTreecode:
         # Step 2: Morton codes (30-bit) — reads the AABB written above
         self._compute_morton_codes_kernel(N, self._aabb_min, self._aabb_max)
 
-        # Step 3: sort particle indices by Morton key.  On-device by default
-        # (no host round-trip); validated once and falling back to a CPU argsort
-        # if a backend's parallel_sort misbehaves, so the build is correct anywhere.
+        # Step 3: stable on-device radix sort of particle indices by Morton key.
         self._sort_morton(N)
 
         # Step 4: GPU Karras tree — fully parallel, one thread per internal node

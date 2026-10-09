@@ -283,7 +283,6 @@ class FMMReuseConditions:
                     "max_stack_depth",
                     "max_tree_depth_guard",
                     "traversal_block_dim",
-                    "device_sort_only",
                     "hierarchy_only",
                     "max_evaluation_points",
                     "default_cutoff_radius_factor",

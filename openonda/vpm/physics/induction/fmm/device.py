@@ -286,7 +286,6 @@ class FMMDeviceWorkspace:
             multipole_order=1,
             sort_particle_targets=False,
             traversal_block_dim=0,
-            device_sort_only=False,
             hierarchy_only=True,
             max_evaluation_points=self.target_batch_capacity,
         )
