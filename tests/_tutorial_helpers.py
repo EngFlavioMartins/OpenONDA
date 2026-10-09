@@ -18,7 +18,15 @@ import sys
 import numpy as np
 
 TUTORIALS = Path(__file__).resolve().parents[1] / "tutorials"
-GENERATED = ("solution", "solutions", "samples", "figures", "study_results", "__pycache__")
+GENERATED = (
+    "solution",
+    "solutions",
+    "samples",
+    "figures",
+    "study_results",
+    "sensitivity",
+    "__pycache__",
+)
 _case_roots: list[str] = []
 
 

@@ -389,7 +389,11 @@ def replace_particles_from_buffered_m4_renewal(
             f"limit={maximum_closure_correction_fraction:.6e}"
         )
     storage_epsilon = float(np.finfo(dtype).eps)
-    reference_strength_l1 = float(result.conservation_reference_strength_l1)
+    # Strengths below the prune threshold are unresolved; the floor keeps a
+    # round-off field, such as a uniform freestream, from tightening the check
+    reference_strength_l1 = max(
+        float(result.conservation_reference_strength_l1), float(prune_threshold)
+    )
     position_scale = max(
         reductions.renewed_position_scale,
         float(lattice.particle_spacing),
