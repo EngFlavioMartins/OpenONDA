@@ -33,6 +33,16 @@ finite-volume, vortex-particle and vortex-lattice solvers in Python.
   Taylor–Green vortex, boundary layers and coupled cylinder and cube flows.
 - `openonda-verify-install`, which solves and restarts every solver.
 
+### Changed
+
+- The treecode defaults to opening angle θ=0.4 with third-order multipoles
+  (was θ=0.1, first order): velocity and gradient errors of about 2e-4 and
+  6e-4 relative to direct summation, at a fraction of the cost.
+- VPM steps evaluate particle induction once less: an accepted state's field is
+  reused by the next step's first stage when no particle changed in between.
+- The treecode and FMM sort their Morton keys with an on-device radix sort, and
+  the accepted-state limits are reduced on the device.
+
 ### Fixed
 
 - PISO correctors update H/A with the previous correction's velocity change.
