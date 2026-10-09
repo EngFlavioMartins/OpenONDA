@@ -48,6 +48,19 @@ def _make_construct_stage_kernel(scalar_dtype: object) -> Callable:
     return construct
 
 
+@ti.kernel
+def _copy_accepted_state(
+    position: ti.template(),
+    vortex_strength: ti.template(),
+    stage_position: ti.template(),
+    stage_vortex_strength: ti.template(),
+    count: ti.i32,
+):
+    for i in range(count):
+        stage_position[i] = position[i]
+        stage_vortex_strength[i] = vortex_strength[i]
+
+
 def _make_combine_kernel(scalar_dtype: object) -> Callable:
     """Create the final RK combination kernel at the particle precision."""
 
@@ -194,6 +207,7 @@ class RungeKutta:
         right_hand_side: CoupledStageRHS,
         velocity_gradient_out: object | None = None,
         accepted_position_projector: Callable | None = None,
+        accepted_revision: int | None = None,
     ) -> None:
         """Advance particle position and strength through one RK step.
 
@@ -226,6 +240,11 @@ class RungeKutta:
         accepted_position_projector : callable or None, default=None
             Project the combined accepted position inside the provider step
             context, so a rejected projection rolls back provider exchange increments.
+        accepted_revision : int or None, default=None
+            ``Particles.state_revision`` of the supplied accepted fields. The
+            first stage is an exact copy of them and carries this revision, so
+            the right-hand side can reuse the induction of an unchanged
+            accepted state.
 
         Raises
         ------
@@ -262,28 +281,14 @@ class RungeKutta:
                 """Pad tableau rows to the four-slot device-kernel ABI."""
                 return tuple(values) + (0.0,) * (4 - len(values))
 
-            zero_field = self.stage_velocity[0]
             for stage in range(self.tableau.stages):
                 coefficients = self.tableau.a[stage]
                 if stage == 0:
-                    self._construct_stage_kernel(
+                    _copy_accepted_state(
                         position,
                         vortex_strength,
                         self.stage_position,
                         self.stage_vortex_strength,
-                        zero_field,
-                        zero_field,
-                        zero_field,
-                        zero_field,
-                        self.stage_strength_rate[0],
-                        self.stage_strength_rate[1],
-                        self.stage_strength_rate[2],
-                        self.stage_strength_rate[3],
-                        0.0,
-                        0.0,
-                        0.0,
-                        0.0,
-                        0.0,
                         count,
                     )
                 else:
@@ -312,6 +317,7 @@ class RungeKutta:
                     count=count,
                     time=float(time + self.tableau.c[stage] * time_step_size),
                     stage_index=stage,
+                    accepted_revision=accepted_revision if stage == 0 else None,
                 )
                 needs_gradient = velocity_gradient_out is not None or bool(
                     getattr(right_hand_side, "requires_velocity_gradient", False)

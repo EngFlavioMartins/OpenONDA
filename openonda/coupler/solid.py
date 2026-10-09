@@ -35,14 +35,14 @@ class SolidParticleGuard:
             raise RuntimeError("Solid geometry changed after the GBD mask was built")
         positions = self.physics._download_vector_field(position, count)
         if count == 0:
-            return positions
+            return positions, False
         corrected, changed, delta, maximum = self.boundary.constrain_motion(
             positions,
             self.spacing,
             starts=starts,
         )
         if not np.any(changed):
-            return positions
+            return positions, False
         strengths = self.physics._download_vector_field(strength, count)[changed]
         self.physics._upload_vector_array(corrected, position, count)
         impulse_change = 0.5 * np.cross(delta, strengths).sum(axis=0)
@@ -74,12 +74,13 @@ class SolidParticleGuard:
             self.logger.warning(*log_args)
         else:
             self._pending_logs.append(log_args)
-        return corrected
+        return corrected, True
 
     def stage(self, state):
+        """Project stage positions in place; return whether any particle moved."""
         stage = getattr(state, "stage_index", None)
         starts = self._reference if stage is not None and stage > 0 else None
-        positions = self._project(
+        positions, moved = self._project(
             state.position,
             state.vortex_strength,
             int(state.count),
@@ -88,6 +89,7 @@ class SolidParticleGuard:
         )
         if stage == 0:
             self._reference = positions.copy()
+        return moved
 
     def accepted(self, position, strength, count):
         self._project(position, strength, count, accepted=True, starts=self._reference)

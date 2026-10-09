@@ -367,79 +367,6 @@ def _stretching_contribution(
     return dstr
 
 
-def _make_stretching_rate_kernel(radial_factors_: Callable) -> Callable:
-    """Create direct stretching from finite kernel-specific radial factors."""
-
-    @ti.kernel
-    def compute_stretching_rate_kernel(
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        core_radius: ti.template(),
-        dstr_dt_out: ti.template(),
-        mode: ti.i32,
-        n_particles_total: ti.i32,
-    ):
-        """Direct pair-wise vortex stretching."""
-        N = n_particles_total
-        for i in range(N):
-            str_i = vortex_strength[i]
-            pos_i = position[i]
-            radii_i = core_radius[i]
-            dstr_dt = str_i * 0.0
-
-            for j in range(N):
-                pos_j = position[j]
-                str_j = vortex_strength[j]
-                r_ij = pos_i - pos_j
-                r_mag = ti.sqrt(r_ij.dot(r_ij))
-
-                sigma = 0.5 * (radii_i + core_radius[j])
-                factors = radial_factors_(r_mag / sigma, sigma, True)
-                dstr_dt += _stretching_contribution(str_i, str_j, r_ij, factors, mode)
-
-            dstr_dt_out[i] = dstr_dt
-
-    return compute_stretching_rate_kernel
-
-
-def _make_stretching_rate_batch_kernel(radial_factors_: Callable) -> Callable:
-    """Create the bounded-dispatch form of the direct stretching kernel."""
-
-    @ti.kernel
-    def compute_stretching_rate_batch_kernel(
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        core_radius: ti.template(),
-        dstr_dt_out: ti.template(),
-        mode: ti.i32,
-        start_target: ti.i32,
-        target_count: ti.i32,
-        n_particles_total: ti.i32,
-    ):
-        """Direct pair-wise stretching for a bounded target interval."""
-        N = n_particles_total
-        for local_target in range(target_count):
-            i = start_target + local_target
-            str_i = vortex_strength[i]
-            pos_i = position[i]
-            radii_i = core_radius[i]
-            dstr_dt = str_i * 0.0
-
-            for j in range(N):
-                pos_j = position[j]
-                str_j = vortex_strength[j]
-                r_ij = pos_i - pos_j
-                r_mag = ti.sqrt(r_ij.dot(r_ij))
-
-                sigma = 0.5 * (radii_i + core_radius[j])
-                factors = radial_factors_(r_mag / sigma, sigma, True)
-                dstr_dt += _stretching_contribution(str_i, str_j, r_ij, factors, mode)
-
-            dstr_dt_out[i] = dstr_dt
-
-    return compute_stretching_rate_batch_kernel
-
-
 def _make_velocity_and_stretching_rate_kernel(radial_factors_: Callable) -> Callable:
     """Fuse direct-summation velocity and the selected stretching in one pair walk."""
 
@@ -645,8 +572,6 @@ def _create_stretching_kernels(kernel_functions: dict[str, Callable]) -> dict[st
     radial_factors_ = kernel_functions["radial_factors_"]
 
     return {
-        "compute_stretching_rate_kernel": _make_stretching_rate_kernel(radial_factors_),
-        "compute_stretching_rate_batch_kernel": _make_stretching_rate_batch_kernel(radial_factors_),
         "compute_velocity_and_stretching_rate_kernel": _make_velocity_and_stretching_rate_kernel(
             radial_factors_
         ),

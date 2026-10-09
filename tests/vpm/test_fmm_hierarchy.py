@@ -179,8 +179,6 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
 
         for name in (
             "compute_velocity_and_stretching_rate_kernel",
-            "compute_stretching_rate_batch_kernel",
-            "compute_stretching_rate_kernel",
             "compute_velocity_gradients_kernel",
         ):
             monkeypatch.setattr(solver.physics, name, forbid_direct_fallback)

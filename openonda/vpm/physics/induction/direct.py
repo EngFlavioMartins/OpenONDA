@@ -145,7 +145,7 @@ class DirectInduction:
             Caller-owned output field, shape ``(count, 3)``, in m³/s².
         velocity_gradient_out : object or None, default=None
             Optional caller-owned output tensor, shape ``(count, 3, 3)``, in
-            1/s. Supplying it triggers a second direct gradient pass.
+            1/s. Supplying it triggers a separate direct gradient pass.
         strength_rate_enabled : bool, default=True
             If false, the rate field is explicitly zeroed while velocity and a
             requested gradient are still evaluated.
@@ -176,7 +176,9 @@ class DirectInduction:
         if count == 0:
             return
 
-        if strength_rate_enabled and velocity_gradient_out is None:
+        # A requested gradient is a separate pass, so velocity and strength
+        # rate do not depend on whether it is requested.
+        if strength_rate_enabled:
             self.physics.compute_velocity_and_stretching_rate_kernel(
                 position,
                 vortex_strength,
@@ -196,21 +198,7 @@ class DirectInduction:
                 self.physics._zero_velocity,
                 count,
             )
-        if not strength_rate_enabled:
             self.physics._zero_vec3_field(vortex_strength_rate_out, count)
-        elif velocity_gradient_out is not None:
-            for start in range(0, count, 4096):
-                target_count = min(4096, count - start)
-                self.physics.compute_stretching_rate_batch_kernel(
-                    position,
-                    vortex_strength,
-                    core_radius,
-                    vortex_strength_rate_out,
-                    self._stretching_mode,
-                    start,
-                    target_count,
-                    count,
-                )
         if velocity_gradient_out is not None:
             self.physics.compute_velocity_gradients_kernel(
                 position,

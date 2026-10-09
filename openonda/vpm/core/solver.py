@@ -543,6 +543,8 @@ class VPMSolver:
             self.induction,
             providers=tuple(self._stage_providers),
             strength_enabled=self.flow_model != "POTENTIAL",
+            # Core spreading changes every core radius before the first stage.
+            retain_strength_rate=self.viscous_scheme != "CS",
         )
         # Detailed section timing forces a device barrier around every phase.
         # Make that diagnostic opt-in; the whole-step timer remains available in
@@ -2539,6 +2541,7 @@ class VPMSolver:
                     core_radius=self.particles.core_radius,
                     count=N,
                     time=self.time,
+                    accepted_revision=self.particles.state_revision,
                 ),
                 self.time,
                 StageRates(

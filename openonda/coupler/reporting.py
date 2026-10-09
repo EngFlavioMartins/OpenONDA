@@ -540,14 +540,14 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             diagnostics["last_induction_image_call"] = _diagnostic_json_value(
                 tail, "slip-slab image diagnostic"
             )
-        # Cumulative counts: a hit means an RK stage reused the accepted-state
-        # particle evaluation instead of repeating a full induction sum.
+        # Cumulative counts: a reuse means a request at an unchanged accepted
+        # particle state published the stored induction instead of a new sum.
         stage_rhs = getattr(vpm_solver, "stage_rhs", None)
         reuse = getattr(stage_rhs, "induction_reuse_statistics", None)
         if reuse is not None:
             diagnostics["induction_reuse"] = {
-                name: int(getattr(reuse, name))
-                for name in ("requests", "hits", "misses", "bypasses")
+                "evaluations": int(reuse.evaluations),
+                "reuses": int(reuse.reuses),
             }
         boundary_induction = getattr(coupler, "_last_boundary_induction_diagnostics", None)
         if boundary_induction is not None:

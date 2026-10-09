@@ -66,6 +66,12 @@ class StageState:
         value is ``None`` for ad-hoc field queries outside an integrator.  It
         is intentionally separate from physical time because equal-time RK
         stages may carry different temporary particle states.
+    accepted_revision : int or None, default=None
+        ``Particles.state_revision`` when these sources are exactly the
+        accepted particle sources at that revision, for example the first RK
+        stage or a refresh of the accepted fields. The self-induced field of
+        such a state may be reused until the revision changes. ``None`` marks
+        a temporary state.
 
     Notes
     -----
@@ -80,6 +86,7 @@ class StageState:
     count: int
     time: float = 0.0
     stage_index: int | None = None
+    accepted_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,7 +190,10 @@ class InductionMethod(Protocol):
         Notes
         -----
         The method mutates only the supplied output fields and any documented
-        backend cache. It must not mutate the source stage.
+        backend cache. It must not mutate the source stage. Requesting the
+        gradient in addition must leave velocity and strength rate unchanged
+        bit for bit, so one evaluation of an accepted state can answer every
+        later request at that state.
 
         Raises
         ------

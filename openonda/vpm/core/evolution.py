@@ -374,6 +374,7 @@ class EvolutionStepper:
                 count=count,
                 time=self.solver.time,
                 stage_index=None,
+                accepted_revision=self.particles.state_revision,
             ),
             self.solver.time,
             StageRates(
@@ -510,16 +511,21 @@ class EvolutionStepper:
             if trial_snapshot is not None and guard is not None:
                 guard.begin_trial()
             try:
-                self.solver.integrator.advance(
-                    position=self.particles.position,
-                    vortex_strength=self.particles.vortex_strength,
-                    core_radius=self.particles.core_radius,
-                    count=count,
-                    time=start_time,
-                    time_step_size=dt,
-                    right_hand_side=self.solver.stage_rhs,
-                    accepted_position_projector=accepted_projector,
-                )
+                try:
+                    self.solver.integrator.advance(
+                        position=self.particles.position,
+                        vortex_strength=self.particles.vortex_strength,
+                        core_radius=self.particles.core_radius,
+                        count=count,
+                        time=start_time,
+                        time_step_size=dt,
+                        right_hand_side=self.solver.stage_rhs,
+                        accepted_position_projector=accepted_projector,
+                        accepted_revision=self.particles.state_revision,
+                    )
+                finally:
+                    # The RK combination writes the accepted source fields.
+                    self.particles.touch_state()
             except BaseException as error:
                 if trial_snapshot is not None and guard is not None:
                     restore(trial_snapshot)
@@ -557,10 +563,6 @@ class EvolutionStepper:
                 accepted_intervals,
             )
         ti.sync()
-        # RK writes source fields directly on the device.  Invalidate cached
-        # host snapshots/tree keys before any post-RK consumer can inspect the
-        # new state; the end-of-step touch remains a harmless final publication.
-        self.particles.touch_state()
 
     def _apply_coupled_update(
         self,
