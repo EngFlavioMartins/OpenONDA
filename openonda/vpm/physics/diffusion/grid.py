@@ -2076,22 +2076,29 @@ class _GridDiffusionMixin:
                 ],
                 dtype=np.float64,
             )
+            correction_fraction = float(
+                np.linalg.norm(stored_float64 - raw_survivor_strength, axis=1).sum(dtype=np.float64)
+                / complete_strength_scale
+            )
             if not np.all(np.isfinite(relative_residual)) or np.any(
                 relative_residual > _GBD_MOMENT_RESIDUAL_LIMIT
             ):
-                raise RuntimeError(
+                message = (
                     "GBD moment recovery failed its post-cast closure for "
                     f"{scope}: normalized residuals "
                     f"gamma={relative_residual[0]:.6e}, "
                     f"linear={relative_residual[1]:.6e}, "
                     f"angular={relative_residual[2]:.6e}, "
-                    f"limit={_GBD_MOMENT_RESIDUAL_LIMIT:.6e}"
+                    f"limit={_GBD_MOMENT_RESIDUAL_LIMIT:.6e}; "
+                    f"correction fraction={correction_fraction:.6e}"
                 )
+                # Large cancelling corrections from nearly dependent constraints
+                # (e.g. one slab layer) lose closure when cast to storage
+                # precision. A fluid component keeps its donor field instead.
+                if recovery_label is not None:
+                    raise _GBDMomentCorrectionError(message, recovery_label=recovery_label)
+                raise RuntimeError(message)
 
-            correction_fraction = float(
-                np.linalg.norm(stored_float64 - raw_survivor_strength, axis=1).sum(dtype=np.float64)
-                / complete_strength_scale
-            )
             if (
                 not np.isfinite(correction_fraction)
                 or correction_fraction > _GBD_MOMENT_CORRECTION_FRACTION_LIMIT
