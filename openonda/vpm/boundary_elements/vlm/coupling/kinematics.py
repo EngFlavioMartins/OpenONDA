@@ -13,9 +13,10 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 if TYPE_CHECKING:
-    from ..particles.vlm_solver import VLMSolver
+    from ..solver.vlm_solver import VLMSolver
 
 
 class VLMKinematics(ABC):
@@ -193,7 +194,7 @@ class TranslatingVLM(VLMKinematics):
         uninitialized/empty lattice is left unchanged.
         """
         # Safety check: ensure lattice is initialized
-        if vlm_solver.lattice is None or vlm_solver.lattice.n_panels == 0:
+        if not vlm_solver.lattice_allocated or vlm_solver.lattice.n_panels == 0:
             return
 
         displacement_increment = self.velocity * time_step_size
@@ -269,7 +270,7 @@ class RotatingVLM(VLMKinematics):
         )
         return self.angular_speed * (integral + max(time - self.acceleration_time, 0.0))
 
-    def _rotation_matrix(self, angle: float) -> np.ndarray:
+    def _axis_rotation_matrix(self, angle: float) -> np.ndarray:
         """
         Create rotation matrix for rotation about self.axis by angle.
 
@@ -304,7 +305,7 @@ class RotatingVLM(VLMKinematics):
         position metadata are mutated in place.
         """
         angle = self.rotation_angle(time + time_step_size) - self.rotation_angle(time)
-        rotation_matrix = self._rotation_matrix(angle)
+        rotation_matrix = self._axis_rotation_matrix(angle)
 
         # Update metadata
         self.current_orientation = rotation_matrix @ self.current_orientation
@@ -430,7 +431,7 @@ class HeavingVLM(ManeuverVLM):
         amplitude: float,
         frequency: float,
         phase: float = 0.0,
-        direction: np.ndarray = None,
+        direction: ArrayLike | None = None,
     ):
         """
         Initialize heaving kinematics.
@@ -644,7 +645,7 @@ class CompositeVLM(VLMKinematics):
     def __init__(
         self,
         kinematics_components: list[VLMKinematics],
-        rotation_centre: np.ndarray = None,
+        rotation_centre: ArrayLike | None = None,
     ):
         """
         Initialize composite kinematics.
@@ -793,7 +794,7 @@ class SmoothRampVLM(VLMKinematics):
         Distance traveled during step:
           displacement_increment = X(time+dt) - X(time)
         """
-        if vlm_solver.lattice is None or vlm_solver.lattice.n_panels == 0:
+        if not vlm_solver.lattice_allocated or vlm_solver.lattice.n_panels == 0:
             return
 
         def _get_displacement(time: float) -> np.ndarray:

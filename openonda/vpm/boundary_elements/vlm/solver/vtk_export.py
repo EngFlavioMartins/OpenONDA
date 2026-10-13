@@ -2,10 +2,14 @@
 
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from openonda.core.vtk_output import write_vtk_dataset
+
+if TYPE_CHECKING:
+    from vtkmodules.vtkCommonDataModel import vtkFieldData
 
 # Optional fields are exported only when present in the recorded state.
 # In particular, absent unsteady loads must never be presented as measured zeros.
@@ -33,7 +37,7 @@ CELL_FIELDS = (
 
 
 def write_lattice_vtk(
-    fields: Mapping[str, object],
+    fields: Mapping[str, np.ndarray],
     filename: Path | str,
     *,
     reference_speed: float,
@@ -53,7 +57,7 @@ def write_lattice_vtk(
     actual normal panel force. All fields are selectable in ParaView.
     """
     from vtk import vtkCellArray, vtkPoints, vtkPolyData
-    from vtk.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
+    from vtkmodules.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
 
     corners = np.asarray(fields["panel_corner_position"])
     if corners.ndim != 3 or corners.shape[1:] != (4, 3) or not np.isfinite(corners).all():
@@ -72,7 +76,7 @@ def write_lattice_vtk(
     surface.SetPoints(points)
     surface.SetPolys(cells)
 
-    def add(data: object, name: str, values: np.ndarray) -> None:
+    def add(data: "vtkFieldData", name: str, values: np.ndarray) -> None:
         """Attach a named deep-copy array to VTK cell or field data."""
         array = numpy_to_vtk(np.ascontiguousarray(values), deep=True)
         array.SetName(name)

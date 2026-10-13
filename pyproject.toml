@@ -110,7 +110,8 @@ dev = [
 # Minimum confidence for reporting unused code (0-100).
 min_confidence = 80
 # b_vec: mutated in-place with numpy +=; vulture cannot track writes as reads.
-ignore_names = ["b_vec"]
+# op: mpi4py's allreduce keyword, mirrored by the MPI communicator Protocol.
+ignore_names = ["b_vec", "op"]
 
 [project.urls]
 Homepage = "https://github.com/EngFlavioMartins/OpenONDA"

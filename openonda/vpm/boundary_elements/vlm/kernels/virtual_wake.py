@@ -1,6 +1,7 @@
 """Finite-core stage transport for a temporary, uninserted newborn wake row."""
 
 from collections.abc import Callable
+from typing import Any
 
 import taichi as ti
 
@@ -8,29 +9,29 @@ from ....kernels.base import make_device_vortex_kernels
 from ....physics.induction.stretching import stretching_rate
 
 
-def make_virtual_wake_kernel(kernel_name: str, dtype: object) -> Callable:
+def make_virtual_wake_kernel(kernel_name: str, dtype: Any) -> Callable[..., None]:
     """Compile velocity/Jacobian and opposite strip reaction from one source model."""
     functions = make_device_vortex_kernels(kernel_name, dtype=dtype)
     q, zeta = functions["q_"], functions["zeta_"]
 
     @ti.kernel
     def accumulate(
-        position: ti.template(),
-        strength: ti.template(),
-        core: ti.template(),
-        velocity: ti.template(),
-        rate: ti.template(),
-        gradient_out: ti.template(),
-        sources: ti.types.ndarray(dtype=dtype, ndim=2),
-        source_strength: ti.types.ndarray(dtype=dtype, ndim=2),
-        source_core: ti.types.ndarray(dtype=dtype, ndim=1),
-        source_panel: ti.types.ndarray(dtype=ti.i32, ndim=1),
-        exchange: ti.template(),
+        position: ti.template(),  # type: ignore[invalid-annotation]
+        strength: ti.template(),  # type: ignore[invalid-annotation]
+        core: ti.template(),  # type: ignore[invalid-annotation]
+        velocity: ti.template(),  # type: ignore[invalid-annotation]
+        rate: ti.template(),  # type: ignore[invalid-annotation]
+        gradient_out: ti.template(),  # type: ignore[invalid-annotation]
+        sources: ti.types.ndarray(dtype=dtype, ndim=2),  # type: ignore[invalid-annotation]
+        source_strength: ti.types.ndarray(dtype=dtype, ndim=2),  # type: ignore[invalid-annotation]
+        source_core: ti.types.ndarray(dtype=dtype, ndim=1),  # type: ignore[invalid-annotation]
+        source_panel: ti.types.ndarray(dtype=ti.i32, ndim=1),  # type: ignore[invalid-annotation]
+        exchange: ti.template(),  # type: ignore[invalid-annotation]
         count: ti.i32,
         n_sources: ti.i32,
         mode: ti.i32,
         publish: ti.i32,
-        has_gradient: ti.template(),
+        has_gradient: ti.template(),  # type: ignore[invalid-annotation]
     ):
         """Add virtual-row rates and book the negative strength rate to its TE strip."""
         for i in range(count):

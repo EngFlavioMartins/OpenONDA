@@ -517,7 +517,9 @@ class VLMLoadingDistribution:
         """Append one time-step's distributions to the per-surface CSVs."""
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(case_dir, sample_directory)
+        samples_dir = resolve_samples_dir(
+            case_dir, None if sample_directory is None else str(sample_directory)
+        )
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = surface_name.replace("/", "_").replace(" ", "_")

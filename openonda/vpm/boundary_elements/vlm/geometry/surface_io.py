@@ -9,49 +9,46 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
 from .aircraft import Aircraft, Wing, WingSegment
 
 
-def surface_to_dict(aircraft: "Aircraft") -> dict:
+def surface_to_dict(aircraft: Aircraft) -> dict[str, Any]:
     """Return the input geometry and reference values as a portable JSON mapping."""
-    data = {"uid": aircraft.uid, "wings": []}
-
+    wings: list[dict[str, Any]] = []
     for wing in aircraft.wings.values():
-        wing_data = {"uid": wing.uid, "symmetry": wing.symmetry, "segments": []}
-
+        segments: list[dict[str, Any]] = []
         for segment in wing.segments.values():
-            seg_data = {
-                "uid": segment.uid,
-                "vertex_position": {k: v.tolist() for k, v in segment.vertex_position.items()},
-                "n_chordwise_panels": segment.n_chordwise_panels,
-                "n_spanwise_panels": segment.n_spanwise_panels,
-                "airfoils": segment.airfoils,
-            }
-            wing_data["segments"].append(seg_data)
-
-        data["wings"].append(wing_data)
+            segments.append(
+                {
+                    "uid": segment.uid,
+                    "vertex_position": {k: v.tolist() for k, v in segment.vertex_position.items()},
+                    "n_chordwise_panels": segment.n_chordwise_panels,
+                    "n_spanwise_panels": segment.n_spanwise_panels,
+                    "airfoils": segment.airfoils,
+                }
+            )
+        wings.append({"uid": wing.uid, "symmetry": wing.symmetry, "segments": segments})
 
     # Add reference values
     refs = aircraft.refs
-    data["refs"] = {
-        "area": refs.get("area", 1.0),
-        "chord": refs.get("chord", 1.0),
-        "span": refs.get("span", 1.0),
-        "geometry_centre": refs.get("geometry_centre", np.zeros(3)).tolist()
-        if hasattr(refs.get("geometry_centre", np.zeros(3)), "tolist")
-        else list(refs.get("geometry_centre", [0, 0, 0])),
-        "reference_point": refs.get("reference_point", np.zeros(3)).tolist()
-        if hasattr(refs.get("reference_point", np.zeros(3)), "tolist")
-        else list(refs.get("reference_point", [0, 0, 0])),
+    return {
+        "uid": aircraft.uid,
+        "wings": wings,
+        "refs": {
+            "area": refs.get("area", 1.0),
+            "chord": refs.get("chord", 1.0),
+            "span": refs.get("span", 1.0),
+            "geometry_centre": np.asarray(refs.get("geometry_centre", np.zeros(3))).tolist(),
+            "reference_point": np.asarray(refs.get("reference_point", np.zeros(3))).tolist(),
+        },
     }
 
-    return data
 
-
-def save_surface(aircraft: "Aircraft", filepath: str) -> str:
+def save_surface(aircraft: Aircraft, filepath: str) -> str:
     """
     Save aircraft surface geometry to JSON file.
 
@@ -72,7 +69,7 @@ def save_surface(aircraft: "Aircraft", filepath: str) -> str:
     return output_path
 
 
-def load_surface(filepath: str) -> "Aircraft":
+def load_surface(filepath: str) -> Aircraft:
     """Load an aircraft surface geometry from a JSON file.
 
     Parameters
