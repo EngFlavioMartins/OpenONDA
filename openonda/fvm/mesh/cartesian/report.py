@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
+from ..data import MeshData
+
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
@@ -70,7 +72,7 @@ class RecoveryDiagnostics:
     partial_accepted: int = 0
 
     @classmethod
-    def from_mesh(cls, mesh_data: dict) -> RecoveryDiagnostics:
+    def from_mesh(cls, mesh_data: MeshData) -> RecoveryDiagnostics:
         """Read the projection counts recorded in ``mesh_generation``."""
         projection = mesh_data.get("mesh_generation", {}).get("surface_projection", {})
         attempted = int(projection.get("attempted_points", 0))

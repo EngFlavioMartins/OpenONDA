@@ -53,10 +53,14 @@ def _signed_component_volumes(triangles: np.ndarray, triangle_ids: np.ndarray) -
         components.append(component)
     volumes = []
     for component in components:
-        values = triangles[np.asarray(component, dtype=np.int64)]
+        component_triangles = triangles[np.asarray(component, dtype=np.int64)]
         volumes.append(
             float(
-                np.einsum("ij,ij->i", values[:, 0], np.cross(values[:, 1], values[:, 2])).sum()
+                np.einsum(
+                    "ij,ij->i",
+                    component_triangles[:, 0],
+                    np.cross(component_triangles[:, 1], component_triangles[:, 2]),
+                ).sum()
                 / 6.0
             )
         )

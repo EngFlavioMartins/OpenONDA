@@ -3,17 +3,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import numpy as np
 
+from ..data import FaceVertices, GeometryData, MeshData
 from ..geometry import compute_mesh_geometry
 from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
 from ..validation import (
+    MeshQualityReport,
     cells_incident_to_points,
     extract_cell_subset_mesh,
     validate_cell_area_closure,
@@ -56,7 +58,7 @@ def _box_patch_point_constraints(
     points: np.ndarray,
     faces: list[np.ndarray] | np.ndarray,
     bounds: np.ndarray | tuple[float, float, float, float, float, float],
-    feature_constraints: dict[int, object] | None = None,
+    feature_constraints: FeaturePlaneConstraints | None = None,
 ) -> dict[int, dict[int, float]]:
     """Preserve incident box planes at wall edges and corners.
 
@@ -114,14 +116,17 @@ def _box_patch_point_constraints(
 # margin keeps an exact 45-degree tessellation turn from depending on round-off.
 _SHARP_RIM_COSINE = math.cos(math.pi / 4.0) - 1.0e-8
 
+# Planar STL facets constraining each wall point: (unit normal, plane offset, facet index).
+FeaturePlaneConstraints: TypeAlias = dict[int, list[tuple[np.ndarray, float, SurfaceIndex]]]
+
 
 def _planar_feature_constraints(
     points: np.ndarray,
-    faces: list[np.ndarray],
+    faces: FaceVertices,
     triangles: np.ndarray,
     *,
     box_wall: bool = False,
-) -> dict | dict[int, object]:
+) -> FeaturePlaneConstraints:
     """Keep broad STL facets planar across a curved surface's sharp rim.
 
     A smoothed wrapper face may bridge a planar cap and its curved side. A
@@ -144,7 +149,8 @@ def _planar_feature_constraints(
     scale = max(float(np.ptp(triangles, axis=(0, 1)).max()), 1.0)
     groups: dict[tuple[float, ...], list[int]] = {}
     for triangle_id, (normal, offset) in enumerate(zip(normals, offsets, strict=True)):
-        key = tuple(np.round(np.r_[normal, offset / scale], 8))
+        scaled_plane = np.concatenate((normal, [offset / scale]))
+        key = tuple(float(value) for value in np.round(scaled_plane, 8))
         groups.setdefault(key, []).append(triangle_id)
     from scipy.spatial import ConvexHull, QhullError
 
@@ -153,14 +159,16 @@ def _planar_feature_constraints(
     triangle_edges: list[tuple[tuple[int, int], ...]] = []
     edge_triangles: dict[tuple[int, int], list[int]] = {}
     for triangle_id, vertex_row in enumerate(triangle_vertices):
-        edges = tuple(
-            tuple(sorted((int(vertex_row[i]), int(vertex_row[(i + 1) % 3])))) for i in range(3)
-        )
+        edge_list: list[tuple[int, int]] = []
+        for i in range(3):
+            lower_vertex, upper_vertex = sorted((int(vertex_row[i]), int(vertex_row[(i + 1) % 3])))
+            edge_list.append((lower_vertex, upper_vertex))
+        edges = tuple(edge_list)
         triangle_edges.append(edges)
         for edge in edges:
             edge_triangles.setdefault(edge, []).append(triangle_id)
 
-    planes = []
+    planes: list[tuple[np.ndarray, float, float, SurfaceIndex]] = []
     for ids in groups.values():
         remaining = set(ids)
         while remaining:
@@ -196,8 +204,8 @@ def _planar_feature_constraints(
             except QhullError:
                 continue
             rim = planar[hull.vertices]
-            edges = np.roll(rim, -1, axis=0) - rim
-            edge_normals = np.column_stack((-edges[:, 1], edges[:, 0]))
+            rim_edges = np.roll(rim, -1, axis=0) - rim
+            edge_normals = np.column_stack((-rim_edges[:, 1], rim_edges[:, 0]))
             edge_normals /= np.linalg.norm(edge_normals, axis=1)[:, None]
             spans = np.ptp(planar @ edge_normals.T, axis=0)
             width = float(spans.min())
@@ -215,7 +223,7 @@ def _planar_feature_constraints(
     # A face may only take the facet that holds the wall point under its
     # centre; a broad facet further along the wall would drag it across a rim.
     surface_index = SurfaceIndex.build(triangles)
-    constraints: dict[int, list[tuple[np.ndarray, float, SurfaceIndex]]] = {}
+    constraints: FeaturePlaneConstraints = {}
     local_face_size: dict[int, float] = {}
     for face in faces:
         vertices = points[np.asarray(face, dtype=np.int64)]
@@ -350,7 +358,7 @@ def _nearest_finite_feature_intersection(
 
 
 def _project_to_feature_planes(
-    point: np.ndarray, planes: list[tuple[np.ndarray, float, SurfaceIndex]], *, scale: float
+    point: np.ndarray, planes: Sequence[tuple[np.ndarray, float, SurfaceIndex]], *, scale: float
 ) -> np.ndarray | None:
     """Project onto actual finite feature facets, or None where they do not meet."""
     if not planes:
@@ -372,7 +380,7 @@ def _project_to_feature_planes(
     return projected
 
 
-def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _quality_snapshot(mesh_data: MeshData) -> tuple[dict[str, Any], GeometryData]:
     """Compute the native geometry and mesh-quality measurements."""
     topology = validate_topology(mesh_data)
     geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
@@ -423,7 +431,7 @@ def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[s
     return {**topology, **quality}, geometry
 
 
-def _verify_cfmesh_surface_topology(mesh_data: dict[str, Any]) -> dict[str, Any]:
+def _verify_cfmesh_surface_topology(mesh_data: MeshData) -> dict[str, Any]:
     """Evaluate the native surface-topology repair predicates.
 
     The extracted template is allowed to continue only when the four native
@@ -477,7 +485,7 @@ def _verify_cfmesh_surface_topology(mesh_data: dict[str, Any]) -> dict[str, Any]
 
 
 def _surface_distance_snapshot(
-    mesh_data: dict[str, Any], surfaces: tuple[STLSurface, ...]
+    mesh_data: MeshData, surfaces: tuple[STLSurface, ...]
 ) -> dict[str, dict[str, float]]:
     """Measure configured wall vertices against their reference surfaces."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
@@ -503,7 +511,7 @@ def _surface_distance_snapshot(
     return result
 
 
-def _cell_type_counts(mesh_data: dict[str, Any]) -> dict[str, int]:
+def _cell_type_counts(mesh_data: MeshData) -> dict[str, int]:
     """Classify untouched hexahedra versus general polyhedral control volumes."""
     n_cells = int(mesh_data["n_cells"])
     n_internal = int(mesh_data["n_interior_faces"])
@@ -608,12 +616,12 @@ class CartesianMesher:
         if not math.isfinite(max_cell_size) or max_cell_size <= 0.0:
             raise ValueError("max_cell_size must be finite and positive")
         boundary_size_is_default = boundary_cell_size is None
-        if boundary_cell_size is None:
-            boundary_cell_size = max_cell_size
-        boundary_cell_size = float(boundary_cell_size)
-        if not math.isfinite(boundary_cell_size) or boundary_cell_size <= 0.0:
+        resolved_boundary_cell_size = float(
+            max_cell_size if boundary_cell_size is None else boundary_cell_size
+        )
+        if not math.isfinite(resolved_boundary_cell_size) or resolved_boundary_cell_size <= 0.0:
             raise ValueError("boundary_cell_size must be finite and positive")
-        if boundary_cell_size > max_cell_size:
+        if resolved_boundary_cell_size > max_cell_size:
             raise ValueError("boundary_cell_size must not exceed max_cell_size")
         if not isinstance(surface_may_cross_domain_boundary, bool):
             raise TypeError("surface_may_cross_domain_boundary must be a bool")
@@ -621,7 +629,7 @@ class CartesianMesher:
             min_cell_size = float(min_cell_size)
             if not math.isfinite(min_cell_size) or min_cell_size <= 0.0:
                 raise ValueError("min_cell_size must be finite and positive")
-            if min_cell_size > boundary_cell_size:
+            if min_cell_size > resolved_boundary_cell_size:
                 raise ValueError("min_cell_size must not exceed boundary_cell_size")
         surfaces = tuple(surfaces)
         patches = tuple(surface.patch for surface in surfaces)
@@ -673,7 +681,7 @@ class CartesianMesher:
                 *(item.cell_size for item in patch_refinements),
             ]
             if not boundary_size_is_default:
-                exact_controls.append(boundary_cell_size)
+                exact_controls.append(resolved_boundary_cell_size)
             if features is not None:
                 exact_controls.append(features.cell_size)
             for requested in exact_controls:
@@ -691,9 +699,9 @@ class CartesianMesher:
                         f"{cell_size_anchor:g}; local sizes must be power-of-two multiples"
                     )
             if boundary_size_is_default:
-                boundary_cell_size = background_cell_size
+                resolved_boundary_cell_size = background_cell_size
             requested_bounds = np.asarray(domain.bounds, dtype=np.float64)
-            resolved_bounds = []
+            resolved_bounds: list[float] = []
             tolerance = 1e-12 * background_cell_size
             for axis in range(3):
                 lower = requested_bounds[2 * axis]
@@ -707,7 +715,10 @@ class CartesianMesher:
                     )
                 )
             requested_domain = domain
-            domain = BoxDomain(tuple(resolved_bounds), domain.patches)
+            lower_x, upper_x, lower_y, upper_y, lower_z, upper_z = resolved_bounds
+            domain = BoxDomain(
+                (lower_x, upper_x, lower_y, upper_y, lower_z, upper_z), domain.patches
+            )
         else:
             background_cell_size = max_cell_size
             requested_domain = domain
@@ -725,7 +736,7 @@ class CartesianMesher:
         self.max_cell_size = max_cell_size
         self.background_cell_size = background_cell_size
         self.cell_size_anchor = cell_size_anchor
-        self.boundary_cell_size = boundary_cell_size
+        self.boundary_cell_size = resolved_boundary_cell_size
         self.min_cell_size = min_cell_size
         self.refinements = refinements
         self.patch_refinements = patch_refinements
@@ -838,7 +849,7 @@ class CartesianMesher:
         "boundaryLayerRefinement",
     )
 
-    def _run_cfmesh_workflow(self, stop_after: str) -> dict[str, Any]:
+    def _run_cfmesh_workflow(self, stop_after: str) -> MeshData:
         """Run one prefix of the single production cfMesh-style workflow.
 
         Checkpoint builds and the ordinary public build share this method so a
@@ -977,7 +988,7 @@ class CartesianMesher:
                 }
         return stage_mesh
 
-    def _finalize_cfmesh_mesh(self, mesh_data: dict[str, Any]) -> dict[str, Any]:
+    def _finalize_cfmesh_mesh(self, mesh_data: MeshData) -> MeshData:
         """Name, validate, and report the completed cfMesh-style mesh."""
         surface_names = {surface.patch for surface in self.surfaces}
         domain_names = set(self.domain.patches.as_tuple())
@@ -1083,7 +1094,7 @@ class CartesianMesher:
                 generation["resolved_boundary_cell_size"] = root_size / (2 ** int(boundary_level))
         return mesh_data
 
-    def _constrain_cfmesh_wall_points(self, mesh_data: dict[str, Any]) -> None:
+    def _constrain_cfmesh_wall_points(self, mesh_data: MeshData) -> None:
         """Commit a surface-constrained wall projection state update.
 
         The cfMesh finite-volume optimizer is allowed to move partition points
@@ -1107,7 +1118,7 @@ class CartesianMesher:
         boundary_columns: list[tuple[int, int, np.ndarray, dict[int, int]]] = []
         constrained_outer_ids: set[int] = set()
         box_wall_constraints: dict[int, dict[int, float]] = {}
-        planar_wall_constraints: dict[int, list[tuple[np.ndarray, float, SurfaceIndex]]] = {}
+        planar_wall_constraints: FeaturePlaneConstraints = {}
         column_maps = mesh_data.get("_cfmesh_boundary_column_inner", {})
 
         # The volume optimizer is also allowed to drift outer box points.
@@ -1287,6 +1298,7 @@ class CartesianMesher:
         try:
             column_translation_relaxation: float | None = None
             column_validation_error: Exception | None = None
+            accepted_base: tuple[GeometryData, MeshQualityReport] | None = None
             for translation_relaxation in (1.0, 0.75, 0.5, 0.25, 0.125, 0.0):
                 trial = outer_candidate.copy()
                 for inner_id, displacement in mean_inner_displacements.items():
@@ -1294,17 +1306,19 @@ class CartesianMesher:
                 mesh_data["vertex_position"] = trial
                 try:
                     validate_topology(mesh_data)
-                    base_geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
-                    base_quality = validate_geometry(mesh_data, base_geometry)
+                    trial_base_geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
+                    trial_base_quality = validate_geometry(mesh_data, trial_base_geometry)
                 except Exception as exc:
                     column_validation_error = exc
                     continue
                 column_translation_relaxation = translation_relaxation
+                accepted_base = (trial_base_geometry, trial_base_quality)
                 candidate = trial
                 break
-            if column_translation_relaxation is None:
+            if accepted_base is None:
                 assert column_validation_error is not None
                 raise column_validation_error
+            base_geometry, base_quality = accepted_base
 
             # Restore the wrapper's original wall-normal intent.  Native
             # cfMesh creates each outer/inner pair normal to the pre-optimized
@@ -1371,7 +1385,7 @@ class CartesianMesher:
             affected_cells = cells_incident_to_points(
                 mesh_data, np.fromiter(targets, dtype=np.int32, count=len(targets))
             )
-            validation_mesh: dict[str, Any] | None = None
+            validation_mesh: MeshData | None = None
             validation_point_ids: np.ndarray | None = None
             validation_grid = None
             if len(affected_cells):
@@ -1402,7 +1416,7 @@ class CartesianMesher:
                     # Positive face-pyramid volumes do not detect every
                     # self-intersecting polyhedron created at multi-patch
                     # wrapper corners. Check every cell whose vertices moved.
-                    if validation_mesh is not None:
+                    if validation_mesh is not None and validation_grid is not None:
                         # Straightening changes coordinates only. Reuse the
                         # baseline's cell/face connectivity, but run VTK's
                         # intersection predicate on every candidate geometry.
@@ -1424,8 +1438,8 @@ class CartesianMesher:
                 raise validation_error
             for surface in self.surfaces:
                 validate_wall_vertex_conformance(mesh_data, surface.triangles, surface.patch)
-            for point_id, planes in box_wall_constraints.items():
-                for axis, bound in planes.items():
+            for point_id, axis_bounds in box_wall_constraints.items():
+                for axis, bound in axis_bounds.items():
                     if candidate[point_id, axis] != bound:
                         raise ValueError("Box wall edge/corner plane constraint was not preserved")
             for point_id, planes in planar_wall_constraints.items():
@@ -1479,8 +1493,8 @@ class CartesianMesher:
         self,
         *,
         stop_after: str | None = None,
-        on_generated: Callable[[dict[str, Any]], None] | None = None,
-    ) -> dict[str, Any]:
+        on_generated: Callable[[MeshData], None] | None = None,
+    ) -> MeshData:
         """Build, validate, name, and return native face-based mesh data.
 
         Parameters
@@ -1496,7 +1510,7 @@ class CartesianMesher:
 
         Returns
         -------
-        dict[str, object]
+        MeshData
             Native face-based mesh with vertices, faces, owner/neighbour
             indices, boundary ranges, counts, and generation diagnostics.
             Coordinates and lengths use metres.
@@ -1533,7 +1547,7 @@ class CartesianMesher:
             )
         return finalized
 
-    def __call__(self) -> dict[str, Any]:
+    def __call__(self) -> MeshData:
         """Build the mesh using the default full workflow."""
         return self.build()
 

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .data import BoundaryPatchData, MeshData
+
 OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
 
 
@@ -85,9 +87,9 @@ def _grade_segment(
         sizes.append(size)
         pos += size
         size = min(size * ratio, h_far)
-    sizes = np.asarray(sizes, dtype=np.float64)  # small→large, from the wall end
+    cell_sizes = np.asarray(sizes, dtype=np.float64)  # small→large, from the wall end
     # 'lo': fine cell adjacent to a; 'hi': fine cell adjacent to b (sizes run large→small from a)
-    nodes = a + np.cumsum(sizes if wall == "lo" else sizes[::-1])
+    nodes = a + np.cumsum(cell_sizes if wall == "lo" else cell_sizes[::-1])
     return nodes[:-1]  # drop the far endpoint (interior nodes only)
 
 
@@ -188,7 +190,7 @@ def box_mesh_3d(
     merge_outer_patch: str | None = None,
     empty_spanwise: bool = False,
     separate_outer: tuple[str, ...] = (),
-) -> dict:
+) -> MeshData:
     """Face-based ``mesh_data`` dict for a rectilinear grid with a box hole.
 
     Patch order: inlet (xmin), outlet (xmax), ymin, ymax, zmin, zmax, then the
@@ -242,7 +244,7 @@ def box_mesh_3d(
     def pid(i: int | np.ndarray, j: int | np.ndarray, k: int | np.ndarray) -> int | np.ndarray:
         return i + npx * (j + npy * k)
 
-    def cid(i: int | np.ndarray, j: int | np.ndarray, k: int | np.ndarray) -> int | np.ndarray:
+    def cid(i: np.ndarray, j: np.ndarray, k: np.ndarray) -> np.ndarray:
         return i + nx * (j + ny * k)
 
     def oriented_block(quads: np.ndarray, desired_dir: np.ndarray) -> np.ndarray:
@@ -307,7 +309,7 @@ def box_mesh_3d(
     q_z1, ib, jb, _ = z_family(np.array([nz]))
     o_z1 = cid(ib, jb, np.full_like(ib, nz - 1))
 
-    outer = [
+    outer: list[tuple[str, np.ndarray, np.ndarray]] = [
         (OUTER_PATCH_NAMES[0], oriented_block(q_x0, -ex), o_x0),
         (OUTER_PATCH_NAMES[1], oriented_block(q_x1, ex), o_x1),
         (OUTER_PATCH_NAMES[2], oriented_block(q_y0, -ey), o_y0),
@@ -374,7 +376,7 @@ def box_mesh_3d(
     all_owners = [interior_owners] + [own for _, _, own in outer] + [wall_owners]
     n_interior = interior_quads.shape[0]
 
-    boundary = []
+    boundary: list[BoundaryPatchData] = []
     start = n_interior
     if merge_outer_patch is not None:
         merged = [entry for entry in outer if not _is_standalone(entry[0])]
@@ -421,7 +423,7 @@ def box_mesh_3d(
             }
         )
 
-    all_quads = np.vstack(all_quads)
+    stacked_quads = np.vstack(all_quads)
     owners = np.concatenate(all_owners)
 
     # Compact cell numbering after the carve (unchanged when there is no hole).
@@ -451,12 +453,12 @@ def box_mesh_3d(
 
     return {
         "vertex_position": points,
-        "faces": np.ascontiguousarray(all_quads, dtype=np.int32),
+        "faces": np.ascontiguousarray(stacked_quads, dtype=np.int32),
         "owners": np.asarray(owners, dtype=np.int32),
         "neighbours": np.asarray(neighbours, dtype=np.int32),
         "boundary": boundary,
         "n_cells": int(keep.sum()),
-        "n_faces": all_quads.shape[0],
+        "n_faces": stacked_quads.shape[0],
         "n_interior_faces": n_interior,
         "n_points": points.shape[0],
         # Gmsh element type 5 = 8-node hexahedron.  The explicit vertices let
@@ -476,7 +478,7 @@ def coupling_box_mesh(
     nodes: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
     empty_spanwise: bool = False,
     separate_outer: tuple[str, ...] = (),
-) -> dict:
+) -> MeshData:
     """Return a hex mesh whose six sides form one coupling patch.
 
     ``nodes=(xs, ys, zs)`` supplies explicit per-axis grid lines (e.g. graded,
@@ -517,6 +519,9 @@ def coupling_box_mesh(
         explicit nodes do not match the bounds.
     """
     x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_box)
+    xs: np.ndarray
+    ys: np.ndarray
+    zs: np.ndarray
     if nodes is not None:
         xs, ys, zs = (np.asarray(a, dtype=np.float64) for a in nodes)
         if not (

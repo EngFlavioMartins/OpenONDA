@@ -17,12 +17,13 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
 import math
-from typing import Any, cast
+from typing import cast
 
 import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
+from ..data import BoundaryPatchData, MeshData
 from ..progress import mesh_stage
 from ..surface_classification import (
     SurfaceIndex,
@@ -207,7 +208,7 @@ class _TemplateTopologyExtractor:
         leaves: np.ndarray,
         max_level: int,
         limits: tuple[int, int, int],
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[dict], np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[BoundaryPatchData], np.ndarray]:
         n_cells = len(leaves)
         nx, ny, nz = limits
         max_point_code = (nx + 1) * (ny + 1) * (nz + 1) - 1
@@ -406,7 +407,7 @@ class _TemplateTopologyExtractor:
 
         face_blocks = [interior_codes[:n_interior]]
         owner_blocks = [interior_owners[:n_interior]]
-        boundary: list[dict] = []
+        boundary: list[BoundaryPatchData] = []
         start = n_interior
         ordered_names = list(boundary_names)
         if self.surface is not None:
@@ -479,7 +480,7 @@ def _extract_mesh(
     max_level: int,
     global_level: int,
     boundary_level: int,
-) -> dict[str, Any]:
+) -> MeshData:
     limits = (2**max_level, 2**max_level, 2**max_level)
     extractor = _TemplateTopologyExtractor(root_bounds)
     encoded_faces, owners, neighbours, boundary, levels = extractor._extract_topology(
@@ -651,24 +652,21 @@ def _extract_mesh(
         del boundary_order, permutation
 
     face_order_entries = len(face_order)
-    del (
-        internal_to_change,
-        boundary_to_change,
-        reordered_octree_faces,
-        final_boundary_keys,
-        face_order,
-    )
+    del internal_to_change, boundary_to_change, reordered_octree_faces
+    del final_boundary_keys, face_order
     cfmesh_cell_face_order: list[list[int]] = [[] for _cell in leaves]
-    records = ()
+    face_records: list[tuple[tuple[int, int, int, int], bool, tuple[int, ...]]] = []
     for chunk_index, face_ids in enumerate(
         _matching_face_id_chunks(encoded_faces, ordered_octree_faces)
     ):
         start = chunk_index * _FACE_LOOKUP_CHUNK_SIZE
-        records = ordered_octree_faces[start : start + len(face_ids)]
-        for face_id, (_signature, _internal, attached_cells) in zip(face_ids, records, strict=True):
+        face_records = ordered_octree_faces[start : start + len(face_ids)]
+        for face_id, (_signature, _internal, attached_cells) in zip(
+            face_ids, face_records, strict=True
+        ):
             for cell_id in attached_cells:
                 cfmesh_cell_face_order[cell_id].append(int(face_id))
-    del records, ordered_octree_faces
+    del face_records, ordered_octree_faces
     if any(not face_ids for face_ids in cfmesh_cell_face_order):
         raise RuntimeError("cfMesh cell-face ordering left an empty mesh cell")
 
@@ -684,9 +682,11 @@ def _extract_mesh(
         flat_face_indices[start:stop]
         for start, stop in zip(face_offsets[:-1], face_offsets[1:], strict=True)
     ]
-    widths = {len(face) for face in indexed_faces}
+    face_widths = {len(face) for face in indexed_faces}
     faces: list[np.ndarray] | np.ndarray = (
-        np.ascontiguousarray(indexed_faces, dtype=np.int32) if len(widths) == 1 else indexed_faces
+        np.ascontiguousarray(indexed_faces, dtype=np.int32)
+        if len(face_widths) == 1
+        else indexed_faces
     )
     px = point_codes % sx
     yz = point_codes // sx
@@ -718,10 +718,10 @@ def _extract_mesh(
     # Recover both orders with vectorized unique operations; this removes an
     # 8-corner Python loop over every reference-grid leaf.
     _unique_codes, first_positions = np.unique(flat_codes, return_index=True)
-    ordered_codes = _unique_codes[np.argsort(first_positions, kind="stable")]
-    ordered_labels = np.searchsorted(point_codes, ordered_codes)
+    first_order_codes = _unique_codes[np.argsort(first_positions, kind="stable")]
+    ordered_labels = np.searchsorted(point_codes, first_order_codes)
     ordered_valid = (ordered_labels < len(point_codes)) & (
-        point_codes[np.minimum(ordered_labels, len(point_codes) - 1)] == ordered_codes
+        point_codes[np.minimum(ordered_labels, len(point_codes) - 1)] == first_order_codes
     )
     point_order = ordered_labels[ordered_valid].astype(np.int32)
     reversed_codes, reverse_positions = np.unique(flat_codes[::-1], return_index=True)
@@ -745,22 +745,24 @@ def _extract_mesh(
     last_upper += vertex_tolerance
     points[last_labels] = np.where(corners[last_corner].astype(bool), last_upper, last_lower)
     cell_vertex_indices = np.empty((len(leaves), 8), dtype=np.int32)
-    x0, y0, z0, width = (leaves[:, index].astype(np.int64) for index in range(4))
-    x1, y1, z1 = x0 + width, y0 + width, z0 + width
+    lower_x, lower_y, lower_z, leaf_width = (
+        leaves[:, index].astype(np.int64) for index in range(4)
+    )
+    upper_x, upper_y, upper_z = lower_x + leaf_width, lower_y + leaf_width, lower_z + leaf_width
 
     def encode(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> np.ndarray:
         return x + sx * (y + sy * z)
 
     cell_codes = np.column_stack(
         (
-            encode(x0, y0, z0),
-            encode(x1, y0, z0),
-            encode(x1, y1, z0),
-            encode(x0, y1, z0),
-            encode(x0, y0, z1),
-            encode(x1, y0, z1),
-            encode(x1, y1, z1),
-            encode(x0, y1, z1),
+            encode(lower_x, lower_y, lower_z),
+            encode(upper_x, lower_y, lower_z),
+            encode(upper_x, upper_y, lower_z),
+            encode(lower_x, upper_y, lower_z),
+            encode(lower_x, lower_y, upper_z),
+            encode(upper_x, lower_y, upper_z),
+            encode(upper_x, upper_y, upper_z),
+            encode(lower_x, upper_y, upper_z),
         )
     )
     indices = np.searchsorted(point_codes, cell_codes)
@@ -821,7 +823,7 @@ def build_cfmesh_template(
     domain_patch_names: Sequence[str] = (),
     surface_patch_names: Sequence[str] = (),
     exact_cell_sizes: bool = False,
-) -> dict[str, Any]:
+) -> MeshData:
     """Build the cfMesh template, optionally preserving an exact size lattice."""
     root_bounds, global_level = _root_cube(domain, max_cell_size)
     boundary_level = global_level + _additional_level(max_cell_size, boundary_cell_size)
@@ -1208,7 +1210,7 @@ class _OctreeSurfaceLocator:
         self.leaf_lookup = LeafLookup(leaves, lattice_width.bit_length() - 1)
         self.tolerance = 1.0e-15 * float(root_bounds[1] - root_bounds[0])
         self._leaf_triangles: dict[int, np.ndarray] = {}
-        self._nearest_cache: dict[tuple[int, bool, bytes], tuple[np.ndarray, float, int]] = {}
+        self._nearest_cache: dict[tuple[int, bytes], tuple[np.ndarray, float, int]] = {}
 
     def leaves_in_box(self, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
         """Return octree leaves with positive-volume overlap with a box."""
@@ -1454,7 +1456,7 @@ class _SurfaceFeatureLocator:
 
 
 def _map_assigned_patch_points(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     face_patch_ids: np.ndarray,
     patch_locators: Sequence[_OctreeSurfaceLocator],
     *,
@@ -1538,7 +1540,7 @@ def _map_assigned_patch_points(
 
 
 def _untangle_assigned_patch_surface(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     face_patch_ids: np.ndarray,
     patch_locators: Sequence[_OctreeSurfaceLocator],
     global_locator: _OctreeSurfaceLocator,
@@ -1686,7 +1688,7 @@ def _untangle_assigned_patch_surface(
 
 
 def project_cfmesh_template(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     *,
     domain: SurfaceBounds,
     domain_patch_names: Sequence[str],
@@ -1755,7 +1757,7 @@ def _patch_alignment_weight(
 
 
 def assign_cfmesh_patches(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     *,
     domain: SurfaceBounds,
     domain_patch_names: Sequence[str],
@@ -1816,7 +1818,7 @@ def assign_cfmesh_patches(
     else:
         face_patch_ids = np.empty(len(boundary_face_ids), dtype=np.int32)
         for local_face_id, centre in enumerate(face_centres):
-            _nearest, _distance, triangle_id = global_locator.nearest_triangle(
+            _nearest_point, _nearest_distance, triangle_id = global_locator.nearest_triangle(
                 centre, max_search_iterations=100
             )
             face_patch_ids[local_face_id] = int(triangle_patch_ids[triangle_id])
@@ -1947,7 +1949,7 @@ def assign_cfmesh_patches(
         )
         updated = face_patch_ids.copy()
         changed = 0
-        changed_faces: list[int] = []
+        changed_faces = []
         edge_metric_cache: dict[tuple[tuple[int, int], int, int], float] = {}
 
         def edge_metric(
@@ -1988,7 +1990,7 @@ def assign_cfmesh_patches(
             face = source_faces[face_id]
             if not inverted_points.intersection(map(int, face)):
                 continue
-            neighbour_patches: list[int] = []
+            neighbour_patches = []
             face_edges: list[tuple[int, int]] = []
             for first_value, second_value in zip(face, np.roll(face, -1), strict=True):
                 first_id = int(first_value)
@@ -2034,7 +2036,7 @@ def assign_cfmesh_patches(
 
     faces = source_faces[:n_internal]
     owners = list(map(int, source_owners[:n_internal]))
-    boundary: list[dict[str, Any]] = []
+    boundary: list[BoundaryPatchData] = []
     start_face = n_internal
     for patch_name, patch_faces, patch_owners in zip(
         patch_names, grouped_faces, grouped_owners, strict=True
@@ -2081,7 +2083,7 @@ def assign_cfmesh_patches(
 
 
 def remap_cfmesh_patch_points(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     *,
     domain: SurfaceBounds,
     domain_patch_names: Sequence[str],

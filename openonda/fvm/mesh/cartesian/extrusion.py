@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ..data import BoundaryPatchData, MeshData
 from ..geometry import compute_mesh_geometry
 from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
@@ -30,7 +31,8 @@ def _section_edges(polygons: list[np.ndarray]) -> dict[tuple[int, int], list[tup
     edges: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
     for cell, ids in enumerate(polygons):
         for a, b in zip(ids, np.roll(ids, -1), strict=True):
-            edges.setdefault(tuple(sorted((int(a), int(b)))), []).append((cell, int(a), int(b)))
+            first, second = sorted((int(a), int(b)))
+            edges.setdefault((first, second), []).append((cell, int(a), int(b)))
     for adjacent in edges.values():
         if len(adjacent) == 2:
             if adjacent[0][1:] != adjacent[1][1:][::-1]:
@@ -104,13 +106,13 @@ def _section_boundary_name(
 
 
 def extrude_mesh_section(
-    mesh: dict[str, object],
+    mesh: MeshData,
     *,
     coordinate: float,
     levels: Sequence[float] | np.ndarray,
     domain: BoxDomain,
     surfaces: Sequence[STLSurface] = (),
-) -> dict[str, object]:
+) -> MeshData:
     """Extrude a z-normal section, preserving shared edges and named patches.
 
     The caller explicitly selects a span-invariant geometry. Conformance is
@@ -203,7 +205,10 @@ def extrude_mesh_section(
 
     np2, nc2, nz = len(points), len(polygons), len(levels) - 1
     vertices = np.vstack([np.column_stack((points[:, :2], np.full(np2, z))) for z in levels])
-    interior, boundary_faces = [], {name: [] for name in (*names, *indices)}
+    interior: list[tuple[np.ndarray, int, int]] = []
+    boundary_faces: dict[str, list[tuple[np.ndarray, int]]] = {
+        name: [] for name in (*names, *indices)
+    }
     for layer in range(nz):
         offset = layer * np2
         for key, adjacent in edges.items():
@@ -228,7 +233,7 @@ def extrude_mesh_section(
     faces = [item[0] for item in interior]
     owners = [item[1] for item in interior]
     neighbours = np.array([item[2] for item in interior], dtype=np.int32)
-    patches = []
+    patches: list[BoundaryPatchData] = []
     for name, entries in boundary_faces.items():
         if not entries:
             continue
@@ -242,7 +247,7 @@ def extrude_mesh_section(
         )
         faces.extend(item[0] for item in entries)
         owners.extend(item[1] for item in entries)
-    result = {
+    result: MeshData = {
         "vertex_position": vertices,
         "faces": faces,
         "owners": np.asarray(owners, dtype=np.int32),
@@ -253,9 +258,14 @@ def extrude_mesh_section(
         "n_interior_faces": len(interior),
         "n_points": len(vertices),
     }
-    for key in ("cell_sizes", "cell_levels", "boundary_layer_index"):
-        if key in mesh:
-            result[key] = np.tile(np.asarray(mesh[key])[source_cells], nz)
+    if "cell_sizes" in mesh:
+        result["cell_sizes"] = np.tile(np.asarray(mesh["cell_sizes"])[source_cells], nz)
+    if "cell_levels" in mesh:
+        result["cell_levels"] = np.tile(np.asarray(mesh["cell_levels"])[source_cells], nz)
+    if "boundary_layer_index" in mesh:
+        result["boundary_layer_index"] = np.tile(
+            np.asarray(mesh["boundary_layer_index"])[source_cells], nz
+        )
     validate_topology(result)
     geometry = compute_mesh_geometry(result, compute_lsq=False)
     validate_geometry(result, geometry)
@@ -310,7 +320,7 @@ class ExtrudedCartesianMesher:
         """Return the source octree's realizable dyadic size for a request in m."""
         return self.source.effective_cell_size(requested)
 
-    def build(self, *, on_generated: Callable | None = None) -> dict[str, object]:
+    def build(self, *, on_generated: Callable[[MeshData], object] | None = None) -> MeshData:
         """Generate, section, extrude, validate, and return a native FVM mesh.
 
         Parameters
@@ -321,7 +331,7 @@ class ExtrudedCartesianMesher:
 
         Returns
         -------
-        dict[str, object]
+        MeshData
             Native mesh connectivity and source information. Vertex coordinates have
             shape ``(n_vertices, 3)`` in m; owner/neighbour indices use the
             standard owner-to-neighbour face orientation.
