@@ -14,6 +14,7 @@ import taichi as ti
 
 from ...config.constants import MAX_N_PARTICLES
 from ..base import PhysicsBase
+from ..induction.base import TaichiDataType
 from .core_spreading import apply_core_spreading
 from .grid import _GridDiffusionMixin
 from .random_walk import apply_random_walk
@@ -35,7 +36,7 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
         self,
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
-        accumulator_dtype: ti.types = ti.f32,
+        accumulator_dtype: TaichiDataType = ti.f32,
     ):
         """Initialize diffusion physics module."""
         super().__init__(particle_kernel, max_n_particles, accumulator_dtype)

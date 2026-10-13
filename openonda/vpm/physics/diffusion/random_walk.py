@@ -22,13 +22,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 import taichi as ti
 
+from ..induction.base import TaichiDataType
+
 if TYPE_CHECKING:
     from ...particles.container import Particles
     from ..base import PhysicsBase
 
 
 @functools.cache
-def _fold_into_slab_kernel(dtype: object) -> Callable:
+def _fold_into_slab_kernel(dtype: TaichiDataType) -> Callable:
     """Device fold of particles into the slab, for position fields of ``dtype``.
 
     The reference definition is :func:`openonda.core.slip_slab_images.fold_into_slab`.
@@ -36,8 +38,8 @@ def _fold_into_slab_kernel(dtype: object) -> Callable:
 
     @ti.kernel
     def fold(
-        position: ti.template(),
-        vortex_strength: ti.template(),
+        position: ti.template(),  # type: ignore[invalid-annotation]
+        vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
         count: ti.i32,
         z_min: dtype,
         z_max: dtype,

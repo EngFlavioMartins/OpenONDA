@@ -31,8 +31,9 @@ from openonda.core.slip_slab_images import (
 )
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
-from ..events import NullPhysicsEventObserver
-from .body_geometry import BodyGridGeometryCache, ImmutableBodyGeometryQueries
+from ..events import NullPhysicsEventObserver, PhysicsEventObserver
+from ..induction.base import TaichiField
+from .body_geometry import BodyGeometryKey, BodyGridGeometryCache, ImmutableBodyGeometryQueries
 
 if TYPE_CHECKING:
     from ...particles.container import Particles
@@ -77,9 +78,9 @@ class _GBDMomentCorrectionError(RuntimeError):
 
 def _nearest_visible_nodes(
     survivors: np.ndarray, removed: np.ndarray, blocks_segments: Callable | None = None
-) -> np.ndarray | None:
+) -> np.ndarray:
     """Return nearest retained nodes, querying occluded alternatives in batches."""
-    from scipy.spatial import cKDTree
+    from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
     tree = cKDTree(survivors, compact_nodes=False)
     nearest = tree.query(removed, k=1, workers=-1)[1]
@@ -428,7 +429,7 @@ class _GridDiffusionMixin:
 
     # Concrete physics engines replace this with their configured observer.
     # The silent class default also permits focused numerical harnesses.
-    _event_observer = NullPhysicsEventObserver()
+    _event_observer: PhysicsEventObserver = NullPhysicsEventObserver()
 
     # Geometric growth amortizes grid allocation and kernel recompilation.
     _ALLOC_HEADROOM = 1.5
@@ -436,8 +437,11 @@ class _GridDiffusionMixin:
 
     # Retained nodes preserve the diffused field's circulation and impulse.
     conserve_pruned_moments: bool = True
-    _body_link_grid = None
-    _body_segment_classifier = None
+    _body_link_grid: TaichiField = None
+    _body_segment_classifier: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None
+
+    # Slip-slab z bounds, set only by a bound slip-slab induction.
+    _slip_slab_bounds: tuple[float, float]
 
     @property
     def _has_body_links(self) -> bool:
@@ -464,13 +468,14 @@ class _GridDiffusionMixin:
         self._fixed_grid_min: np.ndarray | None = None
 
         # Grid scratch owns one replaceable Taichi allocation.
-        self._grid_tree = None
-        self._grid_a: ti.template() | None = None
-        self._grid_b: ti.template() | None = None
-        self._body_mask_grid: ti.template() | None = None  # 1=inside solid, 0=fluid
+        # Taichi SNode tree and fields, None until the first allocation.
+        self._grid_tree: TaichiField = None
+        self._grid_a: TaichiField = None
+        self._grid_b: TaichiField = None
+        self._body_mask_grid: TaichiField = None  # 1=inside solid, 0=fluid
         self._body_link_grid = None  # Three bits: blocked positive x/y/z links.
-        self._effective_viscosity_grid: ti.template() | None = None
-        self._grid_shape: tuple[int, int, int] | None = None
+        self._effective_viscosity_grid: TaichiField = None
+        self._grid_shape: tuple[int, ...] | None = None
 
         # Ping-pong flag: True → _grid_a is the current/source field.
         self._ping: bool = True
@@ -484,8 +489,8 @@ class _GridDiffusionMixin:
         self._body_mask_host: np.ndarray | None = None
         self._body_links_host: np.ndarray | None = None
         self._body_query_bounds: np.ndarray | None = None
-        self._body_geometry_queries = None
-        self._body_grid_geometry_cache = None
+        self._body_geometry_queries: ImmutableBodyGeometryQueries | None = None
+        self._body_grid_geometry_cache: BodyGridGeometryCache | None = None
 
         self._require_fixed_grid_allocation: bool = False
 
@@ -498,7 +503,7 @@ class _GridDiffusionMixin:
         self._require_fixed_grid_allocation = bool(enabled)
 
     @property
-    def _current_grid(self) -> ti.Field:
+    def _current_grid(self) -> TaichiField:
         """Field holding the current vorticity (source)."""
         return self._grid_a if self._ping else self._grid_b
 
@@ -538,7 +543,7 @@ class _GridDiffusionMixin:
         return dict(self._last_gbd_wall_transfer)
 
     @property
-    def _other_grid(self) -> ti.Field:
+    def _other_grid(self) -> TaichiField:
         """Field that will receive the updated vorticity (destination)."""
         return self._grid_b if self._ping else self._grid_a
 
@@ -639,7 +644,7 @@ class _GridDiffusionMixin:
                 )
         return grid_min.astype(np.float32), (int(ext[0]), int(ext[1]), int(ext[2]))
 
-    def _allocate_grid(self, shape: tuple[int, int, int]) -> None:
+    def _allocate_grid(self, shape: tuple[int, ...]) -> None:
         """Replace disposable diffusion scratch, releasing its previous storage."""
         if self._grid_tree is not None:
             ti.sync()
@@ -651,8 +656,8 @@ class _GridDiffusionMixin:
         self._grid_shape = None
         self._body_mask_cache_key = None
         self._body_mask_host = self._body_links_host = None
-        self._grid_vec_chunks = {}
-        self._grid_scalar_chunks = {}
+        self._grid_vec_chunks: dict[tuple[str, int], np.ndarray] = {}
+        self._grid_scalar_chunks: dict[tuple[str, int], np.ndarray] = {}
 
         fields = (
             ti.Vector.field(3, dtype=ti.f32),
@@ -689,6 +694,7 @@ class _GridDiffusionMixin:
             n <= old for n, old in zip(requested, previous, strict=True)
         ):
             return requested
+        shape: tuple[int, ...]
         if cap is not None:
             shape = cap
         elif previous is None:
@@ -831,43 +837,7 @@ class _GridDiffusionMixin:
         self._body_mask_cache_key = None
         self._body_mask_host = None
 
-    def _body_grid_geometry_key(
-        self,
-    ) -> (
-        tuple[
-            tuple[
-                str,
-                tuple[
-                    tuple[
-                        str,
-                        tuple[
-                            tuple[str, str],
-                            tuple[str, tuple[tuple[str, tuple[tuple[str, str], tuple[str, str]]]]],
-                        ],
-                    ],
-                    tuple[str, bytes],
-                ],
-            ],
-            tuple[str, bytes],
-        ]
-        | tuple[
-            tuple[
-                str,
-                tuple[
-                    tuple[
-                        str,
-                        tuple[
-                            tuple[str, str],
-                            tuple[str, tuple[tuple[str, tuple[tuple[str, str], tuple[str, str]]]]],
-                        ],
-                    ],
-                    tuple[str, bytes],
-                ],
-            ],
-            tuple[str],
-        ]
-        | None
-    ):
+    def _body_grid_geometry_key(self) -> BodyGeometryKey | None:
         queries = self._body_geometry_queries
         if type(queries) is not ImmutableBodyGeometryQueries:
             return None
@@ -1061,6 +1031,8 @@ class _GridDiffusionMixin:
         if self._body_link_grid is None:
             self._body_link_grid = ti.field(dtype=ti.i32, shape=self._body_mask_grid.shape)
         mask = self._body_mask_host
+        if mask is None:
+            raise RuntimeError("the body mask must be prepared before its wall links")
         buffer = self._grid_transfer_buffer("scalar", self._body_link_grid, "upload")
         total = nx * ny * nz
         host_links = np.zeros(total, dtype=np.int32)
@@ -1308,7 +1280,7 @@ class _GridDiffusionMixin:
         ny: int,
         nz: int,
         default_id: int = 0,
-        propagate_to: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+        propagate_to: tuple[np.ndarray, ...] | None = None,
         mapping: _NearestNodeMapping | None = None,
     ) -> np.ndarray:
         """Scatter an integer ID field to grid nodes (|Γ|-weighted nearest-node).
@@ -1353,7 +1325,7 @@ class _GridDiffusionMixin:
                 weight_flat[better] = temp[better]
 
         if propagate_to is not None and np.any(weight_flat > 0.0):
-            from scipy.spatial import cKDTree
+            from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
             query = np.column_stack(propagate_to)
             query_linear = query[:, 0] * (ny * nz) + query[:, 1] * nz + query[:, 2]
@@ -1451,7 +1423,7 @@ class _GridDiffusionMixin:
         out_flat = out.ravel()
         out_flat[nz_mask] = (accum_flat[nz_mask] / weight_flat[nz_mask]).astype(np.float32)
         if fill_empty and np.any(nz_mask) and np.any(~nz_mask):
-            from scipy.spatial import cKDTree
+            from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
             populated_linear = np.flatnonzero(nz_mask)
             empty_linear = np.flatnonzero(~nz_mask)
@@ -3088,7 +3060,9 @@ class _GridDiffusionMixin:
         if not np.all(np.isfinite(viscosity_per_particle)) or np.any(viscosity_per_particle < 0.0):
             raise ValueError("DVH effective viscosity must be finite and non-negative")
         if N:
-            scale = max(float(np.max(np.abs(viscosity_per_particle))), np.finfo(np.float32).tiny)
+            scale = max(
+                float(np.max(np.abs(viscosity_per_particle))), float(np.finfo(np.float32).tiny)
+            )
             tolerance = 8.0 * np.finfo(np.float32).eps * scale
             if float(np.ptp(viscosity_per_particle)) > tolerance:
                 raise ValueError(
@@ -3225,7 +3199,9 @@ class _GridDiffusionMixin:
         # physically active.
         if not np.any(dvh_viscosity_np > 0.0):
             return None
-        viscosity_scale = max(float(np.max(np.abs(dvh_viscosity_np))), np.finfo(np.float32).tiny)
+        viscosity_scale = max(
+            float(np.max(np.abs(dvh_viscosity_np))), float(np.finfo(np.float32).tiny)
+        )
         viscosity_tolerance = 8.0 * np.finfo(np.float32).eps * viscosity_scale
         if float(np.ptp(dvh_viscosity_np)) > viscosity_tolerance:
             raise ValueError(
@@ -3283,7 +3259,9 @@ class _GridDiffusionMixin:
         core_radius_np = particles.core_radius_cpu(use_cache=False)[:N].astype(np.float64)
         if not np.all(np.isfinite(core_radius_np)) or np.any(core_radius_np <= 0.0):
             raise ValueError("DVH requires finite, positive incoming core radii")
-        core_radius_scale = max(float(np.max(np.abs(core_radius_np))), np.finfo(np.float32).tiny)
+        core_radius_scale = max(
+            float(np.max(np.abs(core_radius_np))), float(np.finfo(np.float32).tiny)
+        )
         core_radius_tolerance = 8.0 * np.finfo(np.float32).eps * core_radius_scale
         if float(np.ptp(core_radius_np)) > core_radius_tolerance:
             raise ValueError(
@@ -3467,9 +3445,9 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _lagrange6_scatter_gpu_kernel(
         self,
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        grid: ti.template(),
+        position: ti.template(),  # type: ignore[invalid-annotation]
+        vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
+        grid: ti.template(),  # type: ignore[invalid-annotation]
         gmin_x: ti.f32,
         gmin_y: ti.f32,
         gmin_z: ti.f32,
@@ -3501,8 +3479,8 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _add_slab_images_kernel(
         self,
-        deposit: ti.template(),
-        images: ti.template(),
+        deposit: ti.template(),  # type: ignore[invalid-annotation]
+        images: ti.template(),  # type: ignore[invalid-annotation]
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
@@ -3529,9 +3507,9 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _m4_scatter_gpu_kernel(
         self,
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        grid: ti.template(),
+        position: ti.template(),  # type: ignore[invalid-annotation]
+        vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
+        grid: ti.template(),  # type: ignore[invalid-annotation]
         gmin_x: ti.f32,
         gmin_y: ti.f32,
         gmin_z: ti.f32,
@@ -3589,9 +3567,9 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _add_sparse_wall_corrections_kernel(
         self,
-        grid: ti.template(),
-        indices: ti.types.ndarray(),
-        corrections: ti.types.ndarray(),
+        grid: ti.template(),  # type: ignore[invalid-annotation]
+        indices: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        corrections: ti.types.ndarray(),  # type: ignore[invalid-annotation]
         count: ti.i32,
     ):
         """Add host-reduced corrections; input nodes are unique."""
@@ -3602,7 +3580,7 @@ class _GridDiffusionMixin:
             )
 
     @ti.func
-    def _fluid_link_open(self, body_mask: ti.template(), i, j, k, ni, nj, nk):
+    def _fluid_link_open(self, body_mask: ti.template(), i, j, k, ni, nj, nk):  # type: ignore[invalid-annotation]
         open_link = body_mask[ni, nj, nk] == 0
         if ti.static(self._has_body_links):
             axis = 0
@@ -3617,9 +3595,9 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _laplacian_step_gpu_kernel(
         self,
-        src: ti.template(),
-        dst: ti.template(),
-        body_mask: ti.template(),
+        src: ti.template(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        body_mask: ti.template(),  # type: ignore[invalid-annotation]
         alpha: ti.f32,
         nx: ti.i32,
         ny: ti.i32,
@@ -3659,9 +3637,9 @@ class _GridDiffusionMixin:
     @ti.func
     def _variable_diffusion_face_flux(
         self,
-        src: ti.template(),
-        effective_viscosity_grid: ti.template(),
-        body_mask: ti.template(),
+        src: ti.template(),  # type: ignore[invalid-annotation]
+        effective_viscosity_grid: ti.template(),  # type: ignore[invalid-annotation]
+        body_mask: ti.template(),  # type: ignore[invalid-annotation]
         i: ti.i32,
         j: ti.i32,
         k: ti.i32,
@@ -3683,10 +3661,10 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _laplacian_step_variable_gpu_kernel(
         self,
-        src: ti.template(),
-        dst: ti.template(),
-        effective_viscosity_grid: ti.template(),
-        body_mask: ti.template(),
+        src: ti.template(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        effective_viscosity_grid: ti.template(),  # type: ignore[invalid-annotation]
+        body_mask: ti.template(),  # type: ignore[invalid-annotation]
         time_step_size: ti.f32,
         particle_spacing: ti.f32,
         nx: ti.i32,
@@ -3737,7 +3715,7 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _zero_grid_kernel(
         self,
-        field: ti.template(),
+        field: ti.template(),  # type: ignore[invalid-annotation]
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
@@ -3749,8 +3727,8 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _download_vec_chunk_kernel(
         self,
-        src: ti.template(),
-        dst: ti.types.ndarray(),
+        src: ti.template(),  # type: ignore[invalid-annotation]
+        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
         offset: ti.i32,
         count: ti.i32,
         ny: ti.i32,
@@ -3771,8 +3749,8 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _upload_vec_chunk_kernel(
         self,
-        dst: ti.template(),
-        src: ti.types.ndarray(),
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
         offset: ti.i32,
         count: ti.i32,
         ny: ti.i32,
@@ -3790,8 +3768,8 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _upload_scalar_chunk_kernel(
         self,
-        dst: ti.template(),
-        src: ti.types.ndarray(),
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
         offset: ti.i32,
         count: ti.i32,
         ny: ti.i32,
@@ -3806,12 +3784,13 @@ class _GridDiffusionMixin:
             k = rem - j * nz
             dst[i, j, k] = src[t]
 
-    def _grid_transfer_buffer(self, family: str, field: ti.Field, direction: str) -> np.ndarray:
+    def _grid_transfer_buffer(self, family: str, field: TaichiField, direction: str) -> np.ndarray:
         """Return a fixed staging array unique to a grid field and direction."""
         if not hasattr(self, "_grid_vec_chunks"):
             self._grid_vec_chunks = {}
             self._grid_scalar_chunks = {}
         key = (direction, id(field))
+        shape: tuple[int, ...]
         if family == "vector":
             buffers = self._grid_vec_chunks
             shape = (_GRID_TRANSFER_CHUNK, 3)
@@ -3824,7 +3803,7 @@ class _GridDiffusionMixin:
             buffers[key] = np.zeros(shape, dtype=np.float32)
         return buffers[key]
 
-    def _download_active_vec_grid(self, src: ti.Field, nx: int, ny: int, nz: int) -> np.ndarray:
+    def _download_active_vec_grid(self, src: TaichiField, nx: int, ny: int, nz: int) -> np.ndarray:
         """Return the active box of a vec3 grid as an (nx, ny, nz, 3) host array."""
         buf = self._grid_transfer_buffer("vector", src, "download")
         total = int(nx) * int(ny) * int(nz)
@@ -3837,7 +3816,7 @@ class _GridDiffusionMixin:
         return out.reshape(nx, ny, nz, 3)
 
     def _upload_active_vec_grid(
-        self, dst: ti.Field, values: np.ndarray, nx: int, ny: int, nz: int
+        self, dst: TaichiField, values: np.ndarray, nx: int, ny: int, nz: int
     ) -> None:
         """Write an (nx, ny, nz, 3) host array into the active box of a vec3 grid."""
         buf = self._grid_transfer_buffer("vector", dst, "upload")
@@ -3850,7 +3829,7 @@ class _GridDiffusionMixin:
             ti.sync()
 
     def _upload_active_scalar_grid(
-        self, dst: ti.Field, values: np.ndarray, nx: int, ny: int, nz: int
+        self, dst: TaichiField, values: np.ndarray, nx: int, ny: int, nz: int
     ) -> None:
         """Write an (nx, ny, nz) host array into the active box of a scalar grid."""
         buf = self._grid_transfer_buffer("scalar", dst, "upload")
@@ -3865,8 +3844,8 @@ class _GridDiffusionMixin:
     @ti.kernel
     def _apply_body_mask_kernel(
         self,
-        grid: ti.template(),
-        body_mask: ti.template(),
+        grid: ti.template(),  # type: ignore[invalid-annotation]
+        body_mask: ti.template(),  # type: ignore[invalid-annotation]
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
