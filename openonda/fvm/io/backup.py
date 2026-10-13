@@ -422,7 +422,6 @@ def restore_restart_state(solver: FVMSolver, restart_state: RestartState) -> Non
     solver._kinematic_viscosity = restart_state.kinematic_viscosity
     solver.max_courant_number = restart_state.max_courant_number
     solver._n_consecutive_accepted_steps.update(restart_state.n_consecutive_accepted_steps)
-    solver._last_residuals = None
     solver.last_diagnostics = None
     solver._invalidate_derived_fields()
     if hasattr(solver, "_publish_state"):

@@ -712,6 +712,8 @@ class PimpleControl:
             )
         if self.min_outer_correctors > self.n_outer_correctors:
             raise ValueError("PimpleControl.min_outer_correctors cannot exceed n_outer_correctors")
+        if self.algorithm == "PISO" and self.n_outer_correctors != 1:
+            raise ValueError("PimpleControl PISO requires n_outer_correctors == 1")
         self.tolerance = _finite_real(
             "PimpleControl.tolerance", self.tolerance, minimum=0.0, strict_minimum=True
         )
@@ -786,20 +788,14 @@ class TurbulenceConfig:
     ----------
     model : str, default='None'
         ``none``/``dns`` disables an explicit closure; supported LES choices
-        are ILES, Smagorinsky, equilibrium Smagorinsky, WALE, sigma, and
-        dynamic Smagorinsky. Names are normalized lowercase.
+        are ILES, Smagorinsky, and equilibrium Smagorinsky. Names are
+        normalized lowercase.
     smagorinsky_coefficient : float, default=0.17
         Non-negative dimensionless ``C_s``.
     subgrid_kinetic_energy_coefficient : float, default=0.094
         Non-negative dimensionless ``C_k``.
     subgrid_dissipation_coefficient : float, default=1.048
         Positive dimensionless ``C_e``.
-    wale_coefficient : float, default=0.325
-        Positive dimensionless WALE coefficient.
-    sigma_coefficient : float, default=1.35
-        Positive dimensionless sigma-model coefficient.
-    dynamic : bool, default=False
-        Enable dynamic coefficient evaluation where supported.
 
     ``model='none'``/``'dns'`` disables an explicit SGS contribution. Other
     choices create an eddy-viscosity field in m²/s; the solver uses
@@ -817,9 +813,6 @@ class TurbulenceConfig:
     smagorinsky_coefficient: float = 0.17
     subgrid_kinetic_energy_coefficient: float = 0.094
     subgrid_dissipation_coefficient: float = 1.048
-    wale_coefficient: float = 0.325
-    sigma_coefficient: float = 1.35
-    dynamic: bool = False
 
     def __post_init__(self) -> None:
         valid_models = {
@@ -829,10 +822,6 @@ class TurbulenceConfig:
             "smagorinsky",
             "equilibriumsmagorinsky",
             "equilibrium_smagorinsky",
-            "wale",
-            "sigma",
-            "dynamicsmagorinsky",
-            "dynamic_smagorinsky",
         }
         model = str(self.model).lower()
         if model not in valid_models:
@@ -842,8 +831,6 @@ class TurbulenceConfig:
             ("smagorinsky_coefficient", 0.0, False),
             ("subgrid_kinetic_energy_coefficient", 0.0, False),
             ("subgrid_dissipation_coefficient", 0.0, True),
-            ("wale_coefficient", 0.0, True),
-            ("sigma_coefficient", 0.0, True),
         ):
             setattr(
                 self,
@@ -855,19 +842,13 @@ class TurbulenceConfig:
                     strict_minimum=strict,
                 ),
             )
-        if not isinstance(self.dynamic, bool):
-            raise TypeError("TurbulenceConfig.dynamic must be a boolean")
 
     @staticmethod
-    def smagorinsky(
-        smagorinsky_coefficient: float = 0.17,
-        dynamic: bool = False,
-    ) -> TurbulenceConfig:
-        """Return classical or dynamic Smagorinsky configuration."""
+    def smagorinsky(smagorinsky_coefficient: float = 0.17) -> TurbulenceConfig:
+        """Return classical Smagorinsky configuration."""
         return TurbulenceConfig(
             model="Smagorinsky",
             smagorinsky_coefficient=smagorinsky_coefficient,
-            dynamic=dynamic,
         )
 
     @staticmethod
@@ -886,34 +867,6 @@ class TurbulenceConfig:
             smagorinsky_coefficient=equivalent_smagorinsky_coefficient,
             subgrid_kinetic_energy_coefficient=subgrid_kinetic_energy_coefficient,
             subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
-        )
-
-    @staticmethod
-    def wale(
-        wale_coefficient: float = 0.325,
-    ) -> TurbulenceConfig:
-        """Return WALE configuration."""
-        return TurbulenceConfig(
-            model="WALE",
-            wale_coefficient=wale_coefficient,
-        )
-
-    @staticmethod
-    def sigma(
-        sigma_coefficient: float = 1.35,
-    ) -> TurbulenceConfig:
-        """Return sigma-model configuration."""
-        return TurbulenceConfig(
-            model="sigma",
-            sigma_coefficient=sigma_coefficient,
-        )
-
-    @staticmethod
-    def dynamic_smagorinsky() -> TurbulenceConfig:
-        """Return Germano-Lilly dynamic Smagorinsky configuration."""
-        return TurbulenceConfig(
-            model="dynamicSmagorinsky",
-            dynamic=True,
         )
 
     @staticmethod

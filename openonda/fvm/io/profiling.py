@@ -165,14 +165,11 @@ class PerformanceProfiler:
         solver : FVMSolver or None, default=None
             Optional weak reference for memory-allocation inventory reporting.
 
-        Profiling is enabled unless ``FVM_PROFILE=0``.
-
         Side Effects
         ------------
         Creates no output until a report is published and retains no solver
         fields beyond the optional weak reference.
         """
-        self.enabled = os.environ.get("FVM_PROFILE", "1") != "0"
         self.parallel = parallel
         self.logger = logger
         output_directory = (
@@ -192,20 +189,9 @@ class PerformanceProfiler:
         self._output_disabled = False
         self._solver_ref = None if solver is None else weakref.ref(solver)
         self._inventory_reported = False
-        petsc_log = os.environ.get("FVM_PETSC_LOG")
-        self._petsc_log_path = None if not petsc_log else Path(petsc_log).resolve()
-        if self._petsc_log_path is not None:
-            try:
-                from petsc4py import PETSc as _PETSc
-            except ImportError as error:
-                raise RuntimeError("FVM_PETSC_LOG requires petsc4py") from error
-            PETSc: Any = _PETSc
-            PETSc.Log.begin()
 
     def begin_step(self, *, step: int, time: float, time_step_size: float) -> None:
         """Reset local counters at the beginning of a time step."""
-        if not self.enabled:
-            return
         self._active = True
         self._metadata = {
             "step": int(step),
@@ -221,7 +207,7 @@ class PerformanceProfiler:
 
     def record(self, name: str, elapsed: float) -> None:
         """Record one completed local phase without communicating."""
-        if not self.enabled or not self._active or elapsed <= 0.0:
+        if not self._active or elapsed <= 0.0:
             return
         phase = str(name).strip(" -")
         self._phase_seconds[phase] = self._phase_seconds.get(phase, 0.0) + float(elapsed)
@@ -439,7 +425,7 @@ class PerformanceProfiler:
         linear_results: Iterable[Any] = (),
     ) -> dict[str, Any] | None:
         """Gather local counters, write JSONL, and report through the sink."""
-        if not self.enabled or not self._active:
+        if not self._active:
             return None
         local = self._local_statistics(step_seconds, linear_results)
         if self.parallel.is_parallel:
@@ -464,26 +450,3 @@ class PerformanceProfiler:
                 )
         self.logger.profile_report(record)
         return record
-
-    def close(self) -> None:
-        """Collectively publish the optional PETSc event log."""
-        if self._petsc_log_path is None:
-            return
-        from petsc4py import PETSc as _PETSc
-
-        PETSc: Any = _PETSc
-
-        if self.parallel.is_root:
-            self._petsc_log_path.parent.mkdir(parents=True, exist_ok=True)
-        self.parallel.barrier()
-        viewer = PETSc.Viewer().createASCII(
-            str(self._petsc_log_path),
-            mode="w",
-            comm=PETSc.COMM_WORLD,
-        )
-        try:
-            PETSc.Log.view(viewer)
-            viewer.flush()
-        finally:
-            viewer.destroy()
-        self._petsc_log_path = None

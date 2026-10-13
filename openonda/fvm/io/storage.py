@@ -39,22 +39,9 @@ class InsufficientStorageError(OSError):
         )
 
 
-def configured_reserve_bytes() -> int:
-    """Return the disk reserve retained after a solver write."""
-    raw = os.environ.get("FVM_DISK_RESERVE_BYTES")
-    if raw is None:
-        return _DEFAULT_RESERVE_BYTES
-    reserve = int(raw)
-    if reserve < 0:
-        raise ValueError("FVM_DISK_RESERVE_BYTES must be non-negative")
-    return reserve
-
-
 def require_free_space(
     path: str | Path,
     archive_bytes: int,
-    *,
-    reserve_bytes: int | None = None,
 ) -> int:
     """Verify an atomic temporary archive can fit and return current free bytes."""
     destination = Path(path).resolve()
@@ -62,8 +49,7 @@ def require_free_space(
     while not probe.exists() and probe != probe.parent:
         probe = probe.parent
     free = int(shutil.disk_usage(probe).free)
-    reserve = configured_reserve_bytes() if reserve_bytes is None else int(reserve_bytes)
-    required = max(0, int(archive_bytes)) + max(0, reserve)
+    required = max(0, int(archive_bytes)) + _DEFAULT_RESERVE_BYTES
     if free < required:
         raise InsufficientStorageError(destination, required, free)
     return free

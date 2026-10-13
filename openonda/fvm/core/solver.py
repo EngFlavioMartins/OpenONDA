@@ -555,26 +555,6 @@ class FVMSolver(CouplerInterfaceMixin):
                     "direct factorization is intentionally not assumed."
                 )
 
-        # Fail fast on typo'd / unsupported scheme or turbulence-model names
-        # (otherwise the error only surfaces deep inside the first assembly).
-        from types import SimpleNamespace
-
-        from ..schemes import validate_solver_params, validate_turbulence
-
-        validate_solver_params(
-            SimpleNamespace(**resolved_setup.algorithm_params()), self._time_config
-        )
-        validate_turbulence(resolved_setup.turbulence)
-        if self.parallel.is_partitioned and resolved_setup.turbulence is not None:
-            turbulence_name = resolved_setup.turbulence.model.lower()
-            if resolved_setup.turbulence.dynamic or turbulence_name in {
-                "dynamicsmagorinsky",
-                "dynamic_smagorinsky",
-            }:
-                raise NotImplementedError(
-                    "Dynamic Smagorinsky is not qualified for petsc_partitioned execution: "
-                    "its Germano average must be reduced over owned cells globally."
-                )
         if (
             resolved_setup.linear.pressure_nullspace_method == "petsc"
             and resolved_setup.execution.linear_backend != "petsc"
@@ -837,7 +817,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self._n_committed_time_steps = 0  # number of committed time steps (BDF2 startup check)
         self._accepted_time_step_size = self.time_step_size
         self._previous_time_step_size = self.time_step_size
-        self._last_residuals = None
         self.last_diagnostics = None
         self._derived_fields: dict[object, np.ndarray] = {}
         self._state_revision = 0
@@ -1284,11 +1263,7 @@ class FVMSolver(CouplerInterfaceMixin):
         if self._coupling_consistency_filter is None:
             from ..fields.filters import CellBoxFilter
 
-            self._coupling_consistency_filter = CellBoxFilter(
-                self.mesh_data,
-                self.geo_data,
-                centre_weight="neighbour_sum",
-            )
+            self._coupling_consistency_filter = CellBoxFilter(self.mesh_data, self.geo_data)
         velocity = np.asarray(self.velocity, dtype=np.float64)[:n_cells]
         high_pass_velocity = velocity - self._coupling_consistency_filter(velocity)
         return rate[:, np.newaxis] * (target + high_pass_velocity), rate
@@ -1496,7 +1471,6 @@ class FVMSolver(CouplerInterfaceMixin):
         try:
             self._invalidate_derived_fields()
             self._publish_state()
-            self._last_residuals = residuals
             self.logger.convergence_info(residuals)
         except BaseException as error:
             self._mark_evolution_failure(error)
@@ -2565,11 +2539,6 @@ class FVMSolver(CouplerInterfaceMixin):
             algorithm_close = getattr(self.algorithm, "close", None)
             if algorithm_close is not None:
                 algorithm_close()
-        except BaseException as error:
-            if primary_failure is None:
-                primary_failure = error
-        try:
-            self.profiler.close()
         except BaseException as error:
             if primary_failure is None:
                 primary_failure = error

@@ -136,11 +136,8 @@ The default `TurbulenceConfig.none()` sets $\nu_t=0$, which the laminar tutorial
 | --- | --- |
 | `smagorinsky()` | $\nu_t=(C_s\Delta)^2\lvert S\rvert$, $C_s=0.17$ |
 | `equilibrium_smagorinsky()` | Subgrid energy in local equilibrium, $C_k=0.094$, $C_e=1.048$ |
-| `dynamic_smagorinsky()` | Germano–Lilly coefficient from a test filter, globally averaged |
-| `wale()` | WALE, $C_w=0.325$; vanishes near walls without damping |
-| `sigma()` | Singular values of the velocity gradient, $C_\sigma=1.35$ |
 
-Here $\lvert S\rvert=\sqrt{2S_{ij}S_{ij}}$ and $\Delta=V^{1/3}$, or $\sqrt{V/b}$ on a one-cell 2-D mesh of thickness $b$. Refining the mesh changes both the resolved scales and the modelled viscosity. WALE or sigma suit wall-bounded flows without a homogeneous direction. The [cube cases](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) use equilibrium Smagorinsky.
+Here $\lvert S\rvert=\sqrt{2S_{ij}S_{ij}}$ and $\Delta=V^{1/3}$, or $\sqrt{V/b}$ on a one-cell 2-D mesh of thickness $b$. Refining the mesh changes both the resolved scales and the modelled viscosity. The [cube cases](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) use equilibrium Smagorinsky.
 
 ## Observations
 

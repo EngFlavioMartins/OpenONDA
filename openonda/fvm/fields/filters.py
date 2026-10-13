@@ -1,8 +1,7 @@
 """Cell-field filters on an unstructured mesh.
 
-One-ring, volume-weighted box filtering. Used by the dynamic Smagorinsky model
-(test filter) and by the coupler's blending-zone relaxation (to relax only the scales
-its target can represent).
+One-ring, volume-weighted box filtering. Used by the coupler's blending-zone
+relaxation to relax only the scales its target can represent.
 
 Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
 
@@ -34,24 +33,14 @@ class CellBoxFilter:
     ``exchange_halo`` on the intermediate — see
     ``ParallelContext.exchange_halo``.
 
-    Two centre weightings are available, and the choice matters:
-
-    ``centre_weight="cell_volume"`` (default) is the classical box filter — the cell
-    carries its own volume, so on a uniform hex mesh it is the plain (1+6)-point
-    average.  Its transfer function goes NEGATIVE at the grid scale (−1/3 on a
-    1-D chain, −5/7 on a hex interior).  That is fine for the dynamic
-    Smagorinsky test filter, which only needs a wider filter, but it makes
-    ``f − G∗f`` exceed ``f`` at the grid scale.
-
-    ``centre_weight="neighbour_sum"`` gives the cell the same total weight as
-    its neighbours combined, which is the unstructured generalisation of the
-    (1, 2, 1)/4 stencil: DC gain exactly 1, grid-scale gain exactly 0, and no
-    negative lobe.  Use this whenever the RESIDUAL ``f − G∗f`` is the quantity of
-    interest — with a negative-lobe filter the residual is amplified, so a term
-    built from it flips sign and drives the mode it was meant to leave alone.
+    The cell gets the same total weight as its neighbours combined, which is
+    the unstructured generalisation of the (1, 2, 1)/4 stencil: DC gain exactly
+    1, grid-scale gain exactly 0, and no negative lobe.  The classical box
+    filter (centre weighted by its own volume) goes negative at the grid scale,
+    which would amplify the residual ``f − G∗f`` that the coupler relaxes.
     """
 
-    def __init__(self, mesh_data: dict, geo_data: dict, centre_weight: str = "cell_volume") -> None:
+    def __init__(self, mesh_data: dict, geo_data: dict) -> None:
         """Build one reusable one-ring filter from mesh connectivity.
 
         Parameters
@@ -60,18 +49,7 @@ class CellBoxFilter:
             Native topology containing interior owner/neighbour arrays.
         geo_data : dict
             Geometry containing positive cell volumes in m³.
-        centre_weight : {"cell_volume", "neighbour_sum"}, default="cell_volume"
-            Weight assigned to the centre cell. The latter gives a smoother
-            residual filter with zero grid-scale response on regular meshes.
-
-        Raises
-        ------
-        ValueError
-            If ``centre_weight`` is unsupported.
         """
-        valid = ("cell_volume", "neighbour_sum")
-        if centre_weight not in valid:
-            raise ValueError(f"centre_weight must be one of {valid}, got {centre_weight!r}")
         n_int = int(mesh_data["n_interior_faces"])
         cell_volume = np.asarray(geo_data["cell_volume"], dtype=np.float64)
         own = np.asarray(mesh_data["owners"])[:n_int]
@@ -81,10 +59,9 @@ class CellBoxFilter:
         np.add.at(neighbour_sum, own, cell_volume[nei])
         np.add.at(neighbour_sum, nei, cell_volume[own])
 
-        centre = cell_volume if centre_weight == "cell_volume" else neighbour_sum
         self._own, self._nei, self._vol = own, nei, cell_volume
-        self._centre = centre
-        self._denom = centre + neighbour_sum
+        self._centre = neighbour_sum
+        self._denom = 2.0 * neighbour_sum
 
     def __call__(self, f: np.ndarray) -> np.ndarray:
         """Filter a cell field ``(n_elements, ...)``; shape is preserved.

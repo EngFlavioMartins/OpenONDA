@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-import os
 from pathlib import Path
 import platform
 import sys
@@ -49,14 +48,6 @@ _MEMORY_LABELS = {
     "numpy_unique_total": "numpy total",
     "native_python_petsc_rss_remainder": "non-numpy, python and petsc",
 }
-
-
-def resolve_mode(default: str = "simple") -> str:
-    """Return the log mode, letting ``FVM_LOG`` override the configured one."""
-    mode = os.environ.get("FVM_LOG", default)
-    if mode not in {"simple", "debug"}:
-        raise ValueError(f"FVM_LOG must be 'simple' or 'debug'; got {mode!r}")
-    return mode
 
 
 def format_openonda_header(precision: str | None = "f64") -> log_style.FormattedText:
@@ -285,7 +276,7 @@ class Logging:
 
         self.enabled = bool(enabled)
         self.console = bool(console)
-        self.mode = resolve_mode("simple" if config is None else str(config.mode))
+        self.mode = "simple" if config is None else str(config.mode)
         from ..config.scheduling import RunSchedule
 
         self.schedule = RunSchedule(every_n_steps=1) if config is None else config.schedule
