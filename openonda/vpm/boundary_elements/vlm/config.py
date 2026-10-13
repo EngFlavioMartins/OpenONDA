@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from .coupling.kinematics import VLMKinematics
+    from .geometry.aircraft import Aircraft
 
 
 @dataclass(frozen=True)
@@ -75,12 +79,12 @@ class VLMSurfaceSetup:
 
     Parameters
     ----------
-    surface : object
-        Surface geometry accepted by the VLM mesh builder; commonly a surface
-        mapping loaded from an OpenVSP/JSON description.
+    surface : str or Aircraft
+        Surface geometry: a surface JSON path, or an :class:`Aircraft` built
+        directly or imported from an OpenVSP description.
     name : str or None, optional
         Stable user-facing identifier; the geometry name is used when omitted.
-    kinematics : object or None, optional
+    kinematics : VLMKinematics or None, optional
         Motion object implementing the VLM kinematics interface. ``None`` is static.
     translation : tuple[float, float, float] or None, optional
         Initial Cartesian translation in m.
@@ -94,9 +98,9 @@ class VLMSurfaceSetup:
         Per-surface override for force-history output.
     """
 
-    surface: object
+    surface: str | Aircraft
     name: str | None = None
-    kinematics: Any | None = None
+    kinematics: VLMKinematics | None = None
     translation: tuple[float, float, float] | None = None
     rotation_degrees: tuple[float, float, float] | None = None
     rotation_centre: tuple[float, float, float] | None = None

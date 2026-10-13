@@ -9,8 +9,19 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from dataclasses import dataclass, field
+from typing import TypedDict
 
 import numpy as np
+
+
+class ReferenceValues(TypedDict, total=False):
+    """Reference values for force and moment coefficients."""
+
+    area: float  # reference area [m²]
+    chord: float  # reference chord [m]
+    span: float  # reference span [m]
+    geometry_centre: np.ndarray  # area-weighted geometry centre [m]
+    reference_point: np.ndarray  # moment reference point [m]
 
 
 @dataclass
@@ -41,7 +52,7 @@ class WingSegment:
     n_chordwise_panels: int = 8
     n_spanwise_panels: int = 16
     airfoils: dict[str, str] | None = None
-    geometry: dict[str, float] | None = None
+    geometry: dict[str, float | str] | None = None
 
     def __post_init__(self) -> None:
         """Validate segment definition."""
@@ -71,7 +82,7 @@ class WingSegment:
 
         area1 = 0.5 * np.linalg.norm(np.cross(v1, v2))
         area2 = 0.5 * np.linalg.norm(np.cross(v2, v3))
-        return area1 + area2
+        return float(area1 + area2)
 
     @property
     def centre(self) -> np.ndarray:
@@ -162,7 +173,7 @@ class Aircraft:
 
     uid: str
     wings: dict[str, Wing] = field(default_factory=dict)
-    refs: dict[str, float] = field(default_factory=dict)
+    refs: ReferenceValues = field(default_factory=ReferenceValues)
 
     def __post_init__(self) -> None:
         """Initialize reference values if not provided."""

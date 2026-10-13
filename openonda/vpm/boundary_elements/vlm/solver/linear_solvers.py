@@ -8,10 +8,11 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import Any
 import warnings
 
 import numpy as np
+import numpy.typing as npt
 import scipy.linalg
 
 # Taichi imports
@@ -33,18 +34,18 @@ class VLMLinearSolver(ABC):
     @abstractmethod
     def solve(
         self,
-        aerodynamic_influence_coefficient: np.ndarray | ti.Field,
-        right_hand_side: np.ndarray | ti.Field,
-        circulation: np.ndarray | ti.Field,
+        aerodynamic_influence_coefficient: ti.Field,
+        right_hand_side: ti.Field,
+        circulation: ti.Field,
         n_panels: int,
     ) -> int:
         """
         Solve the linear system aerodynamic_influence_coefficient @ circulation = right_hand_side.
 
         Args:
-            aerodynamic_influence_coefficient: Aerodynamic Influence Coefficient matrix (Taichi field or numpy)
-            right_hand_side: Right-hand side vector (Taichi field or numpy)
-            circulation: Solution vector - MODIFIED IN PLACE (Taichi field or numpy)
+            aerodynamic_influence_coefficient: Aerodynamic Influence Coefficient matrix (Taichi field)
+            right_hand_side: Right-hand side vector (Taichi field)
+            circulation: Solution vector - MODIFIED IN PLACE (Taichi field)
             n_panels: Number of panels (active size of the system)
 
         Returns:
@@ -113,7 +114,7 @@ class ScipySolver(VLMLinearSolver):
             enough for the selected LAPACK solve to fail.
         """
         # Determine numpy dtype from aerodynamic_influence_coefficient (Taichi field or numpy)
-        dtype = NP_FLOAT
+        dtype: npt.DTypeLike = NP_FLOAT
         if hasattr(aerodynamic_influence_coefficient, "dtype"):
             if aerodynamic_influence_coefficient.dtype == ti.f32:
                 dtype = np.float32
@@ -192,18 +193,18 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         self.max_n_panels = max_n_panels
         self._workspace_initialized = False
 
-        # Workspace fields (allocated lazily)
-        self.r = None  # Residual
-        self.r0 = None  # Initial residual shadow
-        self.p = None  # Search direction
-        self.p_hat = None  # Preconditioned p: M^-1 @ p
-        self.v = None  # A @ p_hat
-        self.s = None  # Stabilization vector
-        self.s_hat = None  # Preconditioned s: M^-1 @ s
-        self.t = None  # A @ s_hat
-        self.M_inv = None  # Preconditioner (diagonal)
+        # Workspace fields (Taichi fields are dynamic DSL objects, typed Any)
+        self.r: Any = None  # Residual
+        self.r0: Any = None  # Initial residual shadow
+        self.p: Any = None  # Search direction
+        self.p_hat: Any = None  # Preconditioned p: M^-1 @ p
+        self.v: Any = None  # A @ p_hat
+        self.s: Any = None  # Stabilization vector
+        self.s_hat: Any = None  # Preconditioned s: M^-1 @ s
+        self.t: Any = None  # A @ s_hat
+        self.M_inv: Any = None  # Preconditioner (diagonal)
 
-    def _ensure_workspace(self, dtype: object = TI_FLOAT) -> None:
+    def _ensure_workspace(self, dtype: Any = TI_FLOAT) -> None:
         """Lazily initialize workspace fields."""
         if self._workspace_initialized:
             # Check if existing workspace matches requested dtype
@@ -317,7 +318,7 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
 
 
 @ti.kernel
-def _matvec_kernel(A: ti.template(), x: ti.template(), y: ti.template(), n: ti.i32):
+def _matvec_kernel(A: ti.template(), x: ti.template(), y: ti.template(), n: ti.i32):  # type: ignore[invalid-annotation]
     """Write the active dense matrix-vector product y = A x on the device."""
     for i in range(n):
         acc = 0.0
@@ -335,18 +336,18 @@ def _matvec(A: ti.Field, x: ti.Field, y: ti.Field, n: int) -> None:
 # We use ti.atomic_add for thread-safe accumulation into a scalar field.
 
 # Persistent result field to avoid repeated allocation
-_dot_result = None
-_dot_runtime = None
+_dot_result: Any = None  # Taichi scalar field
+_dot_runtime: Any = None  # Taichi program that owns ``_dot_result``
 
 
 @ti.kernel
-def _dot_product_reset_kernel(out: ti.template()):
+def _dot_product_reset_kernel(out: ti.template()):  # type: ignore[invalid-annotation]
     """Reset the output scalar field to zero."""
     out[None] = 0.0
 
 
 @ti.kernel
-def _dot_product_kernel(a: ti.template(), b: ti.template(), n: ti.i32, out: ti.template()):
+def _dot_product_kernel(a: ti.template(), b: ti.template(), n: ti.i32, out: ti.template()):  # type: ignore[invalid-annotation]
     """
     Compute dot product using thread-safe atomic accumulation.
 
@@ -358,7 +359,7 @@ def _dot_product_kernel(a: ti.template(), b: ti.template(), n: ti.i32, out: ti.t
         ti.atomic_add(out[None], a[i] * b[i])
 
 
-def _dot_product(a: ti.Field, b: ti.Field, n: int, dtype: object = TI_FLOAT) -> float:
+def _dot_product(a: ti.Field, b: ti.Field, n: int, dtype: Any = TI_FLOAT) -> float:
     """
     Compute dot product a^T @ b.
 
@@ -388,7 +389,7 @@ def _dot_product(a: ti.Field, b: ti.Field, n: int, dtype: object = TI_FLOAT) -> 
 
 
 @ti.kernel
-def _build_jacobi_precond_kernel(A: ti.template(), M_inv: ti.template(), n: ti.i32):
+def _build_jacobi_precond_kernel(A: ti.template(), M_inv: ti.template(), n: ti.i32):  # type: ignore[invalid-annotation]
     """Write inverse diagonals; use unity where the diagonal is numerically zero."""
     for i in range(n):
         diag = A[i, i]
@@ -404,7 +405,7 @@ def _build_jacobi_precond(A: ti.Field, M_inv: ti.Field, n: int) -> None:
 
 
 @ti.kernel
-def _apply_precond_kernel(x: ti.template(), y: ti.template(), M_inv: ti.template(), n: ti.i32):
+def _apply_precond_kernel(x: ti.template(), y: ti.template(), M_inv: ti.template(), n: ti.i32):  # type: ignore[invalid-annotation]
     """Apply Jacobi preconditioner: y[i] = M_inv[i] * x[i]."""
     for i in range(n):
         y[i] = M_inv[i] * x[i]
@@ -417,11 +418,11 @@ def _apply_precond(x: ti.Field, y: ti.Field, M_inv: ti.Field, n: int) -> None:
 
 @ti.kernel
 def _bicgstab_init_kernel(
-    x: ti.template(),
-    b: ti.template(),
-    r: ti.template(),
-    r0: ti.template(),
-    p: ti.template(),
+    x: ti.template(),  # type: ignore[invalid-annotation]
+    b: ti.template(),  # type: ignore[invalid-annotation]
+    r: ti.template(),  # type: ignore[invalid-annotation]
+    r0: ti.template(),  # type: ignore[invalid-annotation]
+    p: ti.template(),  # type: ignore[invalid-annotation]
     n: ti.i32,
 ):
     """Initialize a zero solution and identical residual, shadow residual and direction."""
@@ -441,7 +442,11 @@ def _bicgstab_init(
 
 @ti.kernel
 def _bicgstab_update_s_kernel(
-    s: ti.template(), r: ti.template(), v: ti.template(), alpha: ti.template(), n: ti.i32
+    s: ti.template(),  # type: ignore[invalid-annotation]
+    r: ti.template(),  # type: ignore[invalid-annotation]
+    v: ti.template(),  # type: ignore[invalid-annotation]
+    alpha: ti.template(),  # type: ignore[invalid-annotation]
+    n: ti.i32,
 ):
     """Write the intermediate BiCGSTAB residual s = r - alpha v."""
     for i in range(n):
@@ -454,7 +459,7 @@ def _bicgstab_update_s(s: ti.Field, r: ti.Field, v: ti.Field, alpha: float, n: i
 
 
 @ti.kernel
-def _axpy_kernel(y: ti.template(), x: ti.template(), alpha: ti.template(), n: ti.i32):
+def _axpy_kernel(y: ti.template(), x: ti.template(), alpha: ti.template(), n: ti.i32):  # type: ignore[invalid-annotation]
     """Accumulate alpha x into y over the active prefix."""
     for i in range(n):
         y[i] += alpha * x[i]
@@ -467,11 +472,11 @@ def _axpy(y: ti.Field, x: ti.Field, alpha: float, n: int) -> None:
 
 @ti.kernel
 def _bicgstab_update_x_kernel(
-    x: ti.template(),
-    p: ti.template(),
-    s: ti.template(),
-    alpha: ti.template(),
-    omega: ti.template(),
+    x: ti.template(),  # type: ignore[invalid-annotation]
+    p: ti.template(),  # type: ignore[invalid-annotation]
+    s: ti.template(),  # type: ignore[invalid-annotation]
+    alpha: ti.template(),  # type: ignore[invalid-annotation]
+    omega: ti.template(),  # type: ignore[invalid-annotation]
     n: ti.i32,
 ):
     """Accumulate both preconditioned BiCGSTAB search directions into x."""
@@ -488,7 +493,11 @@ def _bicgstab_update_x(
 
 @ti.kernel
 def _bicgstab_update_r_kernel(
-    r: ti.template(), s: ti.template(), t: ti.template(), omega: ti.template(), n: ti.i32
+    r: ti.template(),  # type: ignore[invalid-annotation]
+    s: ti.template(),  # type: ignore[invalid-annotation]
+    t: ti.template(),  # type: ignore[invalid-annotation]
+    omega: ti.template(),  # type: ignore[invalid-annotation]
+    n: ti.i32,
 ):
     """Write the final BiCGSTAB residual r = s - omega t."""
     for i in range(n):
@@ -502,11 +511,11 @@ def _bicgstab_update_r(r: ti.Field, s: ti.Field, t: ti.Field, omega: float, n: i
 
 @ti.kernel
 def _bicgstab_update_p_kernel(
-    p: ti.template(),
-    r: ti.template(),
-    v: ti.template(),
-    beta: ti.template(),
-    omega: ti.template(),
+    p: ti.template(),  # type: ignore[invalid-annotation]
+    r: ti.template(),  # type: ignore[invalid-annotation]
+    v: ti.template(),  # type: ignore[invalid-annotation]
+    beta: ti.template(),  # type: ignore[invalid-annotation]
+    omega: ti.template(),  # type: ignore[invalid-annotation]
     n: ti.i32,
 ):
     """Update the BiCGSTAB search direction with the shadow-residual coefficient."""
@@ -523,14 +532,14 @@ def _bicgstab_update_p(
 
 # Solver Factory
 
-_SOLVER_REGISTRY = {
+_SOLVER_REGISTRY: dict[str, type[VLMLinearSolver]] = {
     "SCIPY": ScipySolver,
     "BICGSTAB_GPU": TaichiBiCGSTABSolver,
 }
 
 
 def get_linear_solver(
-    solver_type: Literal["SCIPY", "BICGSTAB_GPU"] = "SCIPY",
+    solver_type: str = "SCIPY",
     max_n_panels: int = 10000,
 ) -> VLMLinearSolver:
     """Construct a VLM linear-solver strategy by registry name.
@@ -559,14 +568,12 @@ def get_linear_solver(
     >>> solver.name
     'SCIPY'
     """
-    solver_type = solver_type.upper()
+    solver_name = solver_type.upper()
 
-    if solver_type not in _SOLVER_REGISTRY:
+    if solver_name not in _SOLVER_REGISTRY:
         available = ", ".join(_SOLVER_REGISTRY.keys())
-        raise ValueError(f"Unknown solver type '{solver_type}'. Available: {available}")
+        raise ValueError(f"Unknown solver type '{solver_name}'. Available: {available}")
 
-    solver_class = _SOLVER_REGISTRY[solver_type]
-
-    if solver_type == "BICGSTAB_GPU":
-        return solver_class(max_n_panels=max_n_panels)
-    return solver_class()
+    if solver_name == "BICGSTAB_GPU":
+        return TaichiBiCGSTABSolver(max_n_panels=max_n_panels)
+    return ScipySolver()
