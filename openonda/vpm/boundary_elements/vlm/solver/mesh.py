@@ -476,9 +476,9 @@ def _mirror_vertices(
 
 @ti.kernel
 def _update_trailing_uniform_kernel(
-    trailing_direction: ti.template(),
-    vortex_point_position: ti.template(),
-    normal: ti.template(),
+    trailing_direction: ti.template(),  # type: ignore[invalid-annotation]
+    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
+    normal: ti.template(),  # type: ignore[invalid-annotation]
     n_panels: ti.i32,
     trail_dir_x: float,
     trail_dir_y: float,
@@ -516,10 +516,10 @@ def _update_trailing_uniform_kernel(
 
 @ti.kernel
 def _update_trailing_local_kernel(
-    trailing_direction: ti.template(),
-    vortex_point_position: ti.template(),
-    normal: ti.template(),
-    V_local: ti.template(),
+    trailing_direction: ti.template(),  # type: ignore[invalid-annotation]
+    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
+    normal: ti.template(),  # type: ignore[invalid-annotation]
+    V_local: ti.template(),  # type: ignore[invalid-annotation]
     n_panels: ti.i32,
     trailing_infty: float,
     epsilon: float,

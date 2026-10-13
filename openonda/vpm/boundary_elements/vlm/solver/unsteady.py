@@ -13,16 +13,16 @@ def _triangle_load(a, b, c, pressure, reference):
 
 @ti.kernel
 def add_unsteady_pressure_loads(
-    corners: ti.template(),
-    vortex: ti.template(),
-    circulation: ti.template(),
-    old_circulation: ti.template(),
-    cumulative: ti.template(),
-    old_cumulative: ti.template(),
-    forces: ti.template(),
-    unsteady_forces: ti.template(),
-    moment_correction: ti.template(),
-    pressure_jump_coefficient: ti.template(),
+    corners: ti.template(),  # type: ignore[invalid-annotation]
+    vortex: ti.template(),  # type: ignore[invalid-annotation]
+    circulation: ti.template(),  # type: ignore[invalid-annotation]
+    old_circulation: ti.template(),  # type: ignore[invalid-annotation]
+    cumulative: ti.template(),  # type: ignore[invalid-annotation]
+    old_cumulative: ti.template(),  # type: ignore[invalid-annotation]
+    forces: ti.template(),  # type: ignore[invalid-annotation]
+    unsteady_forces: ti.template(),  # type: ignore[invalid-annotation]
+    moment_correction: ti.template(),  # type: ignore[invalid-annotation]
+    pressure_jump_coefficient: ti.template(),  # type: ignore[invalid-annotation]
     n_panels: ti.i32,
     density_over_dt: float,
     inverse_dynamic_pressure: float,

@@ -9,6 +9,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import taichi as ti
@@ -30,7 +31,7 @@ class VLMLattice:
         dtype: Taichi data type (ti.f32 or ti.f64)
     """
 
-    def __init__(self, max_n_panels: int = 5000, dtype: object = ti.f32):
+    def __init__(self, max_n_panels: int = 5000, dtype: Any = ti.f32):
         """
         Initialize VLM lattice.
 
@@ -121,11 +122,16 @@ class VLMLattice:
         self.bound_relative_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
         self.bound_kinematic_velocity = ti.field(dtype=dtype, shape=(max_n_panels, 3))
         self.reference_speed = 1.0
-        self.force_density = None
+        self.force_density: float | None = None
 
         # Kinematic velocity at collocation_point points (N x 3) - 2D scalar field for better stability
         self.kinematic_velocity = ti.field(dtype=dtype, shape=(max_n_panels, 3))
         self.relative_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
+
+        # Transport-velocity scratch for trailing-direction updates, allocated
+        # on first use by the mesh module (Taichi field typed Any).
+        self._trailing_temp: Any = None
+        self._trailing_temp_np: np.ndarray | None = None
 
         # Pressure coefficient (N,) - matching VPM convention
         self.pressure_coefficient = ti.field(dtype=dtype, shape=(max_n_panels,))
@@ -408,7 +414,7 @@ class VLMLattice:
         if self.kinematic_velocity is None:
             return False
         kinematic_velocity = self.kinematic_velocity.to_numpy()[: self.n_panels]
-        return np.any(np.abs(kinematic_velocity) > 1e-10)
+        return bool(np.any(np.abs(kinematic_velocity) > 1e-10))
 
     def set_kinematic_velocity(self, kinematic_velocity: np.ndarray) -> None:
         """Upload prescribed panel velocities.
