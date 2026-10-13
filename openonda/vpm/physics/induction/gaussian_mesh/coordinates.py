@@ -1,6 +1,6 @@
 """Slab-commensurate auxiliary coordinates, without physical source snapping."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from itertools import islice
 import math
 from numbers import Integral
@@ -41,15 +41,22 @@ def slab_coordinates(
     return result, steps, count
 
 
+# Saved (index, reflected), world (z shift, reflected) and lattice (z shift,
+# reflected) image descriptors.
+ImageDescriptors = tuple[
+    tuple[tuple[int, bool], ...], tuple[tuple[float, bool], ...], tuple[tuple[int, bool], ...]
+]
+
+
 def finite_images(
-    images: object,
+    images: Iterable[tuple[int, bool]],
     zmin: float,
     zmax: float,
     cells: int,
     max_images: int,
     *,
     include_primary: bool = False,
-) -> object | None:
+) -> ImageDescriptors:
     """Bounded immutable descriptors plus exact integer/world image shifts."""
     if type(include_primary) is not bool:
         raise ValueError("primary permission must be an explicit boolean")
@@ -60,7 +67,9 @@ def finite_images(
     descriptors = tuple(islice(iter(images), cap + 1))
     if not descriptors or len(descriptors) > cap:
         raise ValueError("nonempty finite image list within cap required")
-    world, integer, saved = [], [], []
+    world: list[tuple[float, bool]] = []
+    integer: list[tuple[int, bool]] = []
+    saved: list[tuple[int, bool]] = []
     for k, odd in descriptors:
         if isinstance(k, bool) or not isinstance(k, Integral) or type(odd) not in (bool, np.bool_):
             raise ValueError("integer image index and boolean reflection required")
@@ -80,14 +89,14 @@ def finite_images(
 
 def image_tail_edges(
     integer: Sequence[tuple[int, bool]], cells: int, *, include_primary: bool
-) -> dict[bool, tuple[int, int]] | None:
+) -> dict[bool, tuple[int, int]]:
     """Lattice z positions beyond which each source family's image rows are omitted.
 
     Retained rows of a family must be consecutive, one period apart; the even
     family may lack only the physical primary. Rows beyond these midpoint
     edges are added by the closed-form image tail completion.
     """
-    edges = {}
+    edges: dict[bool, tuple[int, int]] = {}
     for odd in (False, True):
         rows = sorted(shift for shift, parity in integer if parity == odd)
         if not rows:

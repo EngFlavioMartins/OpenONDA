@@ -58,13 +58,15 @@ def use_system_cuda_toolkit() -> None:
             os.environ["CUDA_PATH"] = prefix
 
 
-def require_gaussian_host_runtime() -> dict[str, str] | None:
+def require_gaussian_host_runtime() -> dict[str, str]:
     """Validate portable IEEE error_bounds without importing a CUDA dependency."""
     from ....numerics.ieee import _bridge, ieee_arithmetic, require_round_to_nearest
     from ..gaussian_tail._interval import _platform
 
     try:
         bridge = _bridge()
+        if bridge is None:
+            raise RuntimeError("floating-point guard extension is unavailable")
         require_round_to_nearest()
         with ieee_arithmetic():
             _platform()
@@ -79,7 +81,7 @@ def require_gaussian_host_runtime() -> dict[str, str] | None:
     return {"execution_backend": "cpu", "fenv_extension": str(bridge.__file__)}
 
 
-def require_gaussian_mesh_runtime() -> dict[str, str] | None:
+def require_gaussian_mesh_runtime() -> dict[str, object]:
     """Validate optional CUDA libraries without selecting a device.
 
     Explicit CUDA selection raises an actionable dependency error. Portable

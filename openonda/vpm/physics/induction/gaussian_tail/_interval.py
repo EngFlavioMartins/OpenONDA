@@ -14,8 +14,20 @@ from fractions import Fraction
 from functools import lru_cache
 import math
 import sys
+from typing import NotRequired, TypedDict
 
 import numpy as np
+
+
+class CoreDefectBound(TypedDict):
+    """Velocity and Jacobian bounds of one source family's core defect."""
+
+    velocity_upper: float
+    gradient_frobenius_upper: float
+    exponential_upper: NotRequired[float]
+    order: NotRequired[int]
+    q_lower: NotRequired[float]
+    scope: NotRequired[str]
 
 
 @dataclass(frozen=True)
@@ -26,7 +38,7 @@ class Interval:
     upper: np.ndarray
 
 
-def _checked(lower: float | np.ndarray, upper: float | np.ndarray) -> "Interval | None":
+def _checked(lower: float | np.ndarray, upper: float | np.ndarray) -> "Interval":
     lower, upper = np.asarray(lower, dtype=np.float64), np.asarray(upper, dtype=np.float64)
     if not np.isfinite(lower).all() or not np.isfinite(upper).all() or np.any(lower > upper):
         raise FloatingPointError("interval arithmetic overflow or invalid enclosure")
@@ -39,7 +51,7 @@ def point(value: float | np.ndarray | tuple[float, float, float]) -> "Interval":
     return _checked(value, value)
 
 
-def _outward(lower: float | np.ndarray, upper: float | np.ndarray) -> "Interval | None":
+def _outward(lower: float | np.ndarray, upper: float | np.ndarray) -> "Interval":
     return _checked(np.nextafter(lower, -np.inf), np.nextafter(upper, np.inf))
 
 
@@ -58,7 +70,7 @@ def sub(a: "Interval", b: "Interval") -> "Interval":
     return add(a, neg(b))
 
 
-def mul(a: "Interval", b: "Interval") -> "Interval | None":
+def mul(a: "Interval", b: "Interval") -> "Interval":
     """Outward-rounded interval product."""
     products = [a.lower * b.lower, a.lower * b.upper, a.upper * b.lower, a.upper * b.upper]
     return _outward(np.minimum.reduce(products), np.maximum.reduce(products))
@@ -151,7 +163,7 @@ def gaussian_defect_upper(
     sigma_upper: float,
     period_lower: float,
     absolute_strength_upper: float,
-) -> dict[str, float] | None:
+) -> CoreDefectBound:
     """One source-family +/- infinite-tail defect using only rational bounds.
 
     Inputs must themselves be valid one-sided bounds. A safe source strength

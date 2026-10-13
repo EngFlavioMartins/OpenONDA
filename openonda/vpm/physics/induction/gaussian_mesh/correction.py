@@ -21,14 +21,14 @@ import numpy as np
 from ....kernels.high_order_gaussian import corrected_gaussian_residual
 from ....kernels.registry import kernel_definition
 from ....kernels.winckelmans import winckelmans_residual
-from .runtime import CUDAMemoryPool
+from .runtime import CUDAMemoryPool, CuPyArray, Diagnostics
 
 _QUAD_X, _QUAD_W = np.polynomial.legendre.leggauss(8)
 _PI15 = math.pi**-1.5
 
 
 @njit(cache=True)
-def _correction_factors(radius: float, sigma: float, tau: float) -> tuple[float, float] | None:
+def _correction_factors(radius: float, sigma: float, tau: float) -> tuple[float, float]:
     """Shared scalar arithmetic after source/radius validation; no fast math."""
     if sigma == tau:
         return 0.0, 0.0
@@ -91,7 +91,7 @@ def _positive_integer(value: object, name: str) -> int:
 
 
 def _image_list(images: Iterable[tuple[float, bool]], max_images: int) -> list[tuple[float, bool]]:
-    result = []
+    result: list[tuple[float, bool]] = []
     for shift, odd in images:
         if len(result) >= max_images:
             raise ValueError("finite image-count cap exceeded")
@@ -304,7 +304,7 @@ class GaussianCoreCorrectionGPU:
         max_images: int = 513,
         kernel: str = "GAUSSIAN",
     ):
-        self._cleanup_failure = None
+        self._cleanup_failure: BaseException | None = None
         self._memory_pool = CUDAMemoryPool(max_scratch_bytes)
         self.cp = cp = self._memory_pool.cp
         self.device_id = self._memory_pool.device_id
@@ -321,7 +321,7 @@ class GaussianCoreCorrectionGPU:
             raise ValueError("accumulation_dtype must be float32 or float64")
         self.dtype = np.dtype(accumulation_dtype)
         self.pool = self._memory_pool.pool
-        self.diagnostics = {
+        self.diagnostics: Diagnostics = {
             "production_qualified": False,
             "source_only_cores": True,
             "dtype": accumulation_dtype,
@@ -441,8 +441,8 @@ class GaussianCoreCorrectionGPU:
         self.pool.free_all_blocks()
 
     def evaluate(
-        self, target_x: object, images: Iterable[tuple[float, bool]]
-    ) -> tuple[object, object, dict[str, object]]:
+        self, target_x: np.ndarray, images: Iterable[tuple[float, bool]]
+    ) -> tuple[CuPyArray, CuPyArray, Diagnostics]:
         """Complete finite-image correction; strict cutoff, private publication."""
         cp = self.cp
         images = _image_list(images, self.max_images)
@@ -502,7 +502,7 @@ class GaussianCoreCorrectionGPU:
             self.diagnostics["pool_high_water_bytes"] = max(
                 self.diagnostics["pool_high_water_bytes"], self.pool.total_bytes()
             )
-            report = {
+            report: Diagnostics = {
                 **self.diagnostics,
                 "target_count": count,
                 "images": images,

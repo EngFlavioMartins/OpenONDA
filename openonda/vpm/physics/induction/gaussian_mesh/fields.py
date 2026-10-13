@@ -22,7 +22,7 @@ from .planning import (
     query_batch_size,
     required_channels,
 )
-from .runtime import CUDAMemoryPool, FFTPlanPair, positive_integer
+from .runtime import CUDAMemoryPool, CuPyArray, Diagnostics, FFTPlanPair, positive_integer
 from .stencil import cardinal_stencil_gpu
 
 
@@ -32,7 +32,7 @@ def _logical_stencils_fit(
     order: int,
     shape: tuple[int, int, int],
     fft_shape: tuple[int, int, int] | None,
-) -> bool | None:
+) -> bool:
     """Conservative validation to the *logical* linear-convolution output.
 
     Source assignment occupies only logical indices [0,n-1]. If every query
@@ -107,7 +107,7 @@ def _retained_stencils_fit(
     retained_shape: tuple[int, int, int],
     *,
     source_shape: tuple[int, int, int] | None = None,
-) -> bool | None:
+) -> bool:
     """Validate only complete original stencils inside the retained output crop."""
     if (
         len(start) != 3
@@ -118,20 +118,17 @@ def _retained_stencils_fit(
         )
     ):
         raise RuntimeError("invalid retained query-window metadata")
-    if source_shape is not None:
-        if (
-            len(source_shape) != 3
-            or len(fft_shape) != 3
-            or any(
-                type(s) is not int or not order <= s <= full or type(f) is not int or f < s + q - 1
-                for s, q, full, f in zip(
-                    source_shape, retained_shape, shape, fft_shape, strict=True
-                )
-            )
-        ):
-            raise RuntimeError("invalid source/query linear-convolution metadata")
-        fft_shape = None
-    if not _logical_stencils_fit(lattice, origin, order, shape, fft_shape):
+    if source_shape is not None and (
+        len(source_shape) != 3
+        or len(fft_shape) != 3
+        or any(
+            type(s) is not int or not order <= s <= full or type(f) is not int or f < s + q - 1
+            for s, q, full, f in zip(source_shape, retained_shape, shape, fft_shape, strict=True)
+        )
+    ):
+        raise RuntimeError("invalid source/query linear-convolution metadata")
+    logical_fft_shape = None if source_shape is not None else fft_shape
+    if not _logical_stencils_fit(lattice, origin, order, shape, logical_fft_shape):
         return False
     coordinate = np.asarray(lattice, dtype=np.float64) - np.asarray(origin, dtype=np.float64)
     lower = np.floor(np.nextafter(coordinate, -np.inf)) - order // 2 + 1
@@ -384,12 +381,7 @@ _CHANNEL_COMPONENTS = (
 )
 
 
-def channel_routes(
-    channel: int,
-) -> (
-    tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int], tuple[int, int, int]]
-    | tuple[tuple[int, int, int], tuple[int, int, int]]
-):
+def channel_routes(channel: int) -> tuple[tuple[int, int, int], ...]:
     """Map a symmetric potential derivative to curl output products."""
     routes = []
     for axis, derivative in _CHANNEL_COMPONENTS[channel]:
@@ -442,14 +434,21 @@ class GaussianImageFields:
         kernel: str = "GAUSSIAN",
         _lattice_origin: np.ndarray | None = None,
     ):
-        self._memory_pool = self._plans = self._correction = None
-        self._compact_fields = self._kernel_scratch = self._inverse = None
-        self._result_spectra = ()
-        self.spectra, self._source_stencils = {}, {}
-        self._prepared_images = self._prepared_world_images = None
-        self._tail_edges = {}
+        self._memory_pool: CUDAMemoryPool | None = None
+        self._plans: FFTPlanPair | None = None
+        self._correction: GaussianCoreCorrectionGPU | None = None
+        # Device grids, allocated on the first prepare and kept across calls.
+        self._compact_fields: CuPyArray = None
+        self._kernel_scratch: CuPyArray = None
+        self._inverse: CuPyArray = None
+        self._result_spectra: tuple[CuPyArray, ...] = ()
+        self.spectra: dict[bool, tuple[CuPyArray, ...]] = {}
+        self._source_stencils: dict[bool, tuple[CuPyArray, CuPyArray]] = {}
+        self._prepared_images: tuple[tuple[int, bool], ...] | None = None
+        self._prepared_world_images: tuple[tuple[float, bool], ...] | None = None
+        self._tail_edges: dict[bool, tuple[int, int]] = {}
         self.closed = False
-        self._cleanup_failure = None
+        self._cleanup_failure: BaseException | None = None
         self.profile = bool(profile)
         if type(source_only_primary) is not bool or type(complete_image_tail) is not bool:
             raise ValueError(
@@ -568,7 +567,8 @@ class GaussianImageFields:
             # Its configured cap is an upper bound, not an allocation required
             # by every source/query block. Keep the handle through failures.
             self._correction = GaussianCoreCorrectionGPU.__new__(GaussianCoreCorrectionGPU)
-            self._correction.__init__(
+            GaussianCoreCorrectionGPU.__init__(
+                self._correction,
                 self.host_x,
                 self.host_gamma,
                 self._host_sigma,
@@ -616,7 +616,8 @@ class GaussianImageFields:
                 )
                 self.pool.set_limit(size=self.effective_smooth_pool_cap)
                 self._plans = FFTPlanPair.__new__(FFTPlanPair)
-                self._plans.__init__(
+                FFTPlanPair.__init__(
+                    self._plans,
                     self._memory_pool,
                     self.fft_shape,
                     self.dtype,
@@ -741,7 +742,25 @@ class GaussianImageFields:
             raise RuntimeError("finite Gaussian image solver is closed")
         self._memory_pool.check_context()
 
-    def can_evaluate_targets(self, targets: np.ndarray) -> bool | None:
+    @property
+    def _owned_memory_pool(self) -> CUDAMemoryPool:
+        if self._memory_pool is None:
+            raise RuntimeError("finite Gaussian image solver has no memory pool")
+        return self._memory_pool
+
+    @property
+    def _fft_plans(self) -> FFTPlanPair:
+        if self._plans is None:
+            raise RuntimeError("finite Gaussian image solver has no FFT plans")
+        return self._plans
+
+    @property
+    def _core_correction(self) -> GaussianCoreCorrectionGPU:
+        if self._correction is None:
+            raise RuntimeError("finite Gaussian image solver has no core correction")
+        return self._correction
+
+    def can_evaluate_targets(self, targets: np.ndarray) -> bool:
         """Whether complete target stencils fit this retained output window.
 
         This read-only geometry check allocates no GPU storage, performs no
@@ -790,7 +809,7 @@ class GaussianImageFields:
         )
 
     @contextmanager
-    def _phase(self, diagnostics: dict[str, object], name: str) -> Iterator[None]:
+    def _phase(self, diagnostics: Diagnostics, name: str) -> Iterator[None]:
         if not self.profile:
             yield
             return
@@ -806,7 +825,7 @@ class GaussianImageFields:
     def _launch(self, name: str, count: int, arguments: tuple) -> None:
         self._program.get_function(name)(((count + 255) // 256,), (256,), arguments)
 
-    def _kernel_arguments(self, shifts: object, edges: tuple[int, int] | None = None) -> tuple:
+    def _kernel_arguments(self, shifts: CuPyArray, edges: tuple[int, int] | None = None) -> tuple:
         """Shared signed-lag geometry for scalar, fused and batched channels.
 
         ``edges`` bound the family's omitted image rows in lattice z units;
@@ -829,7 +848,7 @@ class GaussianImageFields:
             self.real_type(2 * self.cells * self.steps[2]),
         )
 
-    def _prepare_family(self, odd: bool, diagnostics: dict[str, object]) -> None:
+    def _prepare_family(self, odd: bool, diagnostics: Diagnostics) -> None:
         if odd in self.spectra:
             return
         if self.execution_plan.source_families == 1:
@@ -881,7 +900,7 @@ class GaussianImageFields:
                     ),
                 )
                 self.spectra[odd] = tuple(
-                    self._plans.rfft(grid[c], aligned_scratch=self._inverse) for c in range(3)
+                    self._fft_plans.rfft(grid[c], aligned_scratch=self._inverse) for c in range(3)
                 )
             else:
                 if self._kernel_scratch is None:
@@ -908,15 +927,15 @@ class GaussianImageFields:
                             grid,
                         ),
                     )
-                    spectra.append(self._plans.rfft(grid, aligned_scratch=self._inverse))
+                    spectra.append(self._fft_plans.rfft(grid, aligned_scratch=self._inverse))
                 self.spectra[odd] = tuple(spectra)
             del first, weights, gamma, grid
             self._source_stencils.pop(odd)
 
     def _stream_fields(
         self,
-        families: dict[bool, tuple[object, tuple[int, int] | None]],
-        diagnostics: dict[str, object],
+        families: dict[bool, tuple[CuPyArray, tuple[int, int] | None]],
+        diagnostics: Diagnostics,
     ) -> None:
         """Exact same channel products with memory-bounded recomputation.
 
@@ -960,7 +979,7 @@ class GaussianImageFields:
                             diagnostics["radial_kernel_launches"] += 1
                         for slot, channel in enumerate(selected):
                             with self._phase(diagnostics, "kernel_fft"):
-                                kernel_hat = self._plans.rfft(
+                                kernel_hat = self._fft_plans.rfft(
                                     self._kernel_scratch[slot], aligned_scratch=self._inverse
                                 )
                                 diagnostics["kernel_forward_transforms"] += 1
@@ -983,7 +1002,7 @@ class GaussianImageFields:
                         del device_channels
                 for index, column in enumerate(columns):
                     with self._phase(diagnostics, "inverse_fft_and_gather"):
-                        self._plans.irfft(self._result_spectra[index], self._inverse)
+                        self._fft_plans.irfft(self._result_spectra[index], self._inverse)
                         crop = self._inverse[self._compact_slices]
                         if one_family:
                             self._compact_fields[column] += crop
@@ -993,8 +1012,8 @@ class GaussianImageFields:
 
     def _all_channel_fields(
         self,
-        families: dict[bool, tuple[object, tuple[int, int] | None]],
-        diagnostics: dict[str, object],
+        families: dict[bool, tuple[CuPyArray, tuple[int, int] | None]],
+        diagnostics: Diagnostics,
     ) -> None:
         """Original fused layout, unchanged when its bounded data fits."""
         result_hat = self._result_spectra
@@ -1014,7 +1033,9 @@ class GaussianImageFields:
                 diagnostics["radial_kernel_launches"] += 1
             for channel in range(9):
                 with self._phase(diagnostics, "kernel_fft"):
-                    kernel_hat = self._plans.rfft(kernels[channel], aligned_scratch=self._inverse)
+                    kernel_hat = self._fft_plans.rfft(
+                        kernels[channel], aligned_scratch=self._inverse
+                    )
                     diagnostics["kernel_forward_transforms"] += 1
                 with self._phase(diagnostics, "spectral_product"):
                     for column, source, sign in channel_routes(channel):
@@ -1032,11 +1053,11 @@ class GaussianImageFields:
                     del kernel_hat
         for column in range(12):
             with self._phase(diagnostics, "inverse_fft_and_gather"):
-                self._plans.irfft(result_hat[column], self._inverse)
+                self._fft_plans.irfft(result_hat[column], self._inverse)
                 self.cp.copyto(self._compact_fields[column], self._inverse[self._compact_slices])
                 diagnostics["inverse_transforms"] += 1
 
-    def prepare(self, images: Sequence[tuple[int, bool]]) -> dict[str, object]:
+    def prepare(self, images: Sequence[tuple[int, bool]]) -> Diagnostics:
         """Prepare compact finite smooth fields; no tail or runtime validation."""
         self._check_context()
         cp = self.cp
@@ -1057,7 +1078,7 @@ class GaussianImageFields:
         self._validate_image_indices(
             (*integer, *((edge, odd) for odd, pair in self._tail_edges.items() for edge in pair))
         )
-        diagnostics = {
+        diagnostics: Diagnostics = {
             "runtime_admissible": False,
             "dtype": self.dtype.name,
             "variant": "fused-nine-radial-channels",
@@ -1083,10 +1104,11 @@ class GaussianImageFields:
         diagnostics["execution_plan"] = vars(self.execution_plan).copy()
         diagnostics["device_checks"] = self.device_checks.copy()
         started = time.perf_counter()
-        with self._memory_pool.allocation_scope():
+        memory_pool = self._owned_memory_pool
+        with memory_pool.allocation_scope():
             if self._plans is None:
                 self._plans = FFTPlanPair(
-                    self._memory_pool,
+                    memory_pool,
                     self.fft_shape,
                     self.dtype,
                     self.max_plan_bytes,
@@ -1099,7 +1121,7 @@ class GaussianImageFields:
             # channel views. No second FFT staging allocation is permitted.
             if self._inverse is None:
                 self._inverse = cp.empty(self.fft_shape, dtype=self.dtype)
-            families = {}
+            families: dict[bool, tuple[CuPyArray, tuple[int, int] | None]] = {}
             for odd in (False, True):
                 shifts = [shift for shift, reflection in integer if reflection == odd]
                 if shifts:
@@ -1150,9 +1172,7 @@ class GaussianImageFields:
             diagnostics.update(tail_bound_checked=False, compact_bytes=self.compact_bytes)
             return diagnostics
 
-    def evaluate_prepared(
-        self, targets: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    def evaluate_prepared(self, targets: np.ndarray) -> tuple[CuPyArray, CuPyArray, Diagnostics]:
         """Fresh bounded query batches, compact gather and exact correction.
 
         The complete public output is fresh device storage. Query coordinates,
@@ -1160,7 +1180,7 @@ class GaussianImageFields:
         later, larger query does not require a larger persistent field solver.
         """
         self._check_context()
-        if self._prepared_images is None:
+        if self._prepared_images is None or self._prepared_world_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         if isinstance(targets, self.cp.ndarray):
             raise TypeError("explicit host target snapshot required for this qualification")
@@ -1187,16 +1207,16 @@ class GaussianImageFields:
             len(q),
             self.order,
             self.dtype.itemsize,
-            self._correction.dtype.itemsize,
+            self._core_correction.dtype.itemsize,
             smooth_cap=self.pool.get_limit(),
             smooth_used=self.pool.used_bytes(),
-            correction_cap=self._correction.pool.get_limit(),
-            correction_used=self._correction.pool.used_bytes(),
+            correction_cap=self._core_correction.pool.get_limit(),
+            correction_used=self._core_correction.pool.used_bytes(),
             device_available=int(free)
             + self.pool.free_bytes()
-            + self._correction.pool.free_bytes(),
+            + self._core_correction.pool.free_bytes(),
         )
-        with self._memory_pool.allocation_scope():
+        with self._owned_memory_pool.allocation_scope():
             # One allocation preserves the checked 12*N-element footprint.
             # Both public views are contiguous, so host copies need no
             # contiguous-device temporary in CuPy's unrelated default pool.
@@ -1204,9 +1224,14 @@ class GaussianImageFields:
             velocity = output[: 3 * len(q)].reshape(-1, 3)
             gradient = output[3 * len(q) :].reshape(-1, 3, 3)
             gather_seconds, batches, retries, first_target = 0.0, 0, 0, 0
-            stencil, correction = None, None
-            evaluated_images = set()
+            stencil: Diagnostics | None = None
+            correction: Diagnostics | None = None
+            evaluated_images: set[tuple[float, bool]] = set()
             try:
+                # Set by every completed batch before they are accumulated.
+                current_gather_seconds = 0.0
+                current_stencil: Diagnostics = {}
+                current_correction: Diagnostics = {}
                 while first_target < len(q):
                     count = min(batch, len(q) - first_target)
                     last_target = first_target + count
@@ -1248,8 +1273,10 @@ class GaussianImageFields:
                         current_gather_seconds = time.perf_counter() - gather_started
                         # Stencils and corrections do not need to coexist.
                         first = weight = None
-                        correction_u, correction_j, current_correction = self._correction.evaluate(
-                            q[first_target:last_target], self._prepared_world_images
+                        correction_u, correction_j, current_correction = (
+                            self._core_correction.evaluate(
+                                q[first_target:last_target], self._prepared_world_images
+                            )
                         )
                         chunk_velocity += correction_u
                         chunk_gradient += correction_j
@@ -1276,7 +1303,7 @@ class GaussianImageFields:
                         # otherwise retain arrays from the failed allocation.
                         self.stream.synchronize()
                         self.pool.free_all_blocks()
-                        self._correction.pool.free_all_blocks()
+                        self._core_correction.pool.free_all_blocks()
                         continue
                     gather_seconds += current_gather_seconds
                     if stencil is None:
@@ -1320,7 +1347,7 @@ class GaussianImageFields:
                 # Empty queries keep the usual diagnostic shape without
                 # allocating coordinate/stencil or correction workspaces.
                 correction = {
-                    **self._correction.diagnostics,
+                    **self._core_correction.diagnostics,
                     "target_count": 0,
                     "images": self._prepared_world_images,
                     "candidate_pairs": 0,
@@ -1358,14 +1385,14 @@ class GaussianImageFields:
                     "inverse_transforms": 0,
                     "source_scatters": 0,
                     "smooth_pool_reserved_bytes": self.pool.total_bytes(),
-                    "correction_pool_reserved_bytes": self._correction.pool.total_bytes(),
+                    "correction_pool_reserved_bytes": self._core_correction.pool.total_bytes(),
                     "combined_pool_cap": self.max_total_bytes,
                 },
             )
 
     def evaluate(
         self, images: Sequence[tuple[int, bool]]
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    ) -> tuple[CuPyArray, CuPyArray, Diagnostics]:
         """Initial queries, INCLUDING source-only local core correction."""
         self.prepare(images)
         return self.evaluate_prepared(self.host_targets)

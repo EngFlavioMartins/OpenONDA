@@ -12,11 +12,13 @@ point accuracy require independent qualification in addition to these checks.
 """
 
 from dataclasses import dataclass, field
+from functools import partial
 import math
 from numbers import Integral
 from threading import current_thread
 from time import perf_counter
 from types import TracebackType
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -31,18 +33,22 @@ from .error_bounds import finite_image_correction_bound
 # than the Gaussian one; it grows by this factor up to this limit.
 _CUTOFF_GROWTH = 1.25
 _MAX_CUTOFF_GROWTH = 8.0
-from typing import TYPE_CHECKING
 
 from .parameters import GaussianMeshParameters
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ..gaussian_tail.error_bounds import PreparedTailSource
     from .correction_distance import CorrectionClassificationBound
     from .execution import PortableGaussianImageFields
+    from .fields import GaussianImageFields
     from .host_fields import GaussianHostImageFields
 
+    SessionField = GaussianHostImageFields | PortableGaussianImageFields | GaussianImageFields
 
-def _positive_int(value: int, name: str, maximum: int | None = None) -> int | None:
+
+def _positive_int(value: int, name: str, maximum: int | None = None) -> int:
     if (
         isinstance(value, bool)
         or not isinstance(value, Integral)
@@ -103,7 +109,7 @@ class GaussianSlabSettings:
             raise ValueError("array-pool limits exceed combined cap")
 
 
-def _query_snapshot(targets: np.ndarray, maximum: int) -> np.ndarray | None:
+def _query_snapshot(targets: np.ndarray, maximum: int) -> np.ndarray:
     raw = np.asarray(targets)
     if (
         raw.dtype.kind != "f"
@@ -121,10 +127,11 @@ def _query_snapshot(targets: np.ndarray, maximum: int) -> np.ndarray | None:
 
 
 def _source_arrays(snapshot: "PreparedTailSource") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    return tuple(
+    position, strength, radius = (
         np.frombuffer(item.data_bytes, dtype=np.dtype(item.dtype)).reshape(item.shape)
         for item in snapshot.source_data.arrays
     )
+    return position, strength, radius
 
 
 class _FieldConstructionError(RuntimeError):
@@ -138,22 +145,33 @@ class _FieldConstructionError(RuntimeError):
 
 
 def _new_field(
-    *args, execution_backend: str = "cupy_cuda", portable: bool = False, **kwargs
-) -> "GaussianHostImageFields | PortableGaussianImageFields | None":
+    *args: Any, execution_backend: str = "cupy_cuda", portable: bool = False, **kwargs: Any
+) -> "SessionField":
     # Importing settings/session support must not import CuPy or choose a device.
-    if portable:
-        from .execution import PortableGaussianImageFields as GaussianImageFields
-
-        kwargs["execution_backend"] = execution_backend
-    elif execution_backend == "cpu":
-        from .host_fields import GaussianHostImageFields as GaussianImageFields
-    else:
-        from .fields import GaussianImageFields
     # Retain a handle even when __init__ fails, so its cleanup result is
     # established rather than guessed from the exception type or message.
-    field = GaussianImageFields.__new__(GaussianImageFields)
+    field: SessionField
+    initialize: Callable[[], None]
+    if portable:
+        from .execution import PortableGaussianImageFields
+
+        kwargs["execution_backend"] = execution_backend
+        field = PortableGaussianImageFields.__new__(PortableGaussianImageFields)
+        initialize = partial(PortableGaussianImageFields.__init__, field, *args, **kwargs)
+    elif execution_backend == "cpu":
+        from .host_fields import GaussianHostImageFields
+
+        field = GaussianHostImageFields.__new__(GaussianHostImageFields)
+
+        initialize = partial(GaussianHostImageFields.__init__, field, *args, **kwargs)
+    else:
+        from .fields import GaussianImageFields
+
+        field = GaussianImageFields.__new__(GaussianImageFields)
+
+        initialize = partial(GaussianImageFields.__init__, field, *args, **kwargs)
     try:
-        field.__init__(*args, **kwargs)
+        initialize()
     except BaseException as failure:
         try:
             field.close()
@@ -169,7 +187,7 @@ def _classification(
     upper: np.ndarray,
     *,
     cutoff: float,
-    images: tuple,
+    images: tuple[tuple[int, bool], ...],
 ) -> "CorrectionClassificationBound":
     # The classifier proof is deliberately separate from the mathematical
     # correction envelope. No unproven assumption r >= configured cutoff.
@@ -239,9 +257,14 @@ class GaussianSlabFieldSession:
                 f"broadening_ratio must cover the {self.kernel} Gaussian partner width "
                 f"({self._split.partner_ratio:.6g} cores)"
             )
-        self._snapshot = self._field = self._role = self._bounds = None
-        self._shells = self._cutoff = None
-        self._failed_field = None
+        self._snapshot: PreparedTailSource | None = None
+        self._field: SessionField | None = None
+        self._role: bool | None = None
+        self._bounds: tuple[np.ndarray, np.ndarray] | None = None
+        self._shells: int | None = None
+        self._cutoff: float | None = None
+        self._cutoff_growth = 1.0
+        self._failed_field: object = None
         self._cleanup_uncertain = False
         self.closed = False
         self._thread = current_thread()
@@ -322,11 +345,7 @@ class GaussianSlabFieldSession:
         targets: np.ndarray,
         *,
         source_only: bool = False,
-    ) -> (
-        tuple[np.ndarray, np.ndarray, dict[str, bool]]
-        | tuple[np.ndarray, np.ndarray, dict[str, str]]
-        | None
-    ):
+    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
         """Bounded image field at ``targets``: images only, or primary plus images.
 
         The shells and correction radius are chosen so that the proven bounds
@@ -364,7 +383,7 @@ class GaussianSlabFieldSession:
         # Select complete reflected shells with the same completed-tail and
         # local correction bounds. The explicit maximum remains a hard ceiling.
         shells = min(3, self.max_shells - 1)
-        if self._field is not None and self._role == source_only:
+        if self._field is not None and self._role == source_only and self._shells is not None:
             shells = max(shells, self._shells)
         envelope = self._split.defect_envelope
         cutoff_growth = 1.0
@@ -530,12 +549,15 @@ class GaussianSlabFieldSession:
             # the actual immutable list used by correction, not a hash or an
             # algebraically equivalent expression. No query is published on
             # a mismatch, including on an otherwise valid exact-source hit.
-            if self._field._prepared_world_images != classification.world_images:
+            field = self._field
+            if field is None:
+                raise RuntimeError("Gaussian slab field was not built")
+            if field._prepared_world_images != classification.world_images:
                 raise RuntimeError("runtime image descriptors differ from validated world images")
-            velocity, gradient, finite = self._field.evaluate_prepared(query)
+            velocity, gradient, finite = field.evaluate_prepared(query)
             # Explicit transfers; no undocumented Taichi/CuPy pointer interop.
-            velocity = self._field.cp.asnumpy(velocity)
-            gradient = self._field.cp.asnumpy(gradient)
+            velocity = field.cp.asnumpy(velocity)
+            gradient = field.cp.asnumpy(gradient)
             if not np.isfinite(velocity).all() or not np.isfinite(gradient).all():
                 raise FloatingPointError("nonfinite complete Gaussian slab query")
         except BaseException as failure:

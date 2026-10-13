@@ -75,7 +75,7 @@ def _frozen_interval(value: "FrozenBounds", shape: tuple[int, ...]) -> "Interval
 
 def _vector_correction_envelopes(
     distance: np.ndarray, tau: float, strength_upper: float
-) -> tuple["Interval", "Interval"] | None:
+) -> tuple["Interval", "Interval"]:
     """Same rational proof as the scalar bound, vectorized over ALL images.
 
     A single128-iteration positive exponential series operates on the image
@@ -119,7 +119,7 @@ def finite_image_correction_bound(
     query_lower: np.ndarray,
     query_upper: np.ndarray,
     *,
-    images: Sequence[tuple[float, bool]],
+    images: Sequence[tuple[int, bool]],
     tau: float,
     omitted_distance_lower: float,
     max_images: int = 4096,
@@ -186,7 +186,7 @@ def finite_image_correction_bound(
         if (
             isinstance(k, bool)
             or not isinstance(k, Integral)
-            or abs(k) > 2**30
+            or abs(int(k)) > 2**30
             or type(odd) not in (bool, np.bool_)
         ):
             raise ValueError("bounded integer index and boolean reflection required")

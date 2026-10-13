@@ -17,6 +17,7 @@ this arithmetic does not claim that every otherwise checked CUDA allocation
 will succeed. No numerical parameter participates in execution-plan choice.
 """
 
+from collections.abc import Container
 from dataclasses import dataclass
 import math
 
@@ -36,7 +37,7 @@ class FieldExecutionPlan:
     inverse_transforms: int
 
 
-def required_channels(columns: object) -> object:
+def required_channels(columns: Container[int]) -> tuple[int, ...]:
     """Unique Gaussian derivative channels used by explicit curl columns."""
     derivatives = (
         ((0, -1),),
@@ -69,9 +70,9 @@ def field_execution_plan(
     pool_cap: int,
     plan_cap: int,
     *,
-    retained_shape: tuple[float, int, int] | tuple[int, int, int] | tuple[int, int] | None = None,
+    retained_shape: tuple[int, int, int] | None = None,
     allow_all_channels: bool = True,
-) -> "FieldExecutionPlan | None":
+) -> "FieldExecutionPlan":
     """Choose the FFT blocking of a field that fits the memory limits."""
     retained = shape if retained_shape is None else retained_shape
     if len(retained) != 3 or any(
@@ -142,7 +143,7 @@ def device_field_execution_plan(
     free_bytes: int,
     *,
     retained_shape: tuple[int, int, int] | None = None,
-) -> tuple["FieldExecutionPlan", int] | None:
+) -> tuple["FieldExecutionPlan", int]:
     """Select exact execution batches within both settings and live-device bounds.
 
     Other field allocations (including the primary particle operator) legitimately occupy
@@ -176,7 +177,7 @@ def device_field_execution_plan(
     return plan, effective_cap
 
 
-def correction_query_reserve(target_count: bool | float, itemsize: int) -> int | None:
+def correction_query_reserve(target_count: int, itemsize: int) -> int:
     """Rounded correction-query scratch, excluding its already-owned index."""
     if type(target_count) is not int or target_count < 1 or itemsize not in (4, 8):
         raise ValueError("positive target count and float32/float64 item size required")
@@ -194,7 +195,7 @@ def query_batch_size(
     correction_cap: int,
     correction_used: int,
     device_available: int,
-) -> int | None:
+) -> int:
     """Fit fresh query scratch around retained fields and one complete output.
 
     Queries can grow after the original field was built. Their coordinates,

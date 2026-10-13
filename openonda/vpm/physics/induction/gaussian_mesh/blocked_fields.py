@@ -5,12 +5,16 @@ import math
 import threading
 from time import perf_counter
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import psutil
 
 from .coordinates import finite_images, slab_coordinates
-from .runtime import positive_integer
+from .runtime import Diagnostics, positive_integer
+
+if TYPE_CHECKING:
+    from .fields import GaussianImageFields
 
 
 def _snapshot(values: np.ndarray, name: str, *, vector: bool = True) -> np.ndarray:
@@ -64,9 +68,14 @@ class GaussianBlockedCUDAFields:
     ):
         self.closed = False
         self._thread = threading.get_ident()
-        self._leaf = self._failed_field = None
-        self._prepared_images = self._prepared_world_images = self._integer_images = None
-        self._cached_query = self._cached_values = self._cached_report = None
+        self._leaf: GaussianImageFields | None = None
+        self._failed_field: GaussianImageFields | None = None
+        self._prepared_images: tuple[tuple[int, bool], ...] | None = None
+        self._prepared_world_images: tuple[tuple[float, bool], ...] | None = None
+        self._integer_images: tuple[tuple[int, bool], ...] | None = None
+        self._cached_query: np.ndarray | None = None
+        self._cached_values: np.ndarray | None = None
+        self._cached_report: Diagnostics | None = None
         self.cp = SimpleNamespace(asnumpy=np.asarray)
         self.dtype = np.dtype(dtype)
         self.correction_dtype = np.dtype(correction_dtype)
@@ -86,15 +95,12 @@ class GaussianBlockedCUDAFields:
         self.order, self.zmin, self.zmax = int(order), float(zmin), float(zmax)
         self.tau, self.spacing, self.cutoff = float(tau), float(spacing), float(cutoff)
         self.source_only_primary, self.profile = source_only_primary, bool(profile)
-        for name in (
-            "max_scratch_bytes",
-            "max_correction_bytes",
-            "max_plan_bytes",
-            "max_total_bytes",
-            "max_images",
-            "max_query_points",
-        ):
-            setattr(self, name, positive_integer(locals()[name], name))
+        self.max_scratch_bytes = positive_integer(max_scratch_bytes, "max_scratch_bytes")
+        self.max_correction_bytes = positive_integer(max_correction_bytes, "max_correction_bytes")
+        self.max_plan_bytes = positive_integer(max_plan_bytes, "max_plan_bytes")
+        self.max_total_bytes = positive_integer(max_total_bytes, "max_total_bytes")
+        self.max_images = positive_integer(max_images, "max_images")
+        self.max_query_points = positive_integer(max_query_points, "max_query_points")
         if self.max_scratch_bytes + self.max_correction_bytes > self.max_total_bytes:
             raise MemoryError("combined array-pool limits exceed total cap")
         if self.max_plan_bytes >= self.max_scratch_bytes:
@@ -120,7 +126,8 @@ class GaussianBlockedCUDAFields:
         self._lattice_x, self.steps, self.cells = slab_coordinates(
             self.host_x, self.zmin, self.zmax, self.spacing
         )
-        self._options = {
+        # Keyword arguments shared by every CUDA leaf field.
+        self._options: dict[str, Any] = {
             "zmin": self.zmin,
             "zmax": self.zmax,
             "tau": self.tau,
@@ -177,7 +184,7 @@ class GaussianBlockedCUDAFields:
         slab_coordinates(query, self.zmin, self.zmax, self.spacing)
         return True
 
-    def prepare(self, images: Sequence[tuple[int, bool]]) -> dict[str, object] | None:
+    def prepare(self, images: Sequence[tuple[int, bool]]) -> Diagnostics:
         """Validate and store the image descriptors the field will sum."""
         self._check_context()
         self._prepared_images = self._prepared_world_images = self._integer_images = None
@@ -215,7 +222,7 @@ class GaussianBlockedCUDAFields:
     @staticmethod
     def _split(
         source: np.ndarray, target: np.ndarray, source_points: np.ndarray, target_points: np.ndarray
-    ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]] | None:
+    ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
         sx, tq = source_points[source], target_points[target]
         se = np.ptp(sx, axis=0) if len(source) > 1 else np.full(3, -1.0)
         te = np.ptp(tq, axis=0) if len(target) > 1 else np.full(3, -1.0)
@@ -235,13 +242,16 @@ class GaussianBlockedCUDAFields:
 
     def _evaluate_leaf(
         self, source: np.ndarray, target: np.ndarray, query: np.ndarray, origin: np.ndarray
-    ) -> tuple[np.ndarray, dict[str, int]] | None:
+    ) -> tuple[np.ndarray, Diagnostics]:
         from .fields import GaussianImageFields
 
+        if self._prepared_images is None:
+            raise RuntimeError("no successfully prepared finite image field")
         leaf = GaussianImageFields.__new__(GaussianImageFields)
         self._leaf = leaf
         try:
-            leaf.__init__(
+            GaussianImageFields.__init__(
+                leaf,
                 self.host_x[source],
                 self.host_gamma[source],
                 self._host_sigma[source],
@@ -286,20 +296,21 @@ class GaussianBlockedCUDAFields:
         finally:
             self._retire_leaf()
 
-    def evaluate_prepared(
-        self, targets: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]] | None:
+    def evaluate_prepared(self, targets: np.ndarray) -> tuple[np.ndarray, np.ndarray, Diagnostics]:
         """Velocity and gradient at ``targets``, evaluated block by block."""
         self._check_context()
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         query = self._query(targets)
         started = perf_counter()
-        if self._cached_query is not None and np.array_equal(
-            query.view(np.uint64), self._cached_query.view(np.uint64)
+        if (
+            self._cached_query is not None
+            and self._cached_values is not None
+            and self._cached_report is not None
+            and np.array_equal(query.view(np.uint64), self._cached_query.view(np.uint64))
         ):
             values = self._cached_values.copy()
-            report = {
+            report: Diagnostics = {
                 **self._cached_report,
                 "query_seconds": perf_counter() - started,
                 "exact_query_output_hit": True,
@@ -409,7 +420,7 @@ class GaussianBlockedCUDAFields:
 
     def evaluate(
         self, images: Sequence[tuple[int, bool]]
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]] | None:
+    ) -> tuple[np.ndarray, np.ndarray, Diagnostics]:
         """Prepare ``images`` and evaluate them at the initial targets."""
         self.prepare(images)
         return self.evaluate_prepared(self.host_targets)

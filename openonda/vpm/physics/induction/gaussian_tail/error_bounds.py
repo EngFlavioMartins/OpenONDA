@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ._interval import (
+    CoreDefectBound,
     Interval,
     _platform,
     add,
@@ -100,7 +101,7 @@ def _capture_source_data(
     z_min: float,
     z_max: float,
     max_sources: int,
-) -> "GaussianSourceData | None":
+) -> "GaussianSourceData":
     x, gamma, sigma = (np.asarray(v) for v in (position, strength, radius))
     if (
         x.ndim != 2
@@ -114,11 +115,11 @@ def _capture_source_data(
         raise ValueError("binary32 or binary64 source arrays required")
     if not math.isfinite(z_min) or not math.isfinite(z_max) or z_max <= z_min:
         raise ValueError("finite ordered physical slab required")
-    items = tuple(
+    x_data, gamma_data, sigma_data = (
         SourceArrayData(v.dtype.str, tuple(v.shape), np.ascontiguousarray(v).tobytes(order="C"))
         for v in (x, gamma, sigma)
     )
-    return GaussianSourceData(items, struct.pack("!dd", z_min, z_max))
+    return GaussianSourceData((x_data, gamma_data, sigma_data), struct.pack("!dd", z_min, z_max))
 
 
 def _source_data_hash(source_data: "GaussianSourceData") -> str:
@@ -178,7 +179,7 @@ def prepare_tail_source(
     z_min: float,
     z_max: float,
     max_sources: int = 400_000,
-) -> "PreparedTailSource | None":
+) -> "PreparedTailSource":
     """Capture owned exact source values, their absolute strength and family boxes.
 
     Only binary32/binary64 source fields are checked. The retained immutable
@@ -259,14 +260,14 @@ class ImageTailSeparationError(ValueError):
 
 
 def query_tail_bound(
-    snapshot: "PreparedTailSource | None",
+    snapshot: "PreparedTailSource",
     query_lower: np.ndarray,
     query_upper: np.ndarray,
     *,
     shells: int,
     minimum_separation: float = 0.0,
     kernel_defect: "AlgebraicDefectEnvelope | GaussianDefectEnvelope | None" = None,
-) -> "QueryTailBound | None":
+) -> "QueryTailBound":
     """Enclose what the completed image tail leaves over a whole query box.
 
     Each source family repeats with period P in z. The field keeps the rows
@@ -353,6 +354,7 @@ def query_tail_bound(
         fifth = mul(mul(mul(distance, distance), mul(distance, distance)), distance)
         ur = div_positive(velocity_coefficient, fifth)
         jr = div_positive(gradient_coefficient, mul(fifth, distance))
+        core: CoreDefectBound
         if kernel_defect is None:
             core = gaussian_defect_upper(
                 gap_lower=gap,

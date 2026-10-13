@@ -9,17 +9,15 @@ from collections.abc import Sequence
 import math
 from numbers import Integral
 import time
-from typing import TYPE_CHECKING
 
 import numpy as np
 
-if TYPE_CHECKING:
-    from .runtime import CUDAMemoryPool
+from .runtime import CuPyArray, CuPyMemoryPool, Diagnostics
 
 
 def _parameters(
     origin: np.ndarray, order: int, shape: Sequence[int], dtype: np.dtype | str, max_points: int
-) -> tuple:
+) -> tuple[np.ndarray, int, tuple[int, ...], np.dtype, int]:
     if isinstance(order, bool) or not isinstance(order, Integral) or order not in (4, 6, 8, 10):
         raise ValueError("even cardinal order4..10 required")
     if len(shape) != 3 or any(
@@ -77,17 +75,19 @@ def _source(dtype: np.dtype | str, order: int) -> str:
 
 
 def cardinal_stencil_gpu(
-    points: object,
+    points: CuPyArray,
     origin: np.ndarray,
     order: int,
     shape: Sequence[int],
     *,
     dtype: np.dtype | str = "float32",
-    pool: "CUDAMemoryPool",
+    pool: CuPyMemoryPool,
     max_points: int = 1_000_000,
     max_new_bytes: int = 256 * 1024**2,
-) -> tuple[object, object, dict[str, object]]:
+) -> tuple[CuPyArray, CuPyArray, Diagnostics]:
     """Return fresh `(first_i32, weights, diagnostics)` using caller-owned pool.
+
+    ``points`` is a host array or a CuPy device array.
 
     Accepts host arrays or a same-device CuPy array. A contiguous f64 device
     array is read directly; otherwise a private f64 coordinate copy is made.
@@ -159,7 +159,7 @@ def cardinal_stencil_gpu(
             raise ValueError(
                 f"device cardinal stencil validation failed (flags={status}); no stencil published"
             )
-        diagnostics = {
+        diagnostics: Diagnostics = {
             "production_admissible": False,
             "coordinate_normalization_changed": False,
             "source_points_mutated": False,
