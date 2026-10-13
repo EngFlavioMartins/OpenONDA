@@ -25,7 +25,7 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION = CASE_DIR / "solution"
 COUPLED_MESH = CASE_DIR / "assets" / "coupled_cube_flow_mesh.npz"
 SAMPLES = CASE_DIR / "samples"
-REFERENCE_SAMPLES = CASE_DIR / "reference_flow/samples/fine"
+REFERENCE_SAMPLES = CASE_DIR / "reference_flow/samples/grid_h0045"
 _DEFAULT_REFERENCE_SAMPLES = REFERENCE_SAMPLES
 FIGURES = CASE_DIR / "figures"
 AUXILIARY = FIGURES / "auxiliary"
@@ -61,7 +61,7 @@ SOURCES = {
 
 def reference_run():
     root = CASE_DIR / "reference_flow"
-    name = "fine"
+    name = "grid_h0045"
     return SimpleNamespace(
         name=name,
         solution=root / "solution" / name,

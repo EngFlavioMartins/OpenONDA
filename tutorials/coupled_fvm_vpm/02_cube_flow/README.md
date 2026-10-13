@@ -1,39 +1,48 @@
 # Coupled cube flow at $Re=1000$
 
-FVM resolves separation from the no-slip faces of a unit cube; VPM carries the outer wake. Both solvers use equilibrium Smagorinsky LES with $C_k=0.094$ and $C_e=1.048$. Force coefficients use frontal area 1 m².
+The FVM resolves separation from the no-slip faces of a unit cube and its near wake; vortex particles carry the outer wake. Both solvers use equilibrium Smagorinsky LES with $C_k=0.094$ and $C_e=1.048$. Force coefficients use the frontal area, 1 m². The [reference flow](reference_flow/README.md) solves the same problem with the FVM alone.
 
-| Quantity | Default |
+| Quantity | Value |
 | --- | --- |
-| Cube | $[-0.5,0.5]^3$ m |
-| Freestream $\mathbf{U}_\infty$; density $\rho$ | $(1,0,0)$ m/s; 1 kg/m³ |
-| Molecular viscosity $\nu$ | 0.001 m²/s |
-| FVM box | $[-1.485,1.485]^3$ m |
-| Transfer region | $[-1.45,1.45]^3$ m |
-| VPM domain | $[-4.5,12]\times[-3,3]^2$ m |
-| FVM/particle spacing | 0.045 m |
-| FVM/exchange step | 0.01 s / 0.05 s |
-| End time | 30 s |
+| Cube $D$; freestream $U_\infty$ | $[-0.5,0.5]^3$ m; 1 m/s in $+x$ |
+| Density $\rho$; viscosity $\nu=U_\infty D/Re$ | 1 kg/m³; 0.001 m²/s |
+| FVM box | $[-1.8,4.3]\times[-1.8,1.8]^2$ m, about 860k cells |
+| Transfer region | 8.75 cells inside the box faces |
+| VPM domain; outflow fringe | $[-4.5,24]\times[-3,3]^2$ m; $x\in[12,24]$ m |
+| Cell and particle spacing | 0.045 m |
+| FVM step; exchange step | 0.01 s; 0.05 s |
+| End time; statistics | 100 s; $t\ge40$ s |
 
-## Models and mesh
+## Physics and numerics
 
-The [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cube.stl` with uniform spacing. The solver stores it as `assets/<case_name>_mesh.npz` and reuses it while the geometry and meshing controls are unchanged. The cube is no-slip; all outer FVM faces belong to `numericalBoundary`.
+The [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup) is generated from `assets/cube.stl` with uniform spacing; all outer FVM faces form the `numericalBoundary`, where the particles supply the normal velocity and the tangential part of its normal derivative ([mixed boundary condition](../../../docs/coupling.md#boundary-conditions)). Inside the transfer region, FVM vorticity replaces the particles at every exchange ([renewal](../../../docs/coupling.md#vorticity-transfer)), with a $6h$ blend and a $2h$ particle-only band; up to six FVM solves per exchange converge the boundary trace. Particles use RK2, Gaussian cores of radius $1.05h$, grid-based diffusion and FMM induction. See [FVM LES](../../../docs/fvm.md#turbulence-and-les) and [VPM diffusion and LES](../../../docs/vpm.md#diffusion-and-les) for the closures.
 
-See [FVM LES](../../../docs/fvm.md#turbulence-and-les) and [VPM diffusion and LES](../../../docs/vpm.md#diffusion-and-les) for the closures. Particles use RK2, Gaussian cores of radius $1.05h$, GBD diffusion and free-space FMM induction. [Mixed vorticity boundaries](../../../docs/coupling.md#boundary-conditions) and [buffered M4-prime renewal](../../../docs/coupling.md#vorticity-transfer) use a $6h$ blend width, a $2h$ VPM-only band and up to three interface sweeps. Edit constants and configurations in `setup.py` to change the problem.
+The layout follows the coupling rules found with the [cylinder](../01_cylinder_shedding_flow/coupling_findings.md):
 
-## Run and compare
+- **Box.** The coupling boundary stays out of the body's near field, and the region where FVM vorticity is used unblended reaches about $1.05D$ from the centre sideways and $3.5D$ downstream, past the separated shear layers' roll-up. A box ending about $0.5D$ from the faces raised the cube drag by about 8%, as it raised the cylinder drag.
+- **Exchange step.** Fewer exchanges are more accurate, up to the particle stability limit $\Delta t_\mathrm{VPM}<1/\max|S|$. At the cube edges the start-up strain rate reaches about 15 s⁻¹, a ceiling of 0.067 s. Five FVM steps per exchange (0.05 s) leave a 25% margin for the fluctuating strain of the turbulent wake.
+- **Outflow.** Shed vortices fade through an [outflow fringe](../../../docs/vpm.md#stabilization) instead of being deleted at the domain face.
+- **Startup.** An impulsively started cube keeps a symmetric wake for a long time. A transverse freestream of $(0,0.1,0.05)$ m/s, tapered smoothly to zero between 1 s and 2 s, breaks the symmetry so that the wake sheds; the reference uses the same startup.
 
-From this directory in an [installed environment](../../../docs/installation.md):
+## Run
 
 ```bash
+(cd reference_flow && ./allrun.sh)
 ./allrun.sh
-python -m assets.postprocess
 ./allplot.sh
 ```
 
-`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` and `python setup.py` resume the latest coupled backup. The mesh is kept as `assets/coupled_cube_flow_mesh.npz`. See [continuation](../../../docs/continuation.md) before changing a saved configuration.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest backup. The mesh is generated once and kept as `assets/coupled_cube_flow_mesh.npz`. The FVM runs on four MPI processes and the particles on the GPU. Expect several days for 100 s of flow on a laptop GPU, mostly in the FVM; `./allplot.sh` works on any completed portion once $t>40$ s.
 
-Forces and profiles are sampled every 0.05 s; retained fields and coupled backups every 0.25 s. Read histories under `samples/`, plots under `figures/` and convergence in `solution/coupler_diagnostics.jsonl`. ParaView opens `solution/fvm.pvd` and `solution/vpm.pvd`.
+## Results
 
-Run the [three-grid FVM reference](reference_flow/README.md) for comparison. `./allplot.sh` uses a completed reference and common saved physical times. Compare force statistics and wake profiles while refining FVM spacing, particle spacing and exchange step; matching LES coefficients alone does not establish coupled accuracy.
+| File | Content |
+| --- | --- |
+| `figures/forces` | $C_D$, $C_S$ and $C_L$ against the reference; the mean drag, side-force and lift rms and the Strouhal number over $t\ge40$ s are printed |
+| `figures/velocity_profiles` | Time-mean streamwise velocity and transverse velocity fluctuation along the centreline and along $y=0.75D$, $t\ge40$ s |
+| `figures/coupled_fvm_vpm_fields_t*` | Coupled FVM and particle velocity in the mid-plane, every 2 s |
+| `figures/reference_fvm_*_fields_t*` | The same plane against the reference; instantaneous, so the shed vortices' phases differ once shedding develops |
+| `figures/coupling_diagnostics` | Boundary-trace convergence, particle count and wall time per exchange |
+| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; `assets/paraview_state.py` loads both in ParaView |
 
-`assets.postprocess` samples raw saved FVM volumes on the common comparison lattice. Run it explicitly after new solver output is ready. `./allplot.sh` reads the recorded comparison arrays.
+`./allplot.sh` first samples the saved FVM fields of both runs on a common lattice (`python -m assets.postprocess`), then draws the figures. Compare force statistics and mean profiles while refining the cell and particle spacing and the exchange step.

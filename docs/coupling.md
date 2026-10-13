@@ -22,9 +22,11 @@ Match the freestream, viscosity and turbulence model in both solvers, and define
 
 ## Geometry and mesh
 
-1. **FVM box.** Mesh a box around the body with a no-slip wall and an outer patch named `numericalBoundary`. Extend it beyond the vortex-formation region, where separated shear layers are still only a few particle spacings thick: particle cores smooth vorticity over their radius, so an interface cutting those layers biases the near wake. In the [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md), moving the downstream face from 2.4 to 4.4 diameters brought the lift amplitude from 6.7% to about 1% of the reference.
+1. **FVM box.** Mesh a box around the body with a no-slip wall and an outer patch named `numericalBoundary`. Two bounds matter, measured on the region where FVM vorticity is used unblended, which ends inside the box faces by the transfer inset, the particle-only band and the blend width:
+   - Keep the coupling boundary out of the body's near field. With the box faces half a body length from the wall, the drag and shedding frequency rise by 8–10% for both the cylinder and the cube.
+   - Extend the unblended region downstream past the vortex-formation length, where the separated shear layers roll up and the centreline velocity fluctuation peaks. The end of the mean reverse flow is not enough. In the [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/coupling_findings.md), a region ending inside the formation zone lowered the lift amplitude by 5%; beyond it the error levels off near 1%.
 2. **Transfer region.** `transfer_region_bounds` sets a box in metres inside the FVM box where the FVM owns the vorticity. Keep the wall-generated vorticity resolved inside it.
-3. **Resolution.** Use equal FVM cell size and particle spacing, as both tutorials do, and refine them together.
+3. **Resolution and exchange step.** Use equal FVM cell size and particle spacing, as both tutorials do, and refine them together. Exchange as rarely as the particle stability limit allows: the particle step must stay below $1/\max|S|$, the inverse of the largest strain rate at the wall, and the solver stops with the measured ceiling if it does not. Frequent exchanges smooth the shed vortices and lower the lift.
 4. **Particle domain.** Give the particles room for the wake you want to observe, and fade the wake out through an [outflow fringe](vpm.md#stabilization) at least two wake wavelengths deep. Removing particles abruptly at a face changes the circulation left in the domain once per shedding half-cycle, which shakes the flow at the body.
 5. **Reference.** Compare against a flow with the same boundary conditions. Free-space particles describe an unbounded flow; walls or an inlet a few diameters from the body add blockage (at the cylinder, walls at $\pm10D$ raise the drag by about 3%).
 
@@ -48,6 +50,7 @@ The tangential velocity itself stays free, so the FVM can carry its own boundary
 
 The particles near the body are renewed from the FVM vorticity at every exchange on a uniform lattice, with grid-based diffusion and M4′ remeshing in the particle solver.
 
+- `transfer_region_bounds` (m): the transfer faces lie inside the FVM box faces by the inset. Particles in this band are never renewed and supply the boundary condition; a deeper inset, 15–20 cells for the cylinder, is more accurate, provided the box still satisfies the rules above.
 - `eta_blend_width` (m): over this inward width the FVM weight rises from zero to one; the tutorials use $6h$.
 - `vpm_only_width` (m): a band just inside the transfer faces that stays purely particle-owned; the tutorials use $2h$.
 - `transfer_vorticity_cutoff` (1/s): the smallest vorticity renewed inside the region.

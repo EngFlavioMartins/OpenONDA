@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Body-fitted cube flow at Re = 1000."""
+"""Body-fitted FVM reference for the coupled cube flow at Re = 1000.
+
+The same short transverse startup as the coupled case breaks the wake symmetry.
+Distant slip walls and inlet approximate the unbounded stream.
+"""
 
 import argparse
 from pathlib import Path
@@ -16,19 +20,25 @@ DENSITY = 1.0
 REYNOLDS_NUMBER = 1000.0
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * CUBE_SIDE / REYNOLDS_NUMBER
 
+# Startup: the same transverse freestream as the coupled case, decaying smoothly
+STARTUP_VELOCITY = (1.0, 0.1, 0.05)  # m/s
+TAPER_START = 1.0  # s, the transverse components then decay smoothly ...
+TAPER_END = 2.0  # s, ... to the freestream
+
 # Domain and mesh refinement
 DOMAIN = (-6.48, 12.96, -6.48, 6.48, -6.48, 6.48)
 BACKGROUND_CELL_SIZE_RATIO = 8.0
 WAKE_CELL_SIZE_RATIO = 2.0
-NEAR_BODY = (-1.5, 3.0, -1.5, 1.5, -1.5, 1.5)
-WAKE = (-2.0, 8.0, -2.0, 2.0, -2.0, 2.0)
+NEAR_BODY = (-1.8, 4.3, -1.8, 1.8, -1.8, 1.8)  # the coupled FVM box, at the finest spacing
+WAKE = (-2.0, 12.0, -2.0, 2.0, -2.0, 2.0)  # 2h over the compared wake, to x = 12 D
 
 # Time, output and sampling
 CORES = 4
-END_TIME = 30.0
+END_TIME = 100.0
 TIME_STEP_SIZE = 0.005
 MAX_COURANT_NUMBER = 0.5
-OUTPUT_INTERVAL = 0.25
+OUTPUT_INTERVAL = 2.0  # s, FVM fields
+BACKUP_INTERVAL = 1.0  # s
 FORCE_SAMPLE_INTERVAL = 0.05
 PROFILE_SAMPLE_INTERVAL = 0.25
 PROFILE_SPACING = 0.06
@@ -59,12 +69,19 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         ),
         patch_refinements=(msh.PatchRefinement("cube", h),),
     )
+    startup = fvm.VelocityRamp(
+        initial=STARTUP_VELOCITY,
+        final=VELOCITY,
+        start_time=TAPER_START,
+        end_time=TAPER_END,
+    )
     setup = fvm.FVMSetup(
         backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL), write_at_end=True
+            schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL), write_at_end=True
         ),
         case_name=name,
         cores=CORES,
+        execution=fvm.ComputeConfig(operator_backend="numba"),
         time=fvm.TimeConfig(
             time_step_size=TIME_STEP_SIZE,
             end_time=END_TIME,
@@ -81,9 +98,8 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         ),
         linear=fvm.LinearSolverConfig(
             pressure_solver="amg",
-            pressure_tolerance=1.0e-6,
-            pressure_relative_tolerance=0.01,
-            momentum_max_iterations=2000,
+            pressure_tolerance=1.0e-7,
+            pressure_relative_tolerance=0.005,
         ),
         pimple=fvm.PimpleControl(
             n_outer_correctors=2,
@@ -127,7 +143,7 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
             subgrid_dissipation_coefficient=1.048,
         ),
         boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", VELOCITY),
+            fvm.BoundaryConfig.inlet("inlet", list(STARTUP_VELOCITY)),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
@@ -135,7 +151,14 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cube"),
         ],
-        initial_velocity=VELOCITY,
+        # The startup transverse velocity enters at the inlet and crosses the lateral walls
+        velocity_boundaries=(
+            fvm.VelocityBoundary(patches=("inlet",), velocity=startup),
+            fvm.VelocityBoundary(
+                patches=("ymin", "ymax", "zmin", "zmax"), velocity=startup, normal_only=True
+            ),
+        ),
+        initial_velocity=list(STARTUP_VELOCITY),
     )
     return fvm.create_fvm_solver(
         setup,
