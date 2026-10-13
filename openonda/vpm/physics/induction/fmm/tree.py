@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-import taichi as ti
+
+from ..base import TaichiField
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,9 +77,9 @@ class FMMTree:
 
     def build(
         self,
-        position: np.ndarray | ti.Field,
-        vortex_strength: np.ndarray | ti.Field,
-        core_radius: np.ndarray | ti.Field,
+        position: np.ndarray | TaichiField,
+        vortex_strength: np.ndarray | TaichiField,
+        core_radius: np.ndarray | TaichiField,
         count: int,
     ) -> None:
         """Construct leaves and retain only stage-owned source metadata."""
@@ -161,7 +162,7 @@ class FMMTree:
         return node_index
 
 
-def _stage_prefix(values: np.ndarray | ti.Field, count: int, *, dtype: type) -> np.ndarray:
+def _stage_prefix(values: np.ndarray | TaichiField, count: int, *, dtype: type) -> np.ndarray:
     """Copy only the active stage prefix from a field or NumPy array."""
     raw = values.to_numpy() if hasattr(values, "to_numpy") else values
     return np.asarray(raw[:count], dtype=dtype).copy()

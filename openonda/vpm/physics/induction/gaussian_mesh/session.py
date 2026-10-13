@@ -35,6 +35,7 @@ _CUTOFF_GROWTH = 1.25
 _MAX_CUTOFF_GROWTH = 8.0
 
 from .parameters import GaussianMeshParameters
+from .runtime import Diagnostics
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -345,7 +346,7 @@ class GaussianSlabFieldSession:
         targets: np.ndarray,
         *,
         source_only: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    ) -> tuple[np.ndarray, np.ndarray, Diagnostics]:
         """Bounded image field at ``targets``: images only, or primary plus images.
 
         The shells and correction radius are chosen so that the proven bounds

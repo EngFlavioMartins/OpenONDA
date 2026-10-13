@@ -1,14 +1,28 @@
 """Barnes--Hut induction evaluator behind the common VPM stage conditions."""
 
-from typing import Self
+from typing import TYPE_CHECKING, Self, TypedDict
 
 import numpy as np
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ....kernels.registry import treecode_kernel_names
-from ..base import _STRETCHING_MODES, normalize_stretching_scheme
+from ..base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
 from ..stretching import stretching_rate
+
+if TYPE_CHECKING:
+    from ...base import PhysicsBase
+
+
+class TreecodeDiagnostics(TypedDict):
+    """Stretching formulation and counts of treecode stage evaluations."""
+
+    stretching_scheme: str
+    stage_evaluations: int
+    gradient_evaluations: int
+    hierarchical_strength_rates: int
+    direct_strength_rate_fallbacks: int
+
 
 _TREECODE_THETA = 0.4
 _TREECODE_MULTIPOLE_ORDER = 3
@@ -18,9 +32,9 @@ _TREECODE_TRAVERSAL_BLOCK_DIM = 128
 
 @ti.kernel
 def _rate_from_gradient(
-    gradient: ti.template(),
-    strength: ti.template(),
-    output: ti.template(),
+    gradient: ti.template(),  # type: ignore[invalid-annotation]
+    strength: ti.template(),  # type: ignore[invalid-annotation]
+    output: ti.template(),  # type: ignore[invalid-annotation]
     stretching_mode: ti.i32,
     count: ti.i32,
 ):
@@ -113,13 +127,13 @@ class TreecodeInduction:
         self.stretching_scheme = stretching_scheme
         self._stretching_mode = _STRETCHING_MODES[stretching_scheme]
         self.kernel = make_vortex_kernel("GAUSSIAN")
-        self.physics = None
+        self.physics: PhysicsBase | None = None
         self.theta = float(theta)
         self.multipole_order = int(multipole_order)
         self.sort_particle_targets = sort_particle_targets
         self.traversal_block_dim = traversal_block_dim
         self.max_n_particles = 1
-        self.diagnostics = {
+        self.diagnostics: TreecodeDiagnostics = {
             "stretching_scheme": self.stretching_scheme,
             "stage_evaluations": 0,
             "gradient_evaluations": 0,
@@ -187,7 +201,7 @@ class TreecodeInduction:
             stretching_scheme=self.stretching_scheme,
         )
 
-    def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
+    def bind(self, physics: "PhysicsBase", *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind this evaluator to a physics workspace and configure LBVH.
 
         Parameters
@@ -224,13 +238,13 @@ class TreecodeInduction:
     def evaluate_stage(
         self,
         *,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
-        velocity_out: object,
-        vortex_strength_rate_out: object,
-        velocity_gradient_out: object | None = None,
+        velocity_out: TaichiField,
+        vortex_strength_rate_out: TaichiField,
+        velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -319,16 +333,16 @@ class TreecodeInduction:
     def evaluate_targets(
         self,
         *,
-        target_position: object,
-        source_position: object,
-        source_vortex_strength: object,
-        source_core_radius: object,
-        target_velocity: object,
-        target_velocity_gradient: object,
+        target_position: TaichiField,
+        source_position: TaichiField,
+        source_vortex_strength: TaichiField,
+        source_core_radius: TaichiField,
+        target_velocity: TaichiField,
+        target_velocity_gradient: TaichiField,
         target_count: int,
         source_count: int,
         include_freestream: bool,
-        background_velocity: object,
+        background_velocity: TaichiField,
     ) -> None:
         """Evaluate target velocity and/or gradient with the LBVH operator.
 

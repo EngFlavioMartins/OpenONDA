@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ....kernels.base import RadialVortexKernel
-from .tree import FMMCell
+from .tree import FMMCell, FMMNode
 
 if TYPE_CHECKING:
     from .tree import FMMTree
 
 
 def well_separated(
-    source: FMMCell,
-    target: FMMCell,
+    source: FMMCell | FMMNode,
+    target: FMMCell | FMMNode,
     tolerance: float,
     kernel: RadialVortexKernel | None = None,
 ) -> bool:

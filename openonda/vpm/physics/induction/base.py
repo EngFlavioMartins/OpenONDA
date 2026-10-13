@@ -8,7 +8,15 @@ the output fields.  Implementations must read only that supplied state.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, cast
+
+if TYPE_CHECKING:
+    from ...kernels.base import RadialVortexKernel
+    from ..base import PhysicsBase
+
+# Taichi fields, ndarrays and data types are dynamic objects of its DSL.
+TaichiField = Any
+TaichiDataType = Any
 
 StretchingScheme = Literal["DIRECT", "TRANSPOSED", "MIXED"]
 _STRETCHING_MODES = {"DIRECT": 0, "TRANSPOSED": 1, "MIXED": 2}
@@ -80,9 +88,9 @@ class StageState:
     not assume that an evaluator copies them.
     """
 
-    position: object
-    vortex_strength: object
-    core_radius: object
+    position: TaichiField
+    vortex_strength: TaichiField
+    core_radius: TaichiField
     count: int
     time: float = 0.0
     stage_index: int | None = None
@@ -109,9 +117,9 @@ class StageRates:
         RK update.
     """
 
-    velocity: object
-    vortex_strength_rate: object
-    velocity_gradient: object | None = None
+    velocity: TaichiField
+    vortex_strength_rate: TaichiField
+    velocity_gradient: TaichiField | None = None
     strength_rate_enabled: bool = True
 
 
@@ -148,13 +156,13 @@ class InductionMethod(Protocol):
     def evaluate_stage(
         self,
         *,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
-        velocity_out: object,
-        vortex_strength_rate_out: object,
-        velocity_gradient_out: object | None = None,
+        velocity_out: TaichiField,
+        vortex_strength_rate_out: TaichiField,
+        velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -205,16 +213,16 @@ class InductionMethod(Protocol):
     def evaluate_targets(
         self,
         *,
-        target_position: object,
-        source_position: object,
-        source_vortex_strength: object,
-        source_core_radius: object,
-        target_velocity: object | None,
-        target_velocity_gradient: object | None,
+        target_position: TaichiField,
+        source_position: TaichiField,
+        source_vortex_strength: TaichiField,
+        source_core_radius: TaichiField,
+        target_velocity: TaichiField | None,
+        target_velocity_gradient: TaichiField | None,
         target_count: int,
         source_count: int,
         include_freestream: bool,
-        background_velocity: object,
+        background_velocity: TaichiField,
     ) -> None:
         """Evaluate source-induced velocity/gradient at arbitrary targets.
 
@@ -245,4 +253,29 @@ class InductionMethod(Protocol):
         """
 
 
-__all__ = ["InductionMethod", "StageRates", "StageState", "StretchingScheme"]
+class BindableInductionMethod(InductionMethod, Protocol):
+    """Induction backend that binds to one physics workspace and radial kernel."""
+
+    supported_devices: ClassVar[frozenset[str]]
+    kernel: RadialVortexKernel
+
+    def build(self) -> BindableInductionMethod:
+        """Return a fresh unbound backend with the same settings."""
+        ...
+
+    def bind(
+        self, physics: PhysicsBase, *, kernel: RadialVortexKernel | None = None
+    ) -> BindableInductionMethod:
+        """Bind the backend to ``physics`` and allocate its device storage."""
+        ...
+
+
+__all__ = [
+    "BindableInductionMethod",
+    "InductionMethod",
+    "StageRates",
+    "StageState",
+    "StretchingScheme",
+    "TaichiDataType",
+    "TaichiField",
+]

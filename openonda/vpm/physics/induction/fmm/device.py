@@ -14,7 +14,7 @@ gradient. Expansion and traversal settings are not part of the public API.
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 import math
-from typing import NamedTuple, Self
+from typing import TYPE_CHECKING, NamedTuple, Self
 
 import numpy as np
 import taichi as ti
@@ -22,10 +22,13 @@ import taichi as ti
 from ....io.logging import Logging
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ....kernels.registry import kernel_names, treecode_kernel_names
-from ..base import _STRETCHING_MODES, normalize_stretching_scheme
+from ..base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
 from ..stretching import stretching_rate
 from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode, _DeviceFields
 from .diagnostics import FMMDiagnostics
+
+if TYPE_CHECKING:
+    from ...base import PhysicsBase
 
 _EXPANSION_ORDER = 3
 _MULTI_INDICES = (
@@ -90,7 +93,7 @@ class _ListCapacities(NamedTuple):
         return 4 * (self.m2l + max(self.m2l, self.near) + 2 * self.near + 4 * self.queue)
 
 
-def _normalize_list_capacities(value: object) -> _ListCapacities:
+def _normalize_list_capacities(value: int | tuple[int, ...]) -> _ListCapacities:
     values = value if isinstance(value, tuple) else (value,) * 3
     if len(values) != 3:
         raise ValueError("FMM scratch requires three interaction-list capacities")
@@ -224,7 +227,7 @@ class FMMDeviceWorkspace:
     def __init__(
         self,
         max_n_particles: int,
-        radial_factors: Callable | None,
+        radial_factors: Callable,
         kernel_name: str,
         velocity_tail_cutoff: float,
         gradient_tail_cutoff: float,
@@ -390,7 +393,9 @@ class FMMDeviceWorkspace:
     # docstring, which prevents the enclosing kernels from compiling.
     @ti.func
     def _inverse_r_derivative(
-        self, displacement: ti.template(), derivative_index: ti.i32
+        self,
+        displacement: ti.template(),  # type: ignore[invalid-annotation]
+        derivative_index: ti.i32,
     ) -> ti.f32:
         radius_sq = displacement.dot(displacement)
         inverse_radius = ti.rsqrt(ti.max(radius_sq, ti.cast(_EPSILON_SQUARED, ti.f32)))
@@ -588,9 +593,9 @@ class FMMDeviceWorkspace:
         self,
         target: ti.i32,
         source: ti.i32,
-        target_queue: ti.template(),
-        source_queue: ti.template(),
-        queue_count: ti.template(),
+        target_queue: ti.template(),  # type: ignore[invalid-annotation]
+        source_queue: ti.template(),  # type: ignore[invalid-annotation]
+        queue_count: ti.template(),  # type: ignore[invalid-annotation]
     ):
         slot = ti.atomic_add(queue_count[None], 1)
         if slot < self.max_queue_pairs:
@@ -604,9 +609,9 @@ class FMMDeviceWorkspace:
         self,
         target: ti.i32,
         source: ti.i32,
-        target_queue: ti.template(),
-        source_queue: ti.template(),
-        queue_count: ti.template(),
+        target_queue: ti.template(),  # type: ignore[invalid-annotation]
+        source_queue: ti.template(),  # type: ignore[invalid-annotation]
+        queue_count: ti.template(),  # type: ignore[invalid-annotation]
     ):
         target_is_leaf = self._is_fmm_leaf(target)
         source_is_leaf = self._is_fmm_leaf(source)
@@ -916,8 +921,8 @@ class FMMDeviceWorkspace:
     @ti.kernel
     def _scan_near_counts(
         self,
-        source: ti.template(),
-        destination: ti.template(),
+        source: ti.template(),  # type: ignore[invalid-annotation]
+        destination: ti.template(),  # type: ignore[invalid-annotation]
         node_count: ti.i32,
         stride: ti.i32,
     ):
@@ -931,15 +936,15 @@ class FMMDeviceWorkspace:
     @ti.kernel
     def _initialize_near_cursor(
         self,
-        inclusive_count: ti.template(),
-        cursor: ti.template(),
+        inclusive_count: ti.template(),  # type: ignore[invalid-annotation]
+        cursor: ti.template(),  # type: ignore[invalid-annotation]
         node_count: ti.i32,
     ):
         for node in range(node_count):
             cursor[node] = inclusive_count[node] - self._near_target_count[node]
 
     @ti.kernel
-    def _order_near_sources(self, cursor: ti.template(), pair_count: ti.i32):
+    def _order_near_sources(self, cursor: ti.template(), pair_count: ti.i32):  # type: ignore[invalid-annotation]
         """Group source cells by target cell in the reusable M2L source array."""
         for pair in range(pair_count):
             target = self.near_target[pair]
@@ -947,7 +952,7 @@ class FMMDeviceWorkspace:
             self.m2l_source[destination] = self.near_source[pair]
 
     @ti.kernel
-    def _near_field_target_pass(self, inclusive_count: ti.template(), particle_count: ti.i32):
+    def _near_field_target_pass(self, inclusive_count: ti.template(), particle_count: ti.i32):  # type: ignore[invalid-annotation]
         """Accumulate exact near interactions once per target particle."""
         for target_slot in range(particle_count):
             target = self.tree.sorted_indices[target_slot]
@@ -1009,12 +1014,12 @@ class FMMDeviceWorkspace:
     @ti.kernel
     def _empty_target_pass(
         self,
-        target_velocity: ti.template(),
-        target_gradient: ti.template(),
-        background_velocity: ti.template(),
+        target_velocity: ti.template(),  # type: ignore[invalid-annotation]
+        target_gradient: ti.template(),  # type: ignore[invalid-annotation]
+        background_velocity: ti.template(),  # type: ignore[invalid-annotation]
         target_count: ti.i32,
-        write_velocity: ti.template(),
-        write_gradient: ti.template(),
+        write_velocity: ti.template(),  # type: ignore[invalid-annotation]
+        write_gradient: ti.template(),  # type: ignore[invalid-annotation]
     ):
         """Write freestream velocity and zero gradient for an empty source cloud."""
         for target in range(target_count):
@@ -1046,9 +1051,9 @@ class FMMDeviceWorkspace:
 
     def evaluate(
         self,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
         stretching_mode: int,
     ) -> None:
@@ -1142,15 +1147,15 @@ class FMMDeviceWorkspace:
 
     def evaluate_targets(
         self,
-        target_position: object,
-        source_position: object,
-        source_vortex_strength: object,
-        source_core_radius: object,
-        target_velocity: object,
-        target_gradient: object,
+        target_position: TaichiField,
+        source_position: TaichiField,
+        source_vortex_strength: TaichiField,
+        source_core_radius: TaichiField,
+        target_velocity: TaichiField,
+        target_gradient: TaichiField,
         target_count: int,
         source_count: int,
-        background_velocity: object,
+        background_velocity: TaichiField,
         reuse_source_tree: bool = False,
     ) -> None:
         """Evaluate arbitrary targets without transferring particle fields to the host.
@@ -1261,18 +1266,26 @@ class FMMInduction:
         self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
         self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
         self.method = "FMM"
-        self.physics = None
+        self.physics: PhysicsBase | None = None
         self.kernel: RadialVortexKernel = make_vortex_kernel("GAUSSIAN")
         self.max_n_particles = 1
         self.workspace: FMMDeviceWorkspace | None = None
-        self._reclaim_stage_cache = None
+        self._reclaim_stage_cache: Callable[[], None] | None = None
+        # Source fields and count of an open fixed-source target scope.
+        self._fixed_source_key: tuple[TaichiField, TaichiField, TaichiField, int] | None = None
         self.diagnostics = FMMDiagnostics(stretching_scheme=self.stretching_scheme)
+
+    @property
+    def _bound_workspace(self) -> "FMMDeviceWorkspace":
+        if self.workspace is None:
+            raise RuntimeError("FMMInduction must be bound before evaluation")
+        return self.workspace
 
     def build(self) -> Self:
         """Return a fresh unbound FMM evaluator preserving the scheme."""
         return type(self)(stretching_scheme=self.stretching_scheme)
 
-    def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
+    def bind(self, physics: "PhysicsBase", *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind and allocate the evaluator for one f32 physics workspace.
 
         Parameters
@@ -1492,13 +1505,13 @@ class FMMInduction:
     def evaluate_stage(
         self,
         *,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
-        velocity_out: object,
-        vortex_strength_rate_out: object,
-        velocity_gradient_out: object | None = None,
+        velocity_out: TaichiField,
+        vortex_strength_rate_out: TaichiField,
+        velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -1585,20 +1598,22 @@ class FMMInduction:
         self.diagnostics.host_particle_transfers = 0
         self.diagnostics.last_uncorrected_rate_defect = float(self.workspace._rate_defect[None])
         self.diagnostics.last_strength_rate_norm = float(self.workspace._rate_norm_sum[None])
-        self.diagnostics.last_relative_rate_defect = (
+        rate_norm = self.diagnostics.last_strength_rate_norm
+        rate_floor = np.finfo(np.float32).eps
+        self.diagnostics.last_relative_rate_defect = float(
             self.diagnostics.last_uncorrected_rate_defect
-            / max(self.diagnostics.last_strength_rate_norm, np.finfo(np.float32).eps)
+            / (rate_floor if rate_floor > rate_norm else rate_norm)
         )
         self.diagnostics.last_active_cell_count = active_internal_count + active_leaf_count
 
     def evaluate_gaussian_source_vorticity(
         self,
         *,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
-        vorticity_out: object,
+        vorticity_out: TaichiField,
     ) -> None:
         """Reconstruct f32 Gaussian vorticity at the supplied source centres.
 
@@ -1607,14 +1622,14 @@ class FMMInduction:
         the hierarchy because unchanged field identities can hold new values.
         """
         with self.fixed_source_targets(position, vortex_strength, core_radius, count):
-            self.workspace.tree.compute_gaussian_particle_vorticity(vorticity_out, count)
+            self._bound_workspace.tree.compute_gaussian_particle_vorticity(vorticity_out, count)
 
     @contextmanager
     def fixed_source_targets(
         self,
-        position: object,
-        strength: object,
-        radius: object,
+        position: TaichiField,
+        strength: TaichiField,
+        radius: TaichiField,
         count: int,
     ) -> Iterator[None]:
         """Reuse one LBVH for target batches while source fields are immutable.
@@ -1641,16 +1656,16 @@ class FMMInduction:
     def evaluate_targets(
         self,
         *,
-        target_position: object,
-        source_position: object,
-        source_vortex_strength: object,
-        source_core_radius: object,
-        target_velocity: object,
-        target_velocity_gradient: object,
+        target_position: TaichiField,
+        source_position: TaichiField,
+        source_vortex_strength: TaichiField,
+        source_core_radius: TaichiField,
+        target_velocity: TaichiField,
+        target_velocity_gradient: TaichiField,
         target_count: int,
         source_count: int,
         include_freestream: bool,
-        background_velocity: object,
+        background_velocity: TaichiField,
     ) -> None:
         """Evaluate arbitrary target fields with a device-resident hierarchy.
 
