@@ -33,7 +33,7 @@ from openonda.fvm.sampling.base import write_pvd
 from tests.support.fvm_mesh import structured_box
 
 
-def _setup() -> FVMSetup:
+def _setup(linear: LinearSolverConfig | None = None) -> FVMSetup:
     return FVMSetup(
         case_name="restart_test",
         time=TimeConfig(
@@ -42,7 +42,7 @@ def _setup() -> FVMSetup:
             output_schedule=RunSchedule(every_n_steps=100),
         ),
         schemes=DiscretizationConfig(convection_scheme="upwind", time_scheme="backward"),
-        linear=LinearSolverConfig(linear_solver="spsolve"),
+        linear=linear or LinearSolverConfig(linear_solver="spsolve"),
         pimple=PimpleControl(n_correctors=2),
         transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
         boundaries=[
@@ -57,28 +57,34 @@ def _setup() -> FVMSetup:
     )
 
 
-def _solver(case_dir):
+def _solver(case_dir, linear=None, mesh=None):
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = FVMSolver(_setup(), str(case_dir), mesh_data=structured_box(2, 2, 2))
+        solver = FVMSolver(_setup(linear), str(case_dir), mesh_data=mesh or structured_box(2, 2, 2))
     solver.auto_write = False
     return solver
 
 
-def test_restart_restores_backward_time_history(tmp_path):
-    reference = _solver(tmp_path / "reference")
-    interrupted = _solver(tmp_path / "interrupted")
+def test_restart_continues_the_uninterrupted_run_bit_for_bit(tmp_path):
+    """Reused AMG/ILU preconditioners are rebuilt at each backup, as on restart."""
+    linear = LinearSolverConfig(momentum_preconditioner="ilu")
+    mesh = structured_box(6, 4, 4)
+    reference = _solver(tmp_path / "reference", linear, mesh)
+    interrupted = _solver(tmp_path / "interrupted", linear, mesh)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(3):
             reference.advance()
-        for _ in range(2):
             interrupted.advance()
+        reference.save_state(tmp_path / "reference.npz")
+        for _ in range(3):
+            reference.advance()
 
     backup = tmp_path / "restart.npz"
     interrupted.save_state(backup)
-    resumed = _solver(tmp_path / "resumed")
+    resumed = _solver(tmp_path / "resumed", linear, mesh)
     resumed.load_state(backup)
     with contextlib.redirect_stdout(io.StringIO()):
-        resumed.advance()
+        for _ in range(3):
+            resumed.advance()
 
     for field_name in (
         "velocity",
@@ -89,9 +95,7 @@ def test_restart_restores_backward_time_history(tmp_path):
         "velocity_old",
         "velocity_older",
     ):
-        np.testing.assert_allclose(
-            getattr(resumed, field_name), getattr(reference, field_name), atol=1e-13
-        )
+        np.testing.assert_array_equal(getattr(resumed, field_name), getattr(reference, field_name))
     assert resumed.time == pytest.approx(reference.time)
     assert resumed.step == reference.step
 

@@ -89,6 +89,12 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             self._partitioned_linear_workspaces[key] = workspace
         return workspace
 
+    def rebuild_preconditioners(self) -> None:
+        """Rebuild the reused serial and PETSc preconditioners at the next solves."""
+        for workspace in self._partitioned_linear_workspaces.values():
+            workspace.rebuild_preconditioner()
+        super().rebuild_preconditioners()
+
     def close(self) -> None:
         """Release collectively-owned persistent PETSc workspaces."""
         for workspace in self._partitioned_linear_workspaces.values():

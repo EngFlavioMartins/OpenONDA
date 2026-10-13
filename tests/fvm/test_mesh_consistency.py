@@ -23,20 +23,8 @@ from tests.support.fvm_mesh import structured_box
 VALID_FIXTURE_NAMES = (
     "rotated_box",
     "ellipsoid",
-    # Open mesher defects: the cases must pass once wall projection is fixed.
-    pytest.param(
-        "torus",
-        marks=pytest.mark.xfail(
-            strict=True, reason="wall projection leaves zero-area faces on the torus"
-        ),
-    ),
-    pytest.param(
-        "finite_naca_wing",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="STL feature planes at the wing tip have no shared finite-facet intersection",
-        ),
-    ),
+    "torus",
+    "finite_naca_wing",
     "two_disjoint_bodies",
 )
 

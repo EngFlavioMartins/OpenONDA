@@ -2278,13 +2278,21 @@ class SIMPLESolver:
             mesh_data["n_faces"],
         )
 
-    def close(self) -> None:
-        """Release solver-owned transient preconditioner cache entries."""
+    def rebuild_preconditioners(self) -> None:
+        """Rebuild the reused ILU and AMG preconditioners at the next solves.
+
+        A restarted run builds them from its first matrices. Rebuilding them
+        at every backup lets an uninterrupted run match the restart bit for bit.
+        """
         from .linear_interface import clear_linear_solver_caches
 
         namespace = self._momentum_matrix_workspace.cache_namespace
         clear_linear_solver_caches(("momentum", namespace))
         clear_linear_solver_caches(("kinematic_pressure", namespace))
+
+    def close(self) -> None:
+        """Release solver-owned transient preconditioner cache entries."""
+        self.rebuild_preconditioners()
         self._momentum_matrix_workspace.direct_factorization = None
 
     def step(

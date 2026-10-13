@@ -631,7 +631,17 @@ def clear_linear_solver_caches(cache_namespace: tuple[str, int] = None) -> None:
         _AMG_CACHE.clear()
         return
     for cache in (_ILU_CACHE, _AMG_CACHE):
-        stale = [key for key in cache if len(key) > 1 and key[1] == cache_namespace]
+        # Momentum components with distinct matrices extend the owner key as
+        # (owner key, component).
+        stale = [
+            key
+            for key in cache
+            if len(key) > 1
+            and (
+                key[1] == cache_namespace
+                or (isinstance(key[1], tuple) and key[1][0] == cache_namespace)
+            )
+        ]
         for key in stale:
             cache.pop(key, None)
 

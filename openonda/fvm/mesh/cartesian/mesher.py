@@ -163,8 +163,17 @@ def _box_patch_point_constraints(
     return constraints
 
 
+# Facets meet across a sharp rim when they turn by more than 45 degrees. The
+# margin keeps an exact 45-degree tessellation turn from depending on round-off.
+_SHARP_RIM_COSINE = math.cos(math.pi / 4.0) - 1.0e-8
+
+
 def _planar_feature_constraints(
-    points: np.ndarray, faces: list[np.ndarray], triangles: np.ndarray
+    points: np.ndarray,
+    faces: list[np.ndarray],
+    triangles: np.ndarray,
+    *,
+    box_wall: bool = False,
 ) -> dict | dict[int, object]:
     """Keep broad STL facets planar across a curved surface's sharp rim.
 
@@ -174,6 +183,9 @@ def _planar_feature_constraints(
     case-specific axis, and the face normal associates the mixed face with it.
     The finite coplanar STL component owns each constraint: projection onto
     its infinite supporting plane alone can leave the input surface.
+
+    An axis-aligned box wall keeps every incident facet plane at each vertex;
+    its edge and corner faces then find their plane among them.
     """
     triangles = np.asarray(triangles, dtype=np.float64)
     vectors = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
@@ -217,7 +229,7 @@ def _planar_feature_constraints(
                             pending.append(neighbour)
             normal = normals[first]
             sharp_rim = any(
-                float(np.dot(normal, normals[neighbour])) < math.cos(math.pi / 4.0)
+                float(np.dot(normal, normals[neighbour])) < _SHARP_RIM_COSINE
                 for triangle_id in component
                 for edge in triangle_edges[triangle_id]
                 for neighbour in edge_triangles[edge]
@@ -253,7 +265,11 @@ def _planar_feature_constraints(
     if not planes:
         return {}
 
+    # A face may only take the facet that holds the wall point under its
+    # centre; a broad facet further along the wall would drag it across a rim.
+    surface_index = SurfaceIndex.build(triangles)
     constraints: dict[int, list[tuple[np.ndarray, float, SurfaceIndex]]] = {}
+    local_face_size: dict[int, float] = {}
     for face in faces:
         vertices = points[np.asarray(face, dtype=np.int64)]
         centre = vertices.mean(axis=0)
@@ -263,6 +279,11 @@ def _planar_feature_constraints(
         if area_norm <= 0.0:
             continue
         face_size = float(np.linalg.norm(vertices[:, None, :] - vertices[None, :, :], axis=2).max())
+        for point_id in face:
+            local_face_size[int(point_id)] = min(
+                local_face_size.get(int(point_id), math.inf), face_size
+            )
+        wall_distance = math.inf if box_wall else surface_index.nearest_point(centre)[1]
         candidates = []
         for normal, offset, width, plane_index in planes:
             if width < face_size:
@@ -272,7 +293,7 @@ def _planar_feature_constraints(
             if alignment <= 1.0 / math.sqrt(3.0) or distance > face_size:
                 continue
             _nearest, surface_distance = plane_index.nearest_point(centre)
-            if surface_distance <= face_size:
+            if surface_distance <= min(face_size, wall_distance + 1.0e-8 * scale):
                 candidates.append((surface_distance, -alignment, normal, offset, plane_index))
         if not candidates:
             continue
@@ -287,6 +308,27 @@ def _planar_feature_constraints(
                 for existing_normal, existing_offset, _existing_index in applied
             ):
                 applied.append((normal, offset, plane_index))
+
+    # Facets fix a vertex to their shared edge or corner only across a sharp
+    # rim, where they meet on the STL surface, and within half a local face of
+    # the vertex. The shallow seam between neighbouring facets of a
+    # tessellated curved wall is no feature, and pulling vertices onto a
+    # distant edge collapses the wall faces between them. Such a vertex keeps
+    # its closest facets that do form a nearby feature.
+    for point_id, applied in constraints.items():
+        if box_wall or len(applied) < 2:
+            continue
+        point = points[point_id]
+        reach = 0.5 * local_face_size[point_id]
+        ranked = sorted(applied, key=lambda plane: plane[2].nearest_point(point)[1])
+        kept = ranked[:1]
+        for plane in ranked[1:]:
+            if any(abs(float(np.dot(plane[0], other[0]))) >= _SHARP_RIM_COSINE for other in kept):
+                continue
+            projected = _project_to_feature_planes(point, [*kept, plane], scale=scale)
+            if projected is not None and np.linalg.norm(projected - point) <= reach:
+                kept.append(plane)
+        constraints[point_id] = kept
     return constraints
 
 
@@ -331,7 +373,7 @@ def _nearest_finite_feature_intersection(
     direction = np.cross(normal_a, normal_b)
     length = float(np.linalg.norm(direction))
     if length <= 1.0e-12:
-        raise ValueError("STL feature planes give inconsistent wall-vertex constraints")
+        return None
     direction /= length
     normals = np.stack((normal_a, normal_b))
     anchor = normals.T @ np.linalg.solve(normals @ normals.T, np.array([offset_a, offset_b]))
@@ -356,14 +398,14 @@ def _nearest_finite_feature_intersection(
             ):
                 candidates.append(candidate)
     if not candidates:
-        raise ValueError("STL feature planes have no shared finite-facet intersection")
+        return None
     return min(candidates, key=lambda candidate: np.linalg.norm(candidate - point))
 
 
 def _project_to_feature_planes(
     point: np.ndarray, planes: list[tuple[np.ndarray, float, SurfaceIndex]], *, scale: float
 ) -> np.ndarray | None:
-    """Project onto actual finite feature facets, checking shared intersections."""
+    """Project onto actual finite feature facets, or None where they do not meet."""
     if not planes:
         return point
     if len(planes) == 1:
@@ -376,12 +418,10 @@ def _project_to_feature_planes(
         normals.T @ np.linalg.lstsq(normals @ normals.T, normals @ point - offsets, rcond=None)[0]
     )
     projected = point - correction
-    if np.max(np.abs(normals @ projected - offsets)) > 1.0e-8 * scale:
-        raise ValueError("STL feature planes give inconsistent wall-vertex constraints")
-    if any(
+    if np.max(np.abs(normals @ projected - offsets)) > 1.0e-8 * scale or any(
         index.nearest_point(projected)[1] > 1.0e-8 * scale for _normal, _offset, index in planes
     ):
-        raise ValueError("STL feature intersection lies outside its finite facets")
+        return None
     return projected
 
 
@@ -1463,7 +1503,10 @@ class CartesianMesher:
             boundary_columns.append((start, stop, point_ids, column_map))
             constrained_outer_ids.update(map(int, point_ids))
             feature_constraints = _planar_feature_constraints(
-                candidate, mesh_data["faces"][start:stop], surface.triangles
+                candidate,
+                mesh_data["faces"][start:stop],
+                surface.triangles,
+                box_wall=surface.kind == "box",
             )
             surface_constraints = (
                 _box_patch_point_constraints(
@@ -1501,6 +1544,8 @@ class CartesianMesher:
                     mapped = _project_to_feature_planes(
                         candidate[point_id], incident_features, scale=surface_scale
                     )
+                    if mapped is None:
+                        raise ValueError("STL feature planes have no shared finite-facet point")
                 max_before = max(max_before, float(distance))
                 displacement = mapped - candidate[point_id]
                 candidate[point_id] = mapped

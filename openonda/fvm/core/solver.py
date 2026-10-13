@@ -2308,6 +2308,8 @@ class FVMSolver(CouplerInterfaceMixin):
             saved_path = str(
                 self.parallel.bcast(str(saved) if saved is not None else str(path), root=0)
             )
+        # A restart from this backup starts without reused preconditioners.
+        self.algorithm.rebuild_preconditioners()
         log_error = None
         if self.parallel.is_root:
             try:

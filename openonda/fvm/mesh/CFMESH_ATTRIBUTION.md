@@ -12,16 +12,23 @@ and Numba on OpenONDA's face-based mesh. Where they follow cfMesh's
 implementation closely they are derivative works of cfMesh, and they are
 distributed under GPL-3.0-or-later, the license of both projects.
 
-| Module | cfMesh counterpart |
-| --- | --- |
-| `cfmesh_octree.py` | serial `meshOctreeModifier` refinement and regularity |
-| `cfmesh_automatic_refinement.py` | `meshOctreeAutomaticRefinement`, `triSurfaceCurvatureEstimator` |
-| `cfmesh_template.py` | Cartesian template extraction from the octree (`cartesianMeshGenerator`) |
-| `cfmesh_boundary_layer.py` | `boundaryLayers::addLayerForAllPatches` |
-| `cfmesh_edge_extraction.py` | `meshSurfaceEdgeExtractor` (`edgeExtraction` stage) |
-| `cfmesh_surface_optimisation.py` | `meshSurfaceOptimizer` (`edgeExtraction` stage) |
-| `cfmesh_mesh_optimisation.py` | `meshOptimizer` (`meshOptimisation` stage) |
-| `cfmesh_volume_optimisation.py` | `volumeOptimizer`, upstream commit `3ff855551482` |
+Every module follows the same upstream source: the OpenFOAM.com cfMesh
+integration, [`Community/integration-cfmesh`](https://develop.openfoam.com/Community/integration-cfmesh),
+commit [`3ff8555514827646c34cacfe5f0f691e49cdbc96`](https://develop.openfoam.com/Community/integration-cfmesh/-/commit/3ff8555514827646c34cacfe5f0f691e49cdbc96)
+(2024-12-18), the cfMesh of OpenFOAM-v2412 and the head of its `main` branch
+when checked on 2026-10-13. The mesh-parity fixtures in `tests/mesh_parity`
+were generated with that build. Paths are relative to `meshLibrary/`.
+
+| Module | cfMesh counterpart | Source directory |
+| --- | --- | --- |
+| `cfmesh_octree.py` | serial `meshOctreeModifier` refinement and regularity | `utilities/octrees/meshOctree/meshOctreeModifier` |
+| `cfmesh_automatic_refinement.py` | `meshOctreeAutomaticRefinement`, `triSurfaceCurvatureEstimator` | `utilities/octrees/meshOctree/meshOctreeAutomaticRefinement`, `utilities/triSurfaceTools/triSurfaceCurvatureEstimator` |
+| `cfmesh_template.py` | Cartesian template extraction from the octree (`cartesianMeshGenerator`) | `cartesianMesh/cartesianMeshGenerator` |
+| `cfmesh_boundary_layer.py` | `boundaryLayers::addLayerForAllPatches` | `utilities/boundaryLayers/boundaryLayers` |
+| `cfmesh_edge_extraction.py` | `meshSurfaceEdgeExtractor` (`edgeExtraction` stage) | `utilities/surfaceTools/meshSurfaceEdgeExtractor` |
+| `cfmesh_surface_optimisation.py` | `meshSurfaceOptimizer` (`edgeExtraction` stage) | `utilities/smoothers/geometry/meshSurfaceOptimizer` |
+| `cfmesh_mesh_optimisation.py` | `meshOptimizer` (`meshOptimisation` stage) | `utilities/smoothers/geometry/meshOptimizer` |
+| `cfmesh_volume_optimisation.py` | `volumeOptimizer` | `utilities/smoothers/geometry/meshOptimizer/tetMeshOptimisation/advancedSmoothers/volumeOptimizer` |
 
 The other mesher modules (configuration, size fields, surface queries,
 extrusion and reporting) are OpenONDA's own. OpenONDA has no runtime

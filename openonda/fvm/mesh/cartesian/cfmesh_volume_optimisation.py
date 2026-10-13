@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Scalar cfMesh volumeOptimizer kernel (upstream 3ff855551482).
+"""Scalar cfMesh volumeOptimizer kernel (integration-cfmesh 3ff85555).
 
 Numba compiles the scalar loops without fast-math: reduction order, reciprocal
 scaling and OpenFOAM's tensor inverse are part of this numerical algorithm.

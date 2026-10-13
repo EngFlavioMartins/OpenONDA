@@ -246,6 +246,11 @@ class PartitionedLinearWorkspace:
         change = self.context.global_max(float(local_change))
         return bool(np.isfinite(change) and change <= tolerance)
 
+    def rebuild_preconditioner(self) -> None:
+        """Build the preconditioner again from the next matrix, as a restart does."""
+        self._preconditioner_data = None
+        self._signature = None
+
     def _remember_preconditioner_matrix(self, system: OwnedRowsCSR) -> None:
         self._preconditioner_data = system.data.copy()
 
