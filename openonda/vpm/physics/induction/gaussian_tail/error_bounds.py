@@ -88,11 +88,6 @@ class GaussianSourceData:
     arrays: tuple[SourceArrayData, SourceArrayData, SourceArrayData]
     slab_bytes: bytes
 
-    @property
-    def retained_bytes(self) -> int:
-        """Bytes held by the snapshot's owned arrays."""
-        return sum(len(item.data_bytes) for item in self.arrays) + len(self.slab_bytes)
-
 
 class SourceValueMismatchError(ValueError):
     """A prepared mathematical snapshot no longer matches supplied sources."""

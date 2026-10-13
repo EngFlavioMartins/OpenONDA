@@ -76,8 +76,3 @@ def validation_legend(fig, axis, *, ncol=2, outside=False):
     legend.get_frame().set_edgecolor("0.8")
     legend.get_frame().set_facecolor("white")
     return legend
-
-
-def export_formats() -> tuple[str, ...]:
-    """Return the supported export format strings."""
-    return tuple(_load().FORMAT_CHOICES)

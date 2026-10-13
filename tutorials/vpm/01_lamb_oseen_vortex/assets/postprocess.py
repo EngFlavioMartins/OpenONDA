@@ -873,24 +873,6 @@ def load_dipole_feature_frame(samples_dir: Path, scheme: str) -> pd.DataFrame:
     return data.set_index("step", drop=False)
 
 
-def extract_dipole_timeseries(samples_dir: Path, scheme: str) -> dict | None:
-    data = load_dipole_feature_frame(samples_dir, scheme)
-    output = {
-        "t": data["time"].to_numpy(float),
-        "x_core": data["vortex_centre_0_x"].to_numpy(float),
-        "a_c": data["core_radius_0"].to_numpy(float),
-    }
-    if scheme == "rwm":
-        for column, key in (
-            ("vortex_centre_0_x_ci_lower", "x_core_ci_lower"),
-            ("vortex_centre_0_x_ci_upper", "x_core_ci_upper"),
-            ("core_radius_0_ci_lower", "a_c_ci_lower"),
-            ("core_radius_0_ci_upper", "a_c_ci_upper"),
-        ):
-            output[key] = data[column].to_numpy(float)
-    return output
-
-
 def connected_core_aspect(field: dict, fraction: float = 0.5) -> float:
     """Return the mean aspect ratio of both connected high-vorticity cores.
 

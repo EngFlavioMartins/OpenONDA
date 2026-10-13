@@ -221,16 +221,14 @@ def assemble_convection_term_limited(
     geo_data: dict[str, object],
     scalar_field_gradient: np.ndarray,
     limiter: str,
-    psi: np.ndarray | None = None,
     *,
     include_total_flux: bool = True,
 ) -> dict[str, np.ndarray]:
     """High-resolution TVD convection in deferred-correction form.
 
     Implicit part = upwind (bounded, diagonally dominant); explicit correction =
-    ``ψ · advective_face_flux · (φ_linear − φ_upwind)`` where ψ comes from the TVD limiter (or a
-    constant ``psi`` for blended schemes such as LUST).  ψ = 1 ⇒ pure central,
-    ψ = 0 ⇒ upwind.
+    ``ψ · advective_face_flux · (φ_linear − φ_upwind)`` where ψ comes from the TVD limiter.
+    ψ = 1 ⇒ pure central, ψ = 0 ⇒ upwind.
     """
     n_interior_faces = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"][:n_interior_faces]
@@ -239,18 +237,15 @@ def assemble_convection_term_limited(
     weights = geo_data["face_interpolation_weight"][:n_interior_faces]
     cf_vector = geo_data["cell_connection_vector"][:n_interior_faces]
 
-    if psi is None:
-        psi = _tvd_face_psi(
-            scalar_field,
-            interior_advective_face_flux,
-            scalar_field_gradient,
-            owners,
-            neighbours,
-            cf_vector,
-            limiter,
-        )
-    else:
-        psi = np.full_like(interior_advective_face_flux, float(psi))
+    psi = _tvd_face_psi(
+        scalar_field,
+        interior_advective_face_flux,
+        scalar_field_gradient,
+        owners,
+        neighbours,
+        cf_vector,
+        limiter,
+    )
 
     # Implicit upwind coefficients.
     flux_cf = np.maximum(interior_advective_face_flux, 0.0)

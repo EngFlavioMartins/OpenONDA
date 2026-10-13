@@ -124,10 +124,6 @@ def read_operating_point(
     )
 
 
-def read_time_step():
-    return rotor_inputs().time_step_size
-
-
 def load_theme():
     theme.set_thesis_style()
     return (dict(theme.COLORS), theme)
@@ -174,17 +170,3 @@ def build_arg_parser(description):
     parser.add_argument("--format", choices=theme.FORMAT_CHOICES, default="both")
     parser.add_argument("--dpi", type=int, default=theme.DEFAULT_DPI)
     return parser
-
-
-def build_rotor_style_map(colors):
-    vpm = {"color": colors["vpm"], "markersize": 1.5, "linewidth": 1.0}
-    reference = {"color": colors["reference"], "linestyle": "--", "linewidth": 1.0}
-    return {
-        "vpm": {**vpm, "marker": "o", "label": "VLM-VPM"},
-        "bem": {**reference, "label": "BEM"},
-        "theory": dict(reference),
-        "reference": dict(reference),
-        "thrust_coefficient": {**vpm, "marker": "o", "label": r"$C_T$"},
-        "power_coefficient": {**vpm, "marker": "s", "label": r"$C_P$"},
-        **{f"plane_{index}": {"color": colors["vpm"], "linewidth": 1.0} for index in range(5)},
-    }

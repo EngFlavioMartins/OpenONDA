@@ -18,7 +18,7 @@ from ..validation import (
     validate_topology,
     validate_wall_vertex_conformance,
 )
-from .config import BoundaryLayers, BoxDomain
+from .config import BoxDomain
 from .mesher import CartesianMesher
 
 if TYPE_CHECKING:
@@ -44,15 +44,13 @@ def _merge_projected_points(
     points: np.ndarray,
     polygons: list[np.ndarray],
     source_cells: np.ndarray,
-    *,
-    tolerance: float = 1.0e-10,
 ) -> tuple[np.ndarray, list[np.ndarray], np.ndarray]:
     """Merge wall vertices coincident after projection and remove collapsed cells."""
     key_to_point: dict[tuple[int, int], int] = {}
     remap = np.empty(len(points), dtype=np.int32)
     merged_points: list[np.ndarray] = []
     for index, point in enumerate(points):
-        key = tuple(np.rint(point[:2] / tolerance).astype(np.int64))
+        key = tuple(np.rint(point[:2] / 1.0e-10).astype(np.int64))
         target = key_to_point.get(key)
         if target is None:
             target = len(merged_points)
@@ -307,11 +305,6 @@ class ExtrudedCartesianMesher:
     def max_cell_size(self) -> float:
         """Background maximum cell size inherited from ``source``, in m."""
         return self.source.max_cell_size
-
-    @property
-    def boundary_layers(self) -> tuple[BoundaryLayers, ...]:
-        """Wall-normal layer requests inherited from the source mesher."""
-        return self.source.boundary_layers
 
     def effective_cell_size(self, requested: float) -> float:
         """Return the source octree's realizable dyadic size for a request in m."""

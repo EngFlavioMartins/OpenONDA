@@ -43,8 +43,6 @@ def p2p_velocity_gradient(
     source_strength: np.ndarray,
     target_core: np.ndarray,
     source_core: np.ndarray,
-    *,
-    exclude_self: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Evaluate exact near-field velocity and Jacobian blocks.
 
@@ -66,12 +64,6 @@ def p2p_velocity_gradient(
         np.asarray(target_core)[:, None],
         np.asarray(source_core)[None, :],
     )
-    if exclude_self:
-        diagonal = min(len(target_position), len(source_position))
-        if diagonal:
-            diagonal_indices = np.arange(diagonal)
-            pair_velocity[diagonal_indices, diagonal_indices] = 0.0
-            pair_gradient[diagonal_indices, diagonal_indices] = 0.0
     return pair_velocity.sum(axis=1), pair_gradient.sum(axis=1)
 
 

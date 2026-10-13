@@ -154,14 +154,13 @@ class ConservationTracker:
     def export_csv(
         self,
         case_dir: str | Path,
-        file_name: str = "vpm_conservation.csv",
     ) -> Path | None:
-        """Export history to ``<case_dir>/samples/<file_name>``."""
+        """Export history to ``<case_dir>/samples/vpm_conservation.csv``."""
         if len(self.history) == 0:
             Logging.warning("No conservation data to export")
             return None
 
-        filename = Path(case_dir) / "samples" / file_name
+        filename = Path(case_dir) / "samples" / "vpm_conservation.csv"
         filename.parent.mkdir(parents=True, exist_ok=True)
 
         with open(filename, "w", newline="") as f:

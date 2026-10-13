@@ -110,90 +110,6 @@ class _StageParticleView:
         return self._velocity_background.copy()
 
 
-class CallableStageContribution:
-    """Adapt an explicit external stage callback to the provider protocol.
-
-    The callback is called as::
-
-        evaluate(stage_time, stage_position, stage_vortex_strength,
-                 velocity_out, strength_rate_out, gradient_out)
-
-    where all arrays are limited to the active stage particle count and the
-    three output arrays are writable. The callback may leave unused outputs at
-    zero. Its contributions are accumulated into the supplied ``StageRates``.
-    Set ``include_external_stretching=True`` when the callback's returned
-    gradient represents an external velocity field whose transposed gradient
-    contraction must also contribute to the vortex-strength rate.
-    """
-
-    def __init__(
-        self,
-        evaluate: Callable,
-        *,
-        include_external_stretching: bool = False,
-        physics: "PhysicsBase | None" = None,
-    ) -> None:
-        """Create a host-callback stage provider.
-
-        Parameters
-        ----------
-        evaluate : callable
-            Callback with signature ``(stage_time, position,
-            vortex_strength, velocity_out, strength_rate_out, gradient_out)``.
-            The position and strength arrays have shape ``(N, 3)`` with m and
-            m³/s units; outputs are writable arrays with m/s, m³/s², and 1/s
-            units respectively.
-        include_external_stretching : bool, default=False
-            If true, add ``gradient.T @ vortex_strength`` to the returned
-            strength rate.
-        physics : PhysicsEngine, optional
-            Workspace used to transfer Taichi stage fields to and from NumPy.
-
-        Notes
-        -----
-        The callback is invoked once per RK stage and must fill or increment
-        the output arrays.  Its result is accumulated into the supplied
-        :class:`StageRates`; the accepted particle state is never exposed.
-        """
-        self.evaluate = evaluate
-        self.include_external_stretching = bool(include_external_stretching)
-        self.physics = physics
-
-    def add_stage_rates(
-        self, stage_state: StageState, stage_time: float, stage_rates: StageRates
-    ) -> None:
-        """Evaluate the callback and accumulate its stage contributions.
-
-        ``stage_state`` is temporary RK data.  ``stage_rates`` is mutated in
-        place, while callback input/output scratch arrays are newly allocated
-        for the active particle count.
-        """
-        count = int(stage_state.count)
-        position = _stage_array(stage_state.position, count, self.physics)
-        vortex_strength = _stage_array(stage_state.vortex_strength, count, self.physics)
-        velocity = np.zeros((count, 3), dtype=np.float64)
-        strength_rate = np.zeros((count, 3), dtype=np.float64)
-        # Keep the callback conditions stable: every output is writable even when
-        # the caller did not request a diagnostic gradient destination.
-        gradient = np.zeros((count, 3, 3), dtype=np.float64)
-        self.evaluate(
-            float(stage_time),
-            position,
-            vortex_strength,
-            velocity,
-            strength_rate,
-            gradient,
-        )
-        if self.include_external_stretching:
-            strength_rate += np.einsum("nji,nj->ni", gradient, vortex_strength)
-        _accumulate_stage_array(stage_rates.velocity, velocity, count, self.physics)
-        _accumulate_stage_array(
-            stage_rates.vortex_strength_rate, strength_rate, count, self.physics
-        )
-        if stage_rates.velocity_gradient is not None:
-            _accumulate_stage_array(stage_rates.velocity_gradient, gradient, count, self.physics)
-
-
 @ti.kernel
 def _accumulate_vlm_stretching(
     gradient: ti.template(),
@@ -731,9 +647,9 @@ class ParticleExternalStageContribution:
         if source_gradient is not None:
             external_gradient += source_gradient
         if body is not None:
-            velocity += np.asarray(
-                _call_stage_velocity_callback(body, position, stage_time), dtype=velocity.dtype
-            ).reshape(count, 3)
+            velocity += np.asarray(body(position, stage_time), dtype=velocity.dtype).reshape(
+                count, 3
+            )
             if body_gradient is None:
                 # Preserve old velocity-only callbacks while making their
                 # stretching contribution explicit and stage-consistent.
@@ -741,7 +657,7 @@ class ParticleExternalStageContribution:
                     return _finite_difference_gradient(body, points, current_time)
 
             external_gradient += _validate_external_gradient(
-                _call_stage_gradient_callback(body_gradient, position, stage_time), count
+                body_gradient(position, stage_time), count
             )
         if hasattr(self.physics, "_upload_vector_array"):
             self.physics._upload_vector_array(velocity, stage_rates.velocity, count)
@@ -813,32 +729,6 @@ class AxisymmetricNoSwirlStageProjection:
         )
 
 
-def _call_stage_velocity_callback(
-    callback: Callable, position: np.ndarray, stage_time: float, velocity: np.ndarray | None = None
-) -> np.ndarray:
-    """Call one explicitly stage-aware host callback signature.
-
-    Body callbacks accept ``(stage_position, stage_time)`` and velocity
-    overrides accept ``(stage_position, stage_time, current_velocity)``.  A
-    callback's own ``TypeError`` is never interpreted as an arity mismatch.
-    """
-    if velocity is None:
-        return callback(position, stage_time)
-    return callback(position, stage_time, velocity)
-
-
-def _call_stage_gradient_callback(
-    callback: Callable, position: np.ndarray, stage_time: float, velocity: np.ndarray | None = None
-) -> np.ndarray:
-    """Call a user gradient callback with an optional blend velocity."""
-    if velocity is None:
-        return callback(position, stage_time)
-    try:
-        return callback(position, stage_time, velocity)
-    except TypeError:
-        return callback(position, stage_time)
-
-
 def _validate_external_gradient(value: np.ndarray, count: int) -> np.ndarray:
     gradient = np.asarray(value, dtype=np.float64)
     if gradient.shape != (count, 3, 3):
@@ -874,7 +764,6 @@ def _finite_difference_gradient(
 
 __all__ = [
     "AxisymmetricNoSwirlStageProjection",
-    "CallableStageContribution",
     "ExternalStageContribution",
     "ParticleExternalStageContribution",
     "StageRHS",

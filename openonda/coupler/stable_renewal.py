@@ -898,7 +898,6 @@ class StableRenewalResult:
     coalesced_outer_input_indices: np.ndarray = field(
         default_factory=lambda: np.empty(0, dtype=np.int64)
     )
-    excluded_solid_count: int = 0
     pruned_node_count: int = 0
     pruned_vortex_strength_l1: float = 0.0
     pruned_vortex_strength_fraction: float = 0.0
@@ -920,8 +919,6 @@ class StableRenewalResult:
     representation_residual_before_prune: float | None = None
     representation_residual_after_prune: float | None = None
     maximum_transfer_amplification: float = 0.0
-    excluded_input_vortex_strength_l1: float = 0.0
-    excluded_remesh_vortex_strength_l1: float = 0.0
     excluded_target_vortex_strength_l1: float = 0.0
 
     @property
@@ -978,7 +975,6 @@ def renew_stable_overlap(
 
     count = len(position)
     input_fluid = _evaluate_weight("particle_fluid_weight", particle_fluid_weight, position)
-    excluded_input_l1 = float(np.linalg.norm(strength * (1.0 - input_fluid)[:, None], axis=1).sum())
     tapered_strength = strength * input_fluid[:, None]
     deep_solid = (
         np.zeros(count, dtype=bool)
@@ -1009,7 +1005,6 @@ def renew_stable_overlap(
         lattice,
         position_dtype=position_dtype,
     )
-    excluded_weight = 1.0 - lattice.fluid_weight
     if lattice.slip_slab:
         # The lattice holds each donor's complete support, so the physical
         # deposits fix the field of every slab image.
@@ -1019,14 +1014,6 @@ def renew_stable_overlap(
             lattice.particle_spacing,
             lattice.transfer_box[4:6],
         ).reshape(-1, 3)
-        # Nodes beyond the slip planes hold images only; no strength is lost there.
-        z = lattice.positions[:, 2]
-        excluded_weight[
-            (z < lattice.transfer_box[4] - 1e-10) | (z > lattice.transfer_box[5] + 1e-10)
-        ] = 0.0
-    excluded_remesh_l1 = float(
-        np.linalg.norm(vpm_lattice_strength * excluded_weight[:, None], axis=1).sum()
-    )
     vpm_lattice_strength *= lattice.fluid_weight[:, None]
 
     raw_target = _vectors(
@@ -1382,7 +1369,6 @@ def renew_stable_overlap(
         preserved_outer_count=final_outer_count,
         coalesced_outer_count=coalesced_outer_count,
         coalesced_outer_input_indices=coalesced_outer_input_indices,
-        excluded_solid_count=int(np.count_nonzero(deep_solid)),
         pruned_node_count=int(np.count_nonzero(pruned)),
         pruned_vortex_strength_l1=pruned_l1,
         pruned_vortex_strength_fraction=pruned_l1 / (active_l1 + 1.0e-30),
@@ -1406,8 +1392,6 @@ def renew_stable_overlap(
         representation_residual_before_prune=residual_before_prune,
         representation_residual_after_prune=residual_after_prune,
         maximum_transfer_amplification=blend.maximum_amplification,
-        excluded_input_vortex_strength_l1=excluded_input_l1,
-        excluded_remesh_vortex_strength_l1=excluded_remesh_l1,
         excluded_target_vortex_strength_l1=excluded_target_l1,
     )
 

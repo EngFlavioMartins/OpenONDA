@@ -263,14 +263,12 @@ class HostFMMReference:
                 children = [multipoles[child] for child in node.children]
                 centres = [self.tree.nodes[child].centre for child in node.children]
                 multipoles[index] = m2m(children, centres, node.centre)
-                self.diagnostics.m2m_operations += 1
             else:
                 multipoles[index] = p2m(
                     self.tree.position[node.indices],
                     self.tree.vortex_strength[node.indices],
                     node.centre,
                 )
-                self.diagnostics.p2m_operations += 1
         return multipoles
 
     def _downward_pass(
@@ -320,7 +318,6 @@ class HostFMMReference:
                 velocity,
                 gradient,
             )
-        self.diagnostics.gradient_evaluations += 1
         return velocity, gradient
 
     def _resolve_node_pair(
@@ -395,12 +392,10 @@ class HostFMMReference:
             )
             near_velocity += source_velocity
             near_gradient += source_gradient
-            self.diagnostics.p2p_interactions += len(target_indices) * len(particle_indices)
 
         far_velocity, far_gradient = _l2p_batch(local, target_position - target.centre)
         velocity[target_indices] += far_velocity + near_velocity
         gradient[target_indices] += far_gradient + near_gradient
-        self.diagnostics.l2p_evaluations += len(target_indices)
 
     def _write_vector(self, output: np.ndarray, values: np.ndarray) -> None:
         if hasattr(self.physics, "_upload_vector_array"):

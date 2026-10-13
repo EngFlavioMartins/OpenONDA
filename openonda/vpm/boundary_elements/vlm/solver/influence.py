@@ -423,34 +423,6 @@ def _bound_panel_pair_velocity(
 
 
 @ti.kernel
-def apply_circulation_smoothing(
-    circulation: ti.template(),
-    circulation_old: ti.template(),
-    smoothed_circulation: ti.template(),
-    n: ti.i32,
-):
-    """Average current and previous VLM circulation elementwise.
-
-    Parameters
-    ----------
-    circulation, circulation_old : taichi field, shape (n_panels,)
-        Current and previous panel circulations in m²/s.
-    smoothed_circulation : taichi field, shape (n_panels,)
-        Output field in m²/s, overwritten for indices ``0 <= i < n``.
-    n : int
-        Number of active panels to process; must not exceed the field sizes.
-
-    Notes
-    -----
-    The operation is the explicit temporal filter
-    ``0.5 * (circulation + circulation_old)``.  It does not update either
-    input field or perform any spatial smoothing.
-    """
-    for i in range(n):
-        smoothed_circulation[i] = 0.5 * (circulation[i] + circulation_old[i])
-
-
-@ti.kernel
 def compute_induced_velocities_at_bound(
     n_panels: ti.i32,
     bound_vortex_midpoint: ti.template(),
@@ -533,12 +505,10 @@ def compute_panel_force_coupled(
     velocity: ti.template(),
     vortex_point_position: ti.template(),
     circulation: ti.template(),
-    circulation_old: ti.template(),
     V_kinematic: ti.template(),
     forces: ti.template(),
     n_panels: ti.i32,
     density: float,
-    smooth_kj: ti.i32,
 ):
     """
     Compute forces using Kutta-Joukowski theorem on bound vortices.
@@ -554,10 +524,6 @@ def compute_panel_force_coupled(
     'velocity' input must be the fluid velocity evaluated at the
     BOUND VORTEX MIDPOINT (not collocation_point point), excluding self-induction.
 
-    'smooth_kj': when 1, applies a 2-step running average γ_eff = 0.5*(γ_n + γ_{n-1})
-    before the force integral.  This exactly cancels the 2Δt oscillation mode
-    that the explicit VPM-VLM coupling introduces in γ, while leaving the
-    time-mean (and therefore steady-state CL) unchanged.
     """
     for i in range(n_panels):
         # Bound leg (spanwise vortex)
@@ -569,9 +535,7 @@ def compute_panel_force_coupled(
         force = ti.Vector([0.0, 0.0, 0.0])
 
         if bound_length > VLM_SMALL_VELOCITY:
-            # 2-step running average removes the 2Δt oscillation mode
-            # introduced by the explicit VPM-VLM coupling (ForceConfig.kj_smoothing).
-            g = 0.5 * (circulation[i] + circulation_old[i]) if smooth_kj == 1 else circulation[i]
+            g = circulation[i]
 
             # Relative velocity at bound vortex
             V_kin = ti.Vector(

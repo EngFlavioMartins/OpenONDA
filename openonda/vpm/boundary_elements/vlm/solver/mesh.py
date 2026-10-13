@@ -612,59 +612,29 @@ def _prepare_trailing_temp(lattice: "VLMLattice", freestream_velocity: np.ndarra
     return temp_field
 
 
-def update_trailing_directions_local(
-    lattice: "VLMLattice", freestream_velocity: np.ndarray, trailing_infty: float = 10000.0
-) -> None:
+def update_trailing_directions_local(lattice: "VLMLattice", transport_velocity: np.ndarray) -> None:
     """
-    Update trailing edge direction vectors based on local velocity field.
+    Update trailing edge direction vectors from a per-panel transport velocity.
 
     This is a performance-critical function that uses a Taichi kernel
     to avoid O(N) GPU-CPU data transfers.
 
     Args:
         lattice: VLMLattice object
-        freestream_velocity: Velocity field (N, 3) where N = n_panels,
+        transport_velocity: Velocity field (N, 3) where N >= n_panels,
                representing local transport velocity at each panel.
                Typically external_velocity - V_kinematic.
-        trailing_infty: Distance to far trailing points
     """
-    # Check input shape
-    is_field = freestream_velocity.ndim == 2 and freestream_velocity.shape[0] >= lattice.n_panels
-    is_vector = freestream_velocity.ndim == 1 and freestream_velocity.shape[0] == 3
-
-    if is_vector:
-        # Uniform velocity - use simpler kernel
-        freestream_speed = np.linalg.norm(freestream_velocity)
-        if freestream_speed < VLM_SMALL_VELOCITY:
-            trail_dir = np.array([1.0, 0.0, 0.0])
-        else:
-            trail_dir = freestream_velocity / freestream_speed
-
-        _update_trailing_uniform_kernel(
-            lattice.trailing_direction,
-            lattice.vortex_point_position,
-            lattice.normal,
-            lattice.n_panels,
-            float(trail_dir[0]),
-            float(trail_dir[1]),
-            float(trail_dir[2]),
-            trailing_infty,
-        )
-    elif is_field:
-        temp_field = _prepare_trailing_temp(lattice, freestream_velocity)
-        _update_trailing_local_kernel(
-            lattice.trailing_direction,
-            lattice.vortex_point_position,
-            lattice.normal,
-            temp_field,
-            lattice.n_panels,
-            trailing_infty,
-            VLM_SMALL_VELOCITY,
-        )
-    else:
-        raise ValueError(
-            f"freestream_velocity must be (3,) vector or (N, 3) field, got shape {freestream_velocity.shape}"
-        )
+    temp_field = _prepare_trailing_temp(lattice, transport_velocity)
+    _update_trailing_local_kernel(
+        lattice.trailing_direction,
+        lattice.vortex_point_position,
+        lattice.normal,
+        temp_field,
+        lattice.n_panels,
+        10000.0,
+        VLM_SMALL_VELOCITY,
+    )
 
 
 def _geometric_spacing_single_end(n: int, ratio: float, refine_start: bool) -> np.ndarray:

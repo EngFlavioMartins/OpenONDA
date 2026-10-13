@@ -32,7 +32,6 @@ class RadialVortexKernel:
     q_function: ArrayFunction
     zeta_function: ArrayFunction
     q_infinity: float = 1.0 / (4.0 * math.pi)
-    angular_impulse_constant: float = 1.5
 
     def q(self, rho: np.ndarray | float) -> np.ndarray:
         """Return the regularized Biot--Savart circulation factor.
@@ -425,7 +424,6 @@ def make_vortex_kernel(name: str) -> RadialVortexKernel:
         definition.name,
         definition.q,
         definition.zeta,
-        angular_impulse_constant=definition.second_moment,
     )
 
 

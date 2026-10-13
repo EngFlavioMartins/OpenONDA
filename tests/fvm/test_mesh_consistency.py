@@ -9,7 +9,6 @@ import pytest
 
 from openonda.fvm.mesh.cartesian import BoxDomain, BoxPatches
 from openonda.fvm.mesh.cartesian.extrusion import extrude_mesh_section
-from openonda.fvm.mesh.cartesian.surface_recovery import _face_fluid_polygons
 from openonda.fvm.mesh.geometry import compute_mesh_geometry
 from openonda.fvm.mesh.rectilinear import box_mesh_3d
 from openonda.fvm.mesh.validation import (
@@ -202,33 +201,6 @@ def test_topology_rejects_a_coarse_face_missing_a_transition_midpoint():
 
     with pytest.raises(MeshValidationError, match="non-closed polygon edges"):
         validate_topology(mesh)
-
-
-class _CornerSolid:
-    """Classify only the four source-face corners as solid test points."""
-
-    @staticmethod
-    def is_inside(points: np.ndarray) -> np.ndarray:
-        values = np.asarray(points, dtype=np.float64)
-        return np.isclose(np.abs(values[:, 0]), 1.0) & np.isclose(np.abs(values[:, 1]), 1.0)
-
-
-def test_tangent_cut_line_is_not_sent_to_delaunay() -> None:
-    """A rank-one tangent arrangement has no finite-area face polygon."""
-    original = np.asarray(((-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (1.0, 1.0, 0.0), (-1.0, 1.0, 0.0)))
-    points = [
-        np.asarray(((-0.75, 0.0, 0.0), (-0.25, 0.0, 0.0), (0.25, 0.0, 0.0))),
-        np.asarray(((-0.25, 0.0, 0.0), (0.25, 0.0, 0.0), (0.75, 0.0, 0.0))),
-    ]
-
-    polygons = _face_fluid_polygons(
-        original,
-        points,
-        (_CornerSolid(),),  # type: ignore[arg-type]
-        1.0e-12,
-    )
-
-    assert polygons == []
 
 
 def test_cell_geometry_preserves_the_global_output_across_chunks():

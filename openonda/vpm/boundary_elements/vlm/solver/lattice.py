@@ -95,11 +95,6 @@ class VLMLattice:
         # Previous circulation strength Γ_old (N,) - for wake shedding (dcirculation/dt)
         self.circulation_old = ti.field(dtype=dtype, shape=(max_n_panels,))
 
-        # Time-averaged circulation 0.5*(Γ + Γ_old) used by kj_smoothing to
-        # compute bound_vortex_velocity so V_bound and the force kernel use the same
-        # smoothed circulation (eliminates the 2Δt oscillation in KJ forces).
-        self.smoothed_circulation = ti.field(dtype=dtype, shape=(max_n_panels,))
-
         # Cumulative circulation at each panel (sum of all upstream panels)
         # For TE panels: Γ_cumulative = Σ γ_i along chordwise direction
         # This is what should be used for trailing vortex shedding
@@ -150,7 +145,6 @@ class VLMLattice:
         self.trailing_edge_velocity = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels, 2))
 
         # Panel center position (N x 3) - for visualization/export
-        self.panel_centre = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
 
         # Bookkeeping: which wing/segment each panel belongs to
         self.wing_id = ti.field(dtype=ti.i32, shape=(max_n_panels,))
@@ -257,35 +251,6 @@ class VLMLattice:
                 relaxation_factor * circulation_new + (1.0 - relaxation_factor) * circulation_old
             )
 
-    @ti.kernel
-    def compute_cumulative_circulation(self):
-        """
-        Compute cumulative circulation for each panel by summing upstream.
-
-        For trailing edge shedding, the bound circulation at each spanwise station
-        is the sum of all chordwise panel circulations. This kernel walks upstream
-        from each panel to compute this cumulative sum.
-
-        Physical meaning:
-        - circulation[i] = local vortex ring strength (per-panel)
-        - cumulative_circulation[i] = sum of all upstream panels + self
-          = bound circulation at this spanwise station for TE panels
-        """
-        for i in range(self.n_panels):
-            # Start with this panel's circulation
-            cumsum = self.circulation[i]
-
-            # Walk upstream and accumulate
-            current = i
-            for _ in range(100):  # Max depth to prevent infinite loops
-                upstream_idx = self.neighbor_indices[current, 2]  # Index 2 = upstream
-                if upstream_idx == -1:
-                    break  # Reached leading edge
-                cumsum += self.circulation[upstream_idx]
-                current = upstream_idx
-
-            self.cumulative_circulation[i] = cumsum
-
     def reset(self) -> None:
         """Clear active panel state and reset the active count to zero.
 
@@ -297,7 +262,6 @@ class VLMLattice:
         self.force_density = None
         self.circulation.fill(0.0)
         self.circulation_old.fill(0.0)
-        self.smoothed_circulation.fill(0.0)
         self.cumulative_circulation.fill(0.0)
         self.cumulative_circulation_old.fill(0.0)
         self.aerodynamic_influence_coefficient.fill(0.0)
@@ -328,10 +292,6 @@ class VLMLattice:
     def get_kinematic_velocity(self) -> np.ndarray:
         """Return active prescribed panel velocities, shape ``(N, 3)`` in m/s."""
         return self.kinematic_velocity.to_numpy()[: self.n_panels]
-
-    def get_pressure_coefficient(self) -> np.ndarray:
-        """Return active pressure coefficients, shape ``(N,)`` dimensionless."""
-        return self.pressure_coefficient.to_numpy()[: self.n_panels]
 
     # NumPy-based geometry update (avoids Taichi field dimension bugs)
     def translate_panels(
@@ -387,7 +347,6 @@ class VLMLattice:
         displacement: np.ndarray,
         start_idx: int = 0,
         end_idx: int | None = None,
-        update_normal: bool = True,
     ) -> None:
         """Rotate and translate a contiguous panel range on the CPU.
 
@@ -403,12 +362,11 @@ class VLMLattice:
             First panel index to update.
         end_idx : int, optional
             Exclusive final panel index; defaults to ``n_panels``.
-        update_normal : bool, default=True
-            Rotate stored unit normals with the geometry.
 
         Notes
         -----
-        Positions are updated as ``R @ (x - origin) + origin + displacement``.
+        Positions are updated as ``R @ (x - origin) + origin + displacement``;
+        unit normals are rotated with the geometry.
         The operation mutates the selected Taichi fields and does not
         recompute panel centres, areas, or connectivity.
         """
@@ -441,10 +399,9 @@ class VLMLattice:
         bm_np[start_idx:end_idx] = _rotate(bm_np[start_idx:end_idx])
         self.bound_vortex_midpoint.from_numpy(bm_np)
 
-        if update_normal:
-            normal = self.normal.to_numpy().astype(self.np_dtype)
-            normal[start_idx:end_idx] = (rotation_matrix @ normal[start_idx:end_idx].T).T
-            self.normal.from_numpy(normal)
+        normal = self.normal.to_numpy().astype(self.np_dtype)
+        normal[start_idx:end_idx] = (rotation_matrix @ normal[start_idx:end_idx].T).T
+        self.normal.from_numpy(normal)
 
     def has_kinematic_velocity(self) -> bool:
         """Return whether any active panel has non-zero prescribed velocity."""
@@ -524,20 +481,9 @@ class VLMLattice:
         full_external_velocity[: self.n_panels] = external_velocity
         self.external_velocity.from_numpy(full_external_velocity)
 
-    # Removed duplicate get_pressure_coefficient method that used non-existent pressure-coefficient field
-
     def get_forces(self) -> np.ndarray:
         """Return active panel force vectors, shape ``(N, 3)`` in newtons."""
         return self.panel_force.to_numpy()[: self.n_panels]
-
-    @ti.kernel
-    def compute_panel_centre(self):
-        """Compute each panel centre as the mean of its corner positions."""
-        for i in range(self.n_panels):
-            curr_pos = ti.Vector([0.0, 0.0, 0.0])
-            for k in range(4):
-                curr_pos += self.panel_corner_position[i, k]
-            self.panel_centre[i] = curr_pos * 0.25
 
     def save_vtk(self, filename: str, time: float = 0.0) -> Path:
         """Atomically write the accepted lattice and its properties as PolyData."""

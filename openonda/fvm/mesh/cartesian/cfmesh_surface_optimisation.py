@@ -213,8 +213,8 @@ def _gradients(
 def _optimise_point(
     points: np.ndarray,
     triangles: np.ndarray,
-    tolerance: float = 0.001,
 ) -> np.ndarray:
+    tolerance = 0.001
     target = int(triangles[0, 0])
     neighbour_values = points[triangles[:, 1:].ravel()]
     # Axis-wise reductions are explicit because Numba does not support the
@@ -292,15 +292,13 @@ def _optimise_point(
 
 
 @njit(cache=True, fastmath=False)
-def _optimise_point_kernel(
-    points: np.ndarray, triangles: np.ndarray, tolerance: float = 0.001
-) -> np.ndarray:
+def _optimise_point_kernel(points: np.ndarray, triangles: np.ndarray) -> np.ndarray:
     """Compile the reference arithmetic, including its branch-sensitive order.
 
     Keeping one implementation avoids changes to normalization, stabilization,
     and symmetric-simplex tie breaking in a separately transcribed fast path.
     """
-    return _optimise_point(points, triangles, tolerance=tolerance)
+    return _optimise_point(points, triangles)
 
 
 def _pack_rows(rows: object) -> tuple[np.ndarray, np.ndarray]:
@@ -765,7 +763,6 @@ def untangle_cfmesh_surface(
     mesh_data: dict[str, Any],
     *,
     map_to_surface: Callable[[np.ndarray], np.ndarray],
-    additional_layers: int = 2,
 ) -> dict[str, Any]:
     """Apply cfMesh's serial post-projection untangling loop in place."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
@@ -789,7 +786,7 @@ def untangle_cfmesh_surface(
         if not inverted:
             break
         selected = set(inverted)
-        for _layer in range(additional_layers):
+        for _layer in range(2):
             selected.update(
                 neighbour
                 for point_id in tuple(selected)
@@ -810,7 +807,7 @@ def untangle_cfmesh_surface(
         "iterations": iterations,
         "moved_points": len(moved_union),
         "remaining_inverted_points": len(_inverted_boundary_points(mesh_data)),
-        "additional_layers": additional_layers,
+        "additional_layers": 2,
     }
 
 

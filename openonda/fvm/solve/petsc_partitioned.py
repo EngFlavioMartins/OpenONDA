@@ -12,7 +12,6 @@ from scipy import sparse
 
 from openonda.core._numba import cacheable_njit as njit
 
-from ..mesh.partition import cell_partition_offsets
 from .linear_interface import (
     LINEAR_RESIDUAL_FLOOR,
     LINEAR_ROUNDOFF_RESIDUAL,
@@ -74,8 +73,7 @@ class OwnedRowsCSR:
     indexing.  The local RHS vector is the corresponding slice of the
     global right-hand side.
 
-    Constructed via :meth:`from_global` for test/reference use or directly
-    assembled by the partitioned assembly routines.
+    Assembled by the partitioned assembly routines.
 
     Attributes
     ----------
@@ -102,25 +100,6 @@ class OwnedRowsCSR:
     indices: np.ndarray
     data: np.ndarray
     rhs: np.ndarray
-
-    @classmethod
-    def from_global(
-        cls, matrix: sparse.spmatrix, rhs: np.ndarray, rank: int, size: int
-    ) -> OwnedRowsCSR:
-        """Create a test/reference partition without retaining the global matrix."""
-        matrix = matrix.tocsr()
-        offsets = cell_partition_offsets(matrix.shape[0], size)
-        start, end = int(offsets[rank]), int(offsets[rank + 1])
-        local = matrix[start:end].tocsr()
-        return cls(
-            global_size=matrix.shape[0],
-            row_start=start,
-            row_end=end,
-            indptr=np.asarray(local.indptr, dtype=np.int64),
-            indices=np.asarray(local.indices, dtype=np.int64),
-            data=np.asarray(local.data, dtype=np.float64),
-            rhs=np.asarray(rhs[start:end], dtype=np.float64),
-        )
 
     @classmethod
     def from_local(

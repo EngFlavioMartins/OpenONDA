@@ -204,7 +204,6 @@ class StabilizationManager:
         self.regularization_enstrophy_transfer = 0.0
         # Net and magnitude vortex strength removed by outflow fringes, m^3/s.
         self.outflow_fringe_vortex_strength_removed = np.zeros(3, dtype=np.float64)
-        self.outflow_fringe_vortex_strength_l1_removed = 0.0
         # A readable placeholder rather than "": the record goes to CSV, and an
         # empty field reads back as a missing value.
         self.last_mechanism = "none"
@@ -787,9 +786,6 @@ class StabilizationManager:
         update["vorticity"] = vorticity.astype(ctx.np_dtype)
         ctx.mutations.set_properties(**update)
         self.outflow_fringe_vortex_strength_removed += removed.sum(axis=0)
-        self.outflow_fringe_vortex_strength_l1_removed += float(
-            np.linalg.norm(removed, axis=1).sum()
-        )
 
     def apply_retention(self) -> None:
         """Remove particles that have left the configured VPM domain."""

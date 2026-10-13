@@ -254,7 +254,6 @@ class EquilibriumSmagorinsky:
 
         model = EquilibriumSmagorinsky(mesh_data, geo_data)
         eddy_viscosity = model.compute_eddy_viscosity(velocity)
-        subgrid_kinetic_energy = model.compute_sgs_kinetic_energy(velocity)
 
     """
 
@@ -351,31 +350,6 @@ class EquilibriumSmagorinsky:
         if not np.all(np.isfinite(k_sgs)) or np.any(k_sgs < 0.0):
             raise FloatingPointError("Equilibrium Smagorinsky produced invalid SGS energy")
         return k_sgs, delta
-
-    def compute_sgs_kinetic_energy(
-        self,
-        velocity: np.ndarray,
-        mesh_data: dict | None = None,
-        geo_data: dict | None = None,
-    ) -> np.ndarray:
-        """Compute algebraic SGS kinetic energy ``k`` per cell.
-
-        Parameters
-        ----------
-        velocity:
-            Velocity values for interior and boundary-ghost cells, shaped
-            ``(n_cells_with_ghosts, 3)``.
-        mesh_data, geo_data:
-            Optional mesh/geometry overrides, matching the common turbulence
-            model interface.
-
-        Returns
-        -------
-        numpy.ndarray
-            Non-negative SGS kinetic energy with one value per interior cell.
-        """
-        k_sgs, _ = self._compute_sgs_state(velocity, mesh_data, geo_data)
-        return k_sgs
 
     def compute_eddy_viscosity(
         self,

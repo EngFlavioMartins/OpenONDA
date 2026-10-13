@@ -38,7 +38,7 @@ def plot_forces(samples_arg=None, destination=FIGURES_DIR, figure_format="png"):
         edgecolor="0.8",
     )
     fig.subplots_adjust(top=0.989)
-    _save_figure(fig, axes, destination / "delta_wing_forces.png", figure_format)
+    _save_figure(fig, destination / "delta_wing_forces.png", figure_format)
 
 
 def main() -> None:

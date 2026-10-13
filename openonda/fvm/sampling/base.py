@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 import csv
 import os
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 import defusedxml.ElementTree as ET  # noqa: N817
 
@@ -81,8 +81,6 @@ class Sampler:
     >>> MySampler(file_name="probe").name
     'probe'
     """
-
-    sampler_kind: ClassVar[str] = "Sampler"
 
     def __init__(
         self,

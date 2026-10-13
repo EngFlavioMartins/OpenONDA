@@ -43,7 +43,6 @@ def plot_vorticity_history(
         fig,
         figures_dir / "quadcopter_vorticity_history.png",
         figure_format=figure_format,
-        bbox_inches=None,
     )
 
 

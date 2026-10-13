@@ -61,12 +61,14 @@ class CorrectionClassificationBound:
 
     omitted_distance_lower: float
     cutoff: float
-    world_shift_error_upper: float
     descriptors: tuple
     world_images: tuple
     query_lower: tuple
     query_upper: tuple
     source_sha256: str
+
+
+_MAX_IMAGES = 4096
 
 
 def correction_classification_bound(
@@ -76,7 +78,6 @@ def correction_classification_bound(
     *,
     cutoff: float,
     images: Sequence[tuple[float, bool]],
-    max_images: int = 4096,
 ) -> "CorrectionClassificationBound | None":
     """Validate the fixed correction.py classifier and return immutable evidence.
 
@@ -97,12 +98,6 @@ def correction_classification_bound(
     ):
         raise ValueError("positive finite binary32/binary64 cutoff required")
     cutoff = float(cutoff)
-    if (
-        isinstance(max_images, bool)
-        or not isinstance(max_images, Integral)
-        or not 1 <= max_images <= 1_000_000
-    ):
-        raise ValueError("bounded positive image cap required")
     bounds = [np.asarray(value) for value in (query_lower, query_upper)]
     if any(
         value.shape != (3,)
@@ -115,8 +110,8 @@ def correction_classification_bound(
     lower, upper = (np.array(value, np.float64, copy=True) for value in bounds)
     if np.any(lower > upper):
         raise ValueError("ordered query AABB required")
-    descriptors = tuple(islice(iter(images), int(max_images) + 1))
-    if len(descriptors) > max_images:
+    descriptors = tuple(islice(iter(images), _MAX_IMAGES + 1))
+    if len(descriptors) > _MAX_IMAGES:
         raise ValueError("finite image-count cap exceeded")
     saved = []
     for descriptor in descriptors:
@@ -207,7 +202,6 @@ def correction_classification_bound(
     return CorrectionClassificationBound(
         radius,
         cutoff,
-        shift_error,
         descriptors,
         tuple(world),
         tuple(lower.tolist()),

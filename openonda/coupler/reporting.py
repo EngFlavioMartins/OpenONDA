@@ -113,7 +113,7 @@ class OutputRedirector:
         os.dup2(self._log_fd, 2)
         return self
 
-    def __exit__(self, _exc_type, _exc_value, traceback):
+    def __exit__(self, _exc_type, _exc_value, _traceback):
         """Restore stdout/stderr and close the opened log file."""
         if not self.logfile:
             return

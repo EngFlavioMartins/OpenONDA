@@ -11,18 +11,12 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-import os
 from pathlib import Path
 import re
-import shutil
-import subprocess
-import tempfile
-from typing import Any
 
 import numpy as np
 
 from .aircraft import Aircraft, Wing, WingSegment
-from .surface_io import save_surface
 
 
 @dataclass
@@ -34,8 +28,6 @@ class OpenVSPImportConfig:
 
     Fields
     ------
-    set_id
-        OpenVSP set to import (default: ``'ALL'``).
     include_components
         Only import components whose name matches one of these substrings
         (``None`` = all components).
@@ -76,7 +68,6 @@ class OpenVSPImportConfig:
         )
     """
 
-    set_id: int | str = "ALL"
     include_components: list[str] | None = None
     exclude_components: list[str] | None = None
     target_surface_types: tuple[str, ...] = ("wing", "prop", "rotor")
@@ -114,100 +105,6 @@ _NON_SURFACE_SECTIONS = {
     "point",
     "disk",
 }
-
-
-def export_openvsp_degengeom(
-    vsp_file: str | Path,
-    output_csv: str | Path,
-    config: OpenVSPImportConfig | None = None,
-) -> Path:
-    """
-    Export an OpenVSP ``.vsp3`` model to a DegenGeom CSV file.
-
-    Uses the optional ``openvsp`` Python API when available.  Falls back to
-    launching a subprocess with a system-installed OpenVSP Python interpreter.
-    When neither is available, the user must export the CSV manually from
-    OpenVSP and call :func:`load_degengeom_csv` directly.
-
-    Parameters
-    ----------
-    vsp_file : str | Path
-        Path to the ``.vsp3`` input file.
-    output_csv : str | Path
-        Path for the generated DegenGeom CSV file.
-    config : OpenVSPImportConfig | None
-        Import configuration (see :class:`OpenVSPImportConfig`).
-
-    Returns
-    -------
-    Path
-        Path to the generated CSV file.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the ``.vsp3`` file does not exist.
-    RuntimeError
-        If the export completes but no CSV file is produced.
-    ImportError
-        If OpenVSP Python API is unavailable and no subprocess fallback exists.
-
-    Examples
-    --------
-    >>> csv_path = export_openvsp_degengeom("model.vsp3", "degen.csv")
-    >>> csv_path.exists()
-    True
-    """
-
-    cfg = config or OpenVSPImportConfig()
-    vsp_path = Path(vsp_file)
-    csv_path = Path(output_csv)
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if not vsp_path.exists():
-        raise FileNotFoundError(f"OpenVSP file not found: {vsp_path}")
-
-    try:
-        vsp = _import_openvsp()
-    except ImportError:
-        return _export_openvsp_degengeom_external(vsp_path, csv_path, cfg)
-
-    _call_if_available(vsp, "ClearVSPModel")
-    vsp.ReadVSPFile(str(vsp_path))
-    _call_if_available(vsp, "Update")
-
-    if all(
-        hasattr(vsp, name)
-        for name in ("SetComputationFileName", "ComputeDegenGeom", "DEGEN_GEOM_CSV_TYPE")
-    ):
-        set_id = getattr(vsp, "SET_ALL", 0) if cfg.set_id == "ALL" else int(cfg.set_id)
-        vsp.SetComputationFileName(vsp.DEGEN_GEOM_CSV_TYPE, str(csv_path))
-        vsp.ComputeDegenGeom(set_id, vsp.DEGEN_GEOM_CSV_TYPE)
-        if csv_path.exists():
-            return csv_path
-
-    analysis = "DegenGeom"
-    if hasattr(vsp, "SetAnalysisInputDefaults"):
-        vsp.SetAnalysisInputDefaults(analysis)
-
-    if cfg.set_id != "ALL":
-        _try_set_analysis_input(vsp, analysis, "GeomSet", int(cfg.set_id))
-        _try_set_analysis_input(vsp, analysis, "Set", int(cfg.set_id))
-
-    _try_set_analysis_input(vsp, analysis, "WriteCSVFlag", 1)
-    _try_set_analysis_input(vsp, analysis, "WriteMFileFlag", 0)
-    _try_set_analysis_input(vsp, analysis, "WriteTXTFlag", 0)
-    for key in ("DegenGeomCSVFile", "CSVFileName", "FileName"):
-        _try_set_analysis_input(vsp, analysis, key, str(csv_path))
-
-    vsp.ExecAnalysis(analysis)
-    if not csv_path.exists():
-        raise RuntimeError(
-            "OpenVSP DegenGeom export completed but did not create the requested "
-            f"CSV file: {csv_path}. Check the installed OpenVSP API version and "
-            "export DegenGeom CSV manually if necessary."
-        )
-    return csv_path
 
 
 def load_degengeom_csv(
@@ -264,164 +161,6 @@ def load_degengeom_csv(
 
     aircraft.compute_default_refs()
     return aircraft
-
-
-def load_openvsp_surface(
-    vsp_file_or_csv: str | Path,
-    config: OpenVSPImportConfig | None = None,
-    save_json: str | Path | None = None,
-) -> Aircraft:
-    """Load an OpenVSP model or DegenGeom CSV into an :class:`Aircraft`.
-
-    ``.csv`` files are parsed directly and do not require OpenVSP. ``.vsp3``
-    files are first exported to DegenGeom CSV using the optional OpenVSP Python
-    API.
-
-    Parameters
-    ----------
-    vsp_file_or_csv : str or pathlib.Path
-        Input ``.vsp3`` model or exported DegenGeom ``.csv`` file.
-    config : OpenVSPImportConfig, optional
-        Filtering, panelization, symmetry, and coordinate-transform options.
-    save_json : str or pathlib.Path, optional
-        If supplied, also write the imported aircraft to this JSON path.
-
-    Returns
-    -------
-    Aircraft
-        Imported aircraft with VLM wings and segments.
-
-    Raises
-    ------
-    ValueError
-        If the extension is not ``.vsp3`` or ``.csv``.
-    FileNotFoundError, ImportError, RuntimeError
-        If the input or optional OpenVSP export path cannot be processed.
-    """
-
-    cfg = config or OpenVSPImportConfig()
-    input_path = Path(vsp_file_or_csv)
-    suffix = input_path.suffix.lower()
-
-    if suffix == ".csv":
-        aircraft = load_degengeom_csv(input_path, cfg)
-    elif suffix == ".vsp3":
-        with tempfile.TemporaryDirectory(prefix="openonda_openvsp_") as tmpdir:
-            csv_path = Path(tmpdir) / f"{input_path.stem}_degengeom.csv"
-            export_openvsp_degengeom(input_path, csv_path, cfg)
-            aircraft = load_degengeom_csv(csv_path, cfg)
-    else:
-        raise ValueError(
-            f"Unsupported OpenVSP surface input '{input_path}'. "
-            "Use a .csv DegenGeom file or a .vsp3 file."
-        )
-
-    if save_json is not None:
-        Path(save_json).parent.mkdir(parents=True, exist_ok=True)
-        save_surface(aircraft, str(save_json))
-    return aircraft
-
-
-def _import_openvsp() -> Any:
-    """Import and validate the optional OpenVSP Python API, or raise installation guidance."""
-    message = (
-        "Direct .vsp3 import requires the OpenVSP Python API (`openvsp`). "
-        "Install OpenVSP with Python bindings, or export DegenGeom CSV "
-        "manually from OpenVSP and call load_degengeom_csv(...)."
-    )
-    try:
-        import openvsp as vsp
-    except ImportError as exc:
-        raise ImportError(message) from exc
-    required_api = ("GetVSPVersion", "ClearVSPModel", "AddGeom")
-    if any(not hasattr(vsp, name) for name in required_api):
-        raise ImportError(message)
-    return vsp
-
-
-def _export_openvsp_degengeom_external(
-    vsp_path: Path,
-    csv_path: Path,
-    cfg: OpenVSPImportConfig,
-) -> Path:
-    """Export the selected geometry set in an external OpenVSP interpreter; require success."""
-    command = _openvsp_python_command()
-    if command is None:
-        raise ImportError(
-            "Direct .vsp3 import requires either an importable OpenVSP Python API "
-            "or an `openvsp-python` helper on PATH. Set OPENONDA_OPENVSP_PYTHON "
-            "to a Python interpreter with the OpenVSP API, or export DegenGeom CSV from "
-            "OpenVSP manually and call load_degengeom_csv(...)."
-        )
-
-    set_id = "SET_ALL" if cfg.set_id == "ALL" else str(int(cfg.set_id))
-    script = f"""
-from pathlib import Path
-import openvsp as vsp
-
-vsp_path = Path({str(vsp_path)!r})
-csv_path = Path({str(csv_path)!r})
-csv_path.parent.mkdir(parents=True, exist_ok=True)
-
-vsp.ClearVSPModel()
-vsp.ReadVSPFile(str(vsp_path))
-vsp.Update()
-set_id = getattr(vsp, "SET_ALL", 0) if {set_id!r} == "SET_ALL" else int({set_id!r})
-vsp.SetComputationFileName(vsp.DEGEN_GEOM_CSV_TYPE, str(csv_path))
-vsp.ComputeDegenGeom(set_id, vsp.DEGEN_GEOM_CSV_TYPE)
-if not csv_path.exists():
-    raise SystemExit(f"OpenVSP did not create {{csv_path}}")
-"""
-    subprocess.run([*command, "-c", script], check=True, env=_openvsp_subprocess_env())
-    return csv_path
-
-
-def _openvsp_python_command() -> list[str] | None:
-    """Resolve an explicitly configured OpenVSP interpreter or the PATH helper."""
-    configured = os.environ.get("OPENONDA_OPENVSP_PYTHON") or os.environ.get("OPENVSP_PYTHON")
-    candidates = [
-        configured,
-        shutil.which("openvsp-python"),
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return [candidate]
-    return None
-
-
-def _openvsp_subprocess_env() -> dict[str, str]:
-    """Use the configured external interpreter without rewriting import paths."""
-    return os.environ.copy()
-
-
-def _call_if_available(module: Any, name: str) -> None:
-    """Invoke an optional no-argument API operation when callable."""
-    fn = getattr(module, name, None)
-    if callable(fn):
-        fn()
-
-
-def _try_set_analysis_input(vsp: Any, analysis: str, key: str, value: int | str) -> bool:
-    """Try compatible OpenVSP analysis setters and report whether one accepted the value."""
-    setters: tuple[tuple[str, Any], ...]
-    if isinstance(value, str):
-        setters = (("SetStringAnalysisInput", [value]),)
-    else:
-        setters = (
-            ("SetIntAnalysisInput", [int(value)]),
-            ("SetDoubleAnalysisInput", [float(value)]),
-        )
-
-    for setter_name, blade_data in setters:
-        setter = getattr(vsp, setter_name, None)
-        if not callable(setter):
-            continue
-        try:
-            setter(analysis, key, blade_data)
-            return True
-        except Exception:
-            continue
-    return False
 
 
 def _read_degengeom_sections(csv_path: Path, config: OpenVSPImportConfig) -> list[_PointTable]:
@@ -846,7 +585,5 @@ def _norm(value: str) -> str:
 
 __all__ = [
     "OpenVSPImportConfig",
-    "export_openvsp_degengeom",
     "load_degengeom_csv",
-    "load_openvsp_surface",
 ]

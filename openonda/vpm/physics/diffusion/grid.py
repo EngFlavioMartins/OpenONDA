@@ -16,7 +16,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 import inspect
 import math
-import time
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -487,7 +486,6 @@ class _GridDiffusionMixin:
         self._body_query_bounds: np.ndarray | None = None
         self._body_geometry_queries = None
         self._body_grid_geometry_cache = None
-        self._body_geometry_cache_diagnostics = {"status": "not_prepared"}
 
         self._require_fixed_grid_allocation: bool = False
 
@@ -833,11 +831,6 @@ class _GridDiffusionMixin:
         self._body_mask_cache_key = None
         self._body_mask_host = None
 
-    @property
-    def body_geometry_cache_diagnostics(self) -> dict[str, object]:
-        """Last preparation evidence; no callbacks or device transfers occur."""
-        return dict(self._body_geometry_cache_diagnostics)
-
     def _body_grid_geometry_key(
         self,
     ) -> (
@@ -898,17 +891,11 @@ class _GridDiffusionMixin:
         """Populate masks/links, reusing only exactly validated host geometry."""
         if not self._body_mask_active or self._body_mask_grid is None:
             return
-        started = time.perf_counter()
         try:
             geometry_key = self._body_grid_geometry_key()
         except BaseException:
             self._body_mask_cache_key = None
             self._body_mask_host = self._body_links_host = None
-            self._body_geometry_cache_diagnostics = {
-                "status": "failed",
-                "qualified": False,
-                "preparation_seconds": time.perf_counter() - started,
-            }
             raise
         g = np.asarray(grid_min, dtype=np.float32).reshape(3)
         key = (
@@ -929,11 +916,6 @@ class _GridDiffusionMixin:
         )
         invalid_queries = self._body_geometry_queries is not None and geometry_key is None
         if not invalid_queries and key == self._body_mask_cache_key:
-            self._body_geometry_cache_diagnostics = {
-                "status": "resident_hit",
-                "qualified": geometry_key is not None,
-                "preparation_seconds": time.perf_counter() - started,
-            }
             return
         # Never leave stale residency checked after a partially written mask
         # or link grid. Host evidence is independent of device allocation.
@@ -946,7 +928,7 @@ class _GridDiffusionMixin:
                 cache = self._body_grid_geometry_cache
                 required_bytes = 5 * int(nx) * int(ny) * int(nz) + 12 * (nx + ny + nz)
                 if required_bytes <= cache.max_bytes:
-                    mask, links, diagnostics = cache.prepare(
+                    mask, links = cache.prepare(
                         g,
                         particle_spacing,
                         (nx, ny, nz),
@@ -975,31 +957,15 @@ class _GridDiffusionMixin:
                     ti.sync()
                     self._body_mask_host, self._body_links_host = mask, links
                     self._body_mask_cache_key = (*key[:-2], id(self._body_link_grid), key[-1])
-                    self._body_geometry_cache_diagnostics = {
-                        **diagnostics,
-                        "status": "complete",
-                        "preparation_seconds": time.perf_counter() - started,
-                    }
                     return
             self._prepare_body_mask_fresh(g, particle_spacing, nx, ny, nz)
             ti.sync()
             self._body_mask_cache_key = (
                 None if invalid_queries else (*key[:-2], id(self._body_link_grid), key[-1])
             )
-            self._body_geometry_cache_diagnostics = {
-                "status": "fresh_fallback",
-                "qualified": False,
-                "nodes": int(nx) * int(ny) * int(nz),
-                "preparation_seconds": time.perf_counter() - started,
-            }
         except BaseException:
             self._body_mask_cache_key = None
             self._body_mask_host = self._body_links_host = None
-            self._body_geometry_cache_diagnostics = {
-                "status": "failed",
-                "qualified": geometry_key is not None,
-                "preparation_seconds": time.perf_counter() - started,
-            }
             raise
 
     def _prepare_body_mask_fresh(
@@ -3895,21 +3861,6 @@ class _GridDiffusionMixin:
             buf[:count] = flat[offset : offset + count]
             self._upload_scalar_chunk_kernel(dst, buf, offset, count, ny, nz)
             ti.sync()
-
-    @ti.kernel
-    def _grid_norm_kernel(
-        self,
-        field: ti.template(),
-        nx: ti.i32,
-        ny: ti.i32,
-        nz: ti.i32,
-    ) -> ti.f32:
-        """GPU-parallel L2 norm² reduction over the active sub-particle_volume."""
-        result = 0.0
-        for i, j, k in ti.ndrange(nx, ny, nz):
-            v = field[i, j, k]
-            result += v[0] ** 2 + v[1] ** 2 + v[2] ** 2
-        return result
 
     @ti.kernel
     def _apply_body_mask_kernel(

@@ -1076,8 +1076,8 @@ def _untangle_point(points: np.ndarray, triangles: np.ndarray) -> np.ndarray | N
     return np.asarray(region.points).mean(axis=0)
 
 
-def _optimise_part_untangler(part: _PartTetMesh, iterations: int = 5) -> None:
-    del iterations  # Native implementation clears its active set after one pass.
+def _optimise_part_untangler(part: _PartTetMesh) -> None:
+    # cfMesh clears its active set after one pass.
     inverted = _signed_tet_volumes(part.points, part.tets) < _VSMALL
     if not np.any(inverted):
         return
@@ -1101,8 +1101,8 @@ def _optimise_part_untangler(part: _PartTetMesh, iterations: int = 5) -> None:
     _refresh_part_centres(part, updates)
 
 
-def _optimise_part_volume(part: _PartTetMesh, iterations: int = 10) -> None:
-    for _iteration in range(iterations):
+def _optimise_part_volume(part: _PartTetMesh) -> None:
+    for _iteration in range(10):
         positions = _optimise_part_nodes(part, part.smooth_nodes, tolerance=1.0e-5)
         for node_id, position in zip(part.smooth_nodes, positions, strict=True):
             part.points[node_id] = position
@@ -1143,8 +1143,8 @@ def _update_mesh_from_part(
     return changed_faces
 
 
-def _optimise_part_boundary_laplace(part: _PartTetMesh, *, iterations: int = 3) -> None:
-    for _iteration in range(iterations):
+def _optimise_part_boundary_laplace(part: _PartTetMesh) -> None:
+    for _iteration in range(3):
         updates: dict[int, np.ndarray] = {}
         for node_value in part.boundary_nodes:
             node_id = int(node_value)
@@ -1178,9 +1178,6 @@ def _run_cfmesh_untangle(
     cell_faces: list[list[int]],
     *,
     cell_face_order: Sequence[Sequence[int]] | None = None,
-    max_global_iterations: int = 10,
-    max_internal_iterations: int = 50,
-    max_surface_iterations: int = 2,
 ) -> tuple[list[int], list[int]]:
     """Port ``meshOptimizer::untangleMeshFV`` and return count traces."""
     changed_faces = np.ones(len(faces), dtype=np.bool_)
@@ -1229,17 +1226,17 @@ def _run_cfmesh_untangle(
             _optimise_part_volume(part)
             changed_faces = _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
 
-            if not (iteration < minimum_iteration + 5 and iteration + 1 < max_internal_iterations):
+            if not (iteration < minimum_iteration + 5 and iteration + 1 < 50):
                 break
             iteration += 1
 
         if n_bad_faces == 0:
             break
         global_iteration += 1
-        if global_iteration >= max_global_iterations:
+        if global_iteration >= 10:
             break
 
-        for _surface_iteration in range(max_surface_iterations):
+        for _surface_iteration in range(2):
             bad_faces = _cfmesh_bad_faces(
                 points,
                 faces,
@@ -1290,12 +1287,11 @@ def _run_cfmesh_low_quality(
     cell_faces: list[list[int]],
     *,
     cell_face_order: Sequence[Sequence[int]] | None = None,
-    max_iterations: int = 10,
 ) -> list[int]:
     """Port ``meshOptimizer::optimizeLowQualityFaces``."""
     trace: list[int] = []
     changed_faces = np.ones(len(faces), dtype=np.bool_)
-    for _iteration in range(max_iterations):
+    for _iteration in range(10):
         low_quality_faces = _cfmesh_low_quality_faces(
             points,
             faces,

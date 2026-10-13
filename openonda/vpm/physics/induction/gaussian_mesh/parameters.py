@@ -31,7 +31,6 @@ class ResolvedGaussianMesh:
     spacing: float
     correction_cutoff: float
     order: int
-    maximum_source_core: float
 
 
 @dataclass(frozen=True)
@@ -79,4 +78,4 @@ class GaussianMeshParameters:
         cutoff = tau * self.correction_radius_over_tau
         if not all(math.isfinite(value) and value > 0 for value in (tau, spacing, cutoff)):
             raise ValueError("resolved auxiliary lengths are not finite and positive")
-        return ResolvedGaussianMesh(tau, spacing, cutoff, self.order, largest)
+        return ResolvedGaussianMesh(tau, spacing, cutoff, self.order)

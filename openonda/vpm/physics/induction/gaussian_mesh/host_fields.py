@@ -477,12 +477,6 @@ class GaussianHostImageFields:
                 self._lattice_x,
             )
         )
-        self.initial_diagnostics = {
-            "backend": "scipy_cpu",
-            "snapshot_bytes": self.snapshot_bytes,
-            "runtime_admissible": False,
-            "tail_bound_checked": False,
-        }
 
     def _check_context(self) -> None:
         if self.closed:

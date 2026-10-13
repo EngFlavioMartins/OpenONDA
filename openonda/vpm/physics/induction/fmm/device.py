@@ -14,7 +14,6 @@ gradient. Expansion and traversal settings are not part of the public API.
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 import math
-import time
 from typing import NamedTuple, Self
 
 import numpy as np
@@ -231,7 +230,6 @@ class FMMDeviceWorkspace:
         gradient_tail_cutoff: float,
         max_evaluation_points: int,
         *,
-        max_pairs: int | None = None,
         _list_capacities: _ListCapacities | None = None,
     ) -> None:
         """Allocate fixed-capacity f32 storage for one device FMM evaluator.
@@ -252,9 +250,6 @@ class FMMDeviceWorkspace:
         max_evaluation_points : int
             Maximum arbitrary-target batch size. Larger queries are processed
             in consecutive batches without changing their results.
-        max_pairs : int or None, default=None
-            Equal capacity of each interaction list and traversal queue.
-            None uses the initial per-particle sizing heuristic.
 
         Notes
         -----
@@ -264,11 +259,10 @@ class FMMDeviceWorkspace:
         """
         self.max_n_particles = int(max_n_particles)
         self.max_nodes = 2 * self.max_n_particles
-        if max_pairs is not None and _list_capacities is not None:
-            raise ValueError("specify either equal or independent FMM scratch capacities")
-        initial = _PAIR_CAPACITY_FACTOR * self.max_n_particles if max_pairs is None else max_pairs
         self.list_capacities = _normalize_list_capacities(
-            initial if _list_capacities is None else _list_capacities
+            _PAIR_CAPACITY_FACTOR * self.max_n_particles
+            if _list_capacities is None
+            else _list_capacities
         )
         self.max_m2l_pairs, self.max_near_pairs, self.max_queue_pairs = self.list_capacities
         self.m2l_batch_size = min(_M2L_BATCH_SIZE, self.max_m2l_pairs)
@@ -339,12 +333,6 @@ class FMMDeviceWorkspace:
         self.near_source = fields.scalar(dtype=ti.i32, shape=self.max_near_pairs)
         self._m2l_count = fields.scalar(dtype=ti.i32, shape=())
         self._near_count = fields.scalar(dtype=ti.i32, shape=())
-        # Metal lacks the i64 atomic required by a monolithic exact counter.
-        # Two u32 limbs retain every near P2P interaction count without
-        # relying on lossy f32 accumulation. A single list entry contains at
-        # most 32*32 interactions, so carry detection is unambiguous.
-        self._p2p_particle_count_low = fields.scalar(dtype=ti.u32, shape=())
-        self._p2p_particle_count_high = fields.scalar(dtype=ti.u32, shape=())
         self._list_error = fields.scalar(dtype=ti.i32, shape=())
         self._nonzero_l2l_count = fields.scalar(dtype=ti.i32, shape=())
         self._queue_target_a = fields.scalar(dtype=ti.i32, shape=self.max_queue_pairs)
@@ -375,26 +363,11 @@ class FMMDeviceWorkspace:
         self._derivative_coefficient.from_numpy(coefficient)
         self._derivative_exponent.from_numpy(exponent)
         self._derivative_radial_step.from_numpy(radial_step)
-        self.profile_passes = False
-        self.last_phase_seconds = {
-            "tree_build": 0.0,
-            "upward": 0.0,
-            "interaction_lists": 0.0,
-            "m2l": 0.0,
-            "downward": 0.0,
-            "near_field": 0.0,
-            "strength_rate": 0.0,
-        }
 
     def destroy(self) -> None:
         """Release the disposable FMM and hierarchy scratch fields."""
         self.tree.destroy()
         self._device_fields.destroy()
-
-    @property
-    def max_pairs(self) -> int:
-        """Largest list capacity, retained for aggregate scratch reporting."""
-        return max(self.list_capacities)
 
     @ti.func
     def _factorial(self, value: ti.i32) -> ti.f32:
@@ -584,8 +557,6 @@ class FMMDeviceWorkspace:
     def _initialize_interaction_lists(self):
         self._m2l_count[None] = 0
         self._near_count[None] = 0
-        self._p2p_particle_count_low[None] = ti.u32(0)
-        self._p2p_particle_count_high[None] = ti.u32(0)
         self._list_error[None] = 0
         root = self.tree._root[None]
         self._queue_target_a[0] = root
@@ -593,14 +564,6 @@ class FMMDeviceWorkspace:
         self._queue_count_a[None] = 1
         self._queue_count_b[None] = 0
         self._queue_peak_count[None] = 1
-
-    @ti.func
-    def _record_p2p_particle_count(self, particle_pairs: ti.i32):
-        """Atomically add a bounded P2P count to the portable u64 diagnostic."""
-        increment = ti.cast(particle_pairs, ti.u32)
-        previous = ti.atomic_add(self._p2p_particle_count_low[None], increment)
-        if previous > ti.u32(0xFFFFFFFF) - increment:
-            ti.atomic_add(self._p2p_particle_count_high[None], ti.u32(1))
 
     @ti.func
     def _append_m2l_pair(self, target: ti.i32, source: ti.i32):
@@ -619,12 +582,6 @@ class FMMDeviceWorkspace:
             self.near_source[slot] = source
         else:
             ti.atomic_max(self._list_error[None], 1)
-        particle_pairs = (
-            self.tree.node_particle_count[target] * self.tree.node_particle_count[source]
-        )
-        if target == source:
-            particle_pairs -= self.tree.node_particle_count[target]
-        self._record_p2p_particle_count(particle_pairs)
 
     @ti.func
     def _append_queue_pair(
@@ -1123,18 +1080,9 @@ class FMMDeviceWorkspace:
         and core-radius changes are represented in the source moments.
         """
         count = int(count)
-        phase_start = time.perf_counter()
         self.tree.build(position, vortex_strength, core_radius, count)
-        if self.profile_passes:
-            ti.sync()
-            self.last_phase_seconds["tree_build"] = time.perf_counter() - phase_start
         node_count = 2 * count - 1
-        phase_start = time.perf_counter()
         level_count = self.prepare_source_multipoles(count)
-        if self.profile_passes:
-            ti.sync()
-            self.last_phase_seconds["upward"] = time.perf_counter() - phase_start
-        phase_start = time.perf_counter()
         self._build_interaction_lists(2 * level_count)
         list_error = int(self._list_error[None])
         if list_error == 1:
@@ -1148,37 +1096,19 @@ class FMMDeviceWorkspace:
             )
         if list_error:
             raise RuntimeError("FMM dual-tree traversal did not finish within its pass limit")
-        if self.profile_passes:
-            ti.sync()
-            self.last_phase_seconds["interaction_lists"] = time.perf_counter() - phase_start
         m2l_count = int(self._m2l_count[None])
-        phase_start = time.perf_counter()
         for pair_start in range(0, m2l_count, self.m2l_batch_size):
             batch_count = min(self.m2l_batch_size, m2l_count - pair_start)
             self._m2l_derivative_pass(pair_start, batch_count)
             self._m2l_accumulate_pass(pair_start, batch_count)
-        if self.profile_passes:
-            ti.sync()
-            self.last_phase_seconds["m2l"] = time.perf_counter() - phase_start
-        phase_start = time.perf_counter()
         for level in range(level_count):
             self._l2l_level(count, level)
         self._l2p_pass(count)
-        if self.profile_passes:
-            ti.sync()
-            self.last_phase_seconds["downward"] = time.perf_counter() - phase_start
-        phase_start = time.perf_counter()
         self._near_field_pass(node_count, count, int(self._near_count[None]))
-        if self.profile_passes:
-            ti.sync()
-            self.last_phase_seconds["near_field"] = time.perf_counter() - phase_start
-        phase_start = time.perf_counter()
         self._reset_rate_diagnostics()
         self._rate_pass(count, stretching_mode)
         self._finalize_rate_diagnostics()
         ti.sync()
-        if self.profile_passes:
-            self.last_phase_seconds["strength_rate"] = time.perf_counter() - phase_start
 
     def prepare_source_multipoles(self, count: int) -> int:
         """Prepare p=3 moments on the active cells of an already-built source tree.
@@ -1279,17 +1209,6 @@ class FMMDeviceWorkspace:
             write_gradient=write_gradient,
         )
 
-    def p2p_particle_count(self) -> int:
-        """Return the exact accumulated near-field interaction count.
-
-        The two device ``u32`` limbs form one unsigned 64-bit diagnostic
-        counter. This host-side reconstruction happens after stage completion
-        and does not participate in FMM arithmetic.
-        """
-        return (int(self._p2p_particle_count_high[None]) << 32) | int(
-            self._p2p_particle_count_low[None]
-        )
-
 
 @ti.data_oriented
 class FMMInduction:
@@ -1346,7 +1265,6 @@ class FMMInduction:
         self.kernel: RadialVortexKernel = make_vortex_kernel("GAUSSIAN")
         self.max_n_particles = 1
         self.workspace: FMMDeviceWorkspace | None = None
-        self._source_moments_ready = False
         self._reclaim_stage_cache = None
         self.diagnostics = FMMDiagnostics(stretching_scheme=self.stretching_scheme)
 
@@ -1388,9 +1306,7 @@ class FMMInduction:
             self.workspace = None
             ti.sync()
             previous.destroy()
-        self._last_tree_key = None
         self._fixed_source_key = None
-        self._source_moments_ready = False
         self.physics = physics
         self.kernel = make_vortex_kernel(physics.particle_kernel) if kernel is None else kernel
         self.max_n_particles = int(physics.max_n_particles)
@@ -1454,13 +1370,10 @@ class FMMInduction:
         if current is None:
             raise RuntimeError("FMMInduction must be bound before evaluation")
         pairs = _normalize_list_capacities(max_pairs)
-        profile_passes = current.profile_passes
         if self._reclaim_stage_cache is not None:
             self._reclaim_stage_cache()
         ti.sync()
         self.workspace = None
-        self._last_tree_key = None
-        self._source_moments_ready = False
         current.destroy()
         del current
         self.workspace = FMMDeviceWorkspace(
@@ -1472,7 +1385,6 @@ class FMMInduction:
             self._max_evaluation_points,
             _list_capacities=pairs,
         )
-        self.workspace.profile_passes = profile_passes
 
     def close(self) -> None:
         """Release this evaluator's scratch, never caller physics/particle fields.
@@ -1488,8 +1400,6 @@ class FMMInduction:
             ti.sync()
             self.workspace = None
             current.destroy()
-        self._last_tree_key = None
-        self._source_moments_ready = False
 
     def _grow_interaction_lists(self, error: _InteractionListCapacityError) -> None:
         """Grow from observed demand, without changing FMM accuracy or particle capacity."""
@@ -1515,29 +1425,16 @@ class FMMInduction:
             stacklevel=2,
         )
         self._replace_workspace(current.max_n_particles, proposed)
-        self.diagnostics.interaction_list_resizes += 1
 
-    def estimated_workspace_bytes(
-        self,
-        max_n_particles: int,
-        max_evaluation_points: int | None = None,
-        *,
-        max_pairs: int | None = None,
-        _list_capacities: _ListCapacities | None = None,
-    ) -> int:
+    def estimated_workspace_bytes(self, max_n_particles: int) -> int:
         """Estimate fixed FMM and hierarchy field arrays for a capacity.
 
         Parameters
         ----------
         max_n_particles : int
             Positive source-particle capacity used to size hierarchy,
-            interaction-list, and particle-output arrays.
-        max_evaluation_points : int or None, default=None
-            Maximum simultaneous arbitrary-target batch size. ``None`` uses
-            the bound workspace's batch capacity when available, otherwise
-            ``max_n_particles``.
-        max_pairs : int or None, default=None
-            Equal per-list scratch capacity; None uses the initial sizing heuristic.
+            interaction-list, and particle-output arrays. The arbitrary-target
+            batch uses the bound workspace's capacity when available.
 
         Returns
         -------
@@ -1554,22 +1451,12 @@ class FMMInduction:
         capacity = int(max_n_particles)
         if capacity < 1:
             raise ValueError("max_n_particles must be positive")
-        if max_evaluation_points is None:
-            evaluation_capacity = (
-                self.workspace.target_batch_capacity if self.workspace is not None else capacity
-            )
-        else:
-            evaluation_capacity = int(max_evaluation_points)
-        if evaluation_capacity < 1:
-            raise ValueError("max_evaluation_points must be positive")
+        evaluation_capacity = (
+            self.workspace.target_batch_capacity if self.workspace is not None else capacity
+        )
         evaluation_capacity = min(evaluation_capacity, _TRAVERSAL_BATCH_SIZE)
         node_count = 2 * capacity
-        if max_pairs is not None and _list_capacities is not None:
-            raise ValueError("specify either equal or independent FMM scratch capacities")
-        initial = _PAIR_CAPACITY_FACTOR * capacity if max_pairs is None else max_pairs
-        pairs = _normalize_list_capacities(
-            initial if _list_capacities is None else _list_capacities
-        )
+        pairs = _normalize_list_capacities(_PAIR_CAPACITY_FACTOR * capacity)
         coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
         interaction_bytes = pairs.storage_bytes + 4  # Queue high-water counter.
         near_adjacency_bytes = node_count * 3 * 4
@@ -1666,7 +1553,6 @@ class FMMInduction:
         if count == 0:
             return
         self._ensure_workspace(count)
-        self._source_moments_ready = False
         for attempt in range(_MAX_LIST_GROWTH_RETRIES + 1):
             try:
                 self.workspace.evaluate(
@@ -1680,8 +1566,6 @@ class FMMInduction:
                         "no stage output was published"
                     ) from error
                 self._grow_interaction_lists(error)
-        self._last_tree_key = (position, vortex_strength, core_radius, count)
-        self._source_moments_ready = True
         self.physics._copy_vec3(self.workspace.velocity, velocity_out, count)
         if velocity_gradient_out is not None:
             self.physics._copy_mat3(self.workspace.gradient, velocity_gradient_out, count)
@@ -1690,19 +1574,13 @@ class FMMInduction:
         else:
             self.physics._zero_vec3_field(vortex_strength_rate_out, count)
         m2l_count = int(self.workspace._m2l_count[None])
-        near_count = int(self.workspace._near_count[None])
         self.diagnostics.stage_evaluations += 1
         self.diagnostics.hierarchy_builds += 1
-        self.diagnostics.p2m_operations += count
         active_internal_count = int(self.workspace._active_internal_count[None])
         active_leaf_count = int(self.workspace._active_leaf_count[None])
-        self.diagnostics.m2m_operations += active_internal_count
         self.diagnostics.m2l_interactions += m2l_count
-        self.diagnostics.p2p_interactions += self.workspace.p2p_particle_count()
         self.diagnostics.l2l_operations += 2 * active_internal_count
         self.diagnostics.nonzero_l2l_operations += int(self.workspace._nonzero_l2l_count[None])
-        self.diagnostics.l2p_evaluations += count
-        self.diagnostics.gradient_evaluations += 1
         self.diagnostics.hierarchical_strength_rates += int(strength_rate_enabled)
         self.diagnostics.host_particle_transfers = 0
         self.diagnostics.last_uncorrected_rate_defect = float(self.workspace._rate_defect[None])
@@ -1711,22 +1589,7 @@ class FMMInduction:
             self.diagnostics.last_uncorrected_rate_defect
             / max(self.diagnostics.last_strength_rate_norm, np.finfo(np.float32).eps)
         )
-        self.diagnostics.peak_node_count = max(self.diagnostics.peak_node_count, 2 * count - 1)
         self.diagnostics.last_active_cell_count = active_internal_count + active_leaf_count
-        self.diagnostics.last_active_leaf_count = active_leaf_count
-        self.diagnostics.peak_interaction_list_count = max(
-            self.diagnostics.peak_interaction_list_count, m2l_count + near_count
-        )
-        self.diagnostics.device_memory_estimate_bytes = self._estimate_memory_bytes()
-        if self.workspace.profile_passes:
-            phase = self.workspace.last_phase_seconds
-            self.diagnostics.last_tree_build_seconds = phase["tree_build"]
-            self.diagnostics.last_upward_pass_seconds = phase["upward"]
-            self.diagnostics.last_interaction_list_seconds = phase["interaction_lists"]
-            self.diagnostics.last_m2l_seconds = phase["m2l"]
-            self.diagnostics.last_downward_pass_seconds = phase["downward"]
-            self.diagnostics.last_near_field_seconds = phase["near_field"]
-            self.diagnostics.last_strength_rate_seconds = phase["strength_rate"]
 
     def evaluate_gaussian_source_vorticity(
         self,
@@ -1753,8 +1616,6 @@ class FMMInduction:
         strength: object,
         radius: object,
         count: int,
-        *,
-        reuse_current_tree: bool = False,
     ) -> Iterator[None]:
         """Reuse one LBVH for target batches while source fields are immutable.
 
@@ -1769,16 +1630,8 @@ class FMMInduction:
             raise ValueError("source count must be non-negative")
         key = (position, strength, radius, int(count))
         self._ensure_workspace(int(count))
-        previous = getattr(self, "_last_tree_key", None)
-        same_tree = (
-            previous is not None
-            and all(previous[i] is key[i] for i in range(3))
-            and previous[3] == key[3]
-        )
-        if int(count) > 0 and (not reuse_current_tree or not same_tree):
-            self._source_moments_ready = False
+        if int(count) > 0:
             self.workspace.tree.build(*key)
-        self._last_tree_key = key
         self._fixed_source_key = key
         try:
             yield
@@ -1836,8 +1689,6 @@ class FMMInduction:
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before target evaluation")
         if self.kernel.name not in treecode_kernel_names():
-            self._last_tree_key = None
-            self._source_moments_ready = False
             if target_velocity is not None:
                 self.physics.compute_target_velocity_kernel(
                     target_position,
@@ -1869,8 +1720,6 @@ class FMMInduction:
         ):
             raise RuntimeError("fixed-source target scope received different source fields")
         self._ensure_workspace(int(source_count))
-        if fixed is None:
-            self._source_moments_ready = False
         self.workspace.evaluate_targets(
             target_position,
             source_position,
@@ -1883,24 +1732,6 @@ class FMMInduction:
             background_velocity if include_freestream else self.physics._zero_velocity,
             reuse_source_tree=fixed is not None,
         )
-        if fixed is None:
-            self._last_tree_key = (
-                source_position,
-                source_vortex_strength,
-                source_core_radius,
-                int(source_count),
-            )
-
-    def _estimate_memory_bytes(self) -> int:
-        """Return the current capacity-based workspace estimate in bytes."""
-        if self.workspace is None:
-            return self.estimated_workspace_bytes(self.max_n_particles)
-        total = self.estimated_workspace_bytes(
-            self.workspace.max_n_particles,
-            self.workspace.target_batch_capacity,
-            _list_capacities=self.workspace.list_capacities,
-        )
-        return total
 
 
 __all__ = ["FMMDeviceWorkspace", "FMMInduction"]

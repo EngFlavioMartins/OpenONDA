@@ -321,7 +321,6 @@ class GaussianCoreCorrectionGPU:
             raise ValueError("accumulation_dtype must be float32 or float64")
         self.dtype = np.dtype(accumulation_dtype)
         self.pool = self._memory_pool.pool
-        self._owned = []
         self.diagnostics = {
             "production_qualified": False,
             "source_only_cores": True,
@@ -414,7 +413,6 @@ class GaussianCoreCorrectionGPU:
                     (256,),
                     (sorted_keys, np.int32(self.count), self.begin, self.end),
                 )
-                self._owned = [self.x, self.gamma, self.sigma, self.begin, self.end]
                 cp.cuda.get_current_stream().synchronize()
                 self.diagnostics.update(
                     source_count=self.count,
@@ -536,7 +534,6 @@ class GaussianCoreCorrectionGPU:
             self.closed = True
             raise
         self.closed = True
-        self._owned = []
         for name in ("x", "gamma", "sigma", "begin", "end"):
             setattr(self, name, None)
         try:

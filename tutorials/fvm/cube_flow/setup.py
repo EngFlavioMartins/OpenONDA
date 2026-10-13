@@ -81,13 +81,11 @@ def create_fvm_setup(depth: float) -> fvm.FVMSetup:
                 name="bottom",
                 velocity_type="slip",
                 pressure_type="zeroGradient",
-                eddy_viscosity_type="zeroGradient",
             ),
             fvm.BoundaryConfig(
                 name="top",
                 velocity_type="slip",
                 pressure_type="zeroGradient",
-                eddy_viscosity_type="zeroGradient",
             ),
             fvm.BoundaryConfig.wall("cube"),
             fvm.BoundaryConfig.empty("front"),

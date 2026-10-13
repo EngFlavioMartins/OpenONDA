@@ -451,7 +451,7 @@ class SurfaceIndex:
         v2 = self.triangles[candidates, 2]
         return _triangle_box_overlap_any_kernel(centre, half, v0, v1, v2)
 
-    def is_inside(self, points: np.ndarray, *, chunk_size: int = 500) -> np.ndarray:
+    def is_inside(self, points: np.ndarray) -> np.ndarray:
         """Point-in-closed-manifold test by ray-parity, with degenerate retry."""
         points = np.atleast_2d(points)
         n = len(points)
@@ -494,7 +494,7 @@ class SurfaceIndex:
         # Ray testing materialises several ``(points, triangles)`` arrays.
         # Keep that product bounded when layer preparation has subdivided long
         # source facets; otherwise a benign surface refinement can exhaust RAM.
-        chunk_size = min(chunk_size, max(16, 2_000_000 // max(len(self.triangles), 1)))
+        chunk_size = min(500, max(16, 2_000_000 // max(len(self.triangles), 1)))
         for raw_direction in _DEFAULT_RAY_DIRECTIONS:
             direction = _normalize(raw_direction)
             pending = np.flatnonzero(~resolved)

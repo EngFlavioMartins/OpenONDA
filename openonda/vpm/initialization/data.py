@@ -10,7 +10,6 @@ from numpy.typing import NDArray
 
 FloatArray: TypeAlias = NDArray[np.float64]
 IntArray: TypeAlias = NDArray[np.int32]
-BoolArray: TypeAlias = NDArray[np.bool_]
 
 
 def _immutable_float(value: object, name: str, shape: tuple[int, ...]) -> FloatArray:
@@ -60,20 +59,6 @@ def _immutable_integer_field(value: object | None, name: str, count: int) -> Int
     array = np.array(source, dtype=np.int32, copy=True, order="C")
     array.setflags(write=False)
     return array
-
-
-def _selection_indices(selection: object, count: int) -> NDArray[np.intp] | BoolArray:
-    """Validate a boolean mask or bounded integral index array."""
-    array = np.asarray(selection)
-    if array.dtype == np.bool_:
-        if array.shape != (count,):
-            raise ValueError(f"selection mask must have shape ({count},)")
-        return array
-    if not np.issubdtype(array.dtype, np.integer):
-        raise ValueError("selection must be a boolean mask or integral indices")
-    if array.ndim != 1 or np.any(array < 0) or np.any(array >= count):
-        raise ValueError("selection indices must be one-dimensional and in bounds")
-    return np.asarray(array, dtype=np.intp)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,34 +126,6 @@ class ParticleDistribution:
     def core_radius_ratio(self) -> float:
         """Return the mean particle ``sigma / h`` ratio."""
         return float(np.mean(self.core_radius) / self.spacing)
-
-    def select(self, selection: object) -> ParticleDistribution:
-        """Return an immutable subset selected by mask or particle indices.
-
-        Parameters
-        ----------
-        selection : array-like, shape (K,) or (N,)
-            One-dimensional integral indices in ``[0, N)`` or a Boolean mask
-            of length ``N``.
-
-        Returns
-        -------
-        ParticleDistribution
-            Newly copied, read-only aligned geometry. Nominal spacing is
-            retained even when selection makes the cloud irregular.
-
-        Raises
-        ------
-        ValueError
-            If selection is not a correctly shaped mask or bounded index list.
-        """
-        indices = _selection_indices(selection, len(self))
-        return ParticleDistribution(
-            position=self.position[indices],
-            core_radius=self.core_radius[indices],
-            particle_volume=self.particle_volume[indices],
-            spacing=self.spacing,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,26 +218,6 @@ class VortexParticleSet:
             core_radius=self.core_radius,
             particle_volume=self.particle_volume,
             spacing=self.spacing,
-        )
-
-    def select(self, selection: object) -> VortexParticleSet:
-        """Return a copied immutable subset with every particle field aligned.
-
-        ``selection`` is either a Boolean mask of shape ``(N,)`` or a
-        one-dimensional sequence of bounded integer indices. The returned
-        object retains nominal spacing and slices optional IDs consistently.
-        """
-        indices = _selection_indices(selection, len(self))
-        return VortexParticleSet(
-            position=self.position[indices],
-            velocity=self.velocity[indices],
-            vortex_strength=self.vortex_strength[indices],
-            core_radius=self.core_radius[indices],
-            particle_volume=self.particle_volume[indices],
-            kinematic_viscosity=self.kinematic_viscosity[indices],
-            spacing=self.spacing,
-            group_id=None if self.group_id is None else self.group_id[indices],
-            zone_id=None if self.zone_id is None else self.zone_id[indices],
         )
 
 

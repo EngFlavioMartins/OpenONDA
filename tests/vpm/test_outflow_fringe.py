@@ -97,7 +97,6 @@ def _manager(particles, *, time_step_size=0.04):
         ),
         config=StabilizationConfig.bounded_domain(BOUNDS, outflow_fringe_depth=DEPTH),
         outflow_fringe_vortex_strength_removed=np.zeros(3),
-        outflow_fringe_vortex_strength_l1_removed=0.0,
     )
 
 

@@ -48,7 +48,7 @@ def plot_force_cycles(samples_arg=None, destination=FIGURES_DIR, figure_format="
         ax.locator_params(axis="y", nbins=3)
     fig.legend(*axes[0].get_legend_handles_labels(), loc="upper center", ncol=3)
     axes[-1].set_xlabel("Cycle phase")
-    _save_figure(fig, axes, destination / "delta_wing_force_cycles.png", figure_format)
+    _save_figure(fig, destination / "delta_wing_force_cycles.png", figure_format)
 
 
 def main() -> None:

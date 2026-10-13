@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
+import math
 from typing import Any, cast
 
 import numpy as np
@@ -46,7 +47,8 @@ from .cfmesh_surface_optimisation import (
     untangle_cfmesh_surface,
 )
 from .config import BoxRefinement, PatchRefinement
-from .octree import CartesianOctree
+
+OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
 
 
 def _additional_level(max_cell_size: float, requested: float) -> int:
@@ -71,8 +73,6 @@ _FACE_LOOKUP_CHUNK_SIZE = 16_384
 def _matching_face_id_chunks(
     encoded_faces: np.ndarray,
     ordered_octree_faces: Sequence[tuple[tuple[int, int, int, int], bool, tuple[int, ...]]],
-    *,
-    chunk_size: int = _FACE_LOOKUP_CHUNK_SIZE,
 ) -> Iterator[np.ndarray]:
     """Match octree signatures with compact keys, retaining last-face-wins."""
     key_dtype = np.dtype([(f"vertex_{index}", np.int64) for index in range(4)])
@@ -85,8 +85,8 @@ def _matching_face_id_chunks(
     # when signatures repeat.
     permutation = np.argsort(face_keys, kind="stable")
     sorted_keys = face_keys[permutation]
-    for start in range(0, len(ordered_octree_faces), chunk_size):
-        records = ordered_octree_faces[start : start + chunk_size]
+    for start in range(0, len(ordered_octree_faces), _FACE_LOOKUP_CHUNK_SIZE):
+        records = ordered_octree_faces[start : start + _FACE_LOOKUP_CHUNK_SIZE]
         signatures = np.fromiter(
             (vertex for signature, _internal, _cells in records for vertex in signature),
             dtype=np.int64,
@@ -122,17 +122,6 @@ def _root_cube(domain: SurfaceBounds, max_cell_size: float) -> tuple[SurfaceBoun
     return bounds, global_level  # type: ignore[return-value]
 
 
-def _box_surface_intersects(
-    lower: np.ndarray,
-    upper: np.ndarray,
-    bounds: SurfaceBounds,
-) -> bool:
-    """Return whether a closed AABB touches any triangle-bearing box plane."""
-    surface_lower = np.asarray(bounds[::2], dtype=np.float64)
-    surface_upper = np.asarray(bounds[1::2], dtype=np.float64)
-    return _box_surface_intersects_arrays(lower, upper, surface_lower, surface_upper)
-
-
 def _box_surface_intersects_arrays(
     lower: np.ndarray,
     upper: np.ndarray,
@@ -156,20 +145,296 @@ def _box_surface_intersects_arrays(
     return False
 
 
-class _TemplateTopologyExtractor(CartesianOctree):
-    """Use the proven native face extractor on already-classified octree leaves."""
+class _TemplateTopologyExtractor:
+    """Extract native faces from already-classified octree leaves."""
 
     def __init__(self, root_bounds: SurfaceBounds) -> None:
-        # This object needs only the attributes consumed by
-        # ``CartesianOctree._extract_topology``.  Skipping the normal
-        # constructor is intentional: that constructor fits the requested
-        # fluid box, whereas this stage operates in cfMesh's larger root cube.
+        # The template is extracted in cfMesh's root cube, not the requested
+        # fluid box.  Its outer sides and the faces towards excluded surface
+        # leaves all form the one temporary ``defaultFaces`` patch.
         self.domain = root_bounds
         self.merge_outer_patch = "defaultFaces"
         self.preserve_outer_patches: tuple[str, ...] = ()
         self.surface = cast(TriangulatedSurface, object())
         self.wall_patch_name = "defaultFaces"
         self._wall_patch_type = "patch"
+
+    @staticmethod
+    def _face_codes(
+        axis: int,
+        coordinate: int,
+        a0: int,
+        a1: int,
+        b0: int,
+        b1: int,
+        strides: tuple[int, int],
+        positive: bool,
+    ) -> tuple[int, int, int, int]:
+        """Encode one axis-aligned face ring with outward orientation."""
+        sx, sy = strides
+
+        def code(x: int, y: int, z: int) -> int:
+            return x + sx * (y + sy * z)
+
+        if axis == 0:
+            ring = (
+                code(coordinate, a0, b0),
+                code(coordinate, a1, b0),
+                code(coordinate, a1, b1),
+                code(coordinate, a0, b1),
+            )
+        elif axis == 1:
+            ring = (
+                code(a0, coordinate, b0),
+                code(a0, coordinate, b1),
+                code(a1, coordinate, b1),
+                code(a1, coordinate, b0),
+            )
+        else:
+            ring = (
+                code(a0, b0, coordinate),
+                code(a1, b0, coordinate),
+                code(a1, b1, coordinate),
+                code(a0, b1, coordinate),
+            )
+        # cfMesh reverses a negative face while retaining its first cube
+        # vertex.  The starting vertex matters to its finite-iteration surface
+        # optimizer even though cyclic rotations are topologically equivalent.
+        return ring if positive else (ring[0], ring[3], ring[2], ring[1])
+
+    def _extract_topology(
+        self,
+        leaves: np.ndarray,
+        max_level: int,
+        limits: tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[dict], np.ndarray]:
+        n_cells = len(leaves)
+        nx, ny, nz = limits
+        max_point_code = (nx + 1) * (ny + 1) * (nz + 1) - 1
+        code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
+        point_strides = (nx + 1, ny + 1)
+        cell_stride_x, cell_stride_y = nx, ny
+
+        level_maps: list[dict[int, int]] = [{} for _ in range(max_level + 1)]
+        for cell_id, (x0, y0, z0, _width, level) in enumerate(leaves):
+            key = int(x0) + cell_stride_x * (int(y0) + cell_stride_y * int(z0))
+            level_maps[int(level)][key] = cell_id
+
+        levels = np.asarray(leaves[:, 4], dtype=np.int8)
+
+        def find_cell(x: int, y: int, z: int) -> int:
+            if x < 0 or y < 0 or z < 0 or x >= nx or y >= ny or z >= nz:
+                return -1
+            for level in range(max_level, -1, -1):
+                width = 2 ** (max_level - level)
+                ox, oy, oz = (x // width) * width, (y // width) * width, (z // width) * width
+                key = ox + cell_stride_x * (oy + cell_stride_y * oz)
+                found = level_maps[level].get(key)
+                if found is not None:
+                    return found
+            return -1
+
+        # A conforming Cartesian volume has about three internal faces per
+        # cell.  The allowance covers 2:1 transition subfaces without building
+        # millions of Python tuples.
+        capacity = max(16, int(math.ceil(3.35 * n_cells)))
+        interior_codes = np.empty((capacity, 4), dtype=code_dtype)
+        interior_owners = np.empty(capacity, dtype=np.int32)
+        interior_neighbours = np.empty(capacity, dtype=np.int32)
+        n_interior = 0
+
+        boundary_names = (
+            (self.merge_outer_patch, *self.preserve_outer_patches)
+            if self.merge_outer_patch
+            else OUTER_PATCH_NAMES
+        )
+        patch_codes: dict[str, list[tuple[int, int, int, int]]] = {
+            name: [] for name in boundary_names
+        }
+        patch_owners: dict[str, list[int]] = {name: [] for name in boundary_names}
+        if self.surface is not None:
+            patch_codes[self.wall_patch_name] = []
+            patch_owners[self.wall_patch_name] = []
+
+        def grow() -> None:
+            nonlocal capacity, interior_codes, interior_owners, interior_neighbours
+            new_capacity = int(capacity * 1.35) + 1
+            new_codes = np.empty((new_capacity, 4), dtype=code_dtype)
+            new_codes[:capacity] = interior_codes
+            interior_codes = new_codes
+            new_owners = np.empty(new_capacity, dtype=np.int32)
+            new_owners[:capacity] = interior_owners
+            interior_owners = new_owners
+            new_neighbours = np.empty(new_capacity, dtype=np.int32)
+            new_neighbours[:capacity] = interior_neighbours
+            interior_neighbours = new_neighbours
+            capacity = new_capacity
+
+        def emit_interior(
+            owner: int,
+            neighbour: int,
+            axis: int,
+            coordinate: int,
+            a0: int,
+            a1: int,
+            b0: int,
+            b1: int,
+        ) -> None:
+            nonlocal n_interior
+            if n_interior == capacity:
+                grow()
+            interior_codes[n_interior] = self._face_codes(
+                axis, coordinate, a0, a1, b0, b1, point_strides, True
+            )
+            interior_owners[n_interior] = owner
+            interior_neighbours[n_interior] = neighbour
+            n_interior += 1
+
+        def patch_for(axis: int, positive: bool, coordinate: int) -> str:
+            limit = limits[axis] if positive else 0
+            if coordinate == limit:
+                outer_name = OUTER_PATCH_NAMES[2 * axis + int(positive)]
+                if outer_name in self.preserve_outer_patches:
+                    return outer_name
+                if self.merge_outer_patch:
+                    return self.merge_outer_patch
+                return outer_name
+            if self.surface is None:
+                raise RuntimeError("Adaptive mesh contains an unexplained internal boundary")
+            return self.wall_patch_name
+
+        def samples(lo: int, width: int) -> tuple[int, ...]:
+            if width == 1:
+                return (lo,)
+            return (lo + width // 4, lo + (3 * width) // 4)
+
+        for owner, (x0v, y0v, z0v, widthv, levelv) in enumerate(leaves):
+            x0, y0, z0, width, level = map(int, (x0v, y0v, z0v, widthv, levelv))
+            x1, y1, z1 = x0 + width, y0 + width, z0 + width
+            origins = (x0, y0, z0)
+            ends = (x1, y1, z1)
+            tangential = ((y0, y1, z0, z1), (x0, x1, z0, z1), (x0, x1, y0, y1))
+
+            for axis in range(3):
+                a0, a1, b0, b1 = tangential[axis]
+                # cfMesh visits cube faces in xmin, xmax, ymin, ymax, zmin,
+                # zmax order.  Preserve that order because its surface
+                # optimizer builds each local simplex from face insertion
+                # order and intentionally stops at a finite tolerance.
+                query = [x0, y0, z0]
+                query[axis] = origins[axis] - 1
+                negative_neighbours: set[int] = set()
+                for a in samples(a0, width):
+                    for b in samples(b0, width):
+                        if axis == 0:
+                            candidate = find_cell(query[0], a, b)
+                        elif axis == 1:
+                            candidate = find_cell(a, query[1], b)
+                        else:
+                            candidate = find_cell(a, b, query[2])
+                        if candidate >= 0:
+                            negative_neighbours.add(candidate)
+                if not negative_neighbours:
+                    name = patch_for(axis, False, origins[axis])
+                    patch_codes[name].append(
+                        self._face_codes(axis, origins[axis], a0, a1, b0, b1, point_strides, False)
+                    )
+                    patch_owners[name].append(owner)
+
+                query = [x0, y0, z0]
+                query[axis] = ends[axis]
+                neighbour_ids: set[int] = set()
+                for a in samples(a0, width):
+                    for b in samples(b0, width):
+                        if axis == 0:
+                            candidate = find_cell(query[0], a, b)
+                        elif axis == 1:
+                            candidate = find_cell(a, query[1], b)
+                        else:
+                            candidate = find_cell(a, b, query[2])
+                        if candidate >= 0:
+                            neighbour_ids.add(candidate)
+
+                if neighbour_ids:
+                    for neighbour in sorted(neighbour_ids):
+                        nx0, ny0, nz0, nw, neighbour_level = map(int, leaves[neighbour])
+                        if abs(level - neighbour_level) > 1:
+                            raise RuntimeError(
+                                "Refinement transition is not 2:1 balanced between cells "
+                                f"{owner} (level {level}) and {neighbour} "
+                                f"(level {neighbour_level})"
+                            )
+                        if axis == 0:
+                            emit_interior(
+                                owner,
+                                neighbour,
+                                axis,
+                                x1,
+                                max(y0, ny0),
+                                min(y1, ny0 + nw),
+                                max(z0, nz0),
+                                min(z1, nz0 + nw),
+                            )
+                        elif axis == 1:
+                            emit_interior(
+                                owner,
+                                neighbour,
+                                axis,
+                                y1,
+                                max(x0, nx0),
+                                min(x1, nx0 + nw),
+                                max(z0, nz0),
+                                min(z1, nz0 + nw),
+                            )
+                        else:
+                            emit_interior(
+                                owner,
+                                neighbour,
+                                axis,
+                                z1,
+                                max(x0, nx0),
+                                min(x1, nx0 + nw),
+                                max(y0, ny0),
+                                min(y1, ny0 + nw),
+                            )
+                else:
+                    name = patch_for(axis, True, ends[axis])
+                    patch_codes[name].append(
+                        self._face_codes(axis, ends[axis], a0, a1, b0, b1, point_strides, True)
+                    )
+                    patch_owners[name].append(owner)
+
+        face_blocks = [interior_codes[:n_interior]]
+        owner_blocks = [interior_owners[:n_interior]]
+        boundary: list[dict] = []
+        start = n_interior
+        ordered_names = list(boundary_names)
+        if self.surface is not None:
+            ordered_names.append(self.wall_patch_name)
+        ordered_names = list(dict.fromkeys(ordered_names))
+        for name in ordered_names:
+            codes = np.asarray(patch_codes[name], dtype=code_dtype).reshape(-1, 4)
+            owners = np.asarray(patch_owners[name], dtype=np.int32)
+            face_blocks.append(codes)
+            owner_blocks.append(owners)
+            boundary.append(
+                {
+                    "name": name,
+                    "start_face": start,
+                    "n_faces": len(codes),
+                    "type": (
+                        getattr(self, "_wall_patch_type", "wall")
+                        if name == self.wall_patch_name
+                        else "patch"
+                    ),
+                }
+            )
+            start += len(codes)
+
+        encoded_faces = np.ascontiguousarray(np.vstack(face_blocks), dtype=code_dtype)
+        owners = np.ascontiguousarray(np.concatenate(owner_blocks), dtype=np.int32)
+        neighbour_array = np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32)
+        return encoded_faces, owners, neighbour_array, boundary, levels
 
 
 @njit(cache=True)
@@ -979,11 +1244,10 @@ class _OctreeSurfaceLocator:
         point: np.ndarray,
         *,
         max_search_iterations: int,
-        prefer_last_tie: bool = False,
     ) -> tuple[np.ndarray, float, int]:
         """Stop at the first octree neighborhood containing any triangles."""
         value = np.asarray(point, dtype=np.float64)
-        cache_key = (max_search_iterations, prefer_last_tie, value.tobytes())
+        cache_key = (max_search_iterations, value.tobytes())
         cached = self._nearest_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -1022,9 +1286,6 @@ class _OctreeSurfaceLocator:
                     + offsets[:, 2] * offsets[:, 2]
                 )
                 best = int(np.argmin(distance_squared))
-                if prefer_last_tie:
-                    tied = np.flatnonzero(distance_squared == distance_squared[best])
-                    best = int(tied[-1])
                 result = (
                     candidates[best],
                     float(np.sqrt(distance_squared[best])),
@@ -1042,9 +1303,6 @@ class _OctreeSurfaceLocator:
             + offsets[:, 2] * offsets[:, 2]
         )
         best = int(np.argmin(distance_squared))
-        if prefer_last_tie:
-            tied = np.flatnonzero(distance_squared == distance_squared[best])
-            best = int(tied[-1])
         result = (candidates[best], float(np.sqrt(distance_squared[best])), best)
         self._nearest_cache[cache_key] = result
         return result

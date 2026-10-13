@@ -2,8 +2,7 @@
 
 ``ForceSampler`` integrates pressure and viscous loads on boundary patches and
 appends one row per patch to a force-history CSV.  ``YPlusSampler`` computes
-wall y+ statistics and exposes them through ``context.last_y_plus`` without a
-force-sampling dependency.
+wall y+ statistics without a force-sampling dependency.
 
 The numerical force and y+ routines live in
 :mod:`openonda.fvm.fields.diagnostics`; these samplers only call them and
@@ -105,8 +104,6 @@ class ForceSampler(Sampler):
     >>> sampler.name
     'forces_history'
     """
-
-    sampler_kind = "ForceSampler"
 
     def __init__(
         self,
@@ -242,10 +239,9 @@ class ForceSampler(Sampler):
 class YPlusSampler(Sampler):
     """Compute wall y+ statistics for selected patches.
 
-    A diagnostic sampler: it has no dependency on ``ForceSampler`` or on any
-    force cadence, so ``last_y_plus`` cannot go stale from an inappropriate
-    force interval.  When ``file_name`` is set it also appends one row per
-    patch to ``<name>.csv``; otherwise it only updates ``context.last_y_plus``.
+    A diagnostic sampler with no dependency on ``ForceSampler`` or on any
+    force cadence.  Statistics are logged; when ``file_name`` is set it also
+    appends one row per patch to ``<name>.csv``.
 
     Examples
     --------
@@ -253,8 +249,6 @@ class YPlusSampler(Sampler):
     >>> sampler.patch_names
     ['cube']
     """
-
-    sampler_kind = "YPlusSampler"
 
     def __init__(
         self,
@@ -269,7 +263,7 @@ class YPlusSampler(Sampler):
         patch_names : sequence[str] or None, default=None
             Patches to inspect; ``None`` selects all wall patches.
         file_name : str or None, default=None
-            Optional CSV stem. ``None`` updates only ``context.last_y_plus``.
+            Optional CSV stem. ``None`` only logs the statistics.
         schedule : RunSchedule or None, default=None
             Accepted-step/time cadence.
         """

@@ -249,10 +249,6 @@ class CellPartition:
         All global IDs in local index order (owned first, then ghosts).
     local_face_global_ids : np.ndarray
         Global face IDs for all locally relevant faces.
-    processor_face_global_ids : np.ndarray
-        Global face IDs for processor (inter-rank) boundary faces.
-    physical_boundary_face_global_ids : np.ndarray
-        Global face IDs for physical boundary patches.
     halo : HaloSchedule
         Halo-exchange schedule for neighbour communication.
     """
@@ -264,8 +260,6 @@ class CellPartition:
     ghost_global_ids: np.ndarray
     local_global_ids: np.ndarray
     local_face_global_ids: np.ndarray
-    processor_face_global_ids: np.ndarray
-    physical_boundary_face_global_ids: np.ndarray
     halo: HaloSchedule
 
     @classmethod
@@ -366,8 +360,6 @@ class CellPartition:
             ghost_global_ids=ghosts,
             local_global_ids=local_global_ids,
             local_face_global_ids=local_faces,
-            processor_face_global_ids=processor_faces,
-            physical_boundary_face_global_ids=physical_faces,
             halo=HaloSchedule(send, receive, send_local, receive_local),
         )
 

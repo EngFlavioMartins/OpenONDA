@@ -42,13 +42,9 @@ def l2l(parent: dict[str, np.ndarray], displacement: np.ndarray) -> dict[str, np
     return result
 
 
-def l2p(local: dict[str, np.ndarray], displacement: np.ndarray | None = None) -> np.ndarray:
-    """Evaluate a first-order local expansion at a target displacement."""
-    offset = np.zeros(3, dtype=np.float64) if displacement is None else np.asarray(displacement)
-    return (
-        np.asarray(local["value"], dtype=np.float64)
-        + np.asarray(local["gradient"], dtype=np.float64) @ offset
-    )
+def l2p(local: dict[str, np.ndarray]) -> np.ndarray:
+    """Evaluate a local expansion at its own centre."""
+    return np.asarray(local["value"], dtype=np.float64)
 
 
 __all__ = ["l2l", "l2p", "m2l"]

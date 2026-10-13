@@ -25,13 +25,6 @@ from assets._common import (
 from assets.finite_distance_theory import build_system, induced_velocity
 
 
-def relative_drift(values):
-    """Compare two halves of a time window, normalized by its mean magnitude."""
-    values = np.asarray(values)
-    half = len(values) // 2
-    return abs(values[:half].mean() - values[half:].mean()) / max(abs(values.mean()), 1e-12)
-
-
 def _annulus_profile(coordinates, edges, values):
     """Mean of ``values`` inside each annular bin, indexed by ``coordinates``.
 

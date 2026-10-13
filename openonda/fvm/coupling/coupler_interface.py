@@ -5,17 +5,13 @@ Implements the compact coupling API on the FVM ``FVMSolver``:
 Getters
     ``get_cell_centre_coordinates``, ``get_cell_volume``, ``get_velocity_field``,
     ``get_velocity_field_into``, ``get_velocity_gradient_field``,
-    ``get_velocity_gradient_field_into``, ``get_vorticity_field``,
-    ``get_vorticity_field_into``,
+    ``get_velocity_gradient_field_into``,
     ``get_boundary_face_centre_coordinates``,
     ``get_boundary_face_normal``, ``get_boundary_face_area``,
     ``get_boundary_face_velocity``, ``n_procs``.
 Setters
-    ``set_cell_scalar_field``, ``set_cell_vector_field``, ``set_time_step``,
-    ``set_kinematic_viscosity``, ``set_dirichlet_velocity_boundary_condition_vec``,
-    ``set_freestream_velocity_boundary_condition_vec``,
+    ``set_dirichlet_velocity_boundary_condition_vec``,
     ``set_normal_velocity_tangential_gradient_boundary_condition``,
-    ``set_freestream_pressure_boundary_condition``,
     ``set_flux_consistent_pressure_boundary_condition``.
 Driver
     ``solve_pimple`` / ``advance_time`` live on the ``FVMSolver`` itself.
@@ -156,41 +152,6 @@ class CouplerInterfaceMixin:
         if parallel.is_root:
             return np.ascontiguousarray(result)
         return np.empty((0, *trailing_shape), dtype=np.float64)
-
-    def _scatter_cell_values(
-        self, values: np.ndarray | None, *, trailing_shape: tuple[int, ...] = ()
-    ) -> np.ndarray:
-        """Scatter a rank-zero global cell field into owned-plus-halo layout."""
-        parallel = getattr(self, "parallel", None)
-        if parallel is None or not parallel.is_partitioned:
-            values = self._broadcast_root_value(values)
-            return np.ascontiguousarray(
-                np.asarray(values, dtype=np.float64).reshape(-1, *trailing_shape)
-            )
-
-        partition = parallel.partition
-        if partition is None:
-            raise RuntimeError("Partitioned FVM context has no cell partition")
-        requested_ids = self._cached_partition_ids(
-            "_coupling_local_cell_ids_by_rank", partition.local_global_ids
-        )
-        rank_fields = None
-        error = None
-        if parallel.is_root:
-            global_values = np.asarray(values, dtype=np.float64)
-            expected = (partition.n_global_cells, *trailing_shape)
-            if global_values.shape != expected:
-                error = f"Global cell field must have shape {expected}; got {global_values.shape}"
-            elif not np.all(np.isfinite(global_values)):
-                error = "Global cell field must contain only finite values"
-            else:
-                rank_fields = [
-                    np.ascontiguousarray(global_values[global_ids]) for global_ids in requested_ids
-                ]
-        error = parallel.comm.bcast(error, root=0)
-        if error is not None:
-            raise ValueError(error)
-        return np.ascontiguousarray(parallel.comm.scatter(rank_fields, root=0))
 
     def _optional_patch(self, patch_name: str) -> dict[str, object] | None:
         """Return the local patch, or ``None`` when this rank owns no faces."""
@@ -420,37 +381,6 @@ class CouplerInterfaceMixin:
         n = self.mesh_data["n_cells"]
         return self._gather_owned_cells(np.asarray(self.kinematic_pressure, dtype=np.float64)[:n])
 
-    def shift_pressure_field(self, delta: float) -> None:
-        """Add a uniform constant to the pressure field (all ranks, local).
-
-        Legal only without a Dirichlet pressure patch. Changes no velocity and
-        no closed-body force.
-
-        Args:
-            delta: Constant added to every pressure degree of freedom.
-
-        Raises:
-            RuntimeError: If a Dirichlet pressure patch already fixes the datum.
-        """
-        from ..utils.cavity_utils import needs_pressure_reference
-
-        if not needs_pressure_reference(self.boundaries):
-            raise RuntimeError(
-                "shift_pressure_field is only valid when the pressure datum is "
-                "free; this case already has a Dirichlet pressure patch."
-            )
-        value = float(delta)
-        if not np.isfinite(value):
-            raise ValueError("pressure shift must be finite")
-        # Shift owned cells *and* ghosts in place.  Replacing the NumPy array
-        # would silently detach an already-issued FieldState view.
-        self.kinematic_pressure += value
-        for boundary in self.boundaries:
-            if boundary.get("kinematic_pressure_value_field") is not None:
-                boundary["kinematic_pressure_value_field"] += value
-        self._invalidate_derived_fields()
-        self._publish_state()
-
     def get_velocity_gradient_field(self) -> np.ndarray:
         """Return the velocity gradient at cell centres with shape ``(nCells, 3, 3)``."""
         if not self.parallel.is_partitioned and not self.parallel.is_root:
@@ -469,47 +399,6 @@ class CouplerInterfaceMixin:
         arr = np.asarray(out)
         if arr.dtype != np.float64 or arr.shape != (n, 3, 3) or not arr.flags.c_contiguous:
             raise ValueError("out must be a C-contiguous float64 array with shape (nCells, 3, 3)")
-        if n:
-            np.copyto(arr, values)
-        return arr
-
-    def get_vorticity_field(self) -> np.ndarray:
-        """Return the vorticity field, ``(nCells, 3)``.
-
-        Computes vorticity via :func:`..fields.diagnostics.compute_vorticity`.
-
-        Returns:
-            Vorticity vector at each interior cell centre.
-        """
-        from ..fields import diagnostics
-
-        if not self.parallel.is_partitioned and not self.parallel.is_root:
-            return np.empty((0, 3), dtype=np.float64)
-        n = self.mesh_data["n_cells"]
-        vorticity = diagnostics.compute_vorticity(self.velocity, self.mesh_data, self.geo_data)
-        return self._gather_owned_cells(
-            np.asarray(vorticity).reshape(-1, 3)[:n], trailing_shape=(3,)
-        )
-
-    def get_vorticity_field_into(self, out: np.ndarray) -> np.ndarray:
-        """Copy the vorticity field into a pre-allocated buffer.
-
-        See :meth:`get_velocity_field_into` for the motivation.
-
-        Args:
-            out: Pre-allocated ``(nCells, 3)`` float64 C-contiguous array.
-
-        Returns:
-            *out*, now filled with the vorticity data.
-
-        Raises:
-            ValueError: If *out* has the wrong dtype, shape, or memory layout.
-        """
-        values = self.get_vorticity_field()
-        n = values.shape[0]
-        arr = np.asarray(out)
-        if arr.dtype != np.float64 or arr.shape != (n, 3) or not arr.flags.c_contiguous:
-            raise ValueError("out must be a C-contiguous float64 array with shape (nCells, 3)")
         if n:
             np.copyto(arr, values)
         return arr
@@ -595,84 +484,7 @@ class CouplerInterfaceMixin:
         return int(getattr(getattr(self, "parallel", None), "size", 1))
 
     # Setters: registered volume fields (fvOptions source inputs).
-    def set_cell_scalar_field(self, name: str, values: np.ndarray | None) -> None:
-        """Register a cell-centred scalar field (e.g. an fvOption source).
-
-        The field is stored in ``self.registered_fields[name]`` and can
-        be consumed by source-term routines during the next solve.
-
-        Args:
-            name: Field identifier (e.g. ``"meanVelocity"``).
-            values: 1-D array of length ``nCells``.
-        """
-        values = self._scatter_cell_values(values)
-        expected = self.mesh_data["n_cells"]
-        if values.shape != (expected,) or not np.all(np.isfinite(values)):
-            raise ValueError(f"Cell scalar field {name!r} must be finite with shape ({expected},)")
-        self.registered_fields[name] = values
-
-    def set_cell_vector_field(
-        self,
-        name: str,
-        component_x: np.ndarray | None,
-        component_y: np.ndarray | None,
-        component_z: np.ndarray | None,
-    ) -> None:
-        """Register a cell-centred vector field from components.
-
-        Args:
-            name: Field identifier.
-            component_x: x-component array ``(nCells,)``.
-            component_y: y-component array ``(nCells,)``.
-            component_z: z-component array ``(nCells,)``.
-        """
-        field = np.column_stack(
-            [
-                np.asarray(component_x, np.float64),
-                np.asarray(component_y, np.float64),
-                np.asarray(component_z, np.float64),
-            ]
-        )
-        field = self._scatter_cell_values(field, trailing_shape=(3,))
-        expected = self.mesh_data["n_cells"]
-        if field.shape != (expected, 3) or not np.all(np.isfinite(field)):
-            raise ValueError(
-                f"Cell vector field {name!r} must be finite with shape ({expected}, 3)"
-            )
-        self.registered_fields[name] = field
-
     # Setters: scalar parameters.
-    def set_time_step(self, time_step_size: float) -> None:
-        """Reject post-construction changes to the FVM time-step settings.
-
-        Configure ``TimeConfig.time_step_size`` and its optional
-        ``MaximumCourantTimeStep`` before solver creation. Mutating the
-        persistent settings would invalidate BDF history and restart configuration.
-        """
-        del time_step_size
-        raise RuntimeError(
-            "FVM time-step settings are immutable after solver creation; "
-            "configure TimeConfig before constructing the solver"
-        )
-
-    def set_kinematic_viscosity(self, kinematic_viscosity: float) -> None:
-        """Override the fluid kinematic viscosity.
-
-        Args:
-            kinematic_viscosity: Kinematic viscosity (m²/s).
-        """
-        kinematic_viscosity = float(kinematic_viscosity)
-        if not np.isfinite(kinematic_viscosity) or kinematic_viscosity <= 0.0:
-            raise ValueError(
-                f"Kinematic viscosity must be finite and positive; got {kinematic_viscosity!r}"
-            )
-        if not hasattr(self, "_kinematic_viscosity"):
-            raise RuntimeError("FVM solver has no runtime viscosity state")
-        self._kinematic_viscosity = kinematic_viscosity
-        invalidate = getattr(self, "_invalidate_derived_fields", None)
-        if invalidate is not None:
-            invalidate()
-
     # Setters: velocity boundary conditions.
     def set_dirichlet_velocity_boundary_condition_vec(
         self, prescribed_velocity: np.ndarray, patch_name: str
@@ -740,48 +552,6 @@ class CouplerInterfaceMixin:
         )
         self._invalidate_derived_fields()
         self._publish_state()
-
-    def set_freestream_velocity_boundary_condition_vec(
-        self, prescribed_velocity: np.ndarray | None, patch_name: str
-    ) -> None:
-        """Impose a characteristic VPM boundary condition from an ``(N, 3)`` boundary array.
-
-        The per-face VPM boundary-condition values are applied on INFLOW faces only; outflow
-        faces extrapolate the owner state (the native ``freestream`` strategy
-        switches per face by the sign of the face flux, and the convection
-        assembly upwinds consistently).  Pressure on the patch should use the
-        matching ``freestream`` type (zero-gradient inflow / fixed outflow).
-        """
-        field = self._scatter_patch_values(patch_name, prescribed_velocity, trailing_shape=(3,))
-        b = self._optional_patch(patch_name)
-        if b is None:
-            return
-        if field.shape != (b["n_faces"], 3) or not np.all(np.isfinite(field)):
-            raise ValueError(
-                f"Characteristic VPM boundary-condition data for patch {patch_name!r} must be finite "
-                f"with shape ({b['n_faces']}, 3)"
-            )
-        b["velocity_type"] = "freestream"
-        b["velocity_value_field"] = field
-        b.pop("_fixed_freestream_outflow", None)
-        b.pop("_freestream_outflow", None)
-        self._write_patch_ghosts(b, field)
-
-    def set_freestream_pressure_boundary_condition(
-        self, patch_name: str, value: float = 0.0
-    ) -> None:
-        """Use zero-gradient pressure on inflow and fixed pressure on outflow."""
-        value = float(value)
-        if not np.isfinite(value):
-            raise ValueError(f"Freestream pressure for patch {patch_name!r} must be finite")
-        b = self._optional_patch(patch_name)
-        if b is None:
-            return
-        b["pressure_type"] = "freestream"
-        b["kinematic_pressure_value"] = value
-        b.pop("_directional_fixed_flux_pressure", None)
-        b.pop("fixed_flux_pressure_external", None)
-        b.pop("fixed_flux_pressure_delta", None)
 
     def set_flux_consistent_pressure_boundary_condition(self, patch_name: str) -> None:
         """Pair a prescribed velocity flux with native ``fixedFluxPressure``.

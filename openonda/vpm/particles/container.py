@@ -227,19 +227,6 @@ class Particles:
                 f"configured capacity={self._max_particles}, threshold=80%"
             )
 
-    def resize(self, new_capacity: int) -> None:
-        """
-        Validate a requested particle capacity without reallocating fields.
-
-        Args:
-            new_capacity: New maximum number of particles.
-        """
-        if new_capacity != self._max_particles:
-            raise ValueError(
-                f"Particle capacity is fixed at {self._max_particles}; create a new "
-                f"solver with max_n_particles={new_capacity} instead of resizing it."
-            )
-
     # Prefix-extraction helpers (GPU → CPU, only active prefix)
 
     def _host_transfer_buffer(self, family: str, field: ti.Field, direction: str) -> np.ndarray:
@@ -1286,76 +1273,6 @@ class Particles:
         self._log_particles_replaced(previous)
 
     # GPU-TO-GPU DATA TRANSFER
-
-    @ti.kernel
-    def _copy_from_vlm_wake(
-        self,
-        src_pos: ti.template(),
-        src_vel: ti.template(),
-        src_str: ti.template(),
-        src_rad: ti.template(),
-        src_vol: ti.template(),
-        dst_pos: ti.template(),
-        dst_vel: ti.template(),
-        dst_str: ti.template(),
-        dst_rad: ti.template(),
-        dst_vol: ti.template(),
-        dst_visc: ti.template(),
-        dst_visc_t: ti.template(),
-        dst_visc_eff: ti.template(),
-        dst_vort: ti.template(),
-        dst_group: ti.template(),
-        destination_velocity_gradient: ti.template(),
-        destination_strain_rate: ti.template(),
-        start_idx: ti.i32,
-        count: ti.i32,
-        kinematic_viscosity: ti.f32,
-    ):
-        """
-        Taichi kernel for GPU-to-GPU particle copy from VLM wake buffer.
-
-        Initializes all particle properties to match behavior of add_vortex_particles():
-        - position, velocity, vortex_strength, core_radius, particle_volume: from source
-        - vorticity: computed as strength / particle_volume
-        - kinematic_viscosity: set to provided viscosity value
-        - viscosities_t: set to 0 (no turbulent viscosity)
-        - viscosities_eff: set to viscosity (molecular only)
-        - group_id: set to 0 (default group)
-        - velocity_gradient: set to zero (will be computed on next velocity update)
-        - strain_rate: set to zero (will be computed from velocity_gradient)
-        """
-        for i in range(count):
-            dst_idx = start_idx + i
-
-            # Copy primary fields from source
-            dst_pos[dst_idx] = src_pos[i]
-            dst_vel[dst_idx] = src_vel[i]
-            dst_str[dst_idx] = src_str[i]
-            dst_rad[dst_idx] = src_rad[i]
-            dst_vol[dst_idx] = src_vol[i]
-
-            # Set viscosity fields (matching numpy version)
-            dst_visc[dst_idx] = kinematic_viscosity
-            dst_visc_t[dst_idx] = 0.0
-            dst_visc_eff[dst_idx] = kinematic_viscosity  # eff = molecular + turbulent
-
-            # Compute vorticity from strength and particle_volume (matching numpy version)
-            # vorticity = strength / particle_volume
-            vol = src_vol[i]
-            if vol > 1e-15:
-                dst_vort[dst_idx] = src_str[i] / vol
-            else:
-                dst_vort[dst_idx] = ti.Vector([0.0, 0.0, 0.0])
-
-            # Assign to default group (matching numpy default)
-            dst_group[dst_idx] = 0
-
-            # Initialize velocity_gradient to zero (matching numpy version)
-            # Will be computed during velocity gradient update
-            for row in ti.static(range(3)):
-                for col in ti.static(range(3)):
-                    destination_velocity_gradient[dst_idx][row, col] = 0.0
-                    destination_strain_rate[dst_idx][row, col] = 0.0
 
     def save_vortex_particles(
         self,

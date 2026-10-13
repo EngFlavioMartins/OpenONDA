@@ -128,12 +128,10 @@ def _kutta_joukowski_load(solver, density):
         lattice.bound_vortex_velocity,
         lattice.vortex_point_position,
         lattice.circulation,
-        lattice.circulation_old,
         lattice.bound_kinematic_velocity,
         lattice.panel_force,
         lattice.n_panels,
         density,
-        0,
     )
     return lattice.get_forces().copy()
 

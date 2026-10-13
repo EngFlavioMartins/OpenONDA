@@ -58,12 +58,6 @@ class VLMLinearSolver(ABC):
         """Human-readable solver name."""
         pass
 
-    @property
-    @abstractmethod
-    def is_gpu(self) -> bool:
-        """Whether this solver operates on GPU."""
-        pass
-
 
 # Scipy Solver (CPU, Direct)
 
@@ -85,11 +79,6 @@ class ScipySolver(VLMLinearSolver):
     def name(self) -> str:
         """Return the stable registry name ``"SCIPY"``."""
         return "SCIPY"
-
-    @property
-    def is_gpu(self) -> bool:
-        """Return ``False`` because the solve runs on the CPU."""
-        return False
 
     def solve(
         self,
@@ -193,16 +182,14 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
     Variant of Bi-CG for the Solution of Nonsymmetric Linear Systems".
     """
 
-    def __init__(self, max_n_panels: int = 10000, use_preconditioner: bool = True):
+    def __init__(self, max_n_panels: int = 10000):
         """
-        Initialize BiCGSTAB solver with workspace allocation.
+        Initialize Jacobi-preconditioned BiCGSTAB with workspace allocation.
 
         Args:
             max_n_panels: Maximum number of panels (for workspace allocation)
-            use_preconditioner: Enable Jacobi (diagonal) preconditioning
         """
         self.max_n_panels = max_n_panels
-        self.use_preconditioner = use_preconditioner
         self._workspace_initialized = False
 
         # Workspace fields (allocated lazily)
@@ -243,40 +230,23 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         """Return the stable registry name ``"BICGSTAB_GPU"``."""
         return "BICGSTAB_GPU"
 
-    @property
-    def is_gpu(self) -> bool:
-        """Return ``True`` because the linear algebra runs in Taichi."""
-        return True
-
     def _matvec_p_to_v(self, aerodynamic_influence_coefficient: ti.Field, n: int) -> None:
-        """Compute v = A @ (M⁻¹ @ p) or A @ p depending on preconditioner."""
-        if self.use_preconditioner:
-            _apply_precond(self.p, self.p_hat, self.M_inv, n)
-            _matvec(aerodynamic_influence_coefficient, self.p_hat, self.v, n)
-        else:
-            _matvec(aerodynamic_influence_coefficient, self.p, self.v, n)
+        """Compute v = A @ (M⁻¹ @ p)."""
+        _apply_precond(self.p, self.p_hat, self.M_inv, n)
+        _matvec(aerodynamic_influence_coefficient, self.p_hat, self.v, n)
 
     def _matvec_s_to_t(self, aerodynamic_influence_coefficient: ti.Field, n: int) -> None:
-        """Compute t = A @ (M⁻¹ @ s) or A @ s depending on preconditioner."""
-        if self.use_preconditioner:
-            _apply_precond(self.s, self.s_hat, self.M_inv, n)
-            _matvec(aerodynamic_influence_coefficient, self.s_hat, self.t, n)
-        else:
-            _matvec(aerodynamic_influence_coefficient, self.s, self.t, n)
+        """Compute t = A @ (M⁻¹ @ s)."""
+        _apply_precond(self.s, self.s_hat, self.M_inv, n)
+        _matvec(aerodynamic_influence_coefficient, self.s_hat, self.t, n)
 
     def _update_x_full(self, circulation: ti.Field, alpha: float, omega: float, n: int) -> None:
-        """Update x += alpha*p̂ + omega*ŝ (or p/s without preconditioner)."""
-        if self.use_preconditioner:
-            _bicgstab_update_x(circulation, self.p_hat, self.s_hat, alpha, omega, n)
-        else:
-            _bicgstab_update_x(circulation, self.p, self.s, alpha, omega, n)
+        """Update x += alpha*p̂ + omega*ŝ."""
+        _bicgstab_update_x(circulation, self.p_hat, self.s_hat, alpha, omega, n)
 
     def _update_x_partial(self, circulation: ti.Field, alpha: float, n: int) -> None:
-        """Apply partial update x += alpha*p̂ (or p without preconditioner)."""
-        if self.use_preconditioner:
-            _axpy(circulation, self.p_hat, alpha, n)
-        else:
-            _axpy(circulation, self.p, alpha, n)
+        """Apply partial update x += alpha*p̂."""
+        _axpy(circulation, self.p_hat, alpha, n)
 
     def solve(
         self,
@@ -295,8 +265,7 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
         dtype = aerodynamic_influence_coefficient.dtype
         self._ensure_workspace(dtype=dtype)
         n = n_panels
-        if self.use_preconditioner:
-            _build_jacobi_precond(aerodynamic_influence_coefficient, self.M_inv, n)
+        _build_jacobi_precond(aerodynamic_influence_coefficient, self.M_inv, n)
         _bicgstab_init(circulation, right_hand_side, self.r, self.r0, self.p, n)
         norm_sq = _dot_product(self.r, self.r, n, dtype=dtype)
         if norm_sq == 0.0:
@@ -563,7 +532,6 @@ _SOLVER_REGISTRY = {
 def get_linear_solver(
     solver_type: Literal["SCIPY", "BICGSTAB_GPU"] = "SCIPY",
     max_n_panels: int = 10000,
-    use_preconditioner: bool = True,
 ) -> VLMLinearSolver:
     """Construct a VLM linear-solver strategy by registry name.
 
@@ -574,8 +542,6 @@ def get_linear_solver(
         BiCGSTAB is the GPU backend for non-symmetric VLM matrices.
     max_n_panels : int, default=10000
         Workspace capacity for GPU backends.
-    use_preconditioner : bool, default=True
-        Enable Jacobi preconditioning for BiCGSTAB.
 
     Returns
     -------
@@ -602,5 +568,5 @@ def get_linear_solver(
     solver_class = _SOLVER_REGISTRY[solver_type]
 
     if solver_type == "BICGSTAB_GPU":
-        return solver_class(max_n_panels=max_n_panels, use_preconditioner=use_preconditioner)
+        return solver_class(max_n_panels=max_n_panels)
     return solver_class()

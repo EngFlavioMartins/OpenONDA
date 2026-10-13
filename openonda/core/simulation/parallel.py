@@ -4,7 +4,7 @@ from contextlib import contextmanager
 import time
 
 
-def _wait_completion(request, *, sleep=time.sleep):
+def _wait_completion(request):
     """Complete a phase rendezvous without spending the wait busy-polling.
 
     A few immediate tests keep short phases cheap. Longer waits sleep for
@@ -27,7 +27,7 @@ def _wait_completion(request, *, sleep=time.sleep):
             if tests < 8:
                 continue
             try:
-                sleep(delay)
+                time.sleep(delay)
             except BaseException as error:
                 if failure is None:
                     failure = error

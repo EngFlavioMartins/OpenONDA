@@ -91,42 +91,6 @@ class MatrixAssemblyWorkspace:
         return self.matrix
 
 
-def build_sparsity_pattern(mesh_data: dict[str, object]) -> tuple[np.ndarray, np.ndarray]:
-    """Pre-build (rows, cols) index arrays for matrix assembly.
-
-    The sparsity pattern depends only on mesh topology (owner/neighbour
-    relationships), not on coefficient values.  For static meshes this
-    can be built once and reused across all iterations, avoiding repeated
-    ``np.concatenate`` and ``tocsr()`` sort overhead.
-
-    Returns
-    -------
-    rows, cols : ndarray
-        Index arrays that can be passed as ``indices`` to
-        :func:`assemble_matrix_from_fluxes_vectorized`.
-    """
-    n_interior_faces = mesh_data["n_interior_faces"]
-    owners_i = mesh_data["owners"][:n_interior_faces]
-    neighbours = mesh_data["neighbours"][:n_interior_faces]
-    has_boundaries = mesh_data["n_faces"] > n_interior_faces
-    if has_boundaries:
-        owners_b = mesh_data["owners"][n_interior_faces:]
-        boundary_neighbour_cell = np.asarray(
-            mesh_data.get("boundary_neighbour_cell", np.full(mesh_data["n_faces"], -1))
-        )[n_interior_faces:]
-        coupled = boundary_neighbour_cell >= 0
-        rows = np.concatenate(
-            [owners_i, owners_i, neighbours, neighbours, owners_b, owners_b[coupled]]
-        )
-        cols = np.concatenate(
-            [owners_i, neighbours, owners_i, neighbours, owners_b, boundary_neighbour_cell[coupled]]
-        )
-    else:
-        rows = np.concatenate([owners_i, owners_i, neighbours, neighbours])
-        cols = np.concatenate([owners_i, neighbours, owners_i, neighbours])
-    return rows, cols
-
-
 @njit(cache=True)
 def _find_sorted_column(indices: np.ndarray, start: int, stop: int, column: int) -> int:
     """Return a column's position in one sorted CSR row."""
@@ -322,26 +286,6 @@ def prepare_matrix_assembly(mesh_data: dict[str, object]) -> None:
     _csr_pattern(mesh_data, include_boundaries=True)
 
 
-def _matrix_contributions(
-    flux_data: dict[str, object], mesh_data: dict[str, object], *, include_boundaries: bool
-) -> np.ndarray:
-    """Return face contributions in the order used by the cached CSR pattern."""
-    n_interior_faces = mesh_data["n_interior_faces"]
-    flux_cf = flux_data["flux_cf"][:n_interior_faces]
-    flux_ff = flux_data["flux_ff"][:n_interior_faces]
-    contributions = [flux_cf, flux_ff, -flux_cf, -flux_ff]
-
-    if include_boundaries:
-        flux_cf_b = flux_data["flux_cf"][n_interior_faces:]
-        flux_ff_b = flux_data["flux_ff"][n_interior_faces:]
-        boundary_neighbour_cell = np.asarray(
-            mesh_data.get("boundary_neighbour_cell", np.full(mesh_data["n_faces"], -1))
-        )[n_interior_faces:]
-        coupled = boundary_neighbour_cell >= 0
-        contributions.extend((flux_cf_b, flux_ff_b[coupled]))
-    return np.concatenate(contributions)
-
-
 @njit(cache=True)
 def _fill_matrix_values_numba(
     target: np.ndarray,
@@ -407,20 +351,9 @@ def _fill_matrix_values(
     return target
 
 
-@njit(cache=True)
-def _reduce_contributions_numba(
-    slots: np.ndarray, contributions: np.ndarray, size: int
-) -> np.ndarray:
-    values = np.zeros(size, dtype=np.float64)
-    for index in range(len(contributions)):
-        values[slots[index]] += contributions[index]
-    return values
-
-
 def assemble_matrix_from_fluxes_vectorized(
     flux_data: dict[str, object],
     mesh_data: dict[str, object],
-    indices: tuple[np.ndarray, np.ndarray] | None = None,
     workspace: "MatrixAssemblyWorkspace | None" = None,
     *,
     backend: str = "numpy",
@@ -428,10 +361,8 @@ def assemble_matrix_from_fluxes_vectorized(
     """
     Vectorized version of matrix assembly for better performance.
 
-    Uses COO (coordinate) format for efficient construction from arrays.
-    When called repeatedly with the same mesh topology, the sparsity
-    indices are cached internally so that ``np.concatenate`` for the
-    row/col arrays is only done once.
+    The CSR sparsity pattern depends only on mesh topology; a reusable
+    ``workspace`` keeps it between calls.
 
     Parameters
     ----------
@@ -439,10 +370,8 @@ def assemble_matrix_from_fluxes_vectorized(
         Dict with flux_cf (owner coeff), flux_ff (neighbour coeff).
     mesh_data : dict
         Mesh connectivity (owners, neighbours, n_elements, n_interior_faces).
-    indices : tuple of (rows, cols) or None
-        Pre-built sparsity indices from :func:`build_sparsity_pattern`.
-        When *None*, indices are fetched from an internal topology cache
-        or computed on first use.
+    workspace : MatrixAssemblyWorkspace or None
+        Reusable CSR pattern and data for repeated assembly on one mesh.
     """
 
     n_cells = mesh_data["n_cells"]
@@ -450,18 +379,9 @@ def assemble_matrix_from_fluxes_vectorized(
     has_boundaries = len(flux_data["flux_cf"]) > n_interior_faces
 
     if workspace is not None:
-        if indices is not None:
-            raise ValueError("indices and workspace are mutually exclusive")
         if workspace.include_boundaries != has_boundaries:
             raise ValueError("Matrix workspace boundary layout does not match the flux arrays")
         return workspace.update(flux_data, mesh_data, backend=backend)
-
-    if indices is not None:
-        contributions = _matrix_contributions(
-            flux_data, mesh_data, include_boundaries=has_boundaries
-        )
-        rows, cols = indices
-        return csr_matrix((contributions, (rows, cols)), shape=(n_cells, n_cells))
 
     pattern = _csr_pattern(mesh_data, has_boundaries)
     data = np.zeros(len(pattern.indices), dtype=np.float64)

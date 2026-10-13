@@ -73,8 +73,3 @@ def cast_for_write(values, precision: str) -> np.ndarray:
     limit = np.finfo(target)
     clamped = np.clip(array, float(limit.min), float(limit.max))
     return np.ascontiguousarray(clamped.astype(target))
-
-
-def cast_fields_for_write(fields: dict, precision: str) -> dict:
-    """Return a new mapping with every floating field at the write precision."""
-    return {name: cast_for_write(values, precision) for name, values in fields.items()}

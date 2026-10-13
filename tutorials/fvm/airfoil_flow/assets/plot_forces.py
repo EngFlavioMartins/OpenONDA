@@ -8,7 +8,6 @@ import numpy as np
 from assets._common import (  # noqa: E402
     COLORS,
     FIGURES_DIR,
-    RE,
     SOLUTION_DIR,
     build_arg_parser,
     figure_size,

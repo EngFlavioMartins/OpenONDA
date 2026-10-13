@@ -560,7 +560,6 @@ class GaussianImageFields:
             retained_shape=self.compact_shape,
         )
         self.estimated_field_bytes = self.execution_plan.field_bytes
-        started = time.perf_counter()
         try:
             self._memory_pool = CUDAMemoryPool(self.max_scratch_bytes)
             self.cp, self.pool = self._memory_pool.cp, self._memory_pool.pool
@@ -701,11 +700,6 @@ class GaussianImageFields:
                 )
                 raise error from cleanup_error
             raise
-        self.initial_diagnostics = {
-            "setup_seconds": time.perf_counter() - started,
-            "runtime_admissible": False,
-            "tail_bound_checked": False,
-        }
 
     @staticmethod
     def _immutable_snapshot(array: np.ndarray) -> np.ndarray:

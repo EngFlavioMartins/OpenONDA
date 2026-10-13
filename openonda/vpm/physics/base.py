@@ -698,32 +698,6 @@ class PhysicsBase:
 
     # FIELD EVALUATION METHODS
 
-    def compute_velocities(self, particles: "Particles") -> None:
-        """
-        Compute self-induced velocity at all particle position.
-
-        Uses the Biot-Savart law with regularization kernel:
-            u(x) = Σ_j K(x - x_j, σ_j) × Γ_j
-
-        Args:
-            particles: Particle container with position, vortex strength, radius fields
-        """
-        N = len(particles)
-        if N == 0:
-            return
-
-        self._resize_temp_fields(N)
-        background_velocity = particles.velocity_background
-
-        self.compute_velocities_kernel(
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            particles.velocity,
-            background_velocity,
-            N,
-        )
-
     def compute_target_velocity(
         self,
         particles: "Particles",
@@ -1139,75 +1113,6 @@ class PhysicsBase:
                 result[start:stop] = self.extract_target_velocity(count)
         return result
 
-    def compute_velocities_from_arrays(
-        self,
-        source_position: np.ndarray,
-        source_vortex_strength: np.ndarray,
-        source_core_radius: np.ndarray,
-        target_position: np.ndarray,
-    ) -> np.ndarray:
-        """
-        Compute Biot-Savart velocity from raw NumPy arrays (GPU-accelerated).
-
-        This is a lightweight alternative to ``compute_target_velocity``
-        that does **not** require a full ``Particles`` container.  It reuses
-        the cached ``_filtered_*`` and ``target_*`` Taichi fields to avoid
-        memory leaks and reallocations.
-
-        Designed for lightweight velocity evaluation where the
-        correction-sheet particles exist only as NumPy arrays and their
-        induced velocity must be evaluated at target position.
-
-        No freestream / background velocity is added.
-
-        Parameters
-        ----------
-        source_position : ndarray (N, 3)
-            Positions of source particles.
-        source_vortex_strength : ndarray (N, 3)
-            Vortex-strength vectors ``Gamma`` of source particles.
-        source_core_radius : ndarray (N,)
-            Core core_radius of source particles.
-        target_position : ndarray (M, 3)
-            Evaluation points.
-
-        Returns
-        -------
-        ndarray (M, 3)
-            Induced velocity at each target point.
-        """
-        N = len(source_position)
-        M = len(target_position)
-
-        if N == 0 or M == 0:
-            return np.zeros((M, 3), dtype=self.np_dtype)
-
-        # Resize cached Taichi fields (grow-only, no GC leak)
-        self._resize_filtered_fields(N)
-
-        # Upload source data to GPU through fixed-shape external buffers.
-        self._upload_vector_array(source_position, self._filtered_pos, N)
-        self._upload_vector_array(source_vortex_strength, self._filtered_vortex_strength, N)
-        self._upload_scalar_array(source_core_radius, self._filtered_rad, N)
-
-        # Call Taichi kernel (no background velocity) in bounded target batches.
-        result = np.empty((M, 3), dtype=self.np_dtype)
-        for start, stop in self._target_batch_slices(M):
-            count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
-            self.compute_target_velocity_kernel(
-                self.target_position,
-                self._filtered_pos,
-                self._filtered_vortex_strength,
-                self._filtered_rad,
-                self.target_velocity,
-                self._zero_velocity,
-                count,
-                N,
-            )
-            result[start:stop] = self.extract_target_velocity(count)
-        return result
-
     def compute_vorticities(self, particles: "Particles") -> None:
         """
         Compute vorticity field at all particle position.
@@ -1327,67 +1232,6 @@ class PhysicsBase:
                 self._vorticity_tree = tree
             tree.build(particles.position, particles.vortex_strength, particles.core_radius, count)
         tree.compute_gaussian_particle_vorticity(particles.vorticity, count)
-
-    def compute_target_vorticity(
-        self, particles: "Particles", target_position: np.ndarray
-    ) -> np.ndarray:
-        """
-        Compute vorticity field at arbitrary target position.
-
-        Args:
-            particles: Particle container
-            target_position: Array of shape (M, 3) with target coordinates
-
-        Returns:
-            np.ndarray: Vorticities at target position, shape (M, 3)
-        """
-        N = len(particles)
-        M = len(target_position)
-
-        if N == 0 or M == 0:
-            return np.zeros((M, 3), dtype=self.np_dtype)
-
-        result = np.empty((M, 3), dtype=self.np_dtype)
-        for start, stop in self._target_batch_slices(M):
-            count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
-            self.compute_target_vorticity_kernel(
-                self.target_position,
-                particles.position,
-                particles.vortex_strength,
-                particles.core_radius,
-                self.target_vorticity,
-                count,
-                N,
-            )
-            result[start:stop] = self._download_vector_field(self.target_vorticity, count)
-        return result
-
-    def compute_velocity_gradients(self, particles: "Particles") -> None:
-        """
-        Compute velocity gradient tensor at all particle position.
-
-        Computes ∇u = (∂u_i/∂x_j) tensor and derives:
-        - Strain rate tensor: S_ij = (∂u_i/∂x_j + ∂u_j/∂x_i) / 2
-        - Rotation rate: Ω_ij = (∂u_i/∂x_j - ∂u_j/∂x_i) / 2
-
-        Args:
-            particles: Particle container
-        """
-        N = len(particles)
-        if N == 0:
-            return
-
-        self._resize_temp_fields(N)
-
-        self.compute_velocity_gradients_kernel(
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            particles.velocity_gradient,
-            particles.strain_rate,
-            N,
-        )
 
     def compute_target_velocity_gradient(
         self, particles: "Particles", target_position: np.ndarray
@@ -1637,45 +1481,4 @@ class PhysicsBase:
                 zone_mask=None,
             ),
             self.compute_target_velocity_gradient(particles, target_position),
-        )
-
-    def compute_velocity_and_gradient_hierarchical(
-        self, particles: "Particles", theta: float = 0.5
-    ) -> None:
-        """Fused treecode evaluation of u, ∇u and S in one build.
-
-        Writes ``velocity`` (= v(x_n), reusable as the advection k1), plus
-        ``velocity_gradient`` and ``strain_rate`` — replacing a separate velocity
-        pass and a separate gradient pass at the same t_n configuration."""
-        N = len(particles)
-        if N == 0:
-            return
-        tree = self._get_or_create_treecode(N, theta)
-        tree.build(particles.position, particles.vortex_strength, particles.core_radius, N)
-        self._target_tree_key = None
-        bg = particles.velocity_background
-        bg_arr = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
-        tree.compute_velocity_and_gradient_gpu(bg_arr)
-        self._copy_vec3(tree.velocity, particles.velocity, N)
-        self._copy_mat3(tree.velocity_gradient, particles.velocity_gradient, N)
-        self._copy_mat3(tree.strain_rate, particles.strain_rate, N)
-
-    def compute_velocity_and_gradient(self, particles: "Particles") -> None:
-        """Fused direct (O(N²)) evaluation of u, ∇u and S in a single j-loop.
-
-        DIRECT counterpart of :meth:`compute_velocity_and_gradient_hierarchical`;
-        writes ``velocity``, ``velocity_gradient`` and ``strain_rate`` together."""
-        N = len(particles)
-        if N == 0:
-            return
-        self._resize_temp_fields(N)
-        self.compute_velocity_and_gradient_kernel(
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            particles.velocity,
-            particles.velocity_gradient,
-            particles.strain_rate,
-            particles.velocity_background,
-            N,
         )

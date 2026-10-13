@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Protocol
 
 import h5py
 import numpy as np
@@ -43,16 +42,6 @@ def config_mapping_digest(config: dict) -> str:
     """Hash an already-serialized configuration mapping."""
     configuration_json = json.dumps(config, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(configuration_json.encode()).hexdigest()
-
-
-class _MappingConfig(Protocol):
-    def to_dict(self) -> dict:
-        """Return the object's serialized configuration mapping."""
-
-
-def config_digest(config: _MappingConfig) -> str:
-    """Hash an internal configuration object that provides a mapping interface."""
-    return config_mapping_digest(config.to_dict())
 
 
 def _vpm_numerical_config(vpm_setup: Numerics) -> dict:
@@ -112,60 +101,6 @@ def _resolve_checkpoint_path(target: Path, checkpoint_file: str) -> Path:
             f"Coupled backup checkpoint_file escapes its directory: {checkpoint_file!r}"
         )
     return resolved
-
-
-def _config_differences(
-    stored: object,
-    current: object,
-    *,
-    prefix: str = "",
-) -> list[tuple[str, object, object]]:
-    """Return recursive leaf differences with stable dotted paths."""
-    if isinstance(stored, dict) and isinstance(current, dict):
-        incompatible_paths = None
-        if prefix == "vpm":
-            stored = restart_configuration_values(stored)
-            current = restart_configuration_values(current)
-            incompatible_paths = set(_configuration_mismatches(current, stored))
-        differences: list[tuple[str, object, object]] = []
-        for key in sorted(set(stored) | set(current)):
-            path = f"{prefix}.{key}" if prefix else str(key)
-            if key not in stored:
-                differences.append((path, "<missing>", current[key]))
-            elif key not in current:
-                differences.append((path, stored[key], "<missing>"))
-            else:
-                differences.extend(_config_differences(stored[key], current[key], prefix=path))
-        if incompatible_paths is not None:
-            differences = [
-                difference
-                for difference in differences
-                if any(
-                    path == difference[0].removeprefix("vpm.")
-                    or path.startswith(difference[0].removeprefix("vpm.") + "[")
-                    for path in incompatible_paths
-                )
-            ]
-        return differences
-    if stored != current:
-        return [(prefix, stored, current)]
-    return []
-
-
-def config_diff(stored: dict | None, current: dict) -> list[str]:
-    """Return recursive ``path: old -> new`` configuration differences."""
-    if stored is None:
-        return []
-    return [
-        f"{path}: {old!r} -> {new!r}" for path, old, new in _config_differences(stored, current)
-    ]
-
-
-def config_difference_paths(stored: dict | None, current: dict) -> set[str]:
-    """Return the exact recursive configuration paths whose values differ."""
-    if stored is None:
-        return set()
-    return {path for path, _old, _new in _config_differences(stored, current)}
 
 
 def _validate_coupled_configuration(stored, current, allowed, expectations):
@@ -777,9 +712,6 @@ def load_coupled_backup(
 __all__ = [
     "BACKUP_DIRECTORY",
     "BACKUP_FORMAT_VERSION",
-    "config_diff",
-    "config_difference_paths",
-    "config_digest",
     "config_mapping_digest",
     "load_coupled_backup",
     "publish_vpm_snapshot",

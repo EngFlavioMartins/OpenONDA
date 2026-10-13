@@ -11,7 +11,6 @@ from assets._common import (  # noqa: E402
     COLORMAPS,
     FIGURES_DIR,
     FREESTREAM_SPEED,
-    RE,
     SOLUTION_DIR,
     build_arg_parser,
     figure_size,

@@ -366,8 +366,6 @@ class SurfaceSampler(_PointProbe):
     ... )
     """
 
-    sampler_kind = "SurfaceSampler"
-
     def __init__(
         self,
         point: Sequence[float] | np.ndarray,

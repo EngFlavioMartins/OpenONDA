@@ -12,7 +12,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass, replace
 import time
 from types import ModuleType
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy import sparse
@@ -161,36 +161,6 @@ class LinearSolveResult:
     used_fallback: bool = False
     preconditioner_rebuilt: bool | None = None
     equation: str | None = None
-
-
-@runtime_checkable
-class LinearSolver(Protocol):
-    """Protocol for backend-neutral sparse linear solves.
-
-    Any object that implements a ``solve`` method with the signature below
-    satisfies the protocol and can be used as a drop-in replacement for the
-    default SciPy or PETSc backends.
-
-    Examples
-    --------
-    >>> class MySolver:
-    ...     def solve(self, matrix, rhs, **options):
-    ...         result = LinearSolveResult(...)
-    ...         return solution, result
-    """
-
-    def solve(
-        self, matrix: sparse.spmatrix, rhs: np.ndarray, **_options: object
-    ) -> tuple[np.ndarray, LinearSolveResult]:
-        """Solve ``matrix @ x = rhs`` and return ``(x, telemetry)``.
-
-        Implementations receive a square sparse matrix and a one-dimensional
-        right-hand side in the equation's native units. They must return a new
-        solution vector and a :class:`LinearSolveResult`; backend-specific
-        options are passed through ``_options``. Concrete solvers may mutate
-        an internal workspace, but callers should not rely on input mutation.
-        """
-        ...
 
 
 def deviation_norm_factor(A: np.ndarray | sparse.spmatrix, b: np.ndarray, x0: np.ndarray) -> float:

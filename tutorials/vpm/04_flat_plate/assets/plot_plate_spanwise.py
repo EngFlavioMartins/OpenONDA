@@ -67,7 +67,7 @@ fig, axes = validation_subplots(
     1, height_cm=5.6, outer=0.1, top_padding_cm=0.2, bottom_padding_cm=2.15
 )
 ax = axes[0]
-y_m, cl_m, yob_m = moving_data
+_, cl_m, yob_m = moving_data
 ax.plot(
     yob_m,
     cl_m,
@@ -78,7 +78,7 @@ ax.plot(
     markerfacecolor="none",
     label="Moving",
 )
-y_s, cl_s, yob_s = static_data
+_, cl_s, yob_s = static_data
 ax.plot(yob_s, cl_s, color=C_STATIC, lw=1.5, marker="s", ms=3, label="Static")
 ax.plot(y_ll_over_b, cl_ll, "--", color=C_LL, lw=1.0, label="Lifting-line")
 ax.set_xlabel("Spanwise position, $2y/b$")

@@ -405,9 +405,8 @@ class ParallelContext:
         values: np.ndarray | None,
         *,
         trailing_shape: tuple[int, ...] = (),
-        dtype: type | np.dtype = np.float64,
     ) -> np.ndarray:
-        """Return values on root and a typed empty view elsewhere.
+        """Return float64 values on root and an empty view elsewhere.
 
         Parameters
         ----------
@@ -415,8 +414,6 @@ class ParallelContext:
             Values to expose on the root rank.
         trailing_shape : tuple[int, ...], default=()
             Shape after the leading empty dimension on non-root ranks.
-        dtype : numpy.dtype, default=numpy.float64
-            Output dtype.
 
         Returns
         -------
@@ -424,5 +421,5 @@ class ParallelContext:
             Contiguous root copy, or an empty array on non-root ranks.
         """
         if self.owns_replicated_output:
-            return np.ascontiguousarray(values, dtype=dtype)
-        return np.empty((0, *trailing_shape), dtype=dtype)
+            return np.ascontiguousarray(values, dtype=np.float64)
+        return np.empty((0, *trailing_shape), dtype=np.float64)

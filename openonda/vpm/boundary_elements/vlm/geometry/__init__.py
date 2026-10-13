@@ -10,9 +10,7 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 from .aircraft import Aircraft, Wing, WingSegment
 from .openvsp_io import (
     OpenVSPImportConfig,
-    export_openvsp_degengeom,
     load_degengeom_csv,
-    load_openvsp_surface,
 )
 
 __all__ = [
@@ -20,7 +18,5 @@ __all__ = [
     "Wing",
     "WingSegment",
     "OpenVSPImportConfig",
-    "export_openvsp_degengeom",
     "load_degengeom_csv",
-    "load_openvsp_surface",
 ]

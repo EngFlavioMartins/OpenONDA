@@ -559,17 +559,12 @@ class FVMSolver(CouplerInterfaceMixin):
         # (otherwise the error only surfaces deep inside the first assembly).
         from types import SimpleNamespace
 
-        from ..schemes import (
-            validate_acceptance_limits,
-            validate_solver_params,
-            validate_turbulence,
-        )
+        from ..schemes import validate_solver_params, validate_turbulence
 
         validate_solver_params(
             SimpleNamespace(**resolved_setup.algorithm_params()), self._time_config
         )
         validate_turbulence(resolved_setup.turbulence)
-        validate_acceptance_limits(resolved_setup.acceptance)
         if self.parallel.is_partitioned and resolved_setup.turbulence is not None:
             turbulence_name = resolved_setup.turbulence.model.lower()
             if resolved_setup.turbulence.dynamic or turbulence_name in {
@@ -830,8 +825,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self.vtk_exporter = None
         self.pvd_manager = None
         self._buffered_vtk_writer = None
-        self.last_forces = None
-        self.last_y_plus = None
         self.max_courant_number = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
@@ -923,8 +916,6 @@ class FVMSolver(CouplerInterfaceMixin):
                             "velocity_type": b_cfg.velocity_type,
                             "pressure_type": b_cfg.pressure_type,
                             "kinematic_pressure_value": b_cfg.kinematic_pressure_value,
-                            "eddy_viscosity_type": b_cfg.eddy_viscosity_type,
-                            "eddy_viscosity_value": b_cfg.eddy_viscosity_value,
                         }
                     )
                     if b_cfg.mesh_type is not None:
@@ -2361,17 +2352,14 @@ class FVMSolver(CouplerInterfaceMixin):
             self.parallel.bcast(str(written) if written is not None else str(destination), root=0)
         )
 
-    def load_state(self, path: Path | str, *, allow_config_change: bool = False) -> None:
+    def load_state(self, path: Path | str) -> None:
         """Restore a compatible accepted restart and restore output history.
 
         Parameters
         ----------
         path : str or pathlib.Path
-            Restart written by :meth:`save_state` using the current schema.
-        allow_config_change : bool, default=False
-            Permit explicitly classified configuration differences. Mesh and
-            array shapes remain mandatory; use this only when the changed
-            settings are known to be restart-safe.
+            Restart written by :meth:`save_state` using the current schema
+            and case configuration.
 
         Raises
         ------
@@ -2388,11 +2376,11 @@ class FVMSolver(CouplerInterfaceMixin):
         if self.parallel.is_partitioned:
             from ..io.partitioned import load_partitioned_solver_backup
 
-            load_partitioned_solver_backup(self, path, allow_config_change=allow_config_change)
+            load_partitioned_solver_backup(self, path)
         else:
             from ..io.backup import load_backup
 
-            load_backup(self, path, allow_config_change=allow_config_change)
+            load_backup(self, path)
 
         rewind_error = None
         if self.parallel.is_root:
@@ -2422,14 +2410,11 @@ class FVMSolver(CouplerInterfaceMixin):
                 str(configured),
             )
 
-    def write_vtk(self, filename: str | None = None) -> None:
+    def write_vtk(self) -> None:
         """Collectively publish the current accepted state as VTK output.
 
-        Parameters
-        ----------
-        filename : str or None
-            Optional output path. With `None`, the case name and accepted step
-            generate a `.vtu`/`.pvtu` file below the solution directory.
+        The accepted step names a `.vtu`/`.pvtu` file below the solution
+        directory.
 
         Notes
         -----
@@ -2445,14 +2430,13 @@ class FVMSolver(CouplerInterfaceMixin):
         local_error = None
         try:
             if self.parallel.is_root or self.parallel.is_partitioned:
-                self._write_vtk_local(filename)
+                self._write_vtk_local()
         except BaseException as error:
             local_error = error
         self._collective_io_failure(local_error, "visualization output")
-        if filename is None:
-            self._last_vtk_state = (self.step, self.time, self._state_revision)
+        self._last_vtk_state = (self.step, self.time, self._state_revision)
 
-    def _write_vtk_local(self, filename: str | None = None) -> None:
+    def _write_vtk_local(self) -> None:
         """Export the current simulation state to a ``.vtu`` file with PVD time-series support.
 
         Writes ``velocity``, ``kinematic_pressure``, ``courant_number``, and
@@ -2461,20 +2445,15 @@ class FVMSolver(CouplerInterfaceMixin):
         schema; compact kernel symbols are not serialized.
         Includes physical ``cell_volume`` and ``cell_equivalent_size`` plus
         nominal ``cell_size`` and ``refinement_level`` when the mesh has them.
-        Updates the PVD collection file for time-series visualisation.
-
-        Args:
-            filename: Optional output path. If ``None``, auto-generates
-                ``solution/fvm/fvm_<step>.vtu`` and indexes it in
-                ``solution/fvm.pvd``.
+        Writes ``solution/fvm/fvm_<step>.vtu`` and indexes it in the
+        ``solution/fvm.pvd`` time-series collection.
         """
         if not self.parallel.is_root and not self.parallel.is_partitioned:
             return
         sol_dir = Path(self.solution_dir)
         frame_dir = component_directory(sol_dir, "fvm")
-        if filename is None:
-            frame_dir.mkdir(parents=True, exist_ok=True)
-            filename = str(frame_dir / f"fvm_{self.step:06d}.vtu")
+        frame_dir.mkdir(parents=True, exist_ok=True)
+        filename = str(frame_dir / f"fvm_{self.step:06d}.vtu")
 
         fields = {
             "velocity": self.velocity,
@@ -2704,11 +2683,3 @@ class FVMSolver(CouplerInterfaceMixin):
                 error = exc
         self._collective_io_failure(error, "application history time alignment")
         return self.parallel.bcast(current, root=0)
-
-    def info(self) -> None:
-        """Print a summary of the current solver state.
-
-        Displays case name, flow time, time step, cell count, and
-        active algorithm.
-        """
-        self.logger.solver_state(self)

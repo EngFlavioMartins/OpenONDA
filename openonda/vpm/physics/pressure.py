@@ -63,8 +63,8 @@ class PressurePhysics(PhysicsBase):
     - Kernel initialization
 
     Methods:
-        compute_pressure_gradients: Pressure gradient at particle locations
-        compute_target_pressure_gradient: Pressure gradient at arbitrary points
+        compute_target_pressure_gradient_components: Pressure-gradient terms at points
+        compute_target_pressure_gradient_hierarchical: Treecode variant for many targets
     """
 
     def __init__(
@@ -86,10 +86,9 @@ class PressurePhysics(PhysicsBase):
         # Additional temporary fields for pressure gradient computation
         self._initialize_pressure_fields()
 
-    def _initialize_pressure_fields(self, size: int | None = None) -> None:
+    def _initialize_pressure_fields(self) -> None:
         """Initialize temporary fields for pressure gradient computation."""
-        if size is None:
-            size = self.max_n_particles
+        size = self.max_n_particles
 
         # Pressure gradient output field
         self.pressure_gradient = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
@@ -123,130 +122,6 @@ class PressurePhysics(PhysicsBase):
         )
 
     # PRESSURE GRADIENT AT TARGET POSITIONS (Main Interface)
-
-    def compute_target_pressure_gradient(
-        self,
-        particles: "Particles",
-        target_position: np.ndarray,
-        density: float = 1.0,
-        kinematic_viscosity: float = 1e-5,
-        include_viscous: bool = True,
-        include_temporal: bool = True,
-        laplacian_spacing: float | None = None,
-        include_freestream: bool = True,
-        temporal_method: str = "lagrangian",
-        velocity_previous: np.ndarray | None = None,
-        time_step_size: float | None = None,
-        return_velocity: bool = False,
-        external_velocity_fn: Callable | None = None,
-        external_velocity_gradient_fn: Callable | None = None,
-        external_velocity_time_derivative_fn: Callable | None = None,
-        external_time: float = 0.0,
-    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
-        """
-        Compute pressure gradient at arbitrary target position.
-
-        Uses the momentum equation:
-            ∇p = -ρ [ ∂u/∂t + (u·∇)u - kinematic_viscosity∇²u ]
-
-        Args:
-            particles: Particle container
-            target_position: Array of shape (M, 3) with target coordinates
-            density: Fluid density [kg/m³]
-            kinematic_viscosity: Kinematic viscosity [m²/s]
-            include_viscous: Include viscous term (default True)
-            include_temporal: Include temporal term (default True)
-            laplacian_spacing: Step size for Laplacian. If None, uses average particle core radius.
-            include_freestream: Include background velocity in computations
-            temporal_method: 'lagrangian' (default, particle-based with motion term) or
-                           'eulerian' (fixed-point backward differences)
-            velocity_previous: Previous velocity field for Eulerian method (M, 3).
-                             Required if temporal_method='eulerian'
-            time_step_size: Time step for Eulerian method. Required if temporal_method='eulerian'
-            return_velocity: If True, also return the internally computed target_velocity.
-                           This allows callers to obtain a velocity snapshot from
-                           the same code path used for the pressure gradient,
-                           avoiding code-path mismatches when building an Eulerian
-                           temporal term across consecutive calls.
-
-        Returns:
-            If return_velocity is False (default):
-                np.ndarray: Pressure gradient at each target point [M, 3], units [Pa/m]
-            If return_velocity is True:
-                tuple[np.ndarray, np.ndarray]: (pressure_gradient [M,3], target_velocity [M,3])
-        """
-        N = particles.n_particles_total
-        M = len(target_position)
-
-        if N == 0 or M == 0:
-            z = np.zeros((M, 3), dtype=np.float64)
-            return (z, z) if return_velocity else z
-
-        target_position = np.asarray(target_position, dtype=np.float64).reshape(-1, 3)
-
-        # Default step size
-        if laplacian_spacing is None:
-            laplacian_spacing = float(np.mean(particles.core_radius_cpu()))
-
-        # STEP 1: Compute velocity at target points
-        target_velocity = self.compute_target_velocity(
-            particles, target_position, include_freestream=include_freestream
-        )
-
-        # STEP 2: Compute velocity gradient at target points
-        target_velocity_gradient = self.compute_target_velocity_gradient(
-            particles, target_position
-        ).reshape(M, 3, 3)
-
-        external_velocity, external_gradient, external_time_rate = self._evaluate_external_field(
-            target_position,
-            external_time,
-            external_velocity_fn,
-            external_velocity_gradient_fn,
-            external_velocity_time_derivative_fn,
-        )
-        if external_velocity is not None:
-            target_velocity = target_velocity + external_velocity
-        if external_gradient is not None:
-            target_velocity_gradient = target_velocity_gradient + external_gradient
-
-        # STEP 3: Compute advective term (u·∇)u at target
-        # (u·∇)u_a = u_b * ∂u_a/∂x_b = u_b * velocity_gradient[a,b]
-        advective = np.einsum("mb,mab->ma", target_velocity, target_velocity_gradient)
-
-        # STEP 4: Compute temporal term ∂u/∂t
-        temporal = self._resolve_temporal_term(
-            particles,
-            target_position,
-            target_velocity,
-            M,
-            include_temporal,
-            temporal_method,
-            velocity_previous,
-            time_step_size,
-            include_freestream,
-        )
-        if include_temporal and external_time_rate is not None:
-            temporal = temporal + external_time_rate
-
-        # STEP 5: Compute viscous term kinematic_viscosity∇²u (finite differences)
-        if include_viscous and kinematic_viscosity > 0:
-            viscous = self._compute_viscous_term(
-                particles,
-                target_position,
-                kinematic_viscosity,
-                laplacian_spacing,
-                include_freestream,
-            )
-        else:
-            viscous = np.zeros((M, 3), dtype=np.float64)
-
-        # STEP 6: Combine: ∇p = -ρ [ ∂u/∂t + (u·∇)u - kinematic_viscosity∇²u ]
-        pressure_gradient = -density * (temporal + advective - viscous)
-
-        if return_velocity:
-            return pressure_gradient, np.asarray(target_velocity, dtype=np.float64)
-        return pressure_gradient
 
     def compute_target_pressure_gradient_components(
         self,
@@ -391,50 +266,6 @@ class PressurePhysics(PhysicsBase):
         }
         return (result, target_velocity) if return_velocity else result
 
-    def compute_pressure_gradients(
-        self,
-        particles: "Particles",
-        density: float = 1.0,
-        kinematic_viscosity: float = 1e-5,
-        include_viscous: bool = True,
-        include_temporal: bool = True,
-        laplacian_spacing: float | None = None,
-    ) -> np.ndarray:
-        """
-        Compute pressure gradient at all particle position.
-
-        This is a convenience method that calls compute_target_pressure_gradient
-        with particle position as target points.
-
-        Args:
-            particles: Particle container with velocity and velocity_gradient populated
-            density: Fluid density [kg/m³]
-            kinematic_viscosity: Kinematic viscosity [m²/s]
-            include_viscous: Include viscous term kinematic_viscosity∇²u (default True)
-            include_temporal: Include temporal term ∂u/∂t (default True)
-            laplacian_spacing: Step size for Laplacian finite difference.
-                        If None, uses average particle core radius.
-
-        Returns:
-            np.ndarray: Pressure gradient at each particle [N, 3], units [Pa/m]
-        """
-        N = particles.n_particles_total
-        if N == 0:
-            return np.zeros((0, 3), dtype=np.float64)
-
-        target_position = particles.position_cpu()
-
-        return self.compute_target_pressure_gradient(
-            particles,
-            target_position,
-            density=density,
-            kinematic_viscosity=kinematic_viscosity,
-            include_viscous=include_viscous,
-            include_temporal=include_temporal,
-            laplacian_spacing=laplacian_spacing,
-            include_freestream=True,
-        )
-
     def compute_target_pressure_gradient_hierarchical(
         self,
         particles: "Particles",
@@ -460,7 +291,7 @@ class PressurePhysics(PhysicsBase):
         Compute pressure-gradient terms at target points using a Barnes-Hut treecode.
 
         This is the O(N log N) hierarchical variant of
-        ``compute_target_pressure_gradient``. It requires the Eulerian temporal
+        ``compute_target_pressure_gradient_components``. It requires the Eulerian temporal
         method (``velocity_previous`` and ``time_step_size``) and evaluates the velocity at the
         targets plus the finite-difference offsets used for the viscous term in a
         single treecode pass.
@@ -630,35 +461,6 @@ class PressurePhysics(PhysicsBase):
         return velocity, gradient, time_rate
 
     # TEMPORAL TERM COMPUTATION (Analytical VPM formulation)
-
-    def _resolve_temporal_term(
-        self,
-        particles: "Particles",
-        target_position: np.ndarray,
-        target_velocity: np.ndarray,
-        M: int,
-        include_temporal: bool,
-        temporal_method: str,
-        velocity_previous: np.ndarray | None,
-        time_step_size: float | None,
-        include_freestream: bool,
-        core_radius_rate: np.ndarray | None = None,
-    ) -> np.ndarray:
-        """Select and compute the temporal term ∂u/∂t."""
-        if not include_temporal:
-            return np.zeros((M, 3), dtype=np.float64)
-        if temporal_method == "eulerian":
-            if velocity_previous is None or time_step_size is None:
-                raise ValueError(
-                    "temporal_method='eulerian' requires velocity_previous and time_step_size"
-                )
-            return (target_velocity - velocity_previous) / time_step_size
-        return self._compute_temporal_term_with_particles(
-            particles,
-            target_position,
-            include_freestream,
-            core_radius_rate=core_radius_rate,
-        )
 
     def _compute_temporal_term_with_particles(
         self,

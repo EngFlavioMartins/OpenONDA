@@ -85,10 +85,6 @@ class BoundaryConfig:
         Strategy for kinematic pressure ``p/rho`` in m²/s².
     kinematic_pressure_value : float
         Fixed pressure value in m²/s² when selected by ``pressure_type``.
-    flux_type, flux_value : str, float
-        Face-flux strategy and value; ``flux_value`` is m³/s.
-    eddy_viscosity_type, eddy_viscosity_value : str, float
-        Turbulent-viscosity boundary strategy and value in m²/s.
     neighbour_patch : str or None
         Paired patch name for a cyclic boundary.
     mesh_type : {'patch', 'wall', 'empty', 'cyclic'} or None
@@ -106,10 +102,6 @@ class BoundaryConfig:
     velocity_value: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     pressure_type: str = "zeroGradient"
     kinematic_pressure_value: float = 0.0
-    flux_type: str = "zeroGradient"
-    flux_value: float = 0.0
-    eddy_viscosity_type: str = "calculated"
-    eddy_viscosity_value: float = 0.0
     neighbour_patch: str | None = None
     mesh_type: Literal["patch", "wall", "empty", "cyclic"] | None = None
 
@@ -119,19 +111,14 @@ class BoundaryConfig:
         for name in (
             "velocity_type",
             "pressure_type",
-            "flux_type",
-            "eddy_viscosity_type",
         ):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"BoundaryConfig.{name} must be a non-empty string")
         _validate_vector("BoundaryConfig.velocity_value", self.velocity_value)
-        for name in (
-            "kinematic_pressure_value",
-            "flux_value",
-            "eddy_viscosity_value",
-        ):
-            setattr(self, name, _finite_real(f"BoundaryConfig.{name}", getattr(self, name)))
+        self.kinematic_pressure_value = _finite_real(
+            "BoundaryConfig.kinematic_pressure_value", self.kinematic_pressure_value
+        )
         if self.neighbour_patch is not None and (
             not isinstance(self.neighbour_patch, str) or not self.neighbour_patch.strip()
         ):
@@ -207,7 +194,6 @@ class BoundaryConfig:
             velocity_type="fixedValue",
             velocity_value=[0.0, 0.0, 0.0],
             pressure_type="zeroGradient",
-            eddy_viscosity_type="calculated",
             mesh_type="wall",
         )
 
@@ -218,7 +204,6 @@ class BoundaryConfig:
             name=name,
             velocity_type="slip",
             pressure_type="zeroGradient",
-            eddy_viscosity_type="zeroGradient",
             mesh_type="patch",
         )
 
@@ -230,7 +215,6 @@ class BoundaryConfig:
             velocity_type="empty",
             velocity_value=[0.0, 0.0, 0.0],
             pressure_type="empty",
-            eddy_viscosity_type="zeroGradient",
             mesh_type="empty",
         )
 
@@ -793,22 +777,6 @@ class TransportConfig:
             strict_minimum=True,
         )
 
-    @staticmethod
-    def air() -> TransportConfig:
-        """Return standard sea-level air properties."""
-        return TransportConfig(
-            density=1.225,
-            kinematic_viscosity=1.5e-5,
-        )
-
-    @staticmethod
-    def water() -> TransportConfig:
-        """Return fresh-water properties near 20 degrees Celsius."""
-        return TransportConfig(
-            density=1000.0,
-            kinematic_viscosity=1.0e-6,
-        )
-
 
 @dataclass
 class TurbulenceConfig:
@@ -1024,22 +992,6 @@ class ComputeConfig:
             raise ValueError(
                 "ComputeConfig petsc_partitioned mode does not support threaded output"
             )
-
-    @staticmethod
-    def petsc_replicated() -> ComputeConfig:
-        """Return replicated PETSc execution."""
-        return ComputeConfig(
-            linear_backend="petsc",
-            parallel_mode="petsc_replicated",
-        )
-
-    @staticmethod
-    def petsc_partitioned() -> ComputeConfig:
-        """Return partitioned PETSc execution."""
-        return ComputeConfig(
-            linear_backend="petsc",
-            parallel_mode="petsc_partitioned",
-        )
 
 
 @dataclass

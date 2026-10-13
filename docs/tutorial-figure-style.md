@@ -4,13 +4,13 @@ Tutorial plot scripts use `openonda.plotting`. Call `set_thesis_style()` before 
 
 ## Export
 
-`./allplot.sh` writes PDF and PNG; append `pdf` or `png` for one format. Use a 125 mm canvas width, 10.95 pt New PX text, and 400 dpi PNG output (600 dpi for dense particle scenes). The installed environment provides the required LaTeX fonts and renderer.
+`./allplot.sh` writes PDF and PNG; append `pdf` or `png` for one format. Use a 125 mm canvas width, 10.95 pt New PX text, and 400 dpi PNG output (600 dpi for dense particle scenes). The one-command installation provides LaTeX and the New PX fonts; without LaTeX, `set_thesis_style()` draws the same figures with Matplotlib's math text in a Palatino-like serif.
 
 Keep labels, units, time, and colour bars visible. Use inward ticks, 0.5 pt black axes, and no background grid. Share legends between panels with the same series. Avoid `bbox_inches="tight"`, which changes the physical canvas size.
 
 ## Series and fields
 
-Use `method_style()` for consistent series:
+Keep series styles consistent:
 
 | Result | Colour | Line | Marker |
 | --- | --- | --- | --- |

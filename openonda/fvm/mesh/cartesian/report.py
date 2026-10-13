@@ -61,6 +61,66 @@ class SizeReport:
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveryDiagnostics:
+    """Wall-point counts from the template surface projection."""
+
+    attempted: int
+    accepted: int
+    rejected: int
+    partial_accepted: int = 0
+
+    @classmethod
+    def from_mesh(cls, mesh_data: dict) -> RecoveryDiagnostics:
+        """Read the projection counts recorded in ``mesh_generation``."""
+        projection = mesh_data.get("mesh_generation", {}).get("surface_projection", {})
+        attempted = int(projection.get("attempted_points", 0))
+        accepted = int(projection.get("accepted_points", 0))
+        partial = int(projection.get("partial_accepted_points", 0))
+        rejected = max(0, attempted - accepted)
+        return cls(attempted, accepted, rejected, partial)
+
+    def as_dict(self) -> dict[str, int]:
+        """Return a serialisable diagnostics snapshot."""
+        return {
+            "attempted": self.attempted,
+            "accepted": self.accepted,
+            "rejected": self.rejected,
+            "partial_accepted": self.partial_accepted,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class OptimisationDiagnostics:
+    """Quality values measured after a mesh stage."""
+
+    max_non_orthogonality_deg: float | None = None
+    max_skewness: float | None = None
+    max_aspect_ratio: float | None = None
+
+    @classmethod
+    def from_quality(cls, quality: dict) -> OptimisationDiagnostics:
+        """Adapt mesh-quality measurements into a typed stage result."""
+        return cls(
+            max_non_orthogonality_deg=_optional_float(quality, "max_non_orthogonality_deg"),
+            max_skewness=_optional_float(quality, "max_skewness"),
+            max_aspect_ratio=_optional_float(quality, "max_aspect_ratio"),
+        )
+
+    def as_dict(self) -> dict[str, float | None]:
+        """Return a serialisable diagnostics snapshot."""
+        return {
+            "max_non_orthogonality_deg": self.max_non_orthogonality_deg,
+            "max_skewness": self.max_skewness,
+            "max_aspect_ratio": self.max_aspect_ratio,
+        }
+
+
+def _optional_float(values: dict, key: str) -> float | None:
+    value = values.get(key)
+    return None if value is None else float(value)
+
+
+@dataclass(frozen=True, slots=True)
 class GenerationReport:
     """Immutable source information and diagnostics for one successful mesh build.
 
@@ -107,4 +167,4 @@ class GenerationReport:
         }
 
 
-__all__ = ["GenerationReport", "SizeReport"]
+__all__ = ["GenerationReport", "OptimisationDiagnostics", "RecoveryDiagnostics", "SizeReport"]

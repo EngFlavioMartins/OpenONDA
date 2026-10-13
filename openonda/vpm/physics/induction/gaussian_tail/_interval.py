@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from fractions import Fraction
 from functools import lru_cache
 import math
-from numbers import Integral
 import sys
 
 import numpy as np
@@ -146,19 +145,12 @@ def _platform() -> None:
         raise RuntimeError("gradual underflow without FTZ/DAZ required")
 
 
-def _cap(value: int, name: str, maximum: int) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, Integral) or not 1 <= value <= maximum:
-        raise ValueError(f"{name} must be an integer in [1,{maximum}]")
-    return int(value)
-
-
 def gaussian_defect_upper(
     *,
     gap_lower: float,
     sigma_upper: float,
     period_lower: float,
     absolute_strength_upper: float,
-    maximum_order: int = 96,
 ) -> dict[str, float] | None:
     """One source-family +/- infinite-tail defect using only rational bounds.
 
@@ -167,7 +159,6 @@ def gaussian_defect_upper(
     bound. The caller separately sums the original and reflected families.
     """
     _platform()
-    maximum_order = _cap(maximum_order, "maximum_order", 128)
     values = (gap_lower, sigma_upper, period_lower, absolute_strength_upper)
     if not all(math.isfinite(v) and v > 0 for v in values):
         raise ValueError("positive finite scalar one-sided inputs required")
@@ -176,7 +167,7 @@ def gaussian_defect_upper(
     q = mul(ratio, ratio)
     if q.lower < 1.5:
         raise ValueError("uniform-core Gaussian density monotonicity not checked")
-    order = min(maximum_order, math.floor(float(q.lower)))
+    order = min(96, math.floor(float(q.lower)))
     exponential_upper = point(1.0)
     for k in range(1, order + 1):
         exponential_upper = mul(

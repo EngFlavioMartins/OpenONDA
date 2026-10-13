@@ -233,9 +233,7 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
     return target
 
 
-def load_partitioned_solver_backup(
-    solver: FVMSolver, directory: str | Path, *, allow_config_change: bool = False
-) -> None:
+def load_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> None:
     """Collectively stage and restore a complete partitioned backup."""
     from .backup import (
         _solver_setup,
@@ -280,13 +278,8 @@ def load_partitioned_solver_backup(
             raise ValueError("Partitioned backup communicator size does not match")
         if checkpoint_info.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
             raise ValueError("Partitioned backup mesh hash does not match")
-        if not allow_config_change and checkpoint_info.get("config_hash") != config_hash(
-            _solver_setup(solver)
-        ):
-            raise ValueError(
-                "Partitioned backup configuration hash does not match "
-                f"(allow_config_change={allow_config_change})"
-            )
+        if checkpoint_info.get("config_hash") != config_hash(_solver_setup(solver)):
+            raise ValueError("Partitioned backup configuration hash does not match")
         archived_viscosity = checkpoint_info.get("kinematic_viscosity")
         if (
             isinstance(archived_viscosity, bool)
@@ -295,7 +288,7 @@ def load_partitioned_solver_backup(
             or float(archived_viscosity) <= 0.0
         ):
             raise ValueError("Partitioned backup molecular viscosity is invalid")
-        if not allow_config_change and not np.isclose(
+        if not np.isclose(
             float(archived_viscosity),
             float(
                 getattr(
@@ -363,7 +356,6 @@ def load_partitioned_solver_backup(
         restart_state = validate_restart_state(
             solver,
             state,
-            allow_config_change=allow_config_change,
             kinematic_viscosity=float(checkpoint_info["kinematic_viscosity"]),
         )
     except Exception as error:

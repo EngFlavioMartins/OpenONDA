@@ -33,7 +33,6 @@ from .influence import (
     add_induced_velocity_and_gradient_at_targets,
     add_induced_velocity_at_targets,
     add_stage_rates_with_bound_exchange,
-    apply_circulation_smoothing,
     compute_aerodynamic_influence_coefficient_matrix,
     compute_coupled_right_hand_side,
     compute_induced_velocities,
@@ -146,9 +145,6 @@ class VLMSolver:
         self._stage_kinematic_velocity = None
         self._stage_influence = None
         self._stage_rhs = None
-        self._last_stage_boundary_residual = 0.0
-        self._last_stage_near_wake_elapsed = 0.0
-        self._last_stage_near_wake_matrix_norm = 0.0
         self._stage_geometry_fields = None
         self._stage_response_active = False
 
@@ -903,7 +899,7 @@ class VLMSolver:
         """Solve aerodynamic_influence_coefficient@circulation=right_hand_side and return circulation numpy array."""
         if self._linear_solver_instance is None:
             self._linear_solver_instance = get_linear_solver(
-                self.linear_solver, max_n_panels=self.max_n_panels, use_preconditioner=True
+                self.linear_solver, max_n_panels=self.max_n_panels
             )
         solver = self._linear_solver_instance
         solver.solve(
@@ -1129,15 +1125,6 @@ class VLMSolver:
         """
         self._stage_response_active = False
         self._stage_wake_sources = []
-        # Production RK stages carry an explicit identity.  Field-only
-        # diagnostic/particle state refreshes construct a ``StageState`` with
-        # ``stage_index=None``; those queries still solve
-        # the temporary boundary system but must not erase the telemetry from
-        # the accepted step's last real RK stage.
-        record_stage_telemetry = getattr(stage_state, "stage_index", None) is not None
-        if record_stage_telemetry:
-            self._last_stage_near_wake_elapsed = 0.0
-            self._last_stage_near_wake_matrix_norm = 0.0
         if self.boundary_response != "responsive" or stage_state.count <= 0:
             return
         self._ensure_stage_workspace()
@@ -1199,16 +1186,10 @@ class VLMSolver:
             rhs = self._stage_rhs.to_numpy()
             rhs[:n] -= old_velocity
             self._stage_rhs.from_numpy(rhs)
-            if record_stage_telemetry:
-                self._last_stage_near_wake_elapsed = elapsed
-                self._last_stage_near_wake_matrix_norm = float(
-                    np.linalg.norm(partial_matrix, ord=np.inf)
-                )
         if self._linear_solver_instance is None:
             self._linear_solver_instance = get_linear_solver(
                 self.linear_solver,
                 max_n_panels=self.max_n_panels,
-                use_preconditioner=True,
             )
         self._linear_solver_instance.solve(
             self._stage_influence,
@@ -1217,13 +1198,6 @@ class VLMSolver:
             n,
         )
         self._stage_response_active = True
-        matrix = self._stage_influence.to_numpy()[:n, :n]
-        rhs = self._stage_rhs.to_numpy()[:n]
-        trial_gamma = self._stage_circulation.to_numpy()[:n]
-        if record_stage_telemetry:
-            self._last_stage_boundary_residual = float(
-                np.linalg.norm(matrix @ trial_gamma - rhs, ord=np.inf) if n else 0.0
-            )
 
     def add_stage_velocity(
         self, target_position: ti.Field, target_velocity: ti.Field, count: int, stage_time: float
@@ -1468,29 +1442,7 @@ class VLMSolver:
             float(reference_velocity_magnitude**2),
         )
 
-        # 3. Compute panel forces
-        # apply_kutta_joukowski_smoothing=1 in coupled mode cancels the 2Δt oscillation introduced
-        # by the explicit VPM-VLM coupling (γ alternates every step because
-        # the near-field particle geometry alternates).
-        apply_kutta_joukowski_smoothing = (
-            1 if (coupled and getattr(self.force, "kj_smoothing", True)) else 0
-        )
-
-        # 4. Compute velocity at BOUND VORTEX midpoints (for Forces)
-        # When kj_smoothing is active, V_bound must use the same smoothed circulation
-        # as the force kernel (0.5*(γ + γ_old)); otherwise the 2Δt oscillation
-        # in the raw circulation propagates through V_bound into the KJ forces even
-        # though the force kernel smooths circulation itself.
-        if apply_kutta_joukowski_smoothing:
-            apply_circulation_smoothing(
-                self.lattice.circulation,
-                self.lattice.circulation_old,
-                self.lattice.smoothed_circulation,
-                self.lattice.n_panels,
-            )
-            bound_circulation_for_velocity = self.lattice.smoothed_circulation
-        else:
-            bound_circulation_for_velocity = self.lattice.circulation
+        # 3. Compute velocity at BOUND VORTEX midpoints (for Forces)
         incident_at_bound = (
             external_velocity if bound_external_velocity is None else bound_external_velocity
         )
@@ -1517,7 +1469,7 @@ class VLMSolver:
             self.lattice.vortex_point_position,
             self.lattice.panel_corner_position,
             self.lattice.trailing_edge_index,
-            bound_circulation_for_velocity,
+            self.lattice.circulation,
             self.lattice.bound_vortex_velocity,
             self.lattice.bound_external_velocity,
             1 if coupled else 0,
@@ -1533,12 +1485,10 @@ class VLMSolver:
             self.lattice.bound_vortex_velocity,
             self.lattice.vortex_point_position,
             self.lattice.circulation,
-            self.lattice.circulation_old,
             self.lattice.bound_kinematic_velocity,
             self.lattice.panel_force,
             self.lattice.n_panels,
             density,
-            apply_kutta_joukowski_smoothing,
         )
         self.lattice.unsteady_panel_force.fill(0.0)
         self.lattice.panel_moment_correction.fill(0.0)
@@ -1936,22 +1886,16 @@ class VLMSolver:
         self,
         density: float,
         reference_velocity: np.ndarray | None = None,
-        reference_area: float | None = None,
-        reference_chord: float | None = None,
-        reference_span: float | None = None,
     ) -> dict[str, dict[str, float]]:
         """
         Compute forces for each individual surface.
 
-        All coefficients are normalized by dynamic pressure and reference area:
-        lift_coefficient = L / (0.5 * rho * reference_area * reference_velocity²)
+        All coefficients are normalized by dynamic pressure and the aircraft
+        reference area: lift_coefficient = L / (0.5 * rho * S_ref * reference_velocity²)
 
         Args:
             density: Fluid density (kg/m³)
             reference_velocity: Reference velocity vector [ux, uy, uz]
-            reference_area: Reference area (m²). If None, uses aircraft defaults.
-            reference_chord: Reference chord (m). If None, uses aircraft defaults.
-            reference_span: Reference span (m). If None, uses aircraft defaults.
 
         Returns:
             Dictionary mapping surface name to force dictionary
@@ -1967,11 +1911,7 @@ class VLMSolver:
         reference_velocity_magnitude = np.linalg.norm(reference_velocity)
         wing_panel_ranges = self._build_wing_panel_ranges()
         dynamic_pressure = 0.5 * density * reference_velocity_magnitude**2
-        force_normalization = dynamic_pressure * (
-            reference_area
-            if reference_area is not None
-            else float(self.aircraft.refs.get("area", 1.0))
-        )
+        force_normalization = dynamic_pressure * float(self.aircraft.refs.get("area", 1.0))
         reference_direction = (
             reference_velocity / reference_velocity_magnitude
             if reference_velocity_magnitude > 1e-10

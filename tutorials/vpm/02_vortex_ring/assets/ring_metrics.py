@@ -57,12 +57,6 @@ VARIANT_LABEL = {
     "les_transposed": "LES Transposed",
 }
 CURRENT_VARIANTS = ("dns_direct", "dns_transposed", "dns_mixed", "les_transposed")
-EXPECTED_STRETCHING_SCHEME = {
-    "dns_direct": "DIRECT",
-    "dns_transposed": "TRANSPOSED",
-    "dns_mixed": "MIXED",
-    "les_transposed": "TRANSPOSED",
-}
 
 
 def metadata_path(variant: str, samples_dir: Path = SAMPLES_DIR) -> Path:
@@ -75,29 +69,8 @@ def load_metadata(variant: str, samples_dir: Path = SAMPLES_DIR) -> dict:
     return read_json(metadata_path(variant, samples_dir))
 
 
-def _stretching_scheme(metadata: dict) -> str:
-    return metadata["configuration"]["numerics"]["induction"]["stretching_scheme"]
-
-
 def plot_variants(samples_dir: Path = SAMPLES_DIR) -> tuple[str, ...]:
     return CURRENT_VARIANTS
-
-
-def load_stability_results(samples_dir: Path = SAMPLES_DIR) -> tuple[dict, ...]:
-    results = []
-    for variant in CURRENT_VARIANTS:
-        metadata = load_metadata(variant, samples_dir)
-        state = metadata["state"]
-        results.append(
-            {
-                "variant": variant,
-                "status": metadata["run_status"]["status"],
-                "step": state["step"],
-                "time": state["time"],
-                "normalized_time": state["time"] / REFERENCE_TIME,
-            }
-        )
-    return tuple(results)
 
 
 def load_theme() -> tuple[dict[str, str], object | None]:
@@ -116,10 +89,6 @@ def centered_subplots_adjust(fig, *, outer: float, **kwargs) -> None:
     _theme().centered_subplots_adjust(fig, outer=outer, **kwargs)
 
 
-def mark_every(name: str = "default") -> int:
-    return _theme().MARK_EVERY[name]
-
-
 def reference_style() -> dict:
     return dict(_theme().REFERENCE_STYLE)
 
@@ -134,75 +103,8 @@ def build_arg_parser(description: str):
     return p
 
 
-def save_fig(fig, path, dpi=None, tight_rect=None, figure_format="both"):
+def save_fig(fig, path, dpi=None, figure_format="both"):
     return _theme().export_figure(fig, path, figure_format=figure_format, dpi=dpi)
-
-
-def load_length_integrated_strength(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
-    """Return (nondimensional_time, strength_norm) from H5 backups.
-
-    Computes Σ|alpha_i| at each snapshot and normalises by the initial value.
-    For a vortex ring this is a length-integrated strength measure, not the
-    scalar tube circulation: changes in ring radius or strength direction can
-    change this quantity even when the tube circulation is nearly unchanged.
-    """
-    times, vortex_strength_magnitude_sums = ([], [])
-    for path in sorted(h5_files):
-        state = particle_state(path)
-        t = state["time"]
-        vortex_strength_magnitude_sum = float(
-            np.sum(np.linalg.norm(state["vortex_strength"], axis=1))
-        )
-        times.append(t)
-        vortex_strength_magnitude_sums.append(vortex_strength_magnitude_sum)
-    t_arr = np.array(times) / REFERENCE_TIME
-    c_arr = np.array(vortex_strength_magnitude_sums)
-    initial_vortex_strength_magnitude_sum = c_arr[0]
-    return (t_arr, c_arr / initial_vortex_strength_magnitude_sum)
-
-
-def load_ring_circulation(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
-    """Return (nondimensional_time, circulation_tube/circulation_tube0) for a single vortex ring.
-
-    The ring's physically relevant scalar circulation is inferred from the
-    length-integrated particle strength and orientation-independent ring
-    radius:
-
-        circulation_tube = Σ|alpha_i| / (2*pi*R_cov)
-
-    ``R_cov`` is computed from the two dominant eigenvalues of the
-    strength-weighted position covariance.  Unlike an impulse-x radius, it does
-    not report a false circulation spike when the ring tilts away from the
-    initial x-axis.
-    """
-    raw = load_ring_data(h5_files)
-    rid = min(raw.keys())
-    entries = raw[rid]
-    t_arr = np.array([d["time"] for d in entries]) / REFERENCE_TIME
-    tube_circulation = np.array([d["tube_circulation"] for d in entries])
-    valid = np.isfinite(tube_circulation) & (tube_circulation > 0.0)
-    t_arr = t_arr[valid]
-    tube_circulation = tube_circulation[valid]
-    return (t_arr, tube_circulation / tube_circulation[0])
-
-
-def load_vector_circulation_error(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
-    """Return drift in the conserved vector sum, normalized by initial strength.
-
-    Transposed stretching conserves ``Σ alpha`` under exact pair summation;
-    accelerated evaluation may introduce approximation error. For a closed
-    vortex ring this vector sum is close to zero, so the drift is scaled
-    by the initial length-integrated strength ``Σ|alpha|`` rather than by
-    ``|Σ alpha_0|``.
-    """
-    raw = load_ring_data(h5_files)
-    rid = min(raw.keys())
-    entries = raw[rid]
-    t_arr = np.array([d["time"] for d in entries]) / REFERENCE_TIME
-    sum_vec = np.array([d["net_vortex_strength"] for d in entries])
-    initial_vortex_strength_magnitude_sum = float(entries[0]["vortex_strength_magnitude_sum"])
-    err = np.linalg.norm(sum_vec - sum_vec[0], axis=1) / initial_vortex_strength_magnitude_sum
-    return (t_arr, err)
 
 
 def _ring_props_from_h5(path) -> dict:
@@ -258,37 +160,6 @@ def load_ring_data(h5_files: list) -> dict:
         for rid, vals in res.items():
             data.setdefault(rid, []).append(vals)
     return data
-
-
-def normalise_ring_data(raw: dict) -> dict:
-    """Normalize the full recorded ring trajectory by its physical scales."""
-    out: dict = {}
-    for rid, entries in raw.items():
-        t = np.array([d["time"] for d in entries]) / REFERENCE_TIME
-        x = np.array([d["vortex_centroid_x"] for d in entries]) / RING_RADIUS
-        R = np.array([d["major_radius"] for d in entries]) / RING_RADIUS
-        out[rid] = {"t_norm": t, "x_norm": x, "R_norm": R}
-    return out
-
-
-def load_ring_speed(h5_files: list) -> tuple[np.ndarray, np.ndarray]:
-    """Return (nondimensional_time, nondimensional_velocity) for a single vortex ring.
-
-    Computes the self-induced velocity from a local least-squares slope of the
-    strength-weighted vortex_centroid.  It is normalised by the analytical REFERENCE_VELOCITY,
-    rather than by its own first noisy finite difference.
-    """
-    raw = load_ring_data(h5_files)
-    rid = min(raw.keys())
-    entries = raw[rid]
-    t = np.array([d["time"] for d in entries])
-    x = np.array([d["vortex_centroid_x"] for d in entries])
-    U_num = np.empty_like(x)
-    for i in range(len(t)):
-        lo = max(0, i - 2)
-        hi = min(len(t), i + 3)
-        U_num[i] = np.polyfit(t[lo:hi], x[lo:hi], 1)[0]
-    return (t / REFERENCE_TIME, U_num / REFERENCE_VELOCITY)
 
 
 def load_sampled_ring_data(csv_path: Path) -> pd.DataFrame:

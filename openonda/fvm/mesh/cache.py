@@ -8,15 +8,11 @@ from zipfile import BadZipFile
 
 from ..io.mesh_storage import load_native_mesh
 from .cartesian.config import (
-    BoundaryLayers,
     BoxDomain,
     BoxPatches,
     BoxRefinement,
-    ConeRefinement,
     FeatureRefinement,
-    LineRefinement,
     PatchRefinement,
-    SphereRefinement,
     STLSurface,
 )
 from .cartesian.extrusion import ExtrudedCartesianMesher
@@ -40,12 +36,8 @@ def can_reuse_mesh(mesher: object) -> bool:
             for domain in (mesher.domain, mesher.requested_domain)
         )
         and all(type(surface) is STLSurface for surface in mesher.surfaces)
-        and all(
-            type(value) in (BoxRefinement, SphereRefinement, ConeRefinement, LineRefinement)
-            for value in mesher.refinements
-        )
+        and all(type(value) is BoxRefinement for value in mesher.refinements)
         and all(type(value) is PatchRefinement for value in mesher.patch_refinements)
-        and all(type(value) is BoundaryLayers for value in mesher.boundary_layers)
         and (mesher.features is None or type(mesher.features) is FeatureRefinement)
     )
 
@@ -75,7 +67,7 @@ def _specification(mesher: "CartesianMesher | ExtrudedCartesianMesher") -> dict[
         {"sha256": surface.sha256, "patch": surface.patch, "allow_open": surface.allow_open}
         for surface in mesher.surfaces
     ]
-    for name in ("refinements", "patch_refinements", "boundary_layers"):
+    for name in ("refinements", "patch_refinements"):
         data[name] = [asdict(value) for value in getattr(mesher, name)]
     data["features"] = None if mesher.features is None else asdict(mesher.features)
     return data

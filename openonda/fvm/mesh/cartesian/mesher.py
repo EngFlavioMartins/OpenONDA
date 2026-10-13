@@ -4,17 +4,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-import hashlib
 import math
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
 from ..geometry import compute_mesh_geometry
 from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
-from ..triangulated_surface import TriangulatedSurface
 from ..validation import (
     cells_incident_to_points,
     extract_cell_subset_mesh,
@@ -25,12 +23,6 @@ from ..validation import (
     validate_topology,
     validate_vtk_cell_intersections,
     validate_wall_vertex_conformance,
-)
-from .boundary_layers import (
-    LayerSurface,
-    build_layer_surface,
-    insert_default_surface_layer,
-    insert_surface_layers,
 )
 from .cfmesh_boundary_layer import add_cfmesh_wrapper_layer
 from .cfmesh_edge_extraction import extract_cfmesh_edges
@@ -45,64 +37,19 @@ from .cfmesh_template import (
     remap_cfmesh_patch_points,
 )
 from .config import (
-    BoundaryLayers,
-    Bounds,
     BoxDomain,
     BoxRefinement,
-    CompositeSizeField,
     FeatureRefinement,
     PatchRefinement,
-    Refinement,
     STLSurface,
-    _refinement_attribute,
 )
 from .features import classify_features
-from .native_mesh import require_native_mesh
-from .octree import (
-    CartesianOctree,
-    SurfacePatchRefinement,
-    _compact_conformed_topology,
-    _conform_wall_to_surface,
-    _prepare_wall_topology,
-    _remove_non_mappable_surface_cells,
-)
-from .optimisation import (
+from .report import (
+    GenerationReport,
     OptimisationDiagnostics,
-    agglomerate_small_cut_cells,
-    agglomerate_small_layer_columns,
+    RecoveryDiagnostics,
+    SizeReport,
 )
-from .report import GenerationReport, SizeReport
-from .surface_recovery import RecoveryDiagnostics, recover_cut_cells
-
-
-class _EffectiveRefinement:
-    """Carry a typed refinement into the octree without changing its shape."""
-
-    def __init__(self, source: Refinement, cell_size: float) -> None:
-        self.source = source
-        self.name = str(_refinement_attribute(source, "name"))
-        self.bounds = cast(
-            Bounds,
-            tuple(float(value) for value in _refinement_attribute(source, "bounds")),
-        )
-        self.cell_size = float(cell_size)
-
-    def contains(self, points: np.ndarray) -> np.ndarray:
-        """Delegate point containment to the immutable typed control."""
-        return self.source.contains(points)
-
-    def intersects_box(self, lower: np.ndarray, upper: np.ndarray) -> bool:
-        """Delegate conservative cell intersection to the typed control."""
-        return self.source.intersects_box(lower, upper)
-
-
-def _dyadic_size(background: float, requested: float) -> tuple[float, int]:
-    if not math.isfinite(requested) or requested <= 0.0:
-        raise ValueError("requested cell sizes must be finite and positive")
-    if requested >= background:
-        return background, 0
-    level = max(0, int(math.ceil(math.log2(background / requested) - 1.0e-12)))
-    return background / (2**level), level
 
 
 def _box_patch_point_constraints(
@@ -425,156 +372,6 @@ def _project_to_feature_planes(
     return projected
 
 
-def _combined_surface(
-    surfaces: tuple[STLSurface, ...],
-    triangle_sets: tuple[np.ndarray, ...] | None = None,
-) -> TriangulatedSurface:
-    """Create one immutable reference surface triangles for multi-surface extraction."""
-    if triangle_sets is None and len(surfaces) == 1:
-        return surfaces[0].surface_data
-    reference_triangles = triangle_sets or tuple(surface.triangles for surface in surfaces)
-    triangles = np.ascontiguousarray(np.concatenate(reference_triangles))
-    triangles.setflags(write=False)
-    lower = triangles.min(axis=(0, 1))
-    upper = triangles.max(axis=(0, 1))
-    bounds = tuple(float(value) for axis in range(3) for value in (lower[axis], upper[axis]))
-    return TriangulatedSurface(
-        path=Path("<combined-surface>"),
-        triangles=triangles,
-        bounds=bounds,  # type: ignore[arg-type]
-        sha256=hashlib.sha256(triangles.tobytes()).hexdigest(),
-        kind=(
-            "multi_box"
-            if triangle_sets is None and all(surface.kind == "box" for surface in surfaces)
-            else "general"
-        ),
-    )
-
-
-def _domain_patch_triangles(bounds: Bounds, patch_names: tuple[str, ...], patch: str) -> np.ndarray:
-    """Return two triangles covering one axis-aligned outer patch."""
-    try:
-        side = patch_names.index(patch)
-    except ValueError as exc:
-        raise ValueError(f"Unknown outer-domain patch {patch!r}") from exc
-    xmin, xmax, ymin, ymax, zmin, zmax = bounds
-    corners = np.asarray(
-        (
-            (xmin, ymin, zmin),
-            (xmin, ymin, zmax),
-            (xmin, ymax, zmin),
-            (xmin, ymax, zmax),
-            (xmax, ymin, zmin),
-            (xmax, ymin, zmax),
-            (xmax, ymax, zmin),
-            (xmax, ymax, zmax),
-        ),
-        dtype=np.float64,
-    )
-    faces = (
-        (0, 1, 3, 2),
-        (4, 6, 7, 5),
-        (0, 4, 5, 1),
-        (2, 3, 7, 6),
-        (0, 2, 6, 4),
-        (1, 5, 7, 3),
-    )
-    quad = faces[side]
-    triangles = np.asarray(
-        ((quad[0], quad[1], quad[2]), (quad[0], quad[2], quad[3])),
-        dtype=np.int64,
-    )
-    return np.ascontiguousarray(corners[triangles])
-
-
-def _rename_boundary_patches(
-    mesh_data: dict[str, Any],
-    domain: BoxDomain,
-    surfaces: tuple[STLSurface, ...],
-    source_wall_name: str,
-    *,
-    surface_triangles: tuple[np.ndarray, ...] | None = None,
-) -> None:
-    """Apply declarative patch names while preserving contiguous face ranges."""
-    source_faces = mesh_data["faces"]
-    source_owners = np.asarray(mesh_data["owners"])
-    n_internal = int(mesh_data["n_interior_faces"])
-    internal_faces = list(source_faces[:n_internal])
-    internal_owners = list(source_owners[:n_internal])
-    source_blocks = {
-        patch["name"]: (
-            int(patch["start_face"]),
-            int(patch["n_faces"]),
-            patch.get("type", "patch"),
-        )
-        for patch in mesh_data["boundary"]
-    }
-    logical_sources = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
-    logical_targets = domain.patches.as_tuple()
-    grouped: dict[str, list[tuple[str, str]]] = {}
-    order: list[str] = []
-    for source, target in zip(logical_sources, logical_targets, strict=True):
-        if target not in grouped:
-            grouped[target] = []
-            order.append(target)
-        grouped[target].append((source, "patch"))
-    if source_wall_name not in source_blocks:
-        raise RuntimeError(f"Native extraction did not produce source patch {source_wall_name!r}")
-    first, count, _source_type = source_blocks[source_wall_name]
-    source_wall_faces = source_faces[first : first + count]
-    source_wall_owners = source_owners[first : first + count]
-    wall_faces: dict[str, list[Any]] = {surface.patch: [] for surface in surfaces}
-    wall_owners: dict[str, list[Any]] = {surface.patch: [] for surface in surfaces}
-    reference_triangles = surface_triangles or tuple(surface.triangles for surface in surfaces)
-    indices = [SurfaceIndex.build(triangles) for triangles in reference_triangles]
-    points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    for face, owner in zip(source_wall_faces, source_wall_owners, strict=True):
-        centre = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
-        distances = [index.nearest_point(centre)[1] for index in indices]
-        target = surfaces[int(np.argmin(distances))].patch
-        wall_faces[target].append(face)
-        wall_owners[target].append(owner)
-    for surface in surfaces:
-        if not wall_faces[surface.patch]:
-            raise RuntimeError(
-                f"Native extraction did not produce wall faces for surface patch {surface.patch!r}"
-            )
-        grouped[surface.patch] = []
-        order.append(surface.patch)
-
-    faces = internal_faces
-    owners = internal_owners
-    boundaries: list[dict[str, Any]] = []
-    start = n_internal
-    for target in order:
-        target_faces = []
-        target_owners = []
-        target_type = "patch"
-        for source, block_type in grouped[target]:
-            if source not in source_blocks:
-                raise RuntimeError(f"Native extraction did not produce source patch {source!r}")
-            first, count, source_type = source_blocks[source]
-            target_faces.extend(source_faces[first : first + count])
-            target_owners.extend(source_owners[first : first + count])
-            target_type = "wall" if block_type == "wall" or source_type == "wall" else target_type
-        if target in wall_faces:
-            target_faces.extend(wall_faces[target])
-            target_owners.extend(wall_owners[target])
-            target_type = "wall"
-        faces.extend(target_faces)
-        owners.extend(target_owners)
-        boundaries.append(
-            {"name": target, "start_face": start, "n_faces": len(target_faces), "type": target_type}
-        )
-        start += len(target_faces)
-    mesh_data["faces"] = faces
-    mesh_data["owners"] = np.asarray(owners, dtype=np.int32)
-    mesh_data["boundary"] = boundaries
-    mesh_data["n_faces"] = len(faces)
-    mesh_data.pop("cell_face_indices", None)
-    mesh_data.pop("cell_face_offset", None)
-
-
 def _quality_snapshot(mesh_data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Compute the native geometry and mesh-quality measurements."""
     topology = validate_topology(mesh_data)
@@ -738,10 +535,11 @@ def _cell_type_counts(mesh_data: dict[str, Any]) -> dict[str, int]:
 class CartesianMesher:
     """Build and validate an OpenONDA-native Cartesian mesh.
 
-    The serial Cartesian core is assembled through typed surface, size-field,
-    extraction, recovery, layer, and reporting stages. All accepted controls
-    are geometry-independent; unsupported topology or invalid configuration
-    raises a diagnostic error instead of being silently ignored.
+    The cfMesh-style workflow builds the octree template, projects it onto the
+    surfaces, adds the wrapper layer, optimises the mesh, constrains wall
+    points, and validates the result. All accepted controls are
+    geometry-independent; unsupported topology or invalid configuration raises
+    a diagnostic error instead of being silently ignored.
 
     Parameters
     ----------
@@ -757,14 +555,12 @@ class CartesianMesher:
         Upper size near surfaces; defaults to ``max_cell_size``.
     min_cell_size : float or None
         Optional lower safety floor for dyadic refinement in metres.
-    refinements : tuple[Refinement, ...]
-        Physical regions whose requested upper sizes are applied.
+    refinements : tuple[BoxRefinement, ...]
+        Boxes whose requested upper sizes are applied.
     patch_refinements : tuple[PatchRefinement, ...]
         Exact named-patch sizing requests in metres.
     features : FeatureRefinement or None
         Optional included-angle surface-feature sizing.
-    boundary_layers : tuple[BoundaryLayers, ...]
-        Optional wall-normal layer requests.
     surface_may_cross_domain_boundary : bool, default=False
         Permit a surface intersecting the outer domain; otherwise surfaces must
         lie strictly inside it.
@@ -790,10 +586,9 @@ class CartesianMesher:
         max_cell_size: float,
         boundary_cell_size: float | None = None,
         min_cell_size: float | None = None,
-        refinements: tuple[Refinement, ...] = (),
+        refinements: tuple[BoxRefinement, ...] = (),
         patch_refinements: tuple[PatchRefinement, ...] = (),
         features: FeatureRefinement | None = None,
-        boundary_layers: tuple[BoundaryLayers, ...] = (),
         surface_may_cross_domain_boundary: bool = False,
         cell_size_anchor: float | None = None,
     ) -> None:
@@ -801,8 +596,7 @@ class CartesianMesher:
 
         See the class-level ``Parameters`` section for units and accepted
         object types. Surface files have already been read by ``STLSurface``;
-        extraction, recovery, optimization, and report creation occur only in
-        :meth:`build`.
+        meshing, optimisation, and report creation occur only in :meth:`build`.
         """
         if not isinstance(domain, BoxDomain):
             raise TypeError("domain must be a BoxDomain instance")
@@ -851,13 +645,10 @@ class CartesianMesher:
             ):
                 raise ValueError(f"surface {surface.patch!r} must lie strictly inside domain")
         refinements = tuple(refinements)
-        if any(not isinstance(refinement, Refinement) for refinement in refinements):
-            raise TypeError("refinements must contain only typed refinement objects")
+        if any(not isinstance(refinement, BoxRefinement) for refinement in refinements):
+            raise TypeError("refinements must contain only BoxRefinement instances")
         if features is not None and not isinstance(features, FeatureRefinement):
             raise TypeError("features must be a FeatureRefinement instance or None")
-        boundary_layers = tuple(boundary_layers)
-        if any(not isinstance(layer, BoundaryLayers) for layer in boundary_layers):
-            raise TypeError("boundary_layers must contain only BoundaryLayers instances")
         known_patches = set(patches)
         patch_refinements = tuple(patch_refinements)
         if any(not isinstance(item, PatchRefinement) for item in patch_refinements):
@@ -878,7 +669,7 @@ class CartesianMesher:
             background_level = int(math.floor(math.log2(max_cell_size / cell_size_anchor) + 1e-12))
             background_cell_size = cell_size_anchor * (2**background_level)
             exact_controls = [
-                *(float(_refinement_attribute(item, "cell_size")) for item in refinements),
+                *(item.cell_size for item in refinements),
                 *(item.cell_size for item in patch_refinements),
             ]
             if not boundary_size_is_default:
@@ -921,20 +712,13 @@ class CartesianMesher:
             background_cell_size = max_cell_size
             requested_domain = domain
         for refinement in refinements:
-            bounds = tuple(float(value) for value in _refinement_attribute(refinement, "bounds"))
+            bounds = refinement.bounds
             if not all(
                 domain.bounds[2 * axis] <= bounds[2 * axis]
                 and bounds[2 * axis + 1] <= domain.bounds[2 * axis + 1]
                 for axis in range(3)
             ):
-                raise ValueError(
-                    f"refinement {str(_refinement_attribute(refinement, 'name'))!r} "
-                    "must lie inside domain"
-                )
-        for layer in boundary_layers:
-            unknown = sorted(set(layer.patches) - known_patches)
-            if unknown:
-                raise ValueError(f"boundary layer refers to unknown surface patches: {unknown}")
+                raise ValueError(f"refinement {refinement.name!r} must lie inside domain")
         self.requested_domain = requested_domain
         self.domain = domain
         self.surfaces = surfaces
@@ -946,13 +730,7 @@ class CartesianMesher:
         self.refinements = refinements
         self.patch_refinements = patch_refinements
         self.features = features
-        self.boundary_layers = boundary_layers
         self.surface_may_cross_domain_boundary = surface_may_cross_domain_boundary
-        self.size_field = CompositeSizeField(
-            background_size=max_cell_size,
-            refinements=refinements,
-            minimum_size=min_cell_size,
-        )
         self._report: GenerationReport | None = None
         self._feature_sets = (
             tuple(
@@ -1012,8 +790,8 @@ class CartesianMesher:
         ]
         controls.extend(
             (
-                str(_refinement_attribute(item, "name")),
-                float(_refinement_attribute(item, "cell_size")),
+                item.name,
+                item.cell_size,
                 True,
             )
             for item in self.refinements
@@ -1049,78 +827,6 @@ class CartesianMesher:
             )
         return tuple(sizes)
 
-    def _automatic_cell_size(self, requested: float) -> float:
-        """Return a dyadic automatic size subject to ``min_cell_size``."""
-        effective = self.effective_cell_size(requested)
-        if self.min_cell_size is not None:
-            effective = max(effective, self.min_cell_size)
-        return effective
-
-    def _octree_refinements(self) -> tuple[_EffectiveRefinement, ...]:
-        return tuple(
-            _EffectiveRefinement(
-                refinement,
-                self.effective_cell_size(float(_refinement_attribute(refinement, "cell_size"))),
-            )
-            for refinement in self.refinements
-        )
-
-    def _background_mesher(
-        self, surface_triangles: tuple[np.ndarray, ...] | None = None
-    ) -> CartesianOctree:
-        surface = _combined_surface(self.surfaces, surface_triangles)
-        surface_size = self.effective_cell_size(self.boundary_cell_size)
-        if self.features is not None:
-            surface_size = min(
-                surface_size,
-                self._automatic_cell_size(self.features.cell_size),
-            )
-        reference_triangles = surface_triangles or tuple(item.triangles for item in self.surfaces)
-        surface_by_patch = {
-            item.patch: triangles
-            for item, triangles in zip(self.surfaces, reference_triangles, strict=True)
-        }
-        patch_controls: list[SurfacePatchRefinement] = []
-        domain_patch_names = self.domain.patches.as_tuple()
-        for request in self.patch_refinements:
-            triangles = surface_by_patch.get(request.patch)
-            if triangles is None:
-                triangles = _domain_patch_triangles(
-                    self.domain.bounds, domain_patch_names, request.patch
-                )
-            patch_controls.append(
-                SurfacePatchRefinement(request.patch, triangles, request.cell_size)
-            )
-        exact_surface_components = (
-            tuple(surface.bounds for surface in self.surfaces)
-            if (
-                surface_triangles is None
-                and not self.boundary_layers
-                and len(self.surfaces) > 1
-                and all(surface.kind == "box" for surface in self.surfaces)
-            )
-            else ()
-        )
-        return CartesianOctree(
-            domain=self.domain.bounds,
-            max_cell_size=self.background_cell_size,
-            surface_data=surface,
-            exact_surface_components=exact_surface_components,
-            surface_exclusion_distance=0.0,
-            # General STL recovery is the separate validated cut-cell
-            # stage below; the octree constructs only the background topology.
-            surface_may_cross_domain_boundary=self.surface_may_cross_domain_boundary,
-            wall_patch_name="__cartesian_surface__",
-            surface_cell_size=surface_size,
-            # Keep the core surface lattice at the configured automatic
-            # minimum as well as the dedicated wall-normal layer resolution.
-            # This avoids leaving a coarse cut cell at a finite STL tip where
-            # the layer interface would otherwise inherit an open area vector.
-            minimum_cell_size=self.min_cell_size,
-            refinements=cast(Any, self._octree_refinements()),
-            surface_patch_refinements=tuple(patch_controls),
-        )
-
     supported_workflow_stages = (
         "templateGeneration",
         "surfaceTopology",
@@ -1141,13 +847,6 @@ class CartesianMesher:
         """
         if stop_after not in self.supported_workflow_stages:
             raise ValueError(f"Unsupported Cartesian-mesher checkpoint: {stop_after!r}")
-        if self.boundary_layers:
-            raise NotImplementedError(
-                "Configurable BoundaryLayers are not supported by the built-in cfMesh "
-                "workflow; use the automatic default wrapper instead"
-            )
-        if any(not isinstance(item, BoxRefinement) for item in self.refinements):
-            raise NotImplementedError("The cfMesh workflow supports only box volume refinements")
         with mesh_stage("template generation") as progress:
             stage_mesh = build_cfmesh_template(
                 domain=self.domain.bounds,
@@ -1155,7 +854,7 @@ class CartesianMesher:
                 max_cell_size=self.background_cell_size,
                 boundary_cell_size=self.boundary_cell_size,
                 min_cell_size=self.min_cell_size,
-                box_refinements=cast(tuple[BoxRefinement, ...], self.refinements),
+                box_refinements=self.refinements,
                 patch_refinements=self.patch_refinements,
                 domain_patch_names=self.domain.patches.as_tuple(),
                 surface_patch_names=tuple(surface.patch for surface in self.surfaces),
@@ -1173,7 +872,7 @@ class CartesianMesher:
         generation["resolved_background_cell_size"] = self.background_cell_size
         generation["resolved_box_sizes"] = {
             request.name: self.effective_cell_size(request.cell_size, strict=True)
-            for request in cast(tuple[BoxRefinement, ...], self.refinements)
+            for request in self.refinements
         }
         root_box = generation["root_box"]
         root_size = float(root_box[1] - root_box[0])
@@ -1804,9 +1503,9 @@ class CartesianMesher:
 
         Raises
         ------
-        ValueError, RuntimeError, NotImplementedError
-            If extraction, topology, surface conformance, quality validation,
-            or a requested unsupported workflow fails.
+        ValueError, RuntimeError
+            If extraction, topology, surface conformance, or quality
+            validation fails.
 
         Notes
         -----
@@ -1815,11 +1514,6 @@ class CartesianMesher:
         for durable diagnostics: a rejected projection must not make the
         generated grid disappear.
         """
-        if self.boundary_layers:
-            raise NotImplementedError(
-                "Configurable BoundaryLayers are not supported by the built-in cfMesh "
-                "workflow; use the automatic default wrapper instead"
-            )
         if stop_after is not None:
             mesh_data = self._run_cfmesh_workflow(stop_after)
             if on_generated is not None:
@@ -1838,357 +1532,6 @@ class CartesianMesher:
                 points=finalized.get("n_points"),
             )
         return finalized
-        layer_surfaces: list[LayerSurface] = []  # noqa: V201
-        layer_specs: list[BoundaryLayers] = []
-        reference_triangles = [surface.triangles for surface in self.surfaces]
-        if self.boundary_layers:
-            feature_angle = self.features.angle if self.features is not None else 45.0
-            for layer in self.boundary_layers:
-                for patch_name in layer.patches:
-                    surface_id = next(
-                        index
-                        for index, surface in enumerate(self.surfaces)
-                        if surface.patch == patch_name
-                    )
-                    geometry = build_layer_surface(
-                        self.surfaces[surface_id].triangles,
-                        patch_name,
-                        layer,
-                        feature_angle_degrees=feature_angle,
-                    )
-                    reference_triangles[surface_id] = geometry.outer_triangles
-                    layer_surfaces.append(geometry)
-                    layer_specs.append(layer)
-        reference_triangle_sets = tuple(reference_triangles)
-        mesher = self._background_mesher(reference_triangle_sets if self.boundary_layers else None)
-        mesh_data = require_native_mesh(mesher.build())
-        feature_angle = self.features.angle if self.features is not None else 45.0
-
-        def has_active_sharp_edges(surface: STLSurface) -> bool:
-            bounds = self.domain.bounds
-            features = classify_features(surface.triangles, feature_angle)
-            return any(
-                all(
-                    max(edge.start[axis], edge.end[axis]) >= bounds[2 * axis]
-                    and min(edge.start[axis], edge.end[axis]) <= bounds[2 * axis + 1]
-                    for axis in range(3)
-                )
-                for edge in features.edges
-            )
-
-        has_sharp_surface = any(
-            surface.kind != "box" and has_active_sharp_edges(surface) for surface in self.surfaces
-        )
-        extracted_wall_faces = int(
-            next(
-                (
-                    patch["n_faces"]
-                    for patch in mesh_data["boundary"]
-                    if patch["name"] == "__cartesian_surface__"
-                ),
-                0,
-            )
-        )
-        surface_patch_refined = any(
-            request.patch in {surface.patch for surface in self.surfaces}
-            for request in self.patch_refinements
-        )
-        used_cut_recovery = bool(
-            self.boundary_layers
-            or has_sharp_surface
-            or extracted_wall_faces == 0
-            or surface_patch_refined
-        )
-        if any(surface.kind != "box" for surface in self.surfaces):
-            if used_cut_recovery:
-                mesh_data = recover_cut_cells(
-                    mesh_data,
-                    tuple(SurfaceIndex.build(triangles) for triangles in reference_triangle_sets),
-                    "__cartesian_surface__",
-                )
-            else:
-                combined_triangles = np.concatenate(reference_triangle_sets, axis=0)
-                surface_index = SurfaceIndex.build(combined_triangles)
-                from ...io.vtk_exporter import VTKExporter
-
-                try:
-                    from vtk import vtkCellValidator  # pyrefly: ignore[missing-import]
-                    from vtk.util.numpy_support import (  # pyrefly: ignore[missing-import]
-                        vtk_to_numpy,  # pyrefly: ignore[missing-import]
-                    )
-                except ImportError as exc:  # pragma: no cover - VTK is an FVM dependency.
-                    raise ValueError("VTK is required for surface-topology preparation") from exc
-                # Removing a non-mappable cell exposes its retained neighbour as
-                # the next surface cell.  Continue to the geometric fixed point;
-                # the long-cylinder/domain intersection needs 17 passes at D/12.
-                for _surface_iteration in range(64):
-                    _prepare_wall_topology(mesh_data, "__cartesian_surface__")
-                    _conform_wall_to_surface(
-                        mesh_data,
-                        surface_index,
-                        "__cartesian_surface__",
-                        fixed_bounds=self.domain.bounds,
-                    )
-                    mesh_data.pop("cell_face_indices", None)
-                    mesh_data.pop("cell_face_offset", None)
-                    validation_view = dict(mesh_data)
-                    _compact_conformed_topology(validation_view)
-                    raw_wall_patch = next(
-                        patch
-                        for patch in mesh_data["boundary"]
-                        if patch["name"] == "__cartesian_surface__"
-                    )
-                    raw_wall_start = int(raw_wall_patch["start_face"])
-                    raw_wall_stop = raw_wall_start + int(raw_wall_patch["n_faces"])
-                    raw_wall_points = np.unique(
-                        np.concatenate(
-                            [
-                                np.asarray(face, dtype=np.int32)
-                                for face in mesh_data["faces"][raw_wall_start:raw_wall_stop]
-                            ]
-                        )
-                    )
-                    raw_cell_vertices = np.asarray(mesh_data["cell_vertex_indices"], dtype=np.int32)
-                    validation_cell_ids = np.flatnonzero(
-                        np.any(np.isin(raw_cell_vertices, raw_wall_points), axis=1)
-                    )
-                    validator = vtkCellValidator()
-                    validator.SetInputData(
-                        VTKExporter(
-                            extract_cell_subset_mesh(validation_view, validation_cell_ids)
-                        )._grid
-                    )
-                    validator.Update()
-                    state_array = validator.GetOutput().GetCellData().GetArray("ValidityState")
-                    if state_array is None:
-                        raise ValueError("VTK cell validator did not return ValidityState")
-                    states = np.asarray(vtk_to_numpy(state_array), dtype=np.int64)
-                    non_mappable_cells = set(
-                        map(int, validation_cell_ids[np.flatnonzero(states & 0b000110)])
-                    )
-                    prepared_geometry = compute_mesh_geometry(validation_view, compute_lsq=False)
-                    non_mappable_cells.update(
-                        map(
-                            int,
-                            np.flatnonzero(np.asarray(prepared_geometry["cell_volume"]) <= 0.0),
-                        )
-                    )
-                    non_mappable_cells.update(
-                        map(
-                            int,
-                            validation_cell_ids[
-                                np.flatnonzero(
-                                    surface_index.is_inside(
-                                        prepared_geometry["cell_centre"][validation_cell_ids]
-                                    )
-                                )
-                            ],
-                        )
-                    )
-                    prepared_area = np.asarray(prepared_geometry["face_area_vector"])
-                    prepared_direction = np.asarray(prepared_geometry["cell_connection_vector"])
-                    prepared_face_centre = np.asarray(prepared_geometry["face_centre"])
-                    prepared_cell_centre = np.asarray(prepared_geometry["cell_centre"])
-                    prepared_owners = np.asarray(validation_view["owners"], dtype=np.int32)
-                    prepared_neighbours = np.asarray(validation_view["neighbours"], dtype=np.int32)
-                    owner_pyramid = np.einsum(
-                        "ij,ij->i",
-                        prepared_area,
-                        prepared_face_centre - prepared_cell_centre[prepared_owners],
-                    )
-                    neighbour_pyramid = np.ones(len(prepared_area), dtype=np.float64)
-                    prepared_internal = int(validation_view["n_interior_faces"])
-                    neighbour_pyramid[:prepared_internal] = np.einsum(
-                        "ij,ij->i",
-                        prepared_area[:prepared_internal],
-                        prepared_cell_centre[prepared_neighbours]
-                        - prepared_face_centre[:prepared_internal],
-                    )
-                    invalid_face_mask = (
-                        np.einsum("ij,ij->i", prepared_area, prepared_direction) <= 0.0
-                    )
-                    if self.surface_may_cross_domain_boundary:
-                        invalid_face_mask |= (owner_pyramid <= 0.0) | (neighbour_pyramid <= 0.0)
-                    invalid_faces = np.flatnonzero(invalid_face_mask)
-                    wall_patch = next(
-                        patch
-                        for patch in mesh_data["boundary"]
-                        if patch["name"] == "__cartesian_surface__"
-                    )
-                    wall_start = int(wall_patch["start_face"])
-                    wall_stop = wall_start + int(wall_patch["n_faces"])
-                    wall_owners = set(
-                        map(int, np.asarray(mesh_data["owners"])[wall_start:wall_stop])
-                    )
-                    prepared_faces = [
-                        np.asarray(face, dtype=np.int32) for face in validation_view["faces"]
-                    ]
-                    wall_points = set(
-                        map(
-                            int,
-                            np.unique(np.concatenate(prepared_faces[wall_start:wall_stop])),
-                        )
-                    )
-                    cell_points: list[set[int]] = [set() for _ in range(int(mesh_data["n_cells"]))]
-                    for prepared_face_id, prepared_face in enumerate(prepared_faces):
-                        prepared_owner = int(mesh_data["owners"][prepared_face_id])
-                        cell_points[prepared_owner].update(map(int, prepared_face))
-                        if prepared_face_id < int(mesh_data["n_interior_faces"]):
-                            prepared_neighbour = int(mesh_data["neighbours"][prepared_face_id])
-                            cell_points[prepared_neighbour].update(map(int, prepared_face))
-                    n_prepared_internal = int(mesh_data["n_interior_faces"])
-                    for face_id_value in invalid_faces:
-                        face_id = int(face_id_value)
-                        candidates = [int(mesh_data["owners"][face_id])]
-                        if face_id < n_prepared_internal:
-                            candidates.append(int(mesh_data["neighbours"][face_id]))
-                        surface_candidates = [
-                            cell
-                            for cell in candidates
-                            if cell in wall_owners or bool(cell_points[cell] & wall_points)
-                        ]
-                        non_mappable_cells.update(
-                            surface_candidates if surface_candidates else candidates
-                        )
-                    non_mappable = np.asarray(sorted(non_mappable_cells), dtype=np.int32)
-                    if not len(non_mappable):
-                        break
-                    _remove_non_mappable_surface_cells(
-                        mesh_data,
-                        non_mappable,
-                        "__cartesian_surface__",
-                    )
-                else:
-                    raise ValueError("Surface non-mappable-cell removal did not converge")
-                _compact_conformed_topology(mesh_data)
-        _rename_boundary_patches(
-            mesh_data,
-            self.domain,
-            self.surfaces,
-            "__cartesian_surface__",
-            surface_triangles=reference_triangle_sets,
-        )
-        if used_cut_recovery:
-            mesh_data = agglomerate_small_cut_cells(
-                mesh_data,
-                tuple(surface.patch for surface in self.surfaces),
-                surface_indices=tuple(
-                    SurfaceIndex.build(triangles) for triangles in reference_triangle_sets
-                ),
-            )
-        if self.boundary_layers:
-            mesh_data = insert_surface_layers(
-                mesh_data,
-                tuple(layer_surfaces),
-                tuple(layer_specs),
-                self.domain.bounds,
-                self.domain.patches.as_tuple(),
-            )
-            if any(surface.prefer_vectorized_mapping for surface in layer_surfaces):
-                mesh_data = agglomerate_small_layer_columns(
-                    mesh_data,
-                    self.effective_cell_size(self.boundary_cell_size),
-                )
-        else:
-            curved_surfaces = tuple(surface for surface in self.surfaces if surface.kind != "box")
-            smooth_curved_patches = tuple(
-                surface.patch
-                for surface in curved_surfaces
-                if not used_cut_recovery and not has_active_sharp_edges(surface)
-            )
-            sharp_curved_patches = tuple(
-                surface.patch
-                for surface in curved_surfaces
-                if surface.patch not in smooth_curved_patches
-            )
-            if smooth_curved_patches:
-                mesh_data = insert_default_surface_layer(
-                    mesh_data,
-                    smooth_curved_patches,
-                    self.domain.bounds,
-                    self.domain.patches.as_tuple(),
-                    SurfaceIndex.build(np.concatenate(reference_triangle_sets, axis=0)),
-                )
-            if sharp_curved_patches:
-                mesh_data.setdefault("mesh_generation", {})["sharp_surface_wrapper"] = {
-                    "patches": sharp_curved_patches,
-                    "method": "snapped_castellated_surface_cells",
-                    "reason": (
-                        "surface_domain_intersection_uses_snapped_cells"
-                        if self.surface_may_cross_domain_boundary
-                        else "sharp_edge_corner_columns_require_partitioned_patch_topology"
-                    ),
-                }
-        quality, geometry = _quality_snapshot(mesh_data)
-        surface_conformance: dict[str, dict[str, float | int]] = {}
-        for surface in self.surfaces:
-            if surface.kind == "box":
-                continue
-            wall = validate_wall_vertex_conformance(
-                mesh_data,
-                surface.triangles,
-                surface.patch,
-            )
-            centres = validate_no_fluid_cell_centres_inside_surface(
-                geometry["cell_centre"],
-                surface.triangles,
-            )
-            surface_conformance[surface.patch] = {**wall, **centres}
-        quality["surface_conformance"] = surface_conformance
-        quality["surface_distance"] = _surface_distance_snapshot(mesh_data, self.surfaces)
-        recovery = RecoveryDiagnostics.from_mesh(mesh_data)
-        optimisation = OptimisationDiagnostics.from_quality(quality)
-        requested_sizes = [("background", self.max_cell_size)]
-        requested_sizes.append(("boundary", self.boundary_cell_size))
-        if self.min_cell_size is not None:
-            requested_sizes.append(("minimum", self.min_cell_size))
-        requested_sizes.extend(
-            (
-                str(_refinement_attribute(refinement, "name")),
-                float(_refinement_attribute(refinement, "cell_size")),
-            )
-            for refinement in self.refinements
-        )
-        requested_sizes.extend(
-            (f"patch:{request.patch}", float(request.cell_size))
-            for request in self.patch_refinements
-        )
-        if self.features is not None:
-            requested_sizes.append(("features", self.features.cell_size))
-        sizes = tuple(
-            SizeReport(name, requested, *(_dyadic_size(self.max_cell_size, requested)))
-            for name, requested in requested_sizes
-        )
-        diagnostics = {
-            "quality": quality,
-            "recovery": recovery.as_dict(),
-            "optimisation": optimisation.as_dict(),
-            "surface_count": len(self.surfaces),
-            "surface_patches": tuple(surface.patch for surface in self.surfaces),
-            "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
-            "refinement_count": len(self.refinements),
-            "feature_control": self.features is not None,
-            "feature_edge_counts": tuple(len(edges) for edges in self._feature_sets),
-            "layer_control": bool(self.boundary_layers),
-            "cell_types": _cell_type_counts(mesh_data),
-        }
-        self._report = GenerationReport(
-            method="cartesian",
-            sizes=sizes,
-            boundary_patches=tuple(patch["name"] for patch in mesh_data["boundary"]),
-            surface_hashes=tuple(surface.sha256 for surface in self.surfaces),
-            diagnostics=diagnostics,
-        )
-        generation = mesh_data.setdefault("mesh_generation", {})
-        generation.update(
-            {
-                "method": "cartesian",
-                "requested_sizes": [size.as_dict() for size in sizes],
-                "cartesian_report": self._report.as_dict(),
-                "cell_types": diagnostics["cell_types"],
-            }
-        )
-        return mesh_data
 
     def __call__(self) -> dict[str, Any]:
         """Build the mesh using the default full workflow."""

@@ -149,14 +149,6 @@ def vorticity_colormap():
     return matplotlib.colormaps[theme.get_colormap("field_vorticity")]
 
 
-def plate_velocity_tex(velocity: np.ndarray) -> str:
-    terms = []
-    for value, axis in zip(velocity, "xyz", strict=True):
-        if abs(value) > 1e-10:
-            terms.append(f"{value:+.2g}\\,\\mathbf{{e}}_{axis}")
-    return "".join(terms).lstrip("+")
-
-
 def overlay_document(
     omega_min: float, omega_max: float, camera: dict, arrow_tip: np.ndarray
 ) -> str:

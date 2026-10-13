@@ -340,7 +340,7 @@ class Logging:
         Logging.record(f"{component} forces", *rows, flush=True)
 
     @staticmethod
-    def warning_record(topic: str, *rows: log_style.Row, flush: bool = True) -> None:
+    def warning_record(topic: str, *rows: log_style.Row) -> None:
         """Immediately publish a structured warning without routine suppression."""
         details = [(topic, ""), *rows]
         if Logging._active_step is not None:
@@ -780,20 +780,6 @@ class Logging:
             rows.append((operation, f"{duration:.6f}", "s"))
             rows.append(("  Share of step", f"{100.0 * fraction:.1f}", "%"))
         Logging.section("TIMING", *rows)
-
-    @staticmethod
-    def stretching_time_step_size_warning(
-        time_step_size: float,
-        recommended_time_step_size: float,
-        max_strain_rate: float,
-    ) -> None:
-        """Record an explicit-stretching stability-limit violation."""
-        Logging.warning_record(
-            "stretching exceeds its stability limit",
-            ("time step", f"{time_step_size:.3e}", "s"),
-            ("stability limit", f"{recommended_time_step_size:.3e}", "s"),
-            ("strain rate, max", f"{max_strain_rate:.3e}", "1/s"),
-        )
 
     @staticmethod
     def setup_output_redirection(solver: Any) -> None:

@@ -65,7 +65,7 @@ class SnapshotContext:
     Presents the same sampling interface a live solver does (``mesh_data``,
     ``geo_data``, ``boundaries``, ``setup``, ``velocity``,
     ``kinematic_pressure``, ``eddy_viscosity``,
-    ``parallel``, ``time``, ``step``, ``_current_dt``, plus the
+    ``parallel``, ``time``, ``step``, plus the
     derived ``_velocity_gradient()``/``_vorticity_field()``), so the samplers
     and executor cannot tell online and offline apart.
     """
@@ -130,13 +130,10 @@ class SnapshotContext:
         self.time = time
         self.step = step
         self._accepted_time_step_size = time_step_size
-        self._current_dt = time_step_size
         self.solution_dir = solution_dir
         self.samples_dir = samples_dir
         self.parallel = ParallelContext()
         self.logger = _NullLogger()
-        self.last_forces = None
-        self.last_y_plus = None
         self._derived_fields: dict[object, np.ndarray] = {}
         # Runtime output indexes belong to this replay context, never to a
         # reusable sampler specification.
@@ -297,8 +294,6 @@ class PostProcess:
                             "velocity_type": b_cfg.velocity_type,
                             "pressure_type": b_cfg.pressure_type,
                             "kinematic_pressure_value": b_cfg.kinematic_pressure_value,
-                            "eddy_viscosity_type": b_cfg.eddy_viscosity_type,
-                            "eddy_viscosity_value": b_cfg.eddy_viscosity_value,
                         }
                     )
                     if b_cfg.mesh_type is not None:

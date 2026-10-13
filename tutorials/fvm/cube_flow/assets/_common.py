@@ -24,7 +24,6 @@ COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
 FREESTREAM_SPEED = 1.0
-D_REF = 1.0
 
 # Square cylinder, Re = 100, blockage 5%.
 # Okajima, J. Fluid Mech. 123 (1982): experimental St ~ 0.14.

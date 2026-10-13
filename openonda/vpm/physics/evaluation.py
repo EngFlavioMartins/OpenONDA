@@ -64,7 +64,6 @@ class ParticleFieldEvaluation:
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.upper()
         self.accumulator_dtype = accumulator_dtype
-        self._numpy_accumulator_dtype = np.float64 if accumulator_dtype == ti.f64 else np.float32
         self._event_observer = event_observer or NullPhysicsEventObserver()
 
         # Initialize GPU fields for storing results
@@ -659,9 +658,7 @@ class ParticleFieldEvaluation:
         vortex_centroid = self._vortex_centroid_result.to_numpy()
         return vortex_centroid
 
-    def compute_flow_integrals(
-        self, particles: "Particles", time: float, record_history: bool = True
-    ) -> dict[str, object]:
+    def compute_flow_integrals(self, particles: "Particles", time: float) -> dict[str, object]:
         """Evaluate global unbounded-domain diagnostics for one particle state.
 
         Parameters
@@ -671,10 +668,6 @@ class ParticleFieldEvaluation:
             is m³/s, core radius is m, and effective viscosity is m²/s.
         time : float
             Physical time of this accepted or explicitly requested state in s.
-        record_history : bool, default=True
-            Append the energy measurement to the short history used for the
-            finite-difference ``kinetic_energy_rate``. False leaves history
-            unchanged.
 
         Returns
         -------
@@ -705,7 +698,7 @@ class ParticleFieldEvaluation:
             # Return zero values for empty particle system
             return self._get_zero_results()
         if _DIRECT_INTEGRAL_PARTICLE_LIMIT < N and self.particle_kernel == "GAUSSIAN":
-            return self._compute_fourier_flow_integrals(particles, time, record_history)
+            return self._compute_fourier_flow_integrals(particles, time)
 
         self._resize_fields(N)
 
@@ -726,8 +719,7 @@ class ParticleFieldEvaluation:
         # Extract results from Taichi struct field
         r = self.total_quantities_results[None]
         total_kinetic_energy = float(r.total_kinetic_energy)
-        if record_history:
-            self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
+        self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
 
         # Compute kinetic energy dissipation rate using finite differences
         dE_dt = self._compute_energy_dissipation_rate()
@@ -757,14 +749,12 @@ class ParticleFieldEvaluation:
         self,
         particles: "Particles",
         time: float,
-        record_history: bool,
     ) -> dict:
         position = particles.position_cpu().astype(np.float64)
         vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
         core_radius = particles.core_radius_cpu().astype(np.float64)
         particle_volume = particles.particle_volume_cpu().astype(np.float64)
         effective_viscosity = particles.effective_viscosity_cpu().astype(np.float64)
-        saved_grid = self._fourier_grid
         spectral, continuity_preserved, transition_spectral = (
             self._fourier_integrals_on_persistent_grid(
                 position,
@@ -774,59 +764,41 @@ class ParticleFieldEvaluation:
                 effective_viscosity,
             )
         )
-        if not record_history:
-            # Trial diagnostics used by regularisation must not alter the
-            # accepted time-history definition.
-            self._fourier_grid = saved_grid
         if spectral.viscous_kinetic_energy_rate is None:
             raise RuntimeError("Fourier flow diagnostics did not compute viscous dissipation")
 
         total_kinetic_energy = spectral.total_kinetic_energy
         measurement = getattr(spectral, "energy_measurement", "unbounded_energy")
         same_measurement = not self._energy_history or self._energy_history[-1][2] == measurement
-        if record_history:
-            if continuity_preserved and same_measurement:
-                self._update_energy_history(time, total_kinetic_energy, measurement)
-                dE_dt = self._compute_energy_dissipation_rate()
-                rate_source = "fourier_energy_backward_difference"
-                if getattr(spectral, "energy_measurement", None) == "unbounded_energy":
-                    rate_source = "free_space_fft_energy_backward_difference"
-                elif measurement == "periodic_fourier_energy":
-                    rate_source = "periodic_fourier_energy_backward_difference"
-            else:
-                # On grid growth, ``transition_spectral`` is the present cloud
-                # evaluated on the old lattice. Compare it with the preceding
-                # old-lattice sample, then seed history with the raw new-grid
-                # energy so the following interval is continuous again.
-                bridged_rate = (
-                    self._energy_rate_to(
-                        time, transition_spectral.total_kinetic_energy, measurement
-                    )
-                    if transition_spectral is not None
-                    else None
-                )
-                if bridged_rate is None or not np.isfinite(bridged_rate):
-                    # The first direct-to-Fourier switch has no spectral
-                    # predecessor. The Fourier enstrophy integral provides a
-                    # finite, physically defined transition estimate; its
-                    # The source label remains explicit in the CSV.
-                    dE_dt = float(spectral.viscous_kinetic_energy_rate)
-                    rate_source = "fourier_transition_viscous_rate"
-                else:
-                    dE_dt = bridged_rate
-                    rate_source = "fourier_grid_transition_backward_difference"
-                self._update_energy_history(time, total_kinetic_energy, measurement)
-        else:
-            # Trial diagnostics must not alter either accepted history or the
-            # persistent grid. Return the latest accepted derivative.
+        if continuity_preserved and same_measurement:
+            self._update_energy_history(time, total_kinetic_energy, measurement)
             dE_dt = self._compute_energy_dissipation_rate()
-            rate_source = "accepted_history_unchanged"
-            if not np.isfinite(dE_dt):
-                # A trial may follow the first sample on a new measurement
-                # definition. Its quadratic integrals are valid even though
-                # that accepted history does not yet define a derivative.
+            rate_source = "fourier_energy_backward_difference"
+            if getattr(spectral, "energy_measurement", None) == "unbounded_energy":
+                rate_source = "free_space_fft_energy_backward_difference"
+            elif measurement == "periodic_fourier_energy":
+                rate_source = "periodic_fourier_energy_backward_difference"
+        else:
+            # On grid growth, ``transition_spectral`` is the present cloud
+            # evaluated on the old lattice. Compare it with the preceding
+            # old-lattice sample, then seed history with the raw new-grid
+            # energy so the following interval is continuous again.
+            bridged_rate = (
+                self._energy_rate_to(time, transition_spectral.total_kinetic_energy, measurement)
+                if transition_spectral is not None
+                else None
+            )
+            if bridged_rate is None or not np.isfinite(bridged_rate):
+                # The first direct-to-Fourier switch has no spectral
+                # predecessor. The Fourier enstrophy integral provides a
+                # finite, physically defined transition estimate; its
+                # The source label remains explicit in the CSV.
                 dE_dt = float(spectral.viscous_kinetic_energy_rate)
-                rate_source = "trial_viscous_rate"
+                rate_source = "fourier_transition_viscous_rate"
+            else:
+                dE_dt = bridged_rate
+                rate_source = "fourier_grid_transition_backward_difference"
+            self._update_energy_history(time, total_kinetic_energy, measurement)
         if not np.isfinite(dE_dt):
             raise RuntimeError("Fourier flow diagnostics produced a non-finite kinetic-energy rate")
         total = vortex_strength.sum(axis=0, dtype=np.float64)

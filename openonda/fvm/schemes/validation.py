@@ -16,7 +16,7 @@ from .boundaries import BOUNDARIES
 from .limiters import LIMITERS
 
 if TYPE_CHECKING:
-    from ..config.types import RunAcceptanceLimits, TimeConfig, TurbulenceConfig
+    from ..config.types import TimeConfig, TurbulenceConfig
 
 # Convection (div) schemes accepted by ``assemble.convection.assemble_convection_term``.
 CONVECTION_SCHEMES = {"upwind", "central", "linear", "deferred", "lust", "linearupwind"} | set(
@@ -199,28 +199,6 @@ def validate_turbulence(config: TurbulenceConfig | None) -> None:
             raise ValueError(
                 "Equilibrium Smagorinsky subgrid_dissipation_coefficient must be finite and positive"
             )
-
-
-def validate_acceptance_limits(limits: RunAcceptanceLimits) -> None:
-    """Validate warning/abort threshold ordering and sustained window."""
-    errors = []
-    if not isinstance(limits.sustained_steps, int) or limits.sustained_steps < 1:
-        errors.append("  sustained_steps must be an integer >= 1")
-    for metric in (
-        "max_continuity_error",
-        "max_equation_residual",
-        "max_courant_number",
-        "max_velocity_magnitude",
-    ):
-        warning = getattr(limits, f"{metric}_warning")
-        abort = getattr(limits, f"{metric}_abort")
-        for label, value in (("warning", warning), ("abort", abort)):
-            if value is not None and (not np.isfinite(value) or float(value) <= 0.0):
-                errors.append(f"  {metric}_{label} must be finite and > 0 when set")
-        if warning is not None and abort is not None and float(warning) > float(abort):
-            errors.append(f"  {metric}_warning cannot exceed {metric}_abort")
-    if errors:
-        raise ValueError("Invalid FVM run acceptance limits:\n" + "\n".join(errors))
 
 
 def validate_boundary_conditions(boundaries: list[dict]) -> None:

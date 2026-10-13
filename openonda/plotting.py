@@ -40,12 +40,9 @@ FIGURE_SIZES_CM = {
 }
 
 LINE_WIDTH = 1.0
-SECONDARY_LINE_WIDTH = 1.0
 REFERENCE_LINE_WIDTH = 1.0
 MARKER_SIZE = 3.0
-LEGEND_MARKER_SIZE = 4.0
 MARKER_EDGE_WIDTH = MIN_LINE_WIDTH_PT
-SECONDARY_LINESTYLE = "-"
 MARK_EVERY = {
     "default": 3,
     "total_kinetic_energy": 4,
@@ -116,41 +113,10 @@ COLORMAPS.update(
     vorticity="thesis_signed", error_diverging="thesis_signed", streamlines="thesis_amber"
 )
 
-# Method identity is stable across plots. VLM+VPM remains the VPM method;
-# hybrid means FVM+VPM. Different physical components may omit markers when dense.
-METHOD_STYLE = {
-    "fvm": {"color": COLORS["fvm"], "marker": "s", "linestyle": "-"},
-    "vpm": {"color": COLORS["vpm"], "marker": "o", "linestyle": "-"},
-    "hybrid": {"color": COLORS["hybrid"], "marker": "D", "linestyle": "-"},
-    "reference": {"color": COLORS["reference"], "linestyle": "--"},
-    "reference_secondary": {"color": COLORS["text"], "linestyle": ":"},
-}
-
-
-def method_style(method, *, markers=True):
-    """Return a fresh method style; gray broken lines are reserved for references."""
-    style = dict(METHOD_STYLE[method], linewidth=LINE_WIDTH)
-    if markers and "marker" in style:
-        style.update(markersize=MARKER_SIZE, markeredgewidth=MARKER_EDGE_WIDTH)
-    elif not markers:
-        style.pop("marker", None)
-    return style
-
-
 REFERENCE_STYLE = {
     "color": COLORS["reference"],
     "linestyle": "--",
     "linewidth": REFERENCE_LINE_WIDTH,
-}
-REFERENCE_FILL_STYLE = {
-    "facecolor": COLORS["reference_fill"],
-    "alpha": 0.25,
-    "zorder": 0,
-}
-REFERENCE_STRONG_FILL_STYLE = {
-    "facecolor": COLORS["reference_fill"],
-    "alpha": 0.50,
-    "zorder": 0,
 }
 
 
@@ -442,18 +408,6 @@ def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
         painted_text.append((item, bounds))
 
 
-def legend_handle_style(style: dict) -> dict:
-    """Return line style values sized for legend-only handles."""
-    return {
-        "color": style["color"],
-        "linestyle": style["linestyle"],
-        "marker": style["marker"],
-        "markersize": LEGEND_MARKER_SIZE,
-        "linewidth": style["linewidth"],
-        "label": style["label"],
-    }
-
-
 def set_style(*, use_tex: bool = False):
     """Apply the OpenONDA thesis plotting style.
 
@@ -549,26 +503,38 @@ def export_figure(fig, path, *, figure_format=None, dpi=None, close=True):
     return tuple(outputs)
 
 
-def save_fig(fig, path, figure_format="both", dpi=None, tight_rect=None, bbox_inches=None):
+def save_fig(fig, path, figure_format="both", dpi=None):
     """Lay out, validate and export a simple thesis figure in PNG and PDF."""
-    if bbox_inches is not None:
-        raise ValueError("Thesis figures use a fixed canvas; cropping is unsupported.")
     prepare_figure(fig)
     validate_thesis_figure(fig, fig.axes)
     return export_figure(fig, path, figure_format=figure_format, dpi=dpi)
 
 
+_THESIS_LATEX_PREAMBLE = r"\usepackage[T1]{fontenc}\usepackage{newpxtext}\usepackage{amsmath}\usepackage{newpxmath}\newcommand{\vect}[1]{\boldsymbol{#1}}\newcommand{\dd}{\mathrm{d}}\newcommand{\zetaeps}{\zeta_{\sigma}}\newcommand{\Reyn}{\mathrm{Re}}"
+# Serif families close to Palatino for figures drawn without LaTeX; DejaVu
+# Serif, bundled with Matplotlib, always resolves.
+_PALATINO_LIKE_FONTS = ["TeX Gyre Pagella", "Palatino Linotype", "URW Palladio L", "DejaVu Serif"]
+
+
 def set_thesis_style():
-    """Use the thesis body fonts at final physical size; never silently substitute."""
-    if not all(shutil.which(tool) for tool in ("latex", "dvipng")):
-        raise RuntimeError("Thesis plots require LaTeX, dvipng and newpxtext/newpxmath on PATH.")
+    """Use the thesis body fonts at final physical size.
+
+    With LaTeX and dvipng on PATH, LaTeX typesets the text in Palatino
+    (newpx). Without them, Matplotlib's math text renders the same labels in a
+    Palatino-like serif, so figures keep their sizes and layout.
+    """
+    use_tex = all(shutil.which(tool) for tool in ("latex", "dvipng"))
     set_style()
     plt.rcParams.update(
         {
-            "text.usetex": True,
-            "text.latex.preamble": r"\usepackage[T1]{fontenc}\usepackage{newpxtext}\usepackage{amsmath}\usepackage{newpxmath}\newcommand{\vect}[1]{\boldsymbol{#1}}\newcommand{\dd}{\mathrm{d}}\newcommand{\zetaeps}{\zeta_{\sigma}}\newcommand{\Reyn}{\mathrm{Re}}",
+            "text.usetex": use_tex,
+            "text.latex.preamble": _THESIS_LATEX_PREAMBLE if use_tex else "",
+            "mathtext.fontset": "custom",
+            "mathtext.rm": "serif",
+            "mathtext.it": "serif:italic",
+            "mathtext.bf": "serif:bold",
             "font.family": "serif",
-            "font.serif": ["Palatino"],
+            "font.serif": ["Palatino"] if use_tex else _PALATINO_LIKE_FONTS,
             **dict.fromkeys(
                 (
                     "font.size",

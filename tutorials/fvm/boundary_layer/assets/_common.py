@@ -24,7 +24,6 @@ COLORMAPS = THEME.COLORMAPS
 figure_size = THEME.figure_size
 
 FREESTREAM_SPEED = 1.0
-L_REF = 1.0
 
 
 def build_arg_parser():

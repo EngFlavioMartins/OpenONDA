@@ -83,8 +83,6 @@ class BoundaryPatch:
         Index of the first face belonging to this patch.
     n_faces : int
         Number of faces in the patch.
-    source_type : str or None
-        Original boundary type as read from the mesh file.
     physical_tag : int or None
         GMSH physical group tag, if the mesh came from GMSH.
     """
@@ -92,7 +90,6 @@ class BoundaryPatch:
     name: str
     start_face: int
     n_faces: int
-    source_type: str | None = None
     physical_tag: int | None = None
 
 
@@ -131,8 +128,6 @@ class MeshTopology:
         VTK cell-type codes for export.
     cell_order : np.ndarray
         VTK cell-order arrays for higher-order elements.
-    topology_version : int
-        Monotonically increasing version counter for cache invalidation.
     """
 
     face_nodes: np.ndarray
@@ -147,7 +142,6 @@ class MeshTopology:
     source_cell_id: np.ndarray
     cell_type_code: np.ndarray
     cell_order: np.ndarray
-    topology_version: int = 1
 
     @classmethod
     def from_mesh_data(cls, mesh_data: dict[str, object]) -> MeshTopology:
@@ -187,7 +181,6 @@ class MeshTopology:
                 name=str(patch["name"]),
                 start_face=int(patch["start_face"]),
                 n_faces=int(patch["n_faces"]),
-                source_type=patch.get("type"),
                 physical_tag=patch.get("physical_tag"),
             )
             for patch in mesh_data["boundary"]

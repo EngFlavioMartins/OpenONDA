@@ -15,9 +15,6 @@ class ForceConfig:
     ----------
     method : {'KUTTA_JOUKOWSKI'}, default='KUTTA_JOUKOWSKI'
         Bound-leg Kutta–Joukowski loads, optionally with unsteady pressure.
-    kj_smoothing : bool, default=False
-        Average current and previous circulation for Kutta–Joukowski loads.
-        This temporal filter changes reported forces, not solved circulation.
     unsteady : bool, default=False
         Include the backward time difference of the surface potential jump
         from unsteady Bernoulli, integrated over the physical panels. Requires
@@ -25,13 +22,12 @@ class ForceConfig:
     """
 
     method: Literal["KUTTA_JOUKOWSKI"] = "KUTTA_JOUKOWSKI"
-    kj_smoothing: bool = False
     unsteady: bool = False
 
     @staticmethod
-    def kutta_joukowski(*, smoothing: bool = False, unsteady: bool = False) -> ForceConfig:
+    def kutta_joukowski(*, unsteady: bool = False) -> ForceConfig:
         """Configure bound-leg loads and optional pressure-time forces/moments."""
-        return ForceConfig(kj_smoothing=smoothing, unsteady=unsteady)
+        return ForceConfig(unsteady=unsteady)
 
 
 @dataclass(frozen=True)

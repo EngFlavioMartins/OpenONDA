@@ -133,23 +133,11 @@ class _Record:
 class BodyGridGeometryCache:
     """Bounded cache of body masks and wall links on diffusion lattices."""
 
-    def __init__(self, *, max_bytes: int = 64 * 1024 * 1024):
+    # Memory limit of the cached lattice geometry, in bytes.
+    max_bytes = 64 * 1024 * 1024
+
+    def __init__(self):
         self.record = None
-        self.max_bytes = max_bytes
-
-    @property
-    def max_bytes(self) -> int:
-        """Memory limit of the cached lattice geometry, in bytes."""
-        return self._max_bytes
-
-    @max_bytes.setter
-    def max_bytes(self, max_bytes: int) -> None:
-        value = int(max_bytes)
-        if value < 0:
-            raise ValueError("negative geometry evidence cap")
-        self._max_bytes = value
-        if self.record is not None and self.record.nbytes > self.max_bytes:
-            self.record = None
 
     def prepare(
         self,
@@ -191,7 +179,7 @@ class BodyGridGeometryCache:
             ],
             tuple[str],
         ],
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, int]]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return the cached geometry of one lattice, building it on a miss."""
         shape = tuple(int(n) for n in shape)
         if len(shape) != 3 or min(shape) < 1:
@@ -216,15 +204,6 @@ class BodyGridGeometryCache:
             if cacheable and self.record is not None and self.record.key == key
             else None
         )
-        stats = {
-            "nodes": math.prod(shape),
-            "membership_reused": 0,
-            "membership_queried": 0,
-            "links_reused": 0,
-            "links_queried": 0,
-            "retained_bytes": 0,
-            "qualified": cacheable,
-        }
         mask = np.empty(shape, dtype=bool)
         known = np.zeros(shape, dtype=bool)
         links = np.zeros(shape, dtype=np.int32)
@@ -235,7 +214,6 @@ class BodyGridGeometryCache:
                 old_ix = np.ix_(*(prior for _, prior in matches))
                 mask[new_ix] = old.mask[old_ix]
                 known[new_ix] = True
-                stats["membership_reused"] = int(np.count_nonzero(known))
             for missing in _query_chunks(~known):
                 points = np.column_stack([axes32[d][missing[:, d]] for d in range(3)]).astype(
                     np.float64
@@ -244,9 +222,8 @@ class BodyGridGeometryCache:
                 if len(values) != len(missing):
                     raise RuntimeError("body classifier must return one flag per node")
                 mask[tuple(missing.T)] = values
-                stats["membership_queried"] += len(missing)
             if blocks is not None:
-                self._links(old, axes64, shape, mask, links, spacing, blocks, stats)
+                self._links(old, axes64, shape, mask, links, spacing, blocks)
             candidate = _Record(key, axes32, axes64, mask, links)
             # The previous owned record is no longer needed. Release it before
             # copying the new data, rather than retaining two capped banks
@@ -261,10 +238,9 @@ class BodyGridGeometryCache:
                     mask.copy(),
                     links.copy(),
                 )
-                stats["retained_bytes"] = candidate.nbytes
             else:
                 self.record = None
-            return mask, links, stats
+            return mask, links
         except BaseException:
             self.record = None
             raise
@@ -278,7 +254,6 @@ class BodyGridGeometryCache:
         links: np.ndarray,
         spacing: float,
         blocks: Callable,
-        stats: dict[str, int],
     ) -> None:
         for axis in range(3):
             lower, upper = [slice(None)] * 3, [slice(None)] * 3
@@ -311,5 +286,3 @@ class BodyGridGeometryCache:
                 if len(values) != len(missing):
                     raise RuntimeError("segment classifier must return one flag per edge")
                 links[tuple(missing.T)] |= values.astype(np.int32) << axis
-                stats["links_queried"] += len(missing)
-            stats["links_reused"] += int(np.count_nonzero(reused))

@@ -279,7 +279,6 @@ def validate_restart_state(
     solver: FVMSolver,
     state: dict,
     *,
-    allow_config_change: bool = False,
     kinematic_viscosity: float | None = None,
 ) -> RestartState:
     """Validate a decoded backup without mutating *solver*.
@@ -363,10 +362,9 @@ def validate_restart_state(
     start_time = float(solver._time_config.start_time)
     if time < start_time - max(1.0e-12, abs(start_time) * 1.0e-12):
         raise ValueError(f"Backup time {time} precedes the configured start time {start_time}")
-    if not allow_config_change:
-        end_time = float(solver._time_config.end_time)
-        if time > end_time + max(1.0e-12, abs(end_time) * 1.0e-12):
-            raise ValueError(f"Backup time {time} exceeds the configured end time {end_time}")
+    end_time = float(solver._time_config.end_time)
+    if time > end_time + max(1.0e-12, abs(end_time) * 1.0e-12):
+        raise ValueError(f"Backup time {time} exceeds the configured end time {end_time}")
 
     counter_values = np.asarray(state["n_consecutive_accepted_steps"])
     names = sorted(solver._n_consecutive_accepted_steps)
@@ -470,9 +468,7 @@ def capture_restart_state(solver: FVMSolver) -> RestartState:
     )
 
 
-def _load_backup_local(
-    solver: FVMSolver, path: Path | str, *, allow_config_change: bool = False
-) -> RestartState:
+def _load_backup_local(solver: FVMSolver, path: Path | str) -> RestartState:
     """Validate and restore one standard FVM backup."""
     source = Path(path)
     required = {
@@ -524,11 +520,8 @@ def _load_backup_local(
             )
         if metadata.get("mesh_hash") != mesh_hash(solver.mesh_data):
             raise ValueError("FVM backup mesh hash does not match the active mesh")
-        if not allow_config_change:
-            active_setup = _solver_setup(solver)
-            stored_hash = metadata.get("config_hash")
-            if stored_hash != config_hash(active_setup):
-                raise ValueError("FVM backup configuration hash does not match the active case")
+        if metadata.get("config_hash") != config_hash(_solver_setup(solver)):
+            raise ValueError("FVM backup configuration hash does not match the active case")
         archived_viscosity = metadata.get("kinematic_viscosity")
         if (
             isinstance(archived_viscosity, bool)
@@ -537,7 +530,7 @@ def _load_backup_local(
             or float(archived_viscosity) <= 0.0
         ):
             raise ValueError("FVM backup molecular viscosity record is invalid")
-        if not allow_config_change and not np.isclose(
+        if not np.isclose(
             float(archived_viscosity),
             float(
                 getattr(
@@ -559,14 +552,13 @@ def _load_backup_local(
     restart_state = validate_restart_state(
         solver,
         state,
-        allow_config_change=allow_config_change,
         kinematic_viscosity=float(metadata["kinematic_viscosity"]),
     )
 
     return restart_state
 
 
-def load_backup(solver: FVMSolver, path: Path | str, *, allow_config_change: bool = False) -> None:
+def load_backup(solver: FVMSolver, path: Path | str) -> None:
     """Collectively validate and publish one standard FVM backup.
 
     Replicated ranks stage independently, exchange only validation status, and
@@ -577,11 +569,7 @@ def load_backup(solver: FVMSolver, path: Path | str, *, allow_config_change: boo
     restart_state: RestartState | None = None
     local_error = None
     try:
-        restart_state = _load_backup_local(
-            solver,
-            path,
-            allow_config_change=allow_config_change,
-        )
+        restart_state = _load_backup_local(solver, path)
     except BaseException as error:
         local_error = {
             "rank": int(getattr(parallel, "rank", 0)),

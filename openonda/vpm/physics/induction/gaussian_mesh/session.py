@@ -598,9 +598,9 @@ class GaussianSlabFieldSession:
 
     def __exit__(
         self,
-        exc_type: type[BaseException] | None,
+        _exc_type: type[BaseException] | None,
         failure: BaseException | None,
-        traceback: TracebackType | None,
+        _traceback: TracebackType | None,
     ) -> None:
         try:
             self.close()

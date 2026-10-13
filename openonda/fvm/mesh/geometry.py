@@ -49,8 +49,6 @@ class MeshGeometry:
         per face with shape ``(n_faces,)``. Interior-face entries are zero.
     lsq_condition : np.ndarray or None
         Least-squares gradient stencil condition numbers (optional).
-    geometry_version : int
-        Version counter for cache invalidation.
     """
 
     vertex_position: np.ndarray
@@ -63,7 +61,6 @@ class MeshGeometry:
     cell_connection_vector: np.ndarray
     wall_distance: np.ndarray
     lsq_condition: np.ndarray | None = None
-    geometry_version: int = 1
 
     @classmethod
     def from_data(cls, mesh_data: dict[str, object], geo_data: dict[str, object]) -> MeshGeometry:

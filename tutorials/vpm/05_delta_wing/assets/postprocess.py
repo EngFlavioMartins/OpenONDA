@@ -64,7 +64,7 @@ def last_cycles(data, period, count=3):
         yield (cycle, (rows.time.to_numpy() - cycle * period) / period, rows)
 
 
-def _save_figure(fig, axes, path, figure_format, *, fit=True):
+def _save_figure(fig, path, figure_format):
     return _theme.export_figure(fig, path, figure_format=figure_format)
 
 
@@ -163,13 +163,7 @@ def _plot_wake_field(
         label=label,
     )
     print(title)
-    _save_figure(
-        fig,
-        (*axes, cax),
-        destination / f"delta_wing_wake_{field_name}.png",
-        figure_format,
-        fit=False,
-    )
+    _save_figure(fig, destination / f"delta_wing_wake_{field_name}.png", figure_format)
 
 
 def render(output: Path, solution_dir=None, fps: int = GIF_FPS) -> None:

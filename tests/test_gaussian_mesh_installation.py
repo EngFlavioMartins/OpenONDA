@@ -75,7 +75,7 @@ def test_verifier_gpu_execution_is_explicit_opt_in(monkeypatch, capsys, enabled)
     monkeypatch.setattr(sys, "argv", ["verify"] + (["--with-gaussian-mesh"] if enabled else []))
     monkeypatch.setattr(verifier.numba, "get_num_threads", lambda: 1)
     monkeypatch.setattr(verifier.numba.config, "reload_config", lambda: None)
-    monkeypatch.setattr(verifier, "_verify_package_location", lambda flag: "/installed/openonda")
+    monkeypatch.setattr(verifier, "_verify_package_location", lambda _flag: "/installed/openonda")
     for name in (
         "_verify_distribution_resources",
         "_verify_cartesian_mesher",

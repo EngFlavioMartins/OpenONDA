@@ -17,7 +17,6 @@ from openonda.core import log_style
 from openonda.core.version import __version__
 
 _CONSOLE_STDOUT = sys.stdout
-_WIDTH = log_style.WIDTH
 _MIB = 1024.0 * 1024.0
 
 _RESIDUAL_LABELS = {
@@ -380,10 +379,6 @@ class Logging:
     def header(self, precision: str | None = "f64") -> None:
         """Emit the OpenONDA FVM startup banner."""
         self.message(format_openonda_header(precision), flush=True)
-
-    @staticmethod
-    def _section(title: str, items: list[log_style.Row]) -> list[str]:
-        return log_style.section(title, items).split("\n")
 
     def section(
         self,
@@ -763,22 +758,6 @@ class Logging:
     def log_solver_info(self, solver: Any, initialization_time: float) -> None:
         """Emit the formatted initialization report."""
         self.message(self.solver_info(solver, initialization_time), flush=True)
-
-    def solver_state(self, solver: Any) -> None:
-        """Emit the current high-level solver state."""
-        self.section(
-            "fvm solver  state",
-            [
-                ("case", str(solver._resolved_setup.case_name)),
-                ("time", f"{solver.time:.5f}", "s"),
-                ("step", f"{solver.step:,}"),
-                ("cells, local", f"{solver.mesh_data['n_cells']:,}"),
-                (
-                    "algorithm",
-                    str(solver._resolved_setup.pimple.algorithm),
-                ),
-            ],
-        )
 
     def output_info(self, text: str) -> None:
         """Emit one visualization/backup output event."""

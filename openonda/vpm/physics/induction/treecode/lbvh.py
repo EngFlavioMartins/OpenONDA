@@ -29,7 +29,6 @@ Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import math
-import time
 
 import numpy as np
 import taichi as ti
@@ -313,16 +312,12 @@ class TaichiTreecode:
         self.freestream_velocity = fields.vector(3, dtype=ti.f32, shape=())
 
         # Statistics
-        self.build_time = 0.0
-        self.eval_time = 0.0
-        self.grad_time = 0.0
 
         # AABB fields (allocated at instance level, not class level)
         self._aabb_min = fields.vector(3, dtype=ti.f32, shape=())
         self._aabb_max = fields.vector(3, dtype=ti.f32, shape=())
 
         # Constants for gradient kernel
-        self.default_cutoff_radius_factor = 15.0
 
         self._host_vector_chunks = {}
         self._host_scalar_chunks = {}
@@ -331,7 +326,6 @@ class TaichiTreecode:
         # Topology-reuse state (see refit()): last built particle count and the
         # combine-level bound.  None until the first build().
         self._built_n = None
-        self._combine_levels = 0
 
         fields.finalize()
         self._device_fields = fields
@@ -422,7 +416,6 @@ class TaichiTreecode:
             N:  Number of active particles (required for field API).
         """
         # The tree is rebuilt on every call.
-        t_start = time.perf_counter()
 
         # -- Detect calling convention ----------------------------------
         using_fields = (
@@ -457,87 +450,6 @@ class TaichiTreecode:
         # Record the built configuration so refit() can validate that the tree
         # topology it reuses matches the current particle set.
         self._built_n = N_val
-        self._combine_levels = 2 * int(np.ceil(np.log2(max(N_val, 2)))) + 34
-
-        self.build_time = time.perf_counter() - t_start
-
-    @ti.kernel
-    def _copy_positions_field(self, pos: ti.template(), N: ti.i32):
-        """Overwrite position while leaving vortex strength and core radius unchanged."""
-        for i in range(N):
-            self.position[i] = pos[i]
-
-    @ti.kernel
-    def _copy_vortex_strengths_field(self, vortex_strength: ti.template(), N: ti.i32):
-        """Overwrite only vortex strength for a fixed-position topology refit."""
-        for i in range(N):
-            self.vortex_strength[i] = vortex_strength[i]
-
-    def refit(self, position: ti.Field, N: int) -> None:
-        """Reuse the existing LBVH topology, updating only position multipoles.
-
-        Between the stages of a single RK advection step every particle moves
-        by less than one inter-particle spacing (any sane advection CFL), so the
-        Morton-sorted leaf assignment and the Karras hierarchy built at stage 1
-        remain a valid — if very slightly sub-optimal — bounding-particle_volume tree for
-        the displaced position.  Circulations and core_radius do not change during
-        advection, only position do.
-
-        A refit therefore keeps ``sorted_indices``, the node child/parent links,
-        the leaf particle ranges and the per-node depths from the last
-        :meth:`build`, and only re-seeds the leaf multipoles from the new
-        position and re-runs the level-synchronous bottom-up combine.  This
-        skips the Morton-code, sort, Karras-build, parents and depths passes —
-        typically the majority of build cost (the sort in particular).
-
-        Args:
-            position: vec3 field of the displaced position, in the SAME
-                particle order as the last :meth:`build` (length >= N).
-            N: number of active particles; must equal the last build's N.
-
-        Raises:
-            RuntimeError: if no compatible prior build exists (the caller should
-                fall back to a full :meth:`build`).
-        """
-        if getattr(self, "_built_n", None) != N or N <= 1:
-            raise RuntimeError(
-                "treecode.refit requires a prior build() with the same N "
-                f"(built N={getattr(self, '_built_n', None)}, requested N={N})"
-            )
-        t_start = time.perf_counter()
-        self.n_particles_total[None] = N
-        # Update only position; vortex strength and core radius are advection-invariant.
-        self._copy_positions_field(position, N)
-        # Re-seed leaf multipoles/AABB from the new position, then rebuild the
-        # internal-node moments bottom-up over the unchanged level structure.
-        self._leaf_multipole_init_kernel(N)
-        for level in range(self._combine_levels, -1, -1):
-            self._combine_level_kernel(N, level)
-        self.build_time = time.perf_counter() - t_start
-
-    def refit_vortex_strength(self, vortex_strength: ti.Field, N: int) -> None:
-        """Refit multipoles after vortex_strength change at fixed position.
-
-        Standalone RK stretching stages keep particle position and core_radius
-        fixed while changing only vortex strength.  Their Morton ordering and
-        Karras topology are therefore unchanged; rebuilding that topology at
-        every stage adds work and has triggered Vulkan device loss in long,
-        memory-heavy coupled runs.  Refresh the vortex strength field and all
-        dependent multipoles while retaining the validated topology.
-        """
-        if getattr(self, "_built_n", None) != N or N <= 1:
-            raise RuntimeError(
-                "treecode.refit_vortex_strength requires a prior build() with the same N "
-                f"(built N={getattr(self, '_built_n', None)}, requested N={N})"
-            )
-        t_start = time.perf_counter()
-        self.n_particles_total[None] = N
-        self._copy_vortex_strengths_field(vortex_strength, N)
-        self._leaf_multipole_init_kernel(N)
-        for level in range(self._combine_levels, -1, -1):
-            self._combine_level_kernel(N, level)
-        ti.sync()
-        self.build_time = time.perf_counter() - t_start
 
     @ti.kernel
     def _copy_ndarray_to_vec3_field(
@@ -1848,128 +1760,35 @@ class TaichiTreecode:
         """Device-to-device copy of a 0-d vec3, avoiding a host round-trip."""
         self.freestream_velocity[None] = src[None]
 
-    def compute_velocities_gpu(
-        self,
-        freestream_velocity: np.ndarray | None = None,
-        background_field: ti.Field = None,
-    ) -> None:
+    def compute_velocities_gpu(self, background_field: ti.Field) -> None:
         """Run the velocity traversal on-device; the result stays in
         ``self.velocity`` (a Taichi field).  No ``to_numpy`` download — callers
         that keep the data on the GPU use a field-to-field copy to avoid a
         per-step N×3 round-trip.
 
-        Pass ``background_field`` (a 0-d vec3 field) rather than
-        ``freestream_velocity`` to keep the freestream on device too; reading it
-        back as a numpy array forces a sync at every RK stage.
+        ``background_field`` is a 0-d vec3 field, so the freestream also stays
+        on device; reading it back as a numpy array would sync every RK stage.
         """
-        t_start = time.perf_counter()
-        if background_field is not None:
-            self._copy_freestream_from_field(background_field)
-        elif freestream_velocity is not None:
-            self.freestream_velocity[None] = ti.Vector(
-                freestream_velocity.astype(np.float32).tolist()
-            )
-        else:
-            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
+        self._copy_freestream_from_field(background_field)
         N = int(self.n_particles_total[None])
         for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, N - start)
             self.compute_velocities_kernel(self.theta * self.theta, start, count)
             ti.sync()
-        self.eval_time = time.perf_counter() - t_start
 
-    def compute_velocities(self, freestream_velocity: np.ndarray | None = None) -> np.ndarray:
-        """Evaluate velocity at every active source particle and download it.
-
-        Parameters
-        ----------
-        freestream_velocity : ndarray, shape (3,), optional
-            Uniform background velocity in m/s.  Omit it for zero background.
-
-        Returns
-        -------
-        ndarray, shape (N, 3)
-            Induced plus optional freestream velocity in m/s.  The returned
-            array is a host copy; the same values remain in :attr:`velocity`.
-
-        Raises
-        ------
-        RuntimeError
-            If no hierarchy has been built for the current source fields.
-        """
-        self.compute_velocities_gpu(freestream_velocity)
-        N = self.n_particles_total[None]
-        return self._download_vector_field(self.velocity, N)
-
-    def compute_velocity_gradients_gpu(self) -> None:
-        """Evaluate source-particle Jacobians on device.
-
-        Results remain in ``velocity_gradient`` and ``strain_rate`` Taichi
-        fields with shape ``(N, 3, 3)`` and units 1/s.  No host arrays are
-        returned or allocated for the result.
-        """
-        t_start = time.perf_counter()
-        N = int(self.n_particles_total[None])
-        for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
-            count = min(_TRAVERSAL_BATCH_SIZE, N - start)
-            self.compute_velocity_gradients_kernel(self.theta * self.theta, start, count)
-            ti.sync()
-        self.grad_time = time.perf_counter() - t_start
-
-    def compute_velocity_gradients(self) -> tuple:
-        """Evaluate and download source-particle Jacobian and strain fields.
-
-        Returns
-        -------
-        gradients, strains : tuple of ndarray
-            Arrays of shape ``(N, 3, 3)`` in 1/s, with Jacobian convention
-            ``J[i, j] = d u_i / d x_j`` and symmetric strain ``(J+J.T)/2``.
-        """
-        self.compute_velocity_gradients_gpu()
-        N = self.n_particles_total[None]
-        grads = self._download_matrix_field(self.velocity_gradient, N)
-        strains = self._download_matrix_field(self.strain_rate, N)
-        return grads, strains
-
-    def compute_velocity_and_gradient_gpu(
-        self, freestream_velocity: np.ndarray | None = None
-    ) -> None:
+    def compute_velocity_and_gradient_gpu(self) -> None:
         """Evaluate velocity, Jacobian, and strain in one device traversal.
 
         Results remain in the Taichi fields ``velocity``,
-        ``velocity_gradient``, and ``strain_rate``.  ``freestream_velocity``
-        has shape ``(3,)`` and units m/s; gradients and strain have units 1/s.
+        ``velocity_gradient``, and ``strain_rate``, without a freestream;
+        gradients and strain have units 1/s.
         """
-        t_start = time.perf_counter()
-        if freestream_velocity is not None:
-            self.freestream_velocity[None] = ti.Vector(
-                freestream_velocity.astype(np.float32).tolist()
-            )
-        else:
-            self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
+        self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
         N = int(self.n_particles_total[None])
         for start in range(0, N, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, N - start)
             self.compute_velocity_and_gradient_kernel(self.theta * self.theta, start, count)
             ti.sync()
-        self.eval_time = time.perf_counter() - t_start
-
-    def compute_velocity_and_gradient(self, freestream_velocity: np.ndarray | None = None) -> tuple:
-        """Run the fused traversal and download velocity/Jacobian/strain.
-
-        Returns
-        -------
-        velocity, gradient, strain : tuple of ndarray
-            Shapes ``(N, 3)``, ``(N, 3, 3)``, and ``(N, 3, 3)`` with units m/s,
-            1/s, and 1/s respectively.
-        """
-        self.compute_velocity_and_gradient_gpu(freestream_velocity)
-        N = self.n_particles_total[None]
-        return (
-            self._download_vector_field(self.velocity, N),
-            self._download_matrix_field(self.velocity_gradient, N),
-            self._download_matrix_field(self.strain_rate, N),
-        )
 
     # TARGET POINT EVALUATIONS
 
@@ -2363,15 +2182,3 @@ class TaichiTreecode:
             )
 
     # INFO
-
-    def info(self) -> str:
-        """Return a human-readable hierarchy and timing summary."""
-        grad_info = f"\n  Grad time: {self.grad_time * 1000:.2f} ms" if self.grad_time > 0 else ""
-        return (
-            f"TaichiTreecode (GPU/LBVH):\n"
-            f"  Particles: {self.n_particles_total[None]}\n"
-            f"  Nodes: {self.n_nodes[None]}\n"
-            f"  Opening angle θ: {self.theta}\n"
-            f"  Build time: {self.build_time * 1000:.2f} ms\n"
-            f"  Eval time: {self.eval_time * 1000:.2f} ms{grad_info}"
-        )

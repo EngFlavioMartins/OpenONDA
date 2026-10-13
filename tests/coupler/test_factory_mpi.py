@@ -86,9 +86,7 @@ with coupler.create_coupler(flow, particles, settings, mesh=mesh,
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "mode", ["run", "construction_failure", "state_check_failure", "application_failure"]
-)
+@pytest.mark.parametrize("mode", ["run", "construction_failure", "state_check_failure"])
 def test_coupled_factory_launches_and_closes_two_ranks(tmp_path, mode):
     if find_spec("mpi4py") is None or find_spec("petsc4py") is None:
         pytest.skip("MPI and PETSc are required")
@@ -139,12 +137,6 @@ try:
         assert native.parallel.size == 2
         assert (driver._injected_vpm is not None) == native.parallel.is_root
         assert worker_thread_count() == 2
-        def instrument(particle_solver):
-            print("INSTRUMENTED_ONCE", flush=True)
-            if mode == "application_failure":
-                raise ValueError("injected application failure")
-            return particle_solver is driver._injected_vpm
-        assert driver.apply_vpm(instrument)
         if mode == "state_check_failure" and driver._injected_vpm is not None:
             def fail():
                 raise vpm_api.ParticleStateError("injected accepted-state limit failure")
@@ -155,8 +147,7 @@ try:
     status = "completed"
 except (RuntimeError, ValueError) as error:
     expected = {"construction_failure": "injected construction failure",
-                "state_check_failure": "injected accepted-state limit failure",
-                "application_failure": "injected application failure"}.get(mode, "")
+                "state_check_failure": "injected accepted-state limit failure"}.get(mode, "")
     if mode == "run" or expected not in str(error):
         raise
     status = "expected_failure"
@@ -193,7 +184,6 @@ if driver is not None:
     assert "[Taichi] version" not in result.stdout
     if mode != "construction_failure":
         assert result.stdout.count(" OPENONDA VPM\n") == 1
-        assert result.stdout.count("INSTRUMENTED_ONCE") == 1
     expected = "completed" if mode == "run" else "expected_failure"
     for rank in range(2):
         assert json.loads((tmp_path / "outputs" / f"rank-{rank}.json").read_text()) == {

@@ -701,20 +701,6 @@ class FVMVPMCoupler:
 
         self._initialize_run_state()
 
-    def apply_vpm(self, callback, *args, **kwargs):
-        """Run application instrumentation once with the owned VPM solver.
-
-        Callbacks may inspect the VPM state or install diagnostic hooks. The
-        library selects its owner and propagates callback failures. Collective
-        FVM field queries belong outside the callback. The result is shared.
-        """
-        result = None
-        with collective_phase(self._comm, "VPM application callback"):
-            if self._is_master:
-                vpm = self.vpm_solver if self.vpm_solver is not None else self._injected_vpm
-                result = callback(vpm, *args, **kwargs)
-        return self._comm.bcast(result, root=0) if self._comm is not None else result
-
     def run(
         self,
         start_step: int = 0,

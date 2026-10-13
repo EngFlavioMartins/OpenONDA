@@ -56,12 +56,7 @@ class FiniteCorrectionTailBound:
     velocity_upper: float
     gradient_upper: float
     absolute_strength_upper: float
-    image_count: int
-    cutoff_limited_images: int
     descriptors: tuple
-    distance_lower_bounds: tuple
-    velocity_upper_by_image: tuple
-    gradient_upper_by_image: tuple
     source_sha256: str
 
 
@@ -202,9 +197,7 @@ def finite_image_correction_bound(
     if strength_upper < 0:
         raise ValueError("nonnegative validated strength required")
     if not descriptors:
-        return FiniteCorrectionTailBound(
-            0.0, 0.0, strength_upper, 0, 0, (), (), (), (), snapshot.source_sha256
-        )
+        return FiniteCorrectionTailBound(0.0, 0.0, strength_upper, (), snapshot.source_sha256)
     period = _frozen_interval(snapshot.period, ())
     if period.lower <= 0:
         raise ValueError("positive enclosed slab period required")
@@ -227,20 +220,9 @@ def finite_image_correction_bound(
         axis=1
     )
     distance = np.maximum(float(omitted_distance_lower), distance_lower)
-    cutoff_limited = int(np.count_nonzero(distance_lower <= omitted_distance_lower))
     if snapshot.identically_zero or not snapshot.source_count:
-        zero = (0.0,) * len(descriptors)
         return FiniteCorrectionTailBound(
-            0.0,
-            0.0,
-            strength_upper,
-            len(descriptors),
-            cutoff_limited,
-            descriptors,
-            tuple(distance.tolist()),
-            zero,
-            zero,
-            snapshot.source_sha256,
+            0.0, 0.0, strength_upper, descriptors, snapshot.source_sha256
         )
     u, j = _vector_correction_envelopes(distance, float(tau), strength_upper)
     if kernel_defect is not None:
@@ -252,11 +234,6 @@ def finite_image_correction_bound(
         float(pairwise_sum(u).upper),
         float(pairwise_sum(j).upper),
         strength_upper,
-        len(descriptors),
-        cutoff_limited,
         descriptors,
-        tuple(distance.tolist()),
-        tuple(u.upper.tolist()),
-        tuple(j.upper.tolist()),
         snapshot.source_sha256,
     )

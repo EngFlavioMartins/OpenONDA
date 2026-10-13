@@ -52,11 +52,6 @@ class SolverIO:
         return "vpm"
 
     @property
-    def vlm_prefix(self) -> str:
-        """Return the stable filename prefix for VLM outputs."""
-        return "vlm"
-
-    @property
     def step(self) -> int:
         """Return the parent solver's accepted-step index."""
         return self.solver.step

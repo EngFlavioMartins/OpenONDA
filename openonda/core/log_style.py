@@ -14,7 +14,6 @@ import textwrap
 from typing import SupportsFloat, SupportsInt
 
 WIDTH = 88
-BLOCK_WIDTH = WIDTH
 _VALUE_END = 63
 _VALUE_START = 39
 Row = tuple[str, object] | tuple[str, object, str]
@@ -124,13 +123,12 @@ def _detail(entry: Row) -> str:
     return "\n".join(result)
 
 
-def block_section(title: str, rows: Iterable[Row], *, show_title: bool = True) -> FormattedText:
+def block_section(title: str, rows: Iterable[Row]) -> FormattedText:
     """Render one populated section with a single gap before its heading."""
-    lines = (
-        ["", textwrap.fill(str(title).upper(), WIDTH, initial_indent=" ", subsequent_indent=" ")]
-        if show_title
-        else []
-    )
+    lines = [
+        "",
+        textwrap.fill(str(title).upper(), WIDTH, initial_indent=" ", subsequent_indent=" "),
+    ]
     lines.extend(_detail(row) for row in rows)
     return FormattedText("\n".join(lines))
 

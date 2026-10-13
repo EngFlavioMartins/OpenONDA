@@ -18,7 +18,7 @@ def plot_circulation(samples_arg=None, destination=FIGURES_DIR, figure_format="p
     _theme.centered_subplots_adjust(fig, outer=0.101, bottom=0.2, top=0.915)
     ax.plot(data.time, data.vortex_strength_magnitude_sum, color=_theme.COLORS["vpm"])
     ax.set(xlabel="Time [s]", ylabel="$\\sum_p |\\boldsymbol{\\Gamma}_p|$ [m$^3$/s]")
-    _save_figure(fig, (ax,), destination / "delta_wing_circulation_history.png", figure_format)
+    _save_figure(fig, destination / "delta_wing_circulation_history.png", figure_format)
 
 
 def main() -> None:

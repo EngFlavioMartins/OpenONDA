@@ -93,7 +93,6 @@ class DivergenceRelaxationResult:
     vortex_strength_error: float
     linear_impulse_error: float
     angular_impulse_error: float
-    total_variation_change_relative: float
     total_kinetic_energy_change_relative: float
     total_enstrophy_change_relative: float
     total_helicity_change_relative: float
@@ -133,8 +132,6 @@ class GaussianParticleGridOperator:
         vortex_strength_weight: np.ndarray,
         *,
         spacing: float,
-        support_radius_multiplier: float = 4.0,
-        max_core_radius_spread: float = 0.25,
         slip_slab: tuple[float, float] | None = None,
     ) -> None:
         """Prepare a symmetric M4/Gaussian grid operator.
@@ -152,13 +149,6 @@ class GaussianParticleGridOperator:
             ``|Gamma|`` with units m³/s.
         spacing : float
             Uniform Cartesian grid spacing in metres.
-        support_radius_multiplier : float, default=4.0
-            Gaussian support radius divided by the reconstruction width;
-            values below three are rejected because they truncate the M4
-            stencil too aggressively.
-        max_core_radius_spread : float, default=0.25
-            Maximum allowed relative core-radius range, measured as
-            ``ptp(core_radius) / mean(core_radius)``.
         slip_slab : tuple of float, optional
             Free-slip planes ``(z_min, z_max)``. The z axis then spans one
             image period and is periodic; every scatter adds the particles'
@@ -167,9 +157,10 @@ class GaussianParticleGridOperator:
         Raises
         ------
         ValueError
-            If shapes, positivity, or support parameters are invalid.
+            If shapes or positivity are invalid.
         DivergenceRelaxationError
-            If core-radius heterogeneity exceeds the admissible range.
+            If the relative core-radius range ``ptp(core_radius) / mean(core_radius)``
+            exceeds 0.25.
 
         Notes
         -----
@@ -187,17 +178,13 @@ class GaussianParticleGridOperator:
             raise ValueError("vortex_strength_weight must have shape (N,)")
         if spacing <= 0.0 or np.any(core_radius <= 0.0):
             raise ValueError("spacing and all core_radius must be positive")
-        if support_radius_multiplier < 3.0:
-            raise ValueError("support_radius_multiplier must be at least three")
         core_radius_scale = max(float(core_radius.mean()), np.finfo(float).tiny)
         self.core_radius_spread = float(np.ptp(core_radius)) / core_radius_scale
-        if not np.isfinite(max_core_radius_spread) or max_core_radius_spread < 0.0:
-            raise ValueError("max_core_radius_spread must be finite and non-negative")
-        if self.core_radius_spread > max_core_radius_spread:
+        if self.core_radius_spread > 0.25:
             raise DivergenceRelaxationError(
                 "divergence relaxation uses one Gaussian reconstruction width, but the "
                 f"active core-radius spread is {self.core_radius_spread:.3g} > "
-                f"the admissible {max_core_radius_spread:.3g}",
+                "the admissible 0.25",
                 check="heterogeneous core width",
             )
 
@@ -216,8 +203,9 @@ class GaussianParticleGridOperator:
             else float(np.sqrt(np.mean(core_radius * core_radius)))
         )
         self.spacing = float(spacing)
-        self.support_radius_multiplier = float(support_radius_multiplier)
-        padding = int(np.ceil(support_radius_multiplier * self.smoothing_radius / spacing)) + 3
+        # Gaussian support radius divided by the reconstruction width.
+        self.support_radius_multiplier = 4.0
+        padding = int(np.ceil(4.0 * self.smoothing_radius / spacing)) + 3
         lower = np.floor(position.min(axis=0) / spacing).astype(np.int64) - padding
         upper = np.ceil(position.max(axis=0) / spacing).astype(np.int64) + padding
         shape = [int(value) for value in upper - lower + 1]
@@ -672,7 +660,6 @@ def _constrained_divergence_relaxation_once(
             vortex_strength_error=0.0,
             linear_impulse_error=0.0,
             angular_impulse_error=0.0,
-            total_variation_change_relative=0.0,
             total_kinetic_energy_change_relative=0.0,
             total_enstrophy_change_relative=0.0,
             total_helicity_change_relative=0.0,
@@ -1113,7 +1100,6 @@ def _constrained_divergence_relaxation_once(
         vortex_strength_error=vortex_strength_error,
         linear_impulse_error=linear_impulse_error,
         angular_impulse_error=angular_impulse_error,
-        total_variation_change_relative=variation_change_relative,
         total_kinetic_energy_change_relative=total_kinetic_energy_change_relative,
         total_enstrophy_change_relative=total_enstrophy_change_relative,
         total_helicity_change_relative=total_helicity_change_relative,
@@ -1454,7 +1440,6 @@ def _combine_projection_sweeps(
         vortex_strength_error=vortex_strength_error,
         linear_impulse_error=linear_impulse_error,
         angular_impulse_error=angular_impulse_error,
-        total_variation_change_relative=variation_change_relative,
         total_kinetic_energy_change_relative=total_kinetic_energy_change_relative,
         total_enstrophy_change_relative=total_enstrophy_change_relative,
         total_helicity_change_relative=total_helicity_change_relative,

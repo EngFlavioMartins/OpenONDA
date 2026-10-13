@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from numba import types
@@ -717,8 +716,6 @@ def validate_wall_vertex_conformance(
     mesh_data: dict[str, object],
     surface_triangles: np.ndarray,
     wall_patch_name: str,
-    *,
-    tolerance: float | None = None,
 ) -> dict[str, float | int]:
     """Require every vertex of a wall patch to lie on the input surface.
 
@@ -734,10 +731,9 @@ def validate_wall_vertex_conformance(
     surface_triangles:
         Input STL triangles, shape ``(n, 3, 3)``.
     wall_patch_name:
-        Boundary patch whose vertices define the wall.
-    tolerance:
-        Absolute distance tolerance.  When omitted, use ``1e-8`` times the
-        larger of the geometry span and one model unit.
+        Boundary patch whose vertices define the wall. Vertices must lie
+        within ``1e-8`` times the larger of the geometry span and one model
+        unit.
     """
     from .surface_classification import SurfaceIndex
 
@@ -758,9 +754,7 @@ def validate_wall_vertex_conformance(
     )
     surface_triangles = np.asarray(surface_triangles, dtype=np.float64)
     scale = max(float(np.ptp(surface_triangles, axis=(0, 1)).max()), 1.0)
-    limit = 1.0e-8 * scale if tolerance is None else float(tolerance)
-    if not np.isfinite(limit) or limit <= 0.0:
-        raise MeshValidationError("wall conformance tolerance must be finite and positive")
+    limit = 1.0e-8 * scale
     index = SurfaceIndex.build(surface_triangles)
     _nearest, distances, _triangle_ids = index.nearest_points(points[wall_vertex_ids])
     maximum = float(distances.max(initial=0.0))
@@ -803,85 +797,3 @@ def validate_no_fluid_cell_centres_inside_surface(
             f"first cell ids {bad[:10].tolist()}"
         )
     return {"cell_count": int(len(values)), "inside_count": 0}
-
-
-def validate_no_fluid_solid_overlap(
-    mesh_data: dict[str, object], solid_bounds: Sequence[float], *, tolerance: float = 1.0e-10
-) -> None:
-    """Reject any ordinary fluid cell whose volume overlaps the solid AABB.
-
-    Cells derive their axis-aligned bounds from their *actual vertices*, never
-    from a cell-centre test, so a cell whose centre lies outside the body but
-    whose volume crosses a body face is caught here.  Touching the solid with
-    zero volume is valid (wall-adjacent fluid).
-
-    Args:
-        mesh_data: A mesh dictionary with ``points`` and either
-            ``cell_vertex_indices`` (hex cells) or the face-based
-            ``faces``/``cell_face_indices`` topology.
-        solid_bounds: Axis-aligned body bounds ``(xmin, xmax, ymin, ymax,
-            zmin, zmax)``.
-        tolerance: Positive-volume overlap below this magnitude is treated as
-            zero (roundoff).
-
-    Raises:
-        MeshValidationError: When any fluid cell overlaps the solid with
-            positive volume.
-    """
-    solid_bounds = np.asarray(solid_bounds, dtype=np.float64)
-    if solid_bounds.shape != (6,):
-        raise MeshValidationError("solid_bounds must contain six coordinates")
-    solid_min = solid_bounds[::2]
-    solid_max = solid_bounds[1::2]
-    points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    n_cells = int(mesh_data["n_cells"])
-
-    cell_vertex_indices = mesh_data.get("cell_vertex_indices")
-    if cell_vertex_indices is not None and np.asarray(cell_vertex_indices).ndim == 2:
-        vertices = points[np.asarray(cell_vertex_indices, dtype=np.int64)]
-        if vertices.shape[0] != n_cells:
-            raise MeshValidationError("cell_vertex_indices does not match n_elements")
-        cell_min = vertices.min(axis=1)
-        cell_max = vertices.max(axis=1)
-    else:
-        from .topology import build_cell_face_csr
-
-        faces = np.asarray(mesh_data["faces"])
-        cell_face_indices, cell_face_offset = build_cell_face_csr(
-            mesh_data["owners"], mesh_data["neighbours"], n_cells, mesh_data["n_faces"]
-        )
-        cell_face_indices = np.asarray(cell_face_indices, dtype=np.int64)
-        cell_face_offset = np.asarray(cell_face_offset, dtype=np.int64)
-        counts = np.diff(cell_face_offset)
-        if counts.max() == counts.min():
-            block = faces[cell_face_indices.reshape(-1)]
-            cell_min = block.reshape(n_cells, counts[0], -1)[:, :, 0].min(axis=1)
-            cell_max = block.reshape(n_cells, counts[0], -1)[:, :, 0].max(axis=1)
-        else:
-            cell_min = np.empty((n_cells, 3), dtype=np.float64)
-            cell_max = np.empty((n_cells, 3), dtype=np.float64)
-            for cell in range(n_cells):
-                cell_pts = points[
-                    np.unique(
-                        faces[
-                            cell_face_indices[cell_face_offset[cell] : cell_face_offset[cell + 1]]
-                        ]
-                    )
-                ]
-                cell_min[cell] = cell_pts.min(axis=0)
-                cell_max[cell] = cell_pts.max(axis=0)
-
-    overlap = np.maximum(
-        0.0,
-        np.minimum(cell_max, solid_max) - np.maximum(cell_min, solid_min),
-    )
-    overlap_volume = overlap[:, 0] * overlap[:, 1] * overlap[:, 2]
-    bad = np.flatnonzero(overlap_volume > tolerance)
-    if len(bad):
-        ids = bad[:10].tolist()
-        raise MeshValidationError(
-            f"{len(bad)} fluid cells overlap the solid with positive volume "
-            f"(max {overlap_volume[bad].max():.6g}); first global ids {ids}. "
-            "Body preservation requires every body plane to be an exact Cartesian "
-            "lattice plane."
-        )

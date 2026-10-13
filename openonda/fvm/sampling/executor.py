@@ -94,14 +94,12 @@ class FVMSamplerExecutor:
                     continue
             if isinstance(sampler, ForceSampler):
                 forces = sampler.sample(solver)
-                solver.last_forces = forces
                 if parallel.is_root:
                     sampler.write_csv(solver, samples_dir, forces)
                     solver.logger.force_info(forces)
             elif isinstance(sampler, YPlusSampler):
                 stats = sampler.sample(solver)
                 if parallel.is_root:
-                    solver.last_y_plus = stats
                     solver.logger.yplus_info(stats)
                     sampler.write_csv(solver, samples_dir, stats)
             else:

@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from openonda.fvm.mesh.cartesian.config import CompositeSizeField
 from openonda.fvm.mesh.cartesian.features import classify_features
 from openonda.fvm.mesh.geometry import compute_mesh_geometry
 from openonda.fvm.mesh.surface_classification import SurfaceIndex
@@ -39,31 +38,9 @@ def test_configuration_objects_are_frozen_and_validate_units():
     with pytest.raises(FrozenInstanceError):
         patches.xmin = "changed"
     with pytest.raises(ValueError, match="positive"):
-        msh.SphereRefinement("bad", (0.0, 0.0, 0.0), 0.0, 0.1)
+        msh.BoxRefinement("bad", (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0), 0.0)
     with pytest.raises(ValueError, match="between"):
         msh.FeatureRefinement(angle=180.0, cell_size=0.1)
-    with pytest.raises(ValueError, match="differ"):
-        msh.LineRefinement("bad", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0.1)
-
-
-def test_volume_controls_combine_by_smallest_requested_size():
-    controls = (
-        msh.BoxRefinement("box", (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0), 0.25),
-        msh.SphereRefinement("sphere", (0.0, 0.0, 0.0), 0.5, 0.125),
-        msh.ConeRefinement("cone", (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 0.5, 1.0, 0.2),
-        msh.LineRefinement("line", (-1.0, 0.0, 0.0), (1.0, 0.0, 0.0), 0.1),
-    )
-    field = CompositeSizeField(0.5, controls, minimum_size=0.0625)
-    values = field.requested_size(np.asarray(((0.0, 0.0, 0.0), (1.5, 1.5, 1.5))))
-    np.testing.assert_allclose(values, (0.1, 0.5))
-    assert field.requested_sizes == (0.5, 0.25, 0.2, 0.125, 0.1, 0.0625)
-
-
-def test_sphere_refinement_does_not_refine_disjoint_boxes_inside_its_aabb():
-    """The octree adapter must retain primitive containment semantics."""
-    sphere = msh.SphereRefinement("sphere", (0.0, 0.0, 0.0), 0.5, 0.1)
-    assert sphere.intersects_box(np.asarray((-0.1, -0.1, -0.1)), np.asarray((0.1, 0.1, 0.1)))
-    assert not sphere.intersects_box(np.asarray((0.4, 0.4, 0.4)), np.asarray((0.5, 0.5, 0.5)))
 
 
 @pytest.mark.slow
@@ -92,22 +69,6 @@ def test_cartesian_build_preserves_declared_patch_names_and_reports_effective_si
     assert mesher.report is not None
     assert mesher.report.sizes[0].effective == 0.5
     assert mesher.report.surface_hashes == (surface.sha256,)
-
-
-@pytest.mark.parametrize("fixture_name", ("ellipsoid", "rotated_box", "finite_naca_wing"))
-def test_configurable_boundary_layers_are_rejected(tmp_path: Path, fixture_name: str):
-    fixtures = make_acceptance_fixtures(tmp_path)
-    surface = msh.STLSurface(fixtures[fixture_name].paths[0], patch="body")
-    mesher = msh.CartesianMesher(
-        domain=_domain(),
-        surfaces=(surface,),
-        max_cell_size=0.5,
-        boundary_cell_size=0.25,
-        min_cell_size=0.125,
-        boundary_layers=(msh.BoundaryLayers(("body",), 2, 0.02, 1.1),),
-    )
-    with pytest.raises(NotImplementedError, match="Configurable BoundaryLayers"):
-        mesher.build()
 
 
 def test_surface_index_and_features_are_deterministic_for_smooth_and_sharp_inputs(

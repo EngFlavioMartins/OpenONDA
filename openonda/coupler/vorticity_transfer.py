@@ -45,25 +45,21 @@ def required_renewal_buffer_length(
     freestream_velocity: np.ndarray | list[float] | tuple[float, ...],
     coupling_time_step: float,
     particle_spacing: float,
-    *,
-    advection_safety_factor: float = 1.5,
 ) -> float:
     """Return the release travel plus complete M4' support required by renewal."""
     velocity = np.asarray(freestream_velocity, dtype=np.float64).reshape(3)
     dt = float(coupling_time_step)
     spacing = float(particle_spacing)
-    safety = float(advection_safety_factor)
     if (
         not np.all(np.isfinite(velocity))
         or not np.isfinite(dt)
         or dt < 0.0
         or not np.isfinite(spacing)
         or spacing <= 0.0
-        or not np.isfinite(safety)
-        or safety < 1.0
     ):
         raise ValueError("renewal buffer inputs must be finite and physically valid")
-    return safety * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
+    # Advection travel carries a 1.5 safety factor.
+    return 1.5 * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
 
 
 @dataclass(frozen=True)
