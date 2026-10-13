@@ -48,12 +48,12 @@ repository must re-clone or reset to the new `development`.
 
 ## 3. Tag and archive
 
-1. Set the version in `openonda/core/version.py` and `CITATION.cff`, and move
-   the `Unreleased` entries of `CHANGELOG.md` under that version.
+1. Set the version in `openonda/core/version.py` and `CITATION.cff`, and write
+   the changes since the previous version as the release notes.
 2. Tag `main` (`git tag v<version> && git push origin v<version>`) and publish
    a GitHub release from the tag. The release workflow builds, checks and
    uploads the package to PyPI.
 3. Zenodo archives the GitHub release and mints a version DOI; add it to
-   `CITATION.cff` and the changelog link.
+   `CITATION.cff`.
 4. Attach large media (tutorial GIFs and videos) to the release if they are
    moved out of the repository.

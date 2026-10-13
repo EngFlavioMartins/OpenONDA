@@ -2,8 +2,13 @@
 
 Importing this package never imports CuPy or selects a GPU. The components
 are selected explicitly through SlipSlabInduction and confer no automatic
-image-tail or particle state validation.
+image-tail or particle state validation. A system CUDA 12 toolkit is located
+here, before any component can import CuPy.
 """
+
+from .availability import use_system_cuda_toolkit
+
+use_system_cuda_toolkit()
 
 
 def __getattr__(name: str) -> type:

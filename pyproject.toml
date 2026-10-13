@@ -117,7 +117,7 @@ Homepage = "https://github.com/EngFlavioMartins/OpenONDA"
 Repository = "https://github.com/EngFlavioMartins/OpenONDA"
 Documentation = "https://github.com/EngFlavioMartins/OpenONDA/tree/main/docs"
 "Bug Reports" = "https://github.com/EngFlavioMartins/OpenONDA/issues"
-Changelog = "https://github.com/EngFlavioMartins/OpenONDA/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/EngFlavioMartins/OpenONDA/releases"
 
 [tool.setuptools.dynamic]
 version = {attr = "openonda.core.version.__version__"}

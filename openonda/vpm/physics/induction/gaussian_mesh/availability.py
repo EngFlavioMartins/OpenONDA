@@ -7,8 +7,10 @@ installation check, not an import-time probe or a numerical fallback.
 """
 
 from importlib import import_module
+import os
 from pathlib import Path
 import re
+import shutil
 
 
 class GaussianMeshUnavailableError(RuntimeError):
@@ -23,6 +25,37 @@ def _cupy_version(version: str) -> str | None:
             "Install OpenONDA[gaussian-mesh-cuda12] in this Python environment."
         )
     return str(version)
+
+
+def _system_toolkit_prefix() -> str | None:
+    """Prefix of a system CUDA 12 toolkit whose runtime headers CuPy can compile against."""
+    nvcc = shutil.which("nvcc")
+    candidates = [Path(nvcc).resolve().parents[1]] if nvcc else []
+    candidates += [
+        Path("/usr/local/cuda"),
+        *sorted(Path("/usr/local").glob("cuda-12*"), reverse=True),
+    ]
+    candidates += [Path("/opt/cuda"), Path("/usr")]
+    for prefix in candidates:
+        header = prefix / "include" / "cuda_runtime_api.h"
+        if not header.is_file():
+            continue
+        match = re.search(r"#define\s+CUDART_VERSION\s+(\d+)", header.read_text(errors="ignore"))
+        if match is not None and 12000 <= int(match.group(1)) < 13000:
+            return str(prefix)
+    return None
+
+
+def use_system_cuda_toolkit() -> None:
+    """Point CuPy at a system CUDA 12 toolkit, such as /usr or /usr/local/cuda.
+
+    CuPy and its header resolver read ``CUDA_PATH`` once per process, on CuPy's
+    first import. A root the user has set is kept.
+    """
+    if not os.environ.get("CUDA_PATH") and not os.environ.get("CUDA_HOME"):
+        prefix = _system_toolkit_prefix()
+        if prefix is not None:
+            os.environ["CUDA_PATH"] = prefix
 
 
 def require_gaussian_host_runtime() -> dict[str, str] | None:
