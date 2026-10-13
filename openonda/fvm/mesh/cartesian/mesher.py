@@ -294,9 +294,9 @@ def _triangle_plane_intervals(
     anchor: np.ndarray,
     direction: np.ndarray,
     tolerance: float,
-) -> list | list[tuple[float, float]]:
+) -> list[tuple[float, float]]:
     """Finite line intervals cut from a coplanar patch's STL triangles."""
-    intervals = []
+    intervals: list[tuple[float, float]] = []
     for triangle in triangles:
         signed = triangle @ normal - offset
         crossings = []

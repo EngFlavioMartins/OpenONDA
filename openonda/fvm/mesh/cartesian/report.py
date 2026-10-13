@@ -100,7 +100,7 @@ class OptimisationDiagnostics:
     max_aspect_ratio: float | None = None
 
     @classmethod
-    def from_quality(cls, quality: dict) -> OptimisationDiagnostics:
+    def from_quality(cls, quality: Mapping[str, Any]) -> OptimisationDiagnostics:
         """Adapt mesh-quality measurements into a typed stage result."""
         return cls(
             max_non_orthogonality_deg=_optional_float(quality, "max_non_orthogonality_deg"),
@@ -117,7 +117,7 @@ class OptimisationDiagnostics:
         }
 
 
-def _optional_float(values: dict, key: str) -> float | None:
+def _optional_float(values: Mapping[str, Any], key: str) -> float | None:
     value = values.get(key)
     return None if value is None else float(value)
 

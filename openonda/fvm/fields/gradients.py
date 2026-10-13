@@ -7,12 +7,13 @@ from scipy import sparse
 
 from openonda.core._numba import cacheable_njit as njit
 
+from ..mesh.data import BoundaryPatchData, GeometryData, LeastSquaresGeometry, MeshData
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 
 _LSQ_QR_CONDITION_LIMIT = 1.0e8
 
 
-def _is_empty_boundary(boundary: dict[str, object], *, allow_source_type: bool = False) -> bool:
+def _is_empty_boundary(boundary: BoundaryPatchData, *, allow_source_type: bool = False) -> bool:
     type_u = boundary.get("velocity_type")
     if type_u is not None:
         strategy = BOUNDARIES.strategy(type_u, "velocity", "gradient")
@@ -28,8 +29,8 @@ def _is_empty_boundary(boundary: dict[str, object], *, allow_source_type: bool =
 def _correct_boundary_gradient(
     field_gradient: np.ndarray,
     field_values: np.ndarray,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
 ) -> np.ndarray:
     """Replace the wall-normal part of a boundary gradient with the exact snGrad.
 
@@ -164,7 +165,7 @@ def _accumulate_gauss_boundary(
 
 
 def _compute_gauss_gradient_compiled(
-    field_values: np.ndarray, mesh_data: dict[str, object], geo_data: dict[str, object]
+    field_values: np.ndarray, mesh_data: MeshData, geo_data: GeometryData
 ) -> np.ndarray:
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
@@ -198,7 +199,7 @@ def _compute_gauss_gradient_compiled(
 
 
 def compute_gauss_gradient(
-    field_values: np.ndarray, mesh_data: dict[str, object], geo_data: dict[str, object]
+    field_values: np.ndarray, mesh_data: MeshData, geo_data: GeometryData
 ) -> np.ndarray:
     """Compute cell gradients with the linear Gauss theorem.
 
@@ -289,7 +290,7 @@ def compute_gauss_gradient(
 
     # Identify non-empty boundary face indices
     boundaries = mesh_data["boundary"]
-    valid_b_face_indices = []
+    valid_b_face_list: list[int] = []
 
     for boundary in boundaries:
         if _is_empty_boundary(boundary):
@@ -297,13 +298,13 @@ def compute_gauss_gradient(
 
         start = boundary["start_face"]
         nf = boundary["n_faces"]
-        valid_b_face_indices.extend(range(start, start + nf))
+        valid_b_face_list.extend(range(start, start + nf))
 
     # Store indices of boundary elements that are part of non-empty patches
     # Store indices of owner cells corresponding to these non-empty boundary elements
 
-    if valid_b_face_indices:
-        valid_b_face_indices = np.array(valid_b_face_indices)
+    if valid_b_face_list:
+        valid_b_face_indices = np.array(valid_b_face_list)
         # Relative indices for owners_b and sf_b
         rel_indices = valid_b_face_indices - n_interior_faces
         # Boundary element indices for these faces
@@ -343,8 +344,8 @@ def compute_gauss_gradient(
 def _finish_gauss_gradient(
     field_gradient: np.ndarray,
     field_values: np.ndarray,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
 ) -> np.ndarray:
     n_cells = mesh_data["n_cells"]
     n_interior_faces = mesh_data["n_interior_faces"]
@@ -379,9 +380,7 @@ def _finish_gauss_gradient(
     return field_gradient
 
 
-def compute_lsq_geometry(
-    mesh_data: dict[str, object], geo_data: dict[str, object]
-) -> dict[str, object]:
+def compute_lsq_geometry(mesh_data: MeshData, geo_data: GeometryData) -> LeastSquaresGeometry:
     """Precompute inverse-distance LSQ stencils and 3×3 inverses.
 
     Distances are in metres. ``least_squares_neighbour_weighted_displacement``
@@ -396,7 +395,7 @@ def compute_lsq_geometry(
 
     Returns
     -------
-    dict[str, object]
+    LeastSquaresGeometry
         Reusable stencil indices, weighted displacements, inverse normal
         matrices, rank/condition diagnostics, and the ``"lsq"`` scheme tag.
     """
@@ -499,8 +498,24 @@ def compute_lsq_geometry(
     }
 
 
+def add_lsq_geometry(mesh_data: MeshData, geo_data: GeometryData) -> None:
+    """Store the least-squares stencils of :func:`compute_lsq_geometry` in ``geo_data``."""
+    lsq = compute_lsq_geometry(mesh_data, geo_data)
+    geo_data["least_squares_neighbour_field_index"] = lsq["least_squares_neighbour_field_index"]
+    geo_data["least_squares_owner_cell"] = lsq["least_squares_owner_cell"]
+    geo_data["least_squares_neighbour_weighted_displacement"] = lsq[
+        "least_squares_neighbour_weighted_displacement"
+    ]
+    geo_data["least_squares_normal_matrix_inverse"] = lsq["least_squares_normal_matrix_inverse"]
+    geo_data["least_squares_gradient_operator"] = lsq["least_squares_gradient_operator"]
+    geo_data["lsq_condition"] = lsq["lsq_condition"]
+    geo_data["lsq_rank"] = lsq["lsq_rank"]
+    geo_data["lsq_solver_method"] = lsq["lsq_solver_method"]
+    geo_data["gradient_scheme"] = lsq["gradient_scheme"]
+
+
 def compute_lsq_gradient(
-    field_values: np.ndarray, mesh_data: dict[str, object], geo_data: dict[str, object]
+    field_values: np.ndarray, mesh_data: MeshData, geo_data: GeometryData
 ) -> np.ndarray:
     """Compute the inverse-distance-weighted least-squares gradient.
 
@@ -560,7 +575,9 @@ def compute_lsq_gradient(
     return grad
 
 
-def _resolve_gradient_fn(geo_data: dict[str, object]) -> Callable:
+def _resolve_gradient_fn(
+    geo_data: GeometryData,
+) -> Callable[[np.ndarray, MeshData, GeometryData], np.ndarray]:
     """Return the gradient function matching the configured scheme.
 
     Checks ``geo_data["gradient_scheme"]``:

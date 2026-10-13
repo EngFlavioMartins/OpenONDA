@@ -102,13 +102,14 @@ class BoundaryRegistry:
             raise ValueError(f"Boundary operator {entry.name!r} is already registered")
         self._entries[entry.name] = entry
 
-    def require(self, name: str, field: str, operator: str) -> BoundaryOperator:
+    def require(self, name: str | None, field: str, operator: str) -> BoundaryOperator:
         """Resolve a boundary capability or raise a descriptive error.
 
         Parameters
         ----------
-        name : str
-            OpenFOAM-style boundary name, such as ``"fixedValue"``.
+        name : str or None
+            OpenFOAM-style boundary name, such as ``"fixedValue"``. ``None``
+            (no boundary condition set) is rejected like an unknown name.
         field : str
             Field family requesting the operation, such as ``"velocity"``.
         operator : str
@@ -124,7 +125,7 @@ class BoundaryRegistry:
         ValueError
             If the name/field/operator combination is unsupported.
         """
-        entry = self._entries.get(name)
+        entry = self._entries.get(name) if name is not None else None
         if entry is None or field not in entry.fields or operator not in entry.operators:
             supported = sorted(
                 key
@@ -141,7 +142,7 @@ class BoundaryRegistry:
         """Return a new set of boundary names supporting ``field``."""
         return {name for name, entry in self._entries.items() if field in entry.fields}
 
-    def strategy(self, name: str, field: str, operator: str) -> BoundaryStrategy:
+    def strategy(self, name: str | None, field: str, operator: str) -> BoundaryStrategy:
         """Resolve validated operator behavior without per-module name fallback."""
         return self.require(name, field, operator).strategy
 

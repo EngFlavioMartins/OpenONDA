@@ -90,7 +90,7 @@ def _section_boundary_name(
     xy: np.ndarray,
     names: tuple[str, str, str, str, str, str],
     bounds: tuple[float, float, float, float, float, float],
-    indices: dict,
+    indices: dict[str, SurfaceIndex],
 ) -> str:
     """Classify a section edge by proximity to a box side or immersed surface."""
     box_distances = [np.max(np.abs(xy[:, side // 2] - bounds[side])) for side in range(4)]

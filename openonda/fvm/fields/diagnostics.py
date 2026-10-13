@@ -10,19 +10,32 @@ Implements functions for computing:
 """
 
 from collections.abc import Sequence
+from typing import TypedDict
 
 import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
+from ..mesh.data import BoundaryPatchData, GeometryData, MeshData
 from . import gradients
+
+
+class SurfaceForces(TypedDict):
+    """Integrated loads on one surface patch: forces in N, moment in N·m."""
+
+    pressure_force: np.ndarray
+    viscous_force: np.ndarray
+    total_force: np.ndarray
+    moment: np.ndarray
+    coeffs: dict[str, float]
+    n_faces: int
 
 
 def compute_courant_number(
     volumetric_face_flux: np.ndarray,
     time_step_size: float,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
 ) -> np.ndarray:
     """Compute the cell Courant number from oriented face fluxes.
 
@@ -84,7 +97,7 @@ def compute_courant_number(
 
 def compute_continuity_error(
     volumetric_face_flux: np.ndarray,
-    mesh_data: dict,
+    mesh_data: MeshData,
 ) -> np.ndarray:
     """Compute the signed net volumetric flux for every finite-volume cell.
 
@@ -126,7 +139,7 @@ def compute_continuity_error(
 
 def compute_kinetic_energy(
     velocity: np.ndarray,
-    geo_data: dict,
+    geo_data: GeometryData,
     density: float | np.ndarray = 1.0,
 ) -> float:
     """Integrate ``0.5 * density * |velocity|²`` over interior cells.
@@ -167,8 +180,8 @@ def compute_kinetic_energy(
 
 def compute_enstrophy(
     velocity: np.ndarray,
-    mesh_data: dict,
-    geo_data: dict,
+    mesh_data: MeshData,
+    geo_data: GeometryData,
 ) -> float:
     """Integrate ``0.5 * |curl(velocity)|²`` over the FVM domain.
 
@@ -276,8 +289,8 @@ def enstrophy_from_gradient(
 
 def compute_vorticity(
     velocity: np.ndarray,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
     *,
     gradient: np.ndarray | None = None,
 ) -> np.ndarray:
@@ -332,7 +345,7 @@ def _normalize_patch_names(patch_names: str | Sequence[str] | None) -> list[str]
     return list(patch_names)
 
 
-def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
+def _should_compute_yplus(boundary: BoundaryPatchData, patch_names: Sequence[str] | None) -> bool:
     """Determine whether y+ should be computed for a given boundary.
 
     When *patch_names* is provided the boundary is selected by name.
@@ -356,13 +369,13 @@ def _should_compute_yplus(boundary: dict, patch_names: list | None) -> bool:
 
 def _compute_face_viscous_forces(
     velocity: np.ndarray,
-    velocity_gradient: np.ndarray,
+    velocity_gradient: np.ndarray | None,
     owners_idx: np.ndarray,
     boundary_idx: np.ndarray,
     n_vec: np.ndarray,
     mag_Sf: np.ndarray,
     wall_distance: np.ndarray,
-    dynamic_viscosity: float,
+    dynamic_viscosity: float | np.ndarray,
     nf: int,
 ) -> np.ndarray:
     """Compute viscous traction forces on boundary faces.
@@ -426,8 +439,8 @@ def _compute_face_viscous_forces(
 def _compute_force_coefficients(
     total_force: np.ndarray,
     moment: np.ndarray,
-    reference_velocity: float | None,
-    reference_area: float | None,
+    reference_velocity: float,
+    reference_area: float,
     density: float,
     reference_length: float | None = None,
 ) -> dict[str, float]:
@@ -439,8 +452,8 @@ def _compute_force_coefficients(
     Args:
         total_force: Total force vector ``(3,)``.
         reference_velocity: Reference velocity magnitude.
-        reference_area: Reference area.  If zero or ``None`` all coefficients
-            are set to ``0.0``.
+        reference_area: Reference area.  If zero all coefficients are set to
+            ``0.0``.
         density: Fluid density.
         moment: Integrated moment vector about the requested centre.
         reference_length: Reference length for pitching moment (optional).
@@ -472,9 +485,9 @@ def _compute_force_coefficients(
 def compute_y_plus(
     velocity: np.ndarray,
     kinematic_viscosity: float | np.ndarray,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
-    boundaries: list[dict],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
+    boundaries: list[BoundaryPatchData],
     patch_names: str | Sequence[str] | None = None,
 ) -> dict[str, dict[str, float]]:
     """Compute wall-unit ``y+`` statistics for selected boundary patches.
@@ -597,9 +610,9 @@ def compute_surface_face_loads(
     kinematic_pressure: np.ndarray,
     dynamic_viscosity: float,
     density: float,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
-    boundaries: list[dict],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
+    boundaries: list[BoundaryPatchData],
     patch_names: str | Sequence[str] | None = None,
     gradient: np.ndarray | None = None,
 ) -> dict[str, dict[str, np.ndarray]]:
@@ -711,16 +724,16 @@ def compute_surface_forces(
     kinematic_pressure: np.ndarray,
     dynamic_viscosity: float,
     density: float,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
-    boundaries: list[dict],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
+    boundaries: list[BoundaryPatchData],
     patch_names: str | Sequence[str] | None = None,
     reference_velocity: float | None = None,
     reference_area: float | None = None,
     reference_length: float | None = None,
     moment_centre: np.ndarray | None = None,
     gradient: np.ndarray | None = None,
-) -> dict[str, dict[str, object]]:
+) -> dict[str, SurfaceForces]:
     """Integrate pressure and viscous forces over selected surface patches.
 
     Parameters
@@ -750,7 +763,7 @@ def compute_surface_forces(
 
     Returns
     -------
-    dict[str, dict[str, object]]
+    dict[str, SurfaceForces]
         Per-patch integrated pressure/viscous/total force vectors in N,
         moment vectors in N·m, face counts, and optional coefficients.
     """
@@ -765,7 +778,7 @@ def compute_surface_forces(
         patch_names=patch_names,
         gradient=gradient,
     )
-    results = {}
+    results: dict[str, SurfaceForces] = {}
     for name, loads in face_loads.items():
         Fp_faces = loads["pressure_force"]
         Fv_faces = loads["viscous_force"]
@@ -777,14 +790,11 @@ def compute_surface_forces(
             raise ValueError("moment_centre must contain exactly three coordinates")
         arm = loads["face_centre"] - centre
         moment = np.sum(np.cross(arm, Fp_faces + Fv_faces), axis=0)
-        has_refs = (
-            reference_velocity is not None and reference_area is not None and density is not None
-        )
         coeffs = (
             _compute_force_coefficients(
                 total_force, moment, reference_velocity, reference_area, density, reference_length
             )
-            if has_refs
+            if reference_velocity is not None and reference_area is not None and density is not None
             else {}
         )
         results[name] = {
@@ -800,8 +810,8 @@ def compute_surface_forces(
 
 
 def merge_partition_forces(
-    parts: Sequence[dict[str, dict[str, object]]],
-) -> dict[str, dict[str, object]]:
+    parts: Sequence[dict[str, SurfaceForces]],
+) -> dict[str, SurfaceForces]:
     """Merge non-overlapping per-patch force fragments from MPI ranks.
 
     Parameters
@@ -814,7 +824,7 @@ def merge_partition_forces(
     dict
         Force/moment vectors and summed face counts keyed by patch name.
     """
-    merged = {}
+    merged: dict[str, SurfaceForces] = {}
     for rank_forces in parts:
         for name, values in rank_forces.items():
             target = merged.setdefault(
@@ -828,8 +838,10 @@ def merge_partition_forces(
                     "n_faces": 0,
                 },
             )
-            for key in ("pressure_force", "viscous_force", "total_force", "moment"):
-                target[key] += np.asarray(values[key], dtype=np.float64)
+            target["pressure_force"] += np.asarray(values["pressure_force"], dtype=np.float64)
+            target["viscous_force"] += np.asarray(values["viscous_force"], dtype=np.float64)
+            target["total_force"] += np.asarray(values["total_force"], dtype=np.float64)
+            target["moment"] += np.asarray(values["moment"], dtype=np.float64)
             for key, value in values["coeffs"].items():
                 target["coeffs"][key] = target["coeffs"].get(key, 0.0) + float(value)
             target["n_faces"] += int(values["n_faces"])
@@ -852,7 +864,7 @@ def merge_partition_yplus(
         Global minimum, maximum, face-weighted average, and face count per
         patch.
     """
-    merged = {}
+    merged: dict[str, dict[str, float]] = {}
     for rank_stats in parts:
         for name, values in rank_stats.items():
             count = int(values["n_faces"])

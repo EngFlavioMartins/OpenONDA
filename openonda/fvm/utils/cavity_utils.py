@@ -12,7 +12,9 @@ import numpy as np
 from scipy import sparse
 
 
-def fix_pressure_reference(A: sparse.spmatrix, b: np.ndarray) -> tuple[sparse.spmatrix, np.ndarray]:
+def fix_pressure_reference(
+    A: sparse.csr_matrix, b: np.ndarray
+) -> tuple[sparse.csr_matrix, np.ndarray]:
     """
     Fix pressure in cell 0 to avoid a singular all-Neumann system.
 
