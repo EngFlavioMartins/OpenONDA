@@ -21,6 +21,7 @@ from ..config.constants import (
     MAX_N_PARTICLES,
 )
 from .events import NullPhysicsEventObserver, PhysicsEventObserver
+from .induction.base import TaichiDataType
 
 if TYPE_CHECKING:
     from ..numerics.fourier_integrals import CartesianGrid, FourierIntegrals
@@ -50,7 +51,7 @@ class ParticleFieldEvaluation:
         self,
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
-        accumulator_dtype: ti.types = ti.f32,
+        accumulator_dtype: TaichiDataType = ti.f32,
         event_observer: PhysicsEventObserver | None = None,
     ):
         """
@@ -70,7 +71,8 @@ class ParticleFieldEvaluation:
         self._initialize_result_fields()
 
         # Initialize time tracking for energy dissipation rate
-        self._energy_history = []  # Store (time, energy, measurement) triples
+        # Store (time, energy, measurement) triples
+        self._energy_history: list[tuple[float, float, str]] = []
         # Retain a short audit trail.  dE/dt uses only the latest interval so
         # its sign is consistent with the two energy samples being reported.
         self._max_history_length = 7
@@ -78,7 +80,7 @@ class ParticleFieldEvaluation:
         # spacing and particle-relative phase fixed between samples: rebuilding
         # a tight grid at every output makes the same particle field acquire a
         # different energy solely because the FFT box moved or changed shape.
-        self._fourier_grid = None
+        self._fourier_grid: CartesianGrid | None = None
         # Define Taichi kernels
         self._define_taichi_kernels()
 
@@ -168,12 +170,12 @@ class ParticleFieldEvaluation:
 
         @ti.kernel
         def compute_flow_integrals_kernel(
-            position: ti.template(),
-            vortex_strength: ti.template(),
-            core_radius: ti.template(),
-            particle_volume: ti.template(),
-            viscosities_eff: ti.template(),
-            results: ti.template(),
+            position: ti.template(),  # type: ignore[invalid-annotation]
+            vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
+            core_radius: ti.template(),  # type: ignore[invalid-annotation]
+            particle_volume: ti.template(),  # type: ignore[invalid-annotation]
+            viscosities_eff: ti.template(),  # type: ignore[invalid-annotation]
+            results: ti.template(),  # type: ignore[invalid-annotation]
             n_particles_total: ti.i32,
         ):
             """
@@ -517,12 +519,12 @@ class ParticleFieldEvaluation:
 
         @ti.kernel
         def compute_group_vortex_centroid_kernel(
-            position: ti.template(),
-            vortex_strength: ti.template(),
-            group_id: ti.template(),
+            position: ti.template(),  # type: ignore[invalid-annotation]
+            vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
+            group_id: ti.template(),  # type: ignore[invalid-annotation]
             n_particles_total: ti.i32,
             target_group: ti.i32,
-            result: ti.template(),
+            result: ti.template(),  # type: ignore[invalid-annotation]
         ):
             """
             Compute vortex_centroid of vortex strength for a specific group.
@@ -557,10 +559,10 @@ class ParticleFieldEvaluation:
 
         @ti.kernel
         def compute_global_vortex_centroid_kernel(
-            position: ti.template(),
-            vortex_strength: ti.template(),
+            position: ti.template(),  # type: ignore[invalid-annotation]
+            vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
             n_particles_total: ti.i32,
-            result: ti.template(),
+            result: ti.template(),  # type: ignore[invalid-annotation]
         ):
             """
             Compute vortex_centroid of vortex strength for the entire particle set.
@@ -826,7 +828,7 @@ class ParticleFieldEvaluation:
         position: np.ndarray,
         spacing: float,
         shape: np.ndarray | None = None,
-        vortex_strength: np.ndarray = None,
+        vortex_strength: np.ndarray | None = None,
     ) -> "CartesianGrid":
         """Return a translation-following grid centred around the particle support."""
         from ..numerics.fourier_integrals import CartesianGrid, _grid_for_particles
@@ -857,7 +859,7 @@ class ParticleFieldEvaluation:
         return CartesianGrid(
             origin=origin.astype(np.float64),
             spacing=float(spacing),
-            shape=tuple(int(value) for value in fitted_shape),
+            shape=(int(fitted_shape[0]), int(fitted_shape[1]), int(fitted_shape[2])),
         )
 
     def _fourier_integrals_on_persistent_grid(

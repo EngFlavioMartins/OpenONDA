@@ -43,6 +43,7 @@ import taichi as ti
 
 from ..config.constants import MAX_N_PARTICLES
 from .base import PhysicsBase
+from .induction.base import TaichiDataType
 
 if TYPE_CHECKING:
     from ..particles.container import Particles
@@ -71,7 +72,7 @@ class PressurePhysics(PhysicsBase):
         self,
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
-        accumulator_dtype: ti.types = ti.f32,
+        accumulator_dtype: TaichiDataType = ti.f32,
     ):
         """
         Initialize pressure physics module.
@@ -137,8 +138,8 @@ class PressurePhysics(PhysicsBase):
         velocity_previous: np.ndarray | None = None,
         time_step_size: float | None = None,
         return_velocity: bool = False,
-        external_velocity_fn: Callable = None,
-        external_velocity_gradient_fn: Callable = None,
+        external_velocity_fn: Callable | None = None,
+        external_velocity_gradient_fn: Callable | None = None,
         external_velocity_time_derivative_fn: Callable | None = None,
         external_time: float = 0.0,
         core_radius_rate: np.ndarray | None = None,
@@ -329,10 +330,12 @@ class PressurePhysics(PhysicsBase):
         points = np.asarray(target_position, dtype=np.float64).reshape(-1, 3)
         count = len(points)
         targets = points
+        spacing = 1.0
         if include_viscous:
             if particle_spacing is None:
                 particle_spacing = float(np.mean(particles.core_radius_cpu())) if N > 0 else 1.0
-            offsets = np.eye(3, dtype=np.float64) * float(particle_spacing)
+            spacing = float(particle_spacing)
+            offsets = np.eye(3, dtype=np.float64) * spacing
             targets = np.concatenate(
                 [
                     points,
@@ -401,7 +404,7 @@ class PressurePhysics(PhysicsBase):
             viscous = (
                 float(kinematic_viscosity)
                 * np.sum(plus + minus - 2.0 * velocity[None, :, :], axis=0)
-                / float(particle_spacing) ** 2
+                / spacing**2
             )
         result = {
             "pressure_gradient": density * (-temporal - advective + viscous),
@@ -415,8 +418,8 @@ class PressurePhysics(PhysicsBase):
         self,
         target_position: np.ndarray,
         external_time: float,
-        velocity_fn: Callable,
-        gradient_fn: Callable,
+        velocity_fn: Callable | None,
+        gradient_fn: Callable | None,
         time_derivative_fn: Callable | None,
     ) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
         """Evaluate optional non-uniform external velocity terms for pressure.
@@ -539,9 +542,9 @@ class PressurePhysics(PhysicsBase):
     @ti.kernel
     def _compute_stretching_rate_kernel(
         self,
-        vortex_strength: ti.template(),
-        velocity_gradient: ti.template(),
-        dalpha_dt_out: ti.template(),
+        vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
+        velocity_gradient: ti.template(),  # type: ignore[invalid-annotation]
+        dalpha_dt_out: ti.template(),  # type: ignore[invalid-annotation]
         N: ti.i32,
     ):
         """Compute dGamma/dt = (∇u)ᵀ · Gamma using pre-computed gradients.
@@ -567,12 +570,12 @@ class PressurePhysics(PhysicsBase):
     @ti.kernel
     def _compute_core_radius_rate_kernel(
         self,
-        core_radius: ti.template(),
-        effective_viscosity: ti.template(),
-        velocity_gradient: ti.template(),
-        core_radius_rate_out: ti.template(),
-        diffusivity_constant: ti.template(),
-        volume_correction_constant: ti.template(),
+        core_radius: ti.template(),  # type: ignore[invalid-annotation]
+        effective_viscosity: ti.template(),  # type: ignore[invalid-annotation]
+        velocity_gradient: ti.template(),  # type: ignore[invalid-annotation]
+        core_radius_rate_out: ti.template(),  # type: ignore[invalid-annotation]
+        diffusivity_constant: ti.template(),  # type: ignore[invalid-annotation]
+        volume_correction_constant: ti.template(),  # type: ignore[invalid-annotation]
         N: ti.i32,
     ):
         """Compute ``dσ/dt`` for the active particle kernel.
@@ -596,16 +599,16 @@ class PressurePhysics(PhysicsBase):
     @ti.kernel
     def _compute_temporal_term_kernel_direct(
         self,
-        target_position: ti.template(),
-        position: ti.template(),
-        velocity: ti.template(),
-        vortex_strength: ti.template(),
-        core_radius: ti.template(),
-        dalpha_dt: ti.template(),
-        core_radius_rate: ti.template(),
-        du_dt_out: ti.template(),
-        q_kernel: ti.template(),
-        zeta_kernel: ti.template(),
+        target_position: ti.template(),  # type: ignore[invalid-annotation]
+        position: ti.template(),  # type: ignore[invalid-annotation]
+        velocity: ti.template(),  # type: ignore[invalid-annotation]
+        vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
+        core_radius: ti.template(),  # type: ignore[invalid-annotation]
+        dalpha_dt: ti.template(),  # type: ignore[invalid-annotation]
+        core_radius_rate: ti.template(),  # type: ignore[invalid-annotation]
+        du_dt_out: ti.template(),  # type: ignore[invalid-annotation]
+        q_kernel: ti.template(),  # type: ignore[invalid-annotation]
+        zeta_kernel: ti.template(),  # type: ignore[invalid-annotation]
         M: ti.i32,
         N: ti.i32,
     ):

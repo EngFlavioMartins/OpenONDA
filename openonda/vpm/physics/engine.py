@@ -12,6 +12,7 @@ from .diffusion.core_spreading import apply_core_spreading
 from .diffusion.grid import _GridDiffusionMixin
 from .diffusion.random_walk import apply_random_walk
 from .events import NullPhysicsEventObserver, PhysicsEventObserver
+from .induction.base import TaichiDataType
 
 if TYPE_CHECKING:
     from ..particles.container import Particles
@@ -31,7 +32,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         self,
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
-        accumulator_dtype: ti.types = ti.f32,
+        accumulator_dtype: TaichiDataType = ti.f32,
         max_evaluation_points: int = _HOST_TRANSFER_CHUNK_SIZE,
         event_observer: PhysicsEventObserver | None = None,
     ):
