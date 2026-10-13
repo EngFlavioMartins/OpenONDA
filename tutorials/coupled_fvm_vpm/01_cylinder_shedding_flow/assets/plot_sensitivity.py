@@ -6,6 +6,7 @@ import re
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
+import numpy as np
 
 from openonda.plotting import BACKGROUND_STRONG, CM, COLORS, LINE_WIDTH, MARKER_SIZE
 from openonda.plotting import MAX_FIGURE_WIDTH_CM, REFERENCE_STYLE
@@ -37,10 +38,10 @@ def read_runs():
     reference = read_forces(CASE_DIR / "reference_flow/samples/forces_history.csv")
     runs = []
     for path in sorted(CASE_DIR.glob("sensitivity/*/samples/forces_history.csv")):
-        forces = read_forces(path)
+        forces = np.atleast_1d(read_forces(path))
         end_time = forces["time"][-1]
         if end_time < DEVELOPED_SHEDDING + STATISTICS_LENGTH:
-            continue  # still developing
+            continue  # still developing, or stopped early
 
         # Both statistics over the same developed window, up to the coupled run's end
         expected = shedding_statistics(reference[reference["time"] <= end_time])
