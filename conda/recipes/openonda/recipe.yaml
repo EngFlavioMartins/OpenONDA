@@ -1,0 +1,88 @@
+# OpenONDA with its complete CPU stack: FVM, VPM, coupling, Cartesian meshing
+# and MPI/PETSc parallel runs. Taichi comes from OpenONDA's channel, everything
+# else from conda-forge. Gmsh import is optional (conda install python-gmsh):
+# its OpenCascade dependency roughly doubles the environment. Build from the repository root with
+#   OPENONDA_VERSION=<version> rattler-build build --recipe conda/recipes/openonda \
+#       -c conda-forge -c <channel holding taichi>
+context:
+  name: openonda
+  version: ${{ env.get("OPENONDA_VERSION") }}
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  path: ../../..
+  use_gitignore: true
+  filter:
+    exclude:
+      - tutorials/**
+      - docs/**
+      - tests/**
+      - conda/**
+
+build:
+  number: 0
+  skip:
+    - not (linux and x86_64) and not osx
+  script: ${{ PYTHON }} -m pip install . --no-deps --no-build-isolation -vv
+  python:
+    entry_points:
+      - openonda = openonda.cli:main
+      - openonda-verify-install = openonda.verify_install:main
+
+requirements:
+  build:
+    # The floating-point environment helper for the Gaussian image sums
+    - ${{ compiler('c') }}
+  host:
+    - python 3.11.*
+    - pip
+    - setuptools >=77
+    - wheel
+  run:
+    - python 3.11.*
+    - numpy >=1.26
+    - scipy >=1.12
+    - matplotlib-base >=3.8
+    - h5py >=3.10
+    - if: osx and x86_64
+      then: numba >=0.59,<0.63
+      else: numba >=0.59
+    - threadpoolctl >=3.1
+    - psutil >=5.9
+    - pandas >=2.1
+    - defusedxml >=0.7.1
+    - taichi >=1.7.1,<1.8
+    - pyamg >=5
+    - pyvista >=0.43
+    - vtk-base >=9.3
+    - mpi4py >=4
+    - petsc4py >=3.21
+    - numpy-stl >=3.2
+  run_constraints:
+    # VTK serves file output and plotting; its CUDA build adds gigabytes
+    - viskores * cpu_*
+
+tests:
+  - python:
+      imports:
+        - openonda
+        - openonda.fvm
+        - openonda.vpm
+        - openonda.coupler
+        - openonda.vpm.numerics._fenv
+      pip_check: true
+  - script:
+      - python -c "import os, openonda; assert openonda.__version__ == os.environ['PKG_VERSION']"
+      - openonda info
+      - python -I -m openonda.verify_install --require-site-packages
+
+about:
+  homepage: https://github.com/EngFlavioMartins/OpenONDA
+  repository: https://github.com/EngFlavioMartins/OpenONDA
+  documentation: https://github.com/EngFlavioMartins/OpenONDA/tree/main/docs
+  license: GPL-3.0-or-later
+  license_file: LICENSE
+  summary: Native finite-volume and vortex-particle CFD solvers with hybrid coupling

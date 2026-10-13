@@ -1,13 +1,8 @@
 include README.md
 include LICENSE
 include CITATION.cff
-include CHANGELOG.md
-include KNOWN_ISSUES.md
 include pyproject.toml
 include install.py
 recursive-include openonda *.py *.md *.json *.ttf py.typed
 
 global-exclude .DS_Store *.py[cod] *.so
-
-# Archived illustration referenced by the package README.
-include tutorials/vpm/05_delta_wing/assets/delta_wing_30fps.gif

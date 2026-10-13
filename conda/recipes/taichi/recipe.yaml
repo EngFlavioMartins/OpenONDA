@@ -1,0 +1,73 @@
+# Taichi is published on PyPI as wheels only and is not on conda-forge. This
+# recipe repackages the official CPython 3.11 wheel unchanged so OpenONDA's
+# conda channel can resolve it. Intel macOS stops at Taichi 1.7.1.
+context:
+  name: taichi
+  version: ${{ "1.7.1" if (osx and x86_64) else "1.7.4" }}
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  - if: linux and x86_64
+    then:
+      url: https://files.pythonhosted.org/packages/bc/c6/90b110c26588e9c8f1f71d1485b176e547b581075102d54aeb38d2e48ae4/taichi-1.7.4-cp311-cp311-manylinux_2_27_x86_64.whl
+      sha256: 5c3c1624daeb1554c1a2b6ee9f9b8398bd8392d7f89fc65395f94baecf049f89
+      file_name: taichi-1.7.4-cp311-cp311-manylinux_2_27_x86_64.whl
+  - if: osx and arm64
+    then:
+      url: https://files.pythonhosted.org/packages/23/89/3a920b880e058b4d8c5b0fe1e695481725707aab5ac35b3e91295903dda0/taichi-1.7.4-cp311-cp311-macosx_11_0_arm64.whl
+      sha256: 4cbb5a16cac228862c5da2ec71ef722e637c7a5ebf636f8f11000c2f8a9b6693
+      file_name: taichi-1.7.4-cp311-cp311-macosx_11_0_arm64.whl
+  - if: osx and x86_64
+    then:
+      url: https://files.pythonhosted.org/packages/7b/3c/294dcca0c38bf09e5b1f9a5f345d43b4df0d4cf5b25ecb8e1e7443b1272f/taichi-1.7.1-cp311-cp311-macosx_10_15_x86_64.whl
+      sha256: 38aca7ca2f699f51284ff691e9e205b56bd0561de69dc83c62cda9cc0948645d
+      file_name: taichi-1.7.1-cp311-cp311-macosx_10_15_x86_64.whl
+
+build:
+  number: 0
+  skip:
+    - not (linux and x86_64) and not osx
+  script: ${{ PYTHON }} -m pip install ./taichi-*.whl --no-deps --no-build-isolation -vv
+  prefix_detection:
+    ignore_binary_files: true
+
+requirements:
+  build:
+    - if: linux
+      then: patchelf
+  host:
+    - python 3.11.*
+    - pip
+    - if: linux
+      then:
+        - xorg-libx11
+        - libzlib
+  run:
+    - python 3.11.*
+    - numpy
+    - colorama
+    - dill
+    - rich
+    # Libraries the wheel expects from the system on Linux
+    - if: linux
+      then:
+        - __glibc >=2.27
+        - xorg-libx11
+        - libzlib
+
+tests:
+  - python:
+      imports:
+        - taichi
+      pip_check: true
+  - script:
+      - python -c "import taichi as ti; ti.init(arch=ti.cpu); x = ti.field(ti.f32, 4); x.fill(2.0); assert x.to_numpy().sum() == 8.0"
+
+about:
+  homepage: https://www.taichi-lang.org
+  repository: https://github.com/taichi-dev/taichi
+  license: Apache-2.0
+  summary: Productive, portable and high-performance programming in Python (repackaged PyPI wheel)

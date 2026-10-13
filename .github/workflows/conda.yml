@@ -1,0 +1,67 @@
+name: Conda packages
+
+# Builds the OpenONDA conda package for every supported platform, installs it
+# into a clean test environment and runs the installation check. On a
+# published release it uploads the package to the anaconda.org channel named
+# by the ANACONDA_OWNER repository variable, using the ANACONDA_API_TOKEN
+# secret. Run the workflow by hand with "upload_taichi" once per Taichi
+# version to publish the repackaged Taichi wheel to the same channel.
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - conda/**
+      - pyproject.toml
+      - setup.py
+      - .github/workflows/conda.yml
+  workflow_dispatch:
+    inputs:
+      upload_taichi:
+        description: Upload the repackaged Taichi package
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Conda package for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-15-intel]
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: build
+          python-version: "3.11"
+      - run: conda install -y -c conda-forge rattler-build
+      - name: Read the package version
+        run: echo "OPENONDA_VERSION=$(python -c 'import runpy; print(runpy.run_path("openonda/core/version.py")["__version__"])')" >> "$GITHUB_ENV"
+      - name: Build Taichi
+        run: rattler-build build --recipe conda/recipes/taichi --output-dir output -c conda-forge
+      - name: Build and test OpenONDA
+        run: rattler-build build --recipe conda/recipes/openonda --output-dir output -c output -c conda-forge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conda-${{ matrix.os }}
+          path: output/*/*.conda
+      - name: Upload OpenONDA to anaconda.org
+        if: github.event_name == 'release'
+        env:
+          ANACONDA_API_KEY: ${{ secrets.ANACONDA_API_TOKEN }}
+        run: rattler-build upload anaconda --owner "${{ vars.ANACONDA_OWNER }}" output/*/openonda-*.conda
+      - name: Upload Taichi to anaconda.org
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_taichi
+        env:
+          ANACONDA_API_KEY: ${{ secrets.ANACONDA_API_TOKEN }}
+        run: rattler-build upload anaconda --owner "${{ vars.ANACONDA_OWNER }}" output/*/taichi-*.conda

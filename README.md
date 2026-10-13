@@ -67,11 +67,10 @@ viscosity:
 
 ```python
 import numpy as np
-
 from openonda import vpm
 
-h, a, nu = 0.2, 0.35, 0.01  # particle spacing [m], core radius [m], viscosity [m²/s]
-
+# particle spacing [m], core radius [m], viscosity [m²/s]
+h, a, nu = 0.2, 0.35, 0.01 
 
 class GaussianColumn:
     """Vortex column of unit circulation along z, sampled on a cubic lattice."""
@@ -92,7 +91,6 @@ class GaussianColumn:
             kinematic_viscosity=np.full(n, nu),
             spacing=h,
         )
-
 
 case = vpm.VPMCase(
     directory="vpm-example",
@@ -150,12 +148,16 @@ Inputs are in SI units. Open `vpm-example/solution/vpm.pvd` or
 
 <table>
   <tr>
-    <td width="50%"><a href="tutorials/vpm/02_vortex_ring/README.md"><img src="tutorials/vpm/02_vortex_ring/figures/vortex_ring_snapshots.png" alt="Vortex ring particles before and after its instability"></a><br><sub><b>Vortex ring</b>: a ring travels and develops its azimuthal instability.</sub></td>
-    <td width="50%"><a href="tutorials/vpm/04_flat_plate/README.md"><img src="tutorials/vpm/04_flat_plate/figures/flat_plate_wake.png" alt="Particle wake behind a moving flat plate"></a><br><sub><b>Flat plate</b>: a lifting surface sheds its tip vortices.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/02_vortex_ring/README.md"><img src="tutorials/vpm/02_vortex_ring/assets/vortex_ring.gif" alt="Vortex-ring particles developing the azimuthal instability"></a><br><sub><b>Vortex ring</b>: a vortex-ring flow.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/04_flat_plate/README.md"><img src="tutorials/vpm/04_flat_plate/assets/flat_plate_wake.gif" alt="Camera sweep around the particle wake of a moving flat plate"></a><br><sub><b>Flat plate</b>: a lifting, flat-plate surface sheds its tip vortices.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="tutorials/vpm/01_lamb_oseen_vortex/README.md"><img src="tutorials/vpm/01_lamb_oseen_vortex/figures/merging_render_final.png" alt="Two co-rotating vortices merging"></a><br><sub><b>Vortex merging</b>: two co-rotating vortices become one.</sub></td>
-    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/figures_v1/coupled_fvm_vpm_fields_t10.00.png" alt="Coupled FVM and VPM velocity around a cube"></a><br><sub><b>Flow past a cube</b>: FVM near the body, particles in the wake.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/01_lamb_oseen_vortex/README.md"><img src="tutorials/vpm/01_lamb_oseen_vortex/assets/vortex_merging.gif" alt="Animation of two co-rotating vortices merging, axial vorticity shown as a relief"></a><br><sub><b>Vortex merging</b>: two co-rotating vortices become one.</sub></td>
+    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube_flow.gif" alt="Animation of coupled FVM and VPM flow past a cube: FVM mid-plane speed, VPM particle vorticity and the drag coefficient over time"></a><br><sub><b>Flow past a cube</b>: FVM near the body, particles in the wake.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="tutorials/vpm/06_rotor_flow/README.md"><img src="tutorials/vpm/06_rotor_flow/assets/rotor_flow.gif" alt="Animation of a three-bladed rotor and its vortex-particle wake, with thrust and power coefficients over the revolutions"></a><br><sub><b>Rotor</b>: VLM blades shed a helical particle wake while thrust and power settle.</sub></td>
+    <td width="50%"></td>
   </tr>
 </table>
 
@@ -165,7 +167,6 @@ Inputs are in SI units. Open `vpm-example/solution/vpm.pvd` or
 - [Finite volumes](docs/fvm.md), [vortex particles and lifting surfaces](docs/vpm.md) and [FVM–VPM coupling](docs/coupling.md): the models and their settings.
 - [Continuing runs](docs/continuation.md), [saved results](docs/solution_layout.md) and [visualization](docs/visualization.md).
 - The full manual as one PDF: [`docs/OpenONDA_manual.pdf`](docs/OpenONDA_manual.pdf).
-- [Known issues](KNOWN_ISSUES.md): current limitations and workarounds.
 
 ## Citing OpenONDA
 

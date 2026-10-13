@@ -9,35 +9,54 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  sdist:
+    name: Source distribution
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - name: Install Gmsh system libraries (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libglu1-mesa
       - run: python -m pip install build twine
-      - run: python -m build
+      - run: python -m build --sdist
       - run: twine check dist/*
-      - name: Install and solve with the release wheel outside the checkout
-        run: |
-          python -m venv "$RUNNER_TEMP/openonda-release"
-          "$RUNNER_TEMP/openonda-release/bin/python" -m pip install dist/*.whl
-          cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/openonda-release/bin/python" -m openonda.verify_install --require-site-packages
-          "$RUNNER_TEMP/openonda-release/bin/python" -m pip check
       - uses: actions/upload-artifact@v4
         with:
-          name: python-distributions
-          path: dist/
+          name: python-sdist
+          path: dist/*.tar.gz
+
+  wheels:
+    # The floating-point environment helper is compiled, so PyPI needs one
+    # manylinux/macOS wheel per platform. Each wheel is installed and solved
+    # with outside the checkout before it can be published.
+    name: Wheel for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pypa/cibuildwheel@v2.23.3
+        env:
+          CIBW_BUILD: cp311-*
+          CIBW_ARCHS_LINUX: x86_64
+          CIBW_ARCHS_MACOS: native
+          # Taichi's Linux wheels need glibc 2.27 or newer.
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          CIBW_BEFORE_TEST_LINUX: dnf install -y libX11 mesa-libGLU
+          CIBW_TEST_COMMAND: >-
+            python -m pip check &&
+            python -I -m openonda.verify_install --require-site-packages
+      - run: pipx run twine check wheelhouse/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-${{ matrix.os }}
+          path: wheelhouse/*.whl
 
   publish-pypi:
     if: github.event_name == 'release'
-    needs: build
+    needs: [sdist, wheels]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -47,6 +66,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v5
         with:
-          name: python-distributions
+          pattern: python-*
           path: dist/
+          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1
