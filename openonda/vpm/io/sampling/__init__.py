@@ -13,7 +13,7 @@ from .field_samplers import (
     resolve_samples_dir,
     sampler_csv_columns,
 )
-from .schedule import EverySteps, EveryTime, FinalOnly, OutputSchedule
+from openonda.core.schedules import EverySteps, EveryTime, FinalOnly, OutputSchedule
 from .vlm import VLMSampler
 
 __all__ = [

@@ -1,7 +1,9 @@
-"""Typed schedules for output events.
+"""Output schedules shared by the FVM and VPM solvers.
 
-Schedules are value objects. They retain no event history: exactly-once
-delivery and restart history trimming are responsibilities of ``OutputManager``.
+A schedule selects accepted solver states for an output event: samples,
+visualization frames, backups or log lines. Schedules are immutable value
+objects that retain no event history; each solver's output manager owns
+exactly-once delivery and restart history trimming.
 """
 
 from __future__ import annotations
@@ -73,6 +75,24 @@ class EverySteps:
         """Return ``False`` because this schedule is driven by accepted steps."""
         return False
 
+    def next_time_after(self, time: float) -> float | None:
+        """Return ``None``: step cadences do not constrain the time step."""
+        del time
+        return None
+
+    def describe(self) -> str:
+        """Return a compact human-readable cadence."""
+        return f"every {self.interval} accepted step(s)"
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-safe representation for metadata and restart checks."""
+        return {
+            "type": "EverySteps",
+            "interval": self.interval,
+            "first_step": self.first_step,
+            "start_time": self.start_time,
+        }
+
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return true when ``step`` reaches this schedule's cadence."""
         epsilon = max(abs(self.interval * time_step_size) * 1.0e-12, abs(time) * 1.0e-14)
@@ -120,6 +140,25 @@ class EveryTime:
         """Return ``False`` because this schedule is driven by physical time."""
         return False
 
+    def next_time_after(self, time: float) -> float:
+        """Return the next cadence time strictly after ``time``, in s.
+
+        Solvers with adaptive time steps shorten the step to land on it.
+        """
+        epsilon = max(abs(self.interval) * 1.0e-12, abs(time) * 1.0e-14)
+        if time + epsilon < self.start_time:
+            return self.start_time
+        bucket = math.floor((time - self.start_time + epsilon) / self.interval)
+        return self.start_time + (bucket + 1) * self.interval
+
+    def describe(self) -> str:
+        """Return a compact human-readable cadence."""
+        return f"every {self.interval:g} s"
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-safe representation for metadata and restart checks."""
+        return {"type": "EveryTime", "interval": self.interval, "start_time": self.start_time}
+
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return true when the accepted step crosses a time boundary."""
         epsilon = max(abs(self.interval) * 1.0e-12, abs(time) * 1.0e-14)
@@ -149,7 +188,33 @@ class FinalOnly:
         """Return ``True`` so the output manager dispatches only at finalization."""
         return True
 
+    def next_time_after(self, time: float) -> None:
+        """Return ``None``: a final event does not constrain the time step."""
+        del time
+        return None
+
+    def describe(self) -> str:
+        """Return a compact human-readable cadence."""
+        return "final state only"
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-safe representation for metadata and restart checks."""
+        return {"type": "FinalOnly"}
+
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return false; final events are dispatched explicitly by the manager."""
         del step, time, time_step_size
         return False
+
+
+Schedule = EverySteps | EveryTime | FinalOnly
+
+
+def schedule_from_dict(data: dict[str, object]) -> Schedule:
+    """Reconstruct a schedule from its :meth:`to_dict` representation."""
+    values = dict(data)
+    kind = values.pop("type", None)
+    classes = {"EverySteps": EverySteps, "EveryTime": EveryTime, "FinalOnly": FinalOnly}
+    if kind not in classes:
+        raise ValueError(f"Unknown output schedule type {kind!r}")
+    return classes[kind](**values)

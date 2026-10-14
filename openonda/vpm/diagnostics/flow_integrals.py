@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..io.logging import Logging
-from ..io.sampling.schedule import OutputSchedule
+from openonda.core.schedules import OutputSchedule
 
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver

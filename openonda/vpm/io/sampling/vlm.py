@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .schedule import OutputSchedule
+from openonda.core.schedules import OutputSchedule
 
 
 @dataclass(frozen=True)

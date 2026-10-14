@@ -24,7 +24,7 @@ import numpy as np
 from openonda.core.vtk_output import write_vtk_dataset
 from openonda.core.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write
 
-from .schedule import OutputSchedule
+from openonda.core.schedules import OutputSchedule
 
 if TYPE_CHECKING:
     from ...core.solver import VPMSolver
