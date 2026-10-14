@@ -115,7 +115,7 @@ class RigidMeshMotion:
         # faces of, so their switch to a moving plane is decided collectively.
         self._slip_type = {
             item.name: item.velocity_type
-            for item in sorted(solver._resolved_setup.boundaries, key=lambda item: item.name)
+            for item in sorted(solver.case.boundaries, key=lambda item: item.name)
             if BOUNDARIES.strategy(item.velocity_type, "velocity", "ghost")
             in (BoundaryStrategy.SLIP, BoundaryStrategy.SYMMETRY)
         }
@@ -336,7 +336,7 @@ class RigidMeshMotion:
                 area = np.linalg.norm(surface[faces], axis=1)
                 normal_velocity = self.mesh_face_flux[faces] / area
                 if moving[name]:
-                    boundary["velocity_type"] = "normalValueTangentialGradient"
+                    boundary["velocity_type"] = "normal_value_tangential_gradient"
                     boundary["normal_velocity_field"] = normal_velocity
                     boundary["tangential_gradient_field"] = np.zeros((len(area), 3))
                     boundary["max_removed_tangential_gradient_normal_component"] = 0.0

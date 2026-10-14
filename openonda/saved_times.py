@@ -3,14 +3,12 @@
 The symmetric tolerance is ``max(1e-12 s, 1e-10 * max(|a|, |b|))``.
 It permits accumulated floating-point clock roundoff, not neighbouring output
 steps. Ambiguous clocks in one source are rejected rather than rounded/merged.
-This module deliberately has no solver, NumPy or ParaView dependencies.
+This module deliberately has no solver or NumPy dependencies.
 """
 
 from bisect import bisect_left
 from dataclasses import dataclass
 import math
-from pathlib import Path
-import xml.etree.ElementTree as ET
 
 CLOCK_RTOL = 1.0e-10
 CLOCK_ATOL = 1.0e-12
@@ -64,34 +62,3 @@ def match_saved_times(*series) -> SavedTimeMatch:
                     raise ValueError(f"One saved state matches multiple clocks near t={time:g}")
                 column.append(index)
     return SavedTimeMatch(tuple(common), tuple(tuple(column) for column in indices))
-
-
-def read_pvd_times(path: str | Path) -> tuple[float, ...]:
-    """Read a collection's sorted clocks and require its referenced frames."""
-    path = Path(path)
-    frames = []
-    checked = set()
-    for item in ET.parse(path).iter("DataSet"):
-        target = path.parent / item.attrib["file"]
-        _require_frame(target, path, checked, set())
-        frames.append(float(item.attrib["timestep"]))
-    return _validated_times(sorted(frames))
-
-
-def _require_frame(path: Path, collection: Path, checked: set, active: set) -> None:
-    """Check parallel/multiblock indexes without reading volume field arrays."""
-    path = path.resolve()
-    if path in active:
-        raise ValueError(f"Cyclic saved-frame index in {collection}: {path}")
-    if path in checked:
-        return
-    if not path.is_file():
-        raise FileNotFoundError(f"Missing saved frame referenced by {collection}: {path}")
-    if path.suffix.lower() in {".pvtu", ".pvtp", ".pvts", ".pvtr", ".pvti", ".vtm"}:
-        active.add(path)
-        for item in ET.parse(path).iter():
-            for attribute in ("Source", "file"):
-                if attribute in item.attrib:
-                    _require_frame(path.parent / item.attrib[attribute], path, checked, active)
-        active.remove(path)
-    checked.add(path)

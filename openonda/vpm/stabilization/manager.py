@@ -34,11 +34,6 @@ cloud taken from arrays the solver already holds:
 
 Anything finer than this belongs inside the worker that can act on it, not in
 a solver-level diagnostics table.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: August 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from __future__ import annotations
@@ -53,8 +48,9 @@ from .context import StabilizationContext
 from .operators import StabilizationOperators
 
 if TYPE_CHECKING:
-    from ..config.types import StabilizationConfig
-    from ..io.runtime_profiler import RuntimeProfiler
+    from openonda.core.profiling import Profiler
+
+    from ..config.stabilization import StabilizationConfig
 
 
 def outflow_fringe_damping_rate(
@@ -396,7 +392,7 @@ class StabilizationManager:
 
     # -- run phases -------------------------------------------------------
 
-    def run_phase(self, phase: str, profiler: RuntimeProfiler | None = None) -> None:
+    def run_phase(self, phase: str, profiler: Profiler | None = None) -> None:
         """Run every stabilization worker scheduled in ``phase``.
 
         The phase schedule is the package-level :data:`PHASES` table, so the
@@ -471,7 +467,7 @@ class StabilizationManager:
         cfg = self.config
         if (
             not cfg.pedrizzetti_relaxation_enabled
-            or self.ctx.flow_model == "POTENTIAL"
+            or self.ctx.flow_model == "potential"
             or self.ctx.particles.n_particles_total == 0
             or (
                 cfg.pedrizzetti_relaxation_end_step is not None
@@ -653,8 +649,8 @@ class StabilizationManager:
             constrained_divergence_relaxation,
         )
 
-        particle_kernel = str(getattr(ctx.physics, "particle_kernel", "GAUSSIAN")).upper()
-        if particle_kernel != "GAUSSIAN":
+        particle_kernel = str(getattr(ctx.physics, "particle_kernel", "gaussian")).lower()
+        if particle_kernel != "gaussian":
             raise DivergenceRelaxationError(
                 "divergence relaxation currently implements the Gaussian blob/grid "
                 f"operator only, not particle_kernel={particle_kernel}",
@@ -760,7 +756,7 @@ class StabilizationManager:
         ctx = self.ctx
         cfg = self.config
         depth = cfg.outflow_fringe_depth
-        if depth is None or ctx.flow_model == "POTENTIAL" or ctx.particles.n_particles_total == 0:
+        if depth is None or ctx.flow_model == "potential" or ctx.particles.n_particles_total == 0:
             return
         speed = float(np.linalg.norm(ctx.particles.velocity_background_cpu()))
         if speed == 0.0:
@@ -790,7 +786,7 @@ class StabilizationManager:
     def apply_retention(self) -> None:
         """Remove particles that have left the configured VPM domain."""
         ctx = self.ctx
-        if ctx.flow_model == "POTENTIAL":
+        if ctx.flow_model == "potential":
             return
         bounds = self.config.remove_particles_by_bounds
         if bounds is not None:

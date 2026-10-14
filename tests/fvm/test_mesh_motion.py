@@ -134,12 +134,13 @@ def _box_case(directory, boundaries, motion, *, velocity=(1.0, 0.0, 0.0), end_ti
         mesh=mesh,
         numerics=fvm.Numerics(
             transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
+            time_step_size=0.01,
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         ),
         boundaries=tuple(boundaries)
         + (fvm.BoundaryConfig.empty("zmin"), fvm.BoundaryConfig.empty("zmax")),
         initial_conditions=fvm.InitialFields(velocity=velocity),
-        run=fvm.RunPlan(end_time=end_time, time_step_size=0.01, final_output=False),
+        run=fvm.RunPlan(end_time=end_time, final_output=False),
         mesh_motion=motion,
     )
 
@@ -205,6 +206,7 @@ def _square_cylinder_case(directory, stream, motion):
         mesh=mesh,
         numerics=fvm.Numerics(
             transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.012),
+            time_step_size=0.02,
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         ),
         boundaries=tuple(
@@ -217,7 +219,7 @@ def _square_cylinder_case(directory, stream, motion):
             fvm.BoundaryConfig.wall("cube"),
         ),
         initial_conditions=fvm.InitialFields(velocity=stream),
-        run=fvm.RunPlan(end_time=10.0, time_step_size=0.02),
+        run=fvm.RunPlan(end_time=10.0),
         mesh_motion=motion,
     )
 
@@ -283,6 +285,7 @@ def _restart_case(directory, end_time):
         mesh=mesh,
         numerics=fvm.Numerics(
             transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
+            time_step_size=0.02,
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         ),
         boundaries=(
@@ -295,8 +298,8 @@ def _restart_case(directory, end_time):
             fvm.BoundaryConfig.wall("cube"),
         ),
         initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
-        run=fvm.RunPlan(end_time=end_time, time_step_size=0.02, final_output=False),
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_time=0.2), write_at_end=True),
+        run=fvm.RunPlan(end_time=end_time, final_output=False),
+        backup=fvm.Backup(schedule=fvm.EveryTime(0.2), write_at_end=True),
         mesh_motion=motion,
     )
 
@@ -343,6 +346,7 @@ case = fvm.FVMCase(
     name="moving", directory=f"run_{cores}", mesh=mesh, cores=cores,
     numerics=fvm.Numerics(
         transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
+        time_step_size=0.02,
         # Converge both runs far below the comparison tolerance so the check
         # measures the partitioning, not the linear-solver stopping point.
         linear=fvm.LinearSolverConfig(momentum_tolerance=1e-13, pressure_tolerance=1e-13),
@@ -357,10 +361,10 @@ case = fvm.FVMCase(
         fvm.BoundaryConfig.wall("cube"),
     ),
     initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
-    run=fvm.RunPlan(end_time=0.3, time_step_size=0.02),
+    run=fvm.RunPlan(end_time=0.3),
     samplers=fvm.Samplers((fvm.ForceSampler(
         ["cube"], reference_velocity=1.0, reference_area=0.2, reference_length=1.0,
-        moment_centre=(0.0, 0.0, 0.1), schedule=fvm.RunSchedule(every_n_steps=1),
+        moment_centre=(0.0, 0.0, 0.1), schedule=fvm.EverySteps(1),
     ),)),
     mesh_motion=motion,
 )

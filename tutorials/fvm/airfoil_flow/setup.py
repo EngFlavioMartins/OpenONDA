@@ -69,57 +69,51 @@ def create_fvm_mesh() -> msh.CartesianMesher:
     )
 
 
-def create_fvm_setup(u_vec: list[float]) -> fvm.FVMSetup:
-    """Build the FVM setup for the airfoil case."""
+def create_fvm_case(velocity: tuple[float, float, float]) -> fvm.FVMCase:
+    """Build the FVM case of the finite wing."""
     kinematic_viscosity = FREESTREAM_VELOCITY * CHORD / REYNOLDS_NUMBER
+    snapshots = fvm.EveryTime(OUTPUT_INTERVAL_TIME)
 
-    pimple = fvm.PimpleControl(n_nonorthogonal_correctors=ORTHOGONAL_CORRECTORS)
-    forces = [
-        fvm.ForceSampler(
-            patch_names=["airfoil"],
-            reference_velocity=FREESTREAM_VELOCITY,
-            reference_area=CHORD * DEPTH,
-            reference_length=CHORD,
-            moment_centre=[0.25 * CHORD, 0.0, 0.0],
-        )
-    ]
-
-    time = fvm.TimeConfig(
-        time_step_size=TIME_STEP_SIZE,
-        end_time=FINAL_TIME,
-        output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
-        adjustment=fvm.MaximumCourantTimeStep(
-            maximum_time_step_size=MAX_TIME_STEP_SIZE,
-        ),
+    forces = fvm.ForceSampler(
+        patch_names=["airfoil"],
+        reference_velocity=FREESTREAM_VELOCITY,
+        reference_area=CHORD * DEPTH,
+        reference_length=CHORD,
+        moment_centre=[0.25 * CHORD, 0.0, 0.0],
     )
 
-    return fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=time.output_schedule, write_at_end=True),
-        case_name=CASE_NAME,
-        time=time,
-        pimple=pimple,
-        samplers=forces,
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", u_vec),
+    return fvm.FVMCase(
+        name=CASE_NAME,
+        directory=Path(__file__).parent,
+        numerics=fvm.Numerics(
+            time_step_size=TIME_STEP_SIZE,
+            time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
+            pimple=fvm.PimpleConfig(n_nonorthogonal_correctors=ORTHOGONAL_CORRECTORS),
+        ),
+        initial_conditions=fvm.InitialFields(velocity=velocity),
+        run=fvm.RunPlan(end_time=FINAL_TIME),
+        output=fvm.Output(schedule=snapshots),
+        samplers=fvm.Samplers((forces,)),
+        backup=fvm.Backup(schedule=snapshots),
+        mesh=create_fvm_mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", velocity),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
-            fvm.BoundaryConfig.freestream("walls", u_vec),
+            fvm.BoundaryConfig.freestream("walls", velocity),
             fvm.BoundaryConfig.wall("airfoil"),
             fvm.BoundaryConfig.empty("frontAndBack"),
-        ],
-        initial_velocity=u_vec,
+        ),
     )
 
 
 def main() -> None:
-    case_dir = Path(__file__).parent
     angle = math.radians(ANGLE_OF_ATTACK_DEGREES)
-    velocity = [FREESTREAM_VELOCITY * math.cos(angle), FREESTREAM_VELOCITY * math.sin(angle), 0.0]
-    solver = fvm.create_fvm_solver(
-        create_fvm_setup(velocity), case_dir=case_dir, mesh=create_fvm_mesh
-    )
-    solver.run(start_from=START_FROM)
-    solver.evaluate(write_surface_cp, case_dir / "solution", CHORD, FREESTREAM_VELOCITY)
+    velocity = (FREESTREAM_VELOCITY * math.cos(angle), FREESTREAM_VELOCITY * math.sin(angle), 0.0)
+    case = create_fvm_case(velocity)
+    with fvm.FVMSolver(case) as solver:
+        solver.run(start_from=START_FROM)
+        solver.evaluate(write_surface_cp, solver.solution_dir, CHORD, FREESTREAM_VELOCITY)
 
 
 if __name__ == "__main__":

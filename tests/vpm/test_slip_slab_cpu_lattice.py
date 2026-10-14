@@ -52,10 +52,10 @@ def test_cpu_slab_gbd_configures_fixed_lattice(tmp_path):
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=0.04,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f32",
                 max_n_particles=64,
                 domain_bounds=(-0.4, 0.4, -0.4, 0.4, -0.24, 0.24),
@@ -65,7 +65,6 @@ def test_cpu_slab_gbd_configures_fixed_lattice(tmp_path):
                     padding=3.0,
                     kinematic_viscosity=1.0 / 150.0,
                 ),
-                verbose=False,
             ),
         )
     )
@@ -86,10 +85,10 @@ def test_active_slab_retains_mirror_and_diffusion_halo_when_cloud_retreats(tmp_p
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=0.04,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f32",
                 max_n_particles=64,
                 domain_bounds=(-0.4, 0.4, -0.4, 0.4, -0.24, 0.24),
@@ -99,7 +98,6 @@ def test_active_slab_retains_mirror_and_diffusion_halo_when_cloud_retreats(tmp_p
                     padding=3.0,
                     kinematic_viscosity=1.0 / 150.0,
                 ),
-                verbose=False,
             ),
         )
     )
@@ -132,10 +130,10 @@ def test_retreated_slab_diffusion_matches_padded_mirror_reference(tmp_path, phas
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=dt,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f32",
                 max_n_particles=64,
                 domain_bounds=(-0.4, 0.4, -0.4, 0.4, -0.24, 0.24),
@@ -145,7 +143,6 @@ def test_retreated_slab_diffusion_matches_padded_mirror_reference(tmp_path, phas
                     padding=3.0,
                     kinematic_viscosity=viscosity,
                 ),
-                verbose=False,
             ),
         )
     )
@@ -235,10 +232,10 @@ def test_one_layer_slab_diffusion_is_the_two_dimensional_laplacian(tmp_path):
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=dt,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f32",
                 max_n_particles=1024,
                 domain_bounds=(-0.8, 0.8, -0.8, 0.8, *planes),
@@ -250,7 +247,6 @@ def test_one_layer_slab_diffusion_is_the_two_dimensional_laplacian(tmp_path):
                     padding=3.0,
                     kinematic_viscosity=viscosity,
                 ),
-                verbose=False,
             ),
         )
     )

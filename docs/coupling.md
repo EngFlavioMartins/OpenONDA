@@ -25,7 +25,7 @@ Match the freestream, viscosity and turbulence model in both solvers, and define
 
 1. **FVM box.** Mesh a box around the body with a no-slip wall and an outer patch named `numericalBoundary`. Two bounds matter, measured on the region where FVM vorticity is used unblended, which ends inside the box faces by the transfer inset, the particle-only band and the blend width:
    - Keep the coupling boundary out of the body's near field. With the box faces half a body length from the wall, the drag and shedding frequency rise by 8–10% for both the cylinder and the cube.
-   - Extend the unblended region downstream past the vortex-formation length, where the separated shear layers roll up and the centreline velocity fluctuation peaks. The end of the mean reverse flow is not enough. In the [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/coupling_findings.md), a region ending inside the formation zone lowered the lift amplitude by 5%; beyond it the error levels off near 1%.
+   - Extend the unblended region downstream past the vortex-formation length, where the separated shear layers roll up and the centreline velocity fluctuation peaks. The end of the mean reverse flow is not enough. In the [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/coupling_findings.md), a region ending inside the formation zone lowered the lift amplitude by 5%; beyond it the error levels off near 1%.
 2. **Transfer region.** `transfer_region_bounds` sets a box in metres inside the FVM box where the FVM owns the vorticity. Keep the wall-generated vorticity resolved inside it.
 3. **Resolution and exchange step.** Use equal FVM cell size and particle spacing, as both tutorials do, and refine them together. Exchange as rarely as the particle stability limit allows: the particle step must stay below $1/\max|S|$, the inverse of the largest strain rate at the wall, and the solver stops with the measured ceiling if it does not. Frequent exchanges smooth the shed vortices and lower the lift.
 4. **Particle domain.** Give the particles room for the wake you want to observe, and fade the wake out through an [outflow fringe](vpm.md#stabilization) at least two wake wavelengths deep. Removing particles abruptly at a face changes the circulation left in the domain once per shedding half-cycle, which shakes the flow at the body.
@@ -61,29 +61,32 @@ Renewal corrects the difference between the FVM vorticity and the field the part
 
 ## Moving bodies
 
-A body moving with prescribed translation carries its FVM box with it: give the FVM setup a `fvm.MeshMotion` with a translating motion, for example `fvm.HeavingMotion`; see [moving meshes](fvm.md#moving-meshes). The coupler solves the particles in the frame translating with the box. A uniform frame translation leaves the vorticity equation unchanged, so the particles keep their strengths and only drift with the stream relative to the box, $\mathbf{U}_\infty-\mathbf{V}(t)$. Over each exchange the particle stream uses the mean box velocity, so the particles stay exactly placed relative to the moved box, and the box, transfer region, walls and particle diffusion grid remain fixed in that frame.
+A body moving with prescribed translation carries its FVM box with it: set `FVMCase.mesh_motion` to an `fvm.MeshMotion` with a translating motion, for example `fvm.HeavingMotion`; see [moving meshes](fvm.md#moving-meshes). The coupler solves the particles in the frame translating with the box. A uniform frame translation leaves the vorticity equation unchanged, so the particles keep their strengths and only drift with the stream relative to the box, $\mathbf{U}_\infty-\mathbf{V}(t)$. Over each exchange the particle stream uses the mean box velocity, so the particles stay exactly placed relative to the moved box, and the box, transfer region, walls and particle diffusion grid remain fixed in that frame.
 
 The FVM keeps inertial-frame velocities on its moving mesh; the boundary trace is converted to the inertial frame and the FVM velocity seen by the particles to the box frame. The particle positions, particle output and `domain_bounds` therefore refer to the box at the start of the run: add `mesh_translation` from `solution/coupler_diagnostics.jsonl` to place a particle field in the inertial frame. The particle domain moves with the body, and its outflow fringe stays downstream of the box. The particle stream $\mathbf{U}_\infty-\mathbf{V}$ varies during the run, and the renewal belt is sized for its largest value.
 
-The coupler stops before the first step if the mesh rotates: the particle solver has no rotating frame.
+`CoupledSolver` rejects a rotating mesh at construction: the particle solver has no rotating frame.
 
 ## Configuration
 
-`FVMSetup`, `VPMCase` and the mesh define the flow; `CouplerSetup` defines the overlap, the convergence controls and the backup interval. `CouplerSetup.freestream` may ramp the background velocity with a `coupler.VelocityRamp`, and `solver.run(initial_velocity=...)` adds an initial disturbance. The cube case uses:
+An `fvm.FVMCase` (mesh, boundaries, inner-flow output) and a `vpm.VPMCase` (particle wake and its output) in the same directory define the flow; `coupler.CouplerConfig` defines the overlap, the interface iteration and the coupled backups. `CouplerConfig.freestream` may ramp the background velocity with a `coupler.VelocityRamp`. The cube case uses:
 
 ```python
 from openonda import coupler
 
-cfg = coupler.CouplerSetup(
-    freestream_velocity=[1.0, 0.0, 0.0],
+config = coupler.CouplerConfig(
+    freestream_velocity=(1.0, 0.0, 0.0),
     coupling_patch="numericalBoundary",
     transfer_region_bounds=(-1.45, 1.45, -1.45, 1.45, -1.45, 1.45),
     eta_blend_width=6 * 0.045,
     vpm_only_width=2 * 0.045,
     interface_iterations=3,
+    backup=coupler.Backup(schedule=coupler.EveryTime(1.0)),
 )
-with coupler.create_coupler(FVM_SETUP, VPM_CASE, cfg, mesh=FVM_MESH) as solver:
+with coupler.CoupledSolver(FVM_CASE, VPM_CASE, config) as solver:
     solver.run(start_from="latest")
 ```
+
+`CoupledSolver` builds the FVM solver on every MPI rank and the VPM solver on the root rank. It owns one exchange clock: both solvers accept exactly the same time at every exchange, `run()` advances to the common end time, and `advance()` steps one exchange. Coupled backups `solution/coupled/coupled_{step:06d}/` hold the FVM backup, the VPM backup and the interface trace of one exchange, and replace the backups of the two solvers, so neither case takes a backup schedule. Each coupled backup also writes the FVM and particle frames of its time (`solution/fvm.pvd`, `solution/vpm.pvd`); whenever the particles write a frame on `VPMCase.output`, the FVM writes one at the same time. The run status and the coupling settings are recorded in `solution/coupler_metadata.json` and the log in `solution/coupler.log`.
 
 The FVM step must divide the exchange step, and output intervals must fall on exchanges. Read forces and profiles together with `solution/coupler_diagnostics.jsonl`, which records the boundary-trace convergence, particle counts and timings per exchange. Before trusting a result, refine the cell and particle spacing, the exchange step and the box size; the cylinder's [sensitivity study](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) shows how.

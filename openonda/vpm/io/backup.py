@@ -7,15 +7,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
-import tempfile
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import h5py
 import numpy as np
-
-from openonda.core.solution_layout import collection_path, component_directory
-from openonda.core.write_precision import DEFAULT_WRITE_PRECISION
 
 from ..config.configuration_values import numerical_configuration
 from ..config.restart_changes import validate_configuration_changes
@@ -28,7 +23,7 @@ if TYPE_CHECKING:
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "10.3"
+_BACKUP_FORMAT_VERSION = "11.0"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -52,28 +47,6 @@ _STABILIZATION_DIAGNOSTIC_NAMES = (
     "max_stabilization_vorticity_growth",
     "lagrangian_cfl",
 )
-_FRAME_NAME = re.compile(r"vpm_(\d{6})\.vtu")
-
-
-def _atomic_write_text(path: str | Path, text: str) -> None:
-    """Atomically replace a text file."""
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_path = tempfile.mkstemp(
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-        dir=destination.parent,
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(text)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary_path, destination)
-    except BaseException:
-        if os.path.exists(temporary_path):
-            os.unlink(temporary_path)
-        raise
 
 
 def _stabilization(solver: Any) -> StabilizationManager:
@@ -130,7 +103,7 @@ def _attribute_text(value: Any) -> str:
 
 def _numerical_configuration(solver: Any) -> dict[str, Any]:
     """Return the resolved configuration that determines VPM evolution."""
-    return numerical_configuration(solver.setup)
+    return numerical_configuration(solver.numerics)
 
 
 def _configuration_values(configuration: dict[str, Any]) -> str:
@@ -278,56 +251,27 @@ class _BackupIO:
             solver._restart_details = source_information
 
     @staticmethod
-    def save(
-        solver: VPMSolver,
-        backup_path: str | Path,
-        time: float | None = None,
-        *,
-        append_step: bool = True,
-        verbose: bool = True,
-    ) -> None:
-        """Write HDF5 restart state and its VTK visualization frame."""
+    def save(solver: VPMSolver, path: str | Path) -> Path:
+        """Atomically write the restart state of ``solver`` to the HDF5 file ``path``."""
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f"{destination.name}.tmp")
         try:
-            time_value = float(solver.time if time is None else time)
-            backup_base = str(backup_path)
-            if append_step:
-                backup_base = f"{backup_base}_{int(solver.step):06d}"
-
-            hdf5_file = f"{backup_base}.h5"
-            vtu_file = f"{backup_base}.vtu"
-            Path(hdf5_file).parent.mkdir(parents=True, exist_ok=True)
-
-            temporary_hdf5 = f"{hdf5_file}.tmp"
-            try:
-                if os.path.exists(temporary_hdf5):
-                    os.remove(temporary_hdf5)
-                _BackupIO._write_numerical_data(
-                    solver,
-                    temporary_hdf5,
-                    time_value,
-                )
-                os.replace(temporary_hdf5, hdf5_file)
-            finally:
-                if os.path.exists(temporary_hdf5):
-                    os.remove(temporary_hdf5)
-
-            _BackupIO._write_vtu(
-                solver,
-                vtu_file,
-                time_value,
-            )
-
-            if verbose:
-                Logging.record(
-                    "backup written",
-                    ("step", f"{solver.step:,}"),
-                    ("time", f"{time_value:.6e}", "s"),
-                    ("particles", f"{solver.particles.n_particles_total:,}"),
-                    ("path", str(hdf5_file)),
-                    flush=True,
-                )
+            temporary.unlink(missing_ok=True)
+            _BackupIO._write_numerical_data(solver, str(temporary), float(solver.time))
+            os.replace(temporary, destination)
         except Exception as exc:
             raise RuntimeError(f"Backup write failed: {exc}") from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+        Logging.record(
+            "backup written",
+            ("step", f"{solver.step:,}"),
+            ("time", f"{solver.time:.6e}", "s"),
+            ("particles", f"{solver.particles.n_particles_total:,}"),
+            ("path", str(destination)),
+        )
+        return destination
 
     @staticmethod
     def _write_optional_particle_fields(
@@ -393,15 +337,13 @@ class _BackupIO:
         time: float,
     ) -> None:
         """Write standard solver and particle state."""
-        write_precision = getattr(solver, "write_precision", DEFAULT_WRITE_PRECISION)
         restart_dtype = _restart_dtype(solver)
         with h5py.File(hdf5_file, "w") as file:
             solver_group = file.create_group("solver")
-            solver_group.attrs["backup_format_version"] = _BACKUP_FORMAT_VERSION
-            solver_group.attrs["write_precision"] = write_precision
+            solver_group.attrs["format_version"] = _BACKUP_FORMAT_VERSION
             configuration = _configuration_values(_numerical_configuration(solver))
-            solver_group.attrs["numerical_configuration"] = configuration
-            solver_group.attrs["numerical_configuration_sha256"] = hashlib.sha256(
+            solver_group.attrs["configuration"] = configuration
+            solver_group.attrs["configuration_sha256"] = hashlib.sha256(
                 configuration.encode("utf-8")
             ).hexdigest()
             solver_group.attrs["freestream_velocity"] = np.asarray(
@@ -414,8 +356,8 @@ class _BackupIO:
             solver_group.attrs["n_steps_since_dvh_diffusion"] = int(
                 solver._n_steps_since_dvh_diffusion
             )
-            solver_group.attrs["is_particle_regeneration_pending"] = int(
-                solver._is_particle_regeneration_pending
+            solver_group.attrs["particle_regeneration_pending"] = int(
+                solver._particle_regeneration_pending
             )
             solver_group.attrs["n_particles_total"] = int(solver.particles.n_particles_total)
 
@@ -489,149 +431,6 @@ class _BackupIO:
             )
 
     @staticmethod
-    def _write_vtu(
-        solver: VPMSolver,
-        vtu_file: str,
-        time: float,
-    ) -> None:
-        """Write a VTK particle frame using standard field names.
-
-        One ``VTK_POLY_VERTEX`` cell spans the full particle cloud, matching
-        the solver's Polyvertex particle topology. The points and arrays retain
-        the compute dtype; the exact metadata keys ``time`` and ``TimeValue``
-        let ParaView recover the physical clock from the standalone frame
-        series. The frame is written atomically in appended-raw XML, so a
-        reader never observes a partially written file.
-        """
-        from vtk import VTK_POLY_VERTEX, vtkCellArray, vtkPoints, vtkUnstructuredGrid
-        from vtk.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
-
-        from openonda.core.vtk_output import write_vtk_dataset
-
-        n_particles_total = int(solver.particles.n_particles_total)
-        if not np.isfinite(time):
-            raise ValueError("VPM frame time must be finite")
-        position = np.ascontiguousarray(solver.particles.position_cpu(use_cache=False))
-        if position.ndim != 2 or position.shape[1] != 3 or len(position) != n_particles_total:
-            raise ValueError("VPM particle positions must have shape (n_particles_total, 3)")
-
-        points = vtkPoints()
-        points.SetData(numpy_to_vtk(position, deep=True))
-        grid = vtkUnstructuredGrid()
-        grid.SetPoints(points)
-        if n_particles_total:
-            cells = vtkCellArray()
-            cells.SetData(
-                numpy_to_vtkIdTypeArray(np.zeros(1, dtype=np.int64), deep=True),
-                numpy_to_vtkIdTypeArray(
-                    np.arange(n_particles_total, dtype=np.int64),
-                    deep=True,
-                ),
-            )
-            grid.SetCells(
-                numpy_to_vtk(np.array([VTK_POLY_VERTEX], dtype=np.uint8), deep=True),
-                cells,
-            )
-
-        def add_point_data(name: str, values: np.ndarray) -> None:
-            array = numpy_to_vtk(np.ascontiguousarray(values), deep=True)
-            array.SetName(name)
-            grid.GetPointData().AddArray(array)
-
-        for name in ("velocity", "vortex_strength", "vorticity"):
-            add_point_data(name, solver.particles.__getattribute__(f"{name}_cpu")(use_cache=False))
-        for name in (
-            "core_radius",
-            "particle_volume",
-            "kinematic_viscosity",
-            "eddy_viscosity",
-            "effective_viscosity",
-            "group_id",
-            "zone_id",
-        ):
-            add_point_data(name, solver.particles.__getattribute__(f"{name}_cpu")(use_cache=False))
-
-        # VTK requires the exact metadata keys time and TimeValue to recover
-        # the physical clock from the standalone frame series.
-        for name in ("time", "TimeValue"):
-            field = numpy_to_vtk(np.array([time], dtype=np.float64), deep=True)
-            field.SetName(name)
-            grid.GetFieldData().AddArray(field)
-        write_vtk_dataset(grid, Path(vtu_file))
-
-    @staticmethod
-    def write_pvd(solution_directory: str | Path) -> Path:
-        """Write the ParaView index for retained VPM particle frames.
-
-        Parameters
-        ----------
-        solution_directory : str or pathlib.Path
-            Case solution root. Standard ``vpm_XXXXXX.h5`` and
-            ``vpm_XXXXXX.vtu`` pairs are stored below ``vpm/``.
-
-        Returns
-        -------
-        pathlib.Path
-            Atomically replaced ``vpm.pvd`` collection path. Each entry
-            references an immutable VTK frame by a relative filename below
-            ``vpm/``.
-
-        Raises
-        ------
-        FileNotFoundError
-            If an indexed VTK frame has no matching HDF5 particle state.
-        ValueError
-            If frame steps or physical times are duplicate or nonmonotonic.
-
-        Notes
-        -----
-        The atomically written native HDF5 clock determines the
-        visualization series. Rebuilding the small index from retained frames
-        makes scheduled output and coupled publication resume-safe without
-        keeping a second in-memory clock.
-        """
-        solution = Path(solution_directory)
-        directory = component_directory(solution, "vpm")
-        frames: list[tuple[int, float, str]] = []
-        for vtu in directory.glob("vpm_*.vtu"):
-            match = _FRAME_NAME.fullmatch(vtu.name)
-            if match is None:
-                continue
-            hdf5 = vtu.with_suffix(".h5")
-            if not hdf5.is_file():
-                raise FileNotFoundError(f"VPM frame {vtu.name} is missing {hdf5.name}")
-            try:
-                with h5py.File(hdf5, "r") as archive:
-                    time = float(archive["solver"].attrs["time"])
-            except (OSError, KeyError) as exc:
-                raise ValueError(f"Invalid VPM frame {vtu.name}") from exc
-            if not np.isfinite(time):
-                raise ValueError(f"VPM frame {vtu.name} has non-finite time")
-            frames.append((int(match.group(1)), time, f"vpm/{vtu.name}"))
-
-        frames.sort()
-        steps = [step for step, _, _ in frames]
-        times = [time for _, time, _ in frames]
-        if len(set(steps)) != len(steps) or any(
-            current <= previous for previous, current in zip(times, times[1:], strict=False)
-        ):
-            raise ValueError("VPM particle frames are duplicate or nonmonotonic")
-
-        lines = [
-            '<?xml version="1.0"?>',
-            '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
-            "  <Collection>",
-        ]
-        lines.extend(
-            f'    <DataSet timestep="{float(time)!r}" file="{filename}"/>'
-            for _, time, filename in frames
-        )
-        lines.extend(("  </Collection>", "</VTKFile>", ""))
-        destination = collection_path(solution, "vpm")
-        _atomic_write_text(destination, "\n".join(lines))
-        return destination
-
-    @staticmethod
     def _load_auxiliary_particle_fields(
         particles_group: h5py.Group,
     ) -> dict[str, np.ndarray | None]:
@@ -670,7 +469,7 @@ class _BackupIO:
             # Freestream is part of the advection state.  Restore it before any
             # velocity-derived fields are refreshed below, including for an
             # otherwise empty cloud.
-            solver._set_freestream_velocity(
+            solver.set_freestream_velocity(
                 np.asarray(
                     _read_attribute(solver_group, "freestream_velocity"),
                     dtype=_restart_dtype(solver),
@@ -687,8 +486,8 @@ class _BackupIO:
             solver._n_steps_since_dvh_diffusion = int(
                 _read_attribute(solver_group, "n_steps_since_dvh_diffusion")
             )
-            solver._is_particle_regeneration_pending = bool(
-                _read_attribute(solver_group, "is_particle_regeneration_pending")
+            solver._particle_regeneration_pending = bool(
+                _read_attribute(solver_group, "particle_regeneration_pending")
             )
 
             stabilization = _stabilization(solver)
@@ -779,7 +578,7 @@ class _BackupIO:
                 solver._loading_numerical_state = False
 
             solver.particles.set_field("vorticity", vorticity)
-            if solver.flow_model != "POTENTIAL":
+            if solver.flow_model != "potential":
                 solver.stepper._update_velocity_and_gradients(announce=False)
             if auxiliary["effective_viscosity"] is not None:
                 solver.particles.set_field(
@@ -836,16 +635,15 @@ class _BackupIO:
 
                 solver_group = file["solver"]
                 required_solver_attributes = {
-                    "backup_format_version",
-                    "write_precision",
-                    "numerical_configuration",
-                    "numerical_configuration_sha256",
+                    "format_version",
+                    "configuration",
+                    "configuration_sha256",
                     "freestream_velocity",
                     "time",
                     "step",
                     "time_step_size",
                     "n_steps_since_dvh_diffusion",
-                    "is_particle_regeneration_pending",
+                    "particle_regeneration_pending",
                     "n_particles_total",
                 }
                 required_solver_attributes.update(_STABILIZATION_DIAGNOSTIC_NAMES)
@@ -864,20 +662,16 @@ class _BackupIO:
                     invalid(f"unknown solver attributes: {', '.join(unknown)}")
                 if set(solver_group.keys()) - {"divergence_relaxation_reference_moments", "vlm"}:
                     invalid("contains unknown solver datasets")
-                format_version = _attribute_text(
-                    solver_group.attrs.get("backup_format_version", "")
-                )
+                format_version = _attribute_text(solver_group.attrs.get("format_version", ""))
                 if format_version != _BACKUP_FORMAT_VERSION:
                     invalid(
                         "unsupported backup format version "
                         f"{format_version!r}; expected {_BACKUP_FORMAT_VERSION!r}"
                     )
 
-                configuration_text = _attribute_text(
-                    _read_attribute(solver_group, "numerical_configuration")
-                )
+                configuration_text = _attribute_text(_read_attribute(solver_group, "configuration"))
                 configuration_hash = _attribute_text(
-                    _read_attribute(solver_group, "numerical_configuration_sha256")
+                    _read_attribute(solver_group, "configuration_sha256")
                 )
                 computed_hash = hashlib.sha256(configuration_text.encode("utf-8")).hexdigest()
                 if configuration_hash != computed_hash:
@@ -935,9 +729,9 @@ class _BackupIO:
                     value = _read_attribute(solver_group, name)
                     if not isinstance(value, int | np.integer) or int(value) < 0:
                         invalid(f"solver attribute {name!r} must be a non-negative integer")
-                pending = _read_attribute(solver_group, "is_particle_regeneration_pending")
+                pending = _read_attribute(solver_group, "particle_regeneration_pending")
                 if not isinstance(pending, bool | int | np.integer) or int(pending) not in (0, 1):
-                    invalid("solver attribute 'is_particle_regeneration_pending' must be 0 or 1")
+                    invalid("solver attribute 'particle_regeneration_pending' must be 0 or 1")
 
                 if "divergence_relaxation_reference_moments" in solver_group:
                     moments = solver_group["divergence_relaxation_reference_moments"]

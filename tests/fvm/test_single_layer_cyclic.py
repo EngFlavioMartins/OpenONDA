@@ -30,7 +30,7 @@ def periodic_mesh(nx=6, ny=5):
                 neighbour_patch="zmax" if patch["name"] == "zmin" else "zmin",
             )
         else:
-            patch.update(velocity_type="fixedValue", pressure_type="zeroGradient")
+            patch.update(velocity_type="fixed_value", pressure_type="zero_gradient")
     geo = compute_mesh_geometry(mesh, gradient_scheme="lsq", compute_lsq=False)
     return mesh, geo
 

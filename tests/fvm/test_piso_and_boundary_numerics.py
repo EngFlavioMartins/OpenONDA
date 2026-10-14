@@ -12,7 +12,7 @@ from openonda.fvm.fields.gradients import compute_gauss_gradient
 from openonda.fvm.mesh.geometry import compute_mesh_geometry
 from openonda.fvm.mesh.rectilinear import box_mesh_3d
 import openonda.fvm.solve.pimple_solver as pimple_solver
-from openonda.fvm.turbulence.smagorinsky import Smagorinsky, _compute_filter_width
+from openonda.fvm.turbulence.smagorinsky import SmagorinskyModel, _compute_filter_width
 from tests.support.fvm_mesh import structured_box
 
 KINEMATIC_VISCOSITY = 0.05
@@ -46,30 +46,30 @@ def _taylor_green(centres, time):
 
 
 def _taylor_green_velocity(tmp_path, n_correctors, n_outer_correctors=1):
-    setup = fvm.FVMSetup(
-        case_name="taylor_green",
+    case = fvm.FVMCase(
+        name="taylor_green",
+        directory=tmp_path / f"piso_{n_correctors}_{n_outer_correctors}",
+        numerics=fvm.Numerics(
+            time_step_size=0.2,
+            schemes=fvm.DiscretizationConfig(convection_scheme="central", time_scheme="backward"),
+            linear=fvm.LinearSolverConfig(
+                linear_solver="spsolve",
+                pressure_solver="spsolve",
+                pressure_tolerance=1e-12,
+                momentum_tolerance=1e-12,
+            ),
+            pimple=fvm.PimpleConfig(
+                n_correctors=n_correctors, n_outer_correctors=n_outer_correctors
+            ),
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=KINEMATIC_VISCOSITY),
+        ),
+        run=fvm.RunPlan(end_time=0.6),
+        backup=fvm.Backup(write_at_end=False),
         logging=fvm.LoggingConfig(console=False),
-        backup=fvm.BackupConfig(schedule=None, write_at_end=False),
-        time=fvm.TimeConfig(
-            time_step_size=0.2, end_time=0.6, output_schedule=fvm.RunSchedule(every_n_steps=1000)
-        ),
-        schemes=fvm.DiscretizationConfig(convection_scheme="linear", time_scheme="backward"),
-        linear=fvm.LinearSolverConfig(
-            linear_solver="spsolve",
-            pressure_solver="spsolve",
-            pressure_tolerance=1e-12,
-            momentum_tolerance=1e-12,
-        ),
-        pimple=fvm.PimpleControl(n_correctors=n_correctors, n_outer_correctors=n_outer_correctors),
-        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=KINEMATIC_VISCOSITY),
+        mesh=_periodic_square,
         boundaries=_cyclic("xmin", "xmax") + _cyclic("ymin", "ymax") + _cyclic("zmin", "zmax"),
-        initial_velocity=[0.0, 0.0, 0.0],
     )
-    case = tmp_path / f"piso_{n_correctors}_{n_outer_correctors}"
-    with (
-        contextlib.redirect_stdout(io.StringIO()),
-        fvm.create_fvm_solver(setup, case_dir=case, mesh=_periodic_square) as solver,
-    ):
+    with contextlib.redirect_stdout(io.StringIO()), fvm.FVMSolver(case) as solver:
         solver.auto_write = False
         n = solver.mesh_data["n_cells"]
         solver.set_initial_state(*_taylor_green(solver.geo_data["cell_centre"][:n], 0.0))
@@ -102,7 +102,7 @@ def _slip_box():
     mesh = structured_box(3, 3, 2)
     mesh["boundary"][3]["velocity_type"] = "slip"  # ymax
     for patch in mesh["boundary"]:
-        patch.setdefault("velocity_type", "zeroGradient")
+        patch.setdefault("velocity_type", "zero_gradient")
     return mesh, compute_mesh_geometry(mesh, compute_lsq=False)
 
 
@@ -159,21 +159,21 @@ def test_slip_plane_keeps_tangential_components_on_one_matrix():
 
 
 def test_cyclic_linear_upwind_matches_an_interior_face(tmp_path):
-    setup = fvm.FVMSetup(
-        case_name="cyclic_lust",
-        logging=fvm.LoggingConfig(console=False),
-        backup=fvm.BackupConfig(schedule=None, write_at_end=False),
-        time=fvm.TimeConfig(
-            time_step_size=0.1, end_time=0.1, output_schedule=fvm.RunSchedule(every_n_steps=10)
+    case = fvm.FVMCase(
+        name="cyclic_lust",
+        directory=tmp_path,
+        numerics=fvm.Numerics(
+            time_step_size=0.1,
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=KINEMATIC_VISCOSITY),
         ),
-        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=KINEMATIC_VISCOSITY),
+        initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=0.1),
+        backup=fvm.Backup(write_at_end=False),
+        logging=fvm.LoggingConfig(console=False),
+        mesh=_periodic_square,
         boundaries=_cyclic("xmin", "xmax") + _cyclic("ymin", "ymax") + _cyclic("zmin", "zmax"),
-        initial_velocity=[1.0, 0.0, 0.0],
     )
-    with (
-        contextlib.redirect_stdout(io.StringIO()),
-        fvm.create_fvm_solver(setup, case_dir=tmp_path, mesh=_periodic_square) as solver,
-    ):
+    with contextlib.redirect_stdout(io.StringIO()), fvm.FVMSolver(case) as solver:
         mesh, geometry = solver.mesh_data, solver.geo_data
         n_cells, n_interior = mesh["n_cells"], mesh["n_interior_faces"]
         spacing = 2 * np.pi / CELLS
@@ -193,7 +193,7 @@ def test_cyclic_linear_upwind_matches_an_interior_face(tmp_path):
             values[:n_cells] = np.sin(geometry["cell_centre"][:n_cells, 0] + offset)
             return values
 
-        for scheme in ("LUST", "linearUpwind"):
+        for scheme in ("lust", "linear_upwind"):
             results = []
             for offset, face in ((0.0, interior[0]), (shift, cyclic_face)):
                 values = field(offset)
@@ -247,7 +247,7 @@ def test_smagorinsky_reports_the_filter_width_it_uses():
     for patch in mesh["boundary"][4:]:
         patch["velocity_type"] = "empty"
     geometry = compute_mesh_geometry(mesh, compute_lsq=False)
-    model = Smagorinsky(mesh, geometry)
+    model = SmagorinskyModel(mesh, geometry)
     width = _compute_filter_width(geometry["cell_volume"], mesh, geometry)
     info = model.get_filter_info()
     assert info["mean_filter_width"] == pytest.approx(float(np.mean(width)))
@@ -261,26 +261,21 @@ def test_uniform_freestream_is_preserved_by_every_corrector(tmp_path, n_correcto
     # The first pressure corrector must see the prescribed inflow ghosts of a
     # freestream patch; a zero predictor ghost turns one step of uniform flow
     # into an O(1) pressure correction.
-    velocity = [1.0, 0.0, 0.0]
-    setup = fvm.FVMSetup(
-        case_name="uniform_freestream",
-        boundaries=[fvm.BoundaryConfig.freestream("numericalBoundary", velocity)],
-        initial_velocity=velocity,
-        pimple=fvm.PimpleControl(n_correctors=n_correctors),
-        logging=fvm.LoggingConfig(console=False),
-        backup=fvm.BackupConfig(schedule=None, write_at_end=False),
-        time=fvm.TimeConfig(
-            time_step_size=0.01, end_time=0.01, output_schedule=fvm.RunSchedule(every_n_steps=10)
+    velocity = (1.0, 0.0, 0.0)
+    case = fvm.FVMCase(
+        name="uniform_freestream",
+        directory=tmp_path,
+        numerics=fvm.Numerics(
+            time_step_size=0.01, pimple=fvm.PimpleConfig(n_correctors=n_correctors)
         ),
+        initial_conditions=fvm.InitialFields(velocity=velocity),
+        run=fvm.RunPlan(end_time=0.01),
+        backup=fvm.Backup(write_at_end=False),
+        logging=fvm.LoggingConfig(console=False),
+        mesh=lambda: coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), 0.25),
+        boundaries=(fvm.BoundaryConfig.freestream("numericalBoundary", velocity),),
     )
-    with (
-        contextlib.redirect_stdout(io.StringIO()),
-        fvm.create_fvm_solver(
-            setup,
-            case_dir=tmp_path,
-            mesh=lambda: coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), 0.25),
-        ) as solver,
-    ):
+    with contextlib.redirect_stdout(io.StringIO()), fvm.FVMSolver(case) as solver:
         solver.auto_write = False
         solver.advance()
         n = solver.mesh_data["n_cells"]

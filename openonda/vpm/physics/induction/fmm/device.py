@@ -209,7 +209,7 @@ class FMMDeviceWorkspace:
         count.
     radial_factors : callable
         Kernel-specific finite P2P velocity/Jacobian factors in m⁻³ and m⁻⁵.
-    kernel_name : {"GAUSSIAN", "WINCKELMANS"}
+    kernel_name : {"gaussian", "winckelmans"}
         Radial kernel used by the shared strict LBVH target traversal. Other
         FMM kernels use the exact direct arbitrary-target operator.
     velocity_tail_cutoff, gradient_tail_cutoff : float
@@ -279,7 +279,7 @@ class FMMDeviceWorkspace:
             max_nodes=self.max_nodes,
             theta=0.1,
             max_leaf_size=1,
-            kernel_type=kernel_name if kernel_name in treecode_kernel_names() else "GAUSSIAN",
+            kernel_type=kernel_name if kernel_name in treecode_kernel_names() else "gaussian",
             multipole_order=1,
             sort_particle_targets=False,
             traversal_block_dim=0,
@@ -1234,7 +1234,7 @@ class FMMInduction:
     # AUTO is accepted as a request to resolve a backend at solver construction;
     # the resolved backend is checked again before any FMM workspace is built.
     # Only the backends exercised by the production qualification are advertised.
-    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "METAL", "CUDA"})
+    supported_devices = frozenset({"auto", "cpu", "vulkan", "metal", "cuda"})
     supported_kernels = kernel_names()
     supports_gradient = True
     supports_variable_core_radius = True
@@ -1242,12 +1242,12 @@ class FMMInduction:
     supports_target_fields = True
     device_resident = True
 
-    def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
+    def __init__(self, *, stretching_scheme: str = "transposed") -> None:
         """Create an unbound FMM evaluator.
 
         Parameters
         ----------
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Formulation that turns the computed velocity gradient into
             ``dGamma/dt``. It does not change hierarchy construction or
             induced velocity.
@@ -1265,9 +1265,9 @@ class FMMInduction:
         """
         self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
         self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
-        self.method = "FMM"
+        self.method = "fmm"
         self.physics: PhysicsBase | None = None
-        self.kernel: RadialVortexKernel = make_vortex_kernel("GAUSSIAN")
+        self.kernel: RadialVortexKernel = make_vortex_kernel("gaussian")
         self.max_n_particles = 1
         self.workspace: FMMDeviceWorkspace | None = None
         self._reclaim_stage_cache: Callable[[], None] | None = None

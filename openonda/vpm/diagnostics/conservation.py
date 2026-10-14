@@ -17,9 +17,6 @@ units L^3/T.
 At shedding, scalar VLM circulation [L^2/T] is converted to VPM vector strength
 Gamma_p [L^3/T] by the oriented filament length; the two quantities are never
 added directly.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: February 2026
 """
 
 import csv

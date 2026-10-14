@@ -127,15 +127,15 @@ def _flatten_solver_metadata(metadata: dict) -> dict:
     centres = np.asarray([condition["centre"] for condition in conditions])
     spacing = distribution["spacing"]
     gaussian_core = first["vortex_core_radius"]
-    step_size, requested_steps = numerics["time_step_size"], configuration["run"]["steps"]
+    step_size, end_time = numerics["time_step_size"], configuration["run"]["end_time"]
     status = metadata["run_status"]["status"]
     return {
         "status": status,
         "completed": status == "completed",
         "case_name": metadata["case_name"],
         "time_step_size": step_size,
-        "number_of_steps": requested_steps,
-        "end_time": float(step_size) * int(requested_steps),
+        "number_of_steps": state["target_step"],
+        "end_time": float(end_time),
         "completed_steps": state["step"],
         "final_time": state["time"],
         "integrator": numerics["integrator"]["name"],
@@ -145,7 +145,7 @@ def _flatten_solver_metadata(metadata: dict) -> dict:
         "viscous_scheme": numerics["viscous"]["scheme"],
         "particle_kernel": numerics["particle_kernel"],
         "precision": numerics["precision"],
-        "write_precision": numerics["write_precision"],
+        "write_precision": configuration["output"]["precision"],
         "compute_device": numerics["compute_device"],
         "random_seed": numerics["random_seed"],
         "particle_spacing": spacing,
@@ -158,8 +158,8 @@ def _flatten_solver_metadata(metadata: dict) -> dict:
         "vortex_separation": float(np.linalg.norm(centres[0] - centres[1]))
         if len(centres) > 1
         else None,
-        "initial_n_particles_total": state["initial_n_particles_total"],
-        "final_n_particles_total": state["n_particles_total"],
+        "n_initial_particles": state["n_initial_particles"],
+        "n_final_particles": state["n_particles"],
     }
 
 

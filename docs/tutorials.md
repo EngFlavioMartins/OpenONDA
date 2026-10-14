@@ -60,4 +60,4 @@ Each coupled case has a `reference_flow/` subdirectory that solves the same flow
 
 ## Variants
 
-Several cases run variants from one `setup.py`, listed one per line in `allrun.sh`: diffusion schemes (`python setup.py vortex GBD`), stretching schemes (`--variant dns_transposed`), stabilization mechanisms (`python setup.py baseline`), plate angles (`--angle -5`), grid levels (`--name grid_h0045 -h 0.045`), or coupling parameters (`--box-margin 1.4`). Run a single variant by copying its line. Each variant writes and resumes its own results.
+Several cases run variants from one `setup.py`, listed one per line in `allrun.sh`: diffusion schemes (`python setup.py vortex gbd`), stretching schemes (`--variant dns_transposed`), stabilization mechanisms (`python setup.py baseline`), plate angles (`--angle -5`), grid levels (`--name grid_h0045 -h 0.045`), or coupling parameters (`--box-margin 1.4`). Run a single variant by copying its line. Each variant writes and resumes its own results.

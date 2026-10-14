@@ -26,7 +26,7 @@ def _explicit_vorticity(targets, position, strength, sigma, kernel, periods=200)
     return total
 
 
-@pytest.mark.parametrize("kernel", ["GAUSSIAN", "WINCKELMANS"])
+@pytest.mark.parametrize("kernel", ["gaussian", "winckelmans"])
 def test_one_layer_vorticity_includes_every_image(tmp_path, kernel):
     rng = np.random.default_rng(5)
     count = 30
@@ -38,10 +38,10 @@ def test_one_layer_vorticity_includes_every_image(tmp_path, kernel):
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=0.01,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f64",
                 particle_kernel=kernel,
                 max_n_particles=64,
@@ -50,7 +50,6 @@ def test_one_layer_vorticity_includes_every_image(tmp_path, kernel):
                     vpm.DirectInduction(), z_min=PLANES[0], z_max=PLANES[1]
                 ),
                 viscous=vpm.ViscousConfig.inviscid(),
-                verbose=False,
             ),
         )
     )

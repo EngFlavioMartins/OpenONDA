@@ -91,9 +91,9 @@ def test_only_an_algebraic_core_widens_the_local_correction():
         cutoffs[kernel] = report["correction_cutoff"] / sigma.max()
         assert report["kernel"] == kernel
     # 5 broadened cores of 3 sigma: Gaussian-type defects are negligible there.
-    for kernel in ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"):
+    for kernel in ("gaussian", "high_order_gaussian", "super_gaussian"):
         assert cutoffs[kernel] == pytest.approx(15.0)
-    assert cutoffs["WINCKELMANS"] > 15.0
+    assert cutoffs["winckelmans"] > 15.0
 
 
 @pytest.mark.gpu

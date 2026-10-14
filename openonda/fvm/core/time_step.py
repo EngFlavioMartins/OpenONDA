@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from ..config.types import MaximumCourantTimeStep
+from ..config.numerics import MaximumCourantTimeStep
 
 _MAXIMUM_GROWTH_FACTOR = 1.2
 _GROWTH_DAMPING = 0.1
@@ -79,4 +79,4 @@ def event_aligned_time_step_size(maximum_time_step_size: float, time_until_event
     return min(maximum_time_step_size, time_until_event / n_steps)
 
 
-__all__ = ["maximum_courant_time_step_size", "event_aligned_time_step_size"]
+__all__ = ["event_aligned_time_step_size", "maximum_courant_time_step_size"]

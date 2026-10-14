@@ -1,11 +1,6 @@
 """
 GPU-resident VLM lattice data structure (VLMLattice): panel geometry,
 circulations, and topology.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from pathlib import Path

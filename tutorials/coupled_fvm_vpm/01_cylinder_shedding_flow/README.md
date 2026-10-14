@@ -31,7 +31,7 @@ A vortex behind the cylinder breaks the symmetry; the freestream is steady from 
 ./allplot.sh
 ```
 
-`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest backup. The mesh is generated once and kept as `assets/coupled_cylinder_flow_mesh.npz`, with a `.vtu` copy for ParaView. Install the optional [CUDA Gaussian mesh](../../../docs/installation.md): without it, the image sums of `SlipSlabInduction` fall back to a much slower CPU evaluation.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest coupled backup in `solution/coupled/`. The mesh is generated once and kept as `assets/coupled_cylinder_flow_mesh.npz`, with a `.vtu` copy for ParaView. Install the optional [CUDA Gaussian mesh](../../../docs/installation.md): without it, the image sums of `SlipSlabInduction` fall back to a much slower CPU evaluation.
 
 ## Results
 
@@ -40,15 +40,15 @@ A vortex behind the cylinder breaks the symmetry; the freestream is steady from 
 | `figures/forces` | $C_D$ and $C_L$ against the reference; the mean drag, lift amplitude and Strouhal number of developed shedding are printed |
 | `figures/velocity_profiles` | Mean streamwise velocity and transverse velocity fluctuation at $x/D=2$ and $4$ |
 | `figures/coupling_cost` | Wall time of each exchange and the particle count |
-| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; `assets/paraview_state.py` loads both in ParaView |
+| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; every particle frame, written with each coupled backup, has an FVM frame of the same time. `assets/paraview_state.py` loads both in ParaView |
 
 ## Sensitivity study
 
 Three coupling parameters are varied one at a time about the baseline:
 
 ```bash
-./allrun_sensitivity_study.sh
-./allplot_sensitivity_study.sh
+assets/run_sensitivity_study.sh
+assets/plot_sensitivity_study.sh
 ```
 
 | Flag of `setup.py` | Physical meaning | Baseline | Study values |
@@ -57,4 +57,4 @@ Three coupling parameters are varied one at a time about the baseline:
 | `--fvm-substeps` | FVM steps of 0.008 s per exchange: how long the particle boundary data are held, and the particle time step | 5 | 2, 4, 6, 8 |
 | `--transfer-inset` | Cells between the FVM box faces and the transfer-region faces, where FVM vorticity stops replacing the particles | 8.75 | 4, 6, 14, 20 |
 
-Each run solves a copy of this case in `sensitivity/<run>/` up to 55 s, by which time the lift-amplitude error has reached its developed level; launching the study again resumes every run from its latest backup. The runs take a few hours each and share the GPU, so they run one after another. `figures/sensitivity` shows the absolute relative errors of the mean drag, the lift amplitude and the Strouhal number against the reference over developed shedding, $t\geq40$ s, with the 2% target dashed and each baseline dotted; the numbers are printed. `./allclean.sh` keeps `sensitivity/`; delete it by hand to start the study again. The results of the study, and the coupling rules drawn from them, are recorded in [coupling_findings.md](coupling_findings.md).
+Each run solves a copy of this case in `sensitivity/<run>/` up to 55 s, by which time the lift-amplitude error has reached its developed level; launching the study again resumes every run from its latest backup. The runs take a few hours each and share the GPU, so they run one after another. `figures/sensitivity` shows the absolute relative errors of the mean drag, the lift amplitude and the Strouhal number against the reference over developed shedding, $t\geq40$ s, with the 2% target dashed and each baseline dotted; the numbers are printed. `./allclean.sh` keeps `sensitivity/`; delete it by hand to start the study again. The results of the study, and the coupling rules drawn from them, are recorded in [coupling_findings.md](assets/coupling_findings.md).

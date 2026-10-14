@@ -82,10 +82,10 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         numerics = configuration["numerics"]
         run = configuration["run"]
         state = metadata["state"]
-        requested_steps = int(run["steps"])
+        requested_steps = int(state["target_step"])
         completed_steps = int(state["step"])
         completed_time = float(state["time"])
-        interval_steps = int(configuration["backup"]["interval_steps"])
+        interval_steps = int(configuration["backup"]["schedule"]["interval"])
         status = str(metadata["run_status"]["status"])
     except (KeyError, TypeError, ValueError) as error:
         return metadata, set(), [f"{name}: invalid run metadata ({error})"]
@@ -96,8 +96,8 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         "completed_steps": completed_steps,
         "final_time": completed_time,
         "backup_interval_steps": interval_steps,
-        "initial_n_particles_total": state.get("initial_n_particles_total"),
-        "final_n_particles_total": state.get("n_particles_total"),
+        "n_initial_particles": state.get("n_initial_particles"),
+        "n_final_particles": state.get("n_particles"),
         "induction_backend": numerics.get("induction", {}).get("method"),
         "stretching_scheme": numerics.get("induction", {}).get("stretching_scheme"),
     }
@@ -108,30 +108,30 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         return metadata, set(), [f"{name}: invalid backup cadence ({error})"]
 
     expected = {
-        "solver": "VPM",
+        "solver": "vpm",
         "case_name": name,
-        "schema_version": 2,
+        "schema_version": 3,
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
             failures.append(f"{name}: {key} is {metadata.get(key)!r}; expected {value!r}")
     expected_scheme = (
-        "DIRECT" if name == "dns_direct" else "MIXED" if name == "dns_mixed" else "TRANSPOSED"
+        "direct" if name == "dns_direct" else "mixed" if name == "dns_mixed" else "transposed"
     )
     expected_numerics = {
         "integrator": (numerics.get("integrator", {}).get("name"), "SSPRK3"),
-        "induction backend": (numerics.get("induction", {}).get("method"), "TREECODE"),
+        "induction backend": (numerics.get("induction", {}).get("method"), "treecode"),
         "stretching scheme": (
             numerics.get("induction", {}).get("stretching_scheme"),
             expected_scheme,
         ),
-        "viscous scheme": (numerics.get("viscous", {}).get("scheme"), "CS"),
-        "particle state-limit action": (run.get("state_limit_action"), "STOP"),
+        "viscous scheme": (numerics.get("viscous", {}).get("scheme"), "cs"),
+        "particle state-limit action": (run.get("state_limit_action"), "stop"),
     }
     for label, (actual, expected_value) in expected_numerics.items():
         if actual != expected_value:
             failures.append(f"{name}: {label} is {actual!r}; expected {expected_value!r}")
-    expected_turbulence = "LES_SMAGORINSKY" if name == "les_transposed" else "DNS"
+    expected_turbulence = "smagorinsky" if name == "les_transposed" else "dns"
     turbulence_model = numerics.get("turbulence", {}).get("model")
     if turbulence_model != expected_turbulence:
         failures.append(
@@ -150,7 +150,6 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
     for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv", "ring_modes.csv"):
         try:
             data = pd.read_csv(SAMPLES_DIR / name / csv_name)
-            last_step = int(data["step"].iloc[-1])
             last_time = float(data["time"].iloc[-1])
         except (
             OSError,
@@ -162,7 +161,7 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         ) as error:
             failures.append(f"{name}: invalid {csv_name} ({error})")
             continue
-        if last_step != completed_steps or not np.isclose(
+        if not np.isclose(
             last_time,
             completed_time,
             rtol=0.0,
@@ -180,10 +179,10 @@ def _readable_finite_csv(path: Path) -> bool:
     numeric = data.select_dtypes(include=[np.number]).copy()
     if data.empty or numeric.empty:
         return False
-    if not {"time", "step"}.issubset(data.columns):
+    if "time" not in data.columns:
         return False
     for column in INITIAL_DIAGNOSTIC_COLUMNS & set(numeric.columns):
-        invalid = numeric[column].isna() & (data["step"] != 0)
+        invalid = numeric[column].isna() & (data["time"] != 0.0)
         if invalid.any():
             return False
         numeric[column] = numeric[column].fillna(0.0)
@@ -330,9 +329,9 @@ def build_summary(samples_dir: Path, figures_dir: Path) -> dict:
         metadata = {
             "status": raw.get("run_status", {}).get("status", "missing"),
             "completed_steps": state.get("step"),
-            "requested_steps": configuration.get("run", {}).get("steps"),
+            "requested_steps": state.get("target_step"),
             "final_time": state.get("time"),
-            "final_n_particles_total": state.get("n_particles_total"),
+            "n_final_particles": state.get("n_particles"),
             "induction_backend": numerics.get("induction", {}).get("method"),
             "stretching_scheme": numerics.get("induction", {}).get("stretching_scheme"),
         }
@@ -341,18 +340,20 @@ def build_summary(samples_dir: Path, figures_dir: Path) -> dict:
             for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv"):
                 try:
                     data = pd.read_csv(variant_samples / csv_name)
-                    if not data.empty and {"step", "time"}.issubset(data.columns):
-                        observed_rows.append(data.loc[data["step"].idxmax()])
+                    if not data.empty and "time" in data.columns:
+                        observed_rows.append(data.loc[data["time"].idxmax()])
                 except (OSError, ValueError, pd.errors.ParserError):
                     continue
             if observed_rows:
-                latest = max(observed_rows, key=lambda row: int(row["step"]))
-                particle_count = latest.get("n_particles_total")
+                latest = max(observed_rows, key=lambda row: float(row["time"]))
+                particle_count = latest.get("n_particles")
                 metadata = dict(metadata)
                 metadata["status"] = "partial"
-                metadata["completed_steps"] = int(latest["step"])
+                metadata["completed_steps"] = round(
+                    float(latest["time"]) / float(numerics["time_step_size"])
+                )
                 metadata["final_time"] = float(latest["time"])
-                metadata["final_n_particles_total"] = (
+                metadata["n_final_particles"] = (
                     int(particle_count) if pd.notna(particle_count) else None
                 )
         runs[variant] = {
@@ -360,7 +361,7 @@ def build_summary(samples_dir: Path, figures_dir: Path) -> dict:
             "completed_steps": metadata.get("completed_steps"),
             "requested_steps": metadata.get("requested_steps"),
             "completed_time": metadata.get("final_time"),
-            "n_particles_total": metadata.get("final_n_particles_total"),
+            "n_particles": metadata.get("n_final_particles"),
             "induction_backend": metadata.get("induction_backend"),
             "stretching_scheme": metadata.get("stretching_scheme"),
         }

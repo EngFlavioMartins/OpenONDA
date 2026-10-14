@@ -13,9 +13,6 @@ implemented here: every numerical update is performed on the subsystems the
 stepper calls.  Diffusing and
 advecting kernels live in ``physics``; the stabilization workers live in
 ``stabilization`` and are dispatched here only at their scheduled phases.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from __future__ import annotations
@@ -31,16 +28,17 @@ from ..physics.induction.base import StageRates, StageState
 from ..wall_errors import WallCorrectionTooLargeError
 
 if TYPE_CHECKING:
+    from openonda.core.profiling import Profiler
+
     from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
     from ..config.case import Numerics
     from ..config.stabilization import StabilizationConfig
     from ..config.viscous import ViscousConfig
     from ..coupling import CouplingStepper
-    from ..io.runtime_profiler import RuntimeProfiler
     from ..particles.container import Particles
     from ..physics.engine import PhysicsEngine
     from ..stabilization import StabilizationManager
-    from ..turbulence.turbulence import ParticlesLES
+    from ..turbulence.les import ParticleLES
     from .solver import VPMSolver
 
 
@@ -93,12 +91,12 @@ class EvolutionStepper:
         return self.solver.physics
 
     @property
-    def setup(self) -> Numerics:
-        """Return the immutable VPM setup/configuration object."""
-        return self.solver.setup
+    def numerics(self) -> Numerics:
+        """Return the immutable VPM numerical configuration."""
+        return self.solver.numerics
 
     @property
-    def profiler(self) -> RuntimeProfiler:
+    def profiler(self) -> Profiler:
         """Return the step profiler used by the owning solver."""
         return self.solver.profiler
 
@@ -158,7 +156,7 @@ class EvolutionStepper:
         return self.solver._n_steps_per_dvh_diffusion
 
     @property
-    def turbulence_model(self) -> ParticlesLES | None:
+    def turbulence_model(self) -> ParticleLES | None:
         """Return the active LES model, or ``None`` for non-LES flow."""
         return self.solver.turbulence_model
 
@@ -226,9 +224,7 @@ class EvolutionStepper:
         """
 
         target_step = self.solver.step + 1
-        target_time = (
-            round(self.solver.time + self.time_step_size, 12) if time is None else float(time)
-        )
+        target_time = self.solver.time + self.time_step_size if time is None else float(time)
         Logging.begin_step(target_step)
 
         self.stabilization.begin_step(
@@ -248,62 +244,67 @@ class EvolutionStepper:
         self.particles.step = self.step
         self._debug_validate_particle_geometry("step entry")
 
-        with self.profiler.step():
-            _gradients_required = (
-                self.flow_model == "LES"
-                or self.stabilization_config.selective_eddy_viscosity_coefficient > 0.0
-                or (
-                    self.stabilization_config.pedrizzetti_relaxation_enabled
-                    and self.flow_model != "POTENTIAL"
-                )
+        self.profiler.begin_step(self.solver.step, self.solver.time, self.time_step_size)
+        _gradients_required = (
+            self.flow_model == "les"
+            or self.stabilization_config.selective_eddy_viscosity_coefficient > 0.0
+            or (
+                self.stabilization_config.pedrizzetti_relaxation_enabled
+                and self.flow_model != "potential"
             )
-            if _gradients_required:
-                with self.profiler.section("Velocity gradients"):
-                    self._update_velocity_and_gradients()
+        )
+        if _gradients_required:
+            with self.profiler.section("Velocity gradients"):
+                self._update_velocity_and_gradients()
 
-            with self.profiler.section("LES update"):
-                self._update_les_state()
-                self.stabilization.refresh_metrics(
-                    kinetic_energy_rate=self.solver.kinetic_energy_rate,
-                    viscous_kinetic_energy_rate=self.solver.viscous_kinetic_energy_rate,
-                )
-                self.stabilization.update_selective_eddy_viscosity()
+        with self.profiler.section("LES update"):
+            self._update_les_state()
+            self.stabilization.refresh_metrics(
+                kinetic_energy_rate=self.solver.kinetic_energy_rate,
+                viscous_kinetic_energy_rate=self.solver.viscous_kinetic_energy_rate,
+            )
+            self.stabilization.update_selective_eddy_viscosity()
 
-            # Relax against the same t_n gradient used by the strength update.
-            self.stabilization.run_phase("pre_strength", profiler=self.profiler)
+        # Relax against the same t_n gradient used by the strength update.
+        self.stabilization.run_phase("pre_strength", profiler=self.profiler)
 
-            # The inviscid particle state always advances through one coupled
-            # position/strength RK call.  Diffusion remains a split operator.
-            with self.profiler.section("Coupled particle evolution"):
-                self._apply_coupled_update(
-                    self.time_step_size,
-                )
-            self._debug_validate_particle_geometry("coupled evolution")
+        # The inviscid particle state always advances through one coupled
+        # position/strength RK call.  Diffusion remains a split operator.
+        with self.profiler.section("Coupled particle evolution"):
+            self._apply_coupled_update(
+                self.time_step_size,
+            )
+        self._debug_validate_particle_geometry("coupled evolution")
 
-            if self.flow_model != "POTENTIAL":
-                self.stabilization.run_phase("post_evolution", profiler=self.profiler)
+        if self.flow_model != "potential":
+            self.stabilization.run_phase("post_evolution", profiler=self.profiler)
 
-            self.stabilization.run_phase("post_step", profiler=self.profiler)
-            self._debug_validate_particle_geometry("particle retention")
+        self.stabilization.run_phase("post_step", profiler=self.profiler)
+        self._debug_validate_particle_geometry("particle retention")
 
-            if self.vlm_solver is not None:
-                # Transport the existing wake with the previous bound solution,
-                # then solve at the new body/wake clock and insert the completed
-                # near-wake row. Newborn elements must not receive a second full
-                # step of advection or stretching during their birth interval.
-                self.particles.touch_state()
-                with self.profiler.section("VLM coupling"):
-                    self.coupling.advance_vlm(self.time_step_size)
+        if self.vlm_solver is not None:
+            # Transport the existing wake with the previous bound solution,
+            # then solve at the new body/wake clock and insert the completed
+            # near-wake row. Newborn elements must not receive a second full
+            # step of advection or stretching during their birth interval.
+            self.particles.touch_state()
+            with self.profiler.section("VLM coupling"):
+                self.coupling.advance_vlm(self.time_step_size)
 
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
         # state (including any topology-changing stabilization) is committed so
         # post-step boundary queries cannot reuse the previous tree.
         self.particles.touch_state()
+        self.profiler.end_step()
         self._commit_accepted_step()
-        self.profiler.report_step()
-        self.solver.wall_time = self.profiler.wall_time
-        Logging.time_step(
+        Logging.step_timing(
+            self.profiler.step_seconds,
+            self.profiler.step_sections if self.profiler.enabled else None,
+            label="Evolution wall time",
+        )
+        self.solver.wall_time = self.profiler.total_seconds
+        Logging.end_step(
             self.solver.step,
             self.solver.time,
             self.solver.elapsed_wall_time,
@@ -313,17 +314,17 @@ class EvolutionStepper:
 
     def _apply_pending_particle_regeneration(self) -> None:
         """Regenerate externally modified GBD particles without advancing time."""
-        if not self.solver._is_particle_regeneration_pending:
+        if not self.solver._particle_regeneration_pending:
             return
-        if self.viscous_scheme != "GBD":
-            self.solver._is_particle_regeneration_pending = False
+        if self.viscous_scheme != "gbd":
+            self.solver._particle_regeneration_pending = False
             return
         self._apply_viscous_diffusion(0.0)
-        self.solver._is_particle_regeneration_pending = False
+        self.solver._particle_regeneration_pending = False
 
     def _debug_validate_particle_geometry(self, stage: str) -> None:
         """Validate active particle core_radius and particle_volume when stage tracing is enabled."""
-        if not self.setup.diagnostics.validate_stages:
+        if not self.solver.case.logging.validate_stages:
             return
         n = self.particles.n_particles_total
         if n == 0:
@@ -398,7 +399,7 @@ class EvolutionStepper:
 
     def _update_les_state(self) -> None:
         """Update LES viscosity from the current strain-rate field."""
-        if self.flow_model == "LES":
+        if self.flow_model == "les":
             self.turbulence_model.compute(self.particles, time_step_size=self.time_step_size)
             if self.axisymmetric_axis >= 0:
                 self._validate_axisymmetric_orbits()
@@ -487,15 +488,15 @@ class EvolutionStepper:
 
         def snapshot() -> tuple[np.ndarray, np.ndarray, object]:
             return (
-                self.physics._download_vector_field(self.particles.position, count),
-                self.physics._download_vector_field(self.particles.vortex_strength, count),
+                self.physics.download_vector_field(self.particles.position, count),
+                self.physics.download_vector_field(self.particles.vortex_strength, count),
                 deepcopy(getattr(self.physics, "last_solid_projection", None)),
             )
 
         def restore(saved: tuple[np.ndarray, np.ndarray, object]) -> None:
             position, strength, budget = saved
-            self.physics._upload_vector_array(position, self.particles.position, count)
-            self.physics._upload_vector_array(strength, self.particles.vortex_strength, count)
+            self.physics.upload_vector_array(position, self.particles.position, count)
+            self.physics.upload_vector_array(strength, self.particles.vortex_strength, count)
             self.physics.last_solid_projection = deepcopy(budget)
             self.particles.touch_state()
 
@@ -569,14 +570,14 @@ class EvolutionStepper:
         time_step_size: float,
     ) -> None:
         """Advance position and strength together, with symmetric core spreading."""
-        if self.viscous_scheme == "CS":
+        if self.viscous_scheme == "cs":
             self._apply_core_spreading_diffusion(0.5 * time_step_size)
 
         self._advance_particles(time_step_size)
-        if self.viscous_scheme == "CS":
+        if self.viscous_scheme == "cs":
             self._apply_core_spreading_diffusion(0.5 * time_step_size)
 
-        if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
+        if self.viscous_scheme in {"rwm", "dvh", "gbd"}:
             self._apply_viscous_diffusion(time_step_size)
 
         if self.turbulence_model is not None:
@@ -590,25 +591,25 @@ class EvolutionStepper:
 
     def _apply_viscous_diffusion(self, time_step_size: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""
-        if self.viscous_scheme == "NONE":
+        if self.viscous_scheme == "none":
             return
 
-        if self.viscous_scheme == "CS":
+        if self.viscous_scheme == "cs":
             self._apply_core_spreading_diffusion(time_step_size)
-        elif self.viscous_scheme == "RWM":
+        elif self.viscous_scheme == "rwm":
             self.physics.random_walk_method_diffusion(
                 self.particles,
                 time_step_size=time_step_size,
-                random_seed=self.setup.random_seed,
+                random_seed=self.numerics.random_seed,
                 accepted_step=self.step,
             )
-        elif self.viscous_scheme in ("DVH", "GBD"):
+        elif self.viscous_scheme in ("dvh", "gbd"):
             # DVH fires only when its fixed diffusion increment has accumulated.
             # This is an operator-splitting approximation: intermediate accepted
             # states lag in diffusion time, and reducing RK dt at fixed h and
             # resolved interval does not remove that lag by itself.
             diffusion_time_step_size = time_step_size
-            if self.viscous_scheme == "DVH" and self.solver._n_steps_per_dvh_diffusion > 1:
+            if self.viscous_scheme == "dvh" and self.solver._n_steps_per_dvh_diffusion > 1:
                 pending_steps = self.solver._n_steps_since_dvh_diffusion + 1
                 if pending_steps < self.solver._n_steps_per_dvh_diffusion:
                     self.solver._n_steps_since_dvh_diffusion = pending_steps
@@ -659,7 +660,7 @@ class EvolutionStepper:
                     report_removal=False,
                 )
                 # Velocity is intentionally left stale; it is recomputed before the next consumer.
-            if self.viscous_scheme == "DVH":
+            if self.viscous_scheme == "dvh":
                 # Commit the accepted-step counter only after validation and
                 # regeneration succeed; a failed transfer must not discard
                 # the accumulated physical interval.
@@ -679,7 +680,7 @@ class EvolutionStepper:
                 if n_part > 0
                 else 0.0
             )
-        if self.viscous_scheme == "DVH":
+        if self.viscous_scheme == "dvh":
             # DVH requires a scalar, source-independent heat kernel. Pass the actual effective-viscosity field so both
             # molecular and LES-induced spatial variation is validated rather
             # than silently replaced by its mean.
@@ -701,7 +702,7 @@ class EvolutionStepper:
         else:
             # LES uses per-particle effective viscosity in the grid Laplacian.
             effective_viscosity = None
-            if self.flow_model == "LES":
+            if self.flow_model == "les":
                 N = self.particles.n_particles_total
                 if N > 0:
                     effective_viscosity = self.particles.effective_viscosity_cpu()

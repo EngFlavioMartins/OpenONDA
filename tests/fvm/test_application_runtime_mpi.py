@@ -10,6 +10,8 @@ import sys
 
 import pytest
 
+import openonda
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
@@ -17,7 +19,6 @@ import pytest
     [
         "partitioned",
         "replicated",
-        "public_case",
         "mesh_failure",
         "analysis_failure",
         "four_ranks",
@@ -47,13 +48,12 @@ def build_mesh():
         raise ValueError("injected meshing failure")
     return coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5), .25)
 
-velocity = [1.,0.,0.]
-boundaries = [fvm.BoundaryConfig(name="numericalBoundary",
-    velocity_type="fixedValue", velocity_value=velocity,
-    pressure_type="fixedFluxPressure")]
+velocity = (1.,0.,0.)
+boundaries = (fvm.BoundaryConfig(name="numericalBoundary",
+    velocity_type="fixed_value", velocity_value=velocity,
+    pressure_type="fixed_flux_pressure"),)
 if mode == "freestream":
-    boundaries = [fvm.BoundaryConfig.freestream("numericalBoundary", velocity)]
-backup = fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=1), write_at_end=True)
+    boundaries = (fvm.BoundaryConfig.freestream("numericalBoundary", velocity),)
 execution = fvm.ComputeConfig(linear_backend="petsc", parallel_mode="petsc_replicated") if mode == "replicated" else fvm.ComputeConfig()
 def analyse(fields):
     print("ANALYSIS_WRITTEN_ONCE", flush=True)
@@ -63,29 +63,25 @@ def analyse(fields):
     np.testing.assert_allclose(fields.velocity, np.tile(velocity, (64,1)), atol=1e-8)
     if mode == "analysis_failure":
         raise ValueError("injected analysis failure")
-    return [fields.step, fields.time, len(fields.velocity), float(np.sum(fields.cell_volume))]
+    return [fields.time, len(fields.velocity), float(np.sum(fields.cell_volume))]
 
 try:
-    if mode == "public_case":
-        solver = fvm.FVMSolver(fvm.FVMCase(
-            name="runtime", cores=cores, mesh=build_mesh, directory=directory,
-            boundaries=tuple(boundaries), initial_conditions=fvm.InitialFields(velocity=[1.,0.,0.]),
-            run=fvm.RunPlan(time_step_size=.01, end_time=.01, output_schedule=fvm.RunSchedule(every_n_steps=1)),
-            backup=backup,
-        ))
-    else:
-        solver = fvm.create_fvm_solver(fvm.FVMSetup(
-            case_name="runtime", cores=cores, boundaries=boundaries,
-            initial_velocity=velocity, execution=execution, backup=backup,
-            time=fvm.TimeConfig(time_step_size=.01, end_time=.01, output_schedule=fvm.RunSchedule(every_n_steps=1)),
-        ), case_dir=directory, mesh=build_mesh)
+    solver = fvm.FVMSolver(fvm.FVMCase(
+        name="runtime", directory=directory,
+        numerics=fvm.Numerics(time_step_size=.01, execution=execution),
+        initial_conditions=fvm.InitialFields(velocity=velocity),
+        run=fvm.RunPlan(end_time=.01),
+        output=fvm.Output(schedule=fvm.EverySteps(1)),
+        backup=fvm.Backup(schedule=fvm.EverySteps(1)),
+        mesh=build_mesh, boundaries=boundaries, cores=cores,
+    ))
     assert solver.parallel.size == cores
     with solver:
         row = solver.evaluate(analyse)
-        solver.write_csv("analysis.csv", [row], columns=("step","time","cells","volume"))
+        solver.write_csv("analysis.csv", [row], columns=("time","cells","volume"))
         solver.run()
         row = solver.evaluate(analyse)
-        solver.write_csv("analysis.csv", [row], columns=("step","time","cells","volume"), append=True)
+        solver.write_csv("analysis.csv", [row], columns=("time","cells","volume"), append=True)
     status = "completed"
 except (RuntimeError, ValueError) as error:
     expected = "injected meshing failure" if mode == "mesh_failure" else "injected analysis failure"
@@ -107,11 +103,13 @@ rank = MPI.COMM_WORLD.Get_rank()
         "_OPENONDA_MPI_CHILD",
     ):
         env.pop(key, None)
+    # Run the checkout under test, not whichever checkout is installed.
+    env["PYTHONPATH"] = str(Path(openonda.__file__).resolve().parents[1])
     if mode == "four_ranks":
         # A resource reservation is not an MPI world, either before launch
         # or in the children using four of its available tasks.
         env["SLURM_NTASKS"] = "64"
-    # Installed checkout: exercise the same plain invocation used by tutorials.
+    # Exercise the same plain invocation used by tutorials.
     completed = subprocess.run(
         [sys.executable, "setup.py", mode],
         cwd=tmp_path,

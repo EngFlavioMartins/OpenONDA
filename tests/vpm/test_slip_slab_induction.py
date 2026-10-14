@@ -33,7 +33,7 @@ def cpu_runtime():
     ti.reset()
 
 
-def _fields(kernel="GAUSSIAN"):
+def _fields(kernel="gaussian"):
     physics = PhysicsBase(kernel, 2, ti.f64, max_evaluation_points=3)
     induction = SlipSlabInduction(
         DirectInduction(),
@@ -123,7 +123,7 @@ def test_slab_faces_have_negligible_normal_induced_velocity():
 
 
 def test_nonbinary_f64_slip_planes_preserve_velocity_and_gradient_parity():
-    physics = PhysicsBase("GAUSSIAN", 1, ti.f64, max_evaluation_points=4)
+    physics = PhysicsBase("gaussian", 1, ti.f64, max_evaluation_points=4)
     slab = SlipSlabInduction(
         DirectInduction(),
         z_min=-0.48,
@@ -169,7 +169,7 @@ def test_slab_blend_weight_preserves_thin_span_interior():
 
 
 def test_unconverged_image_tail_fails_closed():
-    physics = PhysicsBase("GAUSSIAN", 1, ti.f64, max_evaluation_points=4)
+    physics = PhysicsBase("gaussian", 1, ti.f64, max_evaluation_points=4)
     induction = SlipSlabInduction(
         DirectInduction(), z_min=-0.24, z_max=0.24, tail_tolerance=1e-12, max_shells=3
     ).bind(physics)
@@ -198,7 +198,7 @@ def test_source_outside_physical_slab_is_rejected():
         induction.validate_source_arrays(np.array([[0.0, 0.0, 0.25]]), np.array([[0, 0, 1]]))
 
 
-@pytest.mark.parametrize("scheme", ["CS", "RWM"])
+@pytest.mark.parametrize("scheme", ["cs", "rwm"])
 def test_slab_accepts_core_spreading_and_random_walk(scheme):
     slab = SlipSlabInduction(DirectInduction(), z_min=-0.24, z_max=0.24)
     Numerics(induction=slab, viscous=ViscousConfig(scheme=scheme))
@@ -288,7 +288,7 @@ def test_slab_restart_configuration_includes_planes_tail_and_base():
     assert configuration["z_min"] == -0.24
     assert configuration["z_max"] == 0.24
     assert configuration["tail_tolerance"] == 1e-4
-    assert configuration["base"]["method"] == "DIRECT"
+    assert configuration["base"]["method"] == "direct"
     assert configuration != _configuration_value(second)
 
 

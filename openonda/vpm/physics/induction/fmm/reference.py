@@ -52,7 +52,7 @@ class HostFMMReference:
         kernel: RadialVortexKernel | None = None,
         max_n_particles: int | None = None,
         leaf_capacity: int = 8,
-        stretching_scheme: str = "TRANSPOSED",
+        stretching_scheme: str = "transposed",
     ) -> None:
         """Configure the inspectable host reference FMM.
 
@@ -71,7 +71,7 @@ class HostFMMReference:
             and adopts the bound physics capacity when available.
         leaf_capacity : int, default=8
             Maximum source count in an FMM leaf before subdivision.
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Contraction used for the returned strength rate when gradients are
             requested. Velocity and gradient evaluation are otherwise the
             same; see :func:`normalize_stretching_scheme`.
@@ -92,9 +92,9 @@ class HostFMMReference:
             raise ValueError("FMM tolerance must lie in (0, 1)")
         if int(leaf_capacity) < 1:
             raise ValueError("FMM leaf_capacity must be positive")
-        self.method = "FMM"
+        self.method = "fmm"
         self.tolerance = float(tolerance)
-        self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
+        self.kernel = make_vortex_kernel("gaussian") if kernel is None else kernel
         self.physics: PhysicsBase | None = None
         self.max_n_particles = int(max_n_particles or 1)
         self.leaf_capacity = int(leaf_capacity)
@@ -150,8 +150,8 @@ class HostFMMReference:
         # Taichi fields.  ``Field.to_numpy()`` would download the complete
         # capacity (which can be much larger than the active cloud) on every
         # RK stage and is the main avoidable memory spike of this host backend.
-        position_np = self.physics._download_vector_field(position, count)
-        strength_np = self.physics._download_vector_field(vortex_strength, count)
+        position_np = self.physics.download_vector_field(position, count)
+        strength_np = self.physics.download_vector_field(vortex_strength, count)
         radius_np = self.physics._download_scalar_field(core_radius, count)
         self.tree.build(position_np, strength_np, radius_np, count)
         self.diagnostics.hierarchy_builds += 1
@@ -165,9 +165,9 @@ class HostFMMReference:
 
         if strength_rate_enabled:
             strength_np = self.tree.vortex_strength
-            if self.stretching_scheme == "DIRECT":
+            if self.stretching_scheme == "direct":
                 rate_np = np.einsum("nij,nj->ni", gradient_np, strength_np)
-            elif self.stretching_scheme == "TRANSPOSED":
+            elif self.stretching_scheme == "transposed":
                 rate_np = np.einsum("nji,nj->ni", gradient_np, strength_np)
             else:
                 rate_np = 0.5 * np.einsum(
@@ -205,9 +205,9 @@ class HostFMMReference:
         """Evaluate arbitrary targets with the reference kernel conditions."""
         if self.physics is None:
             raise RuntimeError("HostFMMReference must be bound before target evaluation")
-        targets = self.physics._download_vector_field(target_position, int(target_count))
-        sources = self.physics._download_vector_field(source_position, int(source_count))
-        strengths = self.physics._download_vector_field(source_vortex_strength, int(source_count))
+        targets = self.physics.download_vector_field(target_position, int(target_count))
+        sources = self.physics.download_vector_field(source_position, int(source_count))
+        strengths = self.physics.download_vector_field(source_vortex_strength, int(source_count))
         radii = self.physics._download_scalar_field(source_core_radius, int(source_count))
         displacement = targets[:, None, :] - sources[None, :, :]
         radius = np.linalg.norm(displacement, axis=-1)
@@ -228,7 +228,7 @@ class HostFMMReference:
                 dtype=velocity.dtype,
             )
         if target_velocity is not None:
-            self.physics._upload_vector_array(velocity, target_velocity, int(target_count))
+            self.physics.upload_vector_array(velocity, target_velocity, int(target_count))
         if target_velocity_gradient is not None:
             zeta_value = self.kernel.zeta(rho)
             q_prime = rho * rho * zeta_value
@@ -402,7 +402,7 @@ class HostFMMReference:
 
     def _write_vector(self, output: TaichiField, values: np.ndarray) -> None:
         if self.physics is not None:
-            self.physics._upload_vector_array(values, output, len(values))
+            self.physics.upload_vector_array(values, output, len(values))
             return
         dtype = getattr(self.physics, "np_dtype", np.float32)
         padded = np.zeros((self.max_n_particles, 3), dtype=dtype)

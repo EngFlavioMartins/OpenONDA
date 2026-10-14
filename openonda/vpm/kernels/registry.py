@@ -22,7 +22,7 @@ KERNELS: dict[str, KernelDefinition] = {
 def kernel_definition(name: str) -> KernelDefinition:
     """Return the registered definition of a case-insensitive kernel name."""
     try:
-        return KERNELS[str(name).upper()]
+        return KERNELS[str(name).lower()]
     except KeyError as exc:
         raise ValueError(
             f"unsupported vortex kernel {name!r}; registered kernels: {sorted(KERNELS)}"

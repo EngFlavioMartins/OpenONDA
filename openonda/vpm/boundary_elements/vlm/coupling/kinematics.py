@@ -1,11 +1,6 @@
 """
 Rigid-body kinematics for VLM lattices: static, translating, rotating,
 manoeuvring, heaving, pitching, and periodic motion drivers.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from abc import ABC, abstractmethod
@@ -25,7 +20,7 @@ class VLMKinematics(ABC):
     Subclasses provide translational and angular velocity at physical time and
     mutate an assigned panel range over one accepted interval. Users normally
     instantiate one of the concrete motion classes and attach it through
-    :class:`VLMSurfaceSetup`.
+    :class:`VLMSurface`.
 
     Attributes
     ----------

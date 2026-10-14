@@ -101,7 +101,7 @@ class _Particles:
 
 
 class _GBDVPM:
-    viscous_scheme = "GBD"
+    viscous_scheme = "gbd"
     np_dtype = np.float64
 
     def __init__(

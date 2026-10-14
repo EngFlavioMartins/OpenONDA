@@ -1,55 +1,34 @@
-"""Public, physics-oriented construction objects for the FVM solver.
-
-``FVMCase`` is the FVM counterpart of :class:`openonda.vpm.VPMCase`.
-It keeps mesh source information, numerical intent, run settings, and output directories
-at one construction boundary while the existing ``FVMSetup`` remains
-available as the low-level configuration used by the numerical kernels.
-"""
+"""Immutable case definition of one FVM simulation."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-import math
-from numbers import Real
 from pathlib import Path
 from typing import Protocol, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
 
+from openonda.core.schedules import EveryTime
 from openonda.core.simulation.forcing import VelocityBoundary
 
 from ..motion.kinematics import MeshMotion
-from .scheduling import RunSchedule
-from .types import (
-    BackupConfig,
-    BoundaryConfig,
-    ComputeConfig,
-    DiscretizationConfig,
-    FVMSetup,
-    LinearSolverConfig,
-    LoggingConfig,
-    MaximumCourantTimeStep,
-    MeshQualityConfig,
-    OutputConfig,
-    PimpleControl,
-    RunAcceptanceLimits,
-    TimeConfig,
-    TransportConfig,
-    TurbulenceConfig,
-)
+from ._validation import finite_real, vector_or_field
+from .boundaries import BoundaryConfig
+from .mesh_quality import MeshQualityConfig
+from .numerics import Numerics
+from .output import Backup, LoggingConfig, Output, Samplers
 
 VelocityInput: TypeAlias = tuple[float, float, float] | list[float] | NDArray[np.float64]
 MeshMapping: TypeAlias = dict[str, object]
 
 
-class _BuildableMesh(Protocol):
-    """Structural mesh builder accepted by :class:`FVMCase`."""
+class BuildableMesh(Protocol):
+    """Mesh generator accepted by :class:`FVMCase`."""
 
     def build(self) -> MeshMapping | tuple[MeshMapping, object]:
         """Return native mesh data, optionally paired with a build report."""
-
         ...
 
 
@@ -57,305 +36,208 @@ MeshSource: TypeAlias = (
     str
     | Path
     | MeshMapping
-    | _BuildableMesh
+    | BuildableMesh
     | Callable[[], MeshMapping | tuple[MeshMapping, object]]
 )
 
 
 @dataclass(frozen=True, slots=True)
 class InitialFields:
-    """Initial cell-centred FVM fields before boundary reconstruction.
+    """Initial cell-centred velocity and kinematic pressure.
 
     Parameters
     ----------
-    velocity : tuple[float, float, float] or numpy.ndarray
-        Uniform velocity in m/s with shape ``(3,)`` or one vector per fluid
-        cell with shape ``(n_cells, 3)``. The cell count is checked after the
-        mesh is constructed. Inputs are copied when stored.
-    kinematic_pressure : float
-        Uniform initial ``p/rho`` in m²/s². The solver reconstructs pressure
-        boundary values from :class:`BoundaryConfig` after accepting the
-        interior field.
+    velocity : array-like, default=(0, 0, 0)
+        Uniform ``(3,)`` or per-cell ``(n_cells, 3)`` velocity in m/s. The
+        cell count is checked once the mesh is constructed.
+    kinematic_pressure : float, default=0.0
+        Uniform initial ``p/rho`` in m²/s².
 
     Notes
     -----
-    Ghost cells and face fluxes are not accepted here. ``FVMSolver`` creates
-    them from the mesh and boundary conditions and initializes all time-history
-    levels consistently.
+    The solver reconstructs boundary ghost values, face fluxes and the time
+    history from these interior fields.
     """
 
     velocity: VelocityInput = (0.0, 0.0, 0.0)
     kinematic_pressure: float = 0.0
 
     def __post_init__(self) -> None:
-        import numpy as np
-
-        velocity = np.asarray(self.velocity, dtype=np.float64)
-        # FVMSolver validates the per-cell count once the mesh is known.
-        if velocity.shape != (3,) and (velocity.ndim != 2 or velocity.shape[1:] != (3,)):
-            raise ValueError("InitialFields.velocity must have shape (3,) or (n_cells, 3)")
-        if not np.all(np.isfinite(velocity)):
-            raise ValueError("InitialFields.velocity must be finite")
-        pressure = self.kinematic_pressure
-        if isinstance(pressure, bool) or not isinstance(pressure, Real):
-            raise TypeError("InitialFields.kinematic_pressure must be a real scalar")
-        if not math.isfinite(float(pressure)):
-            raise ValueError("InitialFields.kinematic_pressure must be finite")
         object.__setattr__(
-            self, "velocity", tuple(velocity.tolist()) if velocity.ndim == 1 else velocity.copy()
+            self, "velocity", vector_or_field("InitialFields.velocity", self.velocity)
         )
-        object.__setattr__(self, "kinematic_pressure", float(pressure))
-
-
-@dataclass(frozen=True, slots=True)
-class Samplers:
-    """Immutable collection of FVM sampler objects owned by one case.
-
-    Parameters
-    ----------
-    samples : tuple[object, ...]
-        Samplers implementing a callable ``sample(solver)`` method. The tuple
-        is copied so later mutation of the caller's list cannot change case
-        configuration. Individual sampler output paths and schedules remain
-        owned by the sampler implementation.
-    """
-
-    samples: tuple[object, ...] = ()
-
-    def __post_init__(self) -> None:
-        samples = tuple(self.samples)
-        for sampler in samples:
-            if not callable(getattr(sampler, "sample", None)):
-                raise TypeError(f"FVM sampler {type(sampler).__name__} must implement sample()")
-        object.__setattr__(self, "samples", samples)
-
-
-@dataclass(frozen=True, slots=True)
-class Numerics:
-    """Grouped immutable numerical controls for an FVM case.
-
-    Attributes
-    ----------
-    transport : TransportConfig
-        Density and molecular kinematic viscosity in SI units.
-    schemes : DiscretizationConfig
-        Convection, gradient, and time-discretization choices.
-    linear : LinearSolverConfig
-        Momentum/pressure solver names, tolerances, and failure settings.
-    coupling : PimpleControl
-        SIMPLE/PISO/PIMPLE correction counts, relaxation, and acceptance
-        tolerances.
-    execution : ComputeConfig
-        Operator, linear-algebra, MPI, and output execution backends.
-    turbulence : TurbulenceConfig or None
-        Optional LES closure. ``None`` is laminar/no explicit SGS model.
-    acceptance : RunAcceptanceLimits
-        Warning/abort thresholds evaluated on candidate states.
-    logging : LoggingConfig
-        Console, file, and logging cadence settings.
-    """
-
-    transport: TransportConfig = field(default_factory=TransportConfig)
-    schemes: DiscretizationConfig = field(default_factory=DiscretizationConfig)
-    linear: LinearSolverConfig = field(default_factory=LinearSolverConfig)
-    coupling: PimpleControl = field(default_factory=PimpleControl)
-    execution: ComputeConfig = field(default_factory=ComputeConfig)
-    turbulence: TurbulenceConfig | None = None
-    acceptance: RunAcceptanceLimits = field(default_factory=RunAcceptanceLimits)
-    logging: LoggingConfig = field(default_factory=LoggingConfig)
-
-    def __post_init__(self) -> None:
-        expected = {
-            "transport": TransportConfig,
-            "schemes": DiscretizationConfig,
-            "linear": LinearSolverConfig,
-            "coupling": PimpleControl,
-            "execution": ComputeConfig,
-            "acceptance": RunAcceptanceLimits,
-            "logging": LoggingConfig,
-        }
-        for name, cls in expected.items():
-            if not isinstance(getattr(self, name), cls):
-                raise TypeError(f"Numerics.{name} must be a {cls.__name__} instance")
-        if self.turbulence is not None and not isinstance(self.turbulence, TurbulenceConfig):
-            raise TypeError("Numerics.turbulence must be a TurbulenceConfig or None")
+        object.__setattr__(
+            self,
+            "kinematic_pressure",
+            finite_real("InitialFields.kinematic_pressure", self.kinematic_pressure),
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class RunPlan:
-    """Finite physical-time plan for an FVM run.
+    """Physical-time span of an FVM run.
 
-    Attributes
+    Parameters
     ----------
-    start_time, end_time : float
-        Physical bounds in seconds. `end_time` must exceed `start_time`.
-    time_step_size : float
-        Initial/fixed step size in seconds. The solver owns the evolving value
-        when an adaptive maximum-Courant settings are configured.
-    output_schedule : RunSchedule
-        Accepted-step/time cadence for visualization output.
-    adjustment : MaximumCourantTimeStep or None
-        Optional solver-owned maximum-Courant step selection.
-    initial_output, final_output : bool
-        Whether framework-owned initial and terminal visualization events run.
+    end_time : float
+        Physical end time in s; greater than ``start_time``.
+    start_time : float, default=0.0
+        Physical time of the initial state in s.
+    initial_output : bool, default=True
+        Write the initial visualization frame and the initial samples.
+    final_output : bool, default=True
+        Write the final visualization frame and the final-only samples.
     """
 
-    end_time: float = 1.0
-    time_step_size: float = 0.01
+    end_time: float
     start_time: float = 0.0
-    output_schedule: RunSchedule = field(default_factory=lambda: RunSchedule(every_n_steps=10))
-    adjustment: MaximumCourantTimeStep | None = None
     initial_output: bool = True
     final_output: bool = True
 
     def __post_init__(self) -> None:
-        for name in ("start_time", "end_time", "time_step_size"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, Real):
-                raise TypeError(f"RunPlan.{name} must be a real number")
-            if not math.isfinite(float(value)):
-                raise ValueError(f"RunPlan.{name} must be finite")
-            object.__setattr__(self, name, float(value))
-        if self.time_step_size <= 0.0:
-            raise ValueError("RunPlan.time_step_size must be positive")
+        for name in ("end_time", "start_time"):
+            object.__setattr__(self, name, finite_real(f"RunPlan.{name}", getattr(self, name)))
         if self.end_time <= self.start_time:
             raise ValueError("RunPlan.end_time must be greater than start_time")
-        if not isinstance(self.output_schedule, RunSchedule):
-            raise TypeError("RunPlan.output_schedule must be a RunSchedule")
-        if self.adjustment is not None and not isinstance(self.adjustment, MaximumCourantTimeStep):
-            raise TypeError("RunPlan.adjustment must be a MaximumCourantTimeStep or None")
-        if not isinstance(self.initial_output, bool) or not isinstance(self.final_output, bool):
-            raise TypeError("RunPlan initial_output/final_output values must be booleans")
+        for name in ("initial_output", "final_output"):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"RunPlan.{name} must be a boolean")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class FVMCase:
-    """Complete immutable construction object for one standalone FVM run.
+    """Complete immutable definition of one FVM simulation.
 
     Parameters
     ----------
     name : str
-        Stable case name used in output filenames and solver metadata.
-    mesh : MeshSource
-        Native mesh dictionary, path to a supported saved mesh, or callable
-        mesher returning one. Mesh coordinates use metres; the native topology
-        is described in :mod:`openonda.fvm.mesh.geometry`.
+        Case name used in file names and metadata.
     directory : str or pathlib.Path, default='.'
-        Case root for solutions, samples, logs, and solver metadata.
-    mesh_quality, numerics, boundaries, initial_conditions, run, output,
-    samplers, backup : corresponding configuration objects
-        Immutable case-owned settings. Boundary values are m/s, m²/s², m³/s,
-        or m²/s according to their field; see their class docstrings.
+        Case root. Results go to ``solution/`` and ``samples/`` below it; a
+        generated mesh is kept as ``assets/<name>_mesh.npz``.
+    variant : str or None, default=None
+        Optional sub-directory of ``solution/`` and ``samples/`` for one
+        variant of the case.
+    numerics : Numerics
+        Every setting that changes the computed solution.
+    initial_conditions : InitialFields
+        Initial velocity and kinematic pressure.
+    run : RunPlan
+        Physical-time span and initial/final output switches.
+    output : Output
+        Visualization frames.
+    samplers : Samplers
+        Scientific samplers.
+    backup : Backup
+        Restart backups.
+    logging : LoggingConfig
+        Log records.
+    mesh : MeshSource
+        Native mesh mapping, a ``.npz`` or Gmsh ``.msh`` file relative to
+        ``directory``, or a mesher (an object with ``build()`` or a callable)
+        returning the mesh mapping. Coordinates are in m.
+    mesh_quality : MeshQualityConfig
+        Mesh-quality limits checked at construction.
+    boundaries : tuple[BoundaryConfig, ...]
+        Boundary condition of each configured patch.
+    velocity_boundaries : tuple[VelocityBoundary, ...]
+        Time-dependent velocities imposed on named patches.
     cores : int, default=1
-        Requested execution size for solver construction, including coupled runs.
+        Number of MPI ranks of the run.
     mesh_motion : MeshMotion or None, default=None
         Prescribed rigid-body motion of the whole mesh; ``None`` is static.
-
-    Notes
-    -----
-    Construction validates types and scalar ranges but does not allocate the
-    solver mesh or device fields. :class:`FVMSolver` constructs the mesh and
-    converts this case to the low-level :class:`FVMSetup` exactly once.
     """
 
     name: str
-    mesh: MeshSource
     directory: str | Path = "."
-    mesh_quality: MeshQualityConfig = field(default_factory=MeshQualityConfig)
+    variant: str | None = None
     numerics: Numerics = field(default_factory=Numerics)
+    initial_conditions: InitialFields = field(default_factory=InitialFields)
+    run: RunPlan
+    output: Output = field(default_factory=Output)
+    samplers: Samplers = field(default_factory=Samplers)
+    backup: Backup = field(default_factory=Backup)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    mesh: MeshSource
+    mesh_quality: MeshQualityConfig = field(default_factory=MeshQualityConfig)
     boundaries: tuple[BoundaryConfig, ...] = ()
     velocity_boundaries: tuple[VelocityBoundary, ...] = ()
-    initial_conditions: InitialFields = field(default_factory=InitialFields)
-    run: RunPlan = field(default_factory=RunPlan)
-    output: OutputConfig = field(default_factory=OutputConfig)
-    samplers: Samplers = field(default_factory=Samplers)
-    backup: BackupConfig = field(default_factory=BackupConfig)
     cores: int = 1
     mesh_motion: MeshMotion | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("FVMCase.name must be a non-empty string")
+        if self.variant is not None and (
+            not isinstance(self.variant, str)
+            or not self.variant.strip()
+            or Path(self.variant).name != self.variant
+        ):
+            raise ValueError("FVMCase.variant must be None or one directory name")
         if self.mesh is None:
             raise TypeError("FVMCase.mesh is required")
-        if not isinstance(self.mesh_quality, MeshQualityConfig):
-            raise TypeError("FVMCase.mesh_quality must be a MeshQualityConfig")
-        if not isinstance(self.numerics, Numerics):
-            raise TypeError("FVMCase.numerics must be a Numerics instance")
-        if not isinstance(self.initial_conditions, InitialFields):
-            raise TypeError("FVMCase.initial_conditions must be an InitialFields instance")
-        if not isinstance(self.run, RunPlan):
-            raise TypeError("FVMCase.run must be a RunPlan instance")
-        if not isinstance(self.output, OutputConfig):
-            raise TypeError("FVMCase.output must be an OutputConfig instance")
-        if not isinstance(self.samplers, Samplers):
-            raise TypeError("FVMCase.samplers must be a Samplers instance")
-        if not isinstance(self.backup, BackupConfig):
-            raise TypeError("FVMCase.backup must be a BackupConfig instance")
+        expected = {
+            "numerics": Numerics,
+            "initial_conditions": InitialFields,
+            "run": RunPlan,
+            "output": Output,
+            "samplers": Samplers,
+            "backup": Backup,
+            "logging": LoggingConfig,
+            "mesh_quality": MeshQualityConfig,
+        }
+        for name, cls in expected.items():
+            if not isinstance(getattr(self, name), cls):
+                raise TypeError(f"FVMCase.{name} must be a {cls.__name__} instance")
         if isinstance(self.cores, bool) or not isinstance(self.cores, int) or self.cores < 1:
             raise ValueError("FVMCase.cores must be a positive integer")
-        if self.mesh_motion is not None and not isinstance(self.mesh_motion, MeshMotion):
-            raise TypeError("FVMCase.mesh_motion must be a MeshMotion or None")
+        if self.mesh_motion is not None:
+            if not isinstance(self.mesh_motion, MeshMotion):
+                raise TypeError("FVMCase.mesh_motion must be a MeshMotion or None")
+            if self.numerics.pimple.algorithm == "simple":
+                raise ValueError(
+                    "A moving mesh requires the transient 'piso' or 'pimple' algorithm"
+                )
         object.__setattr__(self, "directory", Path(self.directory))
-        object.__setattr__(self, "boundaries", tuple(self.boundaries))
-        object.__setattr__(self, "velocity_boundaries", tuple(self.velocity_boundaries))
-        if any(not isinstance(item, VelocityBoundary) for item in self.velocity_boundaries):
-            raise TypeError("FVMCase.velocity_boundaries must contain VelocityBoundary objects")
+        boundaries = tuple(self.boundaries)
+        if any(not isinstance(item, BoundaryConfig) for item in boundaries):
+            raise TypeError("FVMCase.boundaries must contain BoundaryConfig objects")
+        names = [boundary.name for boundary in boundaries]
+        if len(names) != len(set(names)):
+            raise ValueError("FVMCase.boundaries must not repeat a patch name")
+        object.__setattr__(self, "boundaries", boundaries)
+        velocity_boundaries = tuple(self.velocity_boundaries)
+        bound_patches: list[str] = []
+        for condition in velocity_boundaries:
+            if not isinstance(condition, VelocityBoundary):
+                raise TypeError("FVMCase.velocity_boundaries must contain VelocityBoundary objects")
+            if set(condition.patches) - set(names):
+                raise ValueError("FVMCase.velocity_boundaries refers to an unconfigured patch")
+            bound_patches.extend(condition.patches)
+        if len(set(bound_patches)) != len(bound_patches):
+            raise ValueError("Each patch may have only one velocity history")
+        object.__setattr__(self, "velocity_boundaries", velocity_boundaries)
+        if self.numerics.pimple.algorithm == "simple" and any(
+            isinstance(schedule, EveryTime)
+            for schedule in (self.output.schedule, self.backup.schedule)
+        ):
+            raise ValueError(
+                "The steady 'simple' algorithm has no physical time; use EverySteps schedules"
+            )
 
-    def to_setup(self) -> FVMSetup:
-        """Create a mutable low-level setup for the numerical core.
+    @property
+    def solution_directory(self) -> Path:
+        """Return ``directory/solution`` or ``directory/solution/<variant>``."""
+        root = self.directory / "solution"
+        return root if self.variant is None else root / self.variant
 
-        Returns
-        -------
-        FVMSetup
-            A new configuration object containing copied case settings values
-            and the time/output controls consumed by the
-            solver factory. It performs no mesh I/O and does not mutate this
-            immutable case.
-        """
-        fields = self.initial_conditions
-        return FVMSetup(
-            case_name=self.name,
-            cores=self.cores,
-            mesh=self.mesh_quality,
-            execution=self.numerics.execution,
-            output=self.output,
-            acceptance=self.numerics.acceptance,
-            logging=self.numerics.logging,
-            backup=self.backup,
-            time=TimeConfig(
-                time_step_size=self.run.time_step_size,
-                start_time=self.run.start_time,
-                end_time=self.run.end_time,
-                output_schedule=self.run.output_schedule,
-                adjustment=self.run.adjustment,
-            ),
-            schemes=self.numerics.schemes,
-            linear=self.numerics.linear,
-            pimple=self.numerics.coupling,
-            transport=self.numerics.transport,
-            boundaries=list(self.boundaries),
-            velocity_boundaries=self.velocity_boundaries,
-            samplers=self.samplers.samples,
-            turbulence=self.numerics.turbulence,
-            mesh_motion=self.mesh_motion,
-            initial_velocity=fields.velocity,
-            initial_kinematic_pressure=fields.kinematic_pressure,
-        )
+    @property
+    def samples_directory(self) -> Path:
+        """Return ``directory/samples`` or ``directory/samples/<variant>``."""
+        root = self.directory / "samples"
+        return root if self.variant is None else root / self.variant
 
-
-# Short names intentionally mirror the VPM public namespace.  They are
-# aliases for output/restart settings objects, not alternate solver paths.
-Output = OutputConfig
-Backup = BackupConfig
-
-
-__all__ = [
-    "Backup",
-    "FVMCase",
-    "InitialFields",
-    "Numerics",
-    "Output",
-    "RunPlan",
-    "Samplers",
-]
+    @property
+    def mesh_path(self) -> Path:
+        """Return the stored native mesh ``directory/assets/<name>_mesh.npz``."""
+        return self.directory / "assets" / f"{self.name}_mesh.npz"

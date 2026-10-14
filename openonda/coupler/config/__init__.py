@@ -1,13 +1,5 @@
-"""
-Configuration subpackage for the Coupler module.
-=================================================
+"""Configuration of the FVM--VPM coupler."""
 
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: June 2026
+from .types import Backup, CouplerConfig
 
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
-
-from .types import CouplerSetup
-
-__all__ = ["CouplerSetup"]
+__all__ = ["Backup", "CouplerConfig"]

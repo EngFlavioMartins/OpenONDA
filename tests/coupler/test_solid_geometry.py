@@ -128,8 +128,8 @@ def test_deep_crossings_require_a_smaller_time_step():
 def test_stage_and_accepted_motion_share_geometry_and_report_impulse(shape):
     boundary, start, end, _ = wall_case(shape)
     physics = SimpleNamespace(
-        _download_vector_field=lambda field, count: field[:count].copy(),
-        _upload_vector_array=lambda values, field, count: np.copyto(field[:count], values),
+        download_vector_field=lambda field, count: field[:count].copy(),
+        upload_vector_array=lambda values, field, count: np.copyto(field[:count], values),
     )
     guard = SolidParticleGuard(boundary, physics, 0.25, logging.getLogger(__name__))
     strength = np.array([[0.2, -0.1, 0.5]], dtype=np.float32)

@@ -52,7 +52,7 @@ def rotor_inputs(metadata_path: Path | None = None):
 
     import numpy as np
 
-    metadata_path = metadata_path or CASE_DIR / "solution/vpm_metadata.json"
+    metadata_path = metadata_path or CASE_DIR / "solution/quadcopter/vpm_metadata.json"
     metadata = read_json(metadata_path)
     config = metadata["configuration"]
     vlm = config["numerics"]["vlm"]
@@ -115,9 +115,8 @@ def performance(samples_dir, p):
     data = pd.DataFrame(read_csv_table(samples_dir / "vlm_surface_forces.csv"))
     data["rotor"] = data.surface.str.rsplit("_blade_", n=1).str[0]
     grouped = (
-        data.groupby(["rotor", "step"], sort=True)
+        data.groupby(["rotor", "time"], sort=True)
         .agg(
-            time=("time", "first"),
             thrust=("force_z", "sum"),
             fluid_power=("rotational_power", "sum"),
         )
@@ -171,8 +170,10 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     axes[0, 1].plot(ct_bem, cp_bem, "x", color=_COLORS["reference"], label="BEM")
     axes[0, 1].set(xlabel="$C_T$", ylabel="$C_P$")
     axes[0, 1].legend()
-    total = data.groupby("step").agg(
-        time=("time", "first"), thrust=("thrust", "sum"), power=("input_power", "sum")
+    total = (
+        data.groupby("time")
+        .agg(thrust=("thrust", "sum"), power=("input_power", "sum"))
+        .reset_index()
     )
     axes[1, 1].plot(
         total.time / p.period, total.thrust, color=_COLORS["teal"], label="Total thrust"

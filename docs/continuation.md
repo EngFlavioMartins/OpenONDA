@@ -7,13 +7,13 @@ Every tutorial starts its solver from the latest backup (`start_from="latest"`, 
 ./allcontinue.sh   # resume from the latest backup
 ```
 
-A finished run adds nothing when resumed. To extend it, raise the end time in `setup.py` (`END_TIME` for FVM and coupled cases) or the **total** step count (`RunPlan.steps`) for VPM cases, then run `./allcontinue.sh`. Outputs written after the restored time are trimmed first, so the histories stay continuous. Regenerate the figures afterwards with `./allplot.sh`.
+A finished run adds nothing when resumed. To extend it, raise the end time in `setup.py` (the value passed to `RunPlan(end_time=...)`), then run `./allcontinue.sh`. Outputs written after the restored time are trimmed first, so the histories stay continuous. Regenerate the figures afterwards with `./allplot.sh`.
 
 In your own script, pass `start_from` to `run()`:
 
 | `start_from` | Behaviour |
 | --- | --- |
-| `"latest"` | Resume the most recent backup in `solution/`, or start fresh |
+| `"latest"` | Resume the backup with the highest step, or start fresh |
 | `"initial"` | Start a new history from the initial conditions, replacing earlier output |
 | a path | Resume from that backup |
 
@@ -21,11 +21,11 @@ In your own script, pass `start_from` to `run()`:
 
 | Solver | Backup |
 | --- | --- |
-| FVM | `solution/backup`: velocity, pressure and fluxes. An MPI run restarts with the same core count. |
-| VPM/VLM | The latest `solution/vpm/vpm_*.h5`: particles and lifting-surface state. |
-| Coupled | `solution/backups/`: both solver states and the coupling state; keep the folder together. |
+| FVM | `solution/fvm/fvm_{step:06d}.npz`: velocity, pressure and fluxes. An MPI run writes a directory of that name and restarts with the same core count. |
+| VPM/VLM | `solution/vpm/vpm_{step:06d}.h5`: particles and lifting-surface state. |
+| Coupled | `solution/coupled/coupled_{step:06d}/`: both solver states and the coupling state of one exchange; keep each folder together. |
 
-The backup interval sets how much work an interruption costs. ParaView files alone cannot restore a run.
+`Backup(schedule=...)` sets how often a backup is written, and so how much work an interruption costs; `Backup(write_at_end=True)` (default) writes one at the end of the run. ParaView files alone cannot restore a run.
 
 ## Keep the case compatible
 

@@ -1,44 +1,33 @@
-"""Line and surface field samplers for the FVM solver.
+"""Line and surface field samplers of the FVM solver.
 
-``LineSampler`` probes a line segment into a growing time-aware CSV;
-``SurfaceSampler`` probes an axis-aligned plane into per-event ``.vts``
-snapshots plus a PVD index. Both reconstruct solver cell fields at fixed probe
-points with inverse-distance weighting by default; a linear-exact local affine
-reconstruction is available for anisotropic probe layouts.
+:class:`LineSampler` appends the fields at points on a line to
+``samples/<name>.csv``; :class:`SurfaceSampler` writes the fields on an
+axis-aligned plane to ``samples/<name>_{step:06d}.vts`` frames listed in
+``samples/<name>.pvd``. Both interpolate the cell-centred fields with inverse
+distance weights or a linear-exact local affine reconstruction.
 
-Sampling is partition-aware: in a partitioned run the owned cell cell_centre and
-the required owned fields are gathered to root whenever a sampler is due, so
-probes see the *global* field — never just one rank's subdomain.
-
-These samplers are configured through ``FVMSetup(samplers=[...])`` and their
-output always lands in ``<case_root>/samples/``.
-
-Examples
---------
->>> line = LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=5, file_name="centreline")
->>> plane = SurfaceSampler(
-...     point=[0, 0, 0.5], normal=[0, 0, 1],
-...     bounds=[0, 1, 0, 1], spacing=0.25, file_name="slice_z0",
-... )
->>> from openonda.fvm.config.types import FVMSetup
->>> setup = FVMSetup(case_name="case", samplers=(line, plane))
+In a partitioned run the owned cells are gathered to rank 0, so a sampler
+sees the global field.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.spatial import cKDTree  # type: ignore
 
-from .base import SAMPLER_CSV_COLUMNS, Sampler, _register_sampler, append_csv_rows
+from openonda.core.file_output import append_csv_rows
+from openonda.core.sampling import FIELD_SAMPLE_COLUMNS, Sampler, line_points, surface_points
+from openonda.core.schedules import EverySteps, Schedule
 
 if TYPE_CHECKING:
-    from ..config.scheduling import RunSchedule
     from ..core.solver import FVMSolver
 
 MAX_EXACT_DISTANCE = 1e-12
+LINE_SAMPLE_COLUMNS = (*FIELD_SAMPLE_COLUMNS, "kinematic_pressure")
 
 
 def _global_owned_view(context: FVMSolver) -> tuple[np.ndarray, ...] | None:
@@ -73,47 +62,31 @@ def _global_owned_view(context: FVMSolver) -> tuple[np.ndarray, ...] | None:
 
 
 class _PointProbe(Sampler):
-    """Interpolate cell-centred FVM fields at fixed probe points.
+    """Interpolate the cell-centred FVM fields at fixed probe points.
 
-    This shared implementation builds a cached cKDTree stencil. ``idw`` uses
-    positive inverse-distance weights; ``affine`` applies a locally linear
-    least-squares reconstruction with an IDW fallback for ill-conditioned
-    stencils.
+    ``idw`` uses positive inverse-distance weights; ``affine`` a locally
+    linear least-squares reconstruction that falls back to the inverse
+    distance weights on ill-conditioned stencils. The stencil is cached.
     """
 
     def __init__(
         self,
         points: np.ndarray,
-        k: int = 5,
+        n_neighbours: int = 5,
         inverse_distance_power: float = 2.0,
         reconstruction: str = "idw",
+        *,
         file_name: str | None = None,
-        schedule: RunSchedule | None = None,
+        schedule: Schedule = EverySteps(1),
+        initial: bool = True,
     ) -> None:
-        """Create a point-probe interpolation base.
-
-        Parameters
-        ----------
-        points : numpy.ndarray
-            Probe coordinates, shape ``(N, 3)``, in m.
-        k : int, default=5
-            Number of nearest cell centres used per probe.
-        inverse_distance_power : float, default=2.0
-            Positive IDW exponent.
-        reconstruction : {"idw", "affine"}, default="idw"
-            Interpolation model.
-        file_name : str or None, default=None
-            Output stem passed to :class:`Sampler`.
-        schedule : RunSchedule or None, default=None
-            Output cadence.
-        """
-        super().__init__(file_name=file_name, schedule=schedule)
+        super().__init__(file_name=file_name, schedule=schedule, initial=initial)
         self.points = np.asarray(points, dtype=float)
-        self.k = int(k)
-        self.power = float(inverse_distance_power)
-        self.reconstruction = str(reconstruction).strip().lower()
-        if self.reconstruction not in {"idw", "affine"}:
+        self.n_neighbours = int(n_neighbours)
+        self.inverse_distance_power = float(inverse_distance_power)
+        if reconstruction not in {"idw", "affine"}:
             raise ValueError("reconstruction must be 'idw' or 'affine'")
+        self.reconstruction = reconstruction
         self._tree = None
         self._tree_key = None
         self._stencil = None
@@ -133,12 +106,12 @@ class _PointProbe(Sampler):
         if self._stencil is not None:
             return self._stencil
 
-        k = min(self.k, len(cell_centre))
+        k = min(self.n_neighbours, len(cell_centre))
         dists, indices = self._tree.query(self.points, k=k)
         if k == 1:
             dists = dists[:, np.newaxis]
             indices = indices[:, np.newaxis]
-        idw = 1.0 / (dists + 1.0e-12) ** self.power
+        idw = 1.0 / (dists + 1.0e-12) ** self.inverse_distance_power
         idw /= np.sum(idw, axis=1, keepdims=True)
         if self.reconstruction == "idw":
             self._stencil = (indices, idw)
@@ -195,8 +168,8 @@ class _PointProbe(Sampler):
 
         Parameters
         ----------
-        context : SnapshotContext
-            Accepted solver snapshot and parallel context.
+        context : FVMSolver
+            Solver at the accepted state.
 
         Returns
         -------
@@ -222,20 +195,66 @@ class _PointProbe(Sampler):
         return data
 
 
+def interpolate_cell_field(
+    field: np.ndarray,
+    cell_centre: np.ndarray,
+    points: np.ndarray,
+    *,
+    n_neighbours: int = 5,
+    inverse_distance_power: float = 2.0,
+    reconstruction: str = "idw",
+) -> np.ndarray:
+    """Interpolate a cell-centred field at points with the sampler stencil.
+
+    Parameters
+    ----------
+    field : numpy.ndarray
+        Cell values, shape ``(n_cells,)`` or ``(n_cells, n_components)``.
+    cell_centre : numpy.ndarray
+        Cell-centre coordinates in m, shape ``(n_cells, 3)``.
+    points : numpy.ndarray
+        Probe points in m, shape ``(n_points, 3)``.
+    n_neighbours, inverse_distance_power, reconstruction
+        Stencil of :class:`LineSampler` and :class:`SurfaceSampler`:
+        ``"idw"`` inverse-distance weights or ``"affine"`` linear-exact
+        local reconstruction.
+
+    Returns
+    -------
+    numpy.ndarray
+        Interpolated values, shape ``(n_points,)`` or
+        ``(n_points, n_components)``.
+    """
+    probe = _PointProbe(points, n_neighbours, inverse_distance_power, reconstruction)
+    return probe._interpolate(field, cell_centre)
+
+
 class LineSampler(_PointProbe):
-    """Sample fields at uniformly spaced points along a line segment.
+    """Sample the fields at equally spaced points on a line segment.
 
-    Every sampling event appends one row per probe point to a growing
-    ``<name>.csv`` tagged with ``time``/``step``.
+    Every sampled state appends one row per point to ``samples/<name>.csv``
+    with the columns :data:`LINE_SAMPLE_COLUMNS`.
 
-    Examples
-    --------
-    >>> sampler = LineSampler(
-    ...     start=[0, 0, 0], end=[1, 0, 0],
-    ...     n_points=5, file_name="centreline",
-    ... )
-    >>> sampler.name
-    'centreline'
+    Parameters
+    ----------
+    start, end : sequence of float
+        End points in m, shape ``(3,)``; both are sample points.
+    n_points : int or None
+        Number of points. Give exactly one of ``n_points`` and ``spacing``.
+    spacing : float or None
+        Largest point spacing in m.
+    n_neighbours : int, default=5
+        Nearest cell centres of each interpolation stencil.
+    inverse_distance_power : float, default=2.0
+        Exponent of the inverse distance weights.
+    reconstruction : {'idw', 'affine'}, default='idw'
+        Interpolation model.
+    file_name : str or None, default=None
+        Output file stem; ``None`` uses ``line``.
+    schedule : EverySteps, EveryTime or FinalOnly, default=EverySteps(1)
+        Accepted states that are sampled.
+    initial : bool, default=True
+        Sample the initial state.
     """
 
     def __init__(
@@ -244,126 +263,90 @@ class LineSampler(_PointProbe):
         end: Sequence[float] | np.ndarray,
         n_points: int | None = None,
         spacing: float | None = None,
-        k: int = 5,
+        n_neighbours: int = 5,
         inverse_distance_power: float = 2.0,
         reconstruction: str = "idw",
+        *,
         file_name: str | None = None,
-        schedule: RunSchedule | None = None,
+        schedule: Schedule = EverySteps(1),
+        initial: bool = True,
     ) -> None:
-        """Create a uniformly spaced line probe.
-
-        Parameters
-        ----------
-        start, end : sequence[float] or numpy.ndarray
-            Endpoints, shape ``(3,)``, in m.
-        n_points : int or None, default=None
-            Number of points including both endpoints. Exactly one of
-            ``n_points`` and ``spacing`` must be supplied.
-        spacing : float or None, default=None
-            Approximate spacing in m, alternative to ``n_points``.
-        k : int, default=5
-            Number of nearest cell centres per point.
-        inverse_distance_power : float, default=2.0
-            IDW exponent.
-        reconstruction : {"idw", "affine"}, default="idw"
-            Interpolation model.
-        file_name : str or None, default=None
-            Output CSV stem.
-        schedule : RunSchedule or None, default=None
-            Accepted-step/time cadence.
-
-        Raises
-        ------
-        ValueError
-            If neither or both spacing controls are supplied.
-        """
-        if (n_points is None) == (spacing is None):
-            raise ValueError("Provide exactly one of n_points or spacing")
-        start = np.asarray(start, dtype=float)
-        end = np.asarray(end, dtype=float)
-        if n_points is None:
-            assert spacing is not None
-            n_points = int(np.linalg.norm(end - start) / spacing) + 1
-        t = np.linspace(0.0, 1.0, n_points)
         super().__init__(
-            start + np.outer(t, end - start),
-            k=k,
-            inverse_distance_power=inverse_distance_power,
-            reconstruction=reconstruction,
+            line_points(start, end, n_points=n_points, spacing=spacing),
+            n_neighbours,
+            inverse_distance_power,
+            reconstruction,
             file_name=file_name,
             schedule=schedule,
+            initial=initial,
         )
-        self.start = start
-        self.end = end
-        self.n_points = n_points
+        self.start = np.asarray(start, dtype=float)
+        self.end = np.asarray(end, dtype=float)
+        self.n_points = None if n_points is None else int(n_points)
+        self.spacing = None if spacing is None else float(spacing)
 
     def config_dict(self) -> dict:
-        """Return JSON-safe constructor settings for persistence."""
-        spec = super().config_dict()
-        spec.update(
-            {
-                "start": self.start.tolist(),
-                "end": self.end.tolist(),
-                "n_points": self.n_points,
-                "k": self.k,
-                "inverse_distance_power": self.power,
-                "reconstruction": self.reconstruction,
-            }
-        )
-        return spec
+        """Return the JSON-compatible constructor arguments."""
+        return {
+            **super().config_dict(),
+            "start": self.start.tolist(),
+            "end": self.end.tolist(),
+            "n_points": self.n_points,
+            "spacing": self.spacing,
+            "n_neighbours": self.n_neighbours,
+            "inverse_distance_power": self.inverse_distance_power,
+            "reconstruction": self.reconstruction,
+        }
 
-    def write_csv(
-        self,
-        context: FVMSolver,
-        samples_dir: str,
-    ) -> dict[str, np.ndarray] | None:
-        """Append this accepted state to ``<samples_dir>/<name>.csv``.
+    def write_csv(self, context: FVMSolver, samples_dir: str | Path) -> None:
+        """Append the sample of the accepted state to ``<samples_dir>/<name>.csv``.
 
-        Parameters
-        ----------
-        context : FVMSolver
-            Solver/context at the accepted state.
-        samples_dir : str
-            Output directory owned by the solver.
-
-        Returns
-        -------
-        dict[str, numpy.ndarray] or None
-            Sample columns on the rank that owns output; ``None`` for a
-            non-root partition.
+        Collective in a partitioned run; rank 0 writes.
         """
         data = self.sample(context)
         if data is None:
-            return None
-        rows = [
-            [context.time, context.step, *[data[name][i] for name in SAMPLER_CSV_COLUMNS]]
-            for i in range(len(data["position_x"]))
-        ]
-        append_csv_rows(
-            f"{samples_dir}/{self.name}.csv",
-            ["time", "step", *SAMPLER_CSV_COLUMNS],
-            rows,
-        )
-        return data
+            return
+        n_points = len(self.points)
+        columns = {"time": np.full(n_points, float(context.time)), **data}
+        rows = zip(*(columns[name] for name in LINE_SAMPLE_COLUMNS), strict=True)
+        append_csv_rows(Path(samples_dir) / f"{self.name}.csv", LINE_SAMPLE_COLUMNS, rows)
 
 
 class SurfaceSampler(_PointProbe):
-    """Sample fields on an axis-aligned planar grid.
+    """Sample the fields on a uniform grid on an axis-aligned plane.
 
-    Writes one ``.vts`` structured grid per sampling event and a ``<name>.pvd``
-    index, using the same point-array names as the VPM ``SurfaceSampler``.
-    Cadence is owned entirely by :class:`~openonda.fvm.config.RunSchedule` — there
-    is no separate ``stride`` counter, so live and offline runs select the
-    same physical states.
+    Every sampled state writes the frame ``samples/<name>_{step:06d}.vts``,
+    listed in ``samples/<name>.pvd``, with the point data ``velocity``,
+    ``vorticity``, ``kinematic_pressure`` and ``vtkValidPointMask`` and the
+    field data ``time``.
 
-    Examples
-    --------
-    >>> sampler = SurfaceSampler(
-    ...     point=[0, 0, 0.5], normal=[0, 0, 1],
-    ...     bounds=[0, 1, 0, 1], spacing=0.25,
-    ...     file_name="slice_z0",
-    ...     schedule=RunSchedule(every_n_steps=2),
-    ... )
+    Parameters
+    ----------
+    point : sequence of float
+        A point on the plane in m.
+    normal : sequence of float
+        Plane normal; the plane is normal to the axis of its largest
+        component.
+    bounds : sequence of float
+        ``(lower_1, upper_1, lower_2, upper_2)`` in m on the two in-plane
+        axes in coordinate order; both bounds are grid points.
+    spacing : float
+        Largest grid spacing in m.
+    n_neighbours : int, default=5
+        Nearest cell centres of each interpolation stencil.
+    inverse_distance_power : float, default=2.0
+        Exponent of the inverse distance weights.
+    reconstruction : {'idw', 'affine'}, default='idw'
+        Interpolation model.
+    body_bounds : sequence of float or None, default=None
+        Solid box ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m whose interior
+        points are marked invalid and blanked.
+    file_name : str or None, default=None
+        Output file stem; ``None`` uses ``surface``.
+    schedule : EverySteps, EveryTime or FinalOnly, default=EverySteps(1)
+        Accepted states that are sampled.
+    initial : bool, default=True
+        Sample the initial state.
     """
 
     def __init__(
@@ -372,181 +355,97 @@ class SurfaceSampler(_PointProbe):
         normal: Sequence[float] | np.ndarray,
         bounds: Sequence[float] | np.ndarray,
         spacing: float,
-        k: int = 5,
+        n_neighbours: int = 5,
         inverse_distance_power: float = 2.0,
         reconstruction: str = "idw",
-        file_name: str | None = None,
-        schedule: RunSchedule | None = None,
         body_bounds: Sequence[float] | np.ndarray | None = None,
+        *,
+        file_name: str | None = None,
+        schedule: Schedule = EverySteps(1),
+        initial: bool = True,
     ) -> None:
-        """Create an axis-aligned planar FVM probe grid.
-
-        Parameters
-        ----------
-        point : sequence[float] or numpy.ndarray
-            Plane point, shape ``(3,)``, in m.
-        normal : sequence[float] or numpy.ndarray
-            Axis-aligned plane normal, shape ``(3,)``; it is normalized.
-        bounds : sequence[float] or numpy.ndarray
-            ``[min1, max1, min2, max2]`` in m along the two in-plane axes.
-        spacing : float
-            Positive grid spacing in m.
-        k : int, default=5
-            Number of nearest cell centres used per probe.
-        inverse_distance_power : float, default=2.0
-            IDW exponent.
-        reconstruction : {"idw", "affine"}, default="idw"
-            Interpolation model.
-        file_name : str or None, default=None
-            Output stem used for VTS/PVD files.
-        schedule : RunSchedule or None, default=None
-            Accepted-step/time cadence.
-        body_bounds : sequence[float] or None, default=None
-            Optional solid box bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)``
-            in m. Interior probe values are marked invalid in VTK output.
-
-        Raises
-        ------
-        ValueError
-            If geometry, spacing, or bounds are invalid.
-        """
-        point = np.asarray(point, dtype=float)
-        normal = np.asarray(normal, dtype=float)
-        normal = normal / np.linalg.norm(normal)
-        bounds = np.asarray(bounds, dtype=float)
-
-        axis = int(np.argmax(np.abs(normal)))
-        offset = point[axis]
-        c1 = np.arange(bounds[0], bounds[1] + spacing / 2, spacing)
-        c2 = np.arange(bounds[2], bounds[3] + spacing / 2, spacing)
-        C1, C2 = np.meshgrid(c1, c2, indexing="ij")
-
-        points = np.zeros((C1.size, 3), dtype=float)
-        if axis == 2:
-            points[:, 0], points[:, 1], points[:, 2] = C1.ravel(), C2.ravel(), offset
-        elif axis == 1:
-            points[:, 0], points[:, 1], points[:, 2] = C1.ravel(), offset, C2.ravel()
-        else:
-            points[:, 0], points[:, 1], points[:, 2] = offset, C1.ravel(), C2.ravel()
-
+        points, grid_shape, _ = surface_points(point, normal, bounds, spacing)
         super().__init__(
             points,
-            k=k,
-            inverse_distance_power=inverse_distance_power,
-            reconstruction=reconstruction,
+            n_neighbours,
+            inverse_distance_power,
+            reconstruction,
             file_name=file_name,
             schedule=schedule,
+            initial=initial,
         )
-        self.point = point
-        self.normal = normal
-        self.bounds = bounds
+        self.point = np.asarray(point, dtype=float)
+        self.normal = np.asarray(normal, dtype=float)
+        self.bounds = np.asarray(bounds, dtype=float)
         self.spacing = float(spacing)
-        self.grid_shape = C1.shape
+        self.grid_shape = grid_shape
+        self.body_bounds = None
+        self._inside_mask = None
         if body_bounds is not None:
-            body_bounds = np.asarray(body_bounds, dtype=float)
-            if body_bounds.shape != (6,):
+            self.body_bounds = np.asarray(body_bounds, dtype=float)
+            if self.body_bounds.shape != (6,):
                 raise ValueError("body_bounds must contain six coordinates")
-            inside = np.all((points > body_bounds[::2]) & (points < body_bounds[1::2]), axis=1)
-            self._body_bounds = body_bounds
-            self._inside_mask = inside
-        else:
-            self._body_bounds = None
-            self._inside_mask = None
+            self._inside_mask = np.all(
+                (points > self.body_bounds[::2]) & (points < self.body_bounds[1::2]), axis=1
+            )
 
     def config_dict(self) -> dict:
-        """Return JSON-safe constructor settings for persistence."""
-        spec = super().config_dict()
-        spec.update(
-            {
-                "point": self.point.tolist(),
-                "normal": self.normal.tolist(),
-                "bounds": self.bounds.tolist(),
-                "spacing": self.spacing,
-                "k": self.k,
-                "inverse_distance_power": self.power,
-                "reconstruction": self.reconstruction,
-                "body_bounds": self._body_bounds.tolist()
-                if self._body_bounds is not None
-                else None,
-            }
-        )
-        return spec
+        """Return the JSON-compatible constructor arguments."""
+        return {
+            **super().config_dict(),
+            "point": self.point.tolist(),
+            "normal": self.normal.tolist(),
+            "bounds": self.bounds.tolist(),
+            "spacing": self.spacing,
+            "n_neighbours": self.n_neighbours,
+            "inverse_distance_power": self.inverse_distance_power,
+            "reconstruction": self.reconstruction,
+            "body_bounds": None if self.body_bounds is None else self.body_bounds.tolist(),
+        }
 
-    def save_vts(
-        self,
-        context: FVMSolver,
-        filepath: str,
-    ) -> dict[str, np.ndarray] | None:
-        """Write one VTS structured-grid snapshot and return its sample data.
+    def write_vtk(self, context: FVMSolver, path: str | Path) -> bool:
+        """Write the sample of the accepted state as a structured-grid frame.
 
-        Parameters
-        ----------
-        context : FVMSolver
-            Solver at the accepted state being sampled.
-        filepath : str
-            Destination VTS path.
-
-        Returns
-        -------
-        dict[str, numpy.ndarray] or None
-            Flattened sampled columns, or ``None`` on a non-root partition.
-
-        Side Effects
-        ------------
-        Evaluates fields and writes a binary PyVista StructuredGrid. Optional
-        body masks set ``vtkValidPointMask=0`` and field values to NaN inside
-        the solid.
+        Collective in a partitioned run; rank 0 writes and returns ``True``.
+        The values use the precision and compression of the case output.
         """
         import pyvista as pv
 
+        from openonda.core.vtk_output import write_vtk_dataset
+        from openonda.core.write_precision import cast_for_write
+
         data = self.sample(context)
         if data is None:
-            return None
-        ni, nj = self.grid_shape
-        shape = (ni, nj, 1)
+            return False
+        output = context.case.output
+        n_first, n_second = self.grid_shape
 
-        def _grid(values: np.ndarray) -> np.ndarray:
-            return np.asarray(values, dtype=np.float32).reshape(shape)
+        def grid_coordinates(values: np.ndarray) -> np.ndarray:
+            return np.asarray(values, dtype=np.float64).reshape((n_first, n_second, 1))
 
-        def _field(values: np.ndarray) -> np.ndarray:
-            return np.asarray(values, dtype=np.float32).reshape(self.grid_shape).ravel(order="F")
+        def point_values(values: np.ndarray) -> np.ndarray:
+            # Sampler points are in C order; VTK structured points in Fortran order.
+            return np.asarray(values).reshape(self.grid_shape).ravel(order="F")
 
         grid = pv.StructuredGrid(
-            _grid(data["position_x"]), _grid(data["position_y"]), _grid(data["position_z"])
+            grid_coordinates(data["position_x"]),
+            grid_coordinates(data["position_y"]),
+            grid_coordinates(data["position_z"]),
         )
-        velocity = np.column_stack(
-            [_field(data["velocity_x"]), _field(data["velocity_y"]), _field(data["velocity_z"])]
-        )
-        vorticity = np.column_stack(
-            [
-                _field(data["vorticity_x"]),
-                _field(data["vorticity_y"]),
-                _field(data["vorticity_z"]),
-            ]
-        )
-        pressure = _field(data["kinematic_pressure"])
-        valid_mask = np.ones(len(self.points), dtype=np.uint8)
+        velocity = np.column_stack([point_values(data[f"velocity_{axis}"]) for axis in "xyz"])
+        vorticity = np.column_stack([point_values(data[f"vorticity_{axis}"]) for axis in "xyz"])
+        pressure = point_values(data["kinematic_pressure"]).astype(np.float64)
+        valid = np.ones(len(self.points), dtype=np.uint8)
         if self._inside_mask is not None:
-            # Probe points inside the body have no physical fluid value; mark
-            # them invalid and blank their fields so the slice never appears to
-            # contain a flow inside the solid.  Point fields have already been
-            # converted from the sampler's C-order plane to VTK's Fortran
-            # ordering, so the geometric mask must undergo the same mapping.
-            inside = _field(self._inside_mask).astype(bool)
-            valid_mask[inside] = 0
+            inside = point_values(self._inside_mask).astype(bool)
+            valid[inside] = 0
             velocity[inside] = np.nan
             vorticity[inside] = np.nan
             pressure[inside] = np.nan
-        grid.point_data["velocity"] = velocity
-        grid.point_data["velocity_magnitude"] = np.linalg.norm(velocity, axis=1)
-        grid.point_data["vorticity"] = vorticity
-        grid.point_data["vorticity_magnitude"] = np.linalg.norm(vorticity, axis=1)
-        grid.point_data["kinematic_pressure"] = pressure
-        grid.point_data["vtkValidPointMask"] = valid_mask
-        grid.field_data["surface_ordering"] = np.asarray([1], dtype=np.uint8)
-        grid.save(str(filepath), binary=True)
-        return data
-
-
-_register_sampler(LineSampler)
-_register_sampler(SurfaceSampler)
+        grid.point_data["velocity"] = cast_for_write(velocity, output.precision)
+        grid.point_data["vorticity"] = cast_for_write(vorticity, output.precision)
+        grid.point_data["kinematic_pressure"] = cast_for_write(pressure, output.precision)
+        grid.point_data["vtkValidPointMask"] = valid
+        grid.field_data["time"] = np.asarray([context.time], dtype=np.float64)
+        write_vtk_dataset(grid, path, compression=output.compression)
+        return True

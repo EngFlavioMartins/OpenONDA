@@ -1,10 +1,5 @@
 """
 Factory for the Gaussian vortex-blob regularization kernel set.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable
@@ -251,7 +246,7 @@ def radial_factors_host(radius: float, width: float) -> tuple[float, float]:
 
 
 DEFINITION = KernelDefinition(
-    name="GAUSSIAN",
+    name="gaussian",
     q=q_host,
     zeta=zeta_host,
     device_factory=create_gaussian_kernels,

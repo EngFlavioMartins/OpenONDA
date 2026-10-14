@@ -21,7 +21,7 @@ def validate_wake(p, end):
     config = p.metadata["configuration"]
     declared = {
         sampler["file_name"]: sampler
-        for sampler in config["samplers"]["items"]
+        for sampler in config["samplers"]["samples"]
         if sampler["type"] == "SurfaceSampler"
     }
     failures = []
@@ -100,8 +100,8 @@ def main():
     args = parser.parse_args()
     p = rotor_inputs()
     config, state = p.metadata["configuration"], p.metadata["state"]
-    steps = state["initial_step"] + config["run"]["steps"]
-    end = state["initial_time"] + config["run"]["steps"] * config["numerics"]["time_step_size"]
+    steps = state["target_step"]
+    end = config["run"]["end_time"]
     failures = []
     if p.metadata["run_status"]["status"] != "completed" or state["step"] != steps:
         print(
@@ -119,13 +119,13 @@ def main():
             or not np.isfinite(rows.select_dtypes("number")).all().all()
         ):
             failures.append(f"{rotor}: duplicate or non-finite samples")
-        if rows.step.max() < steps - config["numerics"]["vlm"]["logging_interval_steps"]:
-            failures.append(f"{rotor}: incomplete force/power samples")
-        tail = rows[rows.time > end - 6 * p.period]
         cadence = (
             config["numerics"]["vlm"]["logging_interval_steps"]
             * config["numerics"]["time_step_size"]
         )
+        if rows.time.max() < end - cadence * (1.0 + 1.0e-9):
+            failures.append(f"{rotor}: incomplete force/power samples")
+        tail = rows[rows.time > end - 6 * p.period]
         if len(tail) < 4 or tail.time.max() - tail.time.min() < 6 * p.period - 2 * cadence:
             failures.append(f"{rotor}: fewer than six revolutions of final force samples")
             continue

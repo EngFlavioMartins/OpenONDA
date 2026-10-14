@@ -14,8 +14,8 @@ __all__ = [
     "GaussianMeshParameters",
     "GaussianSlabSettings",
     "InductionMethod",
+    "SlipSlabInduction",
     "StageRates",
     "StageState",
     "TreecodeInduction",
-    "SlipSlabInduction",
 ]

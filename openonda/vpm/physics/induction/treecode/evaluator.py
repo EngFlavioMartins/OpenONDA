@@ -56,7 +56,7 @@ class TreecodeInduction:
     """
 
     supported_kernels = frozenset(treecode_kernel_names())
-    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "CUDA", "METAL"})
+    supported_devices = frozenset({"auto", "cpu", "vulkan", "cuda", "metal"})
     supports_gradient = True
     supports_variable_core_radius = True
     supports_target_fields = True
@@ -68,7 +68,7 @@ class TreecodeInduction:
     def __init__(
         self,
         *,
-        stretching_scheme: str = "TRANSPOSED",
+        stretching_scheme: str = "transposed",
         theta: float = _TREECODE_THETA,
         multipole_order: int = _TREECODE_MULTIPOLE_ORDER,
         sort_particle_targets: bool = _TREECODE_SORT_PARTICLE_TARGETS,
@@ -78,7 +78,7 @@ class TreecodeInduction:
 
         Parameters
         ----------
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Formulation that turns the hierarchical velocity gradient
             into ``dGamma/dt``. The tree traversal and induced velocity are
             unchanged by this choice.
@@ -123,10 +123,10 @@ class TreecodeInduction:
             or traversal_block_dim < 0
         ):
             raise ValueError("treecode traversal_block_dim must be a non-negative integer")
-        self.method = "TREECODE"
+        self.method = "treecode"
         self.stretching_scheme = stretching_scheme
         self._stretching_mode = _STRETCHING_MODES[stretching_scheme]
-        self.kernel = make_vortex_kernel("GAUSSIAN")
+        self.kernel = make_vortex_kernel("gaussian")
         self.physics: PhysicsBase | None = None
         self.theta = float(theta)
         self.multipole_order = int(multipole_order)
@@ -149,7 +149,7 @@ class TreecodeInduction:
         multipole_order: int = _TREECODE_MULTIPOLE_ORDER,
         sort_particle_targets: bool = _TREECODE_SORT_PARTICLE_TARGETS,
         traversal_block_dim: int = _TREECODE_TRAVERSAL_BLOCK_DIM,
-        stretching_scheme: str = "TRANSPOSED",
+        stretching_scheme: str = "transposed",
     ) -> Self:
         """Construct a tuned evaluator for controlled qualification studies.
 
@@ -164,7 +164,7 @@ class TreecodeInduction:
             Whether particle targets are reordered for traversal locality.
         traversal_block_dim : int, default=128
             Device traversal block size; zero leaves the runtime default.
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Strength-rate contraction formulation.
 
         Returns
@@ -224,7 +224,7 @@ class TreecodeInduction:
         """
         self.physics = physics
         physics.configure_velocity(
-            "TREECODE",
+            "treecode",
             self.theta,
             multipole_order=self.multipole_order,
             sort_particle_targets=self.sort_particle_targets,
@@ -303,7 +303,7 @@ class TreecodeInduction:
         tree.build(position, vortex_strength, core_radius, count)
         self.physics._target_tree_key = None
         self.physics.configure_velocity(
-            "TREECODE",
+            "treecode",
             self.theta,
             multipole_order=self.multipole_order,
             sort_particle_targets=self.sort_particle_targets,
@@ -383,7 +383,7 @@ class TreecodeInduction:
         tree = self.physics._get_or_create_treecode(source_count, self.theta)
         tree.build(source_position, source_vortex_strength, source_core_radius, source_count)
         self.physics._target_tree_key = None
-        target_np = self.physics._download_vector_field(target_position, target_count)
+        target_np = self.physics.download_vector_field(target_position, target_count)
         background_np = None
         if include_freestream:
             background_np = np.asarray(
@@ -398,11 +398,11 @@ class TreecodeInduction:
             velocity, gradient = tree.compute_target_velocity_and_gradients(
                 target_np, background_np
             )
-            self.physics._upload_vector_array(velocity, target_velocity, target_count)
+            self.physics.upload_vector_array(velocity, target_velocity, target_count)
             self.physics._upload_matrix_array(gradient, target_velocity_gradient, target_count)
         elif target_velocity is not None:
             velocity = tree.compute_target_velocity(target_np, background_np)
-            self.physics._upload_vector_array(velocity, target_velocity, target_count)
+            self.physics.upload_vector_array(velocity, target_velocity, target_count)
         elif target_velocity_gradient is not None:
             gradient = tree.compute_target_velocity_gradient(target_np)
             self.physics._upload_matrix_array(gradient, target_velocity_gradient, target_count)

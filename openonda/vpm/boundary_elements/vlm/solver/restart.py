@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ....io.metadata import _metadata_value
+from openonda.core.metadata import metadata_value
 
 if TYPE_CHECKING:
     import h5py
@@ -58,13 +58,11 @@ def _restart_controls(
     vlm: "VLMSolver", *, include_output_controls: bool = True
 ) -> dict[str, object]:
     """Return the deterministic VLM controls used by restart hashes."""
-    controls = _metadata_value(vlm.setup)
+    controls = metadata_value(vlm.config)
     # The setup describes user choices; this explicit field settings also
     # describes the geometric source/trace/transport operators so a
     # checkpoint cannot silently continue under a different field model.
-    field_settings = getattr(vlm, "field_settings", None)
-    if field_settings is not None and hasattr(field_settings, "as_dict"):
-        controls["field_settings"] = field_settings.as_dict()
+    controls["field_settings"] = vlm.field_settings.as_dict()
     for surface in controls["surfaces"]:
         # Geometry and reference values are hashed below; a moved case retains
         # the same numerical configuration without depending on an absolute filename.
@@ -82,19 +80,26 @@ def _configuration_hash(vlm: "VLMSolver", controls: dict[str, object]) -> str:
     controls["geometry_references"] = getattr(
         vlm,
         "_restart_geometry_references",
-        _metadata_value(vlm.aircraft.refs),
+        metadata_value(vlm.aircraft.refs),
     )
     digest = hashlib.sha256(json.dumps(controls, sort_keys=True, allow_nan=False).encode())
     # Generic motion callbacks can depend on closed-over phase and case globals.
     # Record their code and captured construction values without executing them.
-    for surface in vlm.setup.surfaces:
+    for surface in vlm.config.surfaces:
         motion = surface.kinematics
         for name in ("velocity_function", "angular_velocity_function"):
             function = getattr(motion, name, None)
             if inspect.isfunction(function):
                 closure = inspect.getclosurevars(function)
                 digest.update(marshal.dumps(_portable_code(function.__code__)))
-                captured = _metadata_value({**closure.globals, **closure.nonlocals})
+                captured = metadata_value(
+                    {
+                        key: {"type": type(value).__name__}
+                        if inspect.ismodule(value) or callable(value)
+                        else value
+                        for key, value in {**closure.globals, **closure.nonlocals}.items()
+                    }
+                )
                 digest.update(json.dumps(captured, sort_keys=True, allow_nan=False).encode())
     for name in ("panel_corner_position", "normal"):
         digest.update(getattr(vlm.lattice, name).to_numpy()[: vlm.lattice.n_panels].tobytes())
@@ -119,19 +124,15 @@ def write_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:
     """Store lattice fields and mutable rigid-motion state without reducing precision."""
     group.attrs["version"] = 8
     group.attrs["configuration_hash"] = vlm._restart_configuration_hash
-    group.attrs["physics_hash"] = getattr(
-        vlm,
-        "_restart_physics_hash",
-        restart_physics_hash(vlm),
-    )
+    group.attrs["physics_hash"] = vlm._restart_physics_hash
     group.attrs["solved"] = vlm._solved
     group.attrs["coupled_mode"] = vlm._coupled_mode
     group.attrs["time"] = vlm._current_time if vlm._current_time is not None else 0.0
     group.attrs["reference_speed"] = vlm.lattice.reference_speed
-    group.attrs["reference_velocity"] = getattr(vlm, "_last_reference_velocity", np.zeros(3))
-    force_density = getattr(vlm.lattice, "force_density", None)
-    if force_density is None:
-        force_density = getattr(vlm, "_force_density", None)
+    group.attrs["reference_velocity"] = (
+        np.zeros(3) if vlm._last_reference_velocity is None else vlm._last_reference_velocity
+    )
+    force_density = vlm.lattice.force_density
     if force_density is not None and np.isfinite(force_density) and force_density > 0.0:
         group.attrs["force_density"] = float(force_density)
     for name in _FIELDS:
@@ -171,10 +172,7 @@ def validate_vlm_restart(vlm: "VLMSolver", group: "h5py.Group | None") -> None:
             raise ValueError(f"Invalid VLM restart flag {name}")
     if np.shape(group.attrs["reference_velocity"]) != (3,):
         raise ValueError("Invalid VLM restart reference velocity")
-    expected_physics_hash = getattr(vlm, "_restart_physics_hash", None)
-    if expected_physics_hash is None:
-        expected_physics_hash = restart_physics_hash(vlm)
-    if group.attrs.get("physics_hash") != expected_physics_hash:
+    if group.attrs.get("physics_hash") != vlm._restart_physics_hash:
         raise ValueError("VLM restart physics configuration does not match this solver")
     if group.attrs.get("configuration_hash") != vlm._restart_configuration_hash:
         raise ValueError("VLM restart geometry or configuration does not match this solver")
@@ -230,8 +228,7 @@ def restore_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:
         vlm.lattice.force_density = vlm._force_density
     else:
         # An unsolved state has no dimensional force evaluation to restore.
-        if hasattr(vlm, "_force_density"):
-            del vlm._force_density
+        vlm._force_density = vlm.density
         vlm.lattice.force_density = None
     vlm._last_reference_velocity = np.asarray(group.attrs["reference_velocity"])
     vlm._aerodynamic_influence_coefficient_computed = False

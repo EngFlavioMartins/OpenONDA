@@ -1,8 +1,4 @@
-"""VLM coupling within a VPM time step.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
-"""
+"""VLM coupling within a VPM time step."""
 
 from __future__ import annotations
 
@@ -31,7 +27,7 @@ class CouplingStepper:
         wake_particles = solver.vlm_solver.advance_coupled(
             particles=solver.particles,
             physics=solver.physics,
-            config=solver.setup,
+            config=solver.numerics,
             time_step_size=getattr(solver, "_release_interval", time_step_size),
             step=solver.stepper.step,
             time=solver.stepper.time,

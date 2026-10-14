@@ -1,11 +1,6 @@
 """
 Factories for shared Taichi compute kernels: induced velocity, vorticity,
 kinetic energy, enstrophy, time integration, and target-point evaluation.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable

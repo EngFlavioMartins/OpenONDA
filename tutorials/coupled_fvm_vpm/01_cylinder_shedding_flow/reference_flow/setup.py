@@ -61,8 +61,8 @@ def initial_velocity(position):
     return velocity
 
 
-def build_case():
-    """Return the FVM setup and mesh."""
+def build_case() -> fvm.FVMCase:
+    """Return the FVM case of the cylinder flow."""
     half_span = 0.5 * SPAN
 
     # Requested sizes sit between octree levels, which then select 1, 2 and 4 CELL_SIZE
@@ -90,75 +90,74 @@ def build_case():
         levels=(-half_span, half_span),
     )
 
-    flow = fvm.FVMSetup(
-        case_name="reference_cylinder_flow",
-        execution=fvm.ComputeConfig(operator_backend="numba"),
-        time=fvm.TimeConfig(
-            time_step_size=TIME_STEP,
-            end_time=END_TIME,
-            output_schedule=fvm.RunSchedule(every_time=VOLUME_INTERVAL),
+    sample_profiles = fvm.EveryTime(PROFILE_INTERVAL)
+    samplers = (
+        # Drag and lift coefficients per unit span
+        fvm.ForceSampler(
+            patch_names=["cylinder"],
+            reference_velocity=FREESTREAM_VELOCITY[0],
+            reference_area=DIAMETER * SPAN,
+            reference_length=DIAMETER,
+            schedule=fvm.EveryTime(FORCE_INTERVAL),
         ),
-        backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL), write_at_end=True
+        # Recirculation region on the wake centreline
+        fvm.LineSampler(
+            (0.6, 0.0, 0.0),
+            (1.4, 0.0, 0.0),
+            n_points=11,
+            n_neighbours=12,
+            reconstruction="affine",
+            file_name="centreline",
+            schedule=sample_profiles,
         ),
+        # Transverse wake profiles
+        *(
+            fvm.LineSampler(
+                (x, -2.0, 0.0),
+                (x, 2.0, 0.0),
+                n_points=41,
+                n_neighbours=12,
+                reconstruction="affine",
+                file_name=f"transverse_x{x:g}",
+                schedule=sample_profiles,
+            )
+            for x in (2.0, 4.0)
+        ),
+    )
+    numerics = fvm.Numerics(
+        time_step_size=TIME_STEP,
+        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
         schemes=fvm.DiscretizationConfig(time_scheme="backward"),
-        linear=fvm.LinearSolverConfig(
-            pressure_tolerance=1.0e-7,
-            pressure_relative_tolerance=0.005,
-        ),
-        pimple=fvm.PimpleControl(
+        linear=fvm.LinearSolverConfig(pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005),
+        pimple=fvm.PimpleConfig(
             n_outer_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
         ),
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-        turbulence=fvm.TurbulenceConfig.none(),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", list(FREESTREAM_VELOCITY)),
+        execution=fvm.ComputeConfig(operator_backend="numba"),
+    )
+    return fvm.FVMCase(
+        name="reference_cylinder_flow",
+        directory=CASE_DIR,
+        numerics=numerics,
+        initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
+        run=fvm.RunPlan(end_time=END_TIME),
+        output=fvm.Output(schedule=fvm.EveryTime(VOLUME_INTERVAL)),
+        samplers=fvm.Samplers(samplers),
+        backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", FREESTREAM_VELOCITY),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
             fvm.BoundaryConfig.cyclic("zmin", "zmax"),
             fvm.BoundaryConfig.cyclic("zmax", "zmin"),
             fvm.BoundaryConfig.wall("cylinder"),
-        ],
-        initial_velocity=list(FREESTREAM_VELOCITY),
-        samplers=(
-            # Drag and lift coefficients per unit span
-            fvm.ForceSampler(
-                patch_names=["cylinder"],
-                reference_velocity=FREESTREAM_VELOCITY[0],
-                reference_area=DIAMETER * SPAN,
-                reference_length=DIAMETER,
-                schedule=fvm.RunSchedule(every_time=FORCE_INTERVAL),
-            ),
-            # Recirculation region on the wake centreline
-            fvm.LineSampler(
-                start=[0.6, 0.0, 0.0],
-                end=[1.4, 0.0, 0.0],
-                n_points=11,
-                k=12,
-                reconstruction="affine",
-                file_name="centreline",
-                schedule=fvm.RunSchedule(every_time=PROFILE_INTERVAL),
-            ),
-            # Transverse wake profiles
-            *(
-                fvm.LineSampler(
-                    start=[x, -2.0, 0.0],
-                    end=[x, 2.0, 0.0],
-                    n_points=41,
-                    k=12,
-                    reconstruction="affine",
-                    file_name=f"transverse_x{x:g}",
-                    schedule=fvm.RunSchedule(every_time=PROFILE_INTERVAL),
-                )
-                for x in (2.0, 4.0)
-            ),
         ),
     )
-    return flow, mesh
 
 
 if __name__ == "__main__":
-    flow, mesh = build_case()
-    with fvm.create_fvm_solver(flow, case_dir=CASE_DIR, mesh=mesh) as solver:
-        solver.run(start_from="latest", initial_velocity=initial_velocity)
+    with fvm.FVMSolver(build_case()) as solver:
+        cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
+        solver.set_initial_velocity(initial_velocity(cell_centres))
+        solver.run(start_from="latest")

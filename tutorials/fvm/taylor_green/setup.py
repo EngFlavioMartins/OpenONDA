@@ -64,82 +64,77 @@ def periodic_square_mesh() -> dict:
     return mesh
 
 
-def main() -> None:
-    nsteps = int(round(FINAL_TIME / TIME_STEP_SIZE))
-
-    mesh = periodic_square_mesh
-
-    schemes = fvm.DiscretizationConfig(convection_scheme=CONVECTION_SCHEME, time_scheme=TIME_SCHEME)
-    linear = fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER)
-    boundaries = [
-        fvm.BoundaryConfig.cyclic("xmin", "xmax"),
-        fvm.BoundaryConfig.cyclic("xmax", "xmin"),
-        fvm.BoundaryConfig.cyclic("ymin", "ymax"),
-        fvm.BoundaryConfig.cyclic("ymax", "ymin"),
-        fvm.BoundaryConfig.empty("zmin"),
-        fvm.BoundaryConfig.empty("zmax"),
-    ]
-    fvm_setup = fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=nsteps), write_at_end=True),
-        case_name="taylor_green",
-        time=fvm.TimeConfig(
+def create_fvm_case() -> fvm.FVMCase:
+    """Build the periodic Taylor-Green case."""
+    final_frame = fvm.EverySteps(int(round(FINAL_TIME / TIME_STEP_SIZE)))
+    return fvm.FVMCase(
+        name="taylor_green",
+        directory=CASE_DIR,
+        numerics=fvm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            end_time=FINAL_TIME,
-            output_schedule=fvm.RunSchedule(every_n_steps=nsteps),
-            adjustment=fvm.MaximumCourantTimeStep(
-                # Preserve this verification case's nominal time resolution;
-                # CFL control may reduce it but does not coarsen it.
-                maximum_time_step_size=TIME_STEP_SIZE,
+            # CFL control may reduce the nominal time step but never coarsens it.
+            time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=TIME_STEP_SIZE),
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
+            schemes=fvm.DiscretizationConfig(
+                convection_scheme=CONVECTION_SCHEME, time_scheme=TIME_SCHEME
             ),
+            linear=fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER),
         ),
-        schemes=schemes,
-        linear=linear,
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-        boundaries=boundaries,
+        run=fvm.RunPlan(end_time=FINAL_TIME),
+        output=fvm.Output(schedule=final_frame),
+        backup=fvm.Backup(schedule=final_frame),
+        mesh=periodic_square_mesh,
+        boundaries=(
+            fvm.BoundaryConfig.cyclic("xmin", "xmax"),
+            fvm.BoundaryConfig.cyclic("xmax", "xmin"),
+            fvm.BoundaryConfig.cyclic("ymin", "ymax"),
+            fvm.BoundaryConfig.cyclic("ymax", "ymin"),
+            fvm.BoundaryConfig.empty("zmin"),
+            fvm.BoundaryConfig.empty("zmax"),
+        ),
     )
 
-    with fvm.create_fvm_solver(fvm_setup, case_dir=CASE_DIR, mesh=mesh) as fvm_solver:
-        centres = fvm_solver.geo_data["cell_centre"]
-        fvm_solver.set_initial_velocity(exact_velocity(centres, 0.0, KINEMATIC_VISCOSITY))
-        initial_total_kinetic_energy, initial_enstrophy = fvm_solver.evaluate(flow_integrals)
-        restored = fvm_solver.start_from(START_FROM)
-        recorded = fvm_solver.restore_history("history.csv")
+
+def main() -> None:
+    fields = (
+        "time",
+        "total_kinetic_energy",
+        "analytic_total_kinetic_energy",
+        "total_kinetic_energy_relative_error",
+        "velocity_l2_error",
+        "total_enstrophy",
+        "analytic_total_enstrophy",
+        "total_enstrophy_relative_error",
+        "max_continuity_error",
+        "max_courant_number",
+    )
+
+    with fvm.FVMSolver(create_fvm_case()) as solver:
+        centres = solver.geo_data["cell_centre"]
+        solver.set_initial_velocity(exact_velocity(centres, 0.0, KINEMATIC_VISCOSITY))
+        initial_total_kinetic_energy, initial_enstrophy = solver.evaluate(flow_integrals)
+        restored = solver.start_from(START_FROM)
+        recorded = solver.restore_history("history.csv")
         if not restored:
-            fvm_solver.save_state(CASE_DIR / "solution" / "backup")
-            fvm_solver.write_vtk()
-        fields = (
-            "step",
-            "time",
-            "total_kinetic_energy",
-            "analytic_total_kinetic_energy",
-            "total_kinetic_energy_relative_error",
-            "velocity_l2_error",
-            "total_enstrophy",
-            "analytic_total_enstrophy",
-            "total_enstrophy_relative_error",
-            "max_continuity_error",
-            "max_courant_number",
-        )
+            solver.save_backup()
+            solver.write_vtk()
 
         def record_history(*, append):
-            row = fvm_solver.evaluate(
+            row = solver.evaluate(
                 history_row,
                 exact_velocity,
                 KINEMATIC_VISCOSITY,
                 initial_total_kinetic_energy,
                 initial_enstrophy,
             )
-            fvm_solver.write_csv(
-                "history.csv",
-                [[row[name] for name in fields]],
-                columns=fields,
-                append=append,
+            solver.write_csv(
+                "history.csv", [[row[name] for name in fields]], columns=fields, append=append
             )
 
         if not recorded:
             record_history(append=restored)
-        while fvm_solver.time < FINAL_TIME - 1.0e-14:
-            fvm_solver.advance()
+        while solver.time < FINAL_TIME - 1.0e-14:
+            solver.advance()
             record_history(append=True)
 
 

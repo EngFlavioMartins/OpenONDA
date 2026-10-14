@@ -16,7 +16,7 @@ A no-slip cylinder heaves across a uniform stream, $y(t)=A\sin(2\pi ft)$, near i
 
 ## Physics and numerics
 
-The mesh, boundary conditions and coupling settings are those of the [fixed cylinder](../01_cylinder_shedding_flow/README.md), with `mesh_motion=fvm.MeshMotion(fvm.HeavingMotion(...))` added to the FVM setup. The whole FVM box moves with the cylinder; its `cylinder` wall is a no-slip wall moving with the mesh ([moving meshes](../../../docs/fvm.md#moving-meshes)).
+The mesh, boundary conditions and coupling settings are those of the [fixed cylinder](../01_cylinder_shedding_flow/README.md), with `mesh_motion=fvm.MeshMotion(fvm.HeavingMotion(...))` added to the FVM case. The whole FVM box moves with the cylinder; its `cylinder` wall is a no-slip wall moving with the mesh ([moving meshes](../../../docs/fvm.md#moving-meshes)).
 
 The particles are solved in the frame that translates with the box ([moving bodies](../../../docs/coupling.md#moving-bodies)). A uniform translation of the frame leaves the vorticity equation unchanged, so in this frame the particles see the stream $\mathbf{U}_\infty-\mathbf{V}(t)$ and the box, its walls and the particle diffusion grid stay fixed. The boundary trace the particles impose on the FVM box is converted to the inertial frame, and the FVM vorticity renews the particles exactly as for a fixed body. Particle positions, `domain_bounds` and the particle output are relative to the box at $t=0$; `mesh_translation` in `solution/coupler_diagnostics.jsonl` gives its displacement.
 

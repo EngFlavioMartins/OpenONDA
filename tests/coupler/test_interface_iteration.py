@@ -9,7 +9,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from openonda.coupler import CouplerSetup
+from openonda import fvm as fvm_api
+from openonda.coupler import CouplerConfig
 from openonda.coupler import interface_iteration as iteration
 
 NORMALS = np.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]])
@@ -28,7 +29,7 @@ def rig(monkeypatch):
     vpm = SimpleNamespace(strength=3.0)
     transfer = SimpleNamespace(step=4)
     c = SimpleNamespace(
-        setup=CouplerSetup(
+        config=CouplerConfig(
             interface_iterations=6,
             interface_normal_tolerance=1e-5,
             interface_gradient_tolerance=1e-5,
@@ -36,7 +37,7 @@ def rig(monkeypatch):
         fvm_solver=fvm,
         vpm_solver=vpm,
         vorticity_transfer=transfer,
-        _is_master=True,
+        _is_root=True,
         interface_trace_correction=None,
         map_value=lambda value: 0.01 * value,
     )
@@ -54,7 +55,7 @@ def rig(monkeypatch):
     iteration._write_trace(c, old, old=True)
     iteration._write_trace(c, raw)
     inputs, starts, outputs = [], [], []
-    fvm.write_accepted_step_output = lambda: outputs.append((fvm.step, fvm.time, fvm.field))
+    fvm.write_step_output = lambda: outputs.append((fvm.step, fvm.time, fvm.field))
 
     def advance(owner, *args):
         value = float(args[-1][0, 0])
@@ -129,47 +130,48 @@ def test_nonconverged_iteration_keeps_no_correction(rig):
     rig.c.interface_trace_correction = trace(1.0)
     rig.c.map_value = lambda value: 0.5 * value
     rig.run()
-    assert len(rig.inputs) == rig.c.setup.interface_iterations
+    assert len(rig.inputs) == rig.c.config.interface_iterations
     assert not rig.c._last_interface_iteration_diagnostics["converged"]
     assert rig.c.interface_trace_correction is None
     assert len(rig.outputs) == 1
 
 
-def test_new_solve_and_backup_load_start_cold(monkeypatch):
+def test_new_start_and_backup_load_start_cold(monkeypatch):
     from openonda.coupler import solver as driver
 
-    owner = driver.FVMVPMCoupler.__new__(driver.FVMVPMCoupler)
-    owner._comm = None
+    owner = driver.CoupledSolver.__new__(driver.CoupledSolver)
+    owner._started = False
     owner.interface_trace_correction = trace(1.0)
 
-    def prepare():
+    def stop(time):
         assert owner.interface_trace_correction is None
         raise RuntimeError("stop before any solver work")
 
-    owner._prepare_run = prepare
+    owner.fvm_solver = SimpleNamespace(apply_velocity_boundaries=stop, time=0.0)
     with pytest.raises(RuntimeError, match="before any solver work"):
-        owner.solve()
+        owner._start()
+
     owner.interface_trace_correction = trace(1.0)
+    owner.vorticity_transfer = SimpleNamespace(step=0)
 
     def load(*args, **kwargs):
         assert owner.interface_trace_correction is None
         return 11
 
     monkeypatch.setattr(driver, "load_coupled_backup", load)
-    assert owner.load_backup("unused-checkpoint") == 11
+    owner.load_backup("unused-backup")
+    assert owner.vorticity_transfer.step == 12
 
 
 def test_iteration_rejects_output_inside_provisional_interval():
-    from openonda.fvm import RunSchedule
-
-    fvm = SimpleNamespace(
-        _output_schedule=RunSchedule(every_n_steps=5),
-        _backup_config=SimpleNamespace(schedule=None),
-        _sampler_schedules={0: RunSchedule(every_n_steps=2)},
+    case = SimpleNamespace(
+        output=fvm_api.Output(schedule=fvm_api.EverySteps(10)),
+        samplers=SimpleNamespace(samples=(SimpleNamespace(schedule=fvm_api.EverySteps(2)),)),
     )
-    c = SimpleNamespace(fvm_solver=fvm, n_fvm_substeps=5, vpm_time_step_size=0.05)
-    with pytest.raises(ValueError, match="aligned"):
-        iteration.validate_output_schedules(c)
+    with pytest.raises(ValueError, match="exchange times"):
+        iteration.validate_output_schedules(case, 5, 0.05)
+    case.samplers.samples[0].schedule = fvm_api.EveryTime(0.1)
+    iteration.validate_output_schedules(case, 5, 0.05)
 
 
 @pytest.mark.integration

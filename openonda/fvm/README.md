@@ -6,13 +6,16 @@ see the [FVM guide](../../docs/fvm.md). The public API is
 
 The implementation is organized by numerical task:
 
-- `config/`: fluid properties, boundary conditions, schemes, and run settings.
+- `config/`: the case (`FVMCase`), numerical settings, boundary conditions,
+  output and turbulence settings.
 - `mesh/`: mesh generation, import, geometry, and partitioning.
 - `fields/` and `schemes/`: field reconstruction and discrete operators.
 - `solve/`: momentum and pressure equations, SIMPLE/PISO/PIMPLE, linear solvers.
-- `core/`: solver state, time stepping, and parallel execution.
+- `core/`: the solver, its state, time stepping, and parallel execution.
+- `diagnostics/`: derived fields (Courant number, vorticity, forces, y+) and
+  step records.
 - `motion/`: prescribed rigid-body motion of the mesh (moving-mesh kinematics).
-- `sampling/`: online sampling and replay of saved fields.
+- `sampling/`: force, y+, line and surface samplers.
 - `coupling/`: field exchange with the FVM–VPM driver.
 
 See [tests and limitations](../../docs/validation/fvm_qualification.md)

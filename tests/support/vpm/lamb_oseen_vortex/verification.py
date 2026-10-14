@@ -11,7 +11,7 @@ from tests._tutorial_helpers import load_tutorial_module
 _physics = load_tutorial_module("vpm/lamb_oseen_vortex", "assets.postprocess")
 BETA_RMAX = _physics.BETA_RMAX
 CASES = _physics.CASES
-COMPUTE_METHOD = {"CS": "DIRECT", "RWM": "DIRECT", "DVH": "TREECODE", "GBD": "TREECODE"}
+COMPUTE_METHOD = {"cs": "direct", "rwm": "direct", "dvh": "treecode", "gbd": "treecode"}
 CORE_RADIUS = _physics.CORE_RADIUS
 TIME_STEP_SIZE = 0.291 / 9.0
 CONFIGURED_TOTAL_TIME = 103.0 * 0.291
@@ -574,7 +574,7 @@ def validate(
                 continue
             if metadata.get("status") != "completed":
                 failures.append(f"{name}: metadata is not complete")
-            expected_backend = COMPUTE_METHOD[scheme.upper()]
+            expected_backend = COMPUTE_METHOD[scheme]
             if metadata.get("induction_backend") != expected_backend:
                 failures.append(
                     f"{name}: induction backend {metadata.get('induction_backend')!r}, "
@@ -590,7 +590,7 @@ def validate(
             ):
                 failures.append(f"{name}: particle spacing does not match the case setup")
             expected_initial = INITIAL_PARTICLE_COUNT[physics_id]
-            if int(metadata.get("initial_n_particles_total", -1)) != expected_initial:
+            if int(metadata.get("n_initial_particles", -1)) != expected_initial:
                 failures.append(f"{name}: initial particle count is not {expected_initial}")
             final_time = float(metadata.get("final_time", np.nan))
             if final_time < EXPECTED_END_TIME - EXPECTED_DT:

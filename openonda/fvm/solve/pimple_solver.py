@@ -1,15 +1,16 @@
-#!/usr/bin/env python3
 """Transient incompressible PIMPLE solver."""
 
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from openonda.core.profiling import Profiler
+
 from ..assemble import momentum
-from ..fields import diagnostics as field_diagnostics
-from ..io import logging
+from ..diagnostics import fields as field_diagnostics
+from ..diagnostics.step import OuterCorrectorDiagnostics
 from . import simple_solver
-from .diagnostics import OuterCorrectorDiagnostics
 from .linear_interface import solve_linear_system
 
 if TYPE_CHECKING:
@@ -67,7 +68,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             if key not in self.params:
                 self.params[key] = val
 
-        self._timer = self.params.get("_timer") or logging.Timer()
+        self._profiler = self.params.get("_profiler") or Profiler(enabled=False)
 
         self.last_linear_results = ()
         self.last_outer_diagnostics = ()
@@ -325,7 +326,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     return_operator=True,
                 )
 
-            self._timer.start("Momentum Predictor")
+            section_start = perf_counter()
             velocity_star, momentum_diagonal, momentum_diagnostics, momentum_operator = (
                 _solve_predictor(source_explicit)
             )
@@ -335,10 +336,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             linear_results.extend(
                 values["linear_result"] for values in momentum_diagnostics.values()
             )
-            self._timer.log(
-                "Momentum Predictor",
-                sink=logger,
-            )
+            self._profiler.record("momentum predictor", perf_counter() - section_start)
 
             # The predictor is no longer needed as an immutable field: later
             # pressure correctors advance this same state in place. Reuse its
@@ -388,7 +386,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         )
                         pressure_geometry = None
                     reuse_pressure_matrix = pressure_geometry is not None
-                    self._timer.start("Pressure Assembly")
+                    section_start = perf_counter()
                     (
                         pressure_matrix,
                         pressure_right_hand_side,
@@ -417,15 +415,12 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     pressure_geometry = pressure_workspace
                     if frozen_velocity_h_over_a is None:
                         frozen_velocity_h_over_a = pressure_workspace.velocity_h_over_a
-                    self._timer.log(
-                        "Pressure Assembly",
-                        sink=logger,
-                    )
+                    self._profiler.record("pressure assembly", perf_counter() - section_start)
                     has_pressure_nullspace = simple_solver._pressure_requires_constraint(
                         self.boundaries, self.mesh_data, self.geo_data
                     )
 
-                    self._timer.start("Pressure Solve")
+                    section_start = perf_counter()
                     final_pressure_solve = _corr == n_corr - 1 and non_ortho == n_non_ortho
                     pressure_tolerance, pressure_relative_tolerance = _linear_tolerances(
                         "pressure", final=final_pressure_solve
@@ -475,10 +470,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                     final_kinematic_pressure_residual = kinematic_pressure_result.final_residual
                     parallel = self.params.get("_parallel_context")
                     del pressure_matrix, pressure_right_hand_side
-                    self._timer.log(
-                        "Pressure Solve",
-                        sink=logger,
-                    )
+                    self._profiler.record("pressure solve", perf_counter() - section_start)
 
                     if non_ortho < n_non_ortho:
                         # Iterate only the explicit non-orthogonal pressure
@@ -496,7 +488,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             - pressure_before_nonorthogonal_sweeps
                             + kinematic_pressure_correction
                         )
-                        self._timer.start("Velocity Correction")
+                        section_start = perf_counter()
                         velocity_iter, corrected_volumetric_face_flux = (
                             simple_solver.correct_velocity_and_flux(
                                 velocity_iter,
@@ -521,10 +513,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             pressure_before_nonorthogonal_sweeps
                             + outer_pressure_relaxation * accumulated_kinematic_pressure_correction
                         )
-                        self._timer.log(
-                            "Velocity Correction",
-                            sink=logger,
-                        )
+                        self._profiler.record("velocity correction", perf_counter() - section_start)
 
                     simple_solver.update_scalar_boundaries(
                         kinematic_pressure,

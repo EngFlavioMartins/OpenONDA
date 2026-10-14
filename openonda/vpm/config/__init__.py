@@ -1,14 +1,14 @@
-"""Configuration API for the Vortex Particle Method solver.
+"""Configuration of the vortex particle method solver.
 
-Importing this package does not initialize Taichi. Backend initialization occurs
-only when a VPM or VLM solver is constructed.
+Importing this package does not initialize Taichi; the compute backend is
+initialized when a solver is constructed.
 """
 
-from .case import Numerics, RestartState, RunPlan, VPMCase
-from .diagnostics import DiagnosticsConfig
+from .case import Numerics, RunPlan, VPMCase
 from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
-from .output import Backup, Samplers
+from .logging_config import LoggingConfig
+from .output import Backup, Output, Samplers
 from .stabilization import StabilizationConfig
 from .state_limits import (
     DivergenceLimit,
@@ -25,19 +25,19 @@ from .viscous import ViscousConfig
 
 __all__ = [
     "Backup",
-    "DivergenceRelaxationConfig",
-    "DiagnosticsConfig",
     "DivergenceLimit",
-    "FiniteStateCheck",
+    "DivergenceRelaxationConfig",
     "FilamentRefinementConfig",
-    "Numerics",
+    "FiniteStateCheck",
     "GrowthLimit",
+    "LagrangianCFLLimit",
+    "LoggingConfig",
+    "MisalignmentLimit",
+    "Numerics",
+    "Output",
     "ParticleStateError",
     "ParticleStateLimits",
-    "LagrangianCFLLimit",
     "ParticleStrengthLimit",
-    "MisalignmentLimit",
-    "RestartState",
     "RunPlan",
     "Samplers",
     "StabilizationConfig",

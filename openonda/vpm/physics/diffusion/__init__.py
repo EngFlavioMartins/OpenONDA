@@ -26,12 +26,12 @@ from .random_walk import apply_random_walk
 from .schemes import DiffusionPhysics
 
 __all__ = [
-    "DiffusionPhysics",
     "_DVH_BETA",
     "_GRID_TRANSFER_CHUNK",
-    "_GridDiffusionMixin",
     "_M4_SCATTER_BATCH_SIZE",
     "_REGEN_RADIUS_RATIO",
+    "DiffusionPhysics",
+    "_GridDiffusionMixin",
     "apply_core_spreading",
     "apply_random_walk",
 ]

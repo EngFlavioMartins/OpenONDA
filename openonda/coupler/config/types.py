@@ -1,26 +1,58 @@
-"""Controls for buffered M4-prime renewal with mixed vorticity boundaries."""
+"""Coupling settings and coupled backups of an FVM--VPM simulation."""
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
+from openonda.core.schedules import EverySteps, EveryTime, FinalOnly, Schedule
 from openonda.core.simulation.forcing import VelocityRamp
 
+__all__ = ["Backup", "CouplerConfig"]
 
-@dataclass(frozen=True)
-class CouplerSetup:
-    """Configure the standard FVM--VPM exchange.
 
-    Solver cases own viscosity, density, geometry, mesh/particle resolution and
-    time steps. The driver checks their compatibility. Particle strengths are
-    integrated vorticity, in m³/s. Renewal requires GBD diffusion with an
-    absolute vorticity threshold.
+@dataclass(frozen=True, slots=True)
+class Backup:
+    """Coupled restart backups ``solution/coupled/coupled_{step:06d}/``.
+
+    One coupled backup holds the FVM fields, the particles and the interface
+    trace of one exchange, and the FVM and particle frames of that time.
+
+    Parameters
+    ----------
+    schedule : EverySteps, EveryTime, FinalOnly or None, default=None
+        Exchanges with a backup. ``EverySteps(n)`` counts exchanges; an
+        ``EveryTime`` interval and start time must be whole numbers of
+        exchange time steps. ``None`` writes no periodic backups.
+    write_at_end : bool, default=True
+        Write a backup of the last exchange when the run ends.
     """
 
-    freestream_velocity: list[float] = field(default_factory=lambda: [1.0, 0.0, 0.0])
+    schedule: Schedule | None = None
+    write_at_end: bool = True
+
+    def __post_init__(self) -> None:
+        if self.schedule is not None and not isinstance(
+            self.schedule, EverySteps | EveryTime | FinalOnly
+        ):
+            raise TypeError("Backup.schedule must be EverySteps, EveryTime, FinalOnly or None")
+        if not isinstance(self.write_at_end, bool):
+            raise TypeError("Backup.write_at_end must be a bool")
+
+
+@dataclass(frozen=True, slots=True)
+class CouplerConfig:
+    """Overlap transfer, interface iteration and backups of the FVM--VPM exchange.
+
+    The FVM and VPM cases own viscosity, density, geometry, mesh and particle
+    resolution and the time steps; the coupled solver checks that they agree.
+    Particle strengths are integrated vorticity, in m³/s. Renewal requires
+    GBD diffusion with an absolute vorticity threshold.
+    """
+
+    freestream_velocity: tuple[float, float, float] = (1.0, 0.0, 0.0)
     """Cartesian background velocity in m/s; must match the VPM."""
     freestream: VelocityRamp | None = None
-    """Optional accepted-endpoint background history, included in restart configuration."""
+    """Optional background velocity history; part of the restart configuration."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """FVM-derived bounds (xmin, xmax, ymin, ymax, zmin, zmax), in m."""
     eta_blend_width: float = 0.0
@@ -41,18 +73,19 @@ class CouplerSetup:
     coupling_patch: str = "numericalBoundary"
     """Outer FVM patch receiving normal velocity and tangential gradient."""
     interface_iterations: int = 1
-    """Maximum fixed-predictor sweeps; output times must align when above one."""
+    """Maximum fixed-predictor sweeps; FVM output must fall on exchanges when above one."""
     interface_normal_tolerance: float = 1.0e-6
     """Area-weighted RMS normal-velocity residual tolerance, in m/s."""
     interface_gradient_tolerance: float = 1.0e-6
     """Area-weighted RMS tangential-gradient residual tolerance, in 1/s."""
-    backup_interval_steps: int = 1
-    """Accepted steps between backups; zero disables scheduled backups."""
+    backup: Backup = field(default_factory=Backup)
+    """Coupled restart backups."""
 
     def __post_init__(self) -> None:
         velocity = np.asarray(self.freestream_velocity, dtype=np.float64)
         if velocity.shape != (3,) or not np.all(np.isfinite(velocity)):
             raise ValueError("freestream_velocity must be a finite three-component vector")
+        object.__setattr__(self, "freestream_velocity", tuple(float(v) for v in velocity))
         if self.freestream is not None and not isinstance(self.freestream, VelocityRamp):
             raise TypeError("freestream must be a VelocityRamp or None")
         if self.transfer_region_bounds is not None:
@@ -63,12 +96,11 @@ class CouplerSetup:
                 raise ValueError(
                     "Each transfer_region_bounds upper bound must exceed its lower bound"
                 )
+            object.__setattr__(self, "transfer_region_bounds", tuple(float(v) for v in bounds))
         for name in ("interface_iterations", "transfer_diagnostic_interval_steps"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
-        if self.backup_interval_steps < 0:
-            raise ValueError("backup_interval_steps must be non-negative")
         for name in ("interface_normal_tolerance", "interface_gradient_tolerance"):
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0.0:
@@ -90,6 +122,8 @@ class CouplerSetup:
             0.0 < self.transfer_discretization_error_limit <= 1.0
         ):
             raise ValueError("transfer_discretization_error_limit must lie in (0, 1]")
+        if not isinstance(self.backup, Backup):
+            raise TypeError("backup must be a coupler Backup")
 
     @property
     def freestream_velocity_vector(self) -> np.ndarray:
@@ -108,8 +142,13 @@ class CouplerSetup:
             raise ValueError("transfer_region_bounds must be contained within the FVM domain")
 
     def to_dict(self) -> dict[str, object]:
-        """Return numerical and physical controls for restart configuration checks."""
-        values = dict(vars(self))
+        """Return the settings that change the solution, for restart validation.
+
+        The backup schedule only selects saved states and is left out.
+        """
+        values = {item.name: getattr(self, item.name) for item in fields(self)}
+        del values["backup"]
+        values["freestream_velocity"] = list(self.freestream_velocity)
         values["freestream"] = None if self.freestream is None else asdict(self.freestream)
         if self.transfer_region_bounds is not None:
             values["transfer_region_bounds"] = dict(

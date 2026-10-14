@@ -5,21 +5,10 @@ import json
 import numpy as np
 import pytest
 
-from openonda.coupler import CouplerSetup, FVMVPMCoupler
-from openonda.fvm import (
-    BoundaryConfig,
-    FVMSetup,
-    FVMSolver,
-    LinearSolverConfig,
-    TimeConfig,
-    TransportConfig,
-    TurbulenceConfig,
-)
+from openonda import coupler, fvm, vpm
 from openonda.fvm.mesh.geometry import compute_mesh_geometry
 from openonda.fvm.mesh.rectilinear import coupling_box_mesh
 from openonda.fvm.mesh.validation import extract_cell_subset_mesh
-from openonda.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
-from openonda.vpm import TurbulenceConfig as VPMTurbulence
 
 
 def body_mesh(kind):
@@ -66,69 +55,61 @@ def body_mesh(kind):
 
 
 def make_coupler(directory, kind, *, les=False, error_limit=1.0):
-    velocity = [0.2, 0.03, 0]
-    fvm = FVMSolver(
-        FVMSetup(
-            case_name=kind,
-            linear=LinearSolverConfig(momentum_tolerance=1e-10, pressure_tolerance=1e-10),
-            time=TimeConfig(time_step_size=0.005, end_time=0.02),
-            transport=TransportConfig(kinematic_viscosity=0.01),
-            turbulence=TurbulenceConfig.smagorinsky() if les else TurbulenceConfig(),
-            initial_velocity=velocity,
-            boundaries=[
-                BoundaryConfig.wall("body"),
-                BoundaryConfig(
-                    name="numericalBoundary",
-                    velocity_type="fixedValue",
-                    velocity_value=velocity,
-                    pressure_type="fixedFluxPressure",
-                ),
-            ],
+    velocity = (0.2, 0.03, 0.0)
+    flow = fvm.FVMCase(
+        name=kind,
+        directory=directory,
+        numerics=fvm.Numerics(
+            time_step_size=0.005,
+            transport=fvm.TransportConfig(kinematic_viscosity=0.01),
+            linear=fvm.LinearSolverConfig(momentum_tolerance=1e-10, pressure_tolerance=1e-10),
+            turbulence=fvm.TurbulenceConfig.smagorinsky() if les else fvm.TurbulenceConfig.dns(),
         ),
-        case_dir=directory,
-        mesh_data=body_mesh(kind),
-    )
-    vpm = VPMSolver(
-        VPMCase(
-            directory=directory,
-            numerics=Numerics(
-                time_step_size=0.01,
-                compute_device="CPU",
-                max_n_particles=20000,
-                domain_bounds=(-2.0, 2.0) * 3,
-                freestream_velocity=velocity,
-                induction=DirectInduction(),
-                turbulence=VPMTurbulence.les_smagorinsky() if les else VPMTurbulence.dns(),
-                viscous=ViscousConfig.gbd(
-                    kinematic_viscosity=0.01,
-                    particle_spacing=0.25,
-                    padding=4,
-                    threshold=1e-5,
-                    threshold_mode="absolute",
-                ),
+        initial_conditions=fvm.InitialFields(velocity=velocity),
+        run=fvm.RunPlan(end_time=0.02),
+        mesh=body_mesh(kind),
+        boundaries=(
+            fvm.BoundaryConfig.wall("body"),
+            fvm.BoundaryConfig(
+                name="numericalBoundary",
+                velocity_value=velocity,
+                pressure_type="fixed_flux_pressure",
             ),
-        )
-    )
-    return FVMVPMCoupler(
-        fvm,
-        vpm,
-        CouplerSetup(
-            freestream_velocity=velocity,
-            eta_blend_width=0,
-            backup_interval_steps=100,
-            transfer_discretization_error_limit=error_limit,
         ),
     )
+    particles = vpm.VPMCase(
+        name=kind,
+        directory=directory,
+        numerics=vpm.Numerics(
+            time_step_size=0.01,
+            compute_device="cpu",
+            max_n_particles=20000,
+            domain_bounds=(-2.0, 2.0) * 3,
+            freestream_velocity=velocity,
+            induction=vpm.DirectInduction(),
+            turbulence=vpm.TurbulenceConfig.smagorinsky() if les else vpm.TurbulenceConfig.dns(),
+            viscous=vpm.ViscousConfig.gbd(
+                kinematic_viscosity=0.01,
+                particle_spacing=0.25,
+                padding=4,
+                threshold=1e-5,
+                threshold_mode="absolute",
+            ),
+        ),
+        run=vpm.RunPlan(end_time=0.02),
+    )
+    config = coupler.CouplerConfig(
+        freestream_velocity=velocity,
+        transfer_discretization_error_limit=error_limit,
+    )
+    return coupler.CoupledSolver(flow, particles, config)
 
 
-def particle_state(coupler):
-    particles = coupler.vpm_solver.particles
-    count = particles.n_particles_total
-    physics = coupler.vpm_solver.physics
-    positions = physics._download_vector_field(particles.position, count)
-    strengths = physics._download_vector_field(particles.vortex_strength, count)
-    assert count > 0
-    assert not coupler.vorticity_transfer.solid_boundary.contains(positions).any()
+def particle_state(solver):
+    positions = solver.vpm_solver.particle_position
+    strengths = solver.vpm_solver.particle_vortex_strength
+    assert len(positions) > 0
+    assert not solver.vorticity_transfer.solid_boundary.contains(positions).any()
     order = np.lexsort(positions.T[::-1])
     return positions[order], strengths[order]
 
@@ -136,20 +117,22 @@ def particle_state(coupler):
 @pytest.mark.parametrize("kind", ["rotated", "concave", "multiple", "thin"])
 def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
     with make_coupler(tmp_path, kind) as first:
-        assert first.run(start_from="latest", max_coupling_steps=1) == 1
+        first.start_from("latest")
+        first.advance()
+        first.save_backup()
         assert first.vorticity_transfer.solid_boundary is not None
-        first.solve(start_step=1)
-        velocity = first.fvm_solver.get_velocity_field().copy()
-        pressure = first.fvm_solver.get_pressure_field().copy()
+        first.advance()
+        velocity = first.fvm_solver.gather_velocity_field().copy()
+        pressure = first.fvm_solver.gather_pressure_field().copy()
         positions, strengths = particle_state(first)
-    checkpoint_info = tmp_path / "solution/backups/checkpoint_info.json"
-    assert json.loads(checkpoint_info.read_text())["coupling_step"] == 1
     with make_coupler(tmp_path, kind) as resumed:
-        assert resumed.run(start_from="latest") == 2
-        np.testing.assert_allclose(resumed.fvm_solver.get_velocity_field(), velocity, atol=1e-7)
+        assert resumed.start_from("latest")
+        assert resumed.step == 1
+        resumed.advance()
+        np.testing.assert_allclose(resumed.fvm_solver.gather_velocity_field(), velocity, atol=1e-7)
         # VPM fields and GBD atomic accumulation use float32; accept its
         # roundoff in the pressure trace while catching lost boundary history.
-        np.testing.assert_allclose(resumed.fvm_solver.get_pressure_field(), pressure, atol=1e-6)
+        np.testing.assert_allclose(resumed.fvm_solver.gather_pressure_field(), pressure, atol=1e-6)
         restored_positions, restored_strengths = particle_state(resumed)
         np.testing.assert_allclose(restored_positions, positions, atol=2e-7)
         np.testing.assert_allclose(restored_strengths, strengths, atol=2e-7)
@@ -159,9 +142,9 @@ def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
 
 def test_finite_wall_body_with_les_uses_three_dimensional_exchange(tmp_path):
     with make_coupler(tmp_path, "concave", les=True, error_limit=0.08) as driver:
-        assert driver.run(max_coupling_steps=1, backup_at_stop=True) == 1
-        assert driver.fvm_solver.setup.turbulence.model == "smagorinsky"
-        assert driver.vpm_solver.numerics.turbulence.model == "LES_SMAGORINSKY"
+        driver.advance()
+        assert driver.fvm_case.numerics.turbulence.model == "smagorinsky"
+        assert driver.vpm_case.numerics.turbulence.model == "smagorinsky"
         position, strength = particle_state(driver)
         assert np.ptp(position[:, 2]) > 0.5
         assert np.all(np.isfinite(strength))

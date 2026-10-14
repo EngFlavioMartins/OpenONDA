@@ -326,7 +326,7 @@ def update_grid_study(
             samples_dir.mkdir(parents=True, exist_ok=True)
             metadata = {
                 "schema": "openonda-fvm-grid-run/1",
-                "case": solver.setup.case_name,
+                "case": solver.case.name,
                 "cell_size": float(cell_size),
                 "cell_count": cell_count,
                 "end_time": float(solver.time),

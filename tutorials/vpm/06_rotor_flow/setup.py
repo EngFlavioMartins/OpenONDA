@@ -9,7 +9,6 @@ import numpy as np
 
 import openonda.vpm as vpm
 from assets.output_files import read_json
-from openonda.vpm import Backup, Samplers
 
 CASE_NAME = "rotor"
 START_FROM = "latest"
@@ -28,7 +27,6 @@ TIME_STEP_SIZE = 0.006  # [s]
 # matched BEM a ~= 0.219, ramp + 2D/[U*(1-2a)] + five revolutions is ~10.7 s.
 # This planning margin does not replace the measured stationarity checks.
 END_TIME = 15  # [s]
-N_STEPS = round(END_TIME / TIME_STEP_SIZE)
 FIELD_SAMPLE_INTERVAL_TIME = 0.06  # [s]
 BACKUP_INTERVAL_TIME = 0.024  # [s]
 STREAMWISE_STATIONS = (("025", 0.25), ("065", 0.65))
@@ -42,15 +40,11 @@ TUTORIAL_DIR = Path(__file__).resolve().parent
 def build_case(
     *,
     time_step_size: float = TIME_STEP_SIZE,
-    steps: int = N_STEPS,
-    solution_directory: Path = Path("solution"),
-    sample_directory: Path = Path("samples") / CASE_NAME,
+    end_time: float = END_TIME,
+    variant: str = CASE_NAME,
     run_plan: vpm.RunPlan | None = None,
 ) -> vpm.VPMCase:
     """Build the rotor case and its output schedules."""
-    solution_directory = Path(solution_directory)
-    sample_directory = Path(sample_directory)
-    relative_sample_directory = sample_directory.relative_to("samples")
 
     blade_file = TUTORIAL_DIR / "assets/blade.json"
     segments = read_json(blade_file)["wings"][0]["segments"]
@@ -62,9 +56,9 @@ def build_case(
         acceleration_time=2.0 * np.pi / ANGULAR_VELOCITY,
     )
 
-    vlm_setup = vpm.VLMSetup(
+    vlm_setup = vpm.VLMConfig(
         surfaces=tuple(
-            vpm.VLMSurfaceSetup(
+            vpm.VLMSurface(
                 str(blade_file),
                 name=f"blade_{blade_index}",
                 kinematics=rotation_kinematics,
@@ -73,7 +67,7 @@ def build_case(
             )
             for blade_index, azimuth in enumerate((0.0, 120.0, 240.0))
         ),
-        mesh=vpm.VLMMeshSetup.geometric(),
+        mesh=vpm.VLMMeshConfig.geometric(),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         wake_core_overlap=2.5,
@@ -108,17 +102,17 @@ def build_case(
     ]
 
     if run_plan is None:
-        run_plan = vpm.RunPlan(
-            steps=steps,
-            state_limit_action="STOP",
-        )
+        run_plan = vpm.RunPlan(end_time=end_time, state_limit_action="stop")
+    backup_schedule = vpm.EverySteps(max(1, round(BACKUP_INTERVAL_TIME / time_step_size)))
     return vpm.VPMCase(
         name=CASE_NAME,
+        directory=TUTORIAL_DIR,
+        variant=variant,
         numerics=vpm.Numerics(
             time_step_size=time_step_size,
             vlm=vlm_setup,
             freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(),
+            turbulence=vpm.TurbulenceConfig.smagorinsky(),
             stabilization=vpm.StabilizationConfig(
                 selective_eddy_viscosity_coefficient=0.5,
                 filament_refinement=vpm.FilamentRefinementConfig.adaptive(
@@ -132,21 +126,16 @@ def build_case(
             induction=vpm.FMMInduction(),
             max_n_particles=MAX_N_PARTICLES,
         ),
-        backup=Backup(
-            interval_steps=max(1, round(BACKUP_INTERVAL_TIME / time_step_size)),
-            directory=solution_directory,
-            log_directory=solution_directory,
-        ),
-        samplers=Samplers(
+        run=run_plan,
+        output=vpm.Output(schedule=backup_schedule),
+        samplers=vpm.Samplers(
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EveryTime(FIELD_SAMPLE_INTERVAL_TIME)),
                 *plane_samplers,
                 *streamwise_samplers,
             ),
-            directory=relative_sample_directory,
         ),
-        run=run_plan,
-        directory=TUTORIAL_DIR,
+        backup=vpm.Backup(schedule=backup_schedule),
     )
 
 

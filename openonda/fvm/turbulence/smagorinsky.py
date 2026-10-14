@@ -2,11 +2,11 @@
 
 Two deliberately distinct formulations are provided:
 
-``Smagorinsky``
+``SmagorinskyModel``
     The familiar incompressible ``C_s`` form,
     ``eddy_viscosity = (C_s Delta)^2 |S|``.
 
-``EquilibriumSmagorinsky``
+``EquilibriumSmagorinskyModel``
     The algebraic-equilibrium implementation. It computes the
     SGS kinetic energy from ``C_k``, ``C_e`` and the complete symmetric
     velocity gradient before evaluating ``eddy_viscosity = C_k Delta sqrt(k)``.  The
@@ -92,7 +92,7 @@ def _compute_filter_width(cell_volume: np.ndarray, mesh_data: dict, geo_data: di
     return cell_volume ** (1.0 / 3.0)
 
 
-class Smagorinsky:
+class SmagorinskyModel:
     """Classical Smagorinsky LES eddy-viscosity model.
 
     Computes the subgrid-scale turbulent viscosity as
@@ -147,7 +147,7 @@ class Smagorinsky:
         """
         delta = _compute_filter_width(self.geo_data["cell_volume"], self.mesh_data, self.geo_data)
         return {
-            "model": "Smagorinsky",
+            "model": "smagorinsky",
             "smagorinsky_coefficient": self.smagorinsky_coefficient,
             "min_filter_width": float(np.min(delta)),
             "max_filter_width": float(np.max(delta)),
@@ -210,7 +210,7 @@ class Smagorinsky:
         return eddy_viscosity
 
 
-class EquilibriumSmagorinsky:
+class EquilibriumSmagorinskyModel:
     r"""Algebraic-equilibrium Smagorinsky LES model.
 
     This implements the equilibrium equations:
@@ -244,15 +244,11 @@ class EquilibriumSmagorinsky:
 
     Examples
     --------
-    Configure a solver through the public factory::
-
-        setup = FVMSetup(
-            turbulence=TurbulenceConfig.equilibrium_smagorinsky()
-        )
+    Configure a case with ``Numerics(turbulence=TurbulenceConfig.equilibrium_smagorinsky())``.
 
     Construct the model directly for diagnostics::
 
-        model = EquilibriumSmagorinsky(mesh_data, geo_data)
+        model = EquilibriumSmagorinskyModel(mesh_data, geo_data)
         eddy_viscosity = model.compute_eddy_viscosity(velocity)
 
     """
@@ -368,7 +364,7 @@ class EquilibriumSmagorinsky:
         """Return model coefficients and ``cubeRootVol`` filter statistics."""
         delta = _compute_filter_width(self.geo_data["cell_volume"], self.mesh_data, self.geo_data)
         return {
-            "model": "EquilibriumSmagorinsky",
+            "model": "equilibrium_smagorinsky",
             "subgrid_kinetic_energy_coefficient": self.subgrid_kinetic_energy_coefficient,
             "subgrid_dissipation_coefficient": self.subgrid_dissipation_coefficient,
             "smagorinsky_coefficient": self.equivalent_smagorinsky_coefficient,

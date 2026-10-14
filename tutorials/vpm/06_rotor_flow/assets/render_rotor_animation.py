@@ -33,7 +33,7 @@ def _nearest_frame(frames, time: float) -> tuple[float, Path]:
 
 
 def render(*, output: Path, fps: float = 30.0, max_frames: int | None = None) -> Path:
-    solution_dir, samples_dir = (CASE_DIR / "solution", CASE_DIR / "samples/rotor")
+    solution_dir, samples_dir = (CASE_DIR / "solution/rotor", CASE_DIR / "samples/rotor")
     vlm_frames = coupled_frames(solution_dir)
     plane_frames = [
         (time, path)

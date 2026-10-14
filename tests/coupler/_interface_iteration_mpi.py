@@ -25,8 +25,8 @@ def run_case(comm, correction):
         fvm_solver=fvm,
         vpm_solver=vpm,
         vorticity_transfer=transfer,
-        _is_master=master,
-        setup=SimpleNamespace(
+        _is_root=master,
+        config=SimpleNamespace(
             interface_iterations=4,
             interface_normal_tolerance=1e-5,
             interface_gradient_tolerance=1e-5,
@@ -68,7 +68,7 @@ def run_case(comm, correction):
             iteration._write_trace(owner, trace(0.1 * inputs[-1]), old=True)
 
     iteration.update_boundary_history_after_replacement = update
-    fvm.write_accepted_step_output = lambda: outputs.append((fvm.step, fvm.time))
+    fvm.write_step_output = lambda: outputs.append((fvm.step, fvm.time))
     iteration.advance_iterated_interface(c, (np.zeros((2, 3)), NORMALS, np.ones(2)), raw[0])
     assert len(outputs) == 1 and fvm.step == 11 and transfer.step == 5
     records = comm.allgather(c._last_interface_iteration_diagnostics["residuals"])

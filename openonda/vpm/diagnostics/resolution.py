@@ -30,11 +30,6 @@ Three quantities, all cheap and all with an unambiguous "good" direction:
     DIRECT and TRANSPOSED stretching forms differ by exactly Gamma x w, so this
     angle simultaneously measures how far the particle field is from being a
     vorticity field and how much the choice of stretching form can matter.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: July 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import numpy as np

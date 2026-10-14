@@ -35,7 +35,7 @@ KINEMATIC_VISCOSITY = RING_STRENGTH / REYNOLDS_NUMBER  # [m²/s]
 # Resolution and run length
 PARTICLE_SPACING = 0.035  # [m]
 TIME_STEP_SIZE = 0.02  # [s]
-N_STEPS = 3000
+END_TIME = 60.0  # [s]
 SAMPLE_INTERVAL_TIME = 0.1  # [s]
 BACKUP_INTERVAL_TIME = 0.5  # [s]
 MAX_N_PARTICLES = 100_000
@@ -54,10 +54,10 @@ MAX_VORTICITY_DIVERGENCE = 0.12
 MAX_VORTEX_MISALIGNMENT = 25.0
 
 VARIANT_CONFIG = {
-    "dns_direct": ("DNS", "DIRECT"),
-    "dns_transposed": ("DNS", "TRANSPOSED"),
-    "dns_mixed": ("DNS", "MIXED"),
-    "les_transposed": ("LES_SMAGORINSKY", "TRANSPOSED"),
+    "dns_direct": ("dns", "direct"),
+    "dns_transposed": ("dns", "transposed"),
+    "dns_mixed": ("dns", "mixed"),
+    "les_transposed": ("smagorinsky", "transposed"),
 }
 VARIANTS = tuple(VARIANT_CONFIG)
 
@@ -72,8 +72,8 @@ def cadence_steps(period: float) -> int:
 
 def turbulence_config(variant: str) -> vpm.TurbulenceConfig:
     return {
-        "DNS": vpm.TurbulenceConfig.dns(),
-        "LES_SMAGORINSKY": vpm.TurbulenceConfig.les_smagorinsky(),
+        "dns": vpm.TurbulenceConfig.dns(),
+        "smagorinsky": vpm.TurbulenceConfig.smagorinsky(),
     }[VARIANT_CONFIG[variant][0]]
 
 
@@ -84,8 +84,8 @@ def stretching_scheme(variant: str) -> str:
 def build_case(
     variant: str,
     *,
-    compute_device: str = "AUTO",
-    n_steps: int = N_STEPS,
+    compute_device: str = "auto",
+    end_time: float = END_TIME,
 ) -> vpm.VPMCase:
     """Build one vortex-ring comparison case without allocating a solver."""
 
@@ -117,6 +117,7 @@ def build_case(
     return vpm.VPMCase(
         name=variant,
         directory=TUTORIAL_DIR,
+        variant=variant,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             compute_device=compute_device,
@@ -131,14 +132,10 @@ def build_case(
             ),
         ),
         initial_conditions=(initial_condition,),
-        backup=vpm.Backup(
-            interval_steps=cadence_steps(BACKUP_INTERVAL_TIME),
-            directory=str(Path("solution") / variant),
-            log_directory=str(Path("solution") / variant),
-        ),
+        run=vpm.RunPlan(end_time=end_time, state_limit_action="stop"),
         samplers=vpm.Samplers(
             samples=(
-                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps), initial=True),
+                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
                 RingDiagnosticsSampler(schedule=vpm.EverySteps(sample_steps)),
                 RingModeDiagnosticsSampler(
                     max_mode=DIAGNOSTIC_MAX_MODE,
@@ -148,24 +145,19 @@ def build_case(
                     schedule=vpm.EverySteps(sample_steps),
                 ),
             ),
-            directory=variant,
         ),
-        run=vpm.RunPlan(
-            steps=n_steps,
-            final_backup=True,
-            state_limit_action="STOP",
-        ),
+        backup=vpm.Backup(schedule=vpm.EverySteps(cadence_steps(BACKUP_INTERVAL_TIME))),
     )
 
 
 def run_case(
     variant: str,
     *,
-    compute_device: str = "AUTO",
-    n_steps: int = N_STEPS,
+    compute_device: str = "auto",
+    end_time: float = END_TIME,
 ) -> None:
     """Construct and run one vortex-ring comparison case."""
-    vpm.VPMSolver(build_case(variant, compute_device=compute_device, n_steps=n_steps)).run(
+    vpm.VPMSolver(build_case(variant, compute_device=compute_device, end_time=end_time)).run(
         start_from=START_FROM
     )
 

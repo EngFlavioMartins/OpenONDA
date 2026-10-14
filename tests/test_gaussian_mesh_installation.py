@@ -52,7 +52,7 @@ assert vpm.GaussianMeshParameters is GaussianMeshParameters
 backend = vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=-.5, z_max=.5,
                               gaussian_mesh_settings=vpm.GaussianSlabSettings())
 assert backend.gaussian_mesh_settings.mesh == vpm.GaussianMeshParameters()
-assert vpm.FMMInduction().kernel.name == 'GAUSSIAN'
+assert vpm.FMMInduction().kernel.name == 'gaussian'
 """
     env = os.environ.copy()
     env.update(PYTHONPATH=str(ROOT), OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1")

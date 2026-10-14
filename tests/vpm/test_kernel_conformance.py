@@ -102,9 +102,9 @@ def test_density_is_normalized_and_integrates_to_q(name):
     for rho in (0.3, 1.0, 2.5, 6.0):
         enclosed = _radial_integral(lambda x: x * x * definition.zeta(x), rho)
         assert definition.q(rho) == pytest.approx(enclosed, rel=1e-11, abs=1e-15)
-    far = 400.0 if name == "WINCKELMANS" else 30.0
+    far = 400.0 if name == "winckelmans" else 30.0
     total = _radial_integral(lambda x: x * x * definition.zeta(x), far)
-    tail = 15.0 / 8.0 / (4 * math.pi * far**4) if name == "WINCKELMANS" else 0.0
+    tail = 15.0 / 8.0 / (4 * math.pi * far**4) if name == "winckelmans" else 0.0
     assert total + tail == pytest.approx(INVERSE_FOUR_PI, rel=1e-9)
     assert definition.q(far) == pytest.approx(INVERSE_FOUR_PI - tail, rel=1e-9)
 
@@ -112,7 +112,7 @@ def test_density_is_normalized_and_integrates_to_q(name):
 @pytest.mark.parametrize("name", NAMES)
 def test_second_moment_is_the_density_moment(name):
     definition = KERNELS[name]
-    if name == "WINCKELMANS":
+    if name == "winckelmans":
         # 4 pi int x^4 zeta converges like x^-2; integrate x in (0, inf) via x = t/(1-t).
         def integrand(t):
             x = t / (1 - t)
@@ -135,14 +135,14 @@ def _defects(name, x):
     x = np.asarray(x, dtype=np.float64)
     erfc = np.vectorize(math.erfc)
     gaussian = (erfc(x) + 2 / math.sqrt(math.pi) * x * np.exp(-x * x)) * INVERSE_FOUR_PI
-    if name == "GAUSSIAN":
+    if name == "gaussian":
         return gaussian, 3 * gaussian + x**3 * np.exp(-x * x) * math.pi**-1.5
-    if name in {"HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"}:
+    if name in {"high_order_gaussian", "super_gaussian"}:
         # Both are the corrected Gaussian in the partner coordinate.
         defect = gaussian - 0.5 * math.pi**-1.5 * x**3 * np.exp(-x * x)
         zeta = (2.5 - x * x) * np.exp(-x * x) * math.pi**-1.5
         return defect, 3 * defect + x**3 * zeta
-    assert name == "WINCKELMANS"
+    assert name == "winckelmans"
     u = x / np.sqrt(x * x + 1)
     defect = INVERSE_FOUR_PI * u**4 * (1 + 2 * u + 3 * u * u + 1.5 * u**3) / ((1 + u) ** 2 * x**4)
     return defect, 3 * defect + INVERSE_FOUR_PI * 7.5 * x**3 / (x * x + 1) ** 3.5
@@ -165,7 +165,7 @@ def test_residual_is_the_kernel_minus_its_gaussian_partner(name):
     definition = KERNELS[name]
     split = definition.slab_split
     if split.residual is None:
-        assert name == "GAUSSIAN" and split.partner_ratio == 1.0
+        assert name == "gaussian" and split.partner_ratio == 1.0
         return
     width = 0.7  # partner width s
     sigma = width / split.partner_ratio
@@ -187,7 +187,7 @@ def test_residual_is_the_kernel_minus_its_gaussian_partner(name):
     for x in (5.0, 20.0, 200.0):
         a, b = split.residual(x * width, width)
         defect, gradient = _defects(name, x)
-        gaussian_defect, gaussian_gradient = _defects("GAUSSIAN", x)
+        gaussian_defect, gaussian_gradient = _defects("gaussian", x)
         r = x * width
         assert a == pytest.approx((gaussian_defect - defect) / r**3, rel=1e-12, abs=1e-300)
         assert b == pytest.approx((gaussian_gradient - gradient) / r**5, rel=1e-12, abs=1e-300)

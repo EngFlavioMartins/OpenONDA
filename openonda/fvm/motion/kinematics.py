@@ -172,7 +172,7 @@ class _ExactAxisRotation(MeshKinematics):
         return axis_rotation_matrix(self.rotation_axis_vector, angle), np.zeros(3)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class StaticMotion(MeshKinematics):
     """Keep the mesh fixed in its constructed position.
 
@@ -195,7 +195,7 @@ class StaticMotion(MeshKinematics):
         return np.eye(3), np.zeros(3)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TranslatingMotion(_ExactTranslation):
     """Translate the mesh with constant velocity.
 
@@ -224,7 +224,7 @@ class TranslatingMotion(_ExactTranslation):
         return np.array(self.velocity) * time
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RotatingMotion(_ExactAxisRotation):
     """Rotate the mesh about a fixed axis at constant angular speed.
 
@@ -285,7 +285,7 @@ class RotatingMotion(_ExactAxisRotation):
         return self.angular_speed * (spin_up + max(time - self.acceleration_time, 0.0))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ManeuverMotion(MeshKinematics):
     """Drive arbitrary rigid motion with user-supplied velocity functions.
 
@@ -332,7 +332,7 @@ class ManeuverMotion(MeshKinematics):
         return np.array(self.angular_velocity_function(time), dtype=np.float64).reshape(3)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class HeavingMotion(_ExactTranslation):
     """Sinusoidal heave ``z(t) = A sin(2 pi f t + phase)`` along ``direction``.
 
@@ -375,7 +375,7 @@ class HeavingMotion(_ExactTranslation):
         return self.amplitude * math.sin(omega * time + self.phase) * np.array(self.direction)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PitchingMotion(_ExactAxisRotation):
     """Sinusoidal pitch ``theta(t) = theta0 sin(2 pi f t + phase)`` about a fixed axis.
 
@@ -435,7 +435,7 @@ class PitchingMotion(_ExactAxisRotation):
         return math.radians(self.amplitude_degrees) * math.sin(omega * time + self.phase)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class LinearPeriodicMotion(_ExactTranslation):
     """Sinusoidal translation ``r(t) = r0 + A sin(2 pi f t + phase) d``.
 
@@ -482,7 +482,7 @@ class LinearPeriodicMotion(_ExactTranslation):
         return self.amplitude * math.sin(omega * time + self.phase) * np.array(self.direction)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class CompositeMotion(MeshKinematics):
     """Superpose several motions about one common rotation centre.
 
@@ -524,7 +524,7 @@ class CompositeMotion(MeshKinematics):
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SmoothRampMotion(_ExactTranslation):
     """Accelerate smoothly from rest to a constant velocity.
 
@@ -612,7 +612,7 @@ def placement_pose(
 
     The rotations about global x, then y, then z (degrees) act about
     ``rotation_centre`` and are followed by ``translation``, the convention of
-    :class:`~openonda.vpm.boundary_elements.vlm.config.VLMSurfaceSetup`.
+    :class:`~openonda.vpm.boundary_elements.vlm.config.VLMSurface`.
     """
     rotation = np.eye(3)
     if rotation_degrees is not None:
@@ -623,7 +623,7 @@ def placement_pose(
     return RigidPose(rotation, centre - rotation @ centre + shift)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class MeshMotion:
     """Prescribed rigid-body motion of the whole FVM mesh.
 
@@ -670,10 +670,6 @@ class MeshMotion:
 
 def _kinematics_to_dict(kinematics: MeshKinematics) -> dict[str, object]:
     """Describe one kinematics object by class name and constructor fields."""
-    if isinstance(kinematics, ManeuverMotion) and (
-        kinematics.velocity_function is not None or kinematics.angular_velocity_function is not None
-    ):
-        raise TypeError("ManeuverMotion velocity functions cannot be written to a setup file")
     data: dict[str, object] = {"type": type(kinematics).__name__}
     for item in fields(kinematics):
         value = getattr(kinematics, item.name)
@@ -683,50 +679,18 @@ def _kinematics_to_dict(kinematics: MeshKinematics) -> dict[str, object]:
     return data
 
 
-def _kinematics_from_dict(data: dict[str, object]) -> MeshKinematics:
-    """Rebuild one kinematics object written by :func:`_kinematics_to_dict`."""
-    values = dict(data)
-    cls = _KINEMATICS_TYPES.get(str(values.pop("type", "")))
-    if cls is None:
-        raise ValueError(f"Unknown mesh kinematics type {data.get('type')!r}")
-    if "kinematics_components" in values:
-        values["kinematics_components"] = tuple(
-            _kinematics_from_dict(item) for item in values["kinematics_components"]
-        )
-    return cls(**values)
-
-
 def mesh_motion_to_dict(motion: MeshMotion) -> dict[str, object]:
-    """Return a JSON-compatible description of a mesh motion."""
+    """Describe a mesh motion by its placement and kinematics.
+
+    Velocity functions of a :class:`ManeuverMotion` are kept as the function
+    objects; the restart digest identifies them by qualified name.
+    """
     return {
         "kinematics": _kinematics_to_dict(motion.kinematics),
         "translation": motion.translation,
         "rotation_degrees": motion.rotation_degrees,
         "rotation_centre": motion.rotation_centre,
     }
-
-
-def mesh_motion_from_dict(data: dict[str, object]) -> MeshMotion:
-    """Rebuild a mesh motion written by :func:`mesh_motion_to_dict`."""
-    values = dict(data)
-    values["kinematics"] = _kinematics_from_dict(values["kinematics"])
-    return MeshMotion(**values)
-
-
-_KINEMATICS_TYPES = {
-    cls.__name__: cls
-    for cls in (
-        StaticMotion,
-        TranslatingMotion,
-        RotatingMotion,
-        ManeuverMotion,
-        HeavingMotion,
-        PitchingMotion,
-        LinearPeriodicMotion,
-        CompositeMotion,
-        SmoothRampMotion,
-    )
-}
 
 
 __all__ = [
@@ -744,7 +708,6 @@ __all__ = [
     "TranslatingMotion",
     "advance_pose",
     "axis_rotation_matrix",
-    "mesh_motion_from_dict",
     "mesh_motion_to_dict",
     "placement_pose",
     "rotation_vector_matrix",

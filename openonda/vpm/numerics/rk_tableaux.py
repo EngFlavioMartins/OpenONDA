@@ -127,4 +127,4 @@ class RK4(RKTableau):
         )
 
 
-__all__ = ["RK2", "RK4", "RKTableau", "SSPRK3"]
+__all__ = ["RK2", "RK4", "SSPRK3", "RKTableau"]

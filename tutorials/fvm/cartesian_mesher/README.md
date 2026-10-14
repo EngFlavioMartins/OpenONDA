@@ -13,7 +13,7 @@ The run advances twenty steps of $\Delta t=0.01$ s. Open `solution/fvm.pvd` to i
 
 ## Physical setup
 
-`create_fvm_setup()` in [setup.py](setup.py) sets $\rho=1$ kg/m³, $\nu=0.01$ m²/s and inlet velocity $(1,0,0)$ m/s. The body is no-slip, the outlet fixes $p/\rho=0$, and the four lateral faces are slip boundaries. The initial velocity equals the inlet velocity.
+`create_fvm_case()` in [setup.py](setup.py) sets $\rho=1$ kg/m³, $\nu=0.01$ m²/s and inlet velocity $(1,0,0)$ m/s. The body is no-slip, the outlet fixes $p/\rho=0$, and the four lateral faces are slip boundaries. The initial velocity equals the inlet velocity.
 
 `create_mesher()` sets:
 

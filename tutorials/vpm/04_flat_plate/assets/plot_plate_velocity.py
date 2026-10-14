@@ -33,7 +33,7 @@ fig.set_size_inches(12.5 * cm(), 10.0 * cm(), forward=False)
 for mode, ink, marker in [("moving", color("teal"), "o"), ("static", color("vpm"), "s")]:
     name = f"exp_{mode}_aoa05"
     data = pd.DataFrame(read_csv_table(SAMPLES_DIR / name / "vlm_chordwise_flat_plate.csv"))
-    data = data[data.step == data.step.max()]
+    data = data[data.time == data.time.max()]
     reference = parameters(SAMPLES_DIR.parent, name)["reference_velocity"]
     stream = reference / np.linalg.norm(reference)
     lift = np.array([0.0, 0.0, 1.0]) - stream[2] * stream

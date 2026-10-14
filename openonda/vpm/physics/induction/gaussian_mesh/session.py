@@ -60,7 +60,7 @@ def _positive_int(value: int, name: str, maximum: int | None = None) -> int:
     return int(value)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class GaussianSlabSettings:
     """Explicit, case-independent operator and resource controls.
 
@@ -219,7 +219,7 @@ class GaussianSlabFieldSession:
         dtype: str = "float32",
         settings: "GaussianSlabSettings | None" = None,
         execution_backend: str | None = None,
-        kernel: str = "GAUSSIAN",
+        kernel: str = "gaussian",
     ):
         if (
             not all(

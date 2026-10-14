@@ -84,41 +84,38 @@ def test_linear_pressure_field_cancels_boundary_rhie_chow_flux() -> None:
 def test_nonorthogonal_pressure_sweep_remains_bounded_on_a_sheared_mesh(tmp_path) -> None:
     mesh = structured_box(3, 3, 1)
     mesh["vertex_position"][:, 0] += 0.45 * mesh["vertex_position"][:, 1]
-    setup = fvm.FVMSetup(
-        case_name="nonorthogonal_pressure_regression",
-        logging=fvm.LoggingConfig(console=False),
-        backup=fvm.BackupConfig(schedule=None),
-        time=fvm.TimeConfig(
+    case = fvm.FVMCase(
+        name="nonorthogonal_pressure_regression",
+        directory=tmp_path,
+        numerics=fvm.Numerics(
             time_step_size=0.002,
-            end_time=0.006,
-            output_schedule=fvm.RunSchedule(every_n_steps=100),
+            schemes=fvm.DiscretizationConfig(convection_scheme="upwind", gradient_scheme="lsq"),
+            linear=fvm.LinearSolverConfig(linear_solver="spsolve"),
+            pimple=fvm.PimpleConfig(
+                n_correctors=2,
+                n_outer_correctors=2,
+                n_nonorthogonal_correctors=1,
+                velocity_relaxation=0.7,
+                pressure_relaxation=0.3,
+            ),
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.02),
         ),
-        schemes=fvm.DiscretizationConfig(
-            convection_scheme="upwind",
-            gradient_scheme="lsq",
-        ),
-        linear=fvm.LinearSolverConfig(linear_solver="spsolve"),
-        pimple=fvm.PimpleControl(
-            n_correctors=2,
-            n_outer_correctors=2,
-            n_nonorthogonal_correctors=1,
-            velocity_relaxation=0.7,
-            pressure_relaxation=0.3,
-        ),
-        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.02),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
+        initial_conditions=fvm.InitialFields(velocity=(0.2, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=0.006),
+        logging=fvm.LoggingConfig(console=False),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("xmin", (0.5, 0.0, 0.0)),
             fvm.BoundaryConfig.outlet("xmax"),
             fvm.BoundaryConfig.wall("ymin"),
             fvm.BoundaryConfig.wall("ymax"),
             fvm.BoundaryConfig.slip("zmin"),
             fvm.BoundaryConfig.slip("zmax"),
-        ],
-        initial_velocity=[0.2, 0.0, 0.0],
+        ),
     )
 
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = FVMSolver(setup, str(tmp_path), mesh_data=mesh)
+        solver = FVMSolver(case)
         solver.auto_write = False
         try:
             for _ in range(3):

@@ -17,7 +17,7 @@ def _advance(directory, reuse_induction):
             if step == 2:
                 # An external update of the accepted sources forbids reuse.
                 strength = solver.particles.vortex_strength_cpu()
-                solver.set_particles_properties(vortex_strength=1.1 * strength)
+                solver.set_particle_properties(vortex_strength=1.1 * strength)
             before = solver.stage_rhs.induction_reuse_statistics.evaluations
             solver.advance()
             evaluations.append(solver.stage_rhs.induction_reuse_statistics.evaluations - before)

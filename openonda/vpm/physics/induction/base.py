@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 TaichiField = Any
 TaichiDataType = Any
 
-StretchingScheme = Literal["DIRECT", "TRANSPOSED", "MIXED"]
-_STRETCHING_MODES = {"DIRECT": 0, "TRANSPOSED": 1, "MIXED": 2}
+StretchingScheme = Literal["direct", "transposed", "mixed"]
+_STRETCHING_MODES = {"direct": 0, "transposed": 1, "mixed": 2}
 
 
 def normalize_stretching_scheme(scheme: str) -> StretchingScheme:
@@ -28,26 +28,25 @@ def normalize_stretching_scheme(scheme: str) -> StretchingScheme:
     Parameters
     ----------
     scheme : str
-        Case-insensitive spelling of ``"DIRECT"``, ``"TRANSPOSED"``, or
-        ``"MIXED"``. The value selects the discrete representation of
+        Case-insensitive spelling of ``"direct"``, ``"transposed"``, or
+        ``"mixed"``. The value selects the discrete representation of
         ``dGamma/dt``; it does not select a velocity-induction backend.
 
     Returns
     -------
     StretchingScheme
-        The upper-case standard literal used by backend constructors.
+        The lowercase literal used by backend constructors.
 
     Raises
     ------
     ValueError
         If ``scheme`` is not one of the three supported formulations.
     """
-    normalized = str(scheme).upper()
-    if normalized not in _STRETCHING_MODES:
+    if scheme not in _STRETCHING_MODES:
         raise ValueError(
             f"stretching_scheme must be 'direct', 'transposed', or 'mixed'; got {scheme!r}"
         )
-    return cast(StretchingScheme, normalized)
+    return cast(StretchingScheme, scheme)
 
 
 @dataclass(frozen=True, slots=True)

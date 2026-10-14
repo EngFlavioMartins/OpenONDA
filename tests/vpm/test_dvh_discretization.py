@@ -14,10 +14,10 @@ def _make_dvh_solver(tmp_path, *, time_step_size: float, viscosity: float):
     return vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=time_step_size,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f32",
                 max_n_particles=4096,
                 domain_bounds=(-0.6, 0.6, -0.6, 0.6, -0.6, 0.6),
@@ -30,7 +30,6 @@ def _make_dvh_solver(tmp_path, *, time_step_size: float, viscosity: float):
                     kinematic_viscosity=viscosity,
                     core_radius_ratio=2.0,
                 ),
-                verbose=False,
             ),
         )
     )
@@ -51,10 +50,10 @@ def _add_single_particle(solver, *, viscosity: float = 0.0) -> None:
 def test_diffusion_capacity_overflow_preserves_particles(tmp_path, factory):
     case = vpm.VPMCase(
         directory=tmp_path,
-        backup=vpm.Backup(interval_steps=0),
+        name="test",
         numerics=vpm.Numerics(
             time_step_size=0.1,
-            compute_device="CPU",
+            compute_device="cpu",
             max_n_particles=8,
             induction=vpm.DirectInduction(),
             viscous=factory(
@@ -64,7 +63,6 @@ def test_diffusion_capacity_overflow_preserves_particles(tmp_path, factory):
                 threshold_mode="absolute",
                 kinematic_viscosity=0.0308,
             ),
-            verbose=False,
         ),
     )
     solver = vpm.VPMSolver(case)

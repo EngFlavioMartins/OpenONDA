@@ -47,42 +47,37 @@ def create_mesher() -> msh.CartesianMesher:
     )
 
 
-def create_fvm_setup() -> fvm.FVMSetup:
-    """Return the physics configuration independently of mesh construction."""
-    return fvm.FVMSetup(
-        backup=fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=20), write_at_end=True),
-        case_name="cartesian_mesher",
-        time=fvm.TimeConfig(
+def create_fvm_case() -> fvm.FVMCase:
+    """Return the inlet/wall flow around the meshed STL object."""
+    every_twenty_steps = fvm.EverySteps(20)
+    return fvm.FVMCase(
+        name="cartesian_mesher",
+        directory=CASE_DIR,
+        numerics=fvm.Numerics(
             time_step_size=0.01,
-            end_time=0.20,
-            output_schedule=fvm.RunSchedule(every_n_steps=20),
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
+            schemes=fvm.DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+            linear=fvm.LinearSolverConfig(linear_solver="spsolve"),
+            pimple=fvm.PimpleConfig(n_correctors=1),
         ),
-        schemes=fvm.DiscretizationConfig(
-            convection_scheme="upwind",
-            gradient_scheme="gauss",
-        ),
-        linear=fvm.LinearSolverConfig(linear_solver="spsolve"),
-        pimple=fvm.PimpleControl(n_correctors=1),
-        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
+        initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=0.20),
+        output=fvm.Output(schedule=every_twenty_steps),
+        backup=fvm.Backup(schedule=every_twenty_steps),
+        mesh=create_mesher(),
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", (1.0, 0.0, 0.0)),
             fvm.BoundaryConfig.outlet("outlet"),
             fvm.BoundaryConfig.slip("sides"),
             fvm.BoundaryConfig.slip("span"),
             fvm.BoundaryConfig.wall("body"),
-        ],
-        initial_velocity=[1.0, 0.0, 0.0],
+        ),
     )
 
 
 def main() -> None:
-    mesher = create_mesher()
-    solver = fvm.create_fvm_solver(
-        create_fvm_setup(),
-        case_dir=CASE_DIR,
-        mesh=mesher,
-    )
-    solver.run(start_from=START_FROM)
+    with fvm.FVMSolver(create_fvm_case()) as solver:
+        solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

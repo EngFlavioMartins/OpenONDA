@@ -10,6 +10,7 @@ import sys
 import numpy as np
 import pytest
 
+from openonda.core.solution_layout import fvm_backup_files
 from tests._tutorial_helpers import TUTORIALS, copy_tutorial, tutorial_cases
 
 CASES = [case.relative_to(TUTORIALS) for case in tutorial_cases()]
@@ -45,8 +46,8 @@ def selected(value):
 class Driver:
     geo_data = {"cell_centre": np.zeros((1, 3))}
     mesh_data = {"n_cells": 1}
-    fvm_solver = None
-    _comm, _is_master = None, True
+    fvm_solver = property(lambda self: self)
+    _comm, _is_root = None, True
     step = 0
     solution_dir = Path(sys.argv[1]).parent / "solution"
     parallel = SimpleNamespace(comm=None, is_root=True)
@@ -58,13 +59,13 @@ class Driver:
     def write_csv(self, *args, **kwargs): pass
     def set_initial_velocity(self, *args): pass
     def evaluate(self, *args): return 1.0, 1.0
-def fvm_driver(setup, *args, **kwargs):
-    driver = Driver()
-    driver.setup = driver._resolved_setup = setup
-    return driver
-fvm.create_fvm_solver = fvm_driver
-vpm.VPMSolver = lambda *args, **kwargs: Driver()
-coupler.create_coupler = lambda *args, **kwargs: Driver()
+def driver(case=None, *args, **kwargs):
+    solver = Driver()
+    solver.case = case
+    return solver
+fvm.FVMSolver = driver
+vpm.VPMSolver = driver
+coupler.CoupledSolver = driver
 openonda.core.restart.select_backup = lambda selection, **kwargs: selected(selection)
 sys.argv = sys.argv[1:]
 sys.path.insert(0, str(Path(sys.argv[0]).parent))
@@ -135,10 +136,10 @@ case.NUMBER_OF_CELLS = 8
 case.N_UPSTREAM, case.N_DOWNSTREAM, case.N_HEIGHT = 4, 8, 4
 case.FINAL_TIME = float(sys.argv[3])
 case.TIME_STEP_SIZE = case.MAX_TIME_STEP_SIZE = .01
-factory = case.fvm.FVMSetup
+factory = case.fvm.FVMCase
 def configured(*args, **kwargs):
     return factory(*args, **kwargs, cores=int(sys.argv[2]))
-case.fvm.FVMSetup = configured
+case.fvm.FVMCase = configured
 case.main()
 """)
     history = (
@@ -160,4 +161,4 @@ case.main()
         assert len(np.unique(records["time"])) == len(records)
         if before and b"0.04" in before:
             assert history.read_bytes() == before
-    assert (case / "solution/backup").exists()
+    assert fvm_backup_files(case / "solution")

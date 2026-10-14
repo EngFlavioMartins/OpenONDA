@@ -16,10 +16,7 @@ import numpy as np
 import openonda.fvm as fvm
 
 from assets.mesh_step import backward_facing_step_mesh
-from assets.reattachment import (
-    history_row,
-    write_solution_tables,
-)
+from assets.reattachment import history_row, write_solution_tables
 
 # Case definition
 START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
@@ -70,44 +67,9 @@ def initial_velocity(geo_data, n_cells):
     return values
 
 
-def create_fvm_setup(
-    reynolds: float, end_time: float, inlet_values: np.ndarray, kinematic_viscosity: float
-) -> fvm.FVMSetup:
-    """Build the FVM setup for the backward-facing-step case."""
-    schemes = fvm.DiscretizationConfig(
-        gradient_scheme=GRADIENT_SCHEME,
-    )
-
-    return fvm.FVMSetup(
-        backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True
-        ),
-        case_name=CASE_NAME,
-        time=fvm.TimeConfig(
-            time_step_size=TIME_STEP_SIZE,
-            end_time=end_time,
-            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
-            adjustment=fvm.MaximumCourantTimeStep(
-                maximum_time_step_size=MAX_TIME_STEP_SIZE,
-            ),
-        ),
-        schemes=schemes,
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", inlet_values.tolist()),
-            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
-            fvm.BoundaryConfig.wall("walls"),
-            fvm.BoundaryConfig.empty("front"),
-            fvm.BoundaryConfig.empty("back"),
-        ],
-        initial_velocity=[0.0, 0.0, 0.0],
-    )
-
-
-def main() -> None:
-    case_dir = Path(__file__).parent
-    solution_dir = case_dir / "solution"
-
+def create_fvm_case(inlet_values: np.ndarray, kinematic_viscosity: float) -> fvm.FVMCase:
+    """Build the FVM case of the backward-facing step."""
+    snapshots = fvm.EveryTime(OUTPUT_INTERVAL_TIME)
     mesh = partial(
         backward_facing_step_mesh,
         step_height=STEP_HEIGHT,
@@ -118,37 +80,59 @@ def main() -> None:
         n_height=N_HEIGHT,
     )
 
+    return fvm.FVMCase(
+        name=CASE_NAME,
+        directory=Path(__file__).parent,
+        numerics=fvm.Numerics(
+            time_step_size=TIME_STEP_SIZE,
+            time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
+            schemes=fvm.DiscretizationConfig(gradient_scheme=GRADIENT_SCHEME),
+        ),
+        run=fvm.RunPlan(end_time=FINAL_TIME),
+        output=fvm.Output(schedule=snapshots),
+        backup=fvm.Backup(schedule=snapshots),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", inlet_values),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            fvm.BoundaryConfig.wall("walls"),
+            fvm.BoundaryConfig.empty("front"),
+            fvm.BoundaryConfig.empty("back"),
+        ),
+    )
+
+
+def main() -> None:
     kinematic_viscosity = MEAN_VELOCITY * STEP_HEIGHT / REYNOLDS_NUMBER
-    inlet_values = inlet_velocity()
-    fvm_setup = create_fvm_setup(REYNOLDS_NUMBER, FINAL_TIME, inlet_values, kinematic_viscosity)
-    with fvm.create_fvm_solver(fvm_setup, case_dir=case_dir, mesh=mesh) as fvm_solver:
-        fvm_solver.set_initial_velocity(
-            initial_velocity(fvm_solver.geo_data, fvm_solver.mesh_data["n_cells"])
-        )
-        restored = fvm_solver.start_from(START_FROM)
-        recorded = fvm_solver.restore_history("reattachment_history.csv")
+    case = create_fvm_case(inlet_velocity(), kinematic_viscosity)
+    columns = (
+        "time",
+        "reattachment_position_over_height",
+        "min_near_wall_velocity",
+        "max_continuity_error",
+        "max_courant_number",
+    )
+
+    with fvm.FVMSolver(case) as solver:
+        solver.set_initial_velocity(initial_velocity(solver.geo_data, solver.mesh_data["n_cells"]))
+        restored = solver.start_from(START_FROM)
+        recorded = solver.restore_history("reattachment_history.csv")
         if not restored:
-            fvm_solver.save_state(solution_dir / "backup")
-            fvm_solver.write_vtk()
-        columns = (
-            "time",
-            "reattachment_position_over_height",
-            "min_near_wall_velocity",
-            "max_continuity_error",
-            "max_courant_number",
-        )
+            solver.save_backup()
+            solver.write_vtk()
 
         def record_history():
-            row = fvm_solver.evaluate(history_row, STEP_HEIGHT)
-            fvm_solver.write_csv("reattachment_history.csv", [row], columns=columns, append=True)
+            row = solver.evaluate(history_row, STEP_HEIGHT)
+            solver.write_csv("reattachment_history.csv", [row], columns=columns, append=True)
 
-        if restored and not recorded and fvm_solver.step > 0:
+        if restored and not recorded and solver.step > 0:
             record_history()
-        while fvm_solver.time < fvm_setup.time.end_time:
-            fvm_solver.advance()
+        while solver.time < case.run.end_time:
+            solver.advance()
             record_history()
 
-        fvm_solver.evaluate(write_solution_tables, solution_dir, STEP_HEIGHT)
+        solver.evaluate(write_solution_tables, solver.solution_dir, STEP_HEIGHT)
 
 
 if __name__ == "__main__":

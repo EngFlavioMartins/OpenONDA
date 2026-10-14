@@ -1,88 +1,62 @@
-"""High-level incompressible FVM solver API."""
+"""Incompressible finite-volume solver."""
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
-from copy import deepcopy
+import gc
 import json
 import math
-import os
 from pathlib import Path
+import sys
+from time import perf_counter
 from types import TracebackType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from openonda.core.output_events import OutputEvent
+from openonda.core.simulation.parallel import collective_phase
 from openonda.core.solution_layout import collection_path, component_directory
+from openonda.core.status import RunStatus
+from openonda.runtime import RunConfig
 
 from ..config.case import FVMCase
-from ..config.types import FVMSetup
+from ..config.configuration import FVMConfiguration
 from ..coupling import CouplerInterfaceMixin
 from ..fields.mixed_velocity_boundary import (
     update_normal_velocity_tangential_gradient_boundary,
 )
 from ..io import logging, solver_io
 from ..mesh import geometry
-from ..sampling.executor import FVMSamplerExecutor
+from ..sampling.executor import execute_samplers
 from ..solve import pimple_solver, simple_solver
 from .parallel import ParallelContext
 from .state import FieldState
 from .time_step import event_aligned_time_step_size, maximum_courant_time_step_size
 
 if TYPE_CHECKING:
+    from ..diagnostics.step import StepDiagnostics
     from ..mesh.topology import MeshTopology
-    from ..solve.diagnostics import StepDiagnostics
 
 
-def _load_velocity_field(
-    setup: "FVMSetup", case_dir: str, n_total: int, mesh_data: dict
+class AcceptanceLimitError(RuntimeError):
+    """A candidate FVM step exceeded a configured :class:`RunAcceptanceLimits` threshold."""
+
+
+def _initial_velocity_field(
+    configuration: FVMConfiguration, n_total: int, mesh_data: dict
 ) -> np.ndarray:
-    """Initialise the velocity field from the Python configuration.
-
-    Args:
-        setup:    FVMSetup (may have ``initial_velocity``).
-        case_dir: Case root directory.
-        n_total:  Total number of elements (interior + boundary ghosts).
-        mesh_data: Mesh dictionary.
-
-    Returns:
-        Velocity array ``(n_total, 3)``.
-    """
-    del case_dir
-    if setup.initial_velocity is None:
-        raise ValueError("initial_velocity must be provided in FVMSetup")
-    initial = np.asarray(setup.initial_velocity, dtype=np.float64)
-    if not np.all(np.isfinite(initial)):
-        raise ValueError("initial_velocity must be finite")
+    """Return the initial velocity of every cell and boundary ghost, shape ``(n_total, 3)``."""
+    initial = np.asarray(configuration.initial_conditions.velocity, dtype=np.float64)
     if initial.shape == (3,):
         return np.tile(initial, (n_total, 1))
-    if initial.ndim == 2 and initial.shape == (mesh_data["n_cells"], 3):
+    if initial.shape == (mesh_data["n_cells"], 3):
         result = np.zeros((n_total, 3), dtype=np.float64)
         result[: mesh_data["n_cells"]] = initial
         return result
-    raise ValueError(f"initial_velocity must have shape (3,) or (n_cells, 3); got {initial.shape}")
-
-
-def _load_kinematic_pressure_field(
-    setup: "FVMSetup", case_dir: str, n_total: int, mesh_data: dict
-) -> np.ndarray:
-    """Initialise the pressure field from the Python configuration.
-
-    Args:
-        setup:    FVMSetup (may have ``initial_kinematic_pressure``).
-        case_dir: Case root directory.
-        n_total:  Total number of elements (interior + boundary ghosts).
-        mesh_data: Mesh dictionary.
-
-    Returns:
-        Pressure array ``(n_total,)``.
-    """
-    del case_dir, mesh_data
-    if setup.initial_kinematic_pressure is None:
-        raise ValueError("initial_kinematic_pressure must be provided in FVMSetup")
-    initial = np.asarray(setup.initial_kinematic_pressure, dtype=np.float64)
-    if initial.ndim != 0 or not np.isfinite(initial):
-        raise ValueError("initial_kinematic_pressure must be a finite scalar")
-    return np.full(n_total, float(initial), dtype=np.float64)
+    raise ValueError(
+        f"InitialFields.velocity must have shape (3,) or ({mesh_data['n_cells']}, 3); "
+        f"got {initial.shape}"
+    )
 
 
 def _enforce_velocity_boundary_constraints(
@@ -91,8 +65,8 @@ def _enforce_velocity_boundary_constraints(
     """Enforce velocity boundary constraints on ghost cells after initialisation.
 
     Iterates over all boundary patches and sets the ghost-layer values
-    in *velocity* according to each patch's boundary condition type (noSlip,
-    fixedValue, zeroGradient, empty, etc.).
+    in *velocity* according to each patch's boundary condition type (no_slip,
+    fixed_value, zero_gradient, empty, etc.).
 
     Args:
         velocity:    Velocity array (mutated in place).
@@ -161,48 +135,45 @@ def _enforce_velocity_boundary_constraints(
 
 
 class FVMSolver(CouplerInterfaceMixin):
-    """Run a constant-density, incompressible finite-volume simulation.
+    """Constant-density, incompressible finite-volume solver.
 
-    The solver accepts the immutable high-level :class:`FVMCase` or the
-    mutable :class:`FVMSetup`. It constructs a face-based mesh, computes and
-    caches geometry, reconstructs boundary ghost cells, assembles the selected
-    SIMPLE/PISO/PIMPLE equations, and owns the accepted physical clock and
-    BDF history. Numerical kernels may replace arrays internally; the public
+    The solver constructs the face-based mesh of an :class:`FVMCase`, computes
+    its geometry, reconstructs boundary ghost cells, assembles the selected
+    SIMPLE, PISO or PIMPLE equations and owns the accepted physical clock and
+    time history. Numerical kernels may replace arrays internally; the public
     :attr:`state` view is republished so the primary fields stay synchronized.
 
     Attributes
     ----------
-    case or config : FVMCase or FVMSetup
-        Construction settings. ``config`` is the resolved low-level setup;
-        a public case is available as ``case`` when used.
+    case : FVMCase
+        Case definition.
     case_dir, solution_dir, samples_dir : pathlib.Path
-        Case and framework-owned output file roots.
+        Case root and its output directories.
     mesh_data : dict[str, object]
-        Native connectivity, patch ranges, owner/neighbour indices, and counts.
+        Native connectivity, patch ranges, owner/neighbour indices and counts.
     geo_data : dict[str, numpy.ndarray]
-        Derived centres, volumes, face areas, interpolation weights, and wall
-        distances. Lengths are m, areas m², volumes m³.
+        Cell centres, volumes, face areas, interpolation weights and wall
+        distances in m, m² and m³.
     velocity : numpy.ndarray
-        Cell-centred velocity in m/s, including solver-owned boundary ghosts.
+        Cell-centred velocity in m/s, including boundary ghosts.
     kinematic_pressure : numpy.ndarray
         ``p/rho`` in m²/s², including boundary ghosts.
     volumetric_face_flux : numpy.ndarray
-        ``phi = U_f · Sf`` in m³/s, positive owner-to-neighbour.
+        ``phi = U_f · S_f`` in m³/s, positive from owner to neighbour.
     time, time_step_size : float
-        Accepted physical time and currently selected step duration in seconds.
+        Accepted physical time and selected time-step size in s.
     step : int
         Number of accepted time steps.
     state : FieldState
-        Synchronized public view of the three primary fields.
+        Synchronized view of the three primary fields.
 
     Notes
     -----
-    Construction allocates solver arrays and may create output directories. It
-    does not advance the solution. Use :meth:`run` for the framework-owned
-    finite run or :meth:`advance`/the candidate APIs for interactive and
-    coupled control. A :class:`~openonda.fvm.motion.MeshMotion` in the setup
-    moves the whole mesh rigidly (arbitrary Lagrangian–Eulerian form); see
-    :attr:`mesh_motion`.
+    Use :meth:`run` for the complete run, or :meth:`advance` (or
+    :meth:`solve_step` followed by :meth:`accept_step`) for interactive and
+    coupled stepping. The solver is a context manager. A
+    :class:`~openonda.fvm.motion.MeshMotion` in the case moves the whole mesh
+    rigidly (arbitrary Lagrangian-Eulerian form); see :attr:`mesh_motion`.
     """
 
     @property
@@ -246,8 +217,7 @@ class FVMSolver(CouplerInterfaceMixin):
         requested. This operation changes cache state but not the primary
         numerical arrays.
         """
-        if hasattr(self, "_derived_fields"):
-            self._derived_fields.clear()
+        self._derived_fields.clear()
 
     def _publish_state(self) -> FieldState:
         """Publish the live arrays through one synchronized :class:`FieldState`.
@@ -262,7 +232,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.kinematic_pressure,
             self.volumetric_face_flux,
         )
-        current = getattr(self, "state", None)
+        current = self.state
         if current is None:
             self.state = published
         else:
@@ -273,8 +243,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.velocity = self.state.velocity
         self.kinematic_pressure = self.state.kinematic_pressure
         self.volumetric_face_flux = self.state.volumetric_face_flux
-        if hasattr(self, "_state_revision"):
-            self._state_revision += 1
+        self._state_revision += 1
         return self.state
 
     def _velocity_gradient(self) -> np.ndarray:
@@ -304,7 +273,7 @@ class FVMSolver(CouplerInterfaceMixin):
             Dimensionless local Courant numbers. The result is cached by
             ``dt`` and is recomputed after derived-field invalidation.
         """
-        from ..fields import diagnostics
+        from ..diagnostics import fields as diagnostics
 
         key = ("courant", float(time_step_size))
         courant = self._derived_fields.get(key)
@@ -331,7 +300,7 @@ class FVMSolver(CouplerInterfaceMixin):
             Vorticity in 1/s using the configured gradient convention. The
             result is a derived cache entry and does not mutate the velocity.
         """
-        from ..fields import diagnostics
+        from ..diagnostics import fields as diagnostics
 
         vorticity = self._derived_fields.get("vorticity")
         if vorticity is None:
@@ -344,211 +313,76 @@ class FVMSolver(CouplerInterfaceMixin):
             self._derived_fields["vorticity"] = vorticity
         return vorticity
 
-    def __init__(
-        self,
-        setup: FVMSetup | FVMCase,
-        case_dir: str | None = None,
-        solution_dir: str | None = None,
-        samples_dir: str | None = None,
-        mesh_data: dict[str, Any] | None = None,
-        logger: Any | None = None,
-    ) -> None:
-        """Initialize an FVM solver and construct its mesh and state.
+    def __init__(self, case: FVMCase) -> None:
+        """Construct the mesh, geometry, fields and algorithm of ``case``.
 
         Parameters
         ----------
-        setup : FVMCase or FVMSetup
-            Immutable case or low-level setup. A case is
-            converted to a setup copy; neither input object is mutated.
-        case_dir : str or None
-            Case root. For ``FVMCase`` this defaults to ``setup.directory``;
-            otherwise it defaults to the current working directory.
-        solution_dir, samples_dir : str or None
-            Optional output file roots. When omitted, resolved defaults are used
-            by the selected construction path. Paths are created as needed.
-        mesh_data : dict[str, object] or None
-            Already constructed native mesh. If omitted for an ``FVMCase``, its
-            mesh source is constructed. In distributed execution the required
-            rank distribution and collective execution is enforced by the selected backend.
-        logger : object or None
-            Optional logger supplied by the caller.
+        case : FVMCase
+            Case definition. Under MPI every rank constructs the solver with
+            the same case.
 
         Raises
         ------
         TypeError, ValueError, RuntimeError, FileNotFoundError
-            If configuration, mesh topology/geometry, optional dependencies,
-            or parallel execution settings are invalid.
+            If the case, mesh topology or geometry, an optional dependency or
+            the parallel execution settings are invalid.
 
         Notes
         -----
-        Construction computes geometry, initializes fields, builds the selected
-        pressure--velocity algorithm, creates its output directories, and writes
-        ``fvm_metadata.json`` in the resolved solution directory. It does not
-        advance ``time`` or ``step``. All solver-owned arrays use SI units;
-        boundary ghost rows are reconstructed after interior initialization.
+        Construction creates ``solution/``, stores a generated mesh as
+        ``assets/<name>_mesh.npz`` and writes ``solution/fvm_metadata.json``.
+        It does not advance ``time`` or ``step``.
         """
-        from ..config.case import FVMCase
-        from ..config.types import validate_fvm_setup
+        if not isinstance(case, FVMCase):
+            raise TypeError("FVMSolver requires an FVMCase")
+        self.case = case
+        configuration = FVMConfiguration.from_case(case)
+        self._configuration = configuration
+        numerics = configuration.numerics
+        RunConfig(cpu_cores=case.cores, parallel_mode="mpi").ensure_runtime(sys.argv[0])
+        initialization_start = perf_counter()
+        self.case_dir = case.directory.resolve()
+        self.solution_dir = case.solution_directory.resolve()
+        self.samples_dir = case.samples_directory.resolve()
+        mesh_data = self._construct_mesh()
 
-        public_case = setup if isinstance(setup, FVMCase) else None
-        if public_case is not None:
-            setup = public_case.to_setup()
-            validate_fvm_setup(setup)
-            import sys
-
-            from openonda.runtime import RunConfig
-
-            RunConfig(cpu_cores=setup.cores, parallel_mode="mpi").ensure_runtime(sys.argv[0])
-            if case_dir is None:
-                case_dir = str(public_case.directory)
-            from ..factory import _runtime_setup, mesh_asset_path
-
-            mesh_path = mesh_asset_path(case_dir, public_case.name)
-
-            setup = _runtime_setup(setup)
-            validate_fvm_setup(setup)
-            if mesh_data is None:
-                from ..factory import _build_or_load_mesh
-                from ..mesh.progress import mesh_stage, mesher_log_session
-
-                mesh_source = public_case.mesh
-                if isinstance(mesh_source, str | Path) and not Path(mesh_source).is_absolute():
-                    mesh_source = Path(case_dir or os.getcwd()) / mesh_source
-                build_here = True
-                rank_is_root = True
-                mesh_comm = None
-                if public_case.cores > 1:
-                    try:
-                        from mpi4py import MPI
-
-                        mesh_comm = MPI.COMM_WORLD
-                        rank_is_root = MPI.COMM_WORLD.Get_rank() == 0
-                        build_here = rank_is_root
-                    except ImportError:
-                        raise RuntimeError(
-                            "FVMCase.cores > 1 requires mpi4py and an MPI launch"
-                        ) from None
-                requested_solution = (
-                    Path(solution_dir)
-                    if solution_dir is not None
-                    else Path(case_dir or os.getcwd()) / "solution"
-                )
-                mesher_log_path = requested_solution.resolve() / "mesher.log"
-                from openonda.core.simulation.parallel import collective_phase
-
-                with (
-                    collective_phase(mesh_comm, "FVM mesh construction"),
-                    mesher_log_session(
-                        mesher_log_path if rank_is_root else None,
-                        announce=rank_is_root,
-                    ),
-                    mesh_stage("mesh construction") as mesh_construction,
-                ):
-                    mesh_data = _build_or_load_mesh(
-                        mesh_source,
-                        is_root=build_here,
-                        cache_path=mesh_path,
-                    )
-                    if mesh_data is not None:
-                        mesh_construction.details(
-                            cells=mesh_data.get("n_cells"),
-                            faces=mesh_data.get("n_faces"),
-                            points=mesh_data.get("n_points"),
-                        )
-                if mesh_comm is not None and setup.execution.parallel_mode == "petsc_replicated":
-                    mesh_data = mesh_comm.bcast(mesh_data, root=0)
-
-            # The public case is immutable intent; give the numerical core a
-            # private resolved snapshot so later mutation of a nested caller
-            # object cannot change an already-validated run.
-            setup = deepcopy(setup)
-            self.case = public_case
-        elif not isinstance(setup, FVMSetup):
-            raise TypeError("FVMSolver requires an FVMSetup or FVMCase")
-        validate_fvm_setup(setup)
-
-        # Preserve the caller-owned ``solver.setup`` for inspection. Numerical,
-        # output and compatibility decisions use a detached snapshot so nested
-        # caller mutations cannot alter a validated run.
-        self.setup = setup
-        self._resolved_setup = deepcopy(setup)
-        resolved_setup = self._resolved_setup
-        # Runtime coupling may override molecular viscosity for subsequent
-        # equations.  Keep that override separate from the validated case so
-        # the immutable numerical settings and the live physics state cannot
-        # silently diverge through a nested setup mutation.
-        self._kinematic_viscosity = float(resolved_setup.transport.kinematic_viscosity)
-        # Capture immutable construction-time controls. The running solver owns
-        # its evolving time state while these values remain fixed.
-        self._time_config = resolved_setup.time
-        self._output_schedule = resolved_setup.time.output_schedule
-        self._backup_config = resolved_setup.backup
-        self._samplers = tuple(resolved_setup.samplers or ())
-        # Runtime-only sampler indexes belong to this solver, never to a
-        # reusable sampler specification.
-        self._sample_pvd_entries: dict[str, list[tuple[float, str]]] = {}
-        self._sampler_schedules = {
-            id(sampler): sampler.schedule
-            for sampler in self._samplers
-            if getattr(sampler, "schedule", None) is not None
-        }
-        self.case_dir = os.path.abspath(case_dir or os.getcwd())
-        default_solution_name = "solution"
-        self.solution_dir = os.path.abspath(
-            solution_dir or os.path.join(self.case_dir, default_solution_name)
-        )
-        self.samples_dir = os.path.abspath(samples_dir or os.path.join(self.case_dir, "samples"))
-        Path(self.solution_dir).mkdir(parents=True, exist_ok=True)
-        # Sampling owns its directory.  An explicitly supplied destination is
-        # also prepared for callers that intend to create products later; a
-        # disabled/default sampler configuration does not leave an empty
-        # ``samples/`` tree behind.
-        if self._samplers or samples_dir is not None:
-            Path(self.samples_dir).mkdir(parents=True, exist_ok=True)
-        # These dictionaries intentionally contain heterogeneous mesh metadata
-        # (arrays, counts, patch dictionaries, and parallel objects).
+        # Runtime coupling may override the molecular viscosity of later
+        # equations; the case value stays unchanged.
+        self._kinematic_viscosity = float(numerics.transport.kinematic_viscosity)
+        self.state: FieldState | None = None
+        self._state_revision = 0
+        self._derived_fields: dict[object, np.ndarray] = {}
+        self._samplers = configuration.samplers
+        self._sample_collections: dict[str, list[tuple[float, str]]] = {}
+        self.solution_dir.mkdir(parents=True, exist_ok=True)
+        if self._samplers:
+            self.samples_dir.mkdir(parents=True, exist_ok=True)
+        # Heterogeneous mesh metadata: arrays, counts, patch dictionaries and
+        # parallel objects.
         self.mesh_data: Any
         self.geo_data: Any
         self.auto_write = True
-        self.parallel = ParallelContext.create(resolved_setup.execution)
-        self.logger = (
-            logger
-            if logger is not None
-            else logging.Logging(
-                self.case_dir,
-                solution_dir=self.solution_dir,
-                config=resolved_setup.logging,
-                enabled=self.parallel.is_root,
-            )
+        self.parallel = ParallelContext.create(numerics.execution)
+        self.logger = logging.Logging(
+            self.solution_dir / "fvm.log",
+            configuration.logging,
+            enabled=self.parallel.is_root,
         )
-        self._timer = logging.Timer()
-        if public_case is not None:
-            mesh_output_error = None
-            if self.parallel.is_root and mesh_data is not None:
-                try:
-                    from ..factory import _save_generated_mesh
+        from openonda.core.profiling import Profiler
 
-                    _save_generated_mesh(mesh_data, mesh_path, resolved_setup.output)
-                except BaseException as error:
-                    mesh_output_error = error
-            self._collective_io_failure(mesh_output_error, "mesh output")
-        from ..io.profiling import PerformanceProfiler
-
-        self.profiler = PerformanceProfiler(
-            self.case_dir,
-            self.parallel,
-            self.logger,
-            solution_dir=self.solution_dir,
-            solver=self,
+        self.profiler = Profiler(
+            enabled=configuration.logging.detailed_timing,
+            parallel=self.parallel,
+            output_path=self.solution_dir / "performance.jsonl",
         )
-        self.logger.profiler = self.profiler
-        self.operator_backend = resolved_setup.execution.operator_backend
-        if resolved_setup.execution.linear_backend == "petsc":
+        self.operator_backend = configuration.numerics.execution.operator_backend
+        if configuration.numerics.execution.linear_backend == "petsc":
             methods = {
-                "momentum": resolved_setup.linear.momentum_solver
-                or resolved_setup.linear.linear_solver,
-                "pressure": resolved_setup.linear.pressure_solver
-                or resolved_setup.linear.linear_solver,
+                "momentum": configuration.numerics.linear.momentum_solver
+                or configuration.numerics.linear.linear_solver,
+                "pressure": configuration.numerics.linear.pressure_solver
+                or configuration.numerics.linear.linear_solver,
             }
             invalid = {
                 name: value
@@ -563,21 +397,21 @@ class FVMSolver(CouplerInterfaceMixin):
                 )
 
         if (
-            resolved_setup.linear.pressure_nullspace_method == "petsc"
-            and resolved_setup.execution.linear_backend != "petsc"
+            configuration.numerics.linear.pressure_nullspace_method == "petsc"
+            and configuration.numerics.execution.linear_backend != "petsc"
         ):
             raise ValueError(
                 "pressure_nullspace_method='petsc' requires execution.linear_backend='petsc'"
             )
         if (
             self.parallel.is_partitioned
-            and resolved_setup.linear.pressure_nullspace_method == "reference"
+            and configuration.numerics.linear.pressure_nullspace_method == "reference"
         ):
             raise ValueError(
                 "petsc_partitioned requires pressure_nullspace_method='auto' or 'petsc'; "
                 "a rank-local reference row is not a valid global pressure constraint"
             )
-        if self.parallel.is_partitioned and resolved_setup.output.point_interpolation != "none":
+        if self.parallel.is_partitioned and configuration.output.point_interpolation != "none":
             raise ValueError(
                 "output.point_interpolation='boundary_weighted' is not qualified for "
                 "petsc_partitioned execution: the partitioned writer drops the boundary "
@@ -585,21 +419,8 @@ class FVMSolver(CouplerInterfaceMixin):
                 "faces are not physical boundaries. Run serially to write interpolated "
                 "point data, or use ParaView's Cell Data to Point Data filter instead"
             )
-        if (
-            not np.isfinite(resolved_setup.transport.density)
-            or resolved_setup.transport.density <= 0.0
-        ):
-            raise ValueError("Transport density must be finite and positive")
-        if (
-            not np.isfinite(resolved_setup.transport.kinematic_viscosity)
-            or resolved_setup.transport.kinematic_viscosity <= 0.0
-        ):
-            raise ValueError("Kinematic viscosity must be finite and positive")
-        # 0. UI Header
-        self.logger.header("f64")
-        self._timer.start("Total Initialization")
+        self.logger.run_header("f64")
 
-        # 1. Mesh Management
         from ..mesh.validation import (
             enforce_quality_thresholds,
             validate_geometry,
@@ -608,22 +429,14 @@ class FVMSolver(CouplerInterfaceMixin):
 
         self._topology = None
         self._geometry = None
-        gs = getattr(resolved_setup.schemes, "gradient_scheme", "gauss")
-        self._timer.start("Geometry Compute")
+        gs = configuration.numerics.schemes.gradient_scheme
         if self.parallel.is_partitioned:
             comm = self.parallel.comm
             assert comm is not None
-            if any(boundary.velocity_type == "cyclic" for boundary in resolved_setup.boundaries):
+            if any(boundary.velocity_type == "cyclic" for boundary in configuration.boundaries):
                 raise NotImplementedError(
                     "Partitioned cyclic patches require periodic partition adjacency, which is "
                     "not yet implemented"
-                )
-            if (
-                resolved_setup.initial_velocity is None
-                or resolved_setup.initial_kinematic_pressure is None
-            ):
-                raise ValueError(
-                    "initial_velocity and initial_kinematic_pressure must be provided in FVMSetup"
                 )
             quality = None
             preparation_error = None
@@ -632,29 +445,18 @@ class FVMSolver(CouplerInterfaceMixin):
             global_hash = None
             if self.parallel.is_root:
                 try:
-                    if mesh_data is None:
-                        raise ValueError(
-                            "A solver-native mesh, mesh factory, or Gmsh .msh path is required"
-                        )
-                    self._timer.start("Mesh Set (In-Memory)")
                     global_mesh = mesh_data
-                    self._timer.log(
-                        "Mesh Set (In-Memory)",
-                        sink=self.logger,
-                    )
                     validate_topology(global_mesh)
                     global_geo = geometry.compute_mesh_geometry(
                         global_mesh,
                         gradient_scheme=gs,
                         compute_lsq=False,
-                        logger=self.logger,
-                        timer=self._timer,
                     )
                     quality = validate_geometry(global_mesh, global_geo)
-                    enforce_quality_thresholds(quality, resolved_setup.mesh)
-                    from ..io.backup import mesh_hash
+                    enforce_quality_thresholds(quality, configuration.mesh_quality)
+                    from ..io.backup import mesh_digest
 
-                    global_hash = mesh_hash(global_mesh)
+                    global_hash = mesh_digest(global_mesh)
                 except Exception as error:
                     preparation_error = {
                         "rank": self.parallel.rank,
@@ -695,7 +497,7 @@ class FVMSolver(CouplerInterfaceMixin):
                             global_geo,
                             rank,
                             self.parallel.size,
-                            include_visualization_ghosts=resolved_setup.output.ghost_layers == 1,
+                            include_visualization_ghosts=configuration.output.ghost_layers == 1,
                         )
                         partition_data[0]["global_mesh_hash"] = global_hash
                     except Exception as error:
@@ -744,27 +546,14 @@ class FVMSolver(CouplerInterfaceMixin):
             partition_data = None
             local_partition_data = None
             received_partition_data = None
-            import gc
-
             gc.collect()
         else:
-            if mesh_data is None:
-                raise ValueError(
-                    "A solver-native mesh, mesh factory, or Gmsh .msh path is required"
-                )
-            self._timer.start("Mesh Set (In-Memory)")
             self.mesh_data = mesh_data
-            self._timer.log(
-                "Mesh Set (In-Memory)",
-                sink=self.logger,
-            )
             validate_topology(self.mesh_data)
             self.geo_data = geometry.compute_mesh_geometry(
                 self.mesh_data,
                 gradient_scheme=gs,
                 compute_lsq=False,
-                logger=self.logger,
-                timer=self._timer,
             )
 
         # Boundary configuration precedes immutable backend views because coupled
@@ -790,18 +579,12 @@ class FVMSolver(CouplerInterfaceMixin):
             self.geo_data.update(compute_lsq_geometry(self.mesh_data, self.geo_data))
 
         self.mesh_quality = validate_geometry(self.mesh_data, self.geo_data)
-        enforce_quality_thresholds(self.mesh_quality, resolved_setup.mesh)
+        enforce_quality_thresholds(self.mesh_quality, configuration.mesh_quality)
 
         from ..assemble.matrix_assembly import prepare_matrix_assembly
 
         prepare_matrix_assembly(self.mesh_data)
 
-        self._timer.log(
-            "Geometry Compute",
-            sink=self.logger,
-        )
-
-        # 3. Component Setup
         self._initialize_fields()
         self.state = FieldState(self.velocity, self.kinematic_pressure, self.volumetric_face_flux)
         self._initialize_algorithm()
@@ -811,11 +594,13 @@ class FVMSolver(CouplerInterfaceMixin):
         # Final housekeeping
         self.io = solver_io.SolverIO(self)
         self.vtk_exporter = None
-        self.pvd_manager = None
+        self._frame_collection: list[tuple[float, str]] | None = None
         self._buffered_vtk_writer = None
         self.max_courant_number = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
+        self._coupling_patch_ids_by_rank: dict[str, Any] = {}
+        self._coupling_cell_ids_by_rank: dict[str, Any] = {}
         self._coupling_consistency_filter = None
         # Optional conservative field projection applied after the pressure-
         # velocity solve and before diagnostics, sampling, history commit, and
@@ -826,8 +611,14 @@ class FVMSolver(CouplerInterfaceMixin):
         self._accepted_time_step_size = self.time_step_size
         self._previous_time_step_size = self.time_step_size
         self.last_diagnostics = None
-        self._derived_fields: dict[object, np.ndarray] = {}
-        self._state_revision = 0
+        self._last_backup_state: tuple[int, float, int] | None = None
+        self._last_vtk_state: tuple[int, float, int] | None = None
+        self._restart_loaded = False
+        self._initial_run_selected = False
+        self._initial_rewound_histories: set[Path] = set()
+        self._velocity_boundary_values: dict[int, np.ndarray] = {}
+        self.steady_iterations = 0
+        self.steady_converged = False
         self._step_phase = "accepted"
         self._pending_step_size: float | None = None
         self._pending_acceptance_counters: dict[str, int] | None = None
@@ -835,14 +626,8 @@ class FVMSolver(CouplerInterfaceMixin):
         self._closed = False
         self._run_started = False
         self._run_metadata_written = False
-        self.run_status = "not_started"
+        self.run_status = RunStatus.not_started
         self.run_failure: BaseException | None = None
-        self._initial_output_enabled = (
-            True if public_case is None else bool(public_case.run.initial_output)
-        )
-        self._final_output_enabled = (
-            True if public_case is None else bool(public_case.run.final_output)
-        )
         self._n_consecutive_accepted_steps = {
             "max_continuity_error": 0,
             "max_equation_residual": 0,
@@ -850,8 +635,7 @@ class FVMSolver(CouplerInterfaceMixin):
             "max_velocity_magnitude": 0,
         }
 
-        initialization_time = self._timer.stop("Total Initialization")
-        self.logger.log_solver_info(self, initialization_time)
+        self.logger.solver_configuration(self, perf_counter() - initialization_start)
 
         from ..solve import simple_solver
 
@@ -862,23 +646,60 @@ class FVMSolver(CouplerInterfaceMixin):
             "kinematic_pressure",
             volumetric_face_flux=self.volumetric_face_flux,
         )
+        self.write_run_metadata(status=RunStatus.created)
 
-        # Wall y+ is an optional scientific output.  Keep it opt-in so a case
-        # with no configured samplers does not silently create ``samples/`` or
-        # perform extra boundary work.  ``YPlusSampler`` remains available as
-        # an explicit sampler in the public case configuration.
-        self._default_yplus_sampler = None
-        self.write_run_metadata(status="created")
+    def _construct_mesh(self) -> dict[str, Any] | None:
+        """Build or load the case mesh on the rank that needs it.
+
+        Rank 0 builds the mesh and stores it as ``assets/<name>_mesh.npz``
+        with its ParaView view; a replicated run broadcasts it to every rank.
+        Progress is written to ``solution/mesher.log``.
+        """
+        from ..mesh.construction import build_or_load_mesh, save_mesh
+        from ..mesh.progress import mesh_stage, mesher_log_session
+
+        source = self.case.mesh
+        if isinstance(source, str | Path) and not Path(source).is_absolute():
+            source = self.case_dir / source
+        is_root = True
+        comm = None
+        if self.case.cores > 1:
+            from mpi4py import MPI
+
+            comm = MPI.COMM_WORLD
+            is_root = comm.Get_rank() == 0
+        mesh_data = None
+        with (
+            collective_phase(comm, "FVM mesh construction"),
+            mesher_log_session(
+                self.solution_dir / "mesher.log" if is_root else None, announce=is_root
+            ),
+        ):
+            if is_root:
+                with mesh_stage("mesh construction") as construction:
+                    mesh_data = build_or_load_mesh(source, cache_path=self.case.mesh_path)
+                    construction.details(
+                        cells=mesh_data.get("n_cells"),
+                        faces=mesh_data.get("n_faces"),
+                        points=mesh_data.get("n_points"),
+                    )
+                # Stored before validation, so a rejected mesh can be inspected.
+                save_mesh(mesh_data, self.case.mesh_path, self._configuration.output)
+        if comm is not None and (
+            self._configuration.numerics.execution.parallel_mode == "petsc_replicated"
+        ):
+            mesh_data = comm.bcast(mesh_data, root=0)
+        return mesh_data
 
     def _setup_boundary_conditions(self) -> None:
         """Map user-defined BoundaryConfig entries to internal mesh boundary data.
 
-        Iterates over ``self.setup.boundaries`` and updates the
+        Iterates over the configured boundaries and updates the
         corresponding entries in ``self.boundaries`` with the configured
         type and value for velocity, kinematic_pressure, and eddy_viscosity.
         A configured patch that is not in the mesh raises ``ValueError``.
         """
-        for b_cfg in self._resolved_setup.boundaries:
+        for b_cfg in self._configuration.boundaries:
             found = False
             for b_mesh in self.boundaries:
                 if b_mesh["name"] == b_cfg.name:
@@ -935,11 +756,11 @@ class FVMSolver(CouplerInterfaceMixin):
         n_cells = self.mesh_data["n_cells"]
         n_total = self.mesh_data["n_faces"] - self.mesh_data["n_interior_faces"] + n_cells
 
-        self.velocity = _load_velocity_field(
-            self._resolved_setup, self.case_dir, n_total, self.mesh_data
-        )
-        self.kinematic_pressure = _load_kinematic_pressure_field(
-            self._resolved_setup, self.case_dir, n_total, self.mesh_data
+        self.velocity = _initial_velocity_field(self._configuration, n_total, self.mesh_data)
+        self.kinematic_pressure = np.full(
+            n_total,
+            self._configuration.initial_conditions.kinematic_pressure,
+            dtype=np.float64,
         )
         self.velocity_old = self.velocity.copy()
         # Second history level for BDF2 (u^{n-1}); ignored by BDF1.
@@ -951,7 +772,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self.parallel.exchange_halo(self.velocity[:n_cells])
         self.parallel.exchange_halo(self.kinematic_pressure[:n_cells])
 
-        self._timer.start("Flux Init")
         from ..assemble import convection
 
         self.volumetric_face_flux = convection.compute_volumetric_face_flux(
@@ -961,12 +781,11 @@ class FVMSolver(CouplerInterfaceMixin):
         # (``fvc::ddtCorr``), which needs flux and velocity at the same levels.
         self.volumetric_face_flux_old = self.volumetric_face_flux.copy()
         self.volumetric_face_flux_older = self.volumetric_face_flux.copy()
-        self._timer.log("Flux Init", sink=self.logger)
 
     def _initialize_mesh_motion(self) -> None:
         """Place a moving mesh at its start pose and impose its boundary motion."""
         self.mesh_motion = None
-        motion = self._resolved_setup.mesh_motion
+        motion = self.case.mesh_motion
         if motion is None:
             return
         from ..motion.rigid import RigidMeshMotion
@@ -998,7 +817,7 @@ class FVMSolver(CouplerInterfaceMixin):
     def move_mesh(self, time_step_size: float) -> None:
         """Place a moving mesh at the end ``time + time_step_size`` of the next step.
 
-        :meth:`solve_pimple` calls this itself. A coupling driver calls it
+        :meth:`solve_step` calls this itself. A coupling driver calls it
         first when boundary data must be evaluated on the end-of-step
         geometry. Repeated calls for the same step do nothing; the pose is
         always advanced from the accepted pose, so a different step size
@@ -1022,37 +841,22 @@ class FVMSolver(CouplerInterfaceMixin):
         self._publish_state()
 
     def _initialize_algorithm(self) -> None:
-        """Initialise the numerical solver algorithm.
-
-        Reads the algorithm type from ``self.setup.pimple.algorithm``
-        and instantiates either a :class:`~solve.pimple_solver.PIMPLESolver`
-        or :class:`~solve.simple_solver.SIMPLESolver`.
-
-        Raises:
-            ValueError: If the algorithm is not ``"SIMPLE"``, ``"PIMPLE"``,
-                        or ``"PISO"``.
-        """
-        self._timer.start("Algorithm Init")
-        params = dict(self._resolved_setup.algorithm_params())
-        params["_linear_backend"] = self._resolved_setup.execution.linear_backend
+        """Create the PIMPLE/PISO or steady SIMPLE pressure--velocity algorithm."""
+        params = self._configuration.algorithm_parameters()
+        params["_linear_backend"] = self._configuration.numerics.execution.linear_backend
         params["_operator_backend"] = self.operator_backend
         self.geo_data["_operator_backend"] = self.operator_backend
         params["_parallel_context"] = self.parallel
         params["_logger"] = self.logger
-        params["_timer"] = self._timer
-        algo = self._resolved_setup.pimple.algorithm.upper()
-
-        if algo in ["PIMPLE", "PISO"]:
-            self.algorithm = pimple_solver.PIMPLESolver(
-                self.mesh_data, self.geo_data, self.boundaries, params
-            )
-        elif algo == "SIMPLE":
+        params["_profiler"] = self.profiler
+        if self._configuration.numerics.pimple.algorithm == "simple":
             self.algorithm = simple_solver.SIMPLESolver(
                 self.mesh_data, self.geo_data, self.boundaries, params
             )
         else:
-            raise ValueError(f"Unsupported algorithm: {algo}")
-        self._timer.log("Algorithm Init", sink=self.logger)
+            self.algorithm = pimple_solver.PIMPLESolver(
+                self.mesh_data, self.geo_data, self.boundaries, params
+            )
 
     def set_initial_velocity(self, values: np.ndarray) -> None:
         """Set a cell-centred initial velocity and rebuild dependent state.
@@ -1235,33 +1039,16 @@ class FVMSolver(CouplerInterfaceMixin):
             raise
 
     def _initialize_turbulence(self) -> None:
-        """Initialise the turbulence / LES model if configured.
+        """Create the configured LES model and set the initial clock."""
+        from ..turbulence import create_model
 
-        Uses :func:`..turbulence.create_model` to instantiate the model
-        specified by ``self.setup.turbulence``.  Stores the result in
-        ``self.turbulence`` and logs the model info.  Sets
-        ``self.time`` and ``self.step`` to their initial values.
-        """
-        self.turbulence = None
+        self.turbulence = create_model(
+            self._configuration.numerics.turbulence, self.mesh_data, self.geo_data
+        )
         self.eddy_viscosity = None
-        if (
-            self._resolved_setup.turbulence
-            and self._resolved_setup.turbulence.model.lower() != "none"
-        ):
-            from ..turbulence import create_model
-
-            self.turbulence = create_model(
-                self._resolved_setup.turbulence, self.mesh_data, self.geo_data
-            )
-            if self.turbulence is None:
-                raise RuntimeError(
-                    f"Turbulence model {self._resolved_setup.turbulence.model!r} returned no model"
-                )
-
-        # Sync state
-        self.time = self._time_config.start_time
+        self.time = self._configuration.run.start_time
         self.step = 0
-        self.time_step_size = self._time_config.time_step_size
+        self.time_step_size = self._configuration.numerics.time_step_size
 
     def compute_effective_viscosity(self) -> float | np.ndarray:
         """Compute the effective viscosity (molecular + turbulent).
@@ -1349,7 +1136,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self._step_phase = "failed"
         self._pending_step_size = None
         self._pending_acceptance_counters = None
-        self.run_status = "failed"
+        self.run_status = RunStatus.failed
         self.run_failure = self._evolution_failure
         # Reporting must never replace the numerical failure.
         with suppress(Exception):
@@ -1363,7 +1150,7 @@ class FVMSolver(CouplerInterfaceMixin):
         release every peer from the same stage, otherwise the next collective
         turns a useful I/O error into an MPI hang.
         """
-        parallel = getattr(self, "parallel", None)
+        parallel = self.__dict__.get("parallel")
         if parallel is None or not parallel.is_parallel:
             if error is not None:
                 raise error
@@ -1381,18 +1168,18 @@ class FVMSolver(CouplerInterfaceMixin):
             raise RuntimeError(
                 f"FVM collective {operation} failed on rank {failure['rank']} "
                 f"({failure['type']}): {failure['message']}"
-            )
+            ) from error
 
-    def _execute_sampler_event(self, event: str) -> None:
+    def _execute_sampler_event(self, event: OutputEvent) -> None:
         """Dispatch one sampler event and envelope rank-local failures."""
         sampler_error = None
         try:
-            FVMSamplerExecutor.execute(self, event=event)
+            execute_samplers(self, event)
         except BaseException as error:
             sampler_error = error
         self._collective_io_failure(sampler_error, f"{event} sampler output")
 
-    def solve_pimple(self, time_step_size: float | None = None) -> dict[str, object]:
+    def solve_step(self, time_step_size: float | None = None) -> dict[str, float]:
         """Solve one transient pressure--velocity candidate without advancing time.
 
         Parameters
@@ -1404,36 +1191,34 @@ class FVMSolver(CouplerInterfaceMixin):
 
         Returns
         -------
-        StepDiagnostics
-            Structured residual, continuity, Courant, and acceptance data for
-            the candidate state (the exact concrete mapping is retained for
-            compatibility by the low-level solver).
+        dict[str, float]
+            Final equation residuals of the candidate. The complete record
+            is :attr:`last_diagnostics`.
 
         Raises
         ------
         RuntimeError
-            If the setup is SIMPLE, a candidate is already in an incompatible
-            phase, or an earlier physical step failed.
+            If the algorithm is ``simple``, a candidate is in an incompatible
+            phase, or an earlier step failed.
+        AcceptanceLimitError
+            If the candidate exceeds a configured acceptance limit.
         ValueError
             If the requested duration is not finite and positive.
 
         Notes
         -----
-        This is the coupler-facing half of the state update. It may be called
-        repeatedly for a boundary-condition/pressure Picard iteration; call
-        :meth:`advance_time` exactly once after the candidate passes acceptance.
-        The committed ``U_old`` is the transient reference on every repeated
-        solve.
+        A coupler may call this repeatedly for one step (an interface
+        iteration); call :meth:`accept_step` once the candidate is accepted.
+        The accepted ``velocity_old`` is the time-derivative reference of
+        every repeated solve.
         """
-        from ..fields import diagnostics
+        from ..diagnostics import fields as diagnostics
 
         self._ensure_evolution_usable()
-        if not self._run_started and self.run_status == "not_started":
-            self.run_status = "interactive"
-        if self._resolved_setup.pimple.algorithm == "SIMPLE":
-            raise RuntimeError(
-                "SIMPLE is a steady algorithm; use solve_steady() instead of solve_pimple()"
-            )
+        if self.run_status in {RunStatus.not_started, RunStatus.created}:
+            self.run_status = RunStatus.running
+        if self._configuration.numerics.pimple.algorithm == "simple":
+            raise RuntimeError("The 'simple' algorithm is steady; use solve_steady()")
         if self._step_phase not in {"accepted", "candidate"}:
             raise RuntimeError("FVM physical step is not available for another solve")
         if self._step_phase == "candidate":
@@ -1471,12 +1256,8 @@ class FVMSolver(CouplerInterfaceMixin):
         self._invalidate_derived_fields()
 
         try:
-            self._timer.start("Effective viscosity")
-            effective_viscosity = self.compute_effective_viscosity()
-            self._timer.log(
-                "Effective viscosity",
-                sink=self.logger,
-            )
+            with self.profiler.section("effective viscosity"):
+                effective_viscosity = self.compute_effective_viscosity()
         except BaseException as error:
             self._mark_evolution_failure(error)
             raise
@@ -1495,7 +1276,7 @@ class FVMSolver(CouplerInterfaceMixin):
                     self.volumetric_face_flux,
                     self.velocity_old,
                     step_time_step_size,
-                    density=self._resolved_setup.transport.density,
+                    density=self._configuration.numerics.transport.density,
                     kinematic_viscosity=effective_viscosity,
                     velocity_older=velocity_older_argument,
                     source_explicit=source_explicit,
@@ -1545,7 +1326,7 @@ class FVMSolver(CouplerInterfaceMixin):
         try:
             self._invalidate_derived_fields()
             self._publish_state()
-            self.logger.convergence_info(residuals)
+            self.logger.convergence(residuals)
         except BaseException as error:
             self._mark_evolution_failure(error)
             raise
@@ -1554,7 +1335,7 @@ class FVMSolver(CouplerInterfaceMixin):
         # has ~0 net flux per cell.  Surfacing this makes loss of mass
         # conservation visible instead of silent.
         try:
-            self._timer.start("Continuity diagnostics")
+            continuity_start = perf_counter()
             continuity_error = diagnostics.compute_continuity_error(
                 self.volumetric_face_flux, self.mesh_data
             )
@@ -1568,16 +1349,15 @@ class FVMSolver(CouplerInterfaceMixin):
             local_sum = float(np.sum(np.abs(continuity_error[:n_owned])))
             self.max_continuity_error = float(self.parallel.global_max(local_max))
             self.sum_absolute_continuity_error = float(self.parallel.global_sum(local_sum))
-            self.logger.continuity_info(
+            self.logger.continuity(
                 self.max_continuity_error,
                 self.sum_absolute_continuity_error,
             )
-            self._timer.log("Continuity diagnostics", sink=self.logger)
+            self.profiler.record("continuity diagnostics", perf_counter() - continuity_start)
 
-            self._timer.start("Acceptance checks")
-            self.last_diagnostics = self._build_step_diagnostics(step_time_step_size, residuals)
-            self._enforce_acceptance_limits(self.last_diagnostics)
-            self._timer.log("Acceptance checks", sink=self.logger)
+            with self.profiler.section("acceptance checks"):
+                self.last_diagnostics = self._build_step_diagnostics(step_time_step_size, residuals)
+                self._enforce_acceptance_limits(self.last_diagnostics)
         except BaseException as error:
             self._mark_evolution_failure(error)
             raise
@@ -1588,8 +1368,8 @@ class FVMSolver(CouplerInterfaceMixin):
         self, step_time_step_size: float, residuals: dict[str, object]
     ) -> "StepDiagnostics":
         """Build the backend-neutral field and convergence record for the current solved state."""
-        from ..fields import diagnostics
-        from ..solve.diagnostics import StepDiagnostics
+        from ..diagnostics import fields as diagnostics
+        from ..diagnostics.step import StepDiagnostics
 
         n_cells = self.mesh_data["n_cells"]
         n_owned = self.parallel.n_owned if self.parallel.is_partitioned else n_cells
@@ -1647,7 +1427,7 @@ class FVMSolver(CouplerInterfaceMixin):
         )
         local_kinetic_energy = (
             0.5
-            * self._resolved_setup.transport.density
+            * self._configuration.numerics.transport.density
             * float(
                 np.sum(
                     self.geo_data["cell_volume"][:n_owned]
@@ -1671,7 +1451,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 ).items()
             }
         return StepDiagnostics(
-            algorithm=self._resolved_setup.pimple.algorithm.upper(),
+            algorithm=self._configuration.numerics.pimple.algorithm,
             step=self.step + 1,
             time=self.time + step_time_step_size,
             time_step_size=float(step_time_step_size),
@@ -1719,7 +1499,7 @@ class FVMSolver(CouplerInterfaceMixin):
         if diagnostics.min_eddy_viscosity is not None and diagnostics.min_eddy_viscosity < 0.0:
             raise FloatingPointError("FVM step contains negative turbulent viscosity")
 
-        limits = self._resolved_setup.acceptance
+        limits = self._configuration.numerics.acceptance
         max_velocity = float(diagnostics.max_velocity_magnitude)
         metrics = {
             "max_continuity_error": diagnostics.max_continuity_error,
@@ -1742,14 +1522,14 @@ class FVMSolver(CouplerInterfaceMixin):
             else:
                 trial_counters[name] = 0
             if trial_counters[name] >= limits.sustained_steps:
-                raise RuntimeError(
+                raise AcceptanceLimitError(
                     f"FVM acceptance limits rejected the step: {name}={value:.6g} "
                     f"exceeded {abort:.6g} for {trial_counters[name]} "
                     "consecutive accepted step(s)"
                 )
         self._pending_acceptance_counters = trial_counters
         self.last_diagnostics = replace(diagnostics, warnings=tuple(warnings))
-        self.logger.warnings_info(tuple(warnings))
+        self.logger.warnings(tuple(warnings))
 
     def _measure_maximum_courant_number(self, time_step_size: float) -> float:
         """Return the global maximum CFL for the current field state."""
@@ -1766,12 +1546,12 @@ class FVMSolver(CouplerInterfaceMixin):
         Fixed stepping reads the immutable construction value; automatic
         stepping applies the configured maximum-Courant control.
         """
-        control = self._time_config.adjustment
+        control = self._configuration.numerics.time_step_control
         time_until_event = None
         if control is None:
             # The configured step, never the stored one: a horizon-clipped
             # final step must not carry into a restarted run.
-            selected = float(self._time_config.time_step_size)
+            selected = float(self._configuration.numerics.time_step_size)
         else:
             current_courant_number = self._measure_maximum_courant_number(self.time_step_size)
             selected = maximum_courant_time_step_size(
@@ -1792,8 +1572,9 @@ class FVMSolver(CouplerInterfaceMixin):
                     )
 
         # Run-managed runs land exactly on their physical horizon.
-        remaining = float(self._time_config.end_time - self.time)
-        tolerance = max(1.0e-14, abs(self._time_config.end_time) * 1.0e-12)
+        end_time = self._configuration.run.end_time
+        remaining = float(end_time - self.time)
+        tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
         if remaining > tolerance:
             time_until_event = (
                 remaining if time_until_event is None else min(time_until_event, remaining)
@@ -1809,44 +1590,41 @@ class FVMSolver(CouplerInterfaceMixin):
 
     def _run_event_schedules(self) -> tuple:
         """Return construction-time schedules that constrain adaptive steps."""
-        schedules = [self.logger.schedule]
-        if self.auto_write:
-            schedules.append(self._output_schedule)
-        if self._backup_config.schedule is not None:
-            schedules.append(self._backup_config.schedule)
-        for sampler in self._samplers:
-            schedule = self._sampler_schedules.get(id(sampler))
-            if schedule is not None:
-                schedules.append(schedule)
+        schedules = [self._configuration.logging.schedule]
+        if self.auto_write and self._configuration.output.schedule is not None:
+            schedules.append(self._configuration.output.schedule)
+        if self._configuration.backup.schedule is not None:
+            schedules.append(self._configuration.backup.schedule)
+        schedules.extend(sampler.schedule for sampler in self._samplers)
         return tuple(schedules)
 
     def solve_steady(self) -> bool:
-        """Run the solver-owned steady SIMPLE loop without advancing time.
+        """Run the steady SIMPLE iteration without advancing time.
 
         Returns
         -------
         bool
-            Whether the configured SIMPLE loop converged. The steady iteration
+            Whether the steady loop converged. The steady iteration
             count is exposed as `step` for output numbering; `time` remains at
             the configured start time.
 
         Raises
         ------
         RuntimeError
-            If the configured algorithm is not SIMPLE, a candidate is pending,
+            If the configured algorithm is not ``simple``, a candidate is pending,
             or the solver has become terminal after a failed evolution.
         FloatingPointError
-            If SIMPLE returns a non-finite or shape-incompatible state.
+            If the iteration returns a non-finite or shape-incompatible state.
 
         Notes
         -----
-        SIMPLE uses its dedicated steady iteration plan rather than the
+        The steady algorithm uses its dedicated steady iteration plan rather than the
         transient candidate/commit path.  ``time`` therefore remains at the
         configured start time; ``step`` is the steady iteration count used for
         output numbering and reporting.
         """
-        if self._resolved_setup.pimple.algorithm != "SIMPLE":
-            raise RuntimeError("solve_steady() requires algorithm='SIMPLE'")
+        if self._configuration.numerics.pimple.algorithm != "simple":
+            raise RuntimeError("solve_steady() requires the 'simple' algorithm")
         self._ensure_evolution_usable()
         if self._step_phase != "accepted":
             raise RuntimeError("Cannot start a steady solve with a pending FVM candidate")
@@ -1855,7 +1633,7 @@ class FVMSolver(CouplerInterfaceMixin):
         result = self.algorithm.solve(
             self.velocity,
             self.kinematic_pressure,
-            density=self._resolved_setup.transport.density,
+            density=self._configuration.numerics.transport.density,
             kinematic_viscosity=effective_viscosity,
         )
         if not isinstance(result, tuple) or len(result) != 4:
@@ -1889,9 +1667,7 @@ class FVMSolver(CouplerInterfaceMixin):
         iterations = len(getattr(self.algorithm, "residuals", ()))
         self.steady_iterations = int(iterations)
         self.steady_converged = bool(converged)
-        record_steady_iterations = getattr(self.logger, "steady_iterations", None)
-        if record_steady_iterations is not None:
-            record_steady_iterations(self.steady_iterations)
+        self.logger.steady_iterations(self.steady_iterations)
         self.step = self.steady_iterations
         self._n_committed_time_steps = self.steady_iterations
         self._accepted_time_step_size = self.time_step_size
@@ -1901,17 +1677,70 @@ class FVMSolver(CouplerInterfaceMixin):
         self._pending_acceptance_counters = None
         self._run_metadata_written = False
         if not self._run_started:
-            self.run_status = "complete" if converged else "not_converged"
+            self.run_status = RunStatus.completed if converged else RunStatus.not_converged
             self.write_run_metadata(status=self.run_status)
         return self.steady_converged
 
-    def start_from(self, selection: str | None = "latest") -> bool:
-        """Restore the configured backup, or start a clean case at zero.
+    def apply_velocity_boundaries(self, time: float) -> None:
+        """Impose the case velocity histories at physical time ``time`` in s.
 
-        ``latest`` discovers the serial file or committed MPI metadata at
-        ``BackupConfig.path``. An explicit path uses the same strict reader.
-        Return whether a backup was loaded. Call before initial output or a
-        custom time loop; user initial fields may be set before this call.
+        Collective under MPI. A history with ``normal_only`` prescribes the
+        normal velocity with a zero tangential normal gradient; a configured
+        slip patch returns to slip when its normal velocity reaches zero.
+        """
+        configured = {item.name: item for item in self._configuration.boundaries}
+        for index, condition in enumerate(self._configuration.velocity_boundaries):
+            velocity = condition.velocity.at(time)
+            previous = self._velocity_boundary_values.get(index)
+            if previous is not None and np.array_equal(previous, velocity):
+                continue
+            for name in condition.patches:
+                normals = self.gather_boundary_face_normal(name)
+                if condition.normal_only:
+                    normal_velocity = normals @ velocity
+                    self.set_normal_velocity_tangential_gradient_boundary_condition(
+                        normal_velocity, np.zeros_like(normals), name
+                    )
+                    restore_slip = configured[name].velocity_type == "slip" and bool(
+                        np.all(np.abs(normal_velocity) <= 1e-12)
+                    )
+                    restore_slip = self.parallel.bcast(restore_slip, root=0)
+                    if restore_slip:
+                        boundary = self._optional_patch(name)
+                        if boundary is not None:
+                            boundary["velocity_type"] = "slip"
+                            for key in (
+                                "normal_velocity_field",
+                                "tangential_gradient_field",
+                                "max_removed_tangential_gradient_normal_component",
+                            ):
+                                boundary.pop(key, None)
+                else:
+                    self.set_dirichlet_velocity_boundary_condition(
+                        np.tile(velocity, (len(normals), 1)), name
+                    )
+            self._velocity_boundary_values[index] = velocity
+
+    def _backup_path(self, step: int) -> Path:
+        """Return the numbered backup of ``step`` in ``solution/fvm``."""
+        name = f"fvm_{step:06d}" if self.parallel.is_partitioned else f"fvm_{step:06d}.npz"
+        return component_directory(self.solution_dir, "fvm") / name
+
+    def start_from(self, selection: str | Path = "latest") -> bool:
+        """Select the initial state or a backup before the first step.
+
+        Parameters
+        ----------
+        selection : {'latest', 'initial'} or path, default='latest'
+            ``latest`` loads the backup with the highest step in
+            ``solution/fvm`` and starts from the initial state when there is
+            none; ``initial`` deletes the earlier output series and starts
+            from the initial state; a path loads that backup.
+
+        Returns
+        -------
+        bool
+            Whether a backup was loaded.
         """
         from openonda.core.restart import reset_run_outputs, select_backup
 
@@ -1919,31 +1748,23 @@ class FVMSolver(CouplerInterfaceMixin):
             state_error = None
             if (
                 self.step
-                or self.time != self._time_config.start_time
+                or self.time != self._configuration.run.start_time
                 or self._n_committed_time_steps
                 or self._step_phase != "accepted"
-                or getattr(self, "_restart_loaded", False)
+                or self._restart_loaded
             ):
                 state_error = RuntimeError(
-                    "start_from='initial' requires a new FVM solver before advancing"
+                    "start_from('initial') requires a new FVM solver before advancing"
                 )
             self._collective_io_failure(state_error, "initial state selection")
             error = None
             if self.parallel.is_root:
                 try:
-                    samplers = list(self._samplers)
-                    if self._default_yplus_sampler is not None:
-                        samplers.append(self._default_yplus_sampler)
-                    owned_names = {
-                        str(getattr(sampler, "file_name", None) or sampler.name)
-                        for sampler in samplers
-                    }
                     reset_run_outputs(
                         self.solution_dir,
                         kind="fvm",
-                        backup_path=self._backup_config.path,
                         samples_dir=self.samples_dir,
-                        sample_names=owned_names,
+                        sample_names={sampler.name for sampler in self._samplers},
                     )
                     self.io.rewind_histories(-1.0e100)
                 except Exception as exc:
@@ -1956,106 +1777,74 @@ class FVMSolver(CouplerInterfaceMixin):
         error = None
         if self.parallel.is_root:
             try:
-                selected = select_backup(
-                    selection,
-                    directory=self.solution_dir,
-                    kind="fvm",
-                    backup_path=self._backup_config.path,
-                )
+                selected = select_backup(selection, directory=self.solution_dir, kind="fvm")
             except Exception as exc:
                 error = exc
         self._collective_io_failure(error, "restart selection")
         selected = self.parallel.bcast(selected, root=0)
-        if selected is None and selection == "latest":
+        if selected is None:
             return self.start_from("initial")
-        if selected is not None:
-            self.load_state(selected)
-            self.logger.info(f"Continuing from {selected}: step {self.step}, time {self.time:.17g}")
-            return True
-        return False
+        self.load_backup(selected)
+        self.logger.info(f"Continuing from {selected}: step {self.step}, time {self.time:.17g}")
+        return True
 
-    def run(self, *, start_from: str = None, initial_velocity: Callable | None = None) -> None:
-        """Run from the current clock to the configured end time.
+    def run(self, *, start_from: str | Path | None = None) -> None:
+        """Run the case to ``RunPlan.end_time``.
 
-        ``start_from="latest"`` restores the configured native backup when
-        present and starts at zero otherwise. A path selects an explicit
-        backup; ``"initial"`` starts a new history at the configured initial time. ``None``
-        preserves the current in-memory state.
+        Parameters
+        ----------
+        start_from : {'latest', 'initial'}, path or None, default=None
+            Initial-state selection passed to :meth:`start_from`; ``None``
+            keeps the current in-memory state.
 
-        ``initial_velocity`` optionally maps local cell centres to the physical
-        initial field. It runs before initial output only for a fresh state;
-        native continuation restores the checkpoint field.
-
-        The finite run writes initial output, executes steady SIMPLE or
-        transient accepted steps, writes final output/backups, refreshes solver
-        metadata, and closes owned resources. It may be called only once.
-
-        The run writes the initial state, advances only accepted steps,
-        and delegates periodic output and sampling to the solver-owned output
-        controller.
+        Notes
+        -----
+        The run writes the initial output, advances accepted steps (or runs
+        the steady iteration), writes the final output and backup, records
+        the run status in ``solution/fvm_metadata.json`` and closes the
+        solver. It may be called once.
 
         Raises
         ------
         RuntimeError, FloatingPointError
-            If a numerical solve, acceptance check, output writer, or finalizer
-            fails. The primary failure is re-raised after collective cleanup.
+            If a solve, an acceptance check, an output writer or a finalizer
+            fails; the first failure is raised after collective cleanup.
         """
-        if getattr(self, "_run_started", False):
+        if self._run_started:
             raise RuntimeError("FVMSolver.run() may be called only once")
         self._run_started = True
-        self.run_status = "failed"
-        self.run_failure: BaseException | None = None
+        self.run_status = RunStatus.running
+        self.run_failure = None
         primary_failure: BaseException | None = None
+        run_plan = self._configuration.run
         try:
             if start_from is not None:
                 self.start_from(start_from)
             self._ensure_evolution_usable()
-            restored = getattr(self, "_restart_loaded", False)
-            from openonda.core.simulation.forcing import (
-                apply_initial_velocity,
-                apply_velocity_boundaries,
-            )
-
-            apply_velocity_boundaries(self, self.time)
-            if initial_velocity is not None and not restored and self.step == 0:
-                apply_initial_velocity(self, initial_velocity)
-            if self.auto_write and self._initial_output_enabled and not restored:
-                self.write_vtk()
-            if self._initial_output_enabled and not restored:
-                self._execute_sampler_event("initial")
+            restored = self._restart_loaded
+            self.apply_velocity_boundaries(self.time)
+            self.write_initial_output()
             if start_from is not None and not restored:
-                self._save_automatic_backup()
-            if self._resolved_setup.pimple.algorithm == "SIMPLE":
+                self._save_scheduled_backup()
+            if self._configuration.numerics.pimple.algorithm == "simple":
                 converged = self.solve_steady()
-                if self.auto_write and self._final_output_enabled:
-                    self.write_vtk()
-                if self._final_output_enabled:
-                    self._execute_sampler_event("final")
-                if self._backup_config.write_at_end or start_from is not None:
-                    self._save_automatic_backup()
-                self.run_status = "complete" if converged else "not_converged"
+                final_status = RunStatus.completed if converged else RunStatus.not_converged
             else:
-                end_time = float(self._time_config.end_time)
+                end_time = run_plan.end_time
                 tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
                 while self.time < end_time - tolerance:
                     self.advance()
-                if (
-                    self.auto_write
-                    and self._final_output_enabled
-                    and getattr(self, "_last_vtk_state", None)
-                    != (self.step, self.time, self._state_revision)
-                ):
-                    self.write_vtk()
-                if self._final_output_enabled:
-                    self._execute_sampler_event("final")
-                if (
-                    self._backup_config.write_at_end or start_from is not None
-                ) and self._step_phase == "accepted":
-                    self._save_automatic_backup()
-                self.run_status = "complete"
+                final_status = RunStatus.completed
+            self.write_final_output()
+            if (
+                self._configuration.backup.write_at_end or start_from is not None
+            ) and self._step_phase == "accepted":
+                self._save_scheduled_backup()
+            self.run_status = final_status
         except BaseException as error:
             primary_failure = error
             self.run_failure = error
+            self.run_status = RunStatus.failed
         finally:
 
             def finalize_collectively(operation: str, callback) -> None:
@@ -2072,114 +1861,96 @@ class FVMSolver(CouplerInterfaceMixin):
                     if primary_failure is None:
                         primary_failure = error
                         self.run_failure = error
-                        self.run_status = "failed"
+                        self.run_status = RunStatus.failed
 
-            # Every rank participates in each stage, including root-owned
-            # flush/close/metadata work.  This prevents one rank from entering
-            # the next MPI operation after a peer failed during finalization.
+            # Every rank enters each stage, so a failure on one rank cannot
+            # leave a peer waiting in the next MPI operation.
             finalize_collectively("final output flush", self.flush_output)
             finalize_collectively(
-                "solver close",
-                lambda: self.close(status=self.run_status, failure=primary_failure),
+                "solver metadata", lambda: self.write_run_metadata(status=self.run_status)
             )
-            finalize_collectively(
-                "solver metadata",
-                lambda: self.write_run_metadata(status=self.run_status),
-            )
+            finalize_collectively("solver close", lambda: self.close(failure=primary_failure))
         if primary_failure is not None:
             raise primary_failure.with_traceback(primary_failure.__traceback__)
 
-    def advance(self) -> None:
-        """Solve and commit one configured FVM time step.
+    def advance(self, *, defer_output: bool = False, time: float | None = None) -> None:
+        """Solve and accept one time step.
 
-        The method selects a fixed or maximum-Courant-limited duration, solves
-        a candidate with :meth:`solve_pimple`, checks acceptance limits, then
-        calls :meth:`advance_time`. On success `step` and `time` advance and
-        diagnostics/scheduled output may be written. On failure no candidate is
-        committed and the solver becomes terminally unusable when the physical
-        kernels may have partially mutated state.
-
-        Raises
-        ------
-        RuntimeError, ValueError, FloatingPointError
-            For an invalid run phase, failed linear/physical solve, or
-            rejected candidate.
-        """
-        self._ensure_evolution_usable()
-        if not self._run_started and self.run_status == "not_started":
-            self.run_status = "interactive"
-        if self._resolved_setup.pimple.algorithm == "SIMPLE":
-            raise RuntimeError(
-                "SIMPLE is a steady algorithm; use solve_steady() instead of advance()"
-            )
-        if self._step_phase != "accepted":
-            raise RuntimeError("A candidate FVM step is pending; call advance_time() to commit it")
-        step_time_step_size = self._select_time_step_size()
-        from openonda.core.simulation.forcing import apply_velocity_boundaries
-
-        apply_velocity_boundaries(self, self.time + step_time_step_size)
-        step_number = self.step + 1
-        self.profiler.begin_step(
-            step=step_number,
-            time=self.time + step_time_step_size,
-            time_step_size=step_time_step_size,
-        )
-        timer_name = f"Step {step_number}"
-        self._timer.start(timer_name)
-        self.logger.step_begin(step_number, self.time + step_time_step_size, step_time_step_size)
-        primary_failure: BaseException | None = None
-        try:
-            self.solve_pimple(step_time_step_size)
-
-            adjustment = self._time_config.adjustment
-            self.logger.courant_info(
-                self.max_courant_number,
-                adjustment.maximum if adjustment is not None else None,
-            )
-
-            self.advance_time()
-        except BaseException as error:
-            primary_failure = error
-            raise
-        finally:
-            elapsed = self._timer.stop(timer_name)
-            try:
-                self.logger.step_end(elapsed, accepted=primary_failure is None)
-            except BaseException:
-                if primary_failure is None:
-                    raise
-            try:
-                self.profiler.finish_step(
-                    elapsed,
-                    getattr(self.algorithm, "last_linear_results", ()),
-                )
-            except BaseException:
-                if primary_failure is None:
-                    raise
-
-    def advance_time(self, *, defer_output: bool = False, time: float | None = None) -> None:
-        """Commit the solved candidate and advance the accepted FVM clock.
-
-        This coupler-facing method rolls the BDF2 velocity/flux history,
-        increments `step` and `time`, writes step diagnostics, dispatches
-        samplers, and applies visualization/restart schedules. It requires a
-        successful candidate from :meth:`solve_pimple`; calling it twice or
-        before a solve raises `RuntimeError`. The field arrays are mutated in
-        place and the resulting state is the only state eligible for restart.
+        The step size is the fixed or maximum-Courant size, shortened to land
+        on output events and the end time. The candidate from
+        :meth:`solve_step` is checked against the acceptance limits and
+        accepted with :meth:`accept_step`.
 
         Parameters
         ----------
         defer_output : bool, default=False
-            Skip diagnostics and scheduled output; the caller publishes them
-            later with :meth:`write_accepted_step_output`.
+            Leave the step output to a later :meth:`write_step_output`.
         time : float or None, default=None
             Accepted physical time in s imposed by a driver that owns the
-            clock, such as the FVM--VPM coupler at its exchange times. It
-            replaces the summed ``time + time_step_size`` and must agree with
-            it to floating-point round-off. ``None`` sums the step size.
+            clock; it must equal ``time + time_step_size`` to round-off.
+
+        Raises
+        ------
+        RuntimeError, ValueError, FloatingPointError, AcceptanceLimitError
+            For an invalid phase, a failed solve or a rejected candidate.
+        """
+        self._ensure_evolution_usable()
+        if self._configuration.numerics.pimple.algorithm == "simple":
+            raise RuntimeError("The 'simple' algorithm is steady; use solve_steady()")
+        if self._step_phase != "accepted":
+            raise RuntimeError("A candidate FVM step is pending; call accept_step() first")
+        step_time_step_size = self._select_time_step_size()
+        self.apply_velocity_boundaries(self.time + step_time_step_size)
+        step_number = self.step + 1
+        self.profiler.begin_step(step_number, self.time, step_time_step_size)
+        self.logger.begin_step(step_number, self.time + step_time_step_size, step_time_step_size)
+        primary_failure: BaseException | None = None
+        try:
+            self.solve_step(step_time_step_size)
+            control = self._configuration.numerics.time_step_control
+            self.logger.courant_number(
+                self.max_courant_number, control.maximum if control is not None else None
+            )
+            self.accept_step(defer_output=defer_output, time=time)
+        except BaseException as error:
+            primary_failure = error
+            raise
+        finally:
+            self._finish_step_timing(primary_failure)
+
+    def _finish_step_timing(self, primary_failure: BaseException | None) -> None:
+        """Close the step record of the profiler and the log."""
+        try:
+            iterations: dict[str, float] = {}
+            for result in getattr(self.algorithm, "last_linear_results", ()):
+                key = f"{result.equation or 'linear'} iterations"
+                iterations[key] = iterations.get(key, 0.0) + float(result.iterations)
+            record = self.profiler.end_step(details=iterations)
+            self.logger.end_step(self.profiler.step_seconds, accepted=primary_failure is None)
+            if record is not None:
+                self.logger.profile(record)
+        except BaseException:
+            if primary_failure is None:
+                raise
+
+    def accept_step(self, *, defer_output: bool = False, time: float | None = None) -> None:
+        """Accept the solved candidate and advance the clock.
+
+        Rolls the BDF time history of velocity and face flux, increments
+        ``step`` and ``time`` and, unless deferred, writes the step output.
+        It requires a candidate from :meth:`solve_step`.
+
+        Parameters
+        ----------
+        defer_output : bool, default=False
+            Leave the step output to a later :meth:`write_step_output`.
+        time : float or None, default=None
+            Accepted physical time in s imposed by a driver that owns the
+            clock, such as the FVM--VPM coupler. It must equal
+            ``time + time_step_size`` to round-off; ``None`` sums them.
         """
         if self._step_phase != "candidate":
-            raise RuntimeError("Cannot commit an FVM step before a successful solve")
+            raise RuntimeError("Cannot accept an FVM step before a successful solve")
         self._ensure_evolution_usable()
         pending_counters = self._pending_acceptance_counters
         if pending_counters is None:
@@ -2192,158 +1963,167 @@ class FVMSolver(CouplerInterfaceMixin):
                 f"Imposed FVM time {time!r} s does not follow {self.time!r} s "
                 f"by one time step of {self._accepted_time_step_size!r} s"
             )
-        self._timer.start("Field history commit")
-
-        # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
-        self.velocity_older[:] = self.velocity_old[:]
-        self.velocity_old[:] = self.velocity[:]
-        self.volumetric_face_flux_older[:] = self.volumetric_face_flux_old[:]
-        self.volumetric_face_flux_old[:] = self.volumetric_face_flux[:]
-        self._n_committed_time_steps += 1
-        self.step += 1
-        self.time = summed_time if time is None else float(time)
-        if self.mesh_motion is not None:
-            self.mesh_motion.accept(self.time)
-        self._run_metadata_written = False
-        step_time_step_size = self._accepted_time_step_size
-        self._previous_time_step_size = step_time_step_size
-        self._n_consecutive_accepted_steps = pending_counters
-        self._pending_acceptance_counters = None
-        self._pending_step_size = None
-        self._step_phase = "accepted"
-        self._timer.log("Field history commit", sink=self.logger)
+        with self.profiler.section("field history"):
+            # Roll the BDF history: older <- old (u^n-1), old <- u^n+1.
+            self.velocity_older[:] = self.velocity_old[:]
+            self.velocity_old[:] = self.velocity[:]
+            self.volumetric_face_flux_older[:] = self.volumetric_face_flux_old[:]
+            self.volumetric_face_flux_old[:] = self.volumetric_face_flux[:]
+            self._n_committed_time_steps += 1
+            self.step += 1
+            self.time = summed_time if time is None else float(time)
+            if self.mesh_motion is not None:
+                self.mesh_motion.accept(self.time)
+            self._run_metadata_written = False
+            self._previous_time_step_size = self._accepted_time_step_size
+            self._n_consecutive_accepted_steps = pending_counters
+            self._pending_acceptance_counters = None
+            self._pending_step_size = None
+            self._step_phase = "accepted"
 
         if not defer_output:
-            self.write_accepted_step_output()
+            self.write_step_output()
 
-    def write_accepted_step_output(self) -> None:
-        """Publish diagnostics and due output for the current accepted state.
+    def write_initial_output(self) -> None:
+        """Write the initial frame and the samplers with ``initial=True``.
 
-        Couplers may defer provisional substeps and call this once after the
-        interface converges. Their sampling schedules must align with exchange
-        times; this method does not replay output for earlier substeps.
+        :meth:`run` calls this before the first step; a driver that advances
+        the solver itself, such as the FVM--VPM coupler, calls it once at the
+        start of a fresh run. Both follow ``RunPlan.initial_output``. A state
+        restored from a backup already has its initial output, so the call
+        does nothing then. Collective under MPI.
+        """
+        if self._restart_loaded or not self._configuration.run.initial_output:
+            return
+        if self.auto_write:
+            self.write_vtk()
+        self._execute_sampler_event(OutputEvent.initial)
+
+    def write_final_output(self) -> None:
+        """Write the final frame and the final-only samplers of the accepted state.
+
+        :meth:`run` calls this after the last step; a driver that advances
+        the solver itself calls it once at the end of the run. Both follow
+        ``RunPlan.final_output``; a frame already written for this state is
+        not repeated. Collective under MPI.
+        """
+        if self._step_phase != "accepted":
+            raise RuntimeError("Output requires an accepted FVM state")
+        if not self._configuration.run.final_output:
+            return
+        if self.auto_write and self._last_vtk_state != (self.step, self.time, self._state_revision):
+            self.write_vtk()
+        self._execute_sampler_event(OutputEvent.final)
+
+    def write_step_output(self) -> None:
+        """Write the diagnostics and the due output of the accepted state.
+
+        A coupler may defer the output of provisional sub-steps and call this
+        once the interface converges; output of earlier sub-steps is not
+        replayed.
         """
         if self._step_phase != "accepted":
             raise RuntimeError("Output requires an accepted FVM state")
         step_time_step_size = self._accepted_time_step_size
-        self._timer.start("Diagnostics file")
-        diagnostics_error = None
-        try:
-            self.io.write_step_diagnostics()
-        except BaseException as error:
-            diagnostics_error = error
-        self._collective_io_failure(diagnostics_error, "diagnostics output")
-        self._timer.log("Diagnostics file", sink=self.logger)
+        with self.profiler.section("diagnostics output"):
+            diagnostics_error = None
+            try:
+                self.io.write_step_diagnostics()
+            except BaseException as error:
+                diagnostics_error = error
+            self._collective_io_failure(diagnostics_error, "diagnostics output")
 
-        # Samplers decide their own cadence; the executor runs after every
-        # accepted step and every sampler checks whether it is due.  Force
-        # and y+ output all flow through this single path.
-        self._timer.start("Samplers")
-        self._execute_sampler_event("accepted")
-        self._timer.log("Samplers", sink=self.logger)
+        with self.profiler.section("samplers"):
+            self._execute_sampler_event(OutputEvent.accepted_step)
 
-        self._timer.start("Turbulence statistics")
         if (
-            self.turbulence
+            self.turbulence is not None
             and self.eddy_viscosity is not None
-            and self.logger.should_report(self.step, self.time, step_time_step_size)
+            and self._configuration.logging.schedule.is_due(
+                self.step, self.time, step_time_step_size
+            )
         ):
             n_owned = (
                 self.parallel.n_owned if self.parallel.is_partitioned else self.mesh_data["n_cells"]
             )
-            owned_eddy_viscosity = self.eddy_viscosity[:n_owned]
-            assert self.last_diagnostics is not None
-            min_eddy_viscosity = self.last_diagnostics.min_eddy_viscosity
-            max_eddy_viscosity = self.last_diagnostics.max_eddy_viscosity
             sum_eddy_viscosity = float(
-                self.parallel.global_sum(float(np.sum(owned_eddy_viscosity)))
+                self.parallel.global_sum(float(np.sum(self.eddy_viscosity[:n_owned])))
             )
             n_eddy_viscosity_values = int(self.parallel.global_sum(int(n_owned)))
-            if self.parallel.is_root:
-                self.logger.turbulence_info(
-                    self.eddy_viscosity,
-                    self._kinematic_viscosity,
-                    statistics=(
-                        min_eddy_viscosity,
-                        max_eddy_viscosity,
-                        sum_eddy_viscosity / n_eddy_viscosity_values,
-                    ),
-                )
-        self._timer.log("Turbulence statistics", sink=self.logger)
+            assert self.last_diagnostics is not None
+            self.logger.turbulence(
+                self.last_diagnostics.min_eddy_viscosity,
+                self.last_diagnostics.max_eddy_viscosity,
+                sum_eddy_viscosity / n_eddy_viscosity_values,
+                self._kinematic_viscosity,
+            )
 
-        # Visualization cadence is deterministic from accepted step/time state;
-        # physical-time events have already constrained adaptive step selection.
-        self._timer.start("Visualization output")
-        if self.auto_write and self._output_schedule.is_due(
-            self.step, self.time, step_time_step_size
+        # Physical-time events have already constrained adaptive steps.
+        output_schedule = self._configuration.output.schedule
+        if (
+            self.auto_write
+            and output_schedule is not None
+            and output_schedule.is_due(self.step, self.time, step_time_step_size)
         ):
-            self.write_vtk()
-        self._timer.log("Visualization output", sink=self.logger)
+            with self.profiler.section("visualization output"):
+                self.write_vtk()
 
-        self._timer.start("Restart backup")
-        backup_schedule = self._backup_config.schedule
-        scheduled_backup = backup_schedule is not None and backup_schedule.is_due(
-            self.step, self.time, step_time_step_size
-        )
-        end_tolerance = max(1.0e-14, abs(self._time_config.end_time) * 1.0e-12)
-        final_backup = self._backup_config.write_at_end and (
-            self.time >= self._time_config.end_time - end_tolerance
-        )
-        if scheduled_backup or final_backup:
-            self._save_automatic_backup()
-        self._timer.log("Restart backup", sink=self.logger)
+        backup = self._configuration.backup
+        end_time = self._configuration.run.end_time
+        end_tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
+        at_end = self.time >= end_time - end_tolerance
+        if (
+            backup.schedule is not None
+            and backup.schedule.is_due(self.step, self.time, step_time_step_size)
+        ) or (backup.write_at_end and at_end):
+            with self.profiler.section("restart backup"):
+                self._save_scheduled_backup()
 
-        if not self._run_started and self.time >= self._time_config.end_time - end_tolerance:
-            self.run_status = "complete"
+        if not self._run_started and at_end:
+            self.run_status = RunStatus.completed
             self.write_run_metadata(status=self.run_status)
+        # The Courant, gradient and vorticity caches describe this accepted
+        # state and stay valid until solve_step() starts the next step; a
+        # coupler reads the gradient immediately.
 
-        # Courant/gradient/vorticity caches describe this accepted state and
-        # remain valid until ``solve_pimple`` starts the next mutation.  In a
-        # coupled step the endpoint gradient is consumed immediately by the
-        # vorticity handoff; dropping it here forced an identical full-mesh
-        # reconstruction and global gather.  ``solve_pimple`` clears the cache
-        # before its next assembly, retaining the former peak-memory behaviour.
+    def _save_scheduled_backup(self) -> None:
+        """Write a backup of the accepted state unless it already has one."""
+        state = (self.step, self.time, self._state_revision)
+        if self._last_backup_state != state:
+            self.save_backup()
+            self._last_backup_state = state
 
-    def _save_automatic_backup(self) -> None:
-        """Write each configured checkpoint state once, including run finalization."""
-        path = self._backup_config.path
-        if not os.path.isabs(path):
-            path = os.path.join(self.solution_dir, path)
-        state = (self.step, self.time, self._state_revision, path)
-        if getattr(self, "_automatic_backup_state", None) != state:
-            self.save_state(path)
-            self._automatic_backup_state = state
+    @property
+    def state_revision(self) -> int:
+        """Counter increased whenever the published fields change."""
+        return self._state_revision
 
-    def save_state(self, path: Path | str) -> str:
-        """Flush output and atomically save the complete accepted FVM restart.
+    def save_backup(self, path: str | Path | None = None) -> Path:
+        """Flush output and atomically save the accepted state for a restart.
 
         Parameters
         ----------
-        path : str or pathlib.Path
-            Destination file/directory accepted by the selected serial or
-            partitioned backup writer. Relative paths follow the configured
-            solution-directory convention.
+        path : str or pathlib.Path or None
+            Destination; ``None`` writes ``solution/fvm/fvm_{step:06d}.npz``
+            (the directory ``solution/fvm/fvm_{step:06d}`` in a partitioned
+            run).
 
         Returns
         -------
-        str
-            The resolved/broadcast restart path.
+        pathlib.Path
+            Path of the backup on every rank.
 
         Notes
         -----
-        The backup includes mesh and configuration hashes, primary fields, and
-        all time-history data needed by the selected time scheme. Output is
-        flushed first, so an asynchronous writer failure prevents a false
-        successful checkpoint. A candidate state cannot be saved.
+        The backup holds the configuration and mesh digests, the primary
+        fields and the time history of the time scheme. A candidate state
+        cannot be saved.
         """
-        from openonda.core.simulation.parallel import collective_phase
-
         with collective_phase(self.parallel.comm, "FVM backup accepted state"):
             self._ensure_evolution_usable()
             if self._step_phase != "accepted":
-                raise RuntimeError(
-                    "Cannot save a restart while an uncommitted FVM candidate exists"
-                )
+                raise RuntimeError("Cannot save a restart while an unaccepted FVM candidate exists")
+        destination = self._backup_path(self.step) if path is None else Path(path)
         flush_error = None
         try:
             self.flush_output()
@@ -2353,88 +2133,37 @@ class FVMSolver(CouplerInterfaceMixin):
         if self.parallel.is_partitioned:
             from ..io.partitioned import save_partitioned_solver_backup
 
-            saved_path = str(save_partitioned_solver_backup(self, path))
+            saved = Path(save_partitioned_solver_backup(self, destination))
         else:
             from ..io.backup import save_backup
 
-            saved = None
             save_error = None
             if self.parallel.is_root:
                 try:
-                    saved = save_backup(self, path)
+                    save_backup(self, destination)
                 except BaseException as error:
                     save_error = error
             self._collective_io_failure(save_error, "restart backup")
-            saved_path = str(
-                self.parallel.bcast(str(saved) if saved is not None else str(path), root=0)
-            )
+            saved = destination
         # A restart from this backup starts without reused preconditioners.
         self.algorithm.rebuild_preconditioners()
-        log_error = None
-        if self.parallel.is_root:
-            try:
-                self.logger.output_info(f"Restart backup written: {saved_path}")
-            except BaseException as error:
-                log_error = error
-        self._collective_io_failure(log_error, "restart-backup logging")
-        return saved_path
+        self.logger.output(f"Restart backup written: {saved}")
+        return saved
 
-    def write_run_metadata(self, path: Path | None = None, *, status: str | None = None) -> str:
-        """Write universal FVM configuration and accepted-state metadata.
-
-        Parameters
-        ----------
-        path : str or pathlib.Path or None
-            Destination; defaults to ``fvm_metadata.json`` in the configured
-            solution/backup directory.
-        status : str or None
-            Optional terminal/interactive status recorded in the metadata.
-
-        Returns
-        -------
-        str
-            Destination path, broadcast to all ranks.
-
-        Raises
-        ------
-        RuntimeError
-            If metadata writing fails on any participating rank.
-
-        Side Effects
-        ------------
-        Creates the destination directory if needed and atomically replaces
-        the metadata file on the root rank.
-        """
-        from ..io.metadata import write_metadata
-
-        destination = path or os.path.join(self.solution_dir, "fvm_metadata.json")
-        written = None
-        metadata_error = None
-        if self.parallel.is_root:
-            try:
-                written = write_metadata(self, destination, status=status)
-            except BaseException as error:
-                metadata_error = error
-        self._collective_io_failure(metadata_error, "solver metadata")
-        self._run_metadata_written = True
-        return str(
-            self.parallel.bcast(str(written) if written is not None else str(destination), root=0)
-        )
-
-    def load_state(self, path: Path | str) -> None:
-        """Restore a compatible accepted restart and restore output history.
+    def load_backup(self, path: str | Path) -> None:
+        """Restore a backup of this case and rewind the output histories.
 
         Parameters
         ----------
         path : str or pathlib.Path
-            Restart written by :meth:`save_state` using the current schema
-            and case configuration.
+            Backup written by :meth:`save_backup` with the same mesh and
+            numerical configuration.
 
         Raises
         ------
         ValueError, RuntimeError
-            If the backup is corrupt, incompatible, or output time alignment
-            fails collectively.
+            If the backup is corrupt or incompatible, or the output rewind
+            fails on any rank.
         """
         flush_error = None
         try:
@@ -2456,45 +2185,64 @@ class FVMSolver(CouplerInterfaceMixin):
             try:
                 self.io.rewind_histories(self.time)
             except Exception as error:
-                rewind_error = {
-                    "type": type(error).__name__,
-                    "message": str(error),
-                }
-        rewind_error = self.parallel.bcast(rewind_error, root=0)
-        if rewind_error is not None:
-            raise RuntimeError(
-                "FVM restart output time alignment failed: "
-                f"{rewind_error['type']}: {rewind_error['message']}"
-            )
-        self.parallel.barrier()
+                rewind_error = error
+        self._collective_io_failure(rewind_error, "restart output rewind")
         self._restart_loaded = True
-        configured = Path(self._backup_config.path)
-        if not configured.is_absolute():
-            configured = Path(self.solution_dir) / configured
-        if Path(path).resolve() == configured.resolve():
-            self._automatic_backup_state = (
-                self.step,
-                self.time,
-                self._state_revision,
-                str(configured),
-            )
+        self._last_backup_state = (self.step, self.time, self._state_revision)
+
+    def write_run_metadata(self, *, status: RunStatus | str) -> Path:
+        """Write ``solution/fvm_metadata.json`` with the configuration and state.
+
+        Parameters
+        ----------
+        status : RunStatus or str
+            Run status recorded in the metadata.
+
+        Returns
+        -------
+        pathlib.Path
+            Path of the metadata file on every rank.
+        """
+        from openonda.core.metadata import write_run_metadata
+
+        destination = self.solution_dir / "fvm_metadata.json"
+        metadata_error = None
+        if self.parallel.is_root:
+            try:
+                n_points = self.mesh_data.get("n_points")
+                if n_points is None:
+                    n_points = len(self.mesh_data["vertex_position"])
+                write_run_metadata(
+                    destination,
+                    solver="fvm",
+                    case_name=self._configuration.case_name,
+                    status=RunStatus(status),
+                    configuration=self._configuration,
+                    sections={
+                        "mesh": {
+                            "n_cells": int(self.mesh_data["n_cells"]),
+                            "n_faces": int(self.mesh_data["n_faces"]),
+                            "n_points": int(n_points),
+                            "mesh_generation": self.mesh_data.get("mesh_generation"),
+                        },
+                        "state": {"step": int(self.step), "time": float(self.time)},
+                    },
+                )
+            except BaseException as error:
+                metadata_error = error
+        self._collective_io_failure(metadata_error, "solver metadata")
+        self._run_metadata_written = True
+        return destination
 
     def write_vtk(self) -> None:
-        """Collectively publish the current accepted state as VTK output.
+        """Write the accepted state as a visualization frame.
 
-        The accepted step names a `.vtu`/`.pvtu` file below the solution
-        directory.
-
-        Notes
-        -----
-        The output is cell-centred and includes velocity, kinematic pressure,
-        Courant number, vorticity, and active eddy viscosity. Asynchronous
-        writes are queued; call :meth:`flush_output` to surface writer errors.
-        In MPI execution all ranks must enter this method collectively.
-
-        Root-only replicated output still has a collective error envelope:
-        workers wait at the same stage and receive the root's failure instead
-        of entering a later MPI operation with a misleading success state.
+        Collective under MPI. The frame ``solution/fvm/fvm_{step:06d}.vtu``
+        (``.pvtu`` when partitioned) holds the cell-centred velocity,
+        kinematic pressure, Courant number, vorticity, cell volume and
+        size, and the eddy viscosity of an LES; it is listed in
+        ``solution/fvm.pvd``. Asynchronous writes are queued; call
+        :meth:`flush_output` to surface writer errors.
         """
         local_error = None
         try:
@@ -2506,23 +2254,16 @@ class FVMSolver(CouplerInterfaceMixin):
         self._last_vtk_state = (self.step, self.time, self._state_revision)
 
     def _write_vtk_local(self) -> None:
-        """Export the current simulation state to a ``.vtu`` file with PVD time-series support.
+        """Write this rank's part of the visualization frame."""
+        from openonda.core.vtk_output import read_collection, write_collection
 
-        Writes ``velocity``, ``kinematic_pressure``, ``courant_number``, and
-        ``vorticity`` fields. If turbulence is active, also writes
-        ``eddy_viscosity``. These names are the standard cross-solver output
-        schema; compact kernel symbols are not serialized.
-        Includes physical ``cell_volume`` and ``cell_equivalent_size`` plus
-        nominal ``cell_size`` and ``refinement_level`` when the mesh has them.
-        Writes ``solution/fvm/fvm_<step>.vtu`` and indexes it in the
-        ``solution/fvm.pvd`` time-series collection.
-        """
-        if not self.parallel.is_root and not self.parallel.is_partitioned:
-            return
-        sol_dir = Path(self.solution_dir)
-        frame_dir = component_directory(sol_dir, "fvm")
+        from ..io.vtk_exporter import VTKExporter, mesh_cell_fields
+
+        frame_dir = component_directory(self.solution_dir, "fvm")
         frame_dir.mkdir(parents=True, exist_ok=True)
-        filename = str(frame_dir / f"fvm_{self.step:06d}.vtu")
+        filename = frame_dir / f"fvm_{self.step:06d}.vtu"
+        collection = collection_path(self.solution_dir, "fvm")
+        output = self._configuration.output
 
         fields = {
             "velocity": self.velocity,
@@ -2530,97 +2271,73 @@ class FVMSolver(CouplerInterfaceMixin):
             "courant_number": self._courant_field(self._accepted_time_step_size),
             "vorticity": self._vorticity_field(),
         }
-        from ..io.vtk_exporter import mesh_cell_fields
-
         fields.update(mesh_cell_fields(self.mesh_data, self.geo_data["cell_volume"]))
         if self.eddy_viscosity is not None:
             fields["eddy_viscosity"] = self.eddy_viscosity
 
         if self.parallel.is_partitioned:
             from ..io.partitioned import write_partition_vtu
-            from ..io.vtk_exporter import VTKExporter
 
             n_local = self.mesh_data["n_cells"]
-            stem = Path(filename).stem
             if self.vtk_exporter is None:
                 export_mesh = self.mesh_data.get("_visualization_mesh", self.mesh_data)
-                self.vtk_exporter = VTKExporter(export_mesh, self._resolved_setup.output)
-            collection = write_partition_vtu(
-                Path(filename).parent,
-                stem,
+                self.vtk_exporter = VTKExporter(export_mesh, output)
+            frame = write_partition_vtu(
+                frame_dir,
+                filename.stem,
                 self.mesh_data,
                 self.parallel.partition,
                 {name: np.asarray(values)[:n_local] for name, values in fields.items()},
                 self.parallel.comm,
-                output=self._resolved_setup.output,
+                output=output,
                 exporter=self.vtk_exporter,
             )
             if self.parallel.is_root:
-                from ..io.vtk_exporter import PVDManager
-
-                pvd_file = str(collection_path(sol_dir, "fvm"))
-                if self.pvd_manager is None:
-                    self.pvd_manager = PVDManager(pvd_file)
-                self.pvd_manager.add_step(self.time, str(collection))
-                self.logger.output_info(f"Output written: {stem}.pvtu")
+                self._add_frame(collection, frame, read_collection, write_collection)
+                self.logger.output(f"Output written: {Path(frame).name}")
             return
 
-        asynchronous = (
-            self._resolved_setup.output.asynchronous
-            or self._resolved_setup.execution.output_mode == "threaded"
-        )
-        if asynchronous:
+        if output.asynchronous or self._configuration.numerics.execution.output_mode == "threaded":
             if self._buffered_vtk_writer is None:
                 from ..io.async_output import BufferedVTKWriter
 
-                pvd_file = str(collection_path(sol_dir, "fvm"))
-                self._buffered_vtk_writer = BufferedVTKWriter(
-                    self.mesh_data,
-                    pvd_file,
-                    self._resolved_setup.output,
-                )
+                self._buffered_vtk_writer = BufferedVTKWriter(self.mesh_data, collection, output)
             self._buffered_vtk_writer.submit(filename, self.time, fields)
             action = "queued"
         else:
             if self.vtk_exporter is None:
-                from ..io.vtk_exporter import VTKExporter
-
-                self.vtk_exporter = VTKExporter(self.mesh_data, self._resolved_setup.output)
-            if self.pvd_manager is None:
-                from ..io.vtk_exporter import PVDManager
-
-                pvd_file = str(collection_path(sol_dir, "fvm"))
-                self.pvd_manager = PVDManager(pvd_file)
-            self.vtk_exporter.export(filename, fields)
-            self.pvd_manager.add_step(self.time, filename)
+                self.vtk_exporter = VTKExporter(self.mesh_data, output)
+            self.vtk_exporter.export(str(filename), fields)
+            self._add_frame(collection, filename, read_collection, write_collection)
             action = "written"
+        self.logger.output(f"Output {action}: {filename.name}")
 
-        self.logger.output_info(f"Output {action}: {os.path.basename(filename)}")
+    def _add_frame(self, collection: Path, frame: str | Path, read, write) -> None:
+        """List one frame in the visualization collection at the accepted time."""
+        if self._frame_collection is None:
+            self._frame_collection = read(collection)
+        relative = Path(frame).resolve().relative_to(collection.parent.resolve()).as_posix()
+        self._frame_collection = [
+            entry for entry in self._frame_collection if entry[1] != relative
+        ] + [(self.time, relative)]
+        write(collection, self._frame_collection)
 
     def flush_output(self) -> None:
-        """Wait for buffered visualization output and surface writer failures.
-
-        This method has no numerical effect. It is a run barrier for
-        asynchronous VTK/log writers and should be called before a restart,
-        metadata, process exit, or external reader consumes the files.
-        """
+        """Wait for queued visualization frames and surface writer errors."""
         if self._buffered_vtk_writer is not None:
             self._buffered_vtk_writer.flush()
         self.logger.flush()
 
-    def close(self, *, status: str | None = None, failure: BaseException | None = None) -> None:
-        """Finish solver-owned writers, algorithm resources, profiler, and logger.
+    def close(self, *, failure: BaseException | None = None) -> None:
+        """Close the output writers, the linear-algebra resources and the log.
 
         Parameters
         ----------
-        status : str or None
-            Optional terminal status passed to the logger and metadata hooks.
         failure : BaseException or None
-            Optional primary failure summary for final logging.
+            Error that ended the run, reported in the closing log record.
 
-        `close()` is idempotent after successful cleanup and does not change the
-        accepted fields. A cleanup failure is raised so callers cannot mistake
-        an incomplete output close for a clean run.
+        ``close`` is idempotent and does not change the fields. A cleanup
+        error is raised so an incomplete close is never taken for a clean one.
         """
         if self._closed:
             return
@@ -2631,40 +2348,25 @@ class FVMSolver(CouplerInterfaceMixin):
         except BaseException as error:
             primary_failure = error
         try:
-            algorithm_close = getattr(self.algorithm, "close", None)
-            if algorithm_close is not None:
-                algorithm_close()
+            self.algorithm.close()
         except BaseException as error:
             if primary_failure is None:
                 primary_failure = error
-        if status is None:
-            status = getattr(self, "run_status", "not_started")
-        if not getattr(self, "_run_started", False) and not getattr(
-            self, "_run_metadata_written", False
-        ):
+        if failure is not None and self.run_status not in {
+            RunStatus.failed,
+            RunStatus.unstable,
+        }:
+            self.run_status = RunStatus.failed
+        if not self._run_metadata_written:
             try:
-                metadata_status = "failed" if primary_failure is not None else status
-                self.write_run_metadata(status=metadata_status)
+                self.write_run_metadata(
+                    status=RunStatus.failed if primary_failure is not None else self.run_status
+                )
             except BaseException as error:
                 if primary_failure is None:
                     primary_failure = error
         try:
-            close_logger = self.logger.close
-            try:
-                import inspect
-
-                parameters = inspect.signature(close_logger).parameters.values()
-                accepts_keywords = any(
-                    parameter.kind is inspect.Parameter.VAR_KEYWORD
-                    or parameter.name in {"status", "failure"}
-                    for parameter in parameters
-                )
-            except (TypeError, ValueError):
-                accepts_keywords = True
-            if accepts_keywords:
-                close_logger(status=status, failure=failure)
-            else:
-                close_logger()
+            self.logger.close(status=self.run_status, failure=failure, profiler=self.profiler)
         except BaseException as error:
             if primary_failure is None:
                 primary_failure = error
@@ -2677,21 +2379,18 @@ class FVMSolver(CouplerInterfaceMixin):
 
     def __exit__(
         self,
-        _exc_type: type[BaseException] | None,
-        _exc_value: BaseException | None,
-        _traceback: TracebackType | None,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
-        status = "failed" if _exc_value is not None else None
-        self.close(status=status, failure=_exc_value)
+        self.close(failure=exc_value)
 
-    def evaluate(self, callback: Callable[..., object], *args: object, **kwargs: object) -> object:
-        """Run an analysis once against a complete, detached field snapshot.
+    def evaluate(self, callback, *args: object, **kwargs: object) -> object:
+        """Run an analysis once on a complete, detached snapshot of the fields.
 
         Calls ``callback(snapshot, *args, **kwargs)`` and returns its result.
-        The library gathers interior cells and physical boundary faces, owns
-        output, and propagates failures. Callbacks contain physical analysis
-        code; no MPI calls or rank checks are needed. Only explicitly requested
-        analyses gather full fields; normal solver steps remain distributed.
+        The interior cells and physical boundary faces are gathered; the
+        callback needs no MPI calls or rank checks.
         """
         from ..io.analysis import evaluate
 
@@ -2705,45 +2404,47 @@ class FVMSolver(CouplerInterfaceMixin):
         columns: Sequence[str],
         append: bool = False,
     ) -> None:
-        """Write a table once; relative filenames use the solution directory."""
+        """Write a table once; a relative file name is below ``solution/``."""
         from ..io.analysis import write_csv
 
         write_csv(self, filename, rows, columns=columns, append=append)
 
     def restore_history(self, filename: str | Path) -> bool:
-        """Rewind a case-owned CSV history to this accepted clock.
+        """Rewind a case CSV history to the accepted time.
 
-        Use after ``start_from`` in custom time loops, before appending rows.
-        Return whether the history already contains this accepted time.
-        Relative paths resolve in the solution directory. Rows after the
-        restored time are deleted, as for native sampler histories. Collective
-        under MPI.
+        Use after :meth:`start_from` in a custom time loop, before appending
+        rows. A relative path is below ``solution/``. Rows after the accepted
+        time are deleted. Collective under MPI.
+
+        Returns
+        -------
+        bool
+            Whether the history already holds the accepted time.
         """
+        import csv
+
+        from openonda.core.file_output import TIME_TOLERANCE, rewind_csv
+
         error = None
         current = False
         if self.parallel.is_root:
             try:
                 path = Path(filename)
                 if not path.is_absolute():
-                    path = Path(self.solution_dir) / path
-                if getattr(self, "_initial_run_selected", False):
-                    handled = getattr(self, "_initial_restored_histories", None)
-                    if handled is None:
-                        handled = self._initial_restored_histories = set()
-                    if path not in handled:
-                        self.io._rewind_csv(path, -1.0e100)
-                        handled.add(path)
+                    path = self.solution_dir / path
+                if self._initial_run_selected:
+                    if path not in self._initial_rewound_histories:
+                        rewind_csv(path, -1.0e100)
+                        self._initial_rewound_histories.add(path)
                 else:
-                    self.io._rewind_csv(path, self.time)
+                    rewind_csv(path, self.time)
                 if path.is_file():
-                    import csv
-
                     with path.open(newline="", encoding="utf-8") as stream:
                         current = any(
-                            abs(float(row["time"]) - self.time) <= 1e-12
+                            abs(float(row["time"]) - self.time) <= TIME_TOLERANCE
                             for row in csv.DictReader(stream)
                         )
             except Exception as exc:
                 error = exc
-        self._collective_io_failure(error, "application history time alignment")
+        self._collective_io_failure(error, "history time alignment")
         return self.parallel.bcast(current, root=0)

@@ -17,7 +17,7 @@ from .topology import build_cell_face_csr, pack_face_nodes
 if TYPE_CHECKING:
     import pyvista as pv
 
-    from ..config.types import MeshQualityConfig
+    from ..config.mesh_quality import MeshQualityConfig
 
 
 class MeshQualityReport(TypedDict):

@@ -1,15 +1,10 @@
 """
 Vortex-lattice-method (VLM) subpackage: geometry, solver, kinematics, and VPM
 coupling.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 # Kinematics classes for moving surfaces
-from .config import ForceConfig, VLMMeshSetup, VLMSetup, VLMSurfaceSetup
+from .config import ForceConfig, VLMConfig, VLMMeshConfig, VLMSurface
 from .coupling.kinematics import (
     CompositeVLM,
     HeavingVLM,
@@ -28,23 +23,22 @@ from .solver.vlm_solver import VLMSolver
 
 __all__ = [
     "Aircraft",
-    "Wing",
-    "WingSegment",
-    "VLMSolver",
-    "ForceConfig",
-    "VLMSetup",
-    "VLMSurfaceSetup",
-    "VLMMeshSetup",
-    "VLMLattice",
     "BoundSurfaceFieldSettings",
-    # Kinematics
-    "VLMKinematics",
+    "CompositeVLM",
+    "ForceConfig",
+    "HeavingVLM",
+    "LinearPeriodicVLM",
+    "ManeuverVLM",
+    "PitchingVLM",
+    "RotatingVLM",
     "StaticVLM",
     "TranslatingVLM",
-    "RotatingVLM",
-    "ManeuverVLM",
-    "HeavingVLM",
-    "PitchingVLM",
-    "LinearPeriodicVLM",
-    "CompositeVLM",
+    "VLMConfig",
+    "VLMKinematics",
+    "VLMLattice",
+    "VLMMeshConfig",
+    "VLMSolver",
+    "VLMSurface",
+    "Wing",
+    "WingSegment",
 ]

@@ -3,70 +3,58 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import replace
 import io
 import json
-from pathlib import Path
-import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
 
-from openonda.fvm import (
-    BoundaryConfig,
-    DiscretizationConfig,
-    FVMCase,
-    FVMSetup,
-    FVMSolver,
-    InitialFields,
-    LinearSolverConfig,
-    LineSampler,
-    PimpleControl,
-    RunSchedule,
-    TimeConfig,
-    TransportConfig,
-)
-from openonda.fvm.factory import create_fvm_solver
+from openonda import fvm
 from openonda.fvm.io.backup import decode_state, encode_state
 from openonda.fvm.io.mesh_storage import load_native_mesh, save_native_mesh
+from openonda.fvm.mesh.construction import save_mesh
 from openonda.fvm.mesh.validation import validate_topology
-from openonda.fvm.sampling.base import write_pvd
 from tests.support.fvm_mesh import structured_box
 
 
-def _setup(linear: LinearSolverConfig | None = None) -> FVMSetup:
-    return FVMSetup(
-        case_name="restart_test",
-        time=TimeConfig(
+def _case(directory, linear: fvm.LinearSolverConfig | None = None, mesh=None, **fields):
+    return fvm.FVMCase(
+        name="restart_test",
+        directory=directory,
+        numerics=fvm.Numerics(
             time_step_size=0.01,
-            end_time=0.1,
-            output_schedule=RunSchedule(every_n_steps=100),
+            schemes=fvm.DiscretizationConfig(convection_scheme="upwind", time_scheme="backward"),
+            linear=linear or fvm.LinearSolverConfig(linear_solver="spsolve"),
+            pimple=fvm.PimpleConfig(n_correctors=2),
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.02),
         ),
-        schemes=DiscretizationConfig(convection_scheme="upwind", time_scheme="backward"),
-        linear=linear or LinearSolverConfig(linear_solver="spsolve"),
-        pimple=PimpleControl(n_correctors=2),
-        transport=TransportConfig(density=1.0, kinematic_viscosity=0.02),
-        boundaries=[
-            BoundaryConfig.inlet("xmin", [0.5, 0.0, 0.0]),
-            BoundaryConfig.outlet("xmax"),
-            BoundaryConfig.wall("ymin"),
-            BoundaryConfig.wall("ymax"),
-            BoundaryConfig.wall("zmin"),
-            BoundaryConfig.wall("zmax"),
-        ],
-        initial_velocity=[0.2, 0.0, 0.0],
+        initial_conditions=fvm.InitialFields(velocity=(0.2, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=0.1),
+        logging=fvm.LoggingConfig(console=False),
+        mesh=structured_box(2, 2, 2) if mesh is None else mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("xmin", (0.5, 0.0, 0.0)),
+            fvm.BoundaryConfig.outlet("xmax"),
+            fvm.BoundaryConfig.wall("ymin"),
+            fvm.BoundaryConfig.wall("ymax"),
+            fvm.BoundaryConfig.wall("zmin"),
+            fvm.BoundaryConfig.wall("zmax"),
+        ),
+        **fields,
     )
 
 
 def _solver(case_dir, linear=None, mesh=None):
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = FVMSolver(_setup(linear), str(case_dir), mesh_data=mesh or structured_box(2, 2, 2))
+        solver = fvm.FVMSolver(_case(case_dir, linear, mesh))
     solver.auto_write = False
     return solver
 
 
 def test_restart_continues_the_uninterrupted_run_bit_for_bit(tmp_path):
     """Reused AMG/ILU preconditioners are rebuilt at each backup, as on restart."""
-    linear = LinearSolverConfig(momentum_preconditioner="ilu")
+    linear = fvm.LinearSolverConfig(momentum_preconditioner="ilu")
     mesh = structured_box(6, 4, 4)
     reference = _solver(tmp_path / "reference", linear, mesh)
     interrupted = _solver(tmp_path / "interrupted", linear, mesh)
@@ -74,14 +62,14 @@ def test_restart_continues_the_uninterrupted_run_bit_for_bit(tmp_path):
         for _ in range(3):
             reference.advance()
             interrupted.advance()
-        reference.save_state(tmp_path / "reference.npz")
+        reference.save_backup(tmp_path / "reference.npz")
         for _ in range(3):
             reference.advance()
 
-    backup = tmp_path / "restart.npz"
-    interrupted.save_state(backup)
+    backup = interrupted.save_backup()
+    assert backup == tmp_path / "interrupted/solution/fvm/fvm_000003.npz"
     resumed = _solver(tmp_path / "resumed", linear, mesh)
-    resumed.load_state(backup)
+    resumed.load_backup(backup)
     with contextlib.redirect_stdout(io.StringIO()):
         for _ in range(3):
             resumed.advance()
@@ -100,6 +88,22 @@ def test_restart_continues_the_uninterrupted_run_bit_for_bit(tmp_path):
     assert resumed.step == reference.step
 
 
+def test_backup_records_configuration_and_mesh_digests(tmp_path):
+    solver = _solver(tmp_path)
+    with contextlib.redirect_stdout(io.StringIO()):
+        solver.advance()
+    backup = solver.save_backup()
+    solver.close()
+    with np.load(backup) as archive:
+        metadata = json.loads(str(archive["metadata"]))
+    assert set(metadata) == {
+        "format_version",
+        "configuration_sha256",
+        "mesh_sha256",
+        "kinematic_viscosity",
+    }
+
+
 def test_memory_snapshot_replays_the_same_step_as_disk_restart(tmp_path):
     from openonda.fvm.io.backup import capture_restart_state, restore_restart_state
 
@@ -108,12 +112,12 @@ def test_memory_snapshot_replays_the_same_step_as_disk_restart(tmp_path):
         solver.advance()
         solver.advance()
         snapshot = capture_restart_state(solver)
-        solver.save_state(tmp_path / "accepted.npz")
+        accepted = solver.save_backup()
         solver.advance()
         restore_restart_state(solver, snapshot)
         solver.advance()
         from_memory = capture_restart_state(solver)
-        solver.load_state(tmp_path / "accepted.npz")
+        solver.load_backup(accepted)
         solver.advance()
         from_disk = capture_restart_state(solver)
     for name in from_disk.fields:
@@ -124,59 +128,46 @@ def test_memory_snapshot_replays_the_same_step_as_disk_restart(tmp_path):
 
 
 def test_solver_metadata_serializes_sampler_configuration(tmp_path):
-    setup = _setup()
-    setup.samplers = (
-        LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=3, file_name="centreline"),
+    case = _case(
+        tmp_path,
+        samplers=fvm.Samplers(
+            (fvm.LineSampler((0, 0, 0), (1, 0, 0), n_points=3, file_name="centreline"),)
+        ),
     )
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = FVMSolver(setup, str(tmp_path), mesh_data=structured_box(2, 2, 2))
-    default_metadata = tmp_path / "solution" / "fvm_metadata.json"
-    assert default_metadata.is_file()
-    assert json.loads(default_metadata.read_text(encoding="utf-8"))["run_status"] == {
-        "status": "created"
-    }
-
-    destination = tmp_path / "metadata.json"
-    solver.write_run_metadata(destination)
+        solver = fvm.FVMSolver(case)
+    metadata = tmp_path / "solution" / "fvm_metadata.json"
+    assert json.loads(metadata.read_text(encoding="utf-8"))["run_status"] == {"status": "created"}
     solver.close()
 
-    saved_data = json.loads(destination.read_text(encoding="utf-8"))
-    assert saved_data["schema_version"] == 2
-    assert saved_data["solver"] == "FVM"
+    saved_data = json.loads(metadata.read_text(encoding="utf-8"))
+    assert saved_data["solver"] == "fvm"
     assert saved_data["case_name"] == "restart_test"
-    assert saved_data.get("run_status", {}) == {}
-    assert "reason" not in saved_data
-    assert "failure" not in saved_data
-    assert "error" not in saved_data
     sampler = saved_data["configuration"]["samplers"][0]
     assert sampler["type"] == "LineSampler"
     assert sampler["file_name"] == "centreline"
     assert sampler["n_points"] == 3
 
 
-def test_solver_owns_named_solution_and_sample_directories(tmp_path):
-    setup = _setup()
-    setup.samplers = (
-        LineSampler(start=[0, 0, 0], end=[1, 0, 0], n_points=3, file_name="centreline"),
+def test_case_variant_selects_solution_and_sample_directories(tmp_path):
+    case = _case(
+        tmp_path,
+        variant="coarse",
+        samplers=fvm.Samplers(
+            (fvm.LineSampler((0, 0, 0), (1, 0, 0), n_points=3, file_name="centreline"),)
+        ),
     )
     solution = tmp_path / "solution" / "coarse"
     samples = tmp_path / "samples" / "coarse"
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = FVMSolver(
-            setup,
-            str(tmp_path),
-            solution_dir=str(solution),
-            samples_dir=str(samples),
-            mesh_data=structured_box(2, 2, 2),
-        )
+        solver = fvm.FVMSolver(case)
         assert solution.is_dir()
         assert samples.is_dir()
         solver.advance()
-    solver.write_run_metadata()
     solver.close()
 
-    assert Path(solver.solution_dir) == solution
-    assert Path(solver.samples_dir) == samples
+    assert solver.solution_dir == solution
+    assert solver.samples_dir == samples
     assert (solution / "fvm.log").is_file()
     assert (solution / "fvm_metadata.json").is_file()
     assert (samples / "centreline.csv").is_file()
@@ -194,164 +185,52 @@ def test_native_mesh_archive_round_trips_without_pickle(tmp_path):
     assert restored["boundary"] == mesh["boundary"]
 
 
-def test_solver_factory_keeps_generated_mesh_with_case_assets(tmp_path):
-    from openonda.fvm.factory import mesh_asset_path
+@pytest.mark.parametrize("source_kind", ["callable", "mesher", "file"])
+def test_solver_keeps_the_case_mesh_with_its_assets(tmp_path, source_kind):
+    class Mesher:
+        def build(self):
+            return structured_box(2, 2, 2)
 
-    solution = tmp_path / "solution" / "generated"
+    if source_kind == "file":
+        source = save_native_mesh(structured_box(2, 2, 2), tmp_path / "input.npz")
+    elif source_kind == "mesher":
+        source = Mesher()
+    else:
+        source = lambda: structured_box(2, 2, 2)  # noqa: E731
     with contextlib.redirect_stdout(io.StringIO()):
-        solver = create_fvm_solver(
-            _setup(),
-            case_dir=tmp_path,
-            solution_dir=solution,
-            mesh=lambda: structured_box(2, 2, 2),
-        )
+        solver = fvm.FVMSolver(_case(tmp_path, mesh=source))
     solver.close()
 
-    native = mesh_asset_path(tmp_path, _setup().case_name)
-    paraview = native.with_suffix(".vtu")
-    assert native.parent == tmp_path / "assets"
-    assert not (solution / "fvm" / "mesh.npz").exists()
-    assert native.is_file()
-    assert paraview.is_file()
+    native = solver.case.mesh_path
+    assert native == tmp_path / "assets" / "restart_test_mesh.npz"
+    assert native.with_suffix(".vtu").is_file()
     validate_topology(load_native_mesh(native))
 
     import pyvista as pv
 
-    grid = pv.read(paraview)
+    grid = pv.read(native.with_suffix(".vtu"))
     assert grid.n_cells == 8
     assert "cell_volume" in grid.cell_data
+    mesher_log = (tmp_path / "solution" / "mesher.log").read_text(encoding="utf-8")
+    assert "mesh construction" in mesher_log and "mesh export" in mesher_log
+    assert "complete" in mesher_log
 
 
-def test_solver_factory_builds_mesher_objects_and_persists_the_result(tmp_path):
-    class Mesher:
-        def build(self):
-            return structured_box(2, 2, 2)
-
-    solution = tmp_path / "solution" / "mesher-object"
-    with contextlib.redirect_stdout(io.StringIO()):
-        solver = create_fvm_solver(
-            _setup(),
-            case_dir=tmp_path,
-            solution_dir=solution,
-            mesh=Mesher(),
-        )
-    solver.close()
-
-    from openonda.fvm.factory import mesh_asset_path
-
-    native = mesh_asset_path(tmp_path, _setup().case_name)
-    assert native.is_file()
-    assert native.with_suffix(".vtu").is_file()
-
-
-def test_solver_factory_prepares_output_directories_and_log_before_meshing(tmp_path, monkeypatch):
-    from openonda.fvm.io import logging as fvm_logging
-
-    solution = tmp_path / "solution" / "startup"
-    samples = tmp_path / "samples" / "startup"
-    observed = {}
-    console = io.StringIO()
-    monkeypatch.setattr(fvm_logging, "_CONSOLE_STDOUT", console)
-
-    class Mesher:
-        def build(self):
-            observed["solution_exists"] = solution.is_dir()
-            observed["samples_exists"] = samples.is_dir()
-            observed["log"] = (solution / "fvm.log").read_text(encoding="utf-8")
-            observed["mesher_log"] = (solution / "mesher.log").read_text(encoding="utf-8")
-            return structured_box(2, 2, 2)
-
-    with contextlib.redirect_stdout(io.StringIO()):
-        solver = create_fvm_solver(
-            _setup(),
-            case_dir=tmp_path,
-            solution_dir=solution,
-            samples_dir=samples,
-            mesh=Mesher(),
-        )
-    solver.close()
-
-    assert observed["solution_exists"]
-    assert observed["samples_exists"]
-    assert "FVM STARTUP" in observed["log"]
-    assert "building or loading mesh" in observed["log"]
-    assert str(solution / "mesher.log") in "".join(observed["log"].split())
-    assert str(solution / "mesher.log") in "".join(console.getvalue().split())
-    assert "meshing session" in observed["mesher_log"]
-    assert "mesh construction" in observed["mesher_log"]
-    assert "mesh construction" in console.getvalue()
-    assert "done" in console.getvalue()
-    completed_log = (solution / "mesher.log").read_text(encoding="utf-8")
-    assert "mesh construction" in completed_log
-    assert "mesh export" in completed_log
-    assert "complete" in completed_log
-
-
-def test_solver_factory_uses_default_solution_directory_for_mesher_log(tmp_path):
-    with contextlib.redirect_stdout(io.StringIO()):
-        solver = create_fvm_solver(
-            _setup(),
-            case_dir=tmp_path,
-            mesh=lambda: structured_box(2, 2, 2),
-        )
-    solver.close()
-
-    log_path = tmp_path / "solution" / "mesher.log"
-    assert log_path.is_file()
-    assert str(log_path) in "".join(
-        (tmp_path / "solution" / "fvm.log").read_text(encoding="utf-8").split()
-    )
-
-
-def test_solver_factory_records_mesher_failure_in_solution_log(tmp_path):
-    solution = tmp_path / "custom-output"
-
+def test_mesher_failure_is_recorded_in_the_mesher_log(tmp_path):
     def fail_mesh():
         raise RuntimeError("deliberate mesher failure")
 
     with pytest.raises(RuntimeError, match="deliberate mesher failure"):
-        create_fvm_solver(
-            _setup(),
-            case_dir=tmp_path,
-            solution_dir=solution,
-            mesh=fail_mesh,
-        )
+        fvm.FVMSolver(_case(tmp_path, mesh=fail_mesh))
 
-    mesher_log = (solution / "mesher.log").read_text(encoding="utf-8")
+    mesher_log = (tmp_path / "solution" / "mesher.log").read_text(encoding="utf-8")
     assert "mesh construction" in mesher_log and "failed" in mesher_log
     assert "meshing session" in mesher_log and "failed" in mesher_log
-    assert "Error type" in mesher_log and "RuntimeError" in mesher_log
-    assert "Error" in mesher_log and "deliberate mesher failure" in mesher_log
+    assert "RuntimeError" in mesher_log and "deliberate mesher failure" in mesher_log
 
 
-def test_public_fvm_case_uses_same_default_solution_mesher_log(tmp_path):
-    case = FVMCase(
-        name="public-mesher-log",
-        mesh=lambda: structured_box(2, 2, 2),
-        directory=tmp_path,
-        boundaries=tuple(_setup().boundaries),
-        initial_conditions=InitialFields(velocity=(0.2, 0.0, 0.0)),
-    )
-
-    with contextlib.redirect_stdout(io.StringIO()):
-        solver = FVMSolver(case)
-    solver.close()
-
-    assert Path(solver.solution_dir) == tmp_path / "solution"
-    mesher_log = (tmp_path / "solution" / "mesher.log").read_text(encoding="utf-8")
-    assert "mesh construction" in mesher_log
-    assert "complete" in mesher_log
-
-
-@pytest.mark.parametrize("source_kind", ["dictionary", "file"])
-def test_factory_writes_loaded_mesh_before_solver_validation(tmp_path, monkeypatch, source_kind):
-    from openonda.fvm.core import solver as solver_module
-    from openonda.fvm.factory import mesh_asset_path
-
-    mesh = structured_box(2, 2, 2)
-    source = save_native_mesh(mesh, tmp_path / "input.npz") if source_kind == "file" else mesh
-    solution = tmp_path / "solution" / source_kind
-    native = mesh_asset_path(tmp_path, _setup().case_name)
+def test_rejected_mesh_is_stored_before_geometric_validation(tmp_path, monkeypatch):
+    native = _case(tmp_path).mesh_path
 
     def reject(*args, **kwargs):
         import pyvista as pv
@@ -360,32 +239,35 @@ def test_factory_writes_loaded_mesh_before_solver_validation(tmp_path, monkeypat
         validate_topology(load_native_mesh(native))
         raise ValueError("deliberate production validation failure")
 
-    monkeypatch.setattr(solver_module, "FVMSolver", reject)
+    monkeypatch.setattr("openonda.fvm.mesh.validation.validate_topology", reject)
     with pytest.raises(ValueError, match="deliberate production validation"):
-        create_fvm_solver(_setup(), case_dir=tmp_path, solution_dir=solution, mesh=source)
+        fvm.FVMSolver(_case(tmp_path))
 
 
 def test_repeated_startup_replaces_the_case_mesh(tmp_path):
-    from openonda.fvm.factory import _save_generated_mesh
-
     path = tmp_path / "assets" / "case_mesh.npz"
-    _save_generated_mesh(structured_box(2, 2, 2), path, _setup().output)
-    _save_generated_mesh(structured_box(3, 2, 2), path, _setup().output)
+    save_mesh(structured_box(2, 2, 2), path, fvm.Output())
+    save_mesh(structured_box(3, 2, 2), path, fvm.Output())
     assert sorted(item.name for item in path.parent.iterdir()) == ["case_mesh.npz", "case_mesh.vtu"]
     assert load_native_mesh(path)["n_cells"] == 12
 
 
-def test_pvd_index_merges_existing_frames_across_restart(tmp_path):
-    write_pvd(tmp_path, "slice", [(0.5, "slice_000050.vts"), (1.0, "slice_000100.vts")])
-    write_pvd(tmp_path, "slice", [(1.5, "slice_000150.vts")])
-    write_pvd(tmp_path, "slice", [(1.0, "slice_000100.vts")])
+def test_surface_frames_merge_into_the_existing_collection_after_restart(tmp_path):
+    from openonda.core.vtk_output import read_collection
 
-    datasets = ET.parse(Path(tmp_path) / "slice.pvd").findall(".//DataSet")
-    assert [(float(item.attrib["timestep"]), item.attrib["file"]) for item in datasets] == [
-        (0.5, "slice_000050.vts"),
-        (1.0, "slice_000100.vts"),
-        (1.5, "slice_000150.vts"),
-    ]
+    surface = fvm.SurfaceSampler((0.5, 0.5, 0.5), (0, 0, 1), (0, 1, 0, 1), 0.5, file_name="slice")
+    case = replace(
+        _case(tmp_path, samplers=fvm.Samplers((surface,))),
+        backup=fvm.Backup(schedule=fvm.EverySteps(1)),
+        run=fvm.RunPlan(end_time=0.02),
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        with fvm.FVMSolver(case) as first:
+            first.run(start_from="latest")
+        with fvm.FVMSolver(replace(case, run=fvm.RunPlan(end_time=0.03))) as second:
+            second.run(start_from="latest")
+    frames = read_collection(tmp_path / "samples" / "slice.pvd")
+    assert [name for _, name in frames] == [f"slice_{step:06d}.vts" for step in range(4)]
 
 
 def test_backup_storage_codec_is_bit_exact_for_history_and_scalars():

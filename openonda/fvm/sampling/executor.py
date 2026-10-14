@@ -1,142 +1,74 @@
-"""Sampler execution for the FVM solver.
+"""Dispatch of the FVM samplers at the output events of a run.
 
-:class:`FVMSamplerExecutor` runs after every accepted solver step (and once at
-initialisation).  Each sampler decides, through its own
-:class:`~openonda.fvm.config.RunSchedule`, whether it is due; the executor never applies
-a global force cadence.  A ``final_only`` schedule is selected only when the
-caller explicitly dispatches the final run event.
-
-Force and y+ sampling are MPI-collective in partitioned runs and are never
-wrapped in error handling that could let ranks diverge.  Field samplers (line /
-surface) gather owned data to root and are therefore **root-only** — non-root
-ranks return after the collective sample, they never touch the filesystem, so
-there is no PVD race and no ``samples/`` directory creation on non-root ranks.
-
-Sampler failures are strict by default: a missing scientific sample aborts the
-step rather than being mistaken for successful output.  Callers may explicitly
-choose ``strict=False`` when a best-effort diagnostic is appropriate.
+Force and y+ samplers are collective in a partitioned run; field samplers
+gather the owned cells to rank 0, and only rank 0 writes files.
 """
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
-from . import base
+from openonda.core.output_events import OutputEvent
+from openonda.core.restart import output_has_time
+from openonda.core.schedules import FinalOnly
+from openonda.core.vtk_output import read_collection, write_collection
+
+from .fields import LineSampler, SurfaceSampler
 from .forces import ForceSampler, YPlusSampler
 
 if TYPE_CHECKING:
+    from openonda.core.sampling import Sampler
+
     from ..core.solver import FVMSolver
-    from .fields import LineSampler
 
 
-class FVMSamplerExecutor:
-    """Run FVM samplers for live and offline contexts.
+def _is_due(sampler: Sampler, solver: FVMSolver, event: OutputEvent) -> bool:
+    """Return whether ``sampler`` writes at ``event`` for the accepted state."""
+    if event is OutputEvent.initial:
+        return sampler.initial
+    if event is OutputEvent.final:
+        return isinstance(sampler.schedule, FinalOnly)
+    return sampler.is_due(solver.step, solver.time, solver._accepted_time_step_size)
 
-    Field samplers gather partition-owned values to root before writing; force
-    and y-plus samplers remain collective. The executor is stateless with
-    respect to cadence: each sampler's :class:`RunSchedule` decides eligibility.
+
+def execute_samplers(solver: FVMSolver, event: OutputEvent) -> None:
+    """Write the samplers that are due at ``event``.
+
+    Every rank must call this function in a partitioned run.
     """
-
-    @staticmethod
-    def execute(solver: FVMSolver, *, strict: bool = True, event: str = "accepted") -> None:
-        """Execute samplers for one run event.
-
-        ``initial`` and ``accepted`` evaluate ordinary step/time schedules at
-        the current state, including step zero. ``final`` selects only
-        schedules declared with ``final_only=True`` and never replays a
-        periodic sampler a second time.
-        """
-        if event not in {"accepted", "initial", "final"}:
-            raise ValueError(f"Unknown FVM sampler event {event!r}")
-        samplers = list(getattr(solver, "_samplers", getattr(solver.setup, "samplers", ())) or ())
-        auto_yplus = getattr(solver, "_default_yplus_sampler", None)
-        if auto_yplus is not None and auto_yplus not in samplers:
-            samplers.append(auto_yplus)
-        if not samplers:
-            return
-
-        parallel = solver.parallel
-        if not (parallel.is_root or parallel.is_partitioned):
-            return
-
-        samples_dir = solver.samples_dir
-        if parallel.is_root:
-            os.makedirs(samples_dir, exist_ok=True)
-
-        for sampler in samplers:
-            captured_schedules = getattr(solver, "_sampler_schedules", {})
-            schedule = captured_schedules.get(id(sampler))
-            if event == "final":
-                due = bool(
-                    schedule.is_final_only
-                    if schedule is not None
-                    else getattr(getattr(sampler, "schedule", None), "is_final_only", False)
-                )
-            else:
-                due = (
-                    schedule.is_due(solver.step, solver.time, solver._accepted_time_step_size)
-                    if schedule is not None
-                    else sampler.is_due(solver.step, solver.time, solver._accepted_time_step_size)
-                )
-            if not due:
+    samplers = [sampler for sampler in solver._samplers if _is_due(sampler, solver, event)]
+    parallel = solver.parallel
+    if not samplers or not (parallel.is_root or parallel.is_partitioned):
+        return
+    samples_dir = solver.samples_dir
+    if parallel.is_root:
+        samples_dir.mkdir(parents=True, exist_ok=True)
+    for sampler in samplers:
+        if event is OutputEvent.final and solver._restart_loaded:
+            # A run restored at its end time already holds the final sample.
+            exists = output_has_time(samples_dir, sampler.name, solver.time)
+            if parallel.bcast(exists if parallel.is_root else None, root=0):
                 continue
-            if event == "final" and getattr(solver, "_restart_loaded", False):
-                from openonda.core.restart import output_has_time
-
-                name = getattr(sampler, "file_name", None) or sampler.name
-                exists = (
-                    output_has_time(samples_dir, name, solver.time) if parallel.is_root else None
-                )
-                if parallel.is_partitioned:
-                    exists = parallel.bcast(exists, root=0)
-                if exists:
-                    continue
-            if isinstance(sampler, ForceSampler):
-                forces = sampler.sample(solver)
-                if parallel.is_root:
-                    sampler.write_csv(solver, samples_dir, forces)
-                    solver.logger.force_info(forces)
-            elif isinstance(sampler, YPlusSampler):
-                stats = sampler.sample(solver)
-                if parallel.is_root:
-                    solver.logger.yplus_info(stats)
-                    sampler.write_csv(solver, samples_dir, stats)
-            else:
-                FVMSamplerExecutor._write_field_sampler(solver, sampler, samples_dir, strict=strict)
-
-    @staticmethod
-    def _write_field_sampler(
-        solver: FVMSolver, sampler: LineSampler, samples_dir: str, *, strict: bool = True
-    ) -> None:
-        """Write one field sampler and update its VTK time-series index."""
-        if hasattr(sampler, "save_vts"):
-            filename = f"{sampler.name}_{solver.step:06d}.vts"
-            try:
-                data = sampler.save_vts(solver, os.path.join(samples_dir, filename))
-            except Exception as exc:
-                FVMSamplerExecutor._handle_failure(solver, sampler, exc, strict)
-                return
-            if not solver.parallel.is_root or data is None:
-                return
-            pvd_runtime = getattr(solver, "_sample_pvd_entries", None)
-            if pvd_runtime is None:
-                pvd_runtime = solver._sample_pvd_entries = {}
-            entries = pvd_runtime.setdefault(sampler.name, [])
-            entries.append((solver.time, filename))
-            base.write_pvd(samples_dir, sampler.name, entries)
+        if isinstance(sampler, ForceSampler):
+            forces = sampler.sample(solver)
+            if parallel.is_root:
+                sampler.write_csv(solver, samples_dir, forces)
+                solver.logger.forces(forces)
+        elif isinstance(sampler, YPlusSampler):
+            statistics = sampler.sample(solver)
+            if parallel.is_root:
+                solver.logger.y_plus(statistics)
+                sampler.write_csv(solver, samples_dir, statistics)
+        elif isinstance(sampler, SurfaceSampler):
+            file_name = f"{sampler.name}_{solver.step:06d}.vts"
+            if sampler.write_vtk(solver, samples_dir / file_name):
+                collection = samples_dir / f"{sampler.name}.pvd"
+                frames = solver._sample_collections.get(sampler.name)
+                if frames is None:
+                    frames = solver._sample_collections[sampler.name] = read_collection(collection)
+                frames.append((solver.time, file_name))
+                write_collection(collection, frames)
+        elif isinstance(sampler, LineSampler):
+            sampler.write_csv(solver, samples_dir)
         else:
-            try:
-                sampler.write_csv(solver, samples_dir)
-            except Exception as exc:
-                FVMSamplerExecutor._handle_failure(solver, sampler, exc, strict)
-
-    @staticmethod
-    def _handle_failure(
-        solver: FVMSolver, sampler: base.Sampler, exc: Exception, strict: bool
-    ) -> None:
-        """Raise or log a sampler failure according to ``strict`` settings."""
-        name = getattr(sampler, "file_name", None) or sampler.__class__.__name__
-        if strict:
-            raise RuntimeError(f"Sampler '{name}' failed: {exc}") from exc
-        solver.logger.warning(f"Sampler {name!r} failed: {exc}")
+            raise TypeError(f"Unsupported FVM sampler {type(sampler).__name__}")

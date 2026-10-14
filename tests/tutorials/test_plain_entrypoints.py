@@ -91,10 +91,9 @@ class Constructed(Exception):
 def capture(*args, **kwargs):
     print("DEFAULT_CASE_CONSTRUCTED")
     raise Constructed
-fvm.create_fvm_solver = capture
 fvm.FVMSolver = capture
 vpm.VPMSolver = capture
-coupler.create_coupler = capture
+coupler.CoupledSolver = capture
 setup = sys.argv[1]
 sys.argv = [setup]
 sys.path.insert(0, str(__import__("pathlib").Path(setup).parent))

@@ -22,6 +22,6 @@ __all__ = [
     "FeatureRefinement",
     "GenerationReport",
     "PatchRefinement",
-    "SizeReport",
     "STLSurface",
+    "SizeReport",
 ]

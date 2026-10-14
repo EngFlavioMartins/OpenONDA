@@ -46,7 +46,7 @@ def evaluate(
     solver: FVMSolver, callback: Callable[..., object], *args: object, **kwargs: object
 ) -> object:
     """Gather owned fields, evaluate once, and share the result or failure."""
-    from ..fields.diagnostics import compute_continuity_error
+    from ..diagnostics.fields import compute_continuity_error
 
     parallel = solver.parallel
     mesh = solver.mesh_data

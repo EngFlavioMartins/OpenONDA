@@ -12,11 +12,9 @@ import sys
 import numpy as np
 import pytest
 
-from openonda import fvm
-from openonda.coupler import CouplerSetup, FVMVPMCoupler
-from openonda.fvm.fields.diagnostics import compute_surface_forces
+from openonda import coupler, fvm, vpm
+from openonda.fvm.diagnostics.fields import compute_surface_forces
 from openonda.fvm.mesh.rectilinear import coupling_box_mesh
-from openonda.vpm import DirectInduction, Numerics, ViscousConfig, VPMCase, VPMSolver
 
 SPACING = 0.125  # m, FVM cell and particle spacing
 STREAM = np.array([0.4, 0.1, 0.0])  # m/s
@@ -31,57 +29,60 @@ def _mesh():
     )
 
 
-def _fvm_setup(stream, motion, *, time_step_size=FVM_STEP, end_time=4 * EXCHANGE_STEP):
-    return fvm.FVMSetup(
-        case_name="moving_body",
-        time=fvm.TimeConfig(time_step_size=time_step_size, end_time=end_time),
-        linear=fvm.LinearSolverConfig(momentum_tolerance=1e-12, pressure_tolerance=1e-12),
-        transport=fvm.TransportConfig(kinematic_viscosity=VISCOSITY),
-        schemes=fvm.DiscretizationConfig(time_scheme="backward"),
-        boundaries=[
+def _fvm_case(directory, stream, motion, *, time_step_size=FVM_STEP, end_time=4 * EXCHANGE_STEP):
+    return fvm.FVMCase(
+        name="moving_body",
+        directory=directory,
+        numerics=fvm.Numerics(
+            time_step_size=time_step_size,
+            transport=fvm.TransportConfig(kinematic_viscosity=VISCOSITY),
+            schemes=fvm.DiscretizationConfig(time_scheme="backward"),
+            linear=fvm.LinearSolverConfig(momentum_tolerance=1e-12, pressure_tolerance=1e-12),
+        ),
+        initial_conditions=fvm.InitialFields(velocity=tuple(stream)),
+        run=fvm.RunPlan(end_time=end_time),
+        mesh=_mesh,
+        boundaries=(
             fvm.BoundaryConfig.wall("body"),
             fvm.BoundaryConfig(
                 name="numericalBoundary",
-                velocity_type="fixedValue",
-                velocity_value=list(stream),
-                pressure_type="fixedFluxPressure",
+                velocity_value=tuple(stream),
+                pressure_type="fixed_flux_pressure",
             ),
-        ],
-        initial_velocity=list(stream),
+        ),
         mesh_motion=motion,
     )
 
 
-def _coupler(directory, stream, motion, *, end_time=4 * EXCHANGE_STEP, backup_interval_steps=100):
-    particles = VPMSolver(
-        VPMCase(
-            directory=directory,
-            numerics=Numerics(
-                time_step_size=EXCHANGE_STEP,
-                compute_device="CPU",
-                max_n_particles=50_000,
-                domain_bounds=(-3.0, 3.0) * 3,
-                freestream_velocity=tuple(stream),
-                induction=DirectInduction(),
-                viscous=ViscousConfig.gbd(
-                    kinematic_viscosity=VISCOSITY,
-                    particle_spacing=SPACING,
-                    padding=4,
-                    threshold=1e-5,
-                    threshold_mode="absolute",
-                ),
+def _coupled_solver(directory, stream, motion, *, end_time=4 * EXCHANGE_STEP, backup=None):
+    particles = vpm.VPMCase(
+        name="moving_body",
+        directory=directory,
+        numerics=vpm.Numerics(
+            time_step_size=EXCHANGE_STEP,
+            compute_device="cpu",
+            max_n_particles=50_000,
+            domain_bounds=(-3.0, 3.0) * 3,
+            freestream_velocity=tuple(stream),
+            induction=vpm.DirectInduction(),
+            viscous=vpm.ViscousConfig.gbd(
+                kinematic_viscosity=VISCOSITY,
+                particle_spacing=SPACING,
+                padding=4,
+                threshold=1e-5,
+                threshold_mode="absolute",
             ),
-        )
+        ),
+        run=vpm.RunPlan(end_time=end_time),
     )
-    flow = fvm.FVMSolver(
-        _fvm_setup(stream, motion, end_time=end_time), case_dir=str(directory), mesh_data=_mesh()
-    )
-    setup = CouplerSetup(
-        freestream_velocity=list(stream),
+    config = coupler.CouplerConfig(
+        freestream_velocity=tuple(stream),
         eta_blend_width=0.0,
-        backup_interval_steps=backup_interval_steps,
+        backup=backup or coupler.Backup(),
     )
-    return FVMVPMCoupler(flow, particles, setup), flow, particles
+    return coupler.CoupledSolver(
+        _fvm_case(directory, stream, motion, end_time=end_time), particles, config
+    )
 
 
 def test_body_translating_through_still_fluid_couples_like_a_fixed_body(tmp_path):
@@ -93,58 +94,57 @@ def test_body_translating_through_still_fluid_couples_like_a_fixed_body(tmp_path
     since an impulsive start violates discrete continuity and then depends on
     the frame through the conservative convection term.
     """
-    start = fvm.FVMSolver(
-        _fvm_setup(STREAM, None, time_step_size=1e-4, end_time=1.0),
-        case_dir=str(tmp_path / "start"),
-        mesh_data=_mesh(),
-    )
-    start.advance()
-    start.advance()
+    with fvm.FVMSolver(
+        _fvm_case(tmp_path / "start", STREAM, None, time_step_size=1e-4, end_time=1.0)
+    ) as start:
+        start.advance()
+        start.advance()
 
     results = {}
     for moving in (False, True):
         frame_velocity = -STREAM if moving else np.zeros(3)
-        coupler, flow, particles = _coupler(
+        with _coupled_solver(
             tmp_path / ("moving" if moving else "fixed"),
             STREAM + frame_velocity,
             fvm.MeshMotion(fvm.TranslatingMotion(tuple(frame_velocity))) if moving else None,
-        )
-        mesh_flux = flow.mesh_motion.mesh_face_flux if moving else 0.0
-        for name in ("velocity", "velocity_old", "velocity_older"):
-            getattr(flow, name)[:] = getattr(start, name) + frame_velocity
-        for name in (
-            "volumetric_face_flux",
-            "volumetric_face_flux_old",
-            "volumetric_face_flux_older",
-        ):
-            getattr(flow, name)[:] = getattr(start, name) + mesh_flux
-        flow.kinematic_pressure[:] = start.kinematic_pressure
-        if moving:
-            flow.mesh_motion.update_boundaries(flow)
-        coupler.run(start_from="initial")
-        count = particles.particles.n_particles_total
-        position = np.asarray(particles.particle_position)[:count]
-        strength = np.asarray(particles.particle_vortex_strength)[:count]
-        order = np.lexsort(np.round(position, 6).T)
-        force = compute_surface_forces(
-            flow.velocity,
-            flow.kinematic_pressure,
-            VISCOSITY,
-            1.0,
-            flow.mesh_data,
-            flow.geo_data,
-            flow.boundaries,
-            patch_names=["body"],
-        )["body"]["total_force"]
-        results[moving] = (
-            flow.velocity - frame_velocity,
-            position[order],
-            strength[order],
-            force,
-            flow.geo_data["cell_centre"].mean(axis=0),
-        )
-        coupler.close()
-        flow.close()
+        ) as solver:
+            flow, particles = solver.fvm_solver, solver.vpm_solver
+            mesh_flux = flow.mesh_motion.mesh_face_flux if moving else 0.0
+            for name in ("velocity", "velocity_old", "velocity_older"):
+                getattr(flow, name)[:] = getattr(start, name) + frame_velocity
+            for name in (
+                "volumetric_face_flux",
+                "volumetric_face_flux_old",
+                "volumetric_face_flux_older",
+            ):
+                getattr(flow, name)[:] = getattr(start, name) + mesh_flux
+            flow.kinematic_pressure[:] = start.kinematic_pressure
+            if moving:
+                flow.mesh_motion.update_boundaries(flow)
+            solver.start_from("initial")
+            while solver.step < solver.n_steps:
+                solver.advance()
+            count = particles.particles.n_particles_total
+            position = np.asarray(particles.particle_position)[:count]
+            strength = np.asarray(particles.particle_vortex_strength)[:count]
+            order = np.lexsort(np.round(position, 6).T)
+            force = compute_surface_forces(
+                flow.velocity,
+                flow.kinematic_pressure,
+                VISCOSITY,
+                1.0,
+                flow.mesh_data,
+                flow.geo_data,
+                flow.boundaries,
+                patch_names=["body"],
+            )["body"]["total_force"]
+            results[moving] = (
+                flow.velocity - frame_velocity,
+                position[order],
+                strength[order],
+                force,
+                flow.geo_data["cell_centre"].mean(axis=0),
+            )
 
     fixed, moving = results[False], results[True]
     np.testing.assert_allclose(moving[4] - fixed[4], -STREAM * 4 * EXCHANGE_STEP, atol=1e-12)
@@ -155,51 +155,61 @@ def test_body_translating_through_still_fluid_couples_like_a_fixed_body(tmp_path
     assert len(fixed[1]) > 1000
 
 
+def _coupled_state(solver):
+    """Copy the FVM and particle state before the solver closes its device fields."""
+    flow, particles = solver.fvm_solver, solver.vpm_solver
+    count = particles.particles.n_particles_total
+    return {
+        "step": flow.step,
+        "cell_centre": flow.geo_data["cell_centre"].copy(),
+        "velocity": flow.velocity.copy(),
+        "freestream_velocity": np.array(particles.freestream_velocity),
+        "position": np.asarray(particles.particle_position)[:count].copy(),
+        "vortex_strength": np.asarray(particles.particle_vortex_strength)[:count].copy(),
+    }
+
+
 def test_heaving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path):
     """A coupled restart restores the mesh, the frame and the particle cloud."""
     heave = fvm.MeshMotion(fvm.HeavingMotion(0.1, 2.0, direction=(0.0, 1.0, 0.0)))
     end_time = 3 * EXCHANGE_STEP
-    continuous, continuous_flow, continuous_particles = _coupler(
-        tmp_path / "continuous", STREAM, heave, end_time=end_time, backup_interval_steps=1
-    )
-    continuous.run(start_from="initial")
-    first, _, _ = _coupler(
-        tmp_path / "restarted", STREAM, heave, end_time=end_time, backup_interval_steps=1
-    )
-    first.run(start_from="initial", max_coupling_steps=2)
-    restarted, restarted_flow, restarted_particles = _coupler(
-        tmp_path / "restarted", STREAM, heave, end_time=end_time, backup_interval_steps=1
-    )
-    restarted.run(start_from="latest")
+    backup = coupler.Backup(schedule=coupler.EverySteps(1))
+    with _coupled_solver(
+        tmp_path / "continuous", STREAM, heave, end_time=end_time, backup=backup
+    ) as continuous:
+        continuous.start_from("initial")
+        while continuous.step < continuous.n_steps:
+            continuous.advance()
+        expected = _coupled_state(continuous)
 
-    assert restarted_flow.step == continuous_flow.step
-    np.testing.assert_array_equal(
-        restarted_flow.geo_data["cell_centre"], continuous_flow.geo_data["cell_centre"]
-    )
-    np.testing.assert_allclose(restarted_flow.velocity, continuous_flow.velocity, atol=1e-6)
-    np.testing.assert_allclose(
-        restarted_particles.freestream_velocity, continuous_particles.freestream_velocity
-    )
-    count = continuous_particles.particles.n_particles_total
-    assert restarted_particles.particles.n_particles_total == count
-    np.testing.assert_array_equal(
-        np.asarray(restarted_particles.particle_position)[:count],
-        np.asarray(continuous_particles.particle_position)[:count],
-    )
-    np.testing.assert_allclose(
-        np.asarray(restarted_particles.particle_vortex_strength)[:count],
-        np.asarray(continuous_particles.particle_vortex_strength)[:count],
-        atol=1e-7,
-    )
+    with _coupled_solver(
+        tmp_path / "restarted", STREAM, heave, end_time=end_time, backup=backup
+    ) as first:
+        first.start_from("initial")
+        first.advance()
+        first.advance()
+    with _coupled_solver(
+        tmp_path / "restarted", STREAM, heave, end_time=end_time, backup=backup
+    ) as restarted:
+        assert restarted.start_from("latest")
+        assert restarted.step == 2
+        while restarted.step < restarted.n_steps:
+            restarted.advance()
+        actual = _coupled_state(restarted)
+
+    assert actual["step"] == expected["step"]
+    np.testing.assert_array_equal(actual["cell_centre"], expected["cell_centre"])
+    np.testing.assert_allclose(actual["velocity"], expected["velocity"], atol=1e-6)
+    np.testing.assert_allclose(actual["freestream_velocity"], expected["freestream_velocity"])
+    np.testing.assert_array_equal(actual["position"], expected["position"])
+    np.testing.assert_allclose(actual["vortex_strength"], expected["vortex_strength"], atol=1e-7)
 
 
 def test_rotating_mesh_is_rejected_by_the_coupling(tmp_path):
     """The VPM has no rotating frame, so a rotating FVM mesh cannot be coupled."""
-    coupler, _, _ = _coupler(
-        tmp_path, STREAM, fvm.MeshMotion(fvm.PitchingMotion(5.0, 1.0, rotation_axis=(0, 0, 1)))
-    )
+    pitch = fvm.MeshMotion(fvm.PitchingMotion(5.0, 1.0, rotation_axis=(0, 0, 1)))
     with pytest.raises(NotImplementedError, match="translating meshes"):
-        coupler.initialize()
+        _coupled_solver(tmp_path, STREAM, pitch)
 
 
 _PARTITIONED_CASE = """
@@ -209,37 +219,42 @@ from openonda import coupler, fvm, vpm
 from openonda.fvm.mesh.rectilinear import coupling_box_mesh
 
 cores = int(sys.argv[1])
-stream = [0.4, 0.1, 0.0]
-flow = fvm.FVMSetup(
-    case_name="moving", cores=cores,
-    time=fvm.TimeConfig(time_step_size=0.01, end_time=0.06),
-    linear=fvm.LinearSolverConfig(momentum_tolerance=1e-12, pressure_tolerance=1e-12),
-    transport=fvm.TransportConfig(kinematic_viscosity=0.01),
-    boundaries=[
+stream = (0.4, 0.1, 0.0)
+flow = fvm.FVMCase(
+    name="moving", directory=Path.cwd(), cores=cores,
+    numerics=fvm.Numerics(
+        time_step_size=0.01,
+        transport=fvm.TransportConfig(kinematic_viscosity=0.01),
+        linear=fvm.LinearSolverConfig(momentum_tolerance=1e-12, pressure_tolerance=1e-12),
+    ),
+    initial_conditions=fvm.InitialFields(velocity=stream),
+    run=fvm.RunPlan(end_time=0.06),
+    samplers=fvm.Samplers((fvm.ForceSampler(["body"], schedule=fvm.EverySteps(2)),)),
+    mesh=lambda: coupling_box_mesh((-1.0, 1.0) * 3, 0.125, hole_box=(-0.25, 0.25) * 3,
+        wall_patch_name="body"),
+    boundaries=(
         fvm.BoundaryConfig.wall("body"),
-        fvm.BoundaryConfig(name="numericalBoundary", velocity_type="fixedValue",
-            velocity_value=stream, pressure_type="fixedFluxPressure"),
-    ],
-    initial_velocity=stream,
-    samplers=(fvm.ForceSampler(["body"], schedule=fvm.RunSchedule(every_n_steps=2)),),
+        fvm.BoundaryConfig(name="numericalBoundary", velocity_value=stream,
+            pressure_type="fixed_flux_pressure"),
+    ),
     mesh_motion=fvm.MeshMotion(fvm.HeavingMotion(0.1, 2.0, direction=(0.0, 1.0, 0.0))),
 )
 particles = vpm.VPMCase(
-    directory=Path.cwd(),
+    name="moving", directory=Path.cwd(),
     numerics=vpm.Numerics(
-        time_step_size=0.02, compute_device="CPU", max_n_particles=50_000,
+        time_step_size=0.02, compute_device="cpu", max_n_particles=50_000,
         domain_bounds=(-3.0, 3.0) * 3, freestream_velocity=stream,
         induction=vpm.DirectInduction(),
         viscous=vpm.ViscousConfig.gbd(kinematic_viscosity=0.01, particle_spacing=0.125,
             padding=4, threshold=1e-5, threshold_mode="absolute"),
     ),
-    backup=vpm.Backup(interval_steps=0),
+    run=vpm.RunPlan(end_time=0.06),
 )
-settings = coupler.CouplerSetup(freestream_velocity=stream, eta_blend_width=0.0, backup_interval_steps=0)
-mesh = lambda: coupling_box_mesh((-1.0, 1.0) * 3, 0.125, hole_box=(-0.25, 0.25) * 3,
-    wall_patch_name="body")
-with coupler.create_coupler(flow, particles, settings, mesh=mesh) as driver:
-    driver.run(start_from="initial")
+config = coupler.CouplerConfig(
+    freestream_velocity=stream, eta_blend_width=0.0, backup=coupler.Backup(write_at_end=False)
+)
+with coupler.CoupledSolver(flow, particles, config) as solver:
+    solver.run(start_from="initial")
 """
 
 

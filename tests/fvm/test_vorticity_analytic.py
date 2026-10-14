@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from openonda.fvm.fields.diagnostics import compute_vorticity
+from openonda.fvm.diagnostics.fields import compute_vorticity
 from openonda.fvm.mesh.geometry import compute_mesh_geometry
 from openonda.fvm.mesh.rectilinear import box_mesh_3d
 
@@ -18,7 +18,7 @@ def test_gauss_curl_preserves_analytic_rotation_on_anisotropic_cells(stretch):
         wall_patch_name="cube",
     )
     for patch in mesh["boundary"]:
-        patch["velocity_type"] = "fixedValue"
+        patch["velocity_type"] = "fixed_value"
     geometry = compute_mesh_geometry(mesh, gradient_scheme="gauss", compute_lsq=False)
     points = np.vstack(
         (geometry["cell_centre"], geometry["face_centre"][mesh["n_interior_faces"] :])

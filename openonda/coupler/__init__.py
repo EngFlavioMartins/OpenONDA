@@ -1,31 +1,29 @@
-"""
-FVM-VPM Coupler module for OpenONDA.
-====================================
-Hybrid near-field (FVM) / far-field (VPM) simulations: the native FVM
-resolves the body and near wake inside a box whose boundary is driven by the
-particle field; the FVM-derived part of the overlap is replaced from an
-absolute common-lattice FVM/VPM circulation blend while the outer wake is
-retained.
+"""Coupled FVM--VPM solver of OpenONDA.
 
-The public driver follows the physical coupling sequence. Boundary sampling,
-vorticity transfer, backuping, and reporting live in focused modules
-beside it.
+The FVM resolves the body and the near wake inside a box whose outer boundary
+is driven by the particle field; the FVM vorticity renews the particles in the
+overlap while the VPM carries the outer wake::
 
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: June 2026
+    import openonda.coupler as coupling
 
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+    with coupling.CoupledSolver(fvm_case, vpm_case, coupling.CouplerConfig()) as solver:
+        solver.run(start_from="latest")
 """
 
+from openonda.core.schedules import EverySteps, EveryTime, FinalOnly
 from openonda.core.simulation.forcing import VelocityRamp
+from openonda.core.status import RunStatus
 
-from .config.types import CouplerSetup
-from .factory import create_coupler
-from .solver import FVMVPMCoupler
+from .config import Backup, CouplerConfig
+from .solver import CoupledSolver
 
 __all__ = [
+    "Backup",
+    "CoupledSolver",
+    "CouplerConfig",
+    "EverySteps",
+    "EveryTime",
+    "FinalOnly",
+    "RunStatus",
     "VelocityRamp",
-    "CouplerSetup",
-    "FVMVPMCoupler",
-    "create_coupler",
 ]

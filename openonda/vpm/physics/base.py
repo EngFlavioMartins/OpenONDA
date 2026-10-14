@@ -8,11 +8,6 @@ Contains shared functionality for all physics modules:
 
 This module owns the shared device fields and low-level kernels used by the
 induction methods, diffusion operators, target queries, and diagnostics.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable, Iterator
@@ -131,7 +126,7 @@ class PhysicsBase:
 
     def __init__(
         self,
-        particle_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "gaussian",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: TaichiDataType = ti.f32,
         max_evaluation_points: int = _HOST_TRANSFER_CHUNK_SIZE,
@@ -141,12 +136,12 @@ class PhysicsBase:
 
         Args:
             particle_kernel: Kernel type for particle interactions
-                            Options: 'GAUSSIAN', 'SUPER_GAUSSIAN', 'WINCKELMANS'
+                            Options: 'gaussian', 'super_gaussian', 'winckelmans'
             max_n_particles: Maximum number of particles for field allocation
             accumulator_dtype: Data type for accumulation (ti.f32 or ti.f64)
             max_evaluation_points: Fixed capacity for at-point field evaluations
         """
-        self.particle_kernel = particle_kernel.upper()
+        self.particle_kernel = particle_kernel.lower()
         self.max_n_particles = max_n_particles
         self.accumulator_dtype = accumulator_dtype
         self.np_dtype = np.float32 if accumulator_dtype == ti.f32 else np.float64
@@ -178,7 +173,7 @@ class PhysicsBase:
         # target-query fields are computed. Bound once through configure_velocity();
         # standalone workspaces default to direct O(N²) summation.
         # DIRECT: exact O(N²); select TreecodeInduction for large clouds.
-        self.velocity_method = "DIRECT"  # "DIRECT" | "TREECODE"
+        self.velocity_method = "direct"  # "direct" | "treecode"
         self.velocity_theta = 0.3  # Barnes-Hut opening angle (treecode only)
         self.treecode_multipole_order = 1
         self.treecode_sort_particle_targets = False
@@ -509,7 +504,7 @@ class PhysicsBase:
             buffers[key] = np.empty(shape, dtype=dtype)
         return buffers[key]
 
-    def _upload_vector_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
+    def upload_vector_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
         """Upload a vec3 array through fixed-size ndarray chunks."""
         arr = np.ascontiguousarray(src, dtype=self.np_dtype)
         if arr.ndim != 2 or arr.shape[1] != 3:
@@ -551,7 +546,7 @@ class PhysicsBase:
             self._copy_ndarray_to_mat3_field(buf, dst, lo, n_chunk)
             ti.sync()
 
-    def _download_vector_field(self, src: TaichiField, n: int) -> np.ndarray:
+    def download_vector_field(self, src: TaichiField, n: int) -> np.ndarray:
         """Download the active vec3 prefix without exposing variable ndarray shapes."""
         dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
@@ -595,7 +590,7 @@ class PhysicsBase:
 
     def extract_target_velocity(self, n: int) -> np.ndarray:
         """Return first n target velocity as a NumPy array (no full alloc transfer)."""
-        return self._download_vector_field(self.target_velocity, n)
+        return self.download_vector_field(self.target_velocity, n)
 
     def _resize_filtered_fields(self, N: int) -> None:
         """
@@ -714,10 +709,10 @@ class PhysicsBase:
         """Set how the self-induced velocity is evaluated (single source of truth).
 
         Args:
-            method: "DIRECT" (O(N²) GPU summation) or "TREECODE" (Barnes-Hut O(N log N)).
+            method: "direct" (O(N²) GPU summation) or "treecode" (Barnes-Hut O(N log N)).
             theta:  Barnes-Hut opening angle (treecode only; smaller = more accurate).
         """
-        self.velocity_method = method.upper()
+        self.velocity_method = method.lower()
         self.velocity_theta = theta
         if multipole_order not in (1, 2, 3):
             raise ValueError(f"treecode multipole_order must be 1, 2 or 3, got {multipole_order}")
@@ -872,7 +867,7 @@ class PhysicsBase:
         from .induction.treecode.evaluator import TreecodeInduction
 
         if isinstance(target_backend, TreecodeInduction) or (
-            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "TREECODE"
+            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "treecode"
         ):
             if target_velocity is None:
                 return self.compute_target_velocity_hierarchical(
@@ -888,7 +883,7 @@ class PhysicsBase:
                 background = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
             for start, stop in self._target_batch_slices(M):
                 values = tree.compute_target_velocity(target_position[start:stop], background)
-                self._upload_vector_array(values, self.target_velocity)
+                self.upload_vector_array(values, self.target_velocity)
                 self._copy_vec3_offset(self.target_velocity, target_velocity, start, stop - start)
             return None
 
@@ -897,7 +892,7 @@ class PhysicsBase:
             result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
             for start, stop in self._target_batch_slices(M):
                 count = stop - start
-                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                self.upload_vector_array(target_position[start:stop], self.target_position, count)
                 target_backend.evaluate_targets(
                     target_position=self.target_position,
                     source_position=particles.position,
@@ -919,7 +914,7 @@ class PhysicsBase:
         result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
         for start, stop in self._target_batch_slices(M):
             count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.upload_vector_array(target_position[start:stop], self.target_position, count)
             self.compute_target_velocity_kernel(
                 self.target_position,
                 particles.position,
@@ -990,7 +985,7 @@ class PhysicsBase:
             self._transport_target_core = ti.field(
                 dtype=self.accumulator_dtype, shape=self.max_evaluation_points
             )
-        self._upload_vector_array(targets, self.target_position, len(targets))
+        self.upload_vector_array(targets, self.target_position, len(targets))
         backend = getattr(self, "induction", None)
         if use_induction_backend and np.ndim(target_core_radius) == 0 and backend is not None:
             if not hasattr(self, "_transport_source_core"):
@@ -1016,7 +1011,7 @@ class PhysicsBase:
                 if include_freestream
                 else self._zero_velocity,
             )
-            return self._download_vector_field(self.target_velocity, len(targets))
+            return self.download_vector_field(self.target_velocity, len(targets))
         self._upload_scalar_array(
             np.ascontiguousarray(radii), self._transport_target_core, len(targets)
         )
@@ -1031,7 +1026,7 @@ class PhysicsBase:
             len(targets),
             len(particles),
         )
-        return self._download_vector_field(self.target_velocity, len(targets))
+        return self.download_vector_field(self.target_velocity, len(targets))
 
     def _compute_target_velocity_taichi(
         self,
@@ -1045,14 +1040,14 @@ class PhysicsBase:
         """Handle velocity computation when target_position is a Taichi field."""
         M = target_position.shape[0]
         if self._target_field_size < M:
-            positions = self._download_vector_field(target_position, M)
+            positions = self.download_vector_field(target_position, M)
             result = self.compute_target_velocity(
                 particles,
                 positions,
                 include_freestream=include_freestream,
             )
             if target_velocity is not None:
-                self._upload_vector_array(result, target_velocity, M)
+                self.upload_vector_array(result, target_velocity, M)
                 return None
             return result
         if N == 0:
@@ -1077,14 +1072,14 @@ class PhysicsBase:
         from .induction.treecode.evaluator import TreecodeInduction
 
         if isinstance(target_backend, TreecodeInduction) or (
-            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "TREECODE"
+            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "treecode"
         ):
-            positions = self._download_vector_field(target_position, M)
+            positions = self.download_vector_field(target_position, M)
             result = self.compute_target_velocity(
                 particles, positions, include_freestream=include_freestream
             )
             if target_velocity is not None:
-                self._upload_vector_array(result, target_velocity, M)
+                self.upload_vector_array(result, target_velocity, M)
                 return None
             return result
         if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
@@ -1103,7 +1098,7 @@ class PhysicsBase:
                 background_velocity=background_velocity,
             )
             if target_velocity is None:
-                return self._download_vector_field(out_field, M)
+                return self.download_vector_field(out_field, M)
             return None
 
         out_field = target_velocity if target_velocity is not None else self.target_velocity
@@ -1123,7 +1118,7 @@ class PhysicsBase:
         )
 
         if target_velocity is None:
-            return self._download_vector_field(out_field, M)
+            return self.download_vector_field(out_field, M)
         return None
 
     def _compute_target_velocity_filtered(
@@ -1192,8 +1187,8 @@ class PhysicsBase:
         self._resize_filtered_fields(N_filtered)
 
         # Copy filtered data through fixed-shape external buffers.
-        self._upload_vector_array(filtered_pos, self._filtered_pos, N_filtered)
-        self._upload_vector_array(
+        self.upload_vector_array(filtered_pos, self._filtered_pos, N_filtered)
+        self.upload_vector_array(
             filtered_vortex_strength, self._filtered_vortex_strength, N_filtered
         )
         self._upload_scalar_array(filtered_rad, self._filtered_rad, N_filtered)
@@ -1207,7 +1202,7 @@ class PhysicsBase:
         result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
         for start, stop in self._target_batch_slices(M):
             count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.upload_vector_array(target_position[start:stop], self.target_position, count)
             self.compute_target_velocity_kernel(
                 self.target_position,
                 self._filtered_pos,
@@ -1244,7 +1239,7 @@ class PhysicsBase:
         if slab is not None:
             self._compute_slab_vorticities(particles, slab)
             return
-        if self.particle_kernel == "GAUSSIAN" and self.accumulator_dtype == ti.f32 and N >= 2048:
+        if self.particle_kernel == "gaussian" and self.accumulator_dtype == ti.f32 and N >= 2048:
             self._compute_gaussian_vorticities(particles)
             return
         self.compute_vorticities_kernel(
@@ -1283,13 +1278,13 @@ class PhysicsBase:
         vorticity = np.zeros((N, 3), dtype=np.float64)
         for start, stop in self._target_batch_slices(N):
             count = stop - start
-            self._upload_vector_array(position[start:stop], self.target_position, count)
+            self.upload_vector_array(position[start:stop], self.target_position, count)
             for first, last in self._target_batch_slices(len(source_position)):
                 sources = last - first
-                self._upload_vector_array(
+                self.upload_vector_array(
                     source_position[first:last], self._slab_source_position, sources
                 )
-                self._upload_vector_array(
+                self.upload_vector_array(
                     source_strength[first:last], self._slab_source_strength, sources
                 )
                 self._upload_scalar_array(source_core[first:last], self._slab_source_core, sources)
@@ -1302,8 +1297,8 @@ class PhysicsBase:
                     count,
                     sources,
                 )
-                vorticity[start:stop] += self._download_vector_field(self.target_vorticity, count)
-        self._upload_vector_array(vorticity, particles.vorticity, N)
+                vorticity[start:stop] += self.download_vector_field(self.target_vorticity, count)
+        self.upload_vector_array(vorticity, particles.vorticity, N)
 
     def _compute_gaussian_vorticities(self, particles: "Particles") -> None:
         """Reuse induction hierarchy storage, or allocate bounded diagnostic scratch."""
@@ -1322,7 +1317,7 @@ class PhysicsBase:
             )
             return
         tree: TaichiTreecode | None
-        if self.velocity_method == "TREECODE":
+        if self.velocity_method == "treecode":
             tree = self._ensure_target_tree_current(particles, self.velocity_theta)
         else:
             tree = self._vorticity_tree
@@ -1337,7 +1332,7 @@ class PhysicsBase:
                 tree = TaichiTreecode(
                     max_n_particles=capacity,
                     max_nodes=2 * capacity,
-                    kernel_type="GAUSSIAN",
+                    kernel_type="gaussian",
                     hierarchy_only=True,
                     max_evaluation_points=min(4096, self.max_evaluation_points),
                 )
@@ -1368,7 +1363,7 @@ class PhysicsBase:
         from .induction.treecode.evaluator import TreecodeInduction
 
         if isinstance(target_backend, TreecodeInduction) or (
-            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "TREECODE"
+            not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "treecode"
         ):
             return self.compute_target_velocity_gradient_hierarchical(
                 particles, target_position, theta=self.velocity_theta
@@ -1377,7 +1372,7 @@ class PhysicsBase:
             result = np.empty((M, 9), dtype=self.np_dtype)
             for start, stop in self._target_batch_slices(M):
                 count = stop - start
-                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                self.upload_vector_array(target_position[start:stop], self.target_position, count)
                 target_backend.evaluate_targets(
                     target_position=self.target_position,
                     source_position=particles.position,
@@ -1398,7 +1393,7 @@ class PhysicsBase:
         result = np.empty((M, 9), dtype=self.np_dtype)
         for start, stop in self._target_batch_slices(M):
             count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.upload_vector_array(target_position[start:stop], self.target_position, count)
             self.compute_target_velocity_gradient_kernel(
                 self.target_position,
                 particles.position,
@@ -1524,7 +1519,7 @@ class PhysicsBase:
         self, particles: ParticleSources, target_position: np.ndarray
     ) -> np.ndarray:
         """Evaluate a target Jacobian with the configured particle backend."""
-        if self.velocity_method == "TREECODE":
+        if self.velocity_method == "treecode":
             return self.compute_target_velocity_gradient_hierarchical(
                 particles, target_position, theta=self.velocity_theta
             )
@@ -1543,7 +1538,7 @@ class PhysicsBase:
         core convention. No fields or source validity survive this call: a
         following query may have changed particle values in the same objects.
         """
-        if self.velocity_method == "TREECODE":
+        if self.velocity_method == "treecode":
             return self.compute_target_velocity_and_gradients_hierarchical(
                 particles,
                 target_position,
@@ -1567,7 +1562,7 @@ class PhysicsBase:
             )
             for start, stop in self._target_batch_slices(target_count):
                 count = stop - start
-                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                self.upload_vector_array(target_position[start:stop], self.target_position, count)
                 backend.evaluate_targets(
                     target_position=self.target_position,
                     source_position=particles.position,

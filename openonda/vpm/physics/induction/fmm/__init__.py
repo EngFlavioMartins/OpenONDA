@@ -8,9 +8,9 @@ from .tree import FMMCell, FMMNode, FMMTree
 
 __all__ = [
     "FMMCell",
-    "FMMNode",
     "FMMDiagnostics",
     "FMMInduction",
+    "FMMNode",
     "FMMTree",
     "interaction_lists",
     "m2m",

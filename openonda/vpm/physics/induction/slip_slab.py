@@ -90,7 +90,7 @@ def _active_snapshots(
     snapshots: dict[TaichiField, np.ndarray] = {}
     for source, count in sizes.items():
         download = (
-            physics._download_vector_field
+            physics.download_vector_field
             if hasattr(source, "n")
             else physics._download_scalar_field
         )
@@ -240,10 +240,10 @@ class SlipSlabInduction:
         Mesh resolution and memory limits of the image field.
     """
 
-    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "CUDA", "METAL"})
+    supported_devices = frozenset({"auto", "cpu", "vulkan", "cuda", "metal"})
     supports_gradient = supports_variable_core_radius = supports_f64 = True
     supports_target_fields = device_resident = True
-    method = "SLIP_SLAB"
+    method = "slip_slab"
 
     def __init__(
         self,

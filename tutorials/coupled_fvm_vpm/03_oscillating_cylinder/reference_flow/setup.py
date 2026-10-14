@@ -45,8 +45,8 @@ VOLUME_INTERVAL = 5.0  # s
 BACKUP_INTERVAL = 1.0  # s
 
 
-def build_case():
-    """Return the FVM setup and mesh."""
+def build_case() -> fvm.FVMCase:
+    """Return the FVM case of the heaving-cylinder flow."""
     half_span = 0.5 * SPAN
 
     # Requested sizes sit between octree levels, which then select 1, 2 and 4 CELL_SIZE
@@ -74,57 +74,53 @@ def build_case():
         levels=(-half_span, half_span),
     )
 
-    flow = fvm.FVMSetup(
-        case_name="reference_oscillating_cylinder",
-        execution=fvm.ComputeConfig(operator_backend="numba"),
-        time=fvm.TimeConfig(
-            time_step_size=TIME_STEP,
-            end_time=END_TIME,
-            output_schedule=fvm.RunSchedule(every_time=VOLUME_INTERVAL),
+    samplers = (
+        # Drag and lift coefficients per unit span
+        fvm.ForceSampler(
+            patch_names=["cylinder"],
+            reference_velocity=FREESTREAM_VELOCITY[0],
+            reference_area=DIAMETER * SPAN,
+            reference_length=DIAMETER,
+            schedule=fvm.EveryTime(FORCE_INTERVAL),
         ),
-        backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL), write_at_end=True
-        ),
+    )
+    numerics = fvm.Numerics(
+        time_step_size=TIME_STEP,
+        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
         schemes=fvm.DiscretizationConfig(time_scheme="backward"),
-        linear=fvm.LinearSolverConfig(
-            pressure_tolerance=1.0e-7,
-            pressure_relative_tolerance=0.005,
-        ),
-        pimple=fvm.PimpleControl(
+        linear=fvm.LinearSolverConfig(pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005),
+        pimple=fvm.PimpleConfig(
             n_outer_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
         ),
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-        turbulence=fvm.TurbulenceConfig.none(),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", list(FREESTREAM_VELOCITY)),
+        execution=fvm.ComputeConfig(operator_backend="numba"),
+    )
+    return fvm.FVMCase(
+        name="reference_oscillating_cylinder",
+        directory=CASE_DIR,
+        numerics=numerics,
+        initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
+        run=fvm.RunPlan(end_time=END_TIME),
+        output=fvm.Output(schedule=fvm.EveryTime(VOLUME_INTERVAL)),
+        samplers=fvm.Samplers(samplers),
+        backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", FREESTREAM_VELOCITY),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             # Slip walls would push the fluid along as they heave; the sides
             # hold the inertial-frame stream instead.
-            fvm.BoundaryConfig.inlet("ymin", list(FREESTREAM_VELOCITY)),
-            fvm.BoundaryConfig.inlet("ymax", list(FREESTREAM_VELOCITY)),
+            fvm.BoundaryConfig.inlet("ymin", FREESTREAM_VELOCITY),
+            fvm.BoundaryConfig.inlet("ymax", FREESTREAM_VELOCITY),
             fvm.BoundaryConfig.cyclic("zmin", "zmax"),
             fvm.BoundaryConfig.cyclic("zmax", "zmin"),
             fvm.BoundaryConfig.wall("cylinder"),
-        ],
-        initial_velocity=list(FREESTREAM_VELOCITY),
+        ),
         mesh_motion=fvm.MeshMotion(
             fvm.HeavingMotion(AMPLITUDE, FREQUENCY, direction=(0.0, 1.0, 0.0))
         ),
-        samplers=(
-            # Drag and lift coefficients per unit span
-            fvm.ForceSampler(
-                patch_names=["cylinder"],
-                reference_velocity=FREESTREAM_VELOCITY[0],
-                reference_area=DIAMETER * SPAN,
-                reference_length=DIAMETER,
-                schedule=fvm.RunSchedule(every_time=FORCE_INTERVAL),
-            ),
-        ),
     )
-    return flow, mesh
 
 
 if __name__ == "__main__":
-    flow, mesh = build_case()
-    with fvm.create_fvm_solver(flow, case_dir=CASE_DIR, mesh=mesh) as solver:
+    with fvm.FVMSolver(build_case()) as solver:
         solver.run(start_from="latest")

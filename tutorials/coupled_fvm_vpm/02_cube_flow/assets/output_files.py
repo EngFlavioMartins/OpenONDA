@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from defusedxml import ElementTree
-import h5py
 import numpy as np
 import pyvista as pv
 
@@ -27,19 +26,11 @@ def read_json_lines(path):
 
 
 def read_csv_table(path):
-    """Read named CSV columns; a leading ``# time = t`` line supplies the time."""
-    with Path(path).open(encoding="utf-8") as stream:
-        first_line = stream.readline()
-    clock = first_line.startswith("#")
+    """Read named CSV columns."""
     data = np.atleast_1d(
-        np.genfromtxt(
-            path, delimiter=",", names=True, dtype=None, encoding="utf-8", skip_header=int(clock)
-        )
+        np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
     )
-    table = {name: data[name] for name in data.dtype.names}
-    if clock and "time" not in table:
-        table["time"] = np.full(data.size, float(first_line.split("=")[1]))
-    return table
+    return {name: data[name] for name in data.dtype.names}
 
 
 def read_history_table(path):
@@ -90,17 +81,6 @@ def matched_surface_vectors(source, target):
     return values
 
 
-def load_vpm_particles(path):
-    """Load the active particle arrays of a native VPM backup."""
-    with h5py.File(path, "r") as handle:
-        count = int(handle["solver"].attrs["n_particles_total"])
-        particles = handle["particles"]
-        return {
-            name: np.asarray(particles[name][:count])
-            for name in ("position", "vortex_strength", "core_radius")
-        }
-
-
 def read_surface_frame(path):
     """Read a structured surface-sampler frame as two-dimensional arrays."""
     grid = pv.read(path)
@@ -148,7 +128,7 @@ class NativeVelocity:
         self.k = k
 
     def sample(self, source, queries, *, mask=None):
-        from openonda.fvm.sampling.fields import _PointProbe
+        from openonda.fvm.sampling import interpolate_cell_field
 
         grid = pv.read(source)
         velocity = np.asarray(grid.cell_data["velocity"], dtype=float)
@@ -162,8 +142,8 @@ class NativeVelocity:
             inside = local_grid.find_containing_cell(points) >= 0
             if mask is not None:
                 inside &= mask(points)
-            values = _PointProbe(points, k=self.k, reconstruction="affine")._interpolate(
-                ordered, self.centres
+            values = interpolate_cell_field(
+                ordered, self.centres, points, n_neighbours=self.k, reconstruction="affine"
             )
             values[~inside] = np.nan
             result[name] = values

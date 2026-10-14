@@ -9,18 +9,18 @@ from typing import Literal
 from . import constants as constants_module
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TurbulenceConfig:
     """Configure the VPM turbulence/LES closure.
 
     Parameters
     ----------
-    model : {'DNS', 'LES_SMAGORINSKY', 'LES_SIGMA', 'INVISCID'}, default='DNS'
-        ``DNS`` applies no subgrid closure, ``LES_SMAGORINSKY`` computes an
-        equilibrium eddy viscosity, ``LES_SIGMA`` the sigma-model eddy
-        viscosity, and ``INVISCID`` disables viscous/SGS modeling at this
-        layer. Names are normalized uppercase.
-    smagorinsky_coefficient : float, default=0.2
+    model : {'dns', 'smagorinsky', 'sigma', 'inviscid'}, default='dns'
+        ``dns`` applies no subgrid closure, ``smagorinsky`` computes an
+        equilibrium eddy viscosity, ``sigma`` the sigma-model eddy
+        viscosity, and ``inviscid`` disables viscous/SGS modeling at this
+        layer.
+    smagorinsky_coefficient : float, default=0.17
         Non-negative dimensionless ``C_s`` in the filter-width eddy-viscosity
         model.
     subgrid_dissipation_coefficient : float, default=1.048
@@ -36,14 +36,14 @@ class TurbulenceConfig:
         ``sin^2(theta) / (sin^2(theta) + sin^2(theta_0))``: ``theta`` is the angle
         between a particle's strength and the resolved vorticity at the particle.
         None applies the eddy viscosity everywhere.
-    subgrid_transport : {'CORE_SPREADING', 'STRENGTH_EXCHANGE'}, default='CORE_SPREADING'
-        ``CORE_SPREADING`` adds the eddy viscosity to the viscous scheme;
-        ``STRENGTH_EXCHANGE`` diffuses strengths between neighbouring particles
+    subgrid_transport : {'core_spreading', 'strength_exchange'}, default='core_spreading'
+        ``core_spreading`` adds the eddy viscosity to the viscous scheme;
+        ``strength_exchange`` diffuses strengths between neighbouring particles
         after each step and leaves the cores to the molecular viscosity.
 
     Attributes
     ----------
-    flow_model : {'DNS', 'LES', 'INVISCID'}
+    flow_model : {'dns', 'les', 'inviscid'}
         Derived solver category, excluded from the constructor.
 
     Raises
@@ -58,7 +58,7 @@ class TurbulenceConfig:
     directly; strength exchange conserves the total strength exactly.
     """
 
-    model: Literal["DNS", "LES_SMAGORINSKY", "LES_SIGMA", "INVISCID"] = "DNS"
+    model: Literal["dns", "smagorinsky", "sigma", "inviscid"] = "dns"
     """Turbulence-model identifier."""
 
     smagorinsky_coefficient: float = constants_module.SMAGORINSKY_CONSTANT
@@ -76,15 +76,15 @@ class TurbulenceConfig:
     consistency_angle: float | None = None
     """Consistency-switch reference angle in degrees, or None."""
 
-    subgrid_transport: Literal["CORE_SPREADING", "STRENGTH_EXCHANGE"] = "CORE_SPREADING"
+    subgrid_transport: Literal["core_spreading", "strength_exchange"] = "core_spreading"
     """How the eddy viscosity acts on the particles."""
 
-    flow_model: str = field(default="DNS", init=False)
+    flow_model: str = field(default="dns", init=False)
     """Solver flow-model category derived from ``model``."""
 
     def __post_init__(self) -> None:
-        model = self.model.upper()
-        valid_models = {"DNS", "LES_SMAGORINSKY", "LES_SIGMA", "INVISCID"}
+        model = self.model
+        valid_models = {"dns", "smagorinsky", "sigma", "inviscid"}
         if model not in valid_models:
             raise ValueError(
                 f"Invalid turbulence model {self.model!r}; expected one of {sorted(valid_models)}"
@@ -104,21 +104,19 @@ class TurbulenceConfig:
             raise ValueError("sigma_coefficient must be finite and non-negative")
         if self.consistency_angle is not None and not 0.0 < self.consistency_angle < 90.0:
             raise ValueError("consistency_angle must lie in (0, 90) degrees or be None")
-        transport = self.subgrid_transport.upper()
-        if transport not in {"CORE_SPREADING", "STRENGTH_EXCHANGE"}:
+        transport = self.subgrid_transport
+        if transport not in {"core_spreading", "strength_exchange"}:
             raise ValueError(
                 f"Invalid subgrid_transport {self.subgrid_transport!r}; expected "
-                "'CORE_SPREADING' or 'STRENGTH_EXCHANGE'"
+                "'core_spreading' or 'strength_exchange'"
             )
-        object.__setattr__(self, "subgrid_transport", transport)
         flow_model = {
-            "DNS": "DNS",
-            "LES_SMAGORINSKY": "LES",
-            "LES_SIGMA": "LES",
-            "INVISCID": "INVISCID",
+            "dns": "dns",
+            "smagorinsky": "les",
+            "sigma": "les",
+            "inviscid": "inviscid",
         }[model]
 
-        object.__setattr__(self, "model", model)
         object.__setattr__(self, "flow_model", flow_model)
 
     @property
@@ -131,19 +129,19 @@ class TurbulenceConfig:
     @staticmethod
     def dns() -> TurbulenceConfig:
         """Return DNS configuration without an SGS closure."""
-        return TurbulenceConfig(model="DNS")
+        return TurbulenceConfig(model="dns")
 
     @staticmethod
-    def les_smagorinsky(
+    def smagorinsky(
         smagorinsky_coefficient: float = constants_module.SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         filter_width: float | None = None,
         consistency_angle: float | None = None,
-        subgrid_transport: str = "CORE_SPREADING",
+        subgrid_transport: str = "core_spreading",
     ) -> TurbulenceConfig:
         """Return the equilibrium Smagorinsky LES configuration."""
         return TurbulenceConfig(
-            model="LES_SMAGORINSKY",
+            model="smagorinsky",
             smagorinsky_coefficient=smagorinsky_coefficient,
             subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
             filter_width=filter_width,
@@ -152,10 +150,10 @@ class TurbulenceConfig:
         )
 
     @staticmethod
-    def les_sigma(
+    def sigma(
         sigma_coefficient: float = 1.35,
         consistency_angle: float | None = 3.0,
-        subgrid_transport: str = "STRENGTH_EXCHANGE",
+        subgrid_transport: str = "strength_exchange",
         filter_width: float | None = None,
     ) -> TurbulenceConfig:
         """Return the sigma-model LES, by default switched and applied by strength exchange.
@@ -165,7 +163,7 @@ class TurbulenceConfig:
         turns it on where the particle field stops representing the vorticity.
         """
         return TurbulenceConfig(
-            model="LES_SIGMA",
+            model="sigma",
             sigma_coefficient=sigma_coefficient,
             consistency_angle=consistency_angle,
             subgrid_transport=subgrid_transport,
@@ -197,7 +195,7 @@ class TurbulenceConfig:
         smagorinsky_coefficient = (
             subgrid_kinetic_energy_coefficient**0.75 / subgrid_dissipation_coefficient**0.25
         )
-        return TurbulenceConfig.les_smagorinsky(
+        return TurbulenceConfig.smagorinsky(
             smagorinsky_coefficient=smagorinsky_coefficient,
             subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
         )
@@ -205,4 +203,4 @@ class TurbulenceConfig:
     @staticmethod
     def inviscid() -> TurbulenceConfig:
         """Return inviscid turbulence-model configuration."""
-        return TurbulenceConfig(model="INVISCID")
+        return TurbulenceConfig(model="inviscid")

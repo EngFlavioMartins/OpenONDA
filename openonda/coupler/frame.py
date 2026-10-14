@@ -14,6 +14,7 @@ velocities are converted when they cross between the solvers.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -41,7 +42,7 @@ class MeshFrame:
     """
 
     def __init__(self, fvm_solver: FVMSolver) -> None:
-        self._motion = getattr(fvm_solver, "mesh_motion", None)
+        self._motion = fvm_solver.mesh_motion
 
     @property
     def moving(self) -> bool:
@@ -97,7 +98,11 @@ class MeshFrame:
                 )
 
     def maximum_relative_speed(
-        self, freestream, start_time: float, end_time: float, time_step_size: float
+        self,
+        freestream: Callable[[float], np.ndarray],
+        start_time: float,
+        end_time: float,
+        time_step_size: float,
     ) -> float:
         """Largest freestream speed relative to the mesh over the coupled run.
 

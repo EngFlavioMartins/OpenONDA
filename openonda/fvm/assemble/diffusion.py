@@ -287,7 +287,7 @@ def assemble_diffusion_term(
         boundaries: List of boundary patch dictionaries.
         volumetric_face_flux: Optional signed face flux.  Required to distinguish the
             inflow (Dirichlet) and outflow (zero-gradient) portions of an
-            ``inletOutlet`` patch.
+            ``inlet_outlet`` patch.
         vector_field: Full vector velocity field, required by the directional
             mixed velocity condition.
         component: Component assembled from ``vector_field`` (0, 1, or 2).
@@ -469,7 +469,7 @@ def assemble_diffusion_term(
         elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
             if vector_field is None or component not in (0, 1, 2):
                 raise ValueError(
-                    "normalValueTangentialGradient diffusion requires the full velocity "
+                    "normal_value_tangential_gradient diffusion requires the full velocity "
                     "field and a component index"
                 )
             start = int(boundary["start_face"])

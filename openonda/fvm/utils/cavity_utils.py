@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Cavity Flow Utilities for OpenONDA FVM Solver
 

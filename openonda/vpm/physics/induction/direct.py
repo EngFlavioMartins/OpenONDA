@@ -25,19 +25,19 @@ class DirectInduction:
     """
 
     supported_kernels = kernel_names()
-    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "CUDA", "METAL"})
+    supported_devices = frozenset({"auto", "cpu", "vulkan", "cuda", "metal"})
     supports_gradient = True
     supports_variable_core_radius = True
     supports_f64 = True
     device_resident = True
     supports_target_fields = True
 
-    def __init__(self, *, stretching_scheme: str = "TRANSPOSED") -> None:
+    def __init__(self, *, stretching_scheme: str = "transposed") -> None:
         """Create an unbound exact-induction backend.
 
         Parameters
         ----------
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Discrete formulation used for ``dGamma/dt``. ``DIRECT`` uses
             the velocity-gradient contraction ``G @ Gamma``;
             ``TRANSPOSED`` uses ``G.T @ Gamma``; and ``MIXED`` averages the
@@ -57,8 +57,8 @@ class DirectInduction:
         """
         self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
         self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
-        self.method = "DIRECT"
-        self.kernel = make_vortex_kernel("GAUSSIAN")
+        self.method = "direct"
+        self.kernel = make_vortex_kernel("gaussian")
         self.physics: PhysicsBase | None = None
         self.max_n_particles = 1
         self._strain_rate = None
@@ -104,7 +104,7 @@ class DirectInduction:
         tensor used when gradients are requested.
         """
         self.physics = physics
-        physics.configure_velocity("DIRECT")
+        physics.configure_velocity("direct")
         if kernel is not None:
             self.kernel = kernel
         capacity = physics.max_n_particles

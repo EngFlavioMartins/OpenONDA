@@ -58,7 +58,7 @@ def _restart_case(root: Path) -> None:
     from openonda.vpm import FMMInduction, ViscousConfig, VPMSolver
     from tests.vpm._vpm_case import add_counter_rotating_pair, small_case
 
-    assert "CUDA" in FMMInduction.supported_devices
+    assert "cuda" in FMMInduction.supported_devices
     solvers = []
 
     def build(name):
@@ -68,11 +68,11 @@ def _restart_case(root: Path) -> None:
             viscous=ViscousConfig.inviscid(particle_spacing=0.2),
             induction=FMMInduction(),
         )
-        case = replace(case, numerics=replace(case.numerics, compute_device="CUDA"))
+        case = replace(case, numerics=replace(case.numerics, compute_device="cuda"))
         with contextlib.redirect_stdout(io.StringIO()):
             solver = VPMSolver(case)
         solvers.append(solver)
-        assert solver.compute_device == "CUDA"
+        assert solver.compute_device == "cuda"
         return solver
 
     try:
@@ -84,10 +84,10 @@ def _restart_case(root: Path) -> None:
                 continuous.advance(defer_output=True)
             for _ in range(2):
                 interrupted.advance(defer_output=True)
-            interrupted.save_backup()
+            backup = interrupted.save_backup()
         resumed = build("resumed")
         with contextlib.redirect_stdout(io.StringIO()):
-            resumed.load_backup(str(root / "interrupted/solution/vpm/vpm_000002"))
+            resumed.load_backup(backup)
             for _ in range(2):
                 resumed.advance(defer_output=True)
         assert continuous.step == resumed.step == 4
@@ -115,12 +115,12 @@ def _worker(scenario: str, workdir: Path) -> None:
 
     ti.init(arch=ti.cuda, default_fp=ti.f32, device_memory_fraction=0.02, offline_cache=False)
     if scenario == "numerics":
-        for kernel in ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"):
+        for kernel in ("gaussian", "high_order_gaussian", "super_gaussian", "winckelmans"):
             test_device_fmm_meets_all_kernel_gates_with_near_pairs_and_far_clusters(kernel)
         test_device_fmm_is_permutation_translation_and_axis_rotation_covariant()
     elif scenario == "targets":
         test_device_hierarchy_handles_edge_cases_and_rebuilds_stage_metadata()
-        for kernel in ("GAUSSIAN", "WINCKELMANS"):
+        for kernel in ("gaussian", "winckelmans"):
             test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inactive_storage(
                 kernel
             )

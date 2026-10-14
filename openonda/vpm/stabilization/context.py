@@ -62,7 +62,7 @@ class _ParticleSolver(Protocol):
 
         ...
 
-    def set_particles_properties(self, **properties: object) -> None:
+    def set_particle_properties(self, **properties: object) -> None:
         """Update selected aligned particle fields in place."""
 
         ...
@@ -89,7 +89,7 @@ class SolverParticleMutations:
 
     def set_properties(self, **properties: object) -> None:
         """Delegate a validated particle-property update to the solver."""
-        self.solver.set_particles_properties(**properties)
+        self.solver.set_particle_properties(**properties)
 
     def remove_by_bounds(self, bounds: Sequence[float], *, invert_selection: bool = False) -> int:
         """Delegate bounded particle removal and synchronize accounting."""

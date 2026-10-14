@@ -330,6 +330,7 @@ class SurfaceIndex:
     triangle_max: np.ndarray = field(init=False, repr=False)
     surface_lower: np.ndarray = field(init=False, repr=False)
     surface_upper: np.ndarray = field(init=False, repr=False)
+    _locator_mesh: object = field(default=None, init=False, repr=False)
 
     @classmethod
     def build(cls, triangles: np.ndarray) -> SurfaceIndex:
@@ -565,7 +566,7 @@ class SurfaceIndex:
             distances = np.asarray([item[1] for item in projected], dtype=np.float64)
             return nearest, distances, np.full(len(values), -1, dtype=np.int64)
 
-        locator_mesh = getattr(self, "_locator_mesh", None)
+        locator_mesh = self._locator_mesh
         if locator_mesh is None:
             vertices = np.ascontiguousarray(self.triangles.reshape(-1, 3))
             connectivity = np.column_stack(

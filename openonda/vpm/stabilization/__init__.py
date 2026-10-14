@@ -16,7 +16,7 @@ robustness lives here, ordered from cheapest to most invasive:
     calls, and the solver of every stabilization diagnostic.
 
 Configuration for all of them is centralized in
-:class:`~openonda.vpm.config.types.StabilizationConfig`.
+:class:`~openonda.vpm.config.stabilization.StabilizationConfig`.
 """
 
 from .divergence_relaxation import DivergenceRelaxationError, DivergenceRelaxationResult
@@ -30,9 +30,9 @@ __all__ = [
     "DivergenceRelaxationResult",
     "FilamentRefinementError",
     "FilamentRefinementResult",
+    "ParticleStrengthMetrics",
     "RegularizationOutcome",
     "StabilizationError",
-    "ParticleStrengthMetrics",
     "StabilizationManager",
     "StabilizationOperators",
     "regularize",

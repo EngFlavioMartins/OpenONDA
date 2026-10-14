@@ -13,11 +13,6 @@ kernel of Beale & Majda (1985).
 The moment-cancelling correction changes near-core induction and can take
 negative vorticity-density values. Select and qualify it for the intended
 flow; higher algebraic order alone is not a production-accuracy guarantee.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable
@@ -152,7 +147,7 @@ CORRECTED_GAUSSIAN_DEFECT = GaussianDefectEnvelope(
 )
 
 DEFINITION = KernelDefinition(
-    name="HIGH_ORDER_GAUSSIAN",
+    name="high_order_gaussian",
     q=q_host,
     zeta=zeta_host,
     device_factory=create_high_order_gaussian_kernels,

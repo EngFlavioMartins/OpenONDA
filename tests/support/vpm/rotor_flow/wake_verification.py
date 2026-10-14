@@ -35,7 +35,7 @@ def assess_wake_signal_onset(
     config = p.metadata["configuration"]
     declared = {
         item["file_name"]: item
-        for item in config["samplers"]["items"]
+        for item in config["samplers"]["samples"]
         if item["type"] == "SurfaceSampler"
     }
     if name not in declared:
@@ -198,12 +198,12 @@ def native_plane_windows(
     required_names=None,
 ):
     """Read native planes and qualify one exact, bracketed five-revolution window."""
-    from openonda.vpm.io.sampling import EverySteps, EveryTime
+    from openonda.core.schedules import EverySteps, EveryTime, schedule_from_dict
 
     config, state = p.metadata["configuration"], p.metadata["state"]
     dt = config["numerics"]["time_step_size"]
     horizon = state["time"]
-    declared = [item for item in config["samplers"]["items"] if item["type"] == "SurfaceSampler"]
+    declared = [item for item in config["samplers"]["samples"] if item["type"] == "SurfaceSampler"]
     if required_names is not None:
         required_names = tuple(required_names)
         declared_by_name = {item["file_name"]: item for item in declared}
@@ -246,21 +246,13 @@ def native_plane_windows(
         name = item["file_name"]
         pvd = p.samples_dir / f"{name}.pvd"
         frames, times = collections[name]
-        schedule_data = item["schedule"]
-        if schedule_data["type"] == "EverySteps":
-            schedule = EverySteps(
-                schedule_data["interval"],
-                first_step=schedule_data.get("first_step"),
-                start_time=schedule_data.get("start_time"),
-            )
+        schedule = schedule_from_dict(item["schedule"])
+        if isinstance(schedule, EverySteps):
             cadence = schedule.interval * dt
-        elif schedule_data["type"] == "EveryTime":
-            schedule = EveryTime(
-                schedule_data["interval"], start_time=schedule_data.get("start_time", 0.0)
-            )
+        elif isinstance(schedule, EveryTime):
             cadence = schedule.interval + dt
         else:
-            raise ValueError(f"{name}: unsupported native plane schedule {schedule_data['type']}")
+            raise ValueError(f"{name}: unsupported native plane schedule {item['schedule']}")
         tolerance = max(1e-10, dt * 1e-6)
         expected = np.array(
             [

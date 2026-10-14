@@ -18,8 +18,8 @@ def cpu_runtime():
 
 
 def test_common_3d_stretching_preserves_coplanar_symmetry_and_responds_to_tilt():
-    physics = PhysicsBase("GAUSSIAN", 3, ti.f64)
-    model = DirectInduction(stretching_scheme="DIRECT").bind(physics)
+    physics = PhysicsBase("gaussian", 3, ti.f64)
+    model = DirectInduction(stretching_scheme="direct").bind(physics)
     positions = ti.Vector.field(3, ti.f64, shape=3)
     strengths = ti.Vector.field(3, ti.f64, shape=3)
     radii = ti.field(ti.f64, shape=3)
@@ -63,7 +63,7 @@ def test_full_3d_slab_column_converges_to_spanwise_uniform_gaussian_vortex():
     errors = []
     for layers in (4, 8, 16):
         spacing = 1 / layers
-        physics = PhysicsBase("GAUSSIAN", layers, ti.f64, max_evaluation_points=3)
+        physics = PhysicsBase("gaussian", layers, ti.f64, max_evaluation_points=3)
         model = SlipSlabInduction(
             DirectInduction(),
             z_min=-0.5,
@@ -109,7 +109,7 @@ def test_full_3d_slab_column_converges_to_spanwise_uniform_gaussian_vortex():
 
 def test_one_cubic_particle_in_thin_slab_uses_full_3d_image_kernel():
     span, sigma = 0.04, 0.04
-    physics = PhysicsBase("GAUSSIAN", 1, ti.f64, max_evaluation_points=3)
+    physics = PhysicsBase("gaussian", 1, ti.f64, max_evaluation_points=3)
     model = SlipSlabInduction(
         DirectInduction(),
         z_min=-span / 2,

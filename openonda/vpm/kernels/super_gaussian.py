@@ -1,10 +1,5 @@
 """
 Factory for the super-Gaussian (high-order) regularization kernel set.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable
@@ -125,7 +120,7 @@ def zeta_host(rho: np.ndarray | float) -> np.ndarray:
 
 
 DEFINITION = KernelDefinition(
-    name="SUPER_GAUSSIAN",
+    name="super_gaussian",
     q=q_host,
     zeta=zeta_host,
     device_factory=create_super_gaussian_kernels,

@@ -105,74 +105,82 @@ FVM_MESH = msh.CartesianMesher(
     cell_size_anchor=CELL_SIZE,
 )
 
-FVM_SETUP = fvm.FVMSetup(
-    case_name=CASE_NAME,
-    cores=FVM_CORES,
-    execution=fvm.ComputeConfig(operator_backend="numba"),
-    output=fvm.OutputConfig(compression="lz4", ghost_layers=0),
-    time=fvm.TimeConfig(
+FVM_CASE = fvm.FVMCase(
+    name=CASE_NAME,
+    directory=CASE_DIR,
+    numerics=fvm.Numerics(
         time_step_size=FVM_TIME_STEP,
-        end_time=END_TIME,
-        output_schedule=fvm.RunSchedule(every_time=on_exchanges(VOLUME_INTERVAL)),
+        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
+        schemes=fvm.DiscretizationConfig(
+            convection_scheme="linear_upwind",
+            gradient_scheme="gauss",
+            time_scheme="backward",
+        ),
+        linear=fvm.LinearSolverConfig(
+            pressure_solver="amg",
+            pressure_tolerance=1.0e-7,
+            pressure_relative_tolerance=0.005,
+        ),
+        pimple=fvm.PimpleConfig(
+            n_outer_correctors=2,
+            n_nonorthogonal_correctors=1,
+            velocity_relaxation=0.7,
+            pressure_relaxation=0.3,
+        ),
+        turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(),
+        execution=fvm.ComputeConfig(operator_backend="numba"),
     ),
-    schemes=fvm.DiscretizationConfig(
-        convection_scheme="linearUpwind",
-        gradient_scheme="gauss",
-        time_scheme="backward",
+    initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
+    run=fvm.RunPlan(end_time=END_TIME),
+    output=fvm.Output(
+        schedule=fvm.EveryTime(on_exchanges(VOLUME_INTERVAL)),
+        compression="lz4",
+        ghost_layers=0,
     ),
-    linear=fvm.LinearSolverConfig(
-        pressure_solver="amg",
-        pressure_tolerance=1.0e-7,
-        pressure_relative_tolerance=0.005,
+    samplers=fvm.Samplers(
+        (
+            # Force and moment coefficients on the frontal area
+            fvm.ForceSampler(
+                patch_names=["cube"],
+                reference_velocity=FREESTREAM_VELOCITY[0],
+                reference_area=CUBE_SIDE**2,
+                reference_length=CUBE_SIDE,
+                moment_centre=[0.0, 0.0, 0.0],
+                schedule=fvm.EveryTime(on_exchanges(FORCE_INTERVAL)),
+            ),
+            *(
+                fvm.LineSampler(
+                    (FVM_BOX[0], y, 0.0),
+                    (FVM_BOX[1], y, 0.0),
+                    spacing=PROFILE_SPACING,
+                    file_name=f"fvm_{name}",
+                    schedule=fvm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+                )
+                for name, y in (("centreline", 0.0), ("offaxis_y075", OFFAXIS_Y))
+            ),
+            fvm.SurfaceSampler(
+                (0.0, 0.0, 0.0),
+                (0.0, 0.0, 1.0),
+                FVM_BOX[:4],
+                PROFILE_SPACING,
+                body_bounds=CUBE_BOUNDS,
+                file_name="fvm_slice_z0",
+                schedule=fvm.EveryTime(on_exchanges(SLICE_INTERVAL)),
+            ),
+        )
     ),
-    pimple=fvm.PimpleControl(
-        n_outer_correctors=2,
-        n_nonorthogonal_correctors=1,
-        velocity_relaxation=0.7,
-        pressure_relaxation=0.3,
-    ),
-    transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-    turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(),
-    boundaries=[
+    logging=fvm.LoggingConfig(console=False),
+    mesh=FVM_MESH,
+    boundaries=(
         # Particles supply the normal velocity and the normal derivative of tangential velocity
         fvm.BoundaryConfig(
             name="numericalBoundary",
-            velocity_value=list(FREESTREAM_VELOCITY),
-            pressure_type="fixedFluxPressure",
+            velocity_value=FREESTREAM_VELOCITY,
+            pressure_type="fixed_flux_pressure",
         ),
         fvm.BoundaryConfig.wall("cube"),
-    ],
-    initial_velocity=list(FREESTREAM_VELOCITY),
-    samplers=(
-        # Force and moment coefficients on the frontal area
-        fvm.ForceSampler(
-            patch_names=["cube"],
-            reference_velocity=FREESTREAM_VELOCITY[0],
-            reference_area=CUBE_SIDE**2,
-            reference_length=CUBE_SIDE,
-            moment_centre=[0.0, 0.0, 0.0],
-            schedule=fvm.RunSchedule(every_time=on_exchanges(FORCE_INTERVAL)),
-        ),
-        *(
-            fvm.LineSampler(
-                start=[FVM_BOX[0], y, 0.0],
-                end=[FVM_BOX[1], y, 0.0],
-                spacing=PROFILE_SPACING,
-                file_name=f"fvm_{name}",
-                schedule=fvm.RunSchedule(every_time=on_exchanges(PROFILE_INTERVAL)),
-            )
-            for name, y in (("centreline", 0.0), ("offaxis_y075", OFFAXIS_Y))
-        ),
-        fvm.SurfaceSampler(
-            point=[0.0, 0.0, 0.0],
-            normal=[0.0, 0.0, 1.0],
-            bounds=list(FVM_BOX[:4]),
-            spacing=PROFILE_SPACING,
-            file_name="fvm_slice_z0",
-            schedule=fvm.RunSchedule(every_time=on_exchanges(SLICE_INTERVAL)),
-            body_bounds=CUBE_BOUNDS,
-        ),
     ),
+    cores=FVM_CORES,
 )
 
 VPM_CASE = vpm.VPMCase(
@@ -199,12 +207,13 @@ VPM_CASE = vpm.VPMCase(
         domain_bounds=VPM_DOMAIN,
         max_n_particles=PARTICLE_LIMIT,
     ),
+    run=vpm.RunPlan(end_time=END_TIME),
     samplers=vpm.Samplers(
-        samples=(
+        (
             *(
                 vpm.LineSampler(
-                    start=[VPM_DOMAIN[0], y, 0.0],
-                    end=[VPM_DOMAIN[1], y, 0.0],
+                    (VPM_DOMAIN[0], y, 0.0),
+                    (VPM_DOMAIN[1], y, 0.0),
                     spacing=PROFILE_SPACING,
                     include_derivatives=False,
                     file_name=f"vpm_{name}",
@@ -213,41 +222,45 @@ VPM_CASE = vpm.VPMCase(
                 for name, y in (("centreline", 0.0), ("offaxis_y075", OFFAXIS_Y))
             ),
             vpm.SurfaceSampler(
-                point=[0.0, 0.0, 0.0],
-                normal=[0.0, 0.0, 1.0],
-                bounds=list(FVM_BOX[:4]),
-                spacing=PROFILE_SPACING,
-                file_name="vpm_slice_z0",
+                (0.0, 0.0, 0.0),
+                (0.0, 0.0, 1.0),
+                FVM_BOX[:4],
+                PROFILE_SPACING,
                 include_derivatives=False,
+                file_name="vpm_slice_z0",
                 schedule=vpm.EveryTime(on_exchanges(SLICE_INTERVAL)),
             ),
             vpm.SurfaceSampler(
-                point=[0.0, 0.0, 0.0],
-                normal=[0.0, 0.0, 1.0],
-                bounds=[0.0, 12.0, -2.0, 2.0],
-                spacing=PROFILE_SPACING,
-                file_name="vpm_wake_slice_z0",
+                (0.0, 0.0, 0.0),
+                (0.0, 0.0, 1.0),
+                (0.0, 12.0, -2.0, 2.0),
+                PROFILE_SPACING,
                 include_derivatives=False,
+                file_name="vpm_wake_slice_z0",
                 schedule=vpm.EveryTime(on_exchanges(SLICE_INTERVAL)),
             ),
         )
     ),
-    run=vpm.RunPlan(steps=round(END_TIME / EXCHANGE_TIME_STEP)),
+    logging=vpm.LoggingConfig(console=False),
 )
 
-COUPLER_SETUP = coupling.CouplerSetup(
-    freestream_velocity=list(FREESTREAM_VELOCITY),
+COUPLER_CONFIG = coupling.CouplerConfig(
+    freestream_velocity=FREESTREAM_VELOCITY,
     transfer_region_bounds=TRANSFER_REGION,
     eta_blend_width=BLEND_WIDTH * CELL_SIZE,
     vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,
     interface_iterations=INTERFACE_ITERATIONS,
     interface_normal_tolerance=INTERFACE_TOLERANCE,
     interface_gradient_tolerance=INTERFACE_TOLERANCE,
-    backup_interval_steps=round(BACKUP_INTERVAL / EXCHANGE_TIME_STEP),
     transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / EXCHANGE_TIME_STEP),
+    backup=coupling.Backup(schedule=coupling.EveryTime(on_exchanges(BACKUP_INTERVAL))),
 )
 
 
 if __name__ == "__main__":
-    with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=FVM_MESH) as solver:
-        solver.run(start_from="latest", initial_velocity=initial_velocity)
+    with coupling.CoupledSolver(FVM_CASE, VPM_CASE, COUPLER_CONFIG) as solver:
+        # The startup vortex behind the cube; a restart replaces it with the backup
+        fvm_solver = solver.fvm_solver
+        cell_centres = fvm_solver.geo_data["cell_centre"][: fvm_solver.mesh_data["n_cells"]]
+        fvm_solver.set_initial_velocity(initial_velocity(cell_centres))
+        solver.run(start_from="latest")

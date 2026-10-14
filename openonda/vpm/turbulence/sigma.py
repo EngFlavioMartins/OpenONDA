@@ -45,7 +45,7 @@ class SigmaModel:
             Fixed filter width in metres; None uses particle volume^(1/3).
         """
         del accumulator_dtype
-        self.model_name = "SIGMA"
+        self.model_name = "sigma"
         self.max_n_particles = max_n_particles
         self.sigma_coefficient = sigma_coefficient
         self.filter_width = filter_width

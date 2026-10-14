@@ -13,7 +13,7 @@ CASE_DIR = Path(__file__).resolve().parents[3] / "tutorials/coupled_fvm_vpm/02_c
 
 
 def load_table(path: Path) -> dict[str, np.ndarray]:
-    """Load one numerical CSV table and retain only its latest step sequence."""
+    """Load one numerical CSV table and retain only its latest time sequence."""
     with path.open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     if not rows:
@@ -21,11 +21,10 @@ def load_table(path: Path) -> dict[str, np.ndarray]:
     numeric = {
         name: np.asarray([float(row[name]) for row in rows]) for name in rows[0] if name != "patch"
     }
-    if "step" in numeric:
-        reset = np.flatnonzero(np.diff(numeric["step"]) < 0.0)
-        if reset.size:
-            start = int(reset[-1] + 1)
-            numeric = {name: values[start:] for name, values in numeric.items()}
+    reset = np.flatnonzero(np.diff(numeric["time"]) < 0.0)
+    if reset.size:
+        start = int(reset[-1] + 1)
+        numeric = {name: values[start:] for name, values in numeric.items()}
     return numeric
 
 

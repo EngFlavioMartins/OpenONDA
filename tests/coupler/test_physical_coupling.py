@@ -45,7 +45,7 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
         fvm_solver=SimpleNamespace(step=4),
         exchange_time=lambda step: step * 0.02,
         freestream_velocity=np.array([1.0, 0.0, 0.0]),
-        setup=SimpleNamespace(),
+        config=SimpleNamespace(),
     )
     recorded = []
     times = []

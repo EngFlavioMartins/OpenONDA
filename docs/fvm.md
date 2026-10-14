@@ -37,9 +37,9 @@ with $\nu_\mathrm{eff}=\nu+\nu_t$. Set the density $\rho$ and molecular viscosit
 | `time_step_size`, `end_time` | s | Time resolution and run duration |
 | Mesh coordinates, cell sizes | m | Geometry |
 
-## Two ways to set up a case
+## Setting up a case
 
-`FVMCase` groups a mesh, `Numerics`, boundaries, initial fields and a `RunPlan`, and runs through `FVMSolver`:
+One immutable `FVMCase` holds the mesh, the `Numerics`, the boundaries, the initial fields, the `RunPlan` and the output settings; `FVMSolver(case)` constructs and runs it:
 
 ```python
 import numpy as np
@@ -52,27 +52,29 @@ mesh = fvm.mesher.box_mesh_3d(x, x, np.array([0.0, 0.125]), empty_spanwise=True)
 case = fvm.FVMCase(
     name="uniform-flow",
     directory="first-fvm-case",
-    mesh=mesh,
     numerics=fvm.Numerics(
+        time_step_size=1.0e-3,
         transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
-        coupling=fvm.PimpleControl(algorithm="PISO", n_correctors=2),
+        pimple=fvm.PimpleConfig(algorithm="piso", n_correctors=2),
     ),
+    initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
+    run=fvm.RunPlan(end_time=0.1),
+    output=fvm.Output(schedule=fvm.EverySteps(20)),
+    mesh=mesh,
     boundaries=(
-        fvm.BoundaryConfig.inlet("inlet", [1.0, 0.0, 0.0]),
+        fvm.BoundaryConfig.inlet("inlet", (1.0, 0.0, 0.0)),
         fvm.BoundaryConfig.outlet("outlet"),
         fvm.BoundaryConfig.slip("ymin"),
         fvm.BoundaryConfig.slip("ymax"),
         fvm.BoundaryConfig.empty("zmin"),
         fvm.BoundaryConfig.empty("zmax"),
     ),
-    initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
-    run=fvm.RunPlan(end_time=0.1, time_step_size=1.0e-3),
 )
 with fvm.FVMSolver(case) as solver:
-    solver.run()
+    solver.run(start_from="latest")
 ```
 
-The tutorials use the equivalent flat form: an `FVMSetup` holding `time`, `schemes`, `linear`, `pimple`, `transport`, `boundaries`, `samplers` and `turbulence`, passed with the mesh to `fvm.create_fvm_solver(setup, case_dir=..., mesh=...)`. Both accept the same configuration objects.
+`run()` writes the initial state, advances to `RunPlan.end_time` and writes the final state and a backup. A custom time loop calls `start_from("latest")`, then `advance()` per step; a driver that owns the clock, such as the coupler, passes the accepted time, `advance(time=...)`. Output, backups, samplers and log records take a schedule: `EverySteps(n)`, `EveryTime(interval)` or `FinalOnly()`.
 
 ## Mesh setup
 
@@ -89,7 +91,7 @@ The tutorials use the equivalent flat form: an `FVMSetup` holding `time`, `schem
 
 `CartesianMesher` refines with `BoxRefinement` regions, `PatchRefinement` on a named surface and `FeatureRefinement` along sharp edges, and adds one automatic wrapper layer at walls. Cell sizes are $H/2^\ell$ with $H$ the background `max_cell_size`: a patch target selects the first size at or below the request, a box target a size strictly below it. `CartesianMesher.effective_cell_size(target)` previews the result. The [STL body](../tutorials/fvm/cartesian_mesher/README.md) shows a complete mesher; the [cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) shows an extruded body-fitted 2-D mesh.
 
-A generated mesh is saved next to the case as `assets/<case_name>_mesh.npz` (with a `.vtu` copy for ParaView) and reused while its inputs are unchanged. The solver checks cell volumes and closure on construction.
+A generated mesh is saved next to the case as `assets/<name>_mesh.npz` (with a `.vtu` copy for ParaView) and reused while its inputs are unchanged. The solver checks cell volumes and closure on construction.
 
 Refine wall-normal spacing where viscous shear matters; the [flat plate](../tutorials/fvm/boundary_layer/README.md) uses a stretched wall-normal grid.
 
@@ -107,17 +109,17 @@ Every mesh patch needs a `BoundaryConfig` with the same name.
 | `cyclic(name, neighbour)` | Periodic pair; declare both directions | [Taylor–Green](../tutorials/fvm/taylor_green/README.md) |
 | `empty(name)` | Span faces of a one-cell 2-D mesh | [Backward-facing step](../tutorials/fvm/step_profile/README.md) |
 
-A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..., end_time=...)`, attached to patches through `FVMSetup(velocity_boundaries=(VelocityBoundary(...),))`. With `normal_only=True` the ramp prescribes only the normal velocity, so a slip patch can carry a transient transverse inflow; the [cylinder reference](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/README.md) uses one to trigger shedding.
+A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..., end_time=...)`, attached to patches through `FVMCase(velocity_boundaries=(VelocityBoundary(...),))`. With `normal_only=True` the ramp prescribes only the normal velocity, so a slip patch can carry a transient transverse inflow; the [cylinder reference](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/README.md) uses one to trigger shedding.
 
 ## Time and discretisation
 
 | Setting | Options |
 | --- | --- |
-| `PimpleControl(algorithm=...)` | `PISO`: transient, `n_correctors` pressure corrections. `PIMPLE`: adds `n_outer_correctors` nonlinear corrections, with `velocity_relaxation`/`pressure_relaxation`. `SIMPLE`: steady state through `solver.solve_steady()`. Each PISO correction updates the momentum prediction with the previous correction's velocity change (Issa 1986). |
+| `PimpleConfig(algorithm=...)` | `piso`: transient, `n_correctors` pressure corrections. `pimple`: adds `n_outer_correctors` nonlinear corrections, with `velocity_relaxation`/`pressure_relaxation`. `simple`: steady state through `solver.solve_steady()`. Each PISO correction updates the momentum prediction with the previous correction's velocity change (Issa 1986). |
 | `DiscretizationConfig(time_scheme=...)` | `euler_implicit` (first order) or `backward` (second-order BDF). |
-| `convection_scheme` | `upwind` (robust, dissipative), `central` (accurate when resolved, may oscillate), bounded `limitedLinear` (default), `linearUpwind`, `LUST`, `vanLeer`, `MUSCL`, `minmod`, `superbee`. |
+| `convection_scheme` | `upwind` (robust, dissipative), `central` (accurate when resolved, may oscillate), bounded `limited_linear` (default), `linear_upwind`, `lust`, `van_leer`, `muscl`, `minmod`, `superbee`. |
 | `gradient_scheme` | `lsq` (default) or `gauss`. |
-| `TimeConfig(adjustment=MaximumCourantTimeStep(maximum, maximum_time_step_size))` | Adapts the step to a Courant limit. |
+| `Numerics(time_step_control=MaximumCourantTimeStep(maximum, maximum_time_step_size))` | Adapts the step to a Courant limit; physical-time output events are reached exactly. |
 
 `LinearSolverConfig` sets the momentum and pressure solver tolerances; `ComputeConfig(operator_backend="numba")` speeds up the discrete operators. `LinearSolverConfig(momentum_preconditioner=...)` selects the preconditioner of the BiCGStab momentum solve:
 
@@ -131,7 +133,7 @@ The preconditioner changes only the iterations, not the converged tolerance; the
 
 ## Moving meshes
 
-`MeshMotion` moves the whole mesh as one rigid body with a prescribed motion. Pass it as `FVMCase(mesh_motion=...)` or `FVMSetup(mesh_motion=...)`:
+`MeshMotion` moves the whole mesh as one rigid body with a prescribed motion. Pass it as `FVMCase(mesh_motion=...)`; a moving mesh needs the transient `piso` or `pimple` algorithm:
 
 ```python
 motion = fvm.MeshMotion(
@@ -164,7 +166,7 @@ $$
 \qquad \oint_{S}\mathbf{U}\cdot d\mathbf{S}=0,
 $$
 
-with the mesh velocity $\mathbf{U}_\mathrm{m}=\mathbf{V}+\boldsymbol{\Omega}\times(\mathbf{x}-\mathbf{c})$. A rigid mesh keeps every cell volume and its swept face fluxes sum to zero in each cell, so a uniform stream stays exactly uniform. Momentum is convected by the flux relative to the moving faces; continuity uses the absolute flux. Velocity and pressure are absolute-frame (inertial) quantities, as are the inlet, outlet and freestream values. Inflow and outflow faces of `inletOutlet` patches are selected by the relative flux, the upstream and downstream sides of a `freestream` patch by the freestream velocity relative to the moving faces, and the Courant number is relative to the moving cells.
+with the mesh velocity $\mathbf{U}_\mathrm{m}=\mathbf{V}+\boldsymbol{\Omega}\times(\mathbf{x}-\mathbf{c})$. A rigid mesh keeps every cell volume and its swept face fluxes sum to zero in each cell, so a uniform stream stays exactly uniform. Momentum is convected by the flux relative to the moving faces; continuity uses the absolute flux. Velocity and pressure are absolute-frame (inertial) quantities, as are the inlet, outlet and freestream values. Inflow and outflow faces of `inlet_outlet` patches are selected by the relative flux, the upstream and downstream sides of a `freestream` patch by the freestream velocity relative to the moving faces, and the Courant number is relative to the moving cells.
 
 | Patch | On a moving mesh |
 | --- | --- |
@@ -179,7 +181,7 @@ A far-field `freestream` boundary keeps its pressure split fixed while the strea
 
 ## Turbulence and LES
 
-The default `TurbulenceConfig.none()` sets $\nu_t=0$, which the laminar tutorials use. For large-eddy simulation, set `turbulence` to one of:
+The default `TurbulenceConfig.dns()` sets $\nu_t=0$, which the laminar tutorials use. For large-eddy simulation, set `Numerics(turbulence=...)` to one of:
 
 | Model | Closure and default coefficients |
 | --- | --- |
@@ -190,17 +192,17 @@ Here $\lvert S\rvert=\sqrt{2S_{ij}S_{ij}}$ and $\Delta=V^{1/3}$, or $\sqrt{V/b}$
 
 ## Observations
 
-Samplers write CSV histories to `samples/` on a `RunSchedule(every_time=...)` or `every_n_steps`:
+Samplers in `FVMCase(samplers=Samplers((...)))` write to `samples/` on their `schedule` (default every step) and, with `initial=True` (default), at the initial state:
 
 | Sampler | Output |
 | --- | --- |
 | `ForceSampler(patch_names, reference_velocity, reference_area, reference_length)` | Pressure and viscous forces, moments and coefficients $C_D=F_x/(\tfrac12\rho U^2A)$ |
-| `LineSampler(start, end, n_points=...)` | Velocity, vorticity and pressure along a line |
-| `SurfaceSampler(point, normal, bounds, spacing)` | The same fields on a planar grid |
+| `LineSampler(start, end, n_points=...)` or `spacing=...` | Velocity, vorticity and pressure along a line, `samples/<name>.csv` |
+| `SurfaceSampler(point, normal, bounds, spacing)` | The same fields on a planar grid with both bounds included, `samples/<name>_{step}.vts` |
 | `YPlusSampler(patch_names)` | Wall $y^+$ statistics |
 
-`fvm.compute_kinetic_energy`, `compute_enstrophy` and `compute_continuity_error` evaluate global diagnostics from saved fields. Volume fields are written to `solution/fvm.pvd` for ParaView; see [results](solution_layout.md).
+`fvm.compute_kinetic_energy`, `compute_enstrophy` and `compute_continuity_error` evaluate global diagnostics from saved fields. Volume fields are written on `Output.schedule` to `solution/fvm/fvm_{step:06d}.vtu`, listed in `solution/fvm.pvd` for ParaView; restart backups go to `solution/fvm/fvm_{step:06d}.npz` on `Backup.schedule`; see [results](solution_layout.md).
 
 ## Parallel runs
 
-Set `FVMSetup(cores=N)`. The solver launches its own MPI workers, switches to PETSc linear algebra and partitions the mesh (cyclic cases keep a replicated mesh). Partitioning pays off on meshes of a few hundred thousand cells or more; small meshes run faster serially. A partitioned backup restarts only with the same core count.
+Set `FVMCase(cores=N)`. The solver launches its own MPI workers, switches to PETSc linear algebra and partitions the mesh (cyclic cases keep a replicated mesh). Partitioning pays off on meshes of a few hundred thousand cells or more; small meshes run faster serially. A partitioned backup restarts only with the same core count.

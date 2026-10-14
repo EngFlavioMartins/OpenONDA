@@ -73,8 +73,8 @@ renders that compose TikZ overlays or ParaView views need `pdflatex` or
 ## GPU acceleration
 
 The standard installation runs on the CPU. Particle cases run on a GPU when
-`compute_device` selects a device with suitable drivers (`CUDA`, `VULKAN` or
-`METAL`; `AUTO` picks one). Slip-slab cases, including planar flow, evaluate
+`compute_device` selects a device with suitable drivers (`cuda`, `vulkan` or
+`metal`; `auto` picks one). Slip-slab cases, including planar flow, evaluate
 their mirror images fastest with the optional CUDA extension, which supplies
 CuPy and matching CUDA 12 libraries for an NVIDIA GPU:
 

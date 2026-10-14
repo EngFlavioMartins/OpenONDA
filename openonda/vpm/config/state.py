@@ -41,9 +41,9 @@ def set_flow_model(
 ) -> None:
     """Set the solver flow model and concise physical description."""
     descriptions = {
-        "DNS": "DNS ::: (ω·∇)u + ν∇²ω",
-        "LES": "LES ::: (ω·∇)u + (ν+νt)∇²ω",
-        "INVISCID": "INV ::: (ω·∇)u",
+        "dns": "DNS ::: (ω·∇)u + ν∇²ω",
+        "les": "LES ::: (ω·∇)u + (ν+νt)∇²ω",
+        "inviscid": "INV ::: (ω·∇)u",
     }
     solver.flow_model = flow_model
     if flow_model in descriptions:

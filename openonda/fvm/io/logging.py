@@ -1,21 +1,16 @@
-"""Rank-aware console and file logging for the native FVM solver."""
+"""Log records of the FVM solver, written through the ``openonda.fvm`` logger."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+import logging
 from pathlib import Path
-import platform
 import sys
-import time
-from typing import Any, TextIO
-
-import numpy as np
+from typing import Any
 
 from openonda.core import log_style
-from openonda.core.version import __version__
 
-_CONSOLE_STDOUT = sys.stdout
+LOGGER_NAME = "openonda.fvm"
 _MIB = 1024.0 * 1024.0
 
 _RESIDUAL_LABELS = {
@@ -37,48 +32,12 @@ _RESIDUAL_ORDER = (
     "initial_kinematic_pressure",
 )
 
-_MEMORY_LABELS = {
-    "mesh_topology": "mesh topology",
-    "geometry": "geometry",
-    "solution_fields_history": "fields and history",
-    "turbulence_model": "turbulence model",
-    "linear_algorithm_workspaces": "linear workspaces",
-    "derived_diagnostics": "derived diagnostics",
-    "output_buffers": "output buffers",
-    "numpy_unique_total": "numpy total",
-    "native_python_petsc_rss_remainder": "non-numpy, python and petsc",
-}
 
+def standalone_report(topic: str, *rows: log_style.Row, warning: bool = False) -> None:
+    """Print a mesh or linear-algebra report made outside a solver.
 
-def format_openonda_header(precision: str | None = "f64") -> log_style.FormattedText:
-    """Return the shared run configuration report for the FVM owner."""
-    return log_style.block_report(
-        "OpenONDA FVM",
-        [
-            (
-                "run",
-                [
-                    ("version", __version__),
-                    ("precision", precision),
-                    ("started", f"{datetime.now():%Y-%m-%d %H:%M:%S}"),
-                    ("platform", f"{platform.system()} {platform.machine()}"),
-                    ("Python", platform.python_version()),
-                ],
-            )
-        ],
-    )
-
-
-def print_openonda_header(precision: str | None = "f64") -> None:
-    """Print the FVM banner to the current console."""
-    print(format_openonda_header(precision), flush=True)
-
-
-def emit_standalone_report(topic: str, *rows: log_style.Row, warning: bool = False) -> None:
-    """Report a standalone mesh/linear operation before a solver sink exists.
-
-    Normal solver calls use their instance logger. This entry point provides the
-    same layout for standalone library operations, without opening a case file.
+    Solver code reports through its :class:`Logging` instance; this function
+    gives library operations without a solver the same layout.
     """
     print(
         log_style.block_section(topic, rows), file=sys.stderr if warning else sys.stdout, flush=True
@@ -227,63 +186,28 @@ def _event_rows(record: _StepRecord) -> list[log_style.Row]:
 
 
 class Logging:
-    """Single FVM output sink and formatter.
+    """Step records and reports of one FVM solver.
 
-    Rank zero tees messages to the live console and ``solution/<filename>``;
-    worker ranks use a disabled instance, so call sites need no MPI guard.
+    Rank 0 writes through the standard-library logger ``openonda.fvm`` to
+    ``solution/fvm.log`` and, optionally, the console; other ranks hold a
+    disabled instance, so callers need no rank checks. ``simple`` mode writes
+    a compact block per logged step; ``debug`` mode the full diagnostics.
 
-    ``simple`` mode prints a compact block for each reported step; ``debug``
-    mode prints the full per-step block and the performance profile.
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Log file, opened for appending.
+    config : LoggingConfig
+        Mode, schedule and console switch.
+    enabled : bool, default=True
+        Write records; ``False`` on the ranks other than 0.
     """
 
-    def __init__(
-        self,
-        case_dir: str | Path,
-        *,
-        solution_dir: str | Path | None = None,
-        config: Any | None = None,
-        enabled: bool = True,
-        filename: str | None = None,
-        console: bool | None = None,
-    ) -> None:
-        """Open the FVM console/file sink for one case.
-
-        Parameters
-        ----------
-        case_dir : str or pathlib.Path
-            Case root used to resolve the default ``solution`` directory.
-        solution_dir : str or pathlib.Path or None, default=None
-            Explicit log directory; otherwise ``case_dir/solution``.
-        config : LoggingConfig or None, default=None
-            Formatting, filename, console, and cadence settings.
-        enabled : bool, default=True
-            Disable all output while retaining a compatible object for worker
-            ranks.
-        filename : str or None, default=None
-            Log filename; the configured/default name is used when omitted.
-        console : bool or None, default=None
-            Whether to mirror records to stdout. ``None`` follows ``config``.
-
-        Side Effects
-        ------------
-        Creates the configured output directory/file on the enabled owner
-        rank. The instance owns the opened stream until :meth:`close`.
-        """
-        if console is None:
-            console = True if config is None else bool(config.console)
-        if filename is None:
-            filename = "fvm.log" if config is None else str(config.filename)
-
+    def __init__(self, path: str | Path, config: Any, *, enabled: bool = True) -> None:
         self.enabled = bool(enabled)
-        self.console = bool(console)
-        self.mode = "simple" if config is None else str(config.mode)
-        from ..config.scheduling import RunSchedule
-
-        self.schedule = RunSchedule(every_n_steps=1) if config is None else config.schedule
-        self.profiler: Any | None = None
-        self.log_file_path: Path | None = None
-
-        self._file: TextIO | None = None
+        self.mode = str(config.mode)
+        self.schedule = config.schedule
+        self.path = Path(path)
         self._closed = False
         self._step: _StepRecord | None = None
         self._step_reported = True
@@ -291,122 +215,73 @@ class Logging:
         self._step_wall_time = 0.0
         self._steps = 0
         self._count_label = "steps"
-        # VPM file logging may replace process-global ``sys.stdout`` after the
-        # FVM is constructed.  Keep the FVM console sink stable so its records
-        # cannot migrate into ``vpm.log`` midway through a coupled run.
-        self._console_stream = _CONSOLE_STDOUT
-
+        self._logger = logging.getLogger(LOGGER_NAME)
         if self.enabled:
-            output_directory = (
-                Path(solution_dir).resolve()
-                if solution_dir is not None
-                else Path(case_dir).resolve() / "solution"
-            )
-            output_directory.mkdir(parents=True, exist_ok=True)
-            self.log_file_path = output_directory / filename
-            had_previous_log = self.log_file_path.exists() and self.log_file_path.stat().st_size > 0
-            self._file = self.log_file_path.open("a", buffering=1, encoding="utf-8")
-            if had_previous_log:
-                self._file.write(
-                    log_style.block_section(
-                        "FVM log session", [("started", f"{datetime.now():%Y-%m-%d %H:%M:%S}")]
-                    )
-                    + "\n"
-                )
-                self._file.flush()
+            log_style.configure_logging(LOGGER_NAME, self.path, console=bool(config.console))
 
     @property
-    def debug(self) -> bool:
-        """True when the full per-step diagnostics are being printed."""
+    def debug_mode(self) -> bool:
+        """Whether the full step diagnostics are logged."""
         return self.mode == "debug"
 
-    def _emit(self, text: str, *, flush: bool = False) -> None:
+    def _emit(self, text: str) -> None:
+        if self.enabled and not self._closed:
+            self._logger.info(text)
+
+    def info(self, text: str) -> None:
+        """Log an event; during a step it joins the step record."""
+        self.event(text)
+
+    def warning(self, text: str) -> None:
+        """Log a warning immediately, also on steps that are not logged."""
         if not self.enabled or self._closed:
-            return
-        if self.console:
-            print(text, file=self._console_stream, flush=flush)
-        if self._file is not None:
-            print(text, file=self._file, flush=True)
-
-    def message(self, text: str = "", *, flush: bool = False) -> None:
-        """Emit a shared report, or submit plain text as a module event."""
-        if not self.enabled:
-            return
-        if isinstance(text, log_style.FormattedText):
-            self._emit(text, flush=flush)
-        else:
-            self.info(text, flush=flush)
-
-    def info(self, text: str, *, flush: bool = False) -> None:
-        """Submit an event without formatting it on unreported steps."""
-        self.record(text, flush=flush)
-
-    def warning(self, text: str, *, flush: bool = True) -> None:
-        """Emit immediately, including during a long step or suppressed interval."""
-        if not self.enabled:
             return
         rows: list[log_style.Row] = [(text, "")]
         if self._step is not None:
             rows.insert(0, ("FVM step", self._step.step))
-        self._emit(log_style.block_section("warnings", rows), flush=True)
+        self._logger.warning(log_style.block_section("warnings", rows))
 
-    def record(self, topic: str, *rows: log_style.Row, flush: bool = False) -> None:
-        """Collect host values for a report, or flush an explicit output event."""
-        if not self.enabled:
-            return
-        if self._step is not None and not flush:
-            if self._collect_routine:
-                self._step.events.append((topic, rows))
-            return
-        self._emit(
-            log_style.block_section(topic if rows else "events", rows or [(topic, "")]), flush=flush
-        )
-
-    def debug_message(self, text: str, *args: object, flush: bool = False) -> None:
-        """Interpolate optional details only when this owner will report them."""
-        if self.enabled and self.debug and self._collect_routine:
-            self.info(text % args if args else text, flush=flush)
-
-    def header(self, precision: str | None = "f64") -> None:
-        """Emit the OpenONDA FVM startup banner."""
-        self.message(format_openonda_header(precision), flush=True)
-
-    def section(
-        self,
-        title: str,
-        items: list[log_style.Row],
-        *,
-        flush: bool = False,
-    ) -> None:
-        """Record or emit one consistently formatted information section."""
+    def event(self, topic: str, *rows: log_style.Row) -> None:
+        """Log an event with optional detail rows, collected into a running step."""
         if not self.enabled:
             return
         if self._step is not None:
             if self._collect_routine:
-                self._step.sections.append((title, items))
+                self._step.events.append((topic, rows))
             return
-        self._emit(log_style.block_section(title, items), flush=flush)
+        self._emit(log_style.block_section(topic if rows else "events", rows or [(topic, "")]))
 
-    # Per-step diagnostics.
+    def debug(self, text: str, *args: object) -> None:
+        """Log a debug-mode note; ``text % args`` is formatted only when logged."""
+        if self.enabled and self.debug_mode and self._collect_routine:
+            self.info(text % args if args else text)
 
-    def step_begin(self, step: int, time: float, time_step_size: float) -> None:
-        """Open a trial record; discard an interrupted predecessor without publishing it."""
+    def run_header(self, precision: str) -> None:
+        """Log the report that opens the run."""
+        self._emit(log_style.run_header("FVM", precision))
+
+    def section(self, title: str, *rows: log_style.Row) -> None:
+        """Log one titled section, collected into a running step."""
+        if not self.enabled:
+            return
+        if self._step is not None:
+            if self._collect_routine:
+                self._step.sections.append((title, list(rows)))
+            return
+        self._emit(log_style.block_section(title, rows))
+
+    # Step records.
+
+    def begin_step(self, step: int, time: float, time_step_size: float) -> None:
+        """Open the record of a candidate step; an unfinished record is dropped."""
         self._step = None
-        self._collect_routine = self.should_report(step, time, time_step_size)
+        self._collect_routine = self.schedule.is_due(step, time, time_step_size)
         self._step = _StepRecord(
             step=int(step),
             time=float(time),
             time_step_size=float(time_step_size),
             wall_time_at_start=self._step_wall_time,
         )
-
-    def should_report(self, step: int, flow_time: float, time_step_size: float) -> bool:
-        """Return the rank-independent sampling decision for routine log metrics.
-
-        Every MPI rank must use this same schedule before optional collective
-        reductions. The disabled worker sink is deliberately not consulted here.
-        """
-        return self.schedule.is_due(step, flow_time, time_step_size)
 
     def _record(self, **values: Any) -> None:
         if not self.enabled or not self._collect_routine:
@@ -415,74 +290,58 @@ class Logging:
             for name, value in values.items():
                 setattr(self._step, name, value)
             return
-        if not self.debug:
+        if not self.debug_mode:
             return
         orphan = _StepRecord(step=0, time=0.0, time_step_size=0.0)
         for name, value in values.items():
             setattr(orphan, name, value)
         for title, items in _sections(orphan):
-            self.section(title, items)
+            self.section(title, *items)
 
-    def convergence_info(self, residuals: dict[str, float] | None) -> None:
+    def convergence(self, residuals: dict[str, float] | None) -> None:
         """Record the nonlinear and linear convergence state."""
         if self.enabled and self._collect_routine and residuals:
             self._record(residuals={key: float(value) for key, value in residuals.items()})
 
-    def continuity_info(self, maximum: float, total: float) -> None:
+    def continuity(self, maximum: float, total: float) -> None:
         """Record global mass-conservation diagnostics."""
         self._record(
             max_continuity_error=float(maximum), sum_absolute_continuity_error=float(total)
         )
 
-    def courant_info(self, maximum: float, target: float | None = None) -> None:
+    def courant_number(self, maximum: float, target: float | None = None) -> None:
         """Record the global Courant-number state."""
         self._record(
             courant=float(maximum),
             courant_target=None if target is None else float(target),
         )
 
-    def yplus_info(self, yplus_stats: dict[str, dict[str, float]] | None) -> None:
+    def y_plus(self, yplus_stats: dict[str, dict[str, float]] | None) -> None:
         """Record wall-resolution diagnostics."""
         if self.enabled and self._collect_routine and yplus_stats:
             self._record(y_plus=dict(yplus_stats))
 
-    def force_info(self, forces: dict[str, Any]) -> None:
+    def forces(self, forces: dict[str, Any]) -> None:
         """Record force coefficients for every configured patch."""
         if self.enabled and self._collect_routine and forces:
             self._record(forces=dict(forces))
 
-    def turbulence_info(
-        self,
-        eddy_viscosity: np.ndarray | None,
-        kinematic_viscosity: float,
-        *,
-        statistics: tuple[float, float, float] | None = None,
+    def turbulence(
+        self, minimum: float, maximum: float, mean: float, kinematic_viscosity: float
     ) -> None:
-        """Record turbulent-viscosity diagnostics."""
-        if not self.enabled or not self._collect_routine:
-            return
-        if statistics is None:
-            if eddy_viscosity is None:
-                return
-            values = np.asarray(eddy_viscosity)
-            if values.size == 0:
-                return
-            statistics = (
-                float(np.min(values)),
-                float(np.max(values)),
-                float(np.mean(values)),
+        """Record the eddy viscosity in m²/s and the molecular viscosity in m²/s."""
+        if self.enabled and self._collect_routine:
+            self._record(
+                turbulence=(float(minimum), float(maximum), float(mean)),
+                kinematic_viscosity=float(kinematic_viscosity),
             )
-        self._record(
-            turbulence=tuple(float(value) for value in statistics),
-            kinematic_viscosity=float(kinematic_viscosity),
-        )
 
-    def warnings_info(self, warnings: tuple[str, ...]) -> None:
+    def warnings(self, warnings: tuple[str, ...]) -> None:
         """Record acceptance-settings warnings raised by the step."""
         for warning in warnings:
             self.warning(warning)
 
-    def step_end(self, elapsed: float, *, accepted: bool = True) -> None:
+    def end_step(self, elapsed: float, *, accepted: bool = True) -> None:
         """Close a trial and publish only accepted state, including its wall duration."""
         self._step_wall_time += float(elapsed)
         if not accepted:
@@ -512,10 +371,10 @@ class Logging:
         self._step_reported = self._reportable(record)
         if not self._step_reported:
             return
-        if self.debug:
-            self._emit(self._debug_block(record), flush=True)
+        if self.debug_mode:
+            self._emit(self._debug_block(record))
         else:
-            self._emit(self._step_block(record), flush=True)
+            self._emit(self._step_block(record))
 
     def _debug_block(self, record: _StepRecord) -> str:
         """Return the full step report, one detail row per quantity."""
@@ -626,10 +485,10 @@ class Logging:
 
     # Startup and shutdown reports.
 
-    @staticmethod
-    def solver_info(solver: Any, initialization_time: float) -> str:
-        """Return a comprehensive FVM initialization report."""
-        config = solver._resolved_setup
+    def solver_configuration(self, solver: Any, initialization_seconds: float) -> None:
+        """Log the solver configuration report after construction."""
+        config = solver._configuration
+        numerics = config.numerics
         mesh = solver.mesh_data
         parallel = solver.parallel
         partition = getattr(parallel, "partition", None)
@@ -639,11 +498,11 @@ class Logging:
                 "RUN",
                 [
                     ("case", str(config.case_name)),
-                    ("algorithm", str(config.pimple.algorithm).upper()),
-                    ("execution mode", str(config.execution.parallel_mode)),
+                    ("algorithm", numerics.pimple.algorithm),
+                    ("execution mode", str(numerics.execution.parallel_mode)),
                     ("mpi ranks", str(parallel.size)),
-                    ("operator backend", str(config.execution.operator_backend)),
-                    ("linear backend", str(config.execution.linear_backend)),
+                    ("operator backend", str(numerics.execution.operator_backend)),
+                    ("linear backend", str(numerics.execution.linear_backend)),
                 ],
             )
         ]
@@ -664,35 +523,34 @@ class Logging:
             ]
         sections.append(("MESH", mesh_items))
 
-        linear_method = config.linear.linear_solver
-        pressure_method = config.linear.pressure_solver or linear_method
-        momentum_method = config.linear.momentum_solver or linear_method
+        linear_method = numerics.linear.linear_solver
+        pressure_method = numerics.linear.pressure_solver or linear_method
+        momentum_method = numerics.linear.momentum_solver or linear_method
         sections.append(
             (
                 "NUMERICS",
                 [
-                    ("time step", f"{config.time.time_step_size:.3e}", "s"),
-                    ("end time", f"{config.time.end_time:.3e}", "s"),
-                    ("time scheme", str(config.schemes.time_scheme)),
-                    ("convection scheme", str(config.schemes.convection_scheme)),
-                    ("gradient scheme", str(config.schemes.gradient_scheme)),
+                    ("time step", f"{numerics.time_step_size:.3e}", "s"),
+                    ("end time", f"{config.run.end_time:.3e}", "s"),
+                    ("time scheme", str(numerics.schemes.time_scheme)),
+                    ("convection scheme", str(numerics.schemes.convection_scheme)),
+                    ("gradient scheme", str(numerics.schemes.gradient_scheme)),
                     ("momentum solver", str(momentum_method)),
                     ("pressure solver", str(pressure_method)),
-                    ("correctors", str(config.pimple.n_correctors)),
-                    ("outer correctors", str(config.pimple.n_outer_correctors)),
+                    ("correctors", str(numerics.pimple.n_correctors)),
+                    ("outer correctors", str(numerics.pimple.n_outer_correctors)),
                 ],
             )
         )
-        turbulence = config.turbulence
-        turbulence_name = "DNS / laminar" if turbulence is None else str(turbulence.model)
+        turbulence_name = numerics.turbulence.model
         sections.append(
             (
                 "PHYSICS",
                 [
-                    ("density", f"{config.transport.density:.6g}", "kg/m^3"),
+                    ("density", f"{numerics.transport.density:.6g}", "kg/m^3"),
                     (
                         "kinematic viscosity",
-                        f"{config.transport.kinematic_viscosity:.6e}",
+                        f"{numerics.transport.kinematic_viscosity:.6e}",
                         "m^2/s",
                     ),
                     ("turbulence model", turbulence_name),
@@ -709,19 +567,14 @@ class Logging:
                 )
             )
         sections.append(("BOUNDARY CONDITIONS", boundary_items))
-        sink = getattr(solver, "logger", None)
-        log_file_path = getattr(sink, "log_file_path", None)
         sections.append(
             (
                 "MONITORING AND OUTPUT",
                 [
                     ("solution directory", str(solver.solution_dir)),
-                    ("log file", str(log_file_path or "disabled")),
-                    ("log mode", str(getattr(sink, "mode", "simple"))),
-                    (
-                        "log interval",
-                        getattr(getattr(sink, "schedule", None), "describe", lambda: "unknown")(),
-                    ),
+                    ("log file", str(self.path)),
+                    ("log mode", self.mode),
+                    ("log interval", self.schedule.describe()),
                     ("visualization", "VTK XML, cell-centred, appended binary"),
                     ("output compression", str(config.output.compression).upper()),
                     (
@@ -730,113 +583,63 @@ class Logging:
                         if config.output.asynchronous and not parallel.is_partitioned
                         else "synchronous",
                     ),
-                    ("visualization cadence", solver._output_schedule.describe()),
+                    (
+                        "visualization cadence",
+                        (
+                            config.output.schedule.describe()
+                            if config.output.schedule is not None
+                            else "initial and final"
+                        ),
+                    ),
                     (
                         "restart cadence",
                         (
-                            solver._backup_config.schedule.describe()
-                            if solver._backup_config.schedule is not None
+                            config.backup.schedule.describe()
+                            if config.backup.schedule is not None
                             else "disabled"
                         ),
                     ),
                     ("visualization ghost layers", str(config.output.ghost_layers)),
-                    ("initialization time", f"{initialization_time:.3e}", "s"),
+                    ("initialization time", f"{initialization_seconds:.3e}", "s"),
                 ],
             )
         )
-        return log_style.block_report("FVM SOLVER CONFIGURATION", sections)
+        self._emit(log_style.block_report("FVM SOLVER CONFIGURATION", sections))
 
-    def log_solver_info(self, solver: Any, initialization_time: float) -> None:
-        """Emit the formatted initialization report."""
-        self.message(self.solver_info(solver, initialization_time), flush=True)
+    def output(self, text: str) -> None:
+        """Log a visualization-frame or backup event immediately."""
+        if self.enabled:
+            self._emit(log_style.block_section("events", [(text, "")]))
 
-    def output_info(self, text: str) -> None:
-        """Emit one visualization/backup output event."""
-        self.info(text, flush=True)
-
-    def timing(self, name: str, elapsed: float) -> None:
-        """Record one completed phase with the profiler."""
-        if self.profiler is not None:
-            self.profiler.record(name, elapsed)
-
-    def profile_report(self, record: dict[str, Any]) -> None:
-        """Emit the per-step performance profile (debug mode, reported steps)."""
-        if not self.debug or not self._step_reported:
+    def profile(self, record: dict[str, Any]) -> None:
+        """Log the section times of a profiled step (debug mode, logged steps)."""
+        if not self.debug_mode or not self._step_reported:
             return
-        rows: list[log_style.Row] = [("phases, max over ranks:", "")]
-        for phase in record["phases"]:
-            rows.extend(
-                (
-                    (f"  {phase['name']}, calls", f"{phase['calls']['max']:.0f}"),
-                    (f"  {phase['name']}, mean", f"{phase['seconds']['mean']:.3f}", "s"),
-                    (f"  {phase['name']}, max", f"{phase['seconds']['max']:.3f}", "s"),
-                    (
-                        f"  {phase['name']}, share",
-                        f"{100.0 * phase['critical_path_fraction']:.1f}",
-                        "%",
-                    ),
-                    (f"  {phase['name']}, rank imbalance", f"{phase['rank_imbalance']:.3f}"),
-                )
-            )
-        if record["linear"]:
-            rows.append(("linear solvers:", ""))
-            for linear in record["linear"]:
-                rows.extend(
-                    (
-                        (f"  {linear['equation']}, calls", f"{linear['calls']['max']:.0f}"),
-                        (
-                            f"  {linear['equation']}, iterations, max",
-                            f"{linear['iterations']['max']:.0f}",
-                        ),
-                        (
-                            f"  {linear['equation']}, setup, max",
-                            f"{linear['setup_seconds']['max']:.3f}",
-                            "s",
-                        ),
-                        (
-                            f"  {linear['equation']}, solve, max",
-                            f"{linear['solve_seconds']['max']:.3f}",
-                            "s",
-                        ),
-                    )
-                )
+        rows: list[log_style.Row] = [("sections, max over ranks:", "")]
+        for name, values in record["sections"].items():
+            seconds = values["seconds"]
+            rows.append((f"  {name}", f"{seconds['max']:.3f}", "s"))
+            if "fraction_of_step" in values:
+                rows.append((f"  {name}, share", f"{100.0 * values['fraction_of_step']:.1f}", "%"))
+        for name, values in record["details"].items():
+            rows.append((f"  {name}, max", f"{values['max']:.0f}"))
         memory = record["memory"]
         rows.extend(
             (
                 ("memory:", ""),
                 (
                     "  resident, all ranks",
-                    f"{memory['aggregate_rss_end_bytes'] / _MIB:.1f}",
-                    "MiB",
-                ),
-                (
-                    "  peak during step",
-                    f"{memory['aggregate_rss_max_observed_bytes'] / _MIB:.1f}",
-                    "MiB",
-                ),
-                (
-                    "  peak since start",
-                    f"{memory['aggregate_peak_rss_end_bytes'] / _MIB:.1f}",
+                    f"{memory['total_resident_end_bytes'] / _MIB:.1f}",
                     "MiB",
                 ),
                 ("  slowest rank", f"{record['step_seconds']['max']:.3f}", "s"),
             )
         )
-        inventory = record.get("allocation_inventory")
-        if inventory is not None:
-            rows.append(("memory by subsystem:", ""))
-            for name, values in inventory.items():
-                label = _MEMORY_LABELS.get(name, name)
-                rows.append((f"  {label}", f"{values['aggregate_bytes'] / _MIB:.1f}", "MiB"))
-        self.section("PERFORMANCE PROFILE", rows, flush=True)
+        self.section("performance profile", *rows)
 
-    def run_summary(
-        self, *, status: str = "complete", failure: BaseException | None = None
-    ) -> None:
-        """Emit the closing wall-time summary with truthful terminal status."""
+    def run_summary(self, *, status: str, failure: BaseException | None = None) -> None:
+        """Log the closing wall-time summary with the run status."""
         mean = self._step_wall_time / self._steps if self._steps else 0.0
-        self._emit("")
-        title = "RUN COMPLETE" if status == "complete" else "RUN " + str(status).upper()
         rows: list[log_style.Row] = [
             ("status", str(status)),
             (self._count_label, f"{self._steps:,}"),
@@ -845,60 +648,27 @@ class Logging:
         ]
         if failure is not None:
             rows.append(("error", f"{type(failure).__name__}: {failure}"))
-        self.section(
-            title,
-            rows,
-            flush=True,
-        )
+        self.section(f"run {status}", *rows)
 
     def flush(self) -> None:
-        """Flush the file sink."""
-        if self._file is not None and not self._closed:
-            self._file.flush()
+        """Flush the log handlers."""
+        if self.enabled and not self._closed:
+            for handler in self._logger.handlers:
+                handler.flush()
 
-    def close(self, *, status: str = "complete", failure: BaseException | None = None) -> None:
-        """Flush and close the file sink. This method is idempotent."""
+    def close(
+        self, *, status: str, failure: BaseException | None = None, profiler: Any | None = None
+    ) -> None:
+        """Log the run summary and the timing report, then close the log file.
+
+        Idempotent.
+        """
         if self._closed:
             return
         self._step = None
-        # Terminal status is a run record, not a debug-only detail.
-        # Keep it visible in both simple and debug modes so failed runs never
-        # look like successful early exits.
-        self.run_summary(status=status, failure=failure)
-        self.flush()
-        if self._file is not None:
-            self._file.close()
+        if self.enabled:
+            self.run_summary(status=status, failure=failure)
+            if profiler is not None and profiler.enabled:
+                self._emit(profiler.report("FVM runtime profile"))
+            log_style.close_logging(LOGGER_NAME)
         self._closed = True
-
-
-class Timer:
-    """Per-owner wall-clock phases, in seconds, with a stack for nested phases.
-
-    Create one timer per solver. Starting/stopping a phase never changes another
-    owner's state. A missing phase returns zero elapsed seconds.
-    """
-
-    def __init__(self) -> None:
-        """Create an empty phase store without starting measurements."""
-        self._timers: dict[str, list[float]] = {}
-
-    def start(self, name: str) -> None:
-        """Start a named phase on this owner, retaining nested starts."""
-        self._timers.setdefault(name, []).append(time.perf_counter())
-
-    def stop(self, name: str) -> float:
-        """Return elapsed seconds from the most recent matching start."""
-        started = self._timers.get(name)
-        if not started:
-            return 0.0
-        value = started.pop()
-        if not started:
-            del self._timers[name]
-        return time.perf_counter() - value
-
-    def log(self, name: str, *, sink: Any | None = None) -> float:
-        """Stop a phase and report its elapsed seconds through the owning sink."""
-        elapsed = self.stop(name)
-        if sink is not None and elapsed > 0.0:
-            sink.timing(name.strip(" -"), elapsed)
-        return elapsed

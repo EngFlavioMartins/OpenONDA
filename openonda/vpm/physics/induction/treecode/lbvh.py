@@ -21,11 +21,6 @@ node solved independently (no serial stack, no shared scratch, Vulkan-portable):
 The Morton sort is a least-significant-digit radix sort over the active keys
 in a single kernel launch on every backend. It is stable, so equal Morton keys
 keep ascending particle index. The level bound is derived from N.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: February 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import math
@@ -127,7 +122,7 @@ class TaichiTreecode:
         max_nodes: int = 200000,
         theta: float = 0.5,
         max_leaf_size: int = 32,
-        kernel_type: str = "WINCKELMANS",
+        kernel_type: str = "winckelmans",
         multipole_order: int = 1,
         sort_particle_targets: bool = False,
         traversal_block_dim: int = 128,
@@ -148,7 +143,7 @@ class TaichiTreecode:
             improve accuracy.
         max_leaf_size : int, default=32
             Maximum source count in a leaf before further subdivision.
-        kernel_type : str, default="WINCKELMANS"
+        kernel_type : str, default="winckelmans"
             Supported regularization kernel name.
         multipole_order : {1, 2, 3}, default=1
             Order of stored source moments.  Higher order costs memory and
@@ -185,7 +180,7 @@ class TaichiTreecode:
         self.theta = theta
         self.max_leaf_size = max_leaf_size
         self.theta_sq = theta * theta
-        self.kernel_type = kernel_type.upper()
+        self.kernel_type = kernel_type.lower()
         gaussian = create_gaussian_kernels(ti.f32)
         self._gaussian_q = gaussian["q_"]
         self._gaussian_zeta = gaussian["zeta_"]
@@ -351,7 +346,7 @@ class TaichiTreecode:
         combinations up front, so reaching this error means the treecode was
         constructed outside the normal configuration path.
         """
-        normalized = kernel_type.upper()
+        normalized = kernel_type.lower()
         if normalized not in treecode_kernel_names():
             raise ValueError(
                 f"Unsupported treecode kernel_type: {kernel_type}. "
@@ -528,7 +523,7 @@ class TaichiTreecode:
             buffers[key] = np.empty(shape, dtype=dtype)
         return buffers[key]
 
-    def _upload_vector_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
+    def upload_vector_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
         arr = np.ascontiguousarray(src, dtype=np.float32)
         if arr.ndim != 2 or arr.shape[1] != 3:
             raise ValueError(f"Expected vector array with shape (N, 3), got {arr.shape}")
@@ -554,7 +549,7 @@ class TaichiTreecode:
             self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
             ti.sync()
 
-    def _download_vector_field(self, src: TaichiField, n: int) -> np.ndarray:
+    def download_vector_field(self, src: TaichiField, n: int) -> np.ndarray:
         if n == 0:
             return np.empty((0, 3), dtype=np.float32)
         out = np.empty((n, 3), dtype=np.float32)
@@ -582,8 +577,8 @@ class TaichiTreecode:
         self, pos_np: np.ndarray, strg_np: np.ndarray, rad_np: np.ndarray, N: int
     ) -> None:
         """Upload arrays through the explicit f32 treecode boundary."""
-        self._upload_vector_array(pos_np, self.position, N)
-        self._upload_vector_array(strg_np, self.vortex_strength, N)
+        self.upload_vector_array(pos_np, self.position, N)
+        self.upload_vector_array(strg_np, self.vortex_strength, N)
         self._upload_scalar_array(rad_np, self.core_radius, N)
         ti.sync()
 
@@ -1971,7 +1966,7 @@ class TaichiTreecode:
         if self.max_evaluation_points < M:
             raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
         self.n_targets[None] = M
-        self._upload_vector_array(target_position, self.target_position, M)
+        self.upload_vector_array(target_position, self.target_position, M)
         if freestream_velocity is not None:
             self.freestream_velocity[None] = ti.Vector(
                 freestream_velocity.astype(np.float32).tolist()
@@ -1983,7 +1978,7 @@ class TaichiTreecode:
             count = min(_TRAVERSAL_BATCH_SIZE, M - start)
             self.compute_target_velocity_kernel(theta_sq, start, count)
             ti.sync()
-        return self._download_vector_field(self.target_velocity, M)
+        return self.download_vector_field(self.target_velocity, M)
 
     def compute_target_velocity_gradient(self, target_position: np.ndarray) -> np.ndarray:
         """Evaluate the source-induced Jacobian at arbitrary targets.
@@ -2009,7 +2004,7 @@ class TaichiTreecode:
         if self.max_evaluation_points < M:
             raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
         self.n_targets[None] = M
-        self._upload_vector_array(target_position, self.target_position, M)
+        self.upload_vector_array(target_position, self.target_position, M)
         theta_sq = self.theta * self.theta
         for start in range(0, M, _TRAVERSAL_BATCH_SIZE):
             count = min(_TRAVERSAL_BATCH_SIZE, M - start)
@@ -2030,7 +2025,7 @@ class TaichiTreecode:
         if self.max_evaluation_points < M:
             raise ValueError(f"Too many targets: {M} > {self.max_evaluation_points}")
         self.n_targets[None] = M
-        self._upload_vector_array(target_position, self.target_position, M)
+        self.upload_vector_array(target_position, self.target_position, M)
         if freestream_velocity is not None:
             self.freestream_velocity[None] = ti.Vector(
                 freestream_velocity.astype(np.float32).tolist()
@@ -2043,7 +2038,7 @@ class TaichiTreecode:
             self.compute_target_velocity_and_gradients_kernel(theta_sq, start, count)
             ti.sync()
         return (
-            self._download_vector_field(self.target_velocity, M),
+            self.download_vector_field(self.target_velocity, M),
             self._download_matrix_field(self.target_velocity_gradient, M),
         )
 

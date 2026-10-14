@@ -1,10 +1,4 @@
-"""Immutable VPM case construction and mutable run-state types.
-
-The public construction boundary is deliberately small: numerical controls are
-specified once, initial conditions are declarative objects, and the run plan
-defines the finite simulation run.  Runtime clocks belong to
-``RestartState``, never to the immutable numerical configuration.
-"""
+"""Immutable VPM case: numerics, run plan and the complete case object."""
 
 from __future__ import annotations
 
@@ -14,16 +8,14 @@ from numbers import Real
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from openonda.core.write_precision import DEFAULT_WRITE_PRECISION, WritePrecision
-
-from ..boundary_elements.vlm.config import VLMSetup
+from ..boundary_elements.vlm.config import VLMConfig
 from ..kernels.registry import kernel_definition, kernel_names
 from ..numerics.rk_tableaux import SSPRK3, RKTableau
 from ..physics.induction.base import InductionMethod
 from ..physics.induction.direct import DirectInduction
 from .constants import DEFAULT_CUTOFF_RADIUS_FACTOR, DEFAULT_TIME_STEP, MAX_N_PARTICLES
-from .diagnostics import DiagnosticsConfig
-from .output import Backup, Samplers
+from .logging_config import LoggingConfig
+from .output import Backup, Output, Samplers
 from .stabilization import StabilizationConfig
 from .state_limits import ParticleStateLimits
 from .turbulence import TurbulenceConfig
@@ -55,18 +47,18 @@ class Numerics:
         Optional rotational orbit projection axis.
     viscous, turbulence, stabilization : object
         Diffusion, LES, and accepted-step stabilization settings.
-    vlm : VLMSetup or None
+    vlm : VLMConfig or None
         Optional attached vortex-lattice configuration.
     particle_kernel : str
         Radial regularization kernel name.
     max_n_particles : int
         Fixed particle capacity.
-    compute_device, precision, write_precision : str
-        Device and compute/write precision settings.
+    compute_device, precision : str
+        Compute device and compute precision.
     random_seed : int
         Deterministic seed for stochastic diffusion/initializers.
-    diagnostics, state_limits : object
-        Diagnostic and accepted-state validation settings.
+    state_limits : ParticleStateLimits
+        Accepted-state validation settings.
     freestream_velocity : tuple[float, float, float]
         Uniform background velocity in m/s.
     bodies, domain_bounds : tuple, tuple or None
@@ -82,21 +74,17 @@ class Numerics:
     viscous: ViscousConfig = field(default_factory=ViscousConfig.cs)
     turbulence: TurbulenceConfig = field(default_factory=TurbulenceConfig.dns)
     stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
-    vlm: VLMSetup | None = None
-    particle_kernel: Literal["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"] = (
-        "GAUSSIAN"
+    vlm: VLMConfig | None = None
+    particle_kernel: Literal["gaussian", "high_order_gaussian", "super_gaussian", "winckelmans"] = (
+        "gaussian"
     )
     max_n_particles: int = MAX_N_PARTICLES
-    compute_device: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] = "AUTO"
+    compute_device: Literal["auto", "cpu", "vulkan", "cuda", "metal"] = "auto"
     precision: Literal["f32", "f64"] = "f32"
-    write_precision: WritePrecision = DEFAULT_WRITE_PRECISION
     random_seed: int = 42
-    debug_mode: bool = False
-    diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
     state_limits: ParticleStateLimits = field(default_factory=ParticleStateLimits)
     cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
     freestream_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    verbose: bool = True
     domain_bounds: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
@@ -112,16 +100,15 @@ class Numerics:
             raise ValueError("time_step_size must be positive")
         if self.max_n_particles < 1:
             raise ValueError("max_n_particles must be at least one")
-        valid_devices = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
-        if self.compute_device.upper() not in valid_devices:
+        valid_devices = {"auto", "cpu", "vulkan", "cuda", "metal"}
+        if self.compute_device not in valid_devices:
             raise ValueError(f"compute_device must be one of {sorted(valid_devices)}")
         if self.precision not in {"f32", "f64"}:
             raise ValueError("precision must be 'f32' or 'f64'")
-        kernel = self.particle_kernel.upper()
+        kernel = self.particle_kernel
         if kernel not in kernel_names():
             raise ValueError(f"particle_kernel must be one of {sorted(kernel_names())}")
-        object.__setattr__(self, "particle_kernel", kernel)
-        if kernel != "GAUSSIAN" and (
+        if kernel != "gaussian" and (
             self.stabilization.regularization_interval_steps > 0
             or self.stabilization.divergence_relaxation.enabled
         ):
@@ -136,7 +123,7 @@ class Numerics:
                 f"{type(self.induction).__name__} does not support particle_kernel={kernel}; "
                 f"supported kernels: {sorted(supported_kernels)}"
             )
-        if self.viscous.scheme == "CS" and not kernel_definition(kernel).supports_core_spreading:
+        if self.viscous.scheme == "cs" and not kernel_definition(kernel).supports_core_spreading:
             spreading = sorted(
                 n for n in kernel_names() if kernel_definition(n).supports_core_spreading
             )
@@ -144,28 +131,26 @@ class Numerics:
                 "Core Spreading requires a kernel with a positive normalized second moment; "
                 f"{kernel} cancels that moment, so use {'/'.join(spreading)} or DVH/GBD."
             )
-        if self.viscous.scheme == "RWM" and self.turbulence.flow_model == "LES":
+        if self.viscous.scheme == "rwm" and self.turbulence.flow_model == "les":
             raise ValueError(
                 "RWM is restricted to spatially uniform effective viscosity; "
                 "use GBD for LES variable-viscosity diffusion."
             )
-        if self.viscous.scheme == "DVH" and self.turbulence.flow_model == "LES":
+        if self.viscous.scheme == "dvh" and self.turbulence.flow_model == "les":
             raise ValueError(
                 "DVH requires spatially uniform effective viscosity; "
                 "use GBD for LES variable-viscosity diffusion."
             )
-        device = self.compute_device.upper()
+        device = self.compute_device
         supported_devices = getattr(self.induction, "supported_devices", None)
         if supported_devices is not None and device not in supported_devices:
             raise ValueError(
                 f"{type(self.induction).__name__} does not support compute_device={device}; "
                 f"supported devices: {sorted(supported_devices)}"
             )
-        object.__setattr__(self, "compute_device", device)
-        object.__setattr__(self, "precision", self.precision.lower())
         if self.precision == "f64" and not getattr(self.induction, "supports_f64", True):
             raise ValueError(f"{type(self.induction).__name__} does not support precision='f64'")
-        if self.precision == "f64" and self.viscous.scheme in {"DVH", "GBD"}:
+        if self.precision == "f64" and self.viscous.scheme in {"dvh", "gbd"}:
             raise ValueError(
                 f"viscous scheme {self.viscous.scheme} uses an f32 diffusion grid; "
                 "select precision='f32' or use CS/RWM for a nominal f64 case"
@@ -177,16 +162,13 @@ class Numerics:
             "freestream_velocity",
             tuple(float(value) for value in self.freestream_velocity),
         )
-        if self.axisymmetric_no_swirl_axis is not None:
-            axis = self.axisymmetric_no_swirl_axis.lower()
-            if axis not in {"x", "y", "z"}:
-                raise ValueError("axisymmetric_no_swirl_axis must be x, y, z, or None")
-            object.__setattr__(self, "axisymmetric_no_swirl_axis", axis)
+        if self.axisymmetric_no_swirl_axis not in {None, "x", "y", "z"}:
+            raise ValueError("axisymmetric_no_swirl_axis must be x, y, z, or None")
         if self.domain_bounds is not None:
             if len(self.domain_bounds) != 6:
                 raise ValueError("domain_bounds must contain (xmin, xmax, ymin, ymax, zmin, zmax)")
             object.__setattr__(self, "domain_bounds", tuple(float(v) for v in self.domain_bounds))
-        if getattr(self.induction, "method", None) == "SLIP_SLAB":
+        if getattr(self.induction, "method", None) == "slip_slab":
             self._validate_slip_slab()
 
     def _validate_slip_slab(self) -> None:
@@ -195,7 +177,7 @@ class Numerics:
         tolerance = 1.0e-9 * max(1.0, abs(planes[0]), abs(planes[1]))
         viscous = self.viscous
         if (
-            viscous.scheme == "DVH"
+            viscous.scheme == "dvh"
             and viscous.dvh_domain_padding < viscous.dvh_support_radius_ratio
         ):
             raise ValueError(
@@ -203,14 +185,14 @@ class Numerics:
                 "slip planes: set dvh_domain_padding >= dvh_support_radius_ratio "
                 f"({viscous.dvh_support_radius_ratio})"
             )
-        if viscous.scheme == "GBD" and viscous.gbd_remeshing_kernel != "M4_PRIME":
+        if viscous.scheme == "gbd" and viscous.gbd_remeshing_kernel != "m4_prime":
             raise ValueError("Slip-slab GBD requires M4_PRIME remeshing")
         # Every lattice that carries slab images must map nodes onto nodes, so
         # the slip planes fall on its nodes or half nodes.
         stabilization = self.stabilization
         lattices = (
-            ("GBD grid", viscous.scheme == "GBD", viscous.gbd_grid_spacing),
-            ("DVH grid", viscous.scheme == "DVH", viscous.dvh_grid_spacing),
+            ("GBD grid", viscous.scheme == "gbd", viscous.gbd_grid_spacing),
+            ("DVH grid", viscous.scheme == "dvh", viscous.dvh_grid_spacing),
             (
                 "regularization grid",
                 stabilization.regularization_interval_steps > 0,
@@ -256,169 +238,155 @@ class Numerics:
 class RunPlan:
     """Finite solver run.
 
-    ``steps`` is the number of accepted VPM steps to execute.  Initial samples
-    are dispatched before the first step, final-only samples after the last
-    accepted step, and a final restart backup is written on successful
-    completion when ``final_backup`` is enabled.
-
-    ``steps`` is required so a finite run cannot acquire an accidental default.
-    ``initial_samples`` defaults to ``True`` because explicitly configured
-    initial diagnostics are usually part of a reproducible case.  A final
-    backup defaults to ``True`` to preserve a restart point after completed or
-    deliberately stopped runs; it does not schedule scientific samplers.
-    ``state_limit_action``
-    controls an accepted state that crosses a configured particle state limit:
-    ``"RAISE"`` preserves the exception behavior, while ``"STOP"`` writes
-    terminal samples and a restart before returning with status
-    ``"resolution_lost"`` when the state remains finite. A nonfinite state
-    returns with status ``"unstable"`` and its failure reason, without final
-    scientific samples or a restart of the rejected state.
+    The run advances to ``end_time``, which must be a whole number of
+    ``Numerics.time_step_size`` steps. The initial output event writes the
+    initial particle frame and the samplers with ``initial=True``; the final
+    output event writes the final frame and the ``FinalOnly`` samplers.
 
     Attributes
     ----------
-    steps : int
-        Number of accepted VPM steps; required and non-negative.
-    initial_samples, final_backup : bool
-        Scientific output controls for initial scientific output and the
-        terminal numerical backup.
-    state_limit_action : {'RAISE', 'STOP'}
-        Action when an accepted-state particle state limit is crossed. ``STOP`` also
-        records a nonfinite state as ``unstable`` without serializing it.
+    end_time : float
+        Physical end time in s; finite and non-negative.
+    initial_output, final_output : bool
+        Write the initial and the final output event.
+    state_limit_action : {'raise', 'stop'}
+        Action when an accepted state crosses a particle state limit.
+        ``raise`` propagates the error. ``stop`` writes the final output and
+        a backup and returns with status ``resolution_lost``; a nonfinite
+        state returns with status ``unstable`` without final output.
     wall_time_limit_seconds : float or None
-        Optional positive runtime budget checked between accepted steps.
-    runtime_compute_device : {'AUTO', 'CPU', 'VULKAN', 'CUDA', 'METAL'} or None
-        Optional explicit backend selection for this process invocation. This
-        runtime-only override is excluded from ``Numerics`` restart configuration;
-        the run metadata records it so diagnostic/pilot runs remain auditable.
+        Optional positive wall-clock budget, checked between accepted steps.
+        A stopped run writes its final output and backup and has status
+        ``wall_time_limit``.
+    runtime_compute_device : {'auto', 'cpu', 'vulkan', 'cuda', 'metal'} or None
+        Compute device for this process only. It overrides
+        ``Numerics.compute_device`` without entering the restart
+        configuration, and the run metadata records it.
     """
 
-    steps: int
-    initial_samples: bool = True
-    final_backup: bool = True
-    state_limit_action: Literal["RAISE", "STOP"] = "RAISE"
+    end_time: float
+    initial_output: bool = True
+    final_output: bool = True
+    state_limit_action: Literal["raise", "stop"] = "raise"
     wall_time_limit_seconds: float | None = None
-    runtime_compute_device: Literal["AUTO", "CPU", "VULKAN", "CUDA", "METAL"] | None = None
-    """Optional runtime budget, checked between accepted steps.
-
-    Budget stops save terminal samplers and the configured final backup. They
-    have status ``wall_time_limit``, not a numerical particle state failure. Initial
-    construction and sampling count toward the budget; final output can add
-    overhead, and an in-flight step is allowed to finish.
-    """
+    runtime_compute_device: Literal["auto", "cpu", "vulkan", "cuda", "metal"] | None = None
 
     def __post_init__(self) -> None:
-        if isinstance(self.steps, bool) or not isinstance(self.steps, int):
-            raise TypeError("RunPlan.steps must be an integer")
-        if self.steps < 0:
-            raise ValueError("RunPlan.steps must be non-negative")
-        action = str(self.state_limit_action).upper()
-        if action not in {"RAISE", "STOP"}:
-            raise ValueError("RunPlan.state_limit_action must be 'RAISE' or 'STOP'")
-        object.__setattr__(self, "state_limit_action", action)
+        if isinstance(self.end_time, bool) or not isinstance(self.end_time, Real):
+            raise TypeError("RunPlan.end_time must be a real number")
+        if not math.isfinite(self.end_time) or self.end_time < 0.0:
+            raise ValueError("RunPlan.end_time must be finite and non-negative")
+        object.__setattr__(self, "end_time", float(self.end_time))
+        for name in ("initial_output", "final_output"):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"RunPlan.{name} must be a bool")
+        if self.state_limit_action not in {"raise", "stop"}:
+            raise ValueError("RunPlan.state_limit_action must be 'raise' or 'stop'")
         limit = self.wall_time_limit_seconds
         if limit is not None:
             if isinstance(limit, bool) or not isinstance(limit, Real):
                 raise TypeError("RunPlan.wall_time_limit_seconds must be a positive number")
             if not math.isfinite(limit) or limit <= 0:
                 raise ValueError("RunPlan.wall_time_limit_seconds must be finite and positive")
-        if self.runtime_compute_device is not None:
-            device = str(self.runtime_compute_device).upper()
-            valid_devices = {"AUTO", "CPU", "VULKAN", "CUDA", "METAL"}
-            if device not in valid_devices:
-                raise ValueError(
-                    f"RunPlan.runtime_compute_device must be one of {sorted(valid_devices)} or None"
-                )
-            object.__setattr__(self, "runtime_compute_device", device)
+        valid_devices = {"auto", "cpu", "vulkan", "cuda", "metal"}
+        if self.runtime_compute_device is not None and (
+            self.runtime_compute_device not in valid_devices
+        ):
+            raise ValueError(
+                f"RunPlan.runtime_compute_device must be one of {sorted(valid_devices)} or None"
+            )
+
+    def n_steps(self, time_step_size: float) -> int:
+        """Return the number of steps of size ``time_step_size`` (s) to ``end_time``.
+
+        Raises
+        ------
+        ValueError
+            If ``end_time`` is not a whole number of steps within round-off.
+        """
+        n_steps = round(self.end_time / time_step_size)
+        if not math.isclose(n_steps * time_step_size, self.end_time, rel_tol=1.0e-9, abs_tol=0.0):
+            raise ValueError(
+                f"RunPlan.end_time {self.end_time!r} s is not a whole number of time steps "
+                f"of {time_step_size!r} s"
+            )
+        return n_steps
 
 
-@dataclass(slots=True)
-class RestartState:
-    """Mutable physical clock restored from a numerical backup.
-
-    ``time`` is in seconds and ``step`` is the number of accepted steps.  The
-    state is runtime-owned so it cannot accidentally be serialized as part of
-    a new case's numerical construction.
-
-    ``time`` is finite physical time in seconds and ``step`` is a non-negative
-    accepted-step counter.  The runtime restores this object from numerical
-    backup data; users construct it only for advanced interactive runs.
-
-    The object is mutable because the live solver updates it after every
-    accepted step; it is not part of immutable case configuration.
-    """
-
-    time: float = 0.0
-    step: int = 0
-
-    def __post_init__(self) -> None:
-        if isinstance(self.time, bool) or not isinstance(self.time, Real):
-            raise TypeError("RestartState.time must be a real number")
-        if not math.isfinite(float(self.time)) or self.time < 0.0:
-            raise ValueError("RestartState.time must be finite and non-negative")
-        if isinstance(self.step, bool) or not isinstance(self.step, int):
-            raise TypeError("RestartState.step must be an integer")
-        if self.step < 0:
-            raise ValueError("RestartState.step must be non-negative")
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class VPMCase:
     """Complete immutable construction object for one VPM run.
 
-    ``initial_conditions`` contains typed flow builders.  Each builder creates
-    a particle set during :meth:`VPMSolver.run`, rather than requiring callers
-    to unpack particle arrays or mutate a newly constructed solver.
-
-    ``numerics`` is required and is the only numerical construction object.
-    ``backup`` owns restart and log destinations, ``samplers`` owns scientific
-    samples, and ``run`` supplies the finite run.
-    ``initial_weak_particle_percent`` optionally removes particles below that
-    percentage of the assembled cloud's maximum vortex-strength magnitude.
-    ``directory`` is the case root (default current directory) below which
-    solver output files are written. Invalid nested plans or an empty
-    directory raise :class:`TypeError` or :class:`ValueError`. ``name`` is an
-    optional stable case identifier recorded in solver-owned metadata;
-    it does not affect the equations or output paths.
+    Construction performs no Taichi allocation or particle insertion; those
+    are solver-owned side effects.
 
     Attributes
     ----------
+    name : str
+        Non-empty case name, recorded in ``solution/vpm_metadata.json``.
+    directory : str or pathlib.Path, default='.'
+        Case root; results go to ``solution/`` and ``samples/`` below it.
+    variant : str or None, default=None
+        Optional sub-directory of ``solution/`` and ``samples/`` for one
+        variant of the case.
     numerics : Numerics
-        Required immutable physical/numerical controls.
+        Physical and numerical settings.
     initial_conditions : tuple[InitialCondition, ...]
-        Declarative builders evaluated once at run/first-advance time.
-    backup, samplers : Backup, Samplers
-        Restart/log settings and scientific output settings.
+        Particle builders, evaluated once when the run starts.
     run : RunPlan
-        Finite accepted-step run.
-    initial_weak_particle_percent : float
-        Optional 0--100 percentage threshold for initial strength pruning.
-    directory : str or pathlib.Path
-        Case root for solver output files.
-    name : str or None
-        Optional non-empty case identifier stored in ``vpm_metadata.json``.
-
-    Construction performs no Taichi allocation or particle insertion; those are
-    solver-owned side effects.
+        End time and run-control switches; the default has no steps.
+    output : Output
+        Particle visualization frames.
+    samplers : Samplers
+        Scientific samplers.
+    backup : Backup
+        Restart backups.
+    logging : LoggingConfig
+        Log verbosity and cadence.
+    initial_weak_particle_percent : float, default=0
+        Remove initial particles whose strength is below this percentage
+        (0--100) of the largest particle strength.
     """
 
+    name: str
+    directory: str | Path = "."
+    variant: str | None = None
     numerics: Numerics
     initial_conditions: tuple[InitialCondition, ...] = ()
-    backup: Backup = field(default_factory=Backup)
+    run: RunPlan = field(default_factory=lambda: RunPlan(end_time=0.0))
+    output: Output = field(default_factory=Output)
     samplers: Samplers = field(default_factory=Samplers)
-    run: RunPlan = field(default_factory=lambda: RunPlan(steps=0))
+    backup: Backup = field(default_factory=Backup)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
     initial_weak_particle_percent: float = 0.0
-    directory: str | Path = "."
-    name: str | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.numerics, Numerics):
-            raise TypeError("VPMCase.numerics must be a Numerics instance")
-        if not isinstance(self.run, RunPlan):
-            raise TypeError("VPMCase.run must be a RunPlan instance")
-        if not isinstance(self.backup, Backup):
-            raise TypeError("VPMCase.backup must be a Backup instance")
-        if not isinstance(self.samplers, Samplers):
-            raise TypeError("VPMCase.samplers must be a Samplers instance")
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("VPMCase.name must be a non-empty string")
+        directory = Path(self.directory)
+        if not str(directory).strip():
+            raise ValueError("VPMCase.directory must be a non-empty path")
+        object.__setattr__(self, "directory", directory)
+        if self.variant is not None:
+            variant = Path(self.variant)
+            if (
+                not isinstance(self.variant, str)
+                or not self.variant.strip()
+                or variant.is_absolute()
+                or any(part in {"", ".", ".."} for part in variant.parts)
+            ):
+                raise ValueError("VPMCase.variant must be None or a relative sub-directory name")
+        for name, kind in (
+            ("numerics", Numerics),
+            ("run", RunPlan),
+            ("output", Output),
+            ("samplers", Samplers),
+            ("backup", Backup),
+            ("logging", LoggingConfig),
+        ):
+            if not isinstance(getattr(self, name), kind):
+                raise TypeError(f"VPMCase.{name} must be a {kind.__name__} instance")
+        self.run.n_steps(self.numerics.time_step_size)
         if self.numerics.vlm is not None:
             self._validate_coupled_vlm_output()
         percent = self.initial_weak_particle_percent
@@ -428,14 +396,11 @@ class VPMCase:
             raise ValueError("initial_weak_particle_percent must be finite and between 0 and 100")
         object.__setattr__(self, "initial_weak_particle_percent", float(percent))
         object.__setattr__(self, "initial_conditions", tuple(self.initial_conditions))
-        directory = Path(self.directory)
-        if not str(directory).strip():
-            raise ValueError("VPMCase.directory must be a non-empty path")
-        object.__setattr__(self, "directory", directory)
-        if self.name is not None:
-            if not isinstance(self.name, str) or not self.name.strip():
-                raise ValueError("VPMCase.name must be None or a non-empty string")
-            object.__setattr__(self, "name", self.name.strip())
+
+    @property
+    def n_steps(self) -> int:
+        """Number of accepted steps from time zero to ``RunPlan.end_time``."""
+        return self.run.n_steps(self.numerics.time_step_size)
 
     def _validate_coupled_vlm_output(self) -> None:
         """Keep attached VLM output under the VPM run.
@@ -443,8 +408,7 @@ class VPMCase:
         Standalone ``VLMSolver`` callers retain their own force
         logging and ``VLMSampler`` API. Once VLM is attached to a VPM case,
         accepted-step force/loading records are mandatory in the VPM-owned
-        sample directory, while surface backup companions are emitted only by
-        the VPM backup events.
+        sample directory, and the surface frames follow the particle frames.
         """
         vlm = self.numerics.vlm
         if vlm.logging_interval_steps != 1:
@@ -459,11 +423,11 @@ class VPMCase:
             )
         if any(surface.sample_forces is False for surface in vlm.surfaces):
             raise ValueError("attached VLM surfaces cannot opt out of mandatory scientific output")
-        from ..io.sampling.vlm import VLMSampler
+        from ..sampling.vlm import VLMSampler
 
         if any(isinstance(sample, VLMSampler) for sample in self.samplers.samples):
             raise ValueError(
                 "VLMSampler is standalone-only for coupled VPM cases; "
-                "surface companions use the VPM backup schedule and VLM tables "
+                "surface frames follow the particle frames and VLM tables "
                 "use the solver sample path"
             )

@@ -8,7 +8,7 @@ from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class StabilizationConfig:
     """Configure accepted-step VPM correction, refinement, and retention settings.
 

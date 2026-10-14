@@ -1,11 +1,6 @@
 """
 Aircraft geometry primitives for the VLM: WingSegment, Wing, and Aircraft
 containers that generate lattice panels.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from dataclasses import dataclass, field

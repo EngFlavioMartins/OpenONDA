@@ -46,6 +46,7 @@ def _force_coefficients(tmp_path, steps_per_period: int) -> tuple[float, float]:
         directory=tmp_path / f"steps_{steps_per_period}",
         mesh=mesh,
         numerics=fvm.Numerics(
+            time_step_size=PERIOD / steps_per_period,
             transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=viscosity),
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         ),
@@ -60,7 +61,6 @@ def _force_coefficients(tmp_path, steps_per_period: int) -> tuple[float, float]:
         ),
         run=fvm.RunPlan(
             end_time=5.0 * PERIOD,
-            time_step_size=PERIOD / steps_per_period,
             initial_output=False,
             final_output=False,
         ),
@@ -71,7 +71,7 @@ def _force_coefficients(tmp_path, steps_per_period: int) -> tuple[float, float]:
                     reference_velocity=speed,
                     reference_area=DIAMETER,
                     reference_length=DIAMETER,
-                    schedule=fvm.RunSchedule(every_n_steps=1),
+                    schedule=fvm.EverySteps(1),
                 ),
             )
         ),

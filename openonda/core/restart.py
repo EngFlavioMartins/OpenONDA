@@ -5,15 +5,22 @@ from pathlib import Path
 import re
 import shutil
 
-from openonda.core.solution_layout import vpm_backup_files
+from openonda.core.file_output import TIME_TOLERANCE
+from openonda.core.solution_layout import (
+    coupled_backup_directories,
+    fvm_backup_files,
+    vpm_backup_files,
+)
+from openonda.core.vtk_output import read_collection, rewind_collection
 
 
-def select_backup(start_from, *, directory, kind, backup_path=None):
-    """Select a complete checkpoint, never a temporary file or visualization.
+def select_backup(start_from, *, directory, kind):
+    """Select a complete backup, never a temporary file or visualization.
 
     ``None`` keeps the caller's in-memory state. ``initial`` ignores all saved
-    states; ``latest`` starts at zero only when no complete checkpoint exists.
-    Explicit paths are passed to the strict native reader without fallback.
+    states; ``latest`` returns the numbered backup with the highest step, or
+    ``None`` when there is none. Explicit paths are passed to the strict
+    native reader without fallback.
     """
     if start_from is None:
         return None
@@ -21,7 +28,7 @@ def select_backup(start_from, *, directory, kind, backup_path=None):
         raise TypeError("start_from must be 'latest', 'initial', a backup path, or None")
     if start_from == "initial":
         return None
-    if start_from not in ("latest", "initial"):
+    if start_from != "latest":
         return Path(start_from)
     directory = Path(directory)
     if kind == "vpm":
@@ -41,23 +48,22 @@ def select_backup(start_from, *, directory, kind, backup_path=None):
                     f"VPM backup {latest} records step {recorded}, but its filename says {named}"
                 )
     elif kind == "fvm":
-        target = Path(backup_path)
-        if not target.is_absolute():
-            target = directory / target
-        latest = target if target.is_file() or (target / "checkpoint_info.json").is_file() else None
+        candidates = fvm_backup_files(directory)
+        latest = candidates[-1] if candidates else None
     elif kind == "coupled":
-        target = directory / "backups"
-        latest = target if (target / "checkpoint_info.json").is_file() else None
+        candidates = coupled_backup_directories(directory)
+        latest = candidates[-1] if candidates else None
     else:
         raise ValueError(f"Unknown restart kind {kind!r}")
     return latest
 
 
-def reset_run_outputs(directory, *, kind, backup_path=None, samples_dir=None, sample_names=()):
+def reset_run_outputs(directory, *, kind, samples_dir=None, sample_names=()):
     """Delete an old output series before a fresh initial run.
 
-    Only native output files, journals, the coupled or native backup directory
-    and the named sampler streams are removed, without opening checkpoints.
+    Only native output files, numbered backups, journals, the coupled backup
+    directory and the named sampler streams are removed, without opening
+    backups.
     A longer old run therefore cannot win a later latest-backup discovery.
     Current constructor metadata, open logs and unrelated files remain. Call
     on the writing rank before writing initial output.
@@ -70,7 +76,7 @@ def reset_run_outputs(directory, *, kind, backup_path=None, samples_dir=None, sa
     for component in components:
         output_files.append(directory / f"{component}.pvd")
         pattern = re.compile(
-            rf"{component}_\d+(?:-rank-\d+|_particles)?\.(?:h5|vtu|vtp|pvtu)(?:\.tmp)?$"
+            rf"{component}_\d+(?:-rank-\d+|_particles)?\.(?:h5|npz|vtu|vtp|pvtu)(?:\.tmp)?$"
         )
         for folder in (directory, directory / component):
             output_files.extend(
@@ -93,28 +99,26 @@ def reset_run_outputs(directory, *, kind, backup_path=None, samples_dir=None, sa
     for path in output_files:
         if path.is_file():
             path.unlink()
-    target = None
+    backup_directories = []
     if kind == "coupled":
-        target = directory / "backups"
-    elif kind == "fvm" and backup_path is not None:
-        target = Path(backup_path)
-        target = (target if target.is_absolute() else directory / target).resolve()
-    if target is not None and target.exists():
-        if directory.is_relative_to(target):
-            raise ValueError("The backup path must not contain the solution directory")
-        if target.is_dir():
-            shutil.rmtree(target)
-        else:
-            target.unlink()
+        backup_directories.append(directory / "coupled")
+    elif kind == "fvm":
+        pattern = re.compile(r"fvm_\d{6,}")
+        backup_directories.extend(
+            path
+            for path in (directory / "fvm").glob("fvm_*")
+            if pattern.fullmatch(path.name) and path.is_dir()
+        )
+    for path in backup_directories:
+        if path.is_dir():
+            shutil.rmtree(path)
 
 
 def rewind_vpm_frames(directory, step, time):
     """Delete output frames beyond the restored step and flow time."""
-    from openonda.fvm.io.solver_io import SolverIO
-
     directory = Path(directory)
     for component in ("vpm", "vlm"):
-        SolverIO._rewind_pvd(directory / f"{component}.pvd", time)
+        rewind_collection(directory / f"{component}.pvd", time)
     for component in ("vpm", "vlm"):
         for folder in (directory / component, directory):
             for path in folder.glob(f"{component}_*"):
@@ -132,14 +136,9 @@ def output_has_time(directory, name, time):
             rows = csv.DictReader(stream)
             if "time" not in (rows.fieldnames or ()):
                 return False
-            if any(abs(float(row["time"]) - time) <= 1e-12 for row in rows):
+            if any(abs(float(row["time"]) - time) <= TIME_TOLERANCE for row in rows):
                 return True
-    collection = directory / f"{name}.pvd"
-    if collection.is_file():
-        from defusedxml.ElementTree import parse
-
-        return any(
-            abs(float(item.attrib["timestep"]) - time) <= 1e-12
-            for item in parse(collection).findall(".//DataSet")
-        )
-    return False
+    return any(
+        abs(frame_time - time) <= TIME_TOLERANCE
+        for frame_time, _ in read_collection(directory / f"{name}.pvd")
+    )

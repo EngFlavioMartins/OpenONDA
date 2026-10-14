@@ -423,11 +423,7 @@ class _TemplateTopologyExtractor:
                     "name": name,
                     "start_face": start,
                     "n_faces": len(codes),
-                    "type": (
-                        getattr(self, "_wall_patch_type", "wall")
-                        if name == self.wall_patch_name
-                        else "patch"
-                    ),
+                    "type": (self._wall_patch_type if name == self.wall_patch_name else "patch"),
                 }
             )
             start += len(codes)

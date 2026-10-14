@@ -36,7 +36,7 @@ def run_ensemble(
         )
         run_case(
             case,
-            "RWM",
+            "rwm",
             name=name,
             random_seed=random_seed,
             surfaces=False,

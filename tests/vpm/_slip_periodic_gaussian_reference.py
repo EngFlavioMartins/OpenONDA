@@ -118,16 +118,16 @@ def _gaussian_factors(distance, sigma):
 
 def _radial_factors(kernel, distance, sigma):
     """Closed-form q/r^3 and (3q - rho^3 zeta)/r^5 of each particle kernel."""
-    if kernel == "GAUSSIAN":
+    if kernel == "gaussian":
         return _gaussian_factors(distance, sigma)
-    if kernel in {"HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"}:
+    if kernel in {"high_order_gaussian", "super_gaussian"}:
         # q = q_G + rho^3 exp(-rho^2)/(2 pi^1.5); the super-Gaussian is its
         # sqrt(2)-wider core.
-        width = sigma * (math.sqrt(2.0) if kernel == "SUPER_GAUSSIAN" else 1.0)
+        width = sigma * (math.sqrt(2.0) if kernel == "super_gaussian" else 1.0)
         first, second = _gaussian_factors(distance, width)
         correction = np.exp(-((distance / width) ** 2)) / (2 * np.pi**1.5)
         return first + correction / width**3, second + 2 * correction / width**5
-    if kernel == "WINCKELMANS":
+    if kernel == "winckelmans":
         base = (distance / sigma) ** 2 + 1
         return (
             ((distance / sigma) ** 2 + 2.5) / (4 * np.pi * sigma**3 * base**2.5),
@@ -136,7 +136,7 @@ def _radial_factors(kernel, distance, sigma):
     raise ValueError(f"no closed-form reference for kernel {kernel!r}")
 
 
-def kernel_pairs(displacement, strength, radius, kernel="GAUSSIAN"):
+def kernel_pairs(displacement, strength, radius, kernel="gaussian"):
     """Independent velocity and full Jacobian of one particle kernel's pairs."""
     r = np.asarray(displacement, dtype=np.float64)
     g = np.broadcast_to(np.asarray(strength, dtype=np.float64), r.shape)
@@ -153,7 +153,7 @@ def gaussian_pairs(displacement, strength, radius):
     at rho<=1/2 its first omitted dimensionless terms are below 2e-28.
     Coincident velocity is zero and its finite nonzero self-Jacobian is included.
     """
-    return kernel_pairs(displacement, strength, radius, "GAUSSIAN")
+    return kernel_pairs(displacement, strength, radius, "gaussian")
 
 
 def image_remainder_bounds(position, strength, radius, targets, *, z_min, z_max, shells):

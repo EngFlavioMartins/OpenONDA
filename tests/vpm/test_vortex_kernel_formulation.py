@@ -37,15 +37,14 @@ class _DeviceKernelSampler:
 def test_direct_and_fmm_advertise_every_supported_kernel(name, induction_type):
     """Construction rejects no member of the shared radial-kernel family."""
     viscous = (
-        ViscousConfig(scheme="DVH")
-        if name in {"HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"}
-        else ViscousConfig(scheme="CS")
+        ViscousConfig(scheme="dvh")
+        if name in {"high_order_gaussian", "super_gaussian"}
+        else ViscousConfig(scheme="cs")
     )
     numerics = Numerics(
         particle_kernel=name,
         induction=induction_type(),
         viscous=viscous,
-        verbose=False,
     )
     assert numerics.particle_kernel == name
 
@@ -54,10 +53,10 @@ def test_direct_and_fmm_advertise_every_supported_kernel(name, induction_type):
 def test_treecode_rejects_unsupported_kernels_at_configuration_boundary(name):
     induction = TreecodeInduction()
     if name in induction.supported_kernels:
-        Numerics(particle_kernel=name, induction=induction, verbose=False)
+        Numerics(particle_kernel=name, induction=induction)
     else:
         with pytest.raises(ValueError, match="does not support"):
-            Numerics(particle_kernel=name, induction=TreecodeInduction(), verbose=False)
+            Numerics(particle_kernel=name, induction=TreecodeInduction())
 
 
 @pytest.mark.parametrize("name", KERNELS)
@@ -113,7 +112,7 @@ def test_pair_radius_kernel_preserves_the_conservative_two_particle_rate(name):
 
 
 @pytest.mark.parametrize(
-    "name", ["GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"]
+    "name", ["gaussian", "high_order_gaussian", "super_gaussian", "winckelmans"]
 )
 def test_kernel_gradient_has_its_finite_source_centre_limit(name):
     kernel = make_vortex_kernel(name)
@@ -133,7 +132,7 @@ def test_kernel_gradient_has_its_finite_source_centre_limit(name):
 
 
 def test_kernel_gradient_matches_a_finite_difference_of_pair_velocity():
-    kernel = make_vortex_kernel("GAUSSIAN")
+    kernel = make_vortex_kernel("gaussian")
     displacement = np.array([0.7, -0.3, 0.2])
     source_strength = np.array([0.2, 0.4, -0.1])
     epsilon = 1.0e-6
@@ -165,11 +164,11 @@ def test_stretching_choice_is_independent_of_backend_and_survives_build(inductio
     from openonda.vpm.config.configuration_values import numerical_configuration
 
     configurations = []
-    for scheme in ("DIRECT", "TRANSPOSED", "MIXED"):
+    for scheme in ("direct", "transposed", "mixed"):
         induction = induction_type(stretching_scheme=scheme.lower())
         assert induction.stretching_scheme == scheme
         assert induction.build().stretching_scheme == scheme
-        configuration = numerical_configuration(Numerics(induction=induction, verbose=False))
+        configuration = numerical_configuration(Numerics(induction=induction))
         assert configuration["induction"]["stretching_scheme"] == scheme
         configurations.append(configuration)
     assert configurations[0] != configurations[1] != configurations[2]

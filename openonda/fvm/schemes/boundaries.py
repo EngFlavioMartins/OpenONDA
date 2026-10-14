@@ -32,7 +32,7 @@ class BoundaryStrategy(Enum):
 class BoundaryOperator:
     """Registration record binding a boundary type to its discrete operators.
 
-    Associates a boundary-condition name (e.g. ``"fixedValue"``) with the
+    Associates a boundary-condition name (e.g. ``"fixed_value"``) with the
     set of fields it applies to, the set of discrete operators it
     implements, and the :class:`BoundaryStrategy` that controls the
     numerical treatment.
@@ -40,7 +40,7 @@ class BoundaryOperator:
     Attributes
     ----------
     name : str
-        Boundary-condition name (e.g. ``"fixedValue"``).
+        Boundary-condition name (e.g. ``"fixed_value"``).
     fields : frozenset[str]
         Fields this BC applies to (e.g. ``{"velocity", "kinematic_pressure", "scalar"}``).
     operators : frozenset[str]
@@ -108,7 +108,7 @@ class BoundaryRegistry:
         Parameters
         ----------
         name : str or None
-            OpenFOAM-style boundary name, such as ``"fixedValue"``. ``None``
+            OpenFOAM-style boundary name, such as ``"fixed_value"``. ``None``
             (no boundary condition set) is rejected like an unknown name.
         field : str
             Field family requesting the operation, such as ``"velocity"``.
@@ -150,18 +150,18 @@ class BoundaryRegistry:
 BOUNDARIES = BoundaryRegistry()
 for _name, _fields, _strategy in (
     (
-        "fixedValue",
+        "fixed_value",
         frozenset({"velocity", "kinematic_pressure", "scalar"}),
         BoundaryStrategy.FIXED_VALUE,
     ),
     (
-        "zeroGradient",
+        "zero_gradient",
         frozenset({"velocity", "kinematic_pressure", "scalar"}),
         BoundaryStrategy.ZERO_GRADIENT,
     ),
     ("empty", frozenset({"velocity", "kinematic_pressure", "scalar"}), BoundaryStrategy.EMPTY),
-    ("noSlip", frozenset({"velocity"}), BoundaryStrategy.NO_SLIP),
-    ("inletOutlet", frozenset({"velocity"}), BoundaryStrategy.INLET_OUTLET),
+    ("no_slip", frozenset({"velocity"}), BoundaryStrategy.NO_SLIP),
+    ("inlet_outlet", frozenset({"velocity"}), BoundaryStrategy.INLET_OUTLET),
     ("slip", frozenset({"velocity"}), BoundaryStrategy.SLIP),
     ("symmetry", frozenset({"velocity"}), BoundaryStrategy.SYMMETRY),
     ("cyclic", frozenset({"velocity", "kinematic_pressure", "scalar"}), BoundaryStrategy.CYCLIC),
@@ -178,7 +178,7 @@ for _name, _fields, _strategy in (
 # is homogeneous Neumann so that the prescribed boundary flux is not changed.
 BOUNDARIES.register(
     BoundaryOperator(
-        "fixedFluxPressure",
+        "fixed_flux_pressure",
         frozenset({"kinematic_pressure"}),
         _ALL_OPERATORS,
         BoundaryStrategy.FIXED_FLUX_PRESSURE,
@@ -188,7 +188,7 @@ BOUNDARIES.register(
 
 BOUNDARIES.register(
     BoundaryOperator(
-        "fixedGradient",
+        "fixed_gradient",
         frozenset({"kinematic_pressure"}),
         _ALL_OPERATORS,
         BoundaryStrategy.FIXED_GRADIENT,
@@ -197,11 +197,11 @@ BOUNDARIES.register(
 )
 
 # Coupling trace that prescribes the normal velocity and the two tangential
-# components of its face-normal derivative.  Unlike fixedValue, its tangential
+# components of its face-normal derivative.  Unlike fixed_value, its tangential
 # face velocity is reconstructed from the evolving owner-cell state.
 BOUNDARIES.register(
     BoundaryOperator(
-        "normalValueTangentialGradient",
+        "normal_value_tangential_gradient",
         frozenset({"velocity"}),
         _ALL_OPERATORS,
         BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT,

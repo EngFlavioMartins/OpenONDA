@@ -6,8 +6,8 @@ data already computed by the VLM solver.  No force recomputation is performed;
 this is a pure reduction of existing lattice fields.
 
 Output CSVs:
-  <case_dir>/samples/vlm_spanwise_<surface>.csv   — one row per spanwise station
-  <case_dir>/samples/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
+  <samples_dir>/vlm_spanwise_<surface>.csv   — one row per spanwise station
+  <samples_dir>/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
 
 The exported section/panel force components are dimensional newtons and each
 row records ``force_density``. ``circulation_pressure_jump_proxy`` is the
@@ -16,12 +16,7 @@ recorded unsteady contribution; it is not reconstructed pressure.
 
 Call pattern (mirrors VLMDiagnostics):
   VLMLoadingDistribution.record_loading_distributions(
-      vlm_solver, diagnostics_history, time_step_size, time, case_dir)
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: June 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+      vlm_solver, diagnostics_history, time, samples_dir)
 """
 
 from __future__ import annotations
@@ -32,8 +27,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from openonda.vpm.io.logging import Logging
-
-from ....io.sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
     from .vlm_solver import VLMSolver
@@ -48,10 +41,8 @@ class VLMLoadingDistribution:
     def record_loading_distributions(
         vlm_solver: VLMSolver,
         diagnostics_history: dict,
-        step: int,
         time: float,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
         """Export mandatory solver-clock loading distributions for each surface.
 
@@ -59,12 +50,10 @@ class VLMLoadingDistribution:
         run. Output failures propagate so a run cannot claim success
         while required scientific samples are missing.
         """
-        if vlm_solver is None or not hasattr(vlm_solver, "_surface_sampling"):
+        if vlm_solver is None or not vlm_solver._surface_sampling:
             return
-        if not vlm_solver._surface_sampling:
-            return
-        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
-        density = getattr(vlm_solver, "density", 1.0)
+        reference_velocity = vlm_solver._last_reference_velocity
+        density = vlm_solver.density
 
         for surface_name, enabled in vlm_solver._surface_sampling.items():
             if not enabled:
@@ -77,9 +66,7 @@ class VLMLoadingDistribution:
                 surface_name,
                 distributions,
                 time,
-                step,
-                case_dir,
-                sample_directory,
+                samples_dir,
             )
 
     # GRID INDEX
@@ -510,16 +497,11 @@ class VLMLoadingDistribution:
         surface_name: str,
         distributions: dict[str, Any],
         time: float,
-        step: int,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
         """Append one time-step's distributions to the per-surface CSVs."""
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(
-            case_dir, None if sample_directory is None else str(sample_directory)
-        )
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = surface_name.replace("/", "_").replace(" ", "_")
@@ -535,8 +517,7 @@ class VLMLoadingDistribution:
             # prepend metadata columns
             df = df.copy()
             df.insert(0, "time", time)
-            df.insert(1, "step", step)
-            df.insert(2, "surface", surface_name)
+            df.insert(1, "surface", surface_name)
 
             csv_path = samples_dir / fname_tpl
             if not csv_path.exists():

@@ -9,11 +9,6 @@ Owns all logic for:
 Nothing in this module should import from the top-level VPM Solver class; all
 required data is passed in explicitly so the solver itself stays a thin
 step controller.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: March 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from __future__ import annotations
@@ -22,8 +17,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-
-from ....io.sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
     from ....particles.container import Particles
@@ -61,10 +54,8 @@ class VLMDiagnostics:
         particles: Particles,
         particle_vortex_strength: np.ndarray,
         diagnostics_history: dict,
-        step: int,
         time: float,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
         """Record VLM force and vector-strength scalars and flush one solver sample.
 
@@ -78,15 +69,12 @@ class VLMDiagnostics:
             Vortex-strength array (N, 3) for the current particles [m³/s].
         diagnostics_history:
             Solver's ``_diagnostics_history`` dict (mutated in-place).
-        step:
-            Current integer step counter.
         time:
             Current simulation time [s].
-        case_dir:
-            Solver backup/output root directory (CSV is written under
-            ``<case_dir>/samples/vlm_forces.csv``).
+        samples_dir:
+            Sample directory of the case; the table is ``vlm_forces.csv``.
         """
-        if vlm_solver is None or not hasattr(vlm_solver, "_last_forces"):
+        if vlm_solver is None or vlm_solver._last_forces is None:
             return
         forces = vlm_solver._last_forces
         n_panels = vlm_solver.lattice.n_panels
@@ -121,9 +109,7 @@ class VLMDiagnostics:
             max_leading_edge_suction_parameter,
             n_p,
             time,
-            step,
-            case_dir,
-            sample_directory,
+            samples_dir,
         )
 
     # CSV export
@@ -137,11 +123,9 @@ class VLMDiagnostics:
         max_leading_edge_suction_parameter: float,
         n_p: int,
         time: float,
-        step: int,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
-        """Append one row to ``<case_dir>/samples/vlm_forces.csv``.
+        """Append one row to ``<samples_dir>/vlm_forces.csv``.
 
         Parameters
         ----------
@@ -157,30 +141,24 @@ class VLMDiagnostics:
             Number of VPM particles at this step.
         time:
             Current simulation time [s].
-        step:
-            Integer step counter.
-        case_dir:
-            Output root; CSV is written under ``<case_dir>/samples/``.
+        samples_dir:
+            Sample directory of the case.
         """
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(
-            case_dir, None if sample_directory is None else str(sample_directory)
-        )
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 
-        force_density = float(getattr(vlm_solver, "_force_density", vlm_solver.density))
-        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
+        force_density = float(vlm_solver._force_density)
+        reference_velocity = vlm_solver._last_reference_velocity
         if reference_velocity is None:
-            reference_velocity = getattr(vlm_solver, "freestream_velocity", None)
+            reference_velocity = vlm_solver.freestream_velocity
         reference_speed = (
             float(np.linalg.norm(reference_velocity)) if reference_velocity is not None else 0.0
         )
 
         row = {
             "time": time,
-            "step": step,
             "lift_coefficient": forces.get("lift_coefficient", 0.0),
             "drag_coefficient": forces.get("drag_coefficient", 0.0),
             "side_force_coefficient": forces.get("side_force_coefficient", 0.0),
@@ -219,9 +197,9 @@ class VLMDiagnostics:
             "reference_speed": reference_speed,
             "reference_speed_units": "m/s",
         }
-        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
+        reference_velocity = vlm_solver._last_reference_velocity
         if reference_velocity is None:
-            reference_velocity = getattr(vlm_solver, "freestream_velocity", None)
+            reference_velocity = vlm_solver.freestream_velocity
         surface_forces = vlm_solver.compute_per_surface_forces(
             vlm_solver.density, reference_velocity
         )
@@ -232,7 +210,6 @@ class VLMDiagnostics:
             [
                 {
                     "time": time,
-                    "step": step,
                     "surface": name,
                     "force_density": force_density,
                     "force_units": "N",

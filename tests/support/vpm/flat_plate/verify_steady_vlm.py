@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import taichi as ti
 
-from openonda.vpm.boundary_elements.vlm.config import VLMMeshSetup, VLMSetup, VLMSurfaceSetup
+from openonda.vpm.boundary_elements.vlm.config import VLMConfig, VLMMeshConfig, VLMSurface
 from openonda.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
 from tests._tutorial_helpers import load_tutorial_module
 
@@ -59,9 +59,9 @@ def trefftz_drag(vortex_points, circulation, direction):
 def solve(nc, ns, aspect_ratio, angle=5.0):
     alpha = np.radians(angle)
     solver = VLMSolver(
-        VLMSetup(
+        VLMConfig(
             surfaces=(
-                VLMSurfaceSetup(
+                VLMSurface(
                     create_flat_plate(
                         chord=1,
                         span=aspect_ratio,
@@ -71,7 +71,7 @@ def solve(nc, ns, aspect_ratio, angle=5.0):
                     )
                 ),
             ),
-            mesh=VLMMeshSetup.geometric(ratio=4, region="end"),
+            mesh=VLMMeshConfig.geometric(ratio=4, region="end"),
             dtype="f64",
             freestream_velocity=(10 * np.cos(alpha), 0, 10 * np.sin(alpha)),
         )

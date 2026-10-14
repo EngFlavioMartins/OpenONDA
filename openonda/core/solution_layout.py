@@ -2,7 +2,7 @@
 
 The solution root is intentionally small: a user opens one ParaView collection
 per physical representation there, while immutable frame files live in a
-component directory. Native VPM checkpoints accompany those frames; coupled
+component directory. Numbered FVM and VPM backups accompany those frames;
 coupled restart files are saved separately.
 """
 
@@ -61,5 +61,39 @@ def vpm_backup_files(directory: str | Path) -> list[Path]:
     for path in frames.glob("vpm_*.h5"):
         match = pattern.fullmatch(path.name)
         if match and path.is_file():
+            records.append((int(match[1]), path))
+    return [path for _, path in sorted(records)]
+
+
+def fvm_backup_files(directory: str | Path) -> list[Path]:
+    """Find complete numbered backups in the solution root's ``fvm/`` component.
+
+    A serial backup is ``fvm_{step:06d}.npz``; a partitioned backup is a
+    directory of that name holding ``checkpoint_info.json``. The list is
+    sorted by step.
+    """
+    pattern = re.compile(r"^fvm_(\d{6,})(\.npz)?$")
+    records = []
+    for path in component_directory(directory, "fvm").glob("fvm_*"):
+        match = pattern.fullmatch(path.name)
+        if match is None:
+            continue
+        complete = (
+            path.is_file()
+            if match[2]
+            else path.is_dir() and (path / "checkpoint_info.json").is_file()
+        )
+        if complete:
+            records.append((int(match[1]), path))
+    return [path for _, path in sorted(records)]
+
+
+def coupled_backup_directories(directory: str | Path) -> list[Path]:
+    """Find complete numbered coupled backups in the solution root's ``coupled/`` directory."""
+    pattern = re.compile(r"^coupled_(\d{6,})$")
+    records = []
+    for path in (Path(directory) / "coupled").glob("coupled_*"):
+        match = pattern.fullmatch(path.name)
+        if match and (path / "checkpoint_info.json").is_file():
             records.append((int(match[1]), path))
     return [path for _, path in sorted(records)]

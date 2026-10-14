@@ -48,11 +48,11 @@ Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above
 
 | Setting | Options |
 | --- | --- |
-| `particle_kernel` | `GAUSSIAN` (default), `HIGH_ORDER_GAUSSIAN`, `SUPER_GAUSSIAN`, `WINCKELMANS` (algebraic). |
+| `particle_kernel` | `gaussian` (default), `high_order_gaussian`, `super_gaussian`, `winckelmans` (algebraic). |
 | `induction` | `DirectInduction()`: exact sum over all pairs, for small or reference cases. `TreecodeInduction(theta=0.4, multipole_order=3)`: hierarchical far field for Gaussian and Winckelmans kernels; a smaller `theta` is more accurate. `FMMInduction()`: fast multipole method, every kernel. `SlipSlabInduction(base, z_min, z_max)`: free-slip span planes, see [planar flow](#planar-flow). |
-| `stretching_scheme` | `TRANSPOSED` (default) uses $J^T\boldsymbol{\Gamma}$ and conserves total strength; `DIRECT` uses $J\boldsymbol{\Gamma}$; `MIXED` uses the symmetric part $S\boldsymbol{\Gamma}$. The [vortex ring](../tutorials/vpm/02_vortex_ring/README.md) compares them. |
+| `stretching_scheme` | `transposed` (default) uses $J^T\boldsymbol{\Gamma}$ and conserves total strength; `direct` uses $J\boldsymbol{\Gamma}$; `mixed` uses the symmetric part $S\boldsymbol{\Gamma}$. The [vortex ring](../tutorials/vpm/02_vortex_ring/README.md) compares them. |
 | `integrator` | `RK2()`, `SSPRK3()` or `RK4()`, advancing positions and strengths together. |
-| `compute_device`, `precision` | `AUTO`, `CPU`, `CUDA`, `VULKAN` or `METAL`; `f32` or `f64`. |
+| `compute_device`, `precision` | `auto`, `cpu`, `cuda`, `vulkan` or `metal`; `f32` or `f64`. |
 
 Choose the induction backend by particle count. On a CUDA GPU, `DirectInduction` is the fastest up to about 50k particles and `FMMInduction()` above that; at 81k particles FMM took 0.6 s per step against 0.9 s for direct summation and 2.8 s for the treecode (core spreading, RTX 3060 Laptop). FMM keeps the velocity within $3\times10^{-4}$ and its gradient within $1.4\times10^{-3}$ of direct summation (relative $L_2$ error on an 81k-particle vortex ring). `TreecodeInduction()` is more accurate, within $3\times10^{-4}$ and $7\times10^{-4}$, about fifty times below the particle discretization error of the 8.8k-particle ring, but slower on GPUs; second-order multipoles are cheaper and more than ten times less accurate. On a CPU the fast methods pay off below 10k particles, and FMM was about twice as fast as the treecode at 81k particles.
 
@@ -70,22 +70,22 @@ Check the fast methods against `DirectInduction` on a small case before trusting
 
 The grid schemes (`dvh`, `gbd`) need a `padding` around the particles, in grid cells, and a vorticity `threshold` below which regenerated particles are dropped (`threshold_mode="absolute"` in m³/s, or a `"budget"` fraction of the total).
 
-`TurbulenceConfig.dns()` adds no model. `les_smagorinsky()` and `equilibrium_smagorinsky()` add an eddy viscosity
+`TurbulenceConfig.dns()` adds no model. `smagorinsky()` and `equilibrium_smagorinsky()` add an eddy viscosity
 
 $$
 \nu_t=(C_s\Delta)^2\sqrt{2S:S},\qquad \Delta=V_p^{1/3},\qquad \nu_\mathrm{eff}=\nu+\nu_t,
 $$
 
-with $C_s=0.20$ by default; `filter_width` fixes $\Delta$ in metres. LES works with core spreading and grid-based diffusion. See the [ring](../tutorials/vpm/02_vortex_ring/README.md) for a DNS/LES comparison and the [wind turbine](../tutorials/vpm/06_rotor_flow/README.md) for an LES wake.
+with $C_s=0.17$ by default, as in the FVM; `filter_width` fixes $\Delta$ in metres. LES works with core spreading and grid-based diffusion. See the [ring](../tutorials/vpm/02_vortex_ring/README.md) for a DNS/LES comparison and the [wind turbine](../tutorials/vpm/06_rotor_flow/README.md) for an LES wake.
 
-Smagorinsky does not vanish in laminar strain. On resolved vortex rings it dissipates four to eleven times more energy than the molecular viscosity at $Re_\Gamma=3\times10^4$, which mostly lowers the effective Reynolds number. `les_sigma()` is selective instead. It uses the sigma model (Nicoud et al., 2011),
+Smagorinsky does not vanish in laminar strain. On resolved vortex rings it dissipates four to eleven times more energy than the molecular viscosity at $Re_\Gamma=3\times10^4$, which mostly lowers the effective Reynolds number. `sigma()` is selective instead. It uses the sigma model (Nicoud et al., 2011),
 
 $$
 \nu_t=s\,(C_\sigma\Delta)^2\frac{\sigma_3(\sigma_1-\sigma_2)(\sigma_2-\sigma_3)}{\sigma_1^2},\qquad
 s=\frac{\sin^2\theta}{\sin^2\theta+\sin^2\theta_0},
 $$
 
-with $\sigma_i$ the singular values of $\nabla\mathbf{u}$ and $C_\sigma=1.35$. The switch $s$ uses the angle $\theta$ between a particle's strength and the resolved vorticity $\nabla\times\mathbf{u}$ at the particle. It stays near zero while the particles represent the vorticity ($\theta\ll\theta_0=3^\circ$) and approaches one where the particle scale is no longer resolved. `subgrid_transport="STRENGTH_EXCHANGE"`, the default here, applies $\nu_t$ by particle strength exchange after each step. This conserves the total strength and leaves every core to the molecular viscosity: core spreading with a varying $\nu_t$ would grow neighbouring cores unevenly and spoil the overlap where the model acts. Strength exchange is not available between slip planes. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) compare DNS, this LES and stabilization.
+with $\sigma_i$ the singular values of $\nabla\mathbf{u}$ and $C_\sigma=1.35$. The switch $s$ uses the angle $\theta$ between a particle's strength and the resolved vorticity $\nabla\times\mathbf{u}$ at the particle. It stays near zero while the particles represent the vorticity ($\theta\ll\theta_0=3^\circ$) and approaches one where the particle scale is no longer resolved. `subgrid_transport="strength_exchange"`, the default here, applies $\nu_t$ by particle strength exchange after each step. This conserves the total strength and leaves every core to the molecular viscosity: core spreading with a varying $\nu_t$ would grow neighbouring cores unevenly and spoil the overlap where the model acts. Strength exchange is not available between slip planes. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) compare DNS, this LES and stabilization.
 
 ## Stabilization
 
@@ -109,7 +109,7 @@ $$
 
 with $s\in[0,1]$ the normalized depth and $A$ the number of e-folds (`outflow_fringe_attenuation`, 8 by default). Make a fringe at least two wake wavelengths deep, as in the [coupled cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md).
 
-`ParticleStateLimits` checks every accepted step: finite values, a Lagrangian Courant limit, maximum strength, divergence, strength–vorticity misalignment and growth rates. `RunPlan(state_limit_action="STOP")` ends a run cleanly at a crossed limit instead of raising an error.
+`ParticleStateLimits` checks every accepted step: finite values, a Lagrangian Courant limit, maximum strength, divergence, strength–vorticity misalignment and growth rates. `RunPlan(state_limit_action="stop")` ends a run cleanly at a crossed limit instead of raising an error.
 
 ### Long runs
 
@@ -117,7 +117,7 @@ A particle run usually ends because the particles stop representing a solenoidal
 
 1. Overlap the cores, $\sigma/h=1.5$. Against $\sigma=h$ it adds about a third to the lifetime without extra dissipation.
 2. Remesh only when core spreading has grown the cores (`regularization_core_radius_trigger`). Every regeneration on the lattice seeds lattice-symmetric modes, so remeshing at fixed short intervals shortens the run.
-3. If a sub-grid model is needed, use `les_sigma()`. It stays off laminar vortices that the particles resolve, so it does not lower the Reynolds number the way Smagorinsky does. It does not by itself stop a field from degrading: in the leapfrogging rings the LES and the DNS ended at the same time at both $Re_\Gamma=3000$ and $3\times10^4$.
+3. If a sub-grid model is needed, use `sigma()`. It stays off laminar vortices that the particles resolve, so it does not lower the Reynolds number the way Smagorinsky does. It does not by itself stop a field from degrading: in the leapfrogging rings the LES and the DNS ended at the same time at both $Re_\Gamma=3000$ and $3\times10^4$.
 4. Add Pedrizzetti relaxation with moment restoration: `pedrizzetti_relaxation(factor, preserve_vortex_strength=False, preserve_moments=True)`. Choose the rate $f/\Delta t$ above the physical growth rates (about 1 s⁻¹ here) and well below the core vorticity. At $f/\Delta t\approx5$ s⁻¹ the rings ran to the end of the 12 s run, twice the DNS lifetime, with the same energy, enstrophy and paths. At 1.3 s⁻¹ the run nearly reached the divergence limit during the merger; at 13 s⁻¹ three-dimensional growth was delayed by about three seconds against the DNS.
 5. Judge every change by the energy, enstrophy, mode and path histories against the DNS over the time the DNS remains valid. A longer run with a different history is no longer the same flow.
 
@@ -153,8 +153,8 @@ Place the particles on $z=0$ with volume $h^3$ and spanwise strength $\Gamma_z=\
 
 A lifting surface is a lattice of vortex rings whose circulation cancels the normal velocity on the surface; changes of bound circulation are shed into the particle wake.
 
-- **Geometry:** a JSON surface of quadrilateral segments with vertices `a,b` on the leading edge and `d,c` on the trailing edge, and `n_chordwise_panels`, `n_spanwise_panels`. The [flat-plate setup](../tutorials/vpm/04_flat_plate/setup.py) writes one; `VLMMeshSetup.geometric(ratio, region)` clusters panels toward an edge.
-- **Placement:** `VLMSurfaceSetup(surface, translation=..., rotation_degrees=..., rotation_centre=..., kinematics=...)`, collected in `Numerics(vlm=VLMSetup(surfaces=(...), density=..., kinematic_viscosity=...))`.
+- **Geometry:** a JSON surface of quadrilateral segments with vertices `a,b` on the leading edge and `d,c` on the trailing edge, and `n_chordwise_panels`, `n_spanwise_panels`. The [flat-plate setup](../tutorials/vpm/04_flat_plate/setup.py) writes one; `VLMMeshConfig.geometric(ratio, region)` clusters panels toward an edge.
+- **Placement:** `VLMSurface(surface, translation=..., rotation_degrees=..., rotation_centre=..., kinematics=...)`, collected in `Numerics(vlm=VLMConfig(surfaces=(...), density=..., kinematic_viscosity=...))`.
 - **Motion:** `StaticVLM`, `TranslatingVLM`, `SmoothRampVLM`, `RotatingVLM`, `PitchingVLM`, or `ManeuverVLM` driven by your own velocity functions.
 - **Loads:** `ForceConfig.kutta_joukowski(unsteady=True)` adds the unsteady pressure load to the bound-vortex forces; `VLMSampler` writes surface geometry, circulation and loads.
 - **Wake:** `wake_core_overlap` (default 2.5) sets the core of shed particles relative to the panel and row size; refine $\Delta t$ with the panels.
@@ -195,27 +195,29 @@ class GaussianColumn:
 
 
 case = vpm.VPMCase(
+    name="gaussian_column",
     directory="first-vpm-case",
     numerics=vpm.Numerics(
         time_step_size=0.01,
-        compute_device="CPU",
+        compute_device="cpu",
         max_n_particles=5000,
         integrator=vpm.RK2(),
-        induction=vpm.DirectInduction(stretching_scheme="TRANSPOSED"),
+        induction=vpm.DirectInduction(stretching_scheme="transposed"),
         viscous=vpm.ViscousConfig.cs(kinematic_viscosity=nu, particle_spacing=h),
     ),
     initial_conditions=(GaussianColumn(),),
-    backup=vpm.Backup(interval_steps=10),
+    run=vpm.RunPlan(end_time=0.02),
+    output=vpm.Output(schedule=vpm.EverySteps(10)),
     samplers=vpm.Samplers(samples=(
         vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10)),
     )),
-    run=vpm.RunPlan(steps=2),
+    backup=vpm.Backup(schedule=vpm.EverySteps(10)),
 )
 vpm.VPMSolver(case).run(start_from="latest")
 ```
 
-`RunPlan.steps` is the total number of steps, so a resumed run continues to it; see [continuation](continuation.md). Set `max_n_particles` for the largest cloud the run will reach.
+`RunPlan.end_time` is a whole number of time steps, and a resumed run continues to it; see [continuation](continuation.md). Set `max_n_particles` for the largest cloud the run will reach.
 
-Samplers write to `samples/` on an `EverySteps`, `EveryTime` or `FinalOnly` schedule. `FlowIntegralsSampler` records the global invariants per unit density: total strength, linear and angular impulse, kinetic energy and enstrophy. `LineSampler` and `SurfaceSampler` record velocity and vorticity on probes. Particles are written to `solution/vpm.pvd` for ParaView.
+Samplers write to `samples/` on an `EverySteps`, `EveryTime` or `FinalOnly` schedule and record the initial state unless `initial=False`. `FlowIntegralsSampler` records the global invariants per unit density: total strength, linear and angular impulse, kinetic energy and enstrophy. `LineSampler` and `SurfaceSampler` record velocity and vorticity on probes, with the same leading columns as the FVM samplers. Particle frames `solution/vpm/vpm_{step:06d}.vtu`, listed in `solution/vpm.pvd` for ParaView, follow `Output.schedule`; restart backups `solution/vpm/vpm_{step:06d}.h5` follow `Backup.schedule`. `VPMCase.variant` places both trees below a sub-directory. Logs go to `solution/vpm.log` through the `openonda.vpm` logger, and the run metadata to `solution/vpm_metadata.json`.
 
 [Numerical references](../openonda/vpm/REFERENCES.md).

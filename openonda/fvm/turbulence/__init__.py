@@ -1,10 +1,6 @@
-"""FVM turbulence models package"""
+"""Subgrid-scale eddy-viscosity models of the FVM solver."""
 
 from .les_models import create_model
-from .smagorinsky import EquilibriumSmagorinsky, Smagorinsky
+from .smagorinsky import EquilibriumSmagorinskyModel, SmagorinskyModel
 
-__all__ = [
-    "Smagorinsky",
-    "EquilibriumSmagorinsky",
-    "create_model",
-]
+__all__ = ["EquilibriumSmagorinskyModel", "SmagorinskyModel", "create_model"]

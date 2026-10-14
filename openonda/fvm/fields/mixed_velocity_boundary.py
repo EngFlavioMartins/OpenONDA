@@ -77,7 +77,7 @@ def reconstruct_normal_velocity_tangential_gradient(
 
     The skew increment is projected tangentially, preserving the prescribed
     normal velocity and physical normal derivative. The solver's
-    fixedFluxPressure condition separately enforces the prescribed normal
+    fixed_flux_pressure condition separately enforces the prescribed normal
     flux; it is not an independent pressure trace prescribed by the paper.
     """
     owner = np.asarray(owner_velocity, dtype=np.float64)

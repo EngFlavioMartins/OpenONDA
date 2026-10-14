@@ -42,62 +42,64 @@ OUTPUT_INTERVAL_TIME = 3.0  # volume fields [s]
 FORCE_INTERVAL_STEPS = 2  # force history
 
 
-def create_fvm_setup() -> fvm.FVMSetup:
-    """Build the moving-mesh FVM setup for the heaving cylinder."""
+def create_fvm_case() -> fvm.FVMCase:
+    """Build the moving-mesh FVM case of the heaving cylinder."""
     kinematic_viscosity = FREESTREAM_VELOCITY * DIAMETER / REYNOLDS_NUMBER
+    snapshots = fvm.EveryTime(OUTPUT_INTERVAL_TIME)
 
-    return fvm.FVMSetup(
-        case_name=CASE_NAME,
-        execution=fvm.ComputeConfig(operator_backend="numba"),
-        time=fvm.TimeConfig(
+    # Drag and lift coefficients per unit span; the moment centre moves with
+    # the cylinder axis.
+    forces = fvm.ForceSampler(
+        patch_names=["cylinder"],
+        reference_velocity=FREESTREAM_VELOCITY,
+        reference_area=DIAMETER * DEPTH,
+        reference_length=DIAMETER,
+        moment_centre=[0.0, 0.0, 0.5 * DEPTH],
+        schedule=fvm.EverySteps(FORCE_INTERVAL_STEPS),
+    )
+
+    return fvm.FVMCase(
+        name=CASE_NAME,
+        directory=Path(__file__).parent,
+        numerics=fvm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            end_time=FINAL_TIME,
-            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
+            schemes=fvm.DiscretizationConfig(time_scheme="backward"),
+            execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
-        backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True
+        initial_conditions=fvm.InitialFields(velocity=(FREESTREAM_VELOCITY, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=FINAL_TIME),
+        output=fvm.Output(schedule=snapshots),
+        samplers=fvm.Samplers((forces,)),
+        backup=fvm.Backup(schedule=snapshots),
+        mesh=cylinder_o_grid(
+            DIAMETER, OUTER_DIAMETER, N_CIRCUMFERENCE, N_RADIAL, WALL_SPACING, DEPTH
         ),
-        schemes=fvm.DiscretizationConfig(time_scheme="backward"),
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        boundaries=[
+        boundaries=(
             # The far-field circle moves with the cylinder; its values are
             # absolute-frame. Upstream half: the stream; downstream half: the
             # pressure datum, with the stream entering on reverse flow.
-            fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
+            fvm.BoundaryConfig.inlet("inlet", (FREESTREAM_VELOCITY, 0.0, 0.0)),
             fvm.BoundaryConfig(
                 name="outlet",
-                velocity_type="inletOutlet",
-                velocity_value=[FREESTREAM_VELOCITY, 0.0, 0.0],
-                pressure_type="fixedValue",
+                velocity_type="inlet_outlet",
+                velocity_value=(FREESTREAM_VELOCITY, 0.0, 0.0),
+                pressure_type="fixed_value",
             ),
             # A wall on a moving mesh is a no-slip wall moving with the mesh.
             fvm.BoundaryConfig.wall("cylinder"),
             fvm.BoundaryConfig.empty("front"),
             fvm.BoundaryConfig.empty("back"),
-        ],
-        initial_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
+        ),
         mesh_motion=fvm.MeshMotion(
             fvm.HeavingMotion(AMPLITUDE, FREQUENCY, direction=(0.0, 1.0, 0.0))
-        ),
-        samplers=(
-            # Drag and lift coefficients per unit span; the moment centre moves
-            # with the cylinder axis.
-            fvm.ForceSampler(
-                patch_names=["cylinder"],
-                reference_velocity=FREESTREAM_VELOCITY,
-                reference_area=DIAMETER * DEPTH,
-                reference_length=DIAMETER,
-                moment_centre=[0.0, 0.0, 0.5 * DEPTH],
-                schedule=fvm.RunSchedule(every_n_steps=FORCE_INTERVAL_STEPS),
-            ),
         ),
     )
 
 
 def main() -> None:
-    mesh = cylinder_o_grid(DIAMETER, OUTER_DIAMETER, N_CIRCUMFERENCE, N_RADIAL, WALL_SPACING, DEPTH)
-    solver = fvm.create_fvm_solver(create_fvm_setup(), case_dir=Path(__file__).parent, mesh=mesh)
-    solver.run(start_from=START_FROM)
+    with fvm.FVMSolver(create_fvm_case()) as solver:
+        solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

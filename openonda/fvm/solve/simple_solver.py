@@ -9,7 +9,8 @@ from scipy import sparse
 from openonda.core._numba import cacheable_njit as njit
 
 from ..assemble import matrix_assembly, momentum
-from ..fields import diagnostics as field_diagnostics
+from ..diagnostics import fields as field_diagnostics
+from ..diagnostics.step import OuterCorrectorDiagnostics
 from ..fields import gradients
 from ..fields.boundary_reconstruction import boundary_owner_gradient, boundary_resolved_displacement
 from ..fields.mixed_velocity_boundary import (
@@ -18,7 +19,6 @@ from ..fields.mixed_velocity_boundary import (
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
 from ..utils.vector_algebra import vector_dot, vector_magnitude
-from .diagnostics import OuterCorrectorDiagnostics
 from .linear_interface import solve_linear_system
 
 if TYPE_CHECKING:
@@ -126,7 +126,7 @@ def select_freestream_faces(
     :math:`\mathbf{U}_\infty\cdot\mathbf{S}_f - \phi_{mesh} \ge 0`: downstream
     faces carry the pressure datum, upstream faces a zero normal gradient.  On
     a static mesh this split is fixed in time.  The velocity is the prescribed
-    stream on upstream faces and ``inletOutlet`` on downstream faces (zero
+    stream on upstream faces and ``inlet_outlet`` on downstream faces (zero
     gradient for an outgoing flux, the stream on reverse flow).
 
     Selecting the pressure branch with the instantaneous face flux instead
@@ -181,7 +181,7 @@ def prepare_freestream_boundaries(
     """Select each mixed boundary branch once for the momentum/projection solve.
 
     On a moving mesh the branch follows the flux relative to the moving face,
-    ``face_flux - mesh_face_flux``, and ``inletOutlet`` patches are selected
+    ``face_flux - mesh_face_flux``, and ``inlet_outlet`` patches are selected
     once per step as well. Freestream faces are classified by
     :func:`select_freestream_faces`.
     """
@@ -479,7 +479,7 @@ def _update_fixed_flux_pressure_boundaries(
     kinematic_pressure_gradient: np.ndarray = None,
     pressure_free_face_flux: np.ndarray | None = None,
 ) -> np.ndarray | None:
-    """Update ``fixedFluxPressure`` from the pressure-free face flux."""
+    """Update ``fixed_flux_pressure`` from the pressure-free face flux."""
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
@@ -558,7 +558,9 @@ def _update_fixed_flux_pressure_boundaries(
                 "ij,ij->i", normal * pressure_velocity_coefficient[own], grad_tangent
             )
         if np.any(~np.isfinite(D_normal)) or np.any(D_normal <= 0):
-            raise ValueError("fixedFluxPressure requires a finite positive normal momentum inverse")
+            raise ValueError(
+                "fixed_flux_pressure requires a finite positive normal momentum inverse"
+            )
         phi_target = np.einsum("ij,ij->i", velocity_star[ghost], sf)
         assert pressure_free_face_flux is not None
         volumetric_face_flux_h_over_a = pressure_free_face_flux[start : start + nf]
@@ -703,9 +705,9 @@ def _process_boundary_faces_jit(
                               arguments are the same one-dimensional array.
         kinematic_pressure_gradient:               Pressure gradient ``(n_total, 3)``.
         kinematic_pressure:                    Pressure field ``(n_total,)``.
-        bc_type_codes:        Integer-coded BC: 0=zeroGradient, 1=fixedValue, 2=empty,
-                              3=freestream (fixedValue on outflow, zeroGradient on inflow).
-        kinematic_pressure_boundary_values:    Fixed pressure values for fixedValue patches.
+        bc_type_codes:        Integer-coded BC: 0=zero_gradient, 1=fixed_value, 2=empty,
+                              3=freestream (fixed_value on outflow, zero_gradient on inflow).
+        kinematic_pressure_boundary_values:    Fixed pressure values for fixed_value patches.
         boundary_face_indices: Global face index for each boundary face.
 
     Returns:
@@ -737,12 +739,12 @@ def _process_boundary_faces_jit(
         )
         velocity_flux = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
 
-        # zeroGradient pressure, including the inflow side of freestream
+        # zero_gradient pressure, including the inflow side of freestream
         if bc_code == 0 or (bc_code == 3 and velocity_flux < 0.0):
             flux_vf_out[i] = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
             continue
 
-        # fixedValue pressure, including the outflow side of freestream
+        # fixed_value pressure, including the outflow side of freestream
         if bc_code == 1 or bc_code == 3:
             CF0, CF1, CF2 = (
                 cell_connection_vector[i_face, 0],
@@ -902,7 +904,7 @@ def _build_boundary_face_arrays(
     Returns
     -------
     bc_type_codes : ndarray
-        0=zeroGradient, 1=fixedValue, 2=empty, 3=freestream
+        0=zero_gradient, 1=fixed_value, 2=empty, 3=freestream
     kinematic_pressure_boundary_values : ndarray
         Fixed pressure value (or 0.0 if not applicable)
     boundary_face_indices : ndarray
@@ -937,10 +939,10 @@ def adjust_boundary_flux_for_continuity(
     An incompressible domain requires ``∮ volumetric_face_flux·dS = 0``; otherwise the pressure
     Poisson problem is incompatible
     and the solver leaves a residual divergence (a checkerboard, typically at
-    the outflow).  Faces whose velocity is *fixed* (``fixedValue`` inlet,
-    ``noSlip`` wall) carry a prescribed flux and cannot absorb the mismatch;
-    faces whose velocity *floats* (``freestream``, ``zeroGradient``,
-    ``inletOutlet``) can.  The net imbalance is removed by a single
+    the outflow).  Faces whose velocity is *fixed* (``fixed_value`` inlet,
+    ``no_slip`` wall) carry a prescribed flux and cannot absorb the mismatch;
+    faces whose velocity *floats* (``freestream``, ``zero_gradient``,
+    ``inlet_outlet``) can.  The net imbalance is removed by a single
     multiplicative scaling of the floating **outflow** faces, exactly matching
     the mass the fixed faces validate.
 
@@ -1460,7 +1462,7 @@ def assemble_pressure_correction_equation_rhie_chow(
 
         # A replay experiment may supply the face flux measured by the same
         # monolithic discretisation.  Keep it as the pressure-equation
-        # boundary flux (and, for fixedFluxPressure, through the correction)
+        # boundary flux (and, for fixed_flux_pressure, through the correction)
         # instead of reconstructing it from an interpolated boundary velocity.
         # Normal coupled runs never populate this optional patch field.
         for boundary in boundaries:
@@ -1604,7 +1606,7 @@ def _extend_kinematic_pressure_correction_bcs(
 ) -> np.ndarray:
     """Extend the pressure-correction array with ghost-cell values.
 
-    For ``fixedValue`` pressure boundaries, the ghost value is set to
+    For ``fixed_value`` pressure boundaries, the ghost value is set to
     zero (``kinematic_pressure' = 0`` at a fixed-pressure face).  For all other types,
     the ghost cell inherits the owner cell value (zero-gradient).
 
@@ -1689,9 +1691,9 @@ def _correct_boundary_fluxes(
     owners: np.ndarray,
     face_conductance: np.ndarray,
 ) -> None:
-    """Correct boundary-face fluxes for ``fixedValue`` pressure boundaries.
+    """Correct boundary-face fluxes for ``fixed_value`` pressure boundaries.
 
-    Only patches whose pressure BC type is ``fixedValue`` receive a
+    Only patches whose pressure BC type is ``fixed_value`` receive a
     correction, computed from the geometric diffusion and wall distance.
 
     Args:
@@ -1742,10 +1744,10 @@ def _apply_inlet_outlet_bc(
     n_cells: int,
     n_interior: int,
 ) -> None:
-    """inletOutlet velocity BC: zeroGradient on outflow, fixed value on inflow.
+    """inlet_outlet velocity BC: zero_gradient on outflow, fixed value on inflow.
 
     Per face: outgoing flux (φ ≥ 0) → extrapolate from the owner cell
-    (zeroGradient); incoming flux (φ < 0) → impose ``value_velocity_field`` when
+    (zero_gradient); incoming flux (φ < 0) → impose ``value_velocity_field`` when
     present, otherwise the uniform ``value_velocity`` (the inletValue, default 0).
     The per-face path is required by the FVM--VPM characteristic VPM boundary condition:
     pressure-correction refreshes must not replace its non-uniform VPM boundary-condition trace
@@ -1828,7 +1830,7 @@ def _apply_fixed_value_bc(
     n_interior: int,
     strategy: "BoundaryStrategy",
 ) -> None:
-    """Apply fixedValue or noSlip velocity BC.
+    """Apply fixed_value or no_slip velocity BC.
 
     Honours a per-face ``value_velocity_field`` (n_faces_patch, 3) when present (e.g. a
     non-uniform coupler VPM boundary condition), otherwise the uniform ``value_velocity``.
@@ -1898,9 +1900,9 @@ def _update_velocity_bcs(
     Dispatches to individual BC handlers based on each patch's
     ``bc_type_velocity``:
 
-    - ``zeroGradient`` → :func:`_apply_zero_gradient_bc`
-    - ``inletOutlet``  → :func:`_apply_inlet_outlet_bc`
-    - ``fixedValue`` / ``noSlip`` → :func:`_apply_fixed_value_bc`
+    - ``zero_gradient`` → :func:`_apply_zero_gradient_bc`
+    - ``inlet_outlet``  → :func:`_apply_inlet_outlet_bc`
+    - ``fixed_value`` / ``no_slip`` → :func:`_apply_fixed_value_bc`
     - ``empty`` / ``slip`` / ``symmetry`` → :func:`_apply_slip_bc`
 
     Args:
@@ -2074,7 +2076,7 @@ def _apply_scalar_bc(
     """Apply a boundary condition to a scalar field ghost-cell block.
 
     Zero-gradient BCs (including inlet, outlet, symmetry, empty, slip,
-    noSlip) copy the owner value.  ``fixedValue`` sets the prescribed
+    no_slip) copy the owner value.  ``fixed_value`` sets the prescribed
     boundary value.
 
     Args:
@@ -2561,15 +2563,11 @@ class SIMPLESolver:
 
         if logger is not None:
             logger.section(
-                "SIMPLE SOLVER",
-                [
-                    ("Maximum iterations", str(self.params["max_iterations"])),
-                    ("Tolerance", f"{self.params['tolerance']:.3e}"),
-                    (
-                        "Under-relaxation",
-                        f"velocity={self.params['velocity_relaxation']}, kinematic_pressure={self.params['pressure_relaxation']}",
-                    ),
-                ],
+                "simple iteration",
+                ("maximum iterations", self.params["max_iterations"]),
+                ("tolerance", f"{self.params['tolerance']:.3e}"),
+                ("velocity relaxation", self.params["velocity_relaxation"]),
+                ("pressure relaxation", self.params["pressure_relaxation"]),
             )
 
         # Initialize Flux (volumetric_face_flux) if not provided
@@ -2609,8 +2607,8 @@ class SIMPLESolver:
             if logger is not None and (
                 iteration % 10 == 0 or kinematic_pressure_residual < self.params["tolerance"]
             ):
-                logger.record(
-                    "SIMPLE convergence",
+                logger.event(
+                    "simple convergence",
                     ("iteration", iteration),
                     ("pressure residual", kinematic_pressure_residual),
                     ("state update", nonlinear_state_update),

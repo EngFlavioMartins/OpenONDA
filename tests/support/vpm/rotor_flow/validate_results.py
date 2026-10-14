@@ -62,8 +62,8 @@ def main():
     args = parser.parse_args()
     p = rotor_inputs()
     config, state = p.metadata["configuration"], p.metadata["state"]
-    final_step = state["initial_step"] + config["run"]["steps"]
-    end = state["initial_time"] + config["run"]["steps"] * p.time_step_size
+    final_step = state["target_step"]
+    end = config["run"]["end_time"]
     failures = []
     if p.metadata["run_status"]["status"] != "completed" or state["step"] != final_step:
         print(
@@ -112,7 +112,7 @@ def main():
     integrals = pd.read_csv(p.samples_dir / "flow_integrals.csv")
     try:
         flow_sampler = next(
-            item for item in config["samplers"]["items"] if item["type"] == "FlowIntegralsSampler"
+            item for item in config["samplers"]["samples"] if item["type"] == "FlowIntegralsSampler"
         )
         flow_schedule = flow_sampler["schedule"]
         cadence_kwargs = {
@@ -165,7 +165,7 @@ def main():
                 )
         recorded_plane_names = tuple(
             item["file_name"]
-            for item in config["samplers"]["items"]
+            for item in config["samplers"]["samples"]
             if item["type"] == "SurfaceSampler"
         )
         for name in recorded_plane_names:

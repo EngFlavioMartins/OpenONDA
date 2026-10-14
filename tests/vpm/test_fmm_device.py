@@ -28,7 +28,7 @@ class _DeviceFMMHarness:
     def __init__(
         self,
         capacity: int = 64,
-        kernel_name: str = "GAUSSIAN",
+        kernel_name: str = "gaussian",
         max_evaluation_points: int | None = None,
     ) -> None:
         _ensure_taichi_cpu()
@@ -203,7 +203,7 @@ def test_analytic_m2l_reference_converges_as_the_private_source_order_increases(
     strength = rng.normal(scale=0.02, size=(40, 3))
     target = np.array([3.0, 2.0, 4.0])
     displacement = target[None, :] - position
-    kernel = make_vortex_kernel("GAUSSIAN")
+    kernel = make_vortex_kernel("gaussian")
     radius = np.full(len(position), 1.0e-6)
     reference_velocity = kernel.velocity_pair(
         displacement,
@@ -362,7 +362,7 @@ def test_device_fmm_is_permutation_translation_and_axis_rotation_covariant():
     np.testing.assert_allclose(rotated_rate, rate @ rotation.T, rtol=4.0e-4, atol=1.0e-5)
 
 
-@pytest.mark.parametrize("kernel_name", ("GAUSSIAN", "WINCKELMANS"))
+@pytest.mark.parametrize("kernel_name", ("gaussian", "winckelmans"))
 def test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inactive_storage(
     kernel_name,
 ):
@@ -408,7 +408,7 @@ def test_device_fmm_arbitrary_targets_are_hierarchical_batched_and_ignore_inacti
 
 
 def test_device_fmm_target_queries_preserve_exact_non_lbvh_kernel_physics():
-    harness = _DeviceFMMHarness(capacity=2, kernel_name="HIGH_ORDER_GAUSSIAN")
+    harness = _DeviceFMMHarness(capacity=2, kernel_name="high_order_gaussian")
     position = np.array([[0.0, 0.0, 0.0], [0.3, -0.1, 0.2]], dtype=np.float32)
     strength = np.array([[0.0, 0.02, 0.01], [0.01, -0.01, 0.0]], dtype=np.float32)
     radius = np.array([0.08, 0.1], dtype=np.float32)
@@ -417,7 +417,7 @@ def test_device_fmm_target_queries_preserve_exact_non_lbvh_kernel_physics():
 
     velocity, gradient = harness.evaluate_targets(position, strength, radius, targets, background)
 
-    kernel = make_vortex_kernel("HIGH_ORDER_GAUSSIAN")
+    kernel = make_vortex_kernel("high_order_gaussian")
     displacement = targets[:, None, :] - position[None, :, :]
     reference_velocity = kernel.velocity_pair(
         displacement,
@@ -438,7 +438,7 @@ def test_device_fmm_target_queries_preserve_exact_non_lbvh_kernel_physics():
 
 @pytest.mark.parametrize(
     "kernel_name",
-    ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"),
+    ("gaussian", "high_order_gaussian", "super_gaussian", "winckelmans"),
 )
 def test_device_fmm_meets_all_kernel_gates_with_near_pairs_and_far_clusters(kernel_name):
     count = 512

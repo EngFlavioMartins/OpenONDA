@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from openonda.vpm.turbulence.turbulence import ParticlesLES
+from openonda.vpm.turbulence.les import ParticleLES
 
 
 def test_zero_smagorinsky_skips_viscosity_kernels():
@@ -8,7 +8,7 @@ def test_zero_smagorinsky_skips_viscosity_kernels():
         smagorinsky_coefficient=0.0,
         compute=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError()),
     )
-    les = object.__new__(ParticlesLES)
+    les = object.__new__(ParticleLES)
     les.model = model
 
     les.compute(object())
@@ -43,19 +43,21 @@ def test_fixed_les_filter_preserves_closure_under_particle_volume_changes():
         cloud.strain_rate.from_numpy(strain)
         cloud.kinematic_viscosity.fill(0.001)
         volume = np.array([0.03, 0.05, 0.08], dtype=np.float32) ** 3
-        config = TurbulenceConfig.les_smagorinsky(filter_width=0.07)
-        fixed = ParticlesLES.rebuild(config, max_n_particles=3)
-        local = ParticlesLES.rebuild(TurbulenceConfig.les_smagorinsky(), max_n_particles=3)
+        config = TurbulenceConfig.smagorinsky(filter_width=0.07)
+        fixed = ParticleLES.rebuild(config, max_n_particles=3)
+        local = ParticleLES.rebuild(TurbulenceConfig.smagorinsky(), max_n_particles=3)
         for scale in (1.0, 8.0):
             cloud.particle_volume.from_numpy(volume * scale)
             fixed.compute(cloud)
             # Uniform incompressible linear strain has |S|=2/s.
             np.testing.assert_allclose(
-                cloud.eddy_viscosity.to_numpy(), 0.2**2 * 0.07**2 * 2, rtol=2e-6
+                cloud.eddy_viscosity.to_numpy(), 0.17**2 * 0.07**2 * 2, rtol=2e-6
             )
             local.compute(cloud)
             np.testing.assert_allclose(
-                cloud.eddy_viscosity.to_numpy(), 0.2**2 * (volume * scale) ** (2 / 3) * 2, rtol=2e-6
+                cloud.eddy_viscosity.to_numpy(),
+                0.17**2 * (volume * scale) ** (2 / 3) * 2,
+                rtol=2e-6,
             )
     finally:
         ti.reset()
@@ -69,7 +71,7 @@ def test_parallel_les_statistics_use_active_particles_and_reset_each_call():
     ti.init(arch=ti.cpu, offline_cache=False)
     try:
         capacity, count = 8192, 4097
-        les = ParticlesLES("LES_SMAGORINSKY", max_n_particles=capacity)
+        les = ParticleLES("smagorinsky", max_n_particles=capacity)
 
         class Cloud:
             eddy_viscosity = ti.field(ti.f32, shape=capacity)
@@ -99,7 +101,7 @@ def test_parallel_les_statistics_use_active_particles_and_reset_each_call():
 
 def test_viscosity_update_does_not_run_optional_statistics():
     calls = []
-    les = object.__new__(ParticlesLES)
+    les = object.__new__(ParticleLES)
     les.model = SimpleNamespace(
         smagorinsky_coefficient=0.2, compute=lambda *args: calls.append("viscosity")
     )
@@ -151,7 +153,7 @@ def test_sigma_model_matches_singular_values_and_vanishes_for_two_dimensional_fl
         ]
         gradients = np.concatenate((general, np.asarray(vanishing, dtype=float)))
         cloud = _gradient_cloud(gradients, np.zeros((len(gradients), 3)))
-        les = ParticlesLES("LES_SIGMA", max_n_particles=len(gradients))
+        les = ParticleLES("sigma", max_n_particles=len(gradients))
         les.compute(cloud)
         s = np.linalg.svd(gradients, compute_uv=False)
         expected = (
@@ -184,14 +186,14 @@ def test_consistency_switch_spares_aligned_strengths_and_exchange_keeps_core_vis
         angle = np.radians(3.0)
         tilted = np.cos(angle) * vorticity / np.linalg.norm(vorticity) + np.sin(angle) * normal
         cloud = _gradient_cloud(np.repeat(gradient[None], 2, axis=0), [vorticity, tilted])
-        free = ParticlesLES("LES_SIGMA", max_n_particles=2)
+        free = ParticleLES("sigma", max_n_particles=2)
         free.compute(cloud)
         unswitched = cloud.eddy_viscosity.to_numpy()[0]
-        les = ParticlesLES(
-            "LES_SIGMA",
+        les = ParticleLES(
+            "sigma",
             max_n_particles=2,
             consistency_angle=3.0,
-            subgrid_transport="STRENGTH_EXCHANGE",
+            subgrid_transport="strength_exchange",
             particle_dtype=ti.f64,
         )
         les.compute(cloud)

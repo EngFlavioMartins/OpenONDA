@@ -163,7 +163,7 @@ def test_gaussian_reconstruction_is_not_silently_used_for_other_kernels():
 
     with pytest.raises(ValueError, match="require GAUSSIAN"):
         Numerics(
-            particle_kernel="WINCKELMANS",
+            particle_kernel="winckelmans",
             stabilization=StabilizationConfig(
                 regularization_interval_steps=10, regularization_grid_spacing=0.1
             ),

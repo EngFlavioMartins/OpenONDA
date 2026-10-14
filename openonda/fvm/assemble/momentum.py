@@ -229,7 +229,7 @@ def _apply_ustar_bc(
         geo_data: Geometric data containing ``face_area_vector``.
         n_cells: Number of interior cells.
         volumetric_face_flux: Face flux that selects the outflow faces of an
-            ``inletOutlet`` patch; inflow faces keep their prescribed ghost.
+            ``inlet_outlet`` patch; inflow faces keep their prescribed ghost.
     """
     start_face = boundary["start_face"]
     n_faces = boundary["n_faces"]

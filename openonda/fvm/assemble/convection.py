@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Convection Term Assembly for OpenONDA FVM Solver
 
@@ -324,7 +323,7 @@ def assemble_convection_term_boundary(
             flux_cf = flux_cf_upwind
             flux_ff = flux_ff_upwind
             flux_vf = np.zeros_like(boundary_advective_face_flux)
-        elif scheme_name in {"central", "linear"}:
+        elif scheme_name == "central":
             flux_cf = (1.0 - weights) * boundary_advective_face_flux
             flux_ff = weights * boundary_advective_face_flux
             flux_vf = np.zeros_like(boundary_advective_face_flux)
@@ -339,12 +338,12 @@ def assemble_convection_term_boundary(
             ]
             if scheme_name == "deferred":
                 psi = np.ones_like(boundary_advective_face_flux)
-            elif scheme_name.lower() in ("lust", "linearupwind"):
+            elif scheme_name in ("lust", "linear_upwind"):
                 # Same linear-upwind target as interior faces. The paired cell
                 # is a translated image, so its offset to the face is the
                 # owner offset minus the owner-to-neighbour connection.
                 if scalar_field_gradient is None:
-                    raise ValueError("linearUpwind/LUST convection requires scalar_field_gradient")
+                    raise ValueError("linear_upwind/lust convection requires scalar_field_gradient")
                 gradient = (
                     scalar_field_gradient.squeeze(-1)
                     if scalar_field_gradient.ndim == 3
@@ -363,7 +362,7 @@ def assemble_convection_term_boundary(
                 scalar_field_linear_upwind = scalar_field_upwind + np.sum(
                     gradient[upwind_cells] * to_face, axis=1
                 )
-                linear_blend = 0.75 if scheme_name.lower() == "lust" else 0.0
+                linear_blend = 0.75 if scheme_name == "lust" else 0.0
                 target = (
                     linear_blend * scalar_field_linear
                     + (1.0 - linear_blend) * scalar_field_linear_upwind
@@ -407,7 +406,7 @@ def assemble_convection_term_boundary(
     if strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
         if geo_data is None or component not in (0, 1, 2):
             raise ValueError(
-                "normalValueTangentialGradient convection requires geometry "
+                "normal_value_tangential_gradient convection requires geometry "
                 "and a velocity component index"
             )
         sf = np.asarray(geo_data["face_area_vector"])[b_face_indices]
@@ -446,7 +445,7 @@ def assemble_convection_term_boundary(
         flux_ff_val = boundary_advective_face_flux
     else:
         # Extrapolating conditions use the owner on outflow and the boundary
-        # ghost value on reverse flow, as OpenFOAM's inletOutlet condition does.
+        # ghost value on reverse flow, as OpenFOAM's inlet_outlet condition does.
         flux_cf = np.maximum(boundary_advective_face_flux, 0.0)
         flux_ff_val = np.minimum(boundary_advective_face_flux, 0.0)
 
@@ -570,11 +569,12 @@ def assemble_convection_term(
         geo_data: Geometric data
         boundaries: Boundary patch list
         scheme: Convection scheme. First-order: ``'upwind'``.  Second-order
-            (unbounded, energy-conserving): ``'central'`` / ``'linear'``,
-            ``'deferred'`` (= central via deferred correction).  Blended:
-            ``'LUST'`` (0.75 linear + 0.25 upwind).  Bounded high-resolution
-            TVD (require ``scalar_field_gradient``): ``'limitedLinear'``, ``'vanLeer'``,
-            ``'MUSCL'``, ``'minmod'``, ``'superbee'``.
+            (unbounded, energy-conserving): ``'central'``, ``'deferred'``
+            (central via deferred correction).  Gradient-corrected:
+            ``'linear_upwind'`` and ``'lust'`` (0.75 central + 0.25 linear
+            upwind).  Bounded TVD (require ``scalar_field_gradient``):
+            ``'limited_linear'``, ``'van_leer'``, ``'muscl'``, ``'minmod'``,
+            ``'superbee'``.
         scalar_field_gradient: Cell gradient of ``scalar_field`` (n_total, 3), required by the TVD
             schemes; ignored by the others.
         component: Velocity component index (0, 1, or 2), required by the
@@ -599,7 +599,7 @@ def assemble_convection_term(
         interior_fluxes = assemble_convection_term_upwind(
             scalar_field, advective_face_flux, mesh_data, include_total_flux=include_total_flux
         )
-    elif s in ("central", "linear"):
+    elif s == "central":
         interior_fluxes = assemble_convection_term_central(
             scalar_field,
             advective_face_flux,
@@ -615,7 +615,7 @@ def assemble_convection_term(
             geo_data,
             include_total_flux=include_total_flux,
         )
-    elif s in ("LUST", "lust"):
+    elif s == "lust":
         # LUST: 0.75 linear + 0.25 linearUpwind.
         # (second-order, gradient-corrected — NOT first-order upwind).
         interior_fluxes = assemble_convection_term_gradient_upwind(
@@ -627,7 +627,7 @@ def assemble_convection_term(
             linear_blend=0.75,
             include_total_flux=include_total_flux,
         )
-    elif s in ("linearUpwind", "linearupwind"):
+    elif s == "linear_upwind":
         # Linear-upwind: second-order upwind-biased interpolation.
         interior_fluxes = assemble_convection_term_gradient_upwind(
             scalar_field,

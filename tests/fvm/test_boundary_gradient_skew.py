@@ -18,7 +18,7 @@ def test_native_skew_boundary_gradient_preserves_affine_tensor(scheme, backend, 
         mesh["vertex_position"] @ np.array([[1.0, 0.3, -0.2], [0.1, 1.2, 0.4], [0.2, -0.1, 0.8]]).T
     )
     for patch in mesh["boundary"]:
-        patch["velocity_type"] = "normalValueTangentialGradient"
+        patch["velocity_type"] = "normal_value_tangential_gradient"
     geometry = compute_mesh_geometry(mesh, gradient_scheme=scheme)
     geometry["_operator_backend"] = backend
     n_cells, n_interior = mesh["n_cells"], mesh["n_interior_faces"]

@@ -1,11 +1,6 @@
 """
 On-particle field evaluation (ParticleFieldEvaluation): caches Taichi fields and
 computes velocity/vorticity at particle and target points.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable
@@ -49,7 +44,7 @@ class ParticleFieldEvaluation:
 
     def __init__(
         self,
-        particle_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "gaussian",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: TaichiDataType = ti.f32,
         event_observer: PhysicsEventObserver | None = None,
@@ -58,12 +53,12 @@ class ParticleFieldEvaluation:
         Initialize particle field physics diagnostics.
 
         Args:
-            particle_kernel: Kernel type ("GAUSSIAN", "WINCKELMANS", "SUPER_GAUSSIAN")
+            particle_kernel: Kernel type ("gaussian", "winckelmans", "super_gaussian")
             max_n_particles: Maximum number of particles for field allocation
             accumulator_dtype: Taichi dtype for accumulation (ti.f32 or ti.f64)
         """
         self.max_n_particles = max_n_particles
-        self.particle_kernel = particle_kernel.upper()
+        self.particle_kernel = particle_kernel.lower()
         self.accumulator_dtype = accumulator_dtype
         self._event_observer = event_observer or NullPhysicsEventObserver()
 
@@ -165,7 +160,7 @@ class ParticleFieldEvaluation:
 
         # Get angular impulse correction constant from kernel
         angular_correction_func = kernel_dict["angular_impulse_correction_constant_"]
-        use_physical_gaussian_energy = self.particle_kernel == "GAUSSIAN"
+        use_physical_gaussian_energy = self.particle_kernel == "gaussian"
         gaussian_tensor_origin = 1.0 / (np.pi**1.5)
 
         @ti.kernel
@@ -658,7 +653,7 @@ class ParticleFieldEvaluation:
         if N == 0:
             # Return zero values for empty particle system
             return self._get_zero_results()
-        if _DIRECT_INTEGRAL_PARTICLE_LIMIT < N and self.particle_kernel == "GAUSSIAN":
+        if _DIRECT_INTEGRAL_PARTICLE_LIMIT < N and self.particle_kernel == "gaussian":
             return self._compute_fourier_flow_integrals(particles, time)
 
         self._resize_fields(N)

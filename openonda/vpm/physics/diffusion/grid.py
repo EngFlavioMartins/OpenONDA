@@ -7,9 +7,6 @@ particle regeneration, and the transfer buffers between the Taichi grid and
 host arrays.  The two schemes both drive this mixin through their own
 ``grid_based_diffusion`` / ``gbd_diffusion`` entry points, which are kept here
 with the machinery because they share its grid state.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable, Sequence
@@ -1143,7 +1140,7 @@ class _GridDiffusionMixin:
             "conservation. Refine the particle spacing near the wall or narrow gap."
         )
 
-    def _m4_wall_corrections(
+    def compute_m4_wall_corrections(
         self,
         positions: np.ndarray,
         strengths: np.ndarray,
@@ -2497,7 +2494,7 @@ class _GridDiffusionMixin:
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
-        remeshing_kernel: str = "M4_PRIME",
+        remeshing_kernel: str = "m4_prime",
     ) -> dict[str, np.ndarray] | None:
         """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
 
@@ -2525,9 +2522,9 @@ class _GridDiffusionMixin:
         # operation. A completed Laplacian below replaces this with the exact
         # runtime stage count used by the current regeneration.
         self._last_gbd_diffusion_substeps = 1
-        if remeshing_kernel not in {"M4_PRIME", "LAGRANGE6"}:
+        if remeshing_kernel not in {"m4_prime", "lagrange6"}:
             raise ValueError("unsupported GBD remeshing kernel")
-        if remeshing_kernel == "LAGRANGE6" and domain_padding < 4:
+        if remeshing_kernel == "lagrange6" and domain_padding < 4:
             raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
         self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
         self._last_gbd_wall_transfer = {
@@ -2550,7 +2547,7 @@ class _GridDiffusionMixin:
             z_min, z_max = slab_bounds
             if np.any((pos_np[:, 2] < z_min - 1e-7) | (pos_np[:, 2] > z_max + 1e-7)):
                 raise RuntimeError("GBD received a physical particle outside the slip slab")
-            if remeshing_kernel != "M4_PRIME":
+            if remeshing_kernel != "m4_prime":
                 raise ValueError("slip-slab GBD currently requires M4_PRIME remeshing")
 
         invalid = self._body_interior_at_particles(pos_np)
@@ -2625,10 +2622,10 @@ class _GridDiffusionMixin:
         gmin = grid_min_np.astype(float)
         scatter = (
             self._m4_scatter_gpu_kernel
-            if remeshing_kernel == "M4_PRIME"
+            if remeshing_kernel == "m4_prime"
             else self._lagrange6_scatter_gpu_kernel
         )
-        batch_size = _M4_SCATTER_BATCH_SIZE if remeshing_kernel == "M4_PRIME" else 1024
+        batch_size = _M4_SCATTER_BATCH_SIZE if remeshing_kernel == "m4_prime" else 1024
         for start in range(0, N, batch_size):
             count = min(batch_size, N - start)
             scatter(
@@ -2647,9 +2644,9 @@ class _GridDiffusionMixin:
             )
             ti.sync()
         if getattr(self, "_body_mask_active", False):
-            if remeshing_kernel != "M4_PRIME":
+            if remeshing_kernel != "m4_prime":
                 raise RuntimeError("solid-wall GBD redistribution requires M4_PRIME")
-            correction_nodes, correction_values, wall_budget = self._m4_wall_corrections(
+            correction_nodes, correction_values, wall_budget = self.compute_m4_wall_corrections(
                 pos_np,
                 vortex_strength,
                 grid_min_np,
@@ -2830,7 +2827,7 @@ class _GridDiffusionMixin:
         )
 
         cap = self._regeneration_cap(particles, N)
-        self._require_regeneration_capacity(len(ix), cap, "GBD")
+        self._require_regeneration_capacity(len(ix), cap, "gbd")
 
         nonzero_node_count = int(np.count_nonzero(vortex_strength_magnitude > 0.0))
         support_augmented_node_count = 0
@@ -2976,7 +2973,7 @@ class _GridDiffusionMixin:
         regen_threshold: float = 0.01,
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
-        remeshing_kernel: str = "M4_PRIME",
+        remeshing_kernel: str = "m4_prime",
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
 
@@ -3373,7 +3370,7 @@ class _GridDiffusionMixin:
         )
 
         cap = self._regeneration_cap(particles, N)
-        self._require_regeneration_capacity(len(ix), cap, "DVH")
+        self._require_regeneration_capacity(len(ix), cap, "dvh")
 
         return self._build_diffusion_particle_arrays(
             ix,

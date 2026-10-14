@@ -56,7 +56,7 @@ RENEWAL_CHECK_INTERVAL = 2.4  # s, costly checks of how well particles represent
 
 
 def build_case():
-    """Return the FVM setup, particle case, coupling setup and mesh."""
+    """Return the FVM case, the particle case and the coupling settings."""
     # One FVM cell and one particle layer across the span make the flow planar
     span = CELL_SIZE
     half_span = 0.5 * span
@@ -102,51 +102,57 @@ def build_case():
         levels=(-half_span, half_span),
     )
 
-    flow = fvm.FVMSetup(
-        case_name="coupled_oscillating_cylinder",
-        execution=fvm.ComputeConfig(operator_backend="numba"),
-        output=fvm.OutputConfig(compression="lz4", ghost_layers=0),
-        time=fvm.TimeConfig(
+    flow = fvm.FVMCase(
+        name="coupled_oscillating_cylinder",
+        directory=CASE_DIR,
+        numerics=fvm.Numerics(
             time_step_size=FVM_TIME_STEP,
-            end_time=END_TIME,
-            output_schedule=fvm.RunSchedule(every_time=on_exchanges(VOLUME_INTERVAL)),
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
+            schemes=fvm.DiscretizationConfig(time_scheme="backward"),
+            linear=fvm.LinearSolverConfig(
+                pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005
+            ),
+            pimple=fvm.PimpleConfig(
+                n_outer_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
+            ),
+            execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
-        schemes=fvm.DiscretizationConfig(time_scheme="backward"),
-        linear=fvm.LinearSolverConfig(
-            pressure_tolerance=1.0e-7,
-            pressure_relative_tolerance=0.005,
+        initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
+        run=fvm.RunPlan(end_time=END_TIME),
+        output=fvm.Output(
+            schedule=fvm.EveryTime(on_exchanges(VOLUME_INTERVAL)),
+            compression="lz4",
+            ghost_layers=0,
         ),
-        pimple=fvm.PimpleControl(
-            n_outer_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
+        samplers=fvm.Samplers(
+            (
+                # Drag and lift coefficients per unit span
+                fvm.ForceSampler(
+                    patch_names=["cylinder"],
+                    reference_velocity=FREESTREAM_VELOCITY[0],
+                    reference_area=DIAMETER * span,
+                    reference_length=DIAMETER,
+                    schedule=fvm.EveryTime(on_exchanges(FORCE_INTERVAL)),
+                ),
+            )
         ),
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-        turbulence=fvm.TurbulenceConfig.none(),
-        boundaries=[
+        logging=fvm.LoggingConfig(console=False),
+        mesh=mesh,
+        boundaries=(
             # Particles supply the normal velocity and the normal derivative of tangential velocity
             fvm.BoundaryConfig(
                 name="numericalBoundary",
-                velocity_value=list(FREESTREAM_VELOCITY),
-                pressure_type="fixedFluxPressure",
+                velocity_value=FREESTREAM_VELOCITY,
+                pressure_type="fixed_flux_pressure",
             ),
             fvm.BoundaryConfig.cyclic("zmin", "zmax"),
             fvm.BoundaryConfig.cyclic("zmax", "zmin"),
             # A wall on the moving mesh moves with it
             fvm.BoundaryConfig.wall("cylinder"),
-        ],
-        initial_velocity=list(FREESTREAM_VELOCITY),
+        ),
         # The whole FVM box heaves with the cylinder
         mesh_motion=fvm.MeshMotion(
             fvm.HeavingMotion(AMPLITUDE, FREQUENCY, direction=(0.0, 1.0, 0.0))
-        ),
-        samplers=(
-            # Drag and lift coefficients per unit span
-            fvm.ForceSampler(
-                patch_names=["cylinder"],
-                reference_velocity=FREESTREAM_VELOCITY[0],
-                reference_area=DIAMETER * span,
-                reference_length=DIAMETER,
-                schedule=fvm.RunSchedule(every_time=on_exchanges(FORCE_INTERVAL)),
-            ),
         ),
     )
 
@@ -176,24 +182,25 @@ def build_case():
             domain_bounds=(*VPM_DOMAIN, -half_span, half_span),
             max_n_particles=PARTICLE_LIMIT,
         ),
-        run=vpm.RunPlan(steps=round(END_TIME / exchange_time_step)),
+        run=vpm.RunPlan(end_time=END_TIME),
+        logging=vpm.LoggingConfig(console=False),
     )
 
-    coupling = coupler.CouplerSetup(
-        freestream_velocity=list(FREESTREAM_VELOCITY),
+    coupling = coupler.CouplerConfig(
+        freestream_velocity=FREESTREAM_VELOCITY,
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
         eta_blend_width=BLEND_WIDTH * CELL_SIZE,
         vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,
         interface_iterations=INTERFACE_ITERATIONS,
         interface_normal_tolerance=INTERFACE_TOLERANCE,
         interface_gradient_tolerance=INTERFACE_TOLERANCE,
-        backup_interval_steps=round(BACKUP_INTERVAL / exchange_time_step),
         transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / exchange_time_step),
+        backup=coupler.Backup(schedule=coupler.EveryTime(on_exchanges(BACKUP_INTERVAL))),
     )
-    return flow, particles, coupling, mesh
+    return flow, particles, coupling
 
 
 if __name__ == "__main__":
-    flow, particles, coupling, mesh = build_case()
-    with coupler.create_coupler(flow, particles, coupling, mesh=mesh) as solver:
+    flow, particles, coupling = build_case()
+    with coupler.CoupledSolver(flow, particles, coupling) as solver:
         solver.run(start_from="latest")
