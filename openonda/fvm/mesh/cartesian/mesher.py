@@ -113,6 +113,7 @@ def _box_patch_point_constraints(
 # Facets meet across a sharp rim when they turn by more than 45 degrees. The
 # margin keeps an exact 45-degree tessellation turn from depending on round-off.
 _SHARP_RIM_COSINE = math.cos(math.pi / 4.0) - 1.0e-8
+_CAP_RIM_COSINE = math.cos(math.pi / 3.0)
 
 
 def _planar_feature_constraints(
@@ -212,8 +213,11 @@ def _planar_feature_constraints(
     if not planes:
         return {}
 
-    # A face may only take the facet that holds the wall point under its
-    # centre; a broad facet further along the wall would drag it across a rim.
+    # A face may take the facet that holds the wall point under its centre, or
+    # a facet meeting that wall across a cap-like rim turning by more than 60
+    # degrees, such as a wing-tip cap beside its side wall. Tessellation seams
+    # of a curved wall turn less, and a facet further along such a wall would
+    # drag the face across a seam.
     surface_index = SurfaceIndex.build(triangles)
     constraints: dict[int, list[tuple[np.ndarray, float, SurfaceIndex]]] = {}
     local_face_size: dict[int, float] = {}
@@ -230,7 +234,11 @@ def _planar_feature_constraints(
             local_face_size[int(point_id)] = min(
                 local_face_size.get(int(point_id), math.inf), face_size
             )
-        wall_distance = math.inf if box_wall else surface_index.nearest_point(centre)[1]
+        if box_wall:
+            wall_distance, wall_normal = math.inf, None
+        else:
+            _wall_point, distances, triangle_ids = surface_index.nearest_points(centre[None])
+            wall_distance, wall_normal = float(distances[0]), normals[int(triangle_ids[0])]
         candidates = []
         for normal, offset, width, plane_index in planes:
             if width < face_size:
@@ -240,7 +248,11 @@ def _planar_feature_constraints(
             if alignment <= 1.0 / math.sqrt(3.0) or distance > face_size:
                 continue
             _nearest, surface_distance = plane_index.nearest_point(centre)
-            if surface_distance <= min(face_size, wall_distance + 1.0e-8 * scale):
+            holds_wall = surface_distance <= wall_distance + 1.0e-8 * scale
+            across_rim = (
+                wall_normal is None or abs(float(np.dot(normal, wall_normal))) < _CAP_RIM_COSINE
+            )
+            if surface_distance <= face_size and (holds_wall or across_rim):
                 candidates.append((surface_distance, -alignment, normal, offset, plane_index))
         if not candidates:
             continue
