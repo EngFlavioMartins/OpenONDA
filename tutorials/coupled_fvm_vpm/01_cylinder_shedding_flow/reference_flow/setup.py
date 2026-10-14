@@ -22,11 +22,8 @@ REYNOLDS_NUMBER = 150.0
 DENSITY = 1.0  # kg/m^3
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY[0] * DIAMETER / REYNOLDS_NUMBER  # m^2/s
 
-# Startup: the same transverse freestream and near-wake vortex as the coupled case
-STARTUP_VELOCITY = (1.0, 0.1, 0.0)  # m/s
-TAPER_START = 1.0  # s, the transverse component then decays smoothly ...
-TAPER_END = 2.0  # s, ... to the freestream
-DISTURBANCE_AMPLITUDE = 1.0e-3  # m^2/s, streamfunction peak
+# Startup: the same near-wake vortex as the coupled case
+DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, streamfunction peak
 DISTURBANCE_RADIUS = 0.5  # m
 DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
@@ -52,13 +49,13 @@ BACKUP_INTERVAL = 1.0  # s
 
 
 def initial_velocity(position):
-    """Startup freestream plus the curl of psi = A (1 - r^2/R^2)^4 behind the cylinder."""
+    """Freestream plus the curl of psi = A (1 - r^2/R^2)^4 behind the cylinder."""
     x = position[:, 0] - DISTURBANCE_CENTRE
     y = position[:, 1]
     support = np.maximum(1.0 - (x**2 + y**2) / DISTURBANCE_RADIUS**2, 0.0)
     swirl = 8.0 * DISTURBANCE_AMPLITUDE / DISTURBANCE_RADIUS**2 * support**3
 
-    velocity = np.tile(STARTUP_VELOCITY, (len(position), 1))
+    velocity = np.tile(FREESTREAM_VELOCITY, (len(position), 1))
     velocity[:, 0] -= swirl * y
     velocity[:, 1] += swirl * x
     return velocity
@@ -93,14 +90,6 @@ def build_case():
         levels=(-half_span, half_span),
     )
 
-    # The startup transverse velocity enters at the inlet and crosses the lateral walls
-    startup = fvm.VelocityRamp(
-        initial=STARTUP_VELOCITY,
-        final=FREESTREAM_VELOCITY,
-        start_time=TAPER_START,
-        end_time=TAPER_END,
-    )
-
     flow = fvm.FVMSetup(
         case_name="reference_cylinder_flow",
         execution=fvm.ComputeConfig(operator_backend="numba"),
@@ -123,7 +112,7 @@ def build_case():
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
         turbulence=fvm.TurbulenceConfig.none(),
         boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", list(STARTUP_VELOCITY)),
+            fvm.BoundaryConfig.inlet("inlet", list(FREESTREAM_VELOCITY)),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
@@ -131,11 +120,7 @@ def build_case():
             fvm.BoundaryConfig.cyclic("zmax", "zmin"),
             fvm.BoundaryConfig.wall("cylinder"),
         ],
-        velocity_boundaries=(
-            fvm.VelocityBoundary(patches=("inlet",), velocity=startup),
-            fvm.VelocityBoundary(patches=("ymin", "ymax"), velocity=startup, normal_only=True),
-        ),
-        initial_velocity=list(STARTUP_VELOCITY),
+        initial_velocity=list(FREESTREAM_VELOCITY),
         samplers=(
             # Drag and lift coefficients per unit span
             fvm.ForceSampler(

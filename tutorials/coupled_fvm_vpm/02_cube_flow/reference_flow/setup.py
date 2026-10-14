@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Body-fitted FVM reference for the coupled cube flow at Re = 1000.
 
-The same short transverse startup as the coupled case breaks the wake symmetry.
+The same vortex behind the cube as in the coupled case breaks the wake symmetry.
 Distant slip walls and inlet approximate the unbounded stream.
 """
 
 import argparse
 from pathlib import Path
+
+import numpy as np
 
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
@@ -20,10 +22,11 @@ DENSITY = 1.0
 REYNOLDS_NUMBER = 1000.0
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * CUBE_SIDE / REYNOLDS_NUMBER
 
-# Startup: the same transverse freestream as the coupled case, decaying smoothly
-STARTUP_VELOCITY = (1.0, 0.1, 0.05)  # m/s
-TAPER_START = 1.0  # s, the transverse components then decay smoothly ...
-TAPER_END = 2.0  # s, ... to the freestream
+# Startup: the same vortex behind the cube as in the coupled case
+DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, vector-potential peak
+DISTURBANCE_RADIUS = 0.5  # m
+DISTURBANCE_CENTRE = (1.0, 0.0, 0.0)  # m, half a side behind the rear face
+DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 
 # Domain and mesh refinement
 DOMAIN = (-6.48, 12.96, -6.48, 6.48, -6.48, 6.48)
@@ -47,6 +50,15 @@ CASE_DIR = Path(__file__).resolve().parent
 VELOCITY = [FREESTREAM_VELOCITY, 0.0, 0.0]
 
 
+def initial_velocity(position):
+    """Freestream plus the curl of A (1 - r^2/R^2)^4 along the disturbance axis."""
+    offset = position - np.asarray(DISTURBANCE_CENTRE)
+    support = np.maximum(1.0 - np.sum(offset**2, axis=1) / DISTURBANCE_RADIUS**2, 0.0)
+    swirl = 8.0 * DISTURBANCE_AMPLITUDE / DISTURBANCE_RADIUS**2 * support**3
+    axis = np.asarray(DISTURBANCE_AXIS) / np.linalg.norm(DISTURBANCE_AXIS)
+    return np.asarray(VELOCITY) + swirl[:, None] * np.cross(axis, offset)
+
+
 def create_solver(name: str, h: float) -> fvm.FVMSolver:
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(
@@ -68,12 +80,6 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
             msh.BoxRefinement("wake", WAKE, WAKE_CELL_SIZE_RATIO * h),
         ),
         patch_refinements=(msh.PatchRefinement("cube", h),),
-    )
-    startup = fvm.VelocityRamp(
-        initial=STARTUP_VELOCITY,
-        final=VELOCITY,
-        start_time=TAPER_START,
-        end_time=TAPER_END,
     )
     setup = fvm.FVMSetup(
         backup=fvm.BackupConfig(
@@ -143,7 +149,7 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
             subgrid_dissipation_coefficient=1.048,
         ),
         boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", list(STARTUP_VELOCITY)),
+            fvm.BoundaryConfig.inlet("inlet", VELOCITY),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
@@ -151,14 +157,7 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cube"),
         ],
-        # The startup transverse velocity enters at the inlet and crosses the lateral walls
-        velocity_boundaries=(
-            fvm.VelocityBoundary(patches=("inlet",), velocity=startup),
-            fvm.VelocityBoundary(
-                patches=("ymin", "ymax", "zmin", "zmax"), velocity=startup, normal_only=True
-            ),
-        ),
-        initial_velocity=list(STARTUP_VELOCITY),
+        initial_velocity=VELOCITY,
     )
     return fvm.create_fvm_solver(
         setup,
@@ -176,7 +175,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     with create_solver(arguments.name, arguments.h) as solver:
-        solver.run(start_from=START_FROM)
+        solver.run(start_from=START_FROM, initial_velocity=initial_velocity)
         fvm.update_grid_study(
             solver,
             arguments.h,

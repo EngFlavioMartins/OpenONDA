@@ -21,7 +21,7 @@ The FVM box contains the vortex-formation region, about four diameters downstrea
 
 Shed vortices fade smoothly through an [outflow fringe](../../../docs/vpm.md#induction-and-stretching) of about three wake wavelengths. Deleting them abruptly at the domain face would change the circulation left in the domain every half-cycle. The resulting cross-flow at the cylinder weakens the lift and lengthens the shedding period.
 
-A transverse freestream of 0.1 m/s and a weak vortex behind the cylinder break the symmetry. Between 1 s and 2 s the transverse component tapers smoothly to zero. Developed shedding is averaged from 40 s.
+A vortex behind the cylinder breaks the symmetry; the freestream is steady from the start. A transverse startup flow is avoided: the zero-pressure outlet of the reference resists a uniform transverse acceleration, so the two cases would receive different startup impulses and shed with a permanent phase offset. Developed shedding is averaged from 40 s.
 
 ## Run
 

@@ -9,7 +9,7 @@ The FVM alone solves the [coupled cylinder](../README.md) flow on a large body-f
 | Boundaries | Velocity inlet, zero-pressure outlet, slip side walls, no-slip cylinder |
 | Time step; end time | 0.008 s; 100 s |
 
-The coupled particles describe an unbounded stream, so the walls and the inlet sit far from the cylinder. With walls at $y=\pm10$ m and the inlet at $x=-8$ m, blockage accelerated the flow around the cylinder by about 1.6%, worth roughly 3% in mean drag. During the startup, the lateral walls let the transverse freestream through; afterwards they are impermeable.
+The coupled particles describe an unbounded stream, so the walls and the inlet sit far from the cylinder. With walls at $y=\pm10$ m and the inlet at $x=-8$ m, blockage accelerated the flow around the cylinder by about 1.6%, worth roughly 3% in mean drag.
 
 ## Run
 

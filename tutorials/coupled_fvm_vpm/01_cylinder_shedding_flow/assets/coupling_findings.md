@@ -213,4 +213,4 @@ The same comparison exposed a second requirement: **break the symmetry of the st
 - The impulsively started cube reference kept a perfectly symmetric wake on every grid. Side force and lift stayed below $10^{-4}$ in coefficient for the whole 30 s.
 - Its drag was still drifting, from 1.05 to 0.93, between $10$–$20$ s and $20$–$30$ s.
 - The Strouhal number reported by its grid study, 0.066 on all three grids, was therefore a sampling artefact, not shedding.
-- The cylinder avoids this with a short transverse start-up flow. The updated cube setups, coupled and reference, now use the same kind of start-up ($0.1$ and $0.05$ m/s transverse, tapered off between 1 and 2 s). They also run to 100 s, with statistics taken over $t\ge40$ s.
+- The cylinder and the cube avoid this with a vortex placed behind the body in the initial field, the same in the coupled case and its reference. A transverse start-up flow is not used: the zero-pressure outlet of the reference resists a uniform transverse acceleration, so the two cases received different start-up impulses and shed with a permanent phase offset. Both run to 100 s, with statistics taken over $t\ge40$ s.
