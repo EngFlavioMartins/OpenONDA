@@ -9,12 +9,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..mesh.data import GeometryData, MeshData
 from .gradients import _is_empty_boundary
 
 
 @dataclass(frozen=True)
-class _BoundaryStencil:
-    signature: tuple
+class BoundaryStencil:
+    """Least-squares stencils of selected boundary-owner cells."""
+
+    signature: tuple[object, ...]
     cells: np.ndarray
     row: np.ndarray
     neighbour: np.ndarray
@@ -24,17 +27,19 @@ class _BoundaryStencil:
 
 
 @dataclass(frozen=True)
-class _BoundaryStencilCache:
-    signature: tuple
-    entries: dict
+class BoundaryStencilCache:
+    """Boundary-owner stencils keyed by the selected cells, valid for one mesh signature."""
+
+    signature: tuple[object, ...]
+    entries: dict[bytes, BoundaryStencil]
 
 
 def _boundary_stencil(
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
     include_physical_ghosts: bool,
     cells: np.ndarray,
-) -> "_BoundaryStencil":
+) -> "BoundaryStencil":
     n_cells = int(mesh_data["n_cells"])
     n_interior = int(mesh_data["n_interior_faces"])
     signature = (
@@ -56,13 +61,17 @@ def _boundary_stencil(
             for patch in mesh_data["boundary"]
         ),
     )
-    key = (
-        "_boundary_owner_lsq_with_ghosts" if include_physical_ghosts else "_boundary_owner_lsq_real"
+    cache = (
+        geo_data.get("_boundary_owner_lsq_with_ghosts")
+        if include_physical_ghosts
+        else geo_data.get("_boundary_owner_lsq_real")
     )
-    cache = geo_data.get(key)
     if cache is None or cache.signature != signature:
-        cache = _BoundaryStencilCache(signature, {})
-        geo_data[key] = cache
+        cache = BoundaryStencilCache(signature, {})
+        if include_physical_ghosts:
+            geo_data["_boundary_owner_lsq_with_ghosts"] = cache
+        else:
+            geo_data["_boundary_owner_lsq_real"] = cache
     selected_key = cells.tobytes()
     if selected_key in cache.entries:
         return cache.entries[selected_key]
@@ -135,20 +144,20 @@ def _boundary_stencil(
             moment[:, other, axis] = reduced
     inverse = np.linalg.pinv(moment, rcond=1e-10, hermitian=True)
     projector = inverse @ moment
-    cached = _BoundaryStencil(signature, cells, row, neighbour, weighted, inverse, projector)
+    cached = BoundaryStencil(signature, cells, row, neighbour, weighted, inverse, projector)
     cache.entries[selected_key] = cached
     return cached
 
 
 def boundary_owner_gradient(
     field_values: np.ndarray,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
     face_indices: np.ndarray,
     *,
     include_physical_ghosts: bool = False,
     displacements: np.ndarray | None = None,
-) -> np.ndarray | None:
+) -> np.ndarray:
     """Return selected boundary-owner gradients as ``(faces, axis, component)``.
 
     Real-cell-only reconstruction is independent of boundary patch update order.
@@ -203,8 +212,8 @@ def boundary_owner_gradient(
 
 
 def boundary_resolved_displacement(
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
     face_indices: np.ndarray,
     displacements: np.ndarray,
 ) -> np.ndarray:

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+from .data import GeometryData, MeshData
 
 if TYPE_CHECKING:
     from ..io.logging import Logging, Timer
@@ -63,7 +65,7 @@ class MeshGeometry:
     lsq_condition: np.ndarray | None = None
 
     @classmethod
-    def from_data(cls, mesh_data: dict[str, object], geo_data: dict[str, object]) -> MeshGeometry:
+    def from_data(cls, mesh_data: MeshData, geo_data: GeometryData) -> MeshGeometry:
         """Create read-only geometry views from native mesh and derived data.
 
         Parameters
@@ -109,11 +111,11 @@ def compute_geometry(
     n_cells: int,
     n_faces: int,
     n_interior_faces: int,
-    cell_face_indices: tuple[np.ndarray, np.ndarray],
+    cell_face_indices: tuple[np.ndarray, np.ndarray] | list[np.ndarray],
     *,
     logger: Logging | None = None,
     timer: Timer | None = None,
-) -> dict[str, object]:
+) -> GeometryData:
     """Compute centres, oriented areas, volumes, and interpolation geometry.
 
     Parameters
@@ -244,23 +246,25 @@ def compute_geometry(
     # ``compute_mesh_geometry`` normally passes CSR connectivity.  Only the
     # counts persist globally; padded connectivity and all gathered face
     # tensors are bounded to one block.
-    cell_face_indices_are_csr = isinstance(cell_face_indices, tuple)
+    csr_cell_face_indices: np.ndarray | None = None
     cell_face_offset: np.ndarray | None = None
-    if cell_face_indices_are_csr:
-        cell_face_indices, raw_cell_face_offset = cell_face_indices
+    cell_face_lists: list[np.ndarray] = []
+    if isinstance(cell_face_indices, tuple):
+        csr_cell_face_indices, raw_cell_face_offset = cell_face_indices
         cell_face_offset = np.asarray(raw_cell_face_offset)
         cell_counts = np.diff(cell_face_offset).astype(np.int32, copy=False)
         max_faces = int(np.max(cell_counts, initial=0))
     else:
-        max_faces = max(len(f) for f in cell_face_indices)
-        cell_counts = np.fromiter((len(f) for f in cell_face_indices), dtype=np.int32)
+        cell_face_lists = cell_face_indices
+        max_faces = max(len(f) for f in cell_face_lists)
+        cell_counts = np.fromiter((len(f) for f in cell_face_lists), dtype=np.int32)
 
     cell_chunk = 50_000
     for start in range(0, n_cells, cell_chunk):
         stop = min(start + cell_chunk, n_cells)
         count_block = cell_counts[start:stop]
         padded = np.full((stop - start, max_faces), -1, dtype=np.int32)
-        if cell_face_indices_are_csr:
+        if csr_cell_face_indices is not None:
             if cell_face_offset is None:
                 raise RuntimeError("CSR cell-face offsets are missing")
             first_entry = int(cell_face_offset[start])
@@ -271,9 +275,9 @@ def compute_geometry(
                 columns = np.arange(last_entry - first_entry) - np.repeat(
                     relative_offsets, count_block
                 )
-                padded[rows, columns] = cell_face_indices[first_entry:last_entry]
+                padded[rows, columns] = csr_cell_face_indices[first_entry:last_entry]
         else:
-            for local, faces_for_cell in enumerate(cell_face_indices[start:stop]):
+            for local, faces_for_cell in enumerate(cell_face_lists[start:stop]):
                 padded[local, : len(faces_for_cell)] = faces_for_cell
 
         safe_faces = padded.copy()
@@ -362,13 +366,13 @@ def compute_geometry(
 
 
 def compute_mesh_geometry(
-    mesh_data: dict[str, object],
+    mesh_data: MeshData,
     gradient_scheme: str = "gauss",
     *,
     compute_lsq: bool = True,
     logger: Logging | None = None,
     timer: Timer | None = None,
-) -> dict[str, object]:
+) -> GeometryData:
     """Compute cell and face geometry for a validated native mesh dictionary.
 
     ``compute_lsq=False`` is an initialization ordering tool.  It lets the
@@ -410,7 +414,7 @@ def compute_mesh_geometry(
         mesh_data["cell_face_indices"] = cell_face_indices
         mesh_data["cell_face_offset"] = cell_face_offset
 
-    geo_data: dict[str, Any] = compute_geometry(
+    geo_data: GeometryData = compute_geometry(
         mesh_data["vertex_position"],
         mesh_data["faces"],
         mesh_data["owners"],
@@ -425,9 +429,9 @@ def compute_mesh_geometry(
 
     # Pre‑compute LSQ gradient geometry if requested
     if gradient_scheme == "lsq" and compute_lsq:
-        from ..fields.gradients import compute_lsq_geometry
+        from ..fields.gradients import add_lsq_geometry
 
-        geo_data.update(compute_lsq_geometry(mesh_data, geo_data))
+        add_lsq_geometry(mesh_data, geo_data)
     else:
         geo_data["gradient_scheme"] = "gauss"
 

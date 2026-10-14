@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
+from .data import BoundaryPatchData, GeometryData, MeshData
 from .validation import MeshValidationError
 
 
-def _patch_faces(patch: dict) -> np.ndarray:
+def _patch_faces(patch: BoundaryPatchData) -> np.ndarray:
     start = int(patch["start_face"])
     return np.arange(start, start + int(patch["n_faces"]), dtype=np.int32)
 
 
-def configure_cyclic_boundaries(mesh_data: dict, geo_data: dict) -> None:
+def configure_cyclic_boundaries(mesh_data: MeshData, geo_data: GeometryData) -> None:
     """Pair translational cyclic patches and expose their coupled-cell topology.
 
     Each side of a cyclic interface starts as a boundary patch. The

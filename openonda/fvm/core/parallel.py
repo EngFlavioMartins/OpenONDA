@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 
@@ -12,80 +11,9 @@ from openonda.runtime import detected_world_size
 
 if TYPE_CHECKING:
     from ..config.types import ComputeConfig
+    from ..mesh.partition import CellPartition
 
-
-class _MPICommunicator(Protocol):
-    """Subset of the mpi4py communicator used by the FVM runtime."""
-
-    def Get_size(self) -> int:
-        """Return the communicator size."""
-
-        ...
-
-    def Get_rank(self) -> int:
-        """Return the caller's rank."""
-
-        ...
-
-    def Barrier(self) -> None:
-        """Block until every rank enters the barrier."""
-
-        ...
-
-    def bcast(self, value: object, root: int = 0) -> object:
-        """Broadcast a pickle-compatible value from ``root``."""
-
-        ...
-
-    def allreduce(self, value: object, op: object = None) -> object:
-        """Reduce a value across ranks with the supplied MPI operation."""
-
-        ...
-
-    def gather(self, value: object, root: int = 0) -> object:
-        """Gather one value from each rank on ``root``."""
-
-        ...
-
-    def send(self, value: object, dest: int, tag: int = 0) -> None:
-        """Send one pickle-compatible value to ``dest``."""
-
-        ...
-
-    def recv(self, source: int = -1, tag: int = -1) -> object:
-        """Receive one value from a matching source/tag."""
-
-        ...
-
-    def Irecv(self, buf: np.ndarray, source: int, tag: int) -> object:
-        """Post a nonblocking numeric receive into ``buf``."""
-
-        ...
-
-    def Isend(self, buf: np.ndarray, dest: int, tag: int) -> object:
-        """Post a nonblocking numeric send from ``buf``."""
-
-        ...
-
-
-class _MPINamespace(Protocol):
-    """Reduction operators imported from ``mpi4py.MPI``."""
-
-    SUM: object
-    MAX: object
-    MIN: object
-    LAND: object
-
-
-class _CellPartition(Protocol):
-    """Partition attributes and methods required by :class:`ParallelContext`."""
-
-    owned_global_ids: np.ndarray
-
-    def exchange_halo(self, local_field: np.ndarray, comm: _MPICommunicator) -> None:
-        """Update ghost rows in ``local_field`` through the halo schedule."""
-
-        ...
+_BroadcastValue = TypeVar("_BroadcastValue")
 
 
 @dataclass(frozen=True)
@@ -109,19 +37,21 @@ class ParallelContext:
     """
 
     mode: str = "serial"
-    comm: _MPICommunicator | None = None
-    mpi: _MPINamespace | None = None
+    # mpi4py communicator and the ``mpi4py.MPI`` module (reduction operators);
+    # both are untyped extension objects.
+    comm: Any = None
+    mpi: Any = None
     rank: int = 0
     size: int = 1
-    partition: _CellPartition | None = None
+    partition: CellPartition | None = None
 
     @classmethod
     def create(
         cls,
         execution: ComputeConfig,
         *,
-        comm: _MPICommunicator | None = None,
-        mpi: _MPINamespace | None = None,
+        comm: Any = None,
+        mpi: Any = None,
     ) -> ParallelContext:
         """Validate execution settings and create the MPI context.
 
@@ -210,7 +140,7 @@ class ParallelContext:
             ) from error
         return cls(mode=mode, comm=comm, mpi=mpi, rank=rank, size=size)
 
-    def with_partition(self, partition: _CellPartition) -> ParallelContext:
+    def with_partition(self, partition: CellPartition) -> ParallelContext:
         """Return a copy bound to one validated local mesh partition.
 
         Parameters
@@ -297,7 +227,7 @@ class ParallelContext:
                 raise RuntimeError("Parallel context has no MPI communicator")
             self.comm.Barrier()
 
-    def bcast(self, value: Path | str | None, root: int = 0) -> Path | str | None:
+    def bcast(self, value: _BroadcastValue, root: int = 0) -> _BroadcastValue:
         """Broadcast ``value`` from ``root`` and return it on every rank.
 
         In serial mode the input is returned unchanged. In parallel mode this

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
+from ..data import MeshData
+
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
@@ -70,7 +72,7 @@ class RecoveryDiagnostics:
     partial_accepted: int = 0
 
     @classmethod
-    def from_mesh(cls, mesh_data: dict) -> RecoveryDiagnostics:
+    def from_mesh(cls, mesh_data: MeshData) -> RecoveryDiagnostics:
         """Read the projection counts recorded in ``mesh_generation``."""
         projection = mesh_data.get("mesh_generation", {}).get("surface_projection", {})
         attempted = int(projection.get("attempted_points", 0))
@@ -98,7 +100,7 @@ class OptimisationDiagnostics:
     max_aspect_ratio: float | None = None
 
     @classmethod
-    def from_quality(cls, quality: dict) -> OptimisationDiagnostics:
+    def from_quality(cls, quality: Mapping[str, Any]) -> OptimisationDiagnostics:
         """Adapt mesh-quality measurements into a typed stage result."""
         return cls(
             max_non_orthogonality_deg=_optional_float(quality, "max_non_orthogonality_deg"),
@@ -115,7 +117,7 @@ class OptimisationDiagnostics:
         }
 
 
-def _optional_float(values: dict, key: str) -> float | None:
+def _optional_float(values: Mapping[str, Any], key: str) -> float | None:
     value = values.get(key)
     return None if value is None else float(value)
 

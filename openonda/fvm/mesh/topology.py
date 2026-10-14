@@ -8,6 +8,8 @@ import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
+from .data import MeshData
+
 
 def _readonly(values: np.ndarray, dtype: type | np.dtype | None = None) -> np.ndarray:
     result = np.ascontiguousarray(values, dtype=dtype).view()
@@ -144,7 +146,7 @@ class MeshTopology:
     cell_order: np.ndarray
 
     @classmethod
-    def from_mesh_data(cls, mesh_data: dict[str, object]) -> MeshTopology:
+    def from_mesh_data(cls, mesh_data: MeshData) -> MeshTopology:
         """Convert native mesh mappings into read-only CSR-style array views.
 
         Already-contiguous arrays share memory with ``mesh_data`` without

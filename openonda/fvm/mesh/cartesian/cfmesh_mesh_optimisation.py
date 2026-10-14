@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from numba import prange
 from numba.extending import register_jitable
@@ -13,6 +12,7 @@ import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
+from ..data import MeshData
 from .cfmesh_surface_optimisation import (
     _mag_squared,
     optimise_cfmesh_surface,
@@ -39,7 +39,9 @@ def _cross_offsets(
 
 
 @register_jitable
-def _dot_offset(vector: np.ndarray, point: np.ndarray, origin: np.ndarray) -> float:
+def _dot_offset(
+    vector: np.ndarray | tuple[float, float, float], point: np.ndarray, origin: np.ndarray
+) -> float:
     return (
         vector[0] * (point[0] - origin[0])
         + vector[1] * (point[1] - origin[1])
@@ -487,8 +489,8 @@ def _selected_cells(
             for cell_id in point_cells[int(point_value)]:
                 levels[cell_id] = 1
     for layer in range(1, additional_layers + 1):
-        for cell_id in np.flatnonzero(levels == layer):
-            for face_id in cell_faces[int(cell_id)]:
+        for layer_cell_id in np.flatnonzero(levels == layer):
+            for face_id in cell_faces[int(layer_cell_id)]:
                 for point_value in faces[face_id]:
                     for neighbour_cell in point_cells[int(point_value)]:
                         if levels[neighbour_cell] == 0:
@@ -675,7 +677,7 @@ def _optimise_part_nodes_kernel(
     # Every target is evaluated against the same immutable point snapshot and
     # committed only after this kernel returns.  This is the native OpenMP
     # point loop expressed with Numba's deterministic independent iterations.
-    for local_node in prange(len(node_ids)):
+    for local_node in prange(len(node_ids)):  # type: ignore[attr-defined]  # numba stub: prange is range-like
         node_id = int(node_ids[local_node])
         first = int(tet_offsets[local_node])
         stop = int(tet_offsets[local_node + 1])
@@ -1338,7 +1340,7 @@ def _interior_laplacian_updates(
 
 
 def optimise_cfmesh_mesh(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     *,
     iterations: int = 5,
     surface_iterations: int | None = None,

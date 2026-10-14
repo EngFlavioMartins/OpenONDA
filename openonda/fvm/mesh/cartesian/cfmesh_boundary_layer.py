@@ -15,12 +15,12 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from itertools import combinations
-from typing import Any
 
 import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
+from ..data import BoundaryPatchData, MeshData
 from ..topology import pack_face_nodes
 from .cfmesh_surface_optimisation import (
     _dot,
@@ -145,7 +145,7 @@ def _shared_edge_is_concave(
 
 
 def _cfmesh_patch_keys(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     points: np.ndarray,
     faces: list[np.ndarray],
     face_patch: dict[int, int],
@@ -232,7 +232,7 @@ def _ordered_point_patch_ids(
     return tuple(patch_ids)
 
 
-def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
+def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
     """Add cfMesh's default patch-wise boundary wrapper in place.
 
     Patch keys merge transitively at concave multi-patch junctions, matching
@@ -522,23 +522,23 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
         if len(keys) != 3:
             continue
         corner_points += 1
-        first, second, third = keys
-        full = state(point_id, keys)
-        empty = state(point_id, ())
-        p00 = state(point_id, (first,))
-        p11 = state(point_id, (second,))
-        p22 = state(point_id, (third,))
-        p01 = state(point_id, (first, second))
-        p02 = state(point_id, (first, third))
-        p12 = state(point_id, (second, third))
+        first_key, second_key, third_key = keys
+        full_state = state(point_id, keys)
+        empty_state = state(point_id, ())
+        p00 = state(point_id, (first_key,))
+        p11 = state(point_id, (second_key,))
+        p22 = state(point_id, (third_key,))
+        p01 = state(point_id, (first_key, second_key))
+        p02 = state(point_id, (first_key, third_key))
+        p12 = state(point_id, (second_key, third_key))
         new_cells.append(
             [
-                (np.asarray((full, p02, p00, p01), dtype=np.int32), None),
-                (np.asarray((p12, p11, empty, p22), dtype=np.int32), patch_ids[0]),
-                (np.asarray((full, p01, p11, p12), dtype=np.int32), None),
-                (np.asarray((p02, p22, empty, p00), dtype=np.int32), patch_ids[1]),
-                (np.asarray((full, p12, p22, p02), dtype=np.int32), None),
-                (np.asarray((p01, p00, empty, p11), dtype=np.int32), patch_ids[2]),
+                (np.asarray((full_state, p02, p00, p01), dtype=np.int32), None),
+                (np.asarray((p12, p11, empty_state, p22), dtype=np.int32), patch_ids[0]),
+                (np.asarray((full_state, p01, p11, p12), dtype=np.int32), None),
+                (np.asarray((p02, p22, empty_state, p00), dtype=np.int32), patch_ids[1]),
+                (np.asarray((full_state, p12, p22, p02), dtype=np.int32), None),
+                (np.asarray((p01, p00, empty_state, p11), dtype=np.int32), patch_ids[2]),
             ]
         )
         source_cell_for_new.append(int(source_owners[point_faces[point_id][0]]))
@@ -593,12 +593,12 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
     boundary_owners: list[list[int]] = [[] for _patch in patches]
     for signature, face_records in records.items():
         if len(face_records) == 2:
-            first, second = face_records
-            if first[2] is not None or second[2] is not None:
+            first_record, second_record = face_records
+            if first_record[2] is not None or second_record[2] is not None:
                 raise ValueError(f"cfMesh wrapper boundary face was duplicated: {signature}")
-            internal_faces.append(orient(first[0], first[1], second[1]))
-            internal_owners.append(first[1])
-            internal_neighbours.append(second[1])
+            internal_faces.append(orient(first_record[0], first_record[1], second_record[1]))
+            internal_owners.append(first_record[1])
+            internal_neighbours.append(second_record[1])
         elif len(face_records) == 1:
             face, owner, boundary_patch = face_records[0]
             if boundary_patch is None:
@@ -635,7 +635,7 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
     combined_faces = internal_faces.copy()
     combined_owners = internal_owners.copy()
     combined_neighbours = internal_neighbours.copy()
-    boundary: list[dict[str, Any]] = []
+    boundary: list[BoundaryPatchData] = []
     start_face = len(internal_faces)
     for patch_id, patch in enumerate(patches):
         combined_faces.extend(boundary_faces[patch_id])
@@ -718,14 +718,11 @@ def add_cfmesh_wrapper_layer(mesh_data: dict[str, Any]) -> None:
             },
         }
     )
-    for stale in (
-        "cell_vertex_indices",
-        "cell_face_indices",
-        "cell_face_offset",
-        "global_cell_id",
-        "global_face_id",
-    ):
-        mesh_data.pop(stale, None)
+    mesh_data.pop("cell_vertex_indices", None)
+    mesh_data.pop("cell_face_indices", None)
+    mesh_data.pop("cell_face_offset", None)
+    mesh_data.pop("global_cell_id", None)
+    mesh_data.pop("global_face_id", None)
     mesh_data["mesh_generation"]["workflow_checkpoint"] = "boundaryLayerGeneration"
     mesh_data["mesh_generation"]["cfmesh_wrapper_layer"] = {
         "face_cells": len(interface_cells),

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Literal, TypedDict, overload
 
 from numba import types
 from numba.typed import Dict
@@ -10,12 +11,39 @@ import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
+from .data import GeometryData, MeshData
 from .topology import build_cell_face_csr, pack_face_nodes
 
 if TYPE_CHECKING:
     import pyvista as pv
 
     from ..config.types import MeshQualityConfig
+
+
+class MeshQualityReport(TypedDict):
+    """Mesh-quality extrema from :func:`validate_geometry`; angles in degrees."""
+
+    min_volume: float
+    max_volume: float
+    min_face_area: float
+    max_non_orthogonality_deg: float
+    p99_non_orthogonality_deg: float
+    mean_non_orthogonality_deg: float
+    out_of_bounds_interpolation_weights: int
+    max_skewness: float
+    p99_internal_face_skewness: float
+    max_skewness_face: int
+    max_aspect_ratio: float
+    min_owner_face_pyramid_cosine: float
+    min_neighbour_face_pyramid_cosine: float
+    inverted_owner_face_pyramids: int
+    inverted_neighbour_face_pyramids: int
+    max_adjacent_volume_scale_ratio: float
+    max_adjacent_cell_size_ratio: float | None
+    max_lsq_condition: float | None
+    rank_deficient_lsq_cells: int
+    svd_lsq_cells: int
+
 
 _EDGE_KEY_TYPE = types.UniTuple(types.int64, 2)
 
@@ -30,12 +58,12 @@ class MeshValidationError(ValueError):
     """
 
 
-def _require(condition: bool, message: str) -> None:
+def _require(condition: bool | np.bool_, message: str) -> None:
     if not condition:
         raise MeshValidationError(message)
 
 
-def validate_topology(mesh_data: dict[str, object]) -> dict[str, object] | None:
+def validate_topology(mesh_data: MeshData) -> dict[str, int]:
     """Validate the backend-neutral face-based mesh topology.
 
     The function deliberately rejects ambiguous patch layouts and malformed
@@ -109,7 +137,9 @@ def validate_topology(mesh_data: dict[str, object]) -> dict[str, object] | None:
     seen_names = set()
     for patch in mesh_data["boundary"]:
         name = str(patch.get("name", ""))
-        _require(name and name not in seen_names, f"Invalid or duplicate boundary name {name!r}")
+        _require(
+            bool(name) and name not in seen_names, f"Invalid or duplicate boundary name {name!r}"
+        )
         seen_names.add(name)
         start = int(patch.get("start_face", -1))
         count = int(patch.get("n_faces", -1))
@@ -136,15 +166,17 @@ def validate_topology(mesh_data: dict[str, object]) -> dict[str, object] | None:
         "global_cell_id": n_cells,
         "global_face_id": n_faces,
     }
+    # Read-only view for checking optional per-entity arrays by name.
+    mesh_arrays: Mapping[str, object] = mesh_data
     for key, expected in metadata_shapes.items():
-        if key in mesh_data:
+        if key in mesh_arrays:
             _require(
-                np.asarray(mesh_data[key]).shape == (expected,),
+                np.asarray(mesh_arrays[key]).shape == (expected,),
                 f"Mesh metadata {key!r} must have shape ({expected},)",
             )
     for key in ("global_cell_id", "global_face_id"):
-        if key in mesh_data:
-            values = np.asarray(mesh_data[key])
+        if key in mesh_arrays:
+            values = np.asarray(mesh_arrays[key])
             _require(len(np.unique(values)) == len(values), f"Mesh metadata {key!r} is not unique")
 
     return {
@@ -186,7 +218,7 @@ def _cell_edge_incidence_kernel(
     return bad_cells, bad_edges, first_bad_cell
 
 
-def validate_cell_edge_incidence(mesh_data: dict[str, object]) -> dict[str, int]:
+def validate_cell_edge_incidence(mesh_data: MeshData) -> dict[str, int]:
     """Require every finite-volume cell polygon edge to occur twice.
 
     Area-vector closure is necessary but not sufficient for a conforming
@@ -220,9 +252,7 @@ def validate_cell_edge_incidence(mesh_data: dict[str, object]) -> dict[str, int]
     }
 
 
-def validate_geometry(
-    mesh_data: dict[str, object], geo_data: dict[str, object]
-) -> dict[str, object] | None:
+def validate_geometry(mesh_data: MeshData, geo_data: GeometryData) -> MeshQualityReport:
     """Validate geometry and return mesh-quality extrema."""
     n_cells = mesh_data["n_cells"]
     n_faces = mesh_data["n_faces"]
@@ -417,9 +447,8 @@ def validate_geometry(
     # global mesh.  Every owned cell is checked exactly once across the MPI
     # communicator.
     parallel = mesh_data.get("_parallel_context")
-    n_quality_cells = (
-        int(parallel.n_owned) if parallel is not None and parallel.is_partitioned else n_cells
-    )
+    n_owned = parallel.n_owned if parallel is not None and parallel.is_partitioned else None
+    n_quality_cells = n_owned if n_owned is not None else n_cells
     lsq_condition = np.asarray(geo_data.get("lsq_condition", []), dtype=np.float64)[
         :n_quality_cells
     ]
@@ -464,8 +493,8 @@ def validate_geometry(
 
 
 def validate_cell_area_closure(
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
     *,
     tolerance: float = 1.0e-10,
 ) -> dict[str, float]:
@@ -498,7 +527,7 @@ def validate_cell_area_closure(
     return {"max_normalized_area_closure_error": maximum}
 
 
-def validate_single_fluid_component(mesh_data: dict[str, object]) -> dict[str, int]:
+def validate_single_fluid_component(mesh_data: MeshData) -> dict[str, int]:
     """Require all solver cells to belong to one internal-face component."""
     n_cells = int(mesh_data["n_cells"])
     n_internal = int(mesh_data["n_interior_faces"])
@@ -566,9 +595,7 @@ def validate_vtk_cell_intersections(
     }
 
 
-def cells_incident_to_points(
-    mesh_data: dict[str, object], point_ids: list[int] | np.ndarray
-) -> np.ndarray:
+def cells_incident_to_points(mesh_data: MeshData, point_ids: list[int] | np.ndarray) -> np.ndarray:
     """Find every cell whose geometry can change when these points move."""
     point_ids = np.asarray(point_ids, dtype=np.int64)
     if not len(point_ids):
@@ -598,9 +625,21 @@ def cells_incident_to_points(
     )
 
 
+@overload
 def extract_cell_subset_mesh(
-    mesh_data: dict[str, object], cell_ids: np.ndarray, *, return_point_ids: bool = False
-) -> dict | tuple[dict, np.ndarray]:
+    mesh_data: MeshData, cell_ids: np.ndarray, *, return_point_ids: Literal[False] = False
+) -> MeshData: ...
+
+
+@overload
+def extract_cell_subset_mesh(
+    mesh_data: MeshData, cell_ids: np.ndarray, *, return_point_ids: Literal[True]
+) -> tuple[MeshData, np.ndarray]: ...
+
+
+def extract_cell_subset_mesh(
+    mesh_data: MeshData, cell_ids: np.ndarray, *, return_point_ids: bool = False
+) -> MeshData | tuple[MeshData, np.ndarray]:
     """Return a closed native mesh containing only the selected cells.
 
     Faces against unselected cells become temporary boundary faces.  Only
@@ -657,7 +696,7 @@ def extract_cell_subset_mesh(
     point_map[used_points] = np.arange(len(used_points), dtype=np.int32)
     subset_faces = [point_map[face] for face in subset_faces]
     widths = {len(face) for face in subset_faces}
-    result = {
+    result: MeshData = {
         "vertex_position": np.ascontiguousarray(
             np.asarray(mesh_data["vertex_position"], dtype=np.float64)[used_points]
         ),
@@ -691,21 +730,24 @@ def extract_cell_subset_mesh(
     return (result, used_points) if return_point_ids else result
 
 
-def enforce_quality_thresholds(report: dict[str, object], mesh_config: MeshQualityConfig) -> None:
+def enforce_quality_thresholds(report: MeshQualityReport, mesh_config: MeshQualityConfig) -> None:
     """Reject a mesh that exceeds any explicitly configured quality limit."""
     checks = (
-        ("max_non_orthogonality_deg", mesh_config.max_non_orthogonality_deg),
-        ("max_skewness", mesh_config.max_skewness),
-        ("max_aspect_ratio", mesh_config.max_aspect_ratio),
-        ("max_lsq_condition", mesh_config.max_lsq_condition),
+        (
+            "max_non_orthogonality_deg",
+            report["max_non_orthogonality_deg"],
+            mesh_config.max_non_orthogonality_deg,
+        ),
+        ("max_skewness", report["max_skewness"], mesh_config.max_skewness),
+        ("max_aspect_ratio", report["max_aspect_ratio"], mesh_config.max_aspect_ratio),
+        ("max_lsq_condition", report["max_lsq_condition"], mesh_config.max_lsq_condition),
     )
     violations = []
-    for metric, limit in checks:
+    for metric, measured, limit in checks:
         if limit is None:
             continue
         if not np.isfinite(limit) or float(limit) <= 0.0:
             raise MeshValidationError(f"Configured mesh quality limit {metric} must be > 0")
-        measured = report.get(metric)
         if measured is not None and measured > limit:
             violations.append(f"{metric}={measured:.6g} exceeds configured limit {limit:.6g}")
     if violations:
@@ -713,7 +755,7 @@ def enforce_quality_thresholds(report: dict[str, object], mesh_config: MeshQuali
 
 
 def validate_wall_vertex_conformance(
-    mesh_data: dict[str, object],
+    mesh_data: MeshData,
     surface_triangles: np.ndarray,
     wall_patch_name: str,
 ) -> dict[str, float | int]:

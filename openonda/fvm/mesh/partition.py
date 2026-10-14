@@ -8,8 +8,10 @@ from typing import Any
 
 import numpy as np
 
+from .data import BoundaryPatchData, FaceVertices, GeometryData, MeshData
 
-def _visualization_mesh(mesh_data: dict[str, object], cell_ids: np.ndarray) -> dict[str, Any]:
+
+def _visualization_mesh(mesh_data: MeshData, cell_ids: np.ndarray) -> MeshData:
     """Build complete, compact cells for owned-plus-ghost visualization.
 
     The solver's localized mesh contains exactly the faces needed to advance
@@ -111,6 +113,7 @@ def _visualization_mesh(mesh_data: dict[str, object], cell_ids: np.ndarray) -> d
 
     source_faces = mesh_data["faces"]
     face_array = source_faces if isinstance(source_faces, np.ndarray) else None
+    selected_faces: np.ndarray | list[np.ndarray]
     if face_array is not None and face_array.ndim == 2:
         selected_faces = np.asarray(face_array[global_face_id], dtype=np.int64)
         used_points = (
@@ -127,6 +130,7 @@ def _visualization_mesh(mesh_data: dict[str, object], cell_ids: np.ndarray) -> d
         )
     point_lookup = np.full(len(mesh_data["vertex_position"]), -1, dtype=np.int64)
     point_lookup[used_points] = np.arange(len(used_points))
+    faces: FaceVertices
     if isinstance(selected_faces, np.ndarray):
         faces = np.ascontiguousarray(point_lookup[selected_faces], dtype=np.int32)
     else:
@@ -134,7 +138,7 @@ def _visualization_mesh(mesh_data: dict[str, object], cell_ids: np.ndarray) -> d
             np.ascontiguousarray(point_lookup[face], dtype=np.int32) for face in selected_faces
         ]
 
-    visualization = {
+    visualization: MeshData = {
         "vertex_position": np.ascontiguousarray(
             np.asarray(mesh_data["vertex_position"])[used_points]
         ),
@@ -157,12 +161,12 @@ def _visualization_mesh(mesh_data: dict[str, object], cell_ids: np.ndarray) -> d
             np.asarray(mesh_data.get("source_cell_id", np.arange(n_global_cells)))[cell_ids]
         ),
     }
-    for key, default, dtype in (
-        ("cell_type_code", -1, np.int32),
-        ("cell_order", 1, np.int8),
-    ):
-        values = np.asarray(mesh_data.get(key, np.full(n_global_cells, default)), dtype=dtype)
-        visualization[key] = np.ascontiguousarray(values[cell_ids])
+    cell_type_code = np.asarray(
+        mesh_data.get("cell_type_code", np.full(n_global_cells, -1)), dtype=np.int32
+    )
+    visualization["cell_type_code"] = np.ascontiguousarray(cell_type_code[cell_ids])
+    cell_order = np.asarray(mesh_data.get("cell_order", np.full(n_global_cells, 1)), dtype=np.int8)
+    visualization["cell_order"] = np.ascontiguousarray(cell_order[cell_ids])
     if "cell_vertex_indices" in mesh_data:
         visualization["cell_vertex_indices"] = np.ascontiguousarray(
             point_lookup[np.asarray(mesh_data["cell_vertex_indices"])[cell_ids]],
@@ -263,7 +267,7 @@ class CellPartition:
     halo: HaloSchedule
 
     @classmethod
-    def from_mesh_data(cls, mesh_data: dict[str, object], rank: int, size: int) -> CellPartition:
+    def from_mesh_data(cls, mesh_data: MeshData, rank: int, size: int) -> CellPartition:
         """Build contiguous owned/ghost maps and the corresponding halo plan.
 
         Parameters
@@ -323,8 +327,8 @@ class CellPartition:
         physical_faces = physical_faces[physical_owner_ranks == rank]
         local_faces = np.concatenate((local_interior_faces, physical_faces))
 
-        send_sets = [set() for _ in range(size)]
-        receive_sets = [set() for _ in range(size)]
+        send_sets: list[set[int]] = [set() for _ in range(size)]
+        receive_sets: list[set[int]] = [set() for _ in range(size)]
         ghost_set: set[int] = set()
         for face in processor_faces:
             owner = int(owners[face])
@@ -363,7 +367,7 @@ class CellPartition:
             halo=HaloSchedule(send, receive, send_local, receive_local),
         )
 
-    def exchange_halo(self, local_field: np.ndarray, comm: object) -> None:
+    def exchange_halo(self, local_field: np.ndarray, comm: Any) -> None:
         """Update ghost values with numeric nonblocking neighbour messages.
 
         The schedule stores local indices, so the steady path neither maps
@@ -406,13 +410,13 @@ class CellPartition:
 
 
 def localize_mesh_and_geometry(
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
+    mesh_data: MeshData,
+    geo_data: GeometryData,
     rank: int,
     size: int,
     *,
     include_visualization_ghosts: bool = True,
-) -> tuple[dict[str, Any], dict[str, Any], CellPartition]:
+) -> tuple[MeshData, GeometryData, CellPartition]:
     """Build an owned-plus-halo mesh view with compact point connectivity.
 
     ``include_visualization_ghosts`` retains complete halo-cell topology only
@@ -440,6 +444,7 @@ def localize_mesh_and_geometry(
 
     global_faces = mesh_data["faces"]
     face_array = global_faces if isinstance(global_faces, np.ndarray) else None
+    selected_faces: np.ndarray | list[np.ndarray]
     if face_array is not None and face_array.ndim == 2:
         selected_faces = np.asarray(face_array[face_ids])
         used_points = np.unique(selected_faces)
@@ -457,12 +462,13 @@ def localize_mesh_and_geometry(
         used_points = np.unique(np.concatenate((used_points, local_cell_vertex_indices.ravel())))
     point_lookup = np.full(len(mesh_data["vertex_position"]), -1, dtype=np.int32)
     point_lookup[used_points] = np.arange(len(used_points))
+    faces: FaceVertices
     if isinstance(selected_faces, np.ndarray):
         faces = np.ascontiguousarray(point_lookup[selected_faces], dtype=np.int32)
     else:
         faces = [point_lookup[face] for face in selected_faces]
 
-    boundaries = []
+    boundaries: list[BoundaryPatchData] = []
     for patch in mesh_data["boundary"]:
         first = int(patch["start_face"])
         last = first + int(patch["n_faces"])
@@ -479,7 +485,7 @@ def localize_mesh_and_geometry(
         boundaries.append(localized)
 
     local_cell_ids = partition.local_global_ids
-    local_mesh: dict[str, Any] = {
+    local_mesh: MeshData = {
         "vertex_position": np.ascontiguousarray(
             np.asarray(mesh_data["vertex_position"])[used_points]
         ),
@@ -518,17 +524,24 @@ def localize_mesh_and_geometry(
         mesh_data,
         visualization_cell_ids,
     )
-    for key, default, dtype in (
-        ("cell_type_code", -1, np.int32),
-        ("cell_order", 1, np.int8),
-    ):
-        values = np.asarray(mesh_data.get(key, np.full(n_global_cells, default)), dtype=dtype)
-        local_mesh[key] = np.ascontiguousarray(values[local_cell_ids])
+    cell_type_code = np.asarray(
+        mesh_data.get("cell_type_code", np.full(n_global_cells, -1)), dtype=np.int32
+    )
+    local_mesh["cell_type_code"] = np.ascontiguousarray(cell_type_code[local_cell_ids])
+    cell_order = np.asarray(mesh_data.get("cell_order", np.full(n_global_cells, 1)), dtype=np.int8)
+    local_mesh["cell_order"] = np.ascontiguousarray(cell_order[local_cell_ids])
 
-    for key in ("cell_sizes", "cell_levels", "boundary_layer_index"):
-        values = mesh_data.get(key)
-        if values is not None:
-            local_mesh[key] = np.ascontiguousarray(np.asarray(values)[local_cell_ids])
+    cell_sizes = mesh_data.get("cell_sizes")
+    if cell_sizes is not None:
+        local_mesh["cell_sizes"] = np.ascontiguousarray(np.asarray(cell_sizes)[local_cell_ids])
+    cell_levels = mesh_data.get("cell_levels")
+    if cell_levels is not None:
+        local_mesh["cell_levels"] = np.ascontiguousarray(np.asarray(cell_levels)[local_cell_ids])
+    boundary_layer_index = mesh_data.get("boundary_layer_index")
+    if boundary_layer_index is not None:
+        local_mesh["boundary_layer_index"] = np.ascontiguousarray(
+            np.asarray(boundary_layer_index)[local_cell_ids]
+        )
 
     if "cell_vertex_indices" in mesh_data:
         local_mesh["cell_vertex_indices"] = np.ascontiguousarray(
@@ -536,22 +549,54 @@ def localize_mesh_and_geometry(
             dtype=np.int32,
         )
 
-    local_geo: dict[str, Any] = {"gradient_scheme": gradient_scheme}
-    for key, values in geo_data.items():
-        if key == "gradient_scheme" or key.startswith("lsq_"):
-            continue
+    def localize(values: np.ndarray) -> np.ndarray:
+        # Face- and cell-sized arrays are restricted to the local faces/cells;
+        # anything else is copied whole.
         array = np.asarray(values)
         if array.ndim > 0 and array.shape[0] == n_global_faces:
-            local_geo[key] = np.ascontiguousarray(array[face_ids])
-        elif array.ndim > 0 and array.shape[0] == n_global_cells:
-            local_geo[key] = np.ascontiguousarray(array[local_cell_ids])
-        else:
-            local_geo[key] = deepcopy(values)
+            return np.ascontiguousarray(array[face_ids])
+        if array.ndim > 0 and array.shape[0] == n_global_cells:
+            return np.ascontiguousarray(array[local_cell_ids])
+        return deepcopy(values)
+
+    local_geo: GeometryData = {
+        "gradient_scheme": gradient_scheme,
+        "face_centre": localize(geo_data["face_centre"]),
+        "face_area_vector": localize(geo_data["face_area_vector"]),
+        "face_area": localize(geo_data["face_area"]),
+        "cell_centre": localize(geo_data["cell_centre"]),
+        "cell_volume": localize(geo_data["cell_volume"]),
+        "face_interpolation_weight": localize(geo_data["face_interpolation_weight"]),
+        "cell_connection_vector": localize(geo_data["cell_connection_vector"]),
+        "wall_distance": localize(geo_data["wall_distance"]),
+    }
+    if "_operator_backend" in geo_data:
+        local_geo["_operator_backend"] = geo_data["_operator_backend"]
+    if "boundary_translation" in geo_data:
+        local_geo["boundary_translation"] = localize(geo_data["boundary_translation"])
+    if "least_squares_neighbour_field_index" in geo_data:
+        local_geo["least_squares_neighbour_field_index"] = localize(
+            geo_data["least_squares_neighbour_field_index"]
+        )
+    if "least_squares_owner_cell" in geo_data:
+        local_geo["least_squares_owner_cell"] = localize(geo_data["least_squares_owner_cell"])
+    if "least_squares_neighbour_weighted_displacement" in geo_data:
+        local_geo["least_squares_neighbour_weighted_displacement"] = localize(
+            geo_data["least_squares_neighbour_weighted_displacement"]
+        )
+    if "least_squares_normal_matrix_inverse" in geo_data:
+        local_geo["least_squares_normal_matrix_inverse"] = localize(
+            geo_data["least_squares_normal_matrix_inverse"]
+        )
+    if "least_squares_gradient_operator" in geo_data:
+        local_geo["least_squares_gradient_operator"] = deepcopy(
+            geo_data["least_squares_gradient_operator"]
+        )
     if gradient_scheme == "lsq":
         # Recompute stencils in the compact local indexing.  Every owned cell
         # contains all of its adjacent faces; ghost-cell gradients are filled
         # by halo exchange after the owned reconstruction.
-        from ..fields.gradients import compute_lsq_geometry
+        from ..fields.gradients import add_lsq_geometry
 
-        local_geo.update(compute_lsq_geometry(local_mesh, local_geo))
+        add_lsq_geometry(local_mesh, local_geo)
     return local_mesh, local_geo, partition

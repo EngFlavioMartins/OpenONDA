@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..mesh.data import GeometryData, MeshData
+
 
 class CellBoxFilter:
     """Volume-weighted one-ring box filter for cell-centred fields.
@@ -40,7 +42,7 @@ class CellBoxFilter:
     which would amplify the residual ``f − G∗f`` that the coupler relaxes.
     """
 
-    def __init__(self, mesh_data: dict, geo_data: dict) -> None:
+    def __init__(self, mesh_data: MeshData, geo_data: GeometryData) -> None:
         """Build one reusable one-ring filter from mesh connectivity.
 
         Parameters

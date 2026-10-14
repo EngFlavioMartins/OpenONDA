@@ -1,9 +1,12 @@
 """Specification-based reuse at the native FVM mesh construction boundary."""
 
+from __future__ import annotations
+
 from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 from zipfile import BadZipFile
 
 from ..io.mesh_storage import load_native_mesh
@@ -17,10 +20,14 @@ from .cartesian.config import (
 )
 from .cartesian.extrusion import ExtrudedCartesianMesher
 from .cartesian.mesher import CartesianMesher
+from .data import MeshData
 from .progress import mesh_event
 
+if TYPE_CHECKING:
+    from typing_extensions import TypeIs
 
-def can_reuse_mesh(mesher: object) -> bool:
+
+def can_reuse_mesh(mesher: object) -> TypeIs[CartesianMesher | ExtrudedCartesianMesher]:
     """Reuse only native implementations whose complete inputs are known."""
     if type(mesher) is ExtrudedCartesianMesher:
         return (
@@ -42,8 +49,8 @@ def can_reuse_mesh(mesher: object) -> bool:
     )
 
 
-def _specification(mesher: "CartesianMesher | ExtrudedCartesianMesher") -> dict[str, object]:
-    if type(mesher) is ExtrudedCartesianMesher:
+def _specification(mesher: CartesianMesher | ExtrudedCartesianMesher) -> dict[str, object]:
+    if isinstance(mesher, ExtrudedCartesianMesher):
         return {
             "type": "extruded",
             "source": _specification(mesher.source),
@@ -73,7 +80,7 @@ def _specification(mesher: "CartesianMesher | ExtrudedCartesianMesher") -> dict[
     return data
 
 
-def meshing_input_hash(mesher: "CartesianMesher | ExtrudedCartesianMesher") -> str:
+def meshing_input_hash(mesher: CartesianMesher | ExtrudedCartesianMesher) -> str:
     """Hash meshing inputs and implementation without machine or output paths."""
     if not can_reuse_mesh(mesher):
         raise TypeError("Mesh input_hash requires native meshing implementations and inputs")
@@ -89,8 +96,8 @@ def meshing_input_hash(mesher: "CartesianMesher | ExtrudedCartesianMesher") -> s
 
 
 def build_or_load_cached_mesh(
-    mesher: "CartesianMesher | ExtrudedCartesianMesher", path: Path
-) -> dict[str, object]:
+    mesher: CartesianMesher | ExtrudedCartesianMesher, path: Path
+) -> MeshData:
     """Reuse matching native input; let the factory save generated meshes."""
     input_hash = meshing_input_hash(mesher)
     if path.is_file():

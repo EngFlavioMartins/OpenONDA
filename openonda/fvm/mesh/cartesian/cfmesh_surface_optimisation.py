@@ -13,13 +13,15 @@ import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
+from ..data import MeshData
+
 _SMALL = 1.0e-15
 _VSMALL = 1.0e-300
 _ROOT_VSMALL = 1.0e-150
 
 
 @register_jitable
-def _mag_squared(value: np.ndarray) -> float:
+def _mag_squared(value: np.ndarray | tuple[float, float, float]) -> float:
     """Use OpenFOAM's component order, without a BLAS reduction."""
     return float(value[0] * value[0] + value[1] * value[1] + value[2] * value[2])
 
@@ -301,7 +303,9 @@ def _optimise_point_kernel(points: np.ndarray, triangles: np.ndarray) -> np.ndar
     return _optimise_point(points, triangles)
 
 
-def _pack_rows(rows: object) -> tuple[np.ndarray, np.ndarray]:
+def _pack_rows(
+    rows: Sequence[Sequence[int | tuple[int, ...]] | np.ndarray] | np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
     """Pack small topology rows once, preserving their stored order."""
     offsets = np.empty(len(rows) + 1, dtype=np.int64)
     offsets[0] = 0
@@ -389,7 +393,7 @@ def _surface_optimisation_updates(
 ) -> np.ndarray:
     """Independent Jacobi updates; Newton arithmetic stays in stored order."""
     updates = points[selected].copy()
-    for local in prange(len(selected)):
+    for local in prange(len(selected)):  # type: ignore[attr-defined]  # numba stub: prange is range-like
         normal = np.zeros(3, dtype=np.float64)
         for entry in range(face_offsets[local], face_offsets[local + 1]):
             normal += face_normals[face_ids[entry]]
@@ -444,7 +448,7 @@ _surface_optimisation_updates = njit(cache=True, fastmath=False, parallel=True)(
 
 
 def _smooth_partition_points(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     partition_points: Sequence[int],
     *,
     iterations: int,
@@ -465,9 +469,9 @@ def _smooth_partition_points(
         for point in face:
             point_faces[int(point)].append(face_id)
         auxiliary = n_points + face_id
-        face_triangles = []
+        face_triangles: list[tuple[int, int, int]] = []
         if len(face) == 3:
-            face_triangles.append(tuple(map(int, face)))
+            face_triangles.append((int(face[0]), int(face[1]), int(face[2])))
         for position, point in enumerate(face):
             current = int(point)
             following = int(face[(position + 1) % len(face)])
@@ -484,7 +488,7 @@ def _smooth_partition_points(
     triangle_rows = []
     for point in selected:
         local_index = {}
-        local_labels = []
+        local_labels: list[int] = []
         local_triangles = []
         for triangle in point_triangles[int(point)]:
             for vertex in triangle:
@@ -538,12 +542,14 @@ def _smooth_partition_points(
             triangle_offsets,
         )
     if auxiliary_state is not None:
-        auxiliary_state["points"] = triangulation_points
-        auxiliary_state["centres"] = auxiliary_centres
+        if triangulation_points is not None:
+            auxiliary_state["points"] = triangulation_points
+        if auxiliary_centres is not None:
+            auxiliary_state["centres"] = auxiliary_centres
 
 
 def _inverted_boundary_points(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     face_patch_ids: Sequence[int] | np.ndarray | None = None,
     active_points: set[int] | None = None,
 ) -> set[int]:
@@ -740,7 +746,7 @@ def _inverted_boundary_points_vectorized(
 
 
 def inverted_cfmesh_boundary_points(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     face_patch_ids: Sequence[int] | np.ndarray,
     *,
     active_points: set[int] | None = None,
@@ -750,7 +756,7 @@ def inverted_cfmesh_boundary_points(
 
 
 def smooth_cfmesh_partition_points(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     point_ids: Sequence[int],
     *,
     auxiliary_state: dict[str, np.ndarray] | None = None,
@@ -760,7 +766,7 @@ def smooth_cfmesh_partition_points(
 
 
 def untangle_cfmesh_surface(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     *,
     map_to_surface: Callable[[np.ndarray], np.ndarray],
 ) -> dict[str, Any]:
@@ -812,7 +818,7 @@ def untangle_cfmesh_surface(
 
 
 def optimise_cfmesh_surface(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     *,
     iterations: int = 5,
     map_edge_points: Callable[[Sequence[int]], None] | None = None,

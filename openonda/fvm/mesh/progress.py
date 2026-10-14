@@ -47,7 +47,11 @@ class MesherLog:
         if self._closed:
             return
         elapsed = perf_counter() - self._started
-        rows = [("stage", activity), ("status", status.lower()), ("elapsed", elapsed, "s")]
+        rows: list[log_style.Row] = [
+            ("stage", activity),
+            ("status", status.lower()),
+            ("elapsed", elapsed, "s"),
+        ]
         rows.extend(
             (key.replace("_", " "), value) for key, value in details.items() if value is not None
         )
@@ -125,7 +129,7 @@ class MeshStage:
                     "FAILED",
                     self.activity,
                     seconds=f"{elapsed:.3f}",
-                    error_type=error_type.__name__,
+                    error_type=type(error).__name__,
                     error=error,
                     **self._details,
                 )

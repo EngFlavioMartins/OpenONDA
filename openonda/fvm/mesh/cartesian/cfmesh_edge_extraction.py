@@ -10,10 +10,10 @@ topological apart from the inserted face and cell centres.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
 
 import numpy as np
 
+from ..data import BoundaryPatchData, MeshData
 from .cfmesh_surface_optimisation import (
     _face_centre,
     inverted_cfmesh_boundary_points,
@@ -28,7 +28,7 @@ def _reverse_face(face: np.ndarray) -> np.ndarray:
 
 
 def _boundary_addressing(
-    mesh_data: dict[str, Any], faces: list[np.ndarray]
+    mesh_data: MeshData, faces: list[np.ndarray]
 ) -> tuple[dict[int, int], dict[tuple[int, int], list[int]], list[int]]:
     face_patch: dict[int, int] = {}
     edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
@@ -60,7 +60,7 @@ def _ordered_edge_faces(
     return first, second
 
 
-def _topology_plan(mesh_data: dict[str, Any]) -> tuple[set[int], dict[int, int], set[int]]:
+def _topology_plan(mesh_data: MeshData) -> tuple[set[int], dict[int, int], set[int]]:
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
     owners = np.asarray(mesh_data["owners"], dtype=np.int32)
@@ -143,7 +143,7 @@ def _topology_plan(mesh_data: dict[str, Any]) -> tuple[set[int], dict[int, int],
 
 
 def _split_faces(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     split_internal: set[int],
     split_boundary: dict[int, int],
 ) -> tuple[
@@ -271,7 +271,7 @@ def _cell_faces(
 
 
 def _rebuild_from_cells(
-    mesh_data: dict[str, Any],
+    mesh_data: MeshData,
     points: np.ndarray,
     split_faces: list[np.ndarray],
     split_owners: np.ndarray,
@@ -331,9 +331,9 @@ def _rebuild_from_cells(
             source_cell_ids.append(cell_id)
 
     records: dict[tuple[int, ...], list[tuple[np.ndarray, int]]] = defaultdict(list)
-    for cell_id, entries in enumerate(output_cells):
-        for face in entries:
-            records[tuple(sorted(map(int, face)))].append((face, cell_id))
+    for output_cell_id, output_faces in enumerate(output_cells):
+        for output_face in output_faces:
+            records[tuple(sorted(map(int, output_face)))].append((output_face, output_cell_id))
 
     internal_faces: list[np.ndarray] = []
     internal_owners: list[int] = []
@@ -341,19 +341,19 @@ def _rebuild_from_cells(
     patch_count = len(mesh_data["boundary"])
     boundary_faces: list[list[np.ndarray]] = [[] for _patch in range(patch_count)]
     boundary_owners: list[list[int]] = [[] for _patch in range(patch_count)]
-    for signature, entries in records.items():
-        if len(entries) == 2:
-            first, second = entries
+    for signature, face_records in records.items():
+        if len(face_records) == 2:
+            first, second = face_records
             internal_faces.append(first[0])
             internal_owners.append(first[1])
             internal_neighbours.append(second[1])
-        elif len(entries) == 1:
+        elif len(face_records) == 1:
             patch_id = boundary_patch_by_signature.get(signature)
             if patch_id is None:
                 raise ValueError(
                     f"cfMesh edge correction left an unmatched internal face: {signature}"
                 )
-            face, owner = entries[0]
+            face, owner = face_records[0]
             boundary_faces[patch_id].append(face)
             boundary_owners[patch_id].append(owner)
         else:
@@ -367,7 +367,7 @@ def _rebuild_from_cells(
         for face_id, face in enumerate(split_faces)
         if face_id >= len(split_neighbours)
     }
-    boundary: list[dict[str, Any]] = []
+    boundary: list[BoundaryPatchData] = []
     start_face = len(internal_faces)
     for patch_id, patch in enumerate(mesh_data["boundary"]):
         # decomposeCells retains its pre-decomposition boundary list and
@@ -427,18 +427,15 @@ def _rebuild_from_cells(
             "_cfmesh_cell_face_order": cfmesh_cell_face_order,
         }
     )
-    for stale in (
-        "cell_vertex_indices",
-        "cell_face_indices",
-        "cell_face_offset",
-        "global_cell_id",
-        "global_face_id",
-        "boundary_layer_index",
-    ):
-        mesh_data.pop(stale, None)
+    mesh_data.pop("cell_vertex_indices", None)
+    mesh_data.pop("cell_face_indices", None)
+    mesh_data.pop("cell_face_offset", None)
+    mesh_data.pop("global_cell_id", None)
+    mesh_data.pop("global_face_id", None)
+    mesh_data.pop("boundary_layer_index", None)
 
 
-def extract_cfmesh_edges(mesh_data: dict[str, Any]) -> None:
+def extract_cfmesh_edges(mesh_data: MeshData) -> None:
     """Apply cfMesh's concave-edge correction and pyramid decomposition."""
     split_internal, split_boundary, marked_cells = _topology_plan(mesh_data)
     points, faces, owners, neighbours, boundary_patches, face_replacements = _split_faces(

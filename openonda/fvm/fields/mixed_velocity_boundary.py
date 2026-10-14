@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..mesh.data import BoundaryPatchData, GeometryData, MeshData
 from .boundary_reconstruction import boundary_owner_gradient
 
 
 def boundary_skew_velocity_increment(
     velocity: np.ndarray,
-    mesh_data: dict,
-    geo_data: dict,
+    mesh_data: MeshData,
+    geo_data: GeometryData,
     face_indices: np.ndarray,
     normal: np.ndarray,
     owner_to_face: np.ndarray,
@@ -128,9 +129,9 @@ def reconstruct_normal_velocity_tangential_gradient(
 
 def update_normal_velocity_tangential_gradient_boundary(
     velocity: np.ndarray,
-    boundary: dict,
-    mesh_data: dict,
-    geo_data: dict,
+    boundary: BoundaryPatchData,
+    mesh_data: MeshData,
+    geo_data: GeometryData,
 ) -> None:
     """Refresh one mixed patch's face-valued ghost slots in-place."""
     start = int(boundary["start_face"])

@@ -238,8 +238,8 @@ class AutomaticSurface:
             dtype=np.int64,
         )
         self.patch_neighbours: dict[int, set[int]] = defaultdict(set)
-        for edge_id in self.feature_ids:
-            first, second = (int(self.regions[face]) for face in self.edge_faces[edge_id])
+        for feature_edge_id in self.feature_ids:
+            first, second = (int(self.regions[face]) for face in self.edge_faces[feature_edge_id])
             self.patch_neighbours[first].add(second)
             self.patch_neighbours[second].add(first)
         self.edge_groups = np.full(len(edges), -1, dtype=np.int64)

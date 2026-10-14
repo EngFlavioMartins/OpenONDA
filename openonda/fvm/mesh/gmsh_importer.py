@@ -5,6 +5,8 @@ from typing import Any
 
 import numpy as np
 
+from .data import BoundaryPatchData, MeshData
+
 try:
     import gmsh
 except ImportError:  # Optional FVM mesh dependency; checked when the importer is used.
@@ -261,7 +263,7 @@ class GmshImporter:
         self._gmsh: Any = gmsh
         if not self._gmsh.isInitialized():
             self._gmsh.initialize()
-        self.source_path = None
+        self.source_path: str | None = None
 
     def finalize(self) -> None:
         """Finalize the Gmsh API.
@@ -286,7 +288,7 @@ class GmshImporter:
         self._gmsh.open(filename)
         self.source_path = str(filename)
 
-    def get_mesh_data(self) -> dict:
+    def get_mesh_data(self) -> MeshData:
         """Extract mesh data from the current Gmsh model.
 
         Nodes, cells, and boundary patches are collected from the Gmsh
@@ -390,7 +392,7 @@ class GmshImporter:
             final_faces.append(np.array(face_nodes_map[key], dtype=np.int32))
 
         n_internal = len(final_faces)
-        boundary_patches: list = []
+        boundary_patches: list[BoundaryPatchData] = []
         current_face_idx = n_internal
 
         for patch in patch_info:
@@ -412,7 +414,7 @@ class GmshImporter:
                 }
             )
 
-        mesh_data = {
+        mesh_data: MeshData = {
             "vertex_position": points,
             "faces": final_faces,
             "owners": np.array(owners, dtype=np.int32),
