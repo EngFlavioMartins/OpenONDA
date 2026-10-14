@@ -9,6 +9,7 @@ License: GPL-3.0-or-later
 
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
+import math
 from numbers import Real
 from pathlib import Path
 from time import perf_counter
@@ -676,7 +677,7 @@ class VPMSolver:
 
     # Time stepping
 
-    def advance(self, *, defer_output: bool = False) -> None:
+    def advance(self, *, defer_output: bool = False, time: float | None = None) -> None:
         """Advance the VPM solution by one time step.
 
         The step algorithm (velocity/gradient preparation, advection,
@@ -694,6 +695,11 @@ class VPMSolver:
             the accepted-step output event before returning. Coupled drivers
             set true while they exchange the accepted particle cloud and
             call :meth:`execute_scheduled_samplers` afterward.
+        time : float or None, default=None
+            Accepted physical time in s imposed by a driver that owns the
+            clock, such as the FVM--VPM coupler at its exchange times. It must
+            agree with ``time + time_step_size`` to floating-point round-off.
+            ``None`` advances by the configured time-step size.
 
         Raises
         ------
@@ -713,9 +719,19 @@ class VPMSolver:
         if not getattr(self, "_initial_conditions_built", True):
             self._build_initial_conditions()
         self._log_configuration_once()
+        if time is not None and not math.isclose(
+            time,
+            self.time + self.time_step_size,
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-9 * self.time_step_size,
+        ):
+            raise ValueError(
+                f"Imposed VPM time {time!r} s does not follow {self.time!r} s "
+                f"by one time step of {self.time_step_size!r} s"
+            )
         step_started = perf_counter()
         try:
-            self.stepper.advance(defer_output=defer_output)
+            self.stepper.advance(defer_output=defer_output, time=time)
         except BaseException as exc:
             # An exception can leave device fields partly updated.
             self._evolution_failure = exc

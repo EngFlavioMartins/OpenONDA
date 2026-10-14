@@ -42,10 +42,13 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
     coupler = SimpleNamespace(
         n_fvm_substeps=4,
         fvm_time_step_size=0.005,
+        fvm_solver=SimpleNamespace(step=4),
+        exchange_time=lambda step: step * 0.02,
         freestream_velocity=np.array([1.0, 0.0, 0.0]),
         setup=SimpleNamespace(),
     )
     recorded = []
+    times = []
 
     def record_step(
         _coupler,
@@ -53,8 +56,11 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
         velocity,
         normal_velocity=None,
         tangential_gradient=None,
+        *,
+        accepted_time,
     ):
         recorded.append((velocity.copy(), normal_velocity.copy(), tangential_gradient.copy()))
+        times.append(accepted_time)
 
     monkeypatch.setattr("openonda.coupler.boundary.apply_fvm_boundary", record_step)
     face_centre = np.zeros((3, 3))
@@ -90,3 +96,6 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
             (1.0 - alpha) * previous_normal_velocity + alpha * next_normal_velocity,
         )
         np.testing.assert_allclose(values[2], alpha * next_tangential_gradient)
+    # Substeps follow the exchange clock and the last one lands exactly on its end.
+    np.testing.assert_allclose(times[:3], [0.025, 0.03, 0.035], rtol=0.0, atol=1e-15)
+    assert times[-1] == 2 * 0.02
