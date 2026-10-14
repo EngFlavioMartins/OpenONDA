@@ -13,12 +13,8 @@ import pyvista as pv
 import taichi as ti
 
 from openonda.core.output_events import OutputEvent
-from openonda.vpm import EverySteps, VLMSampler
+from openonda.vpm import EverySteps, SmoothRampMotion, TranslatingMotion, VLMSampler
 from openonda.vpm.boundary_elements.vlm.config import VLMConfig, VLMSurface
-from openonda.vpm.boundary_elements.vlm.coupling.kinematics import (
-    SmoothRampVLM,
-    TranslatingVLM,
-)
 from openonda.vpm.boundary_elements.vlm.kernels.biot_savart import (
     regularized_segment_velocity_and_gradient,
 )
@@ -135,7 +131,7 @@ def _solve_steady(solver, incident):
 def test_conservation_tracker_records_dimensional_surface_force(moving, monkeypatch):
     from openonda.vpm.diagnostics.conservation import ConservationTracker
 
-    motion = TranslatingVLM(velocity=[-10.0, 0.0, 0.0]) if moving else None
+    motion = TranslatingMotion(velocity=(-10.0, 0.0, 0.0)) if moving else None
     vlm = _plate(nc=2, ns=3, motion=motion)
     _solve_steady(vlm, [10.0, 0.0, 0.0])
     density = 1.3
@@ -408,7 +404,7 @@ def test_steady_plate_lift_loading_and_drag_match_lifting_line():
 
 def test_static_and_translating_plate_have_same_forces_and_quarter_chord_moment():
     static = _plate()
-    moving = _plate(motion=TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0])))
+    moving = _plate(motion=TranslatingMotion(velocity=(-10.0, 0.0, 0.0)))
     stationary = _solve_steady(static, [10.0, 0.0, 0.0])
     translated = _solve_steady(moving, [0.0, 0.0, 0.0])
     for key in [
@@ -437,7 +433,7 @@ def test_single_surface_placement_and_alias_apply_to_geometry_and_loading():
 
 
 def test_ramp_geometry_reaches_the_requested_clock_without_advancing_one_step_extra():
-    motion = SmoothRampVLM(final_velocity=[-10.0, 0.0, 0.0], acceleration_time=0.12)
+    motion = SmoothRampMotion(final_velocity=(-10.0, 0.0, 0.0), acceleration_time=0.12)
     solver = _plate(motion=motion, nc=1, ns=2)
     before = solver.lattice.get_collocation_points()
     solver.advance_time(0.0125, 0.0125)
@@ -569,7 +565,7 @@ def test_vlm_restart_restores_motion_circulation_and_next_solve(tmp_path):
     import h5py
 
     def make():
-        return _plate(motion=TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0])), nc=2, ns=3)
+        return _plate(motion=TranslatingMotion(velocity=(-10.0, 0.0, 0.0)), nc=2, ns=3)
 
     original = make()
     _solve_steady(original, [0.0, 0.0, 0.0])
@@ -584,9 +580,12 @@ def test_vlm_restart_restores_motion_circulation_and_next_solve(tmp_path):
     np.testing.assert_array_equal(
         restored.lattice.get_circulation(), original.lattice.get_circulation()
     )
-    np.testing.assert_array_equal(
-        restored.kinematics.current_position, original.kinematics.current_position
-    )
+    name = next(iter(original.surfaces))
+    for attribute in ("rotation", "translation"):
+        np.testing.assert_array_equal(
+            getattr(restored.surface_poses[name], attribute),
+            getattr(original.surface_poses[name], attribute),
+        )
     for solver in (original, restored):
         solver.advance_time(0.0125, 0.025)
         solver.solve(np.zeros((12, 3)), time_step_size=0.0125, coupled=True)

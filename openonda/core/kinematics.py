@@ -1,33 +1,47 @@
-"""
-Prescribed rigid-body kinematics for a moving FVM mesh: static, translating,
-rotating, manoeuvring, heaving, pitching, periodic and composite motion.
+"""Prescribed rigid-body motion shared by the FVM mesh and the VLM surfaces.
 
-The classes mirror the VLM kinematics in
-:mod:`openonda.vpm.boundary_elements.vlm.coupling.kinematics`. Each one gives
-the translational velocity of its rotation centre, the angular velocity, and
-the rigid increment of the mesh pose over one time step. Motions with a closed
-form (translation, fixed-axis rotation, sinusoidal heave and pitch, smooth
-ramp) advance the pose exactly; motions defined by velocity functions
-(manoeuvre, composite) use the interval-midpoint rule of the VLM solver.
+Each motion gives the translational velocity of its rotation centre, the
+angular velocity, and the rigid increment of the pose over one time step.
+Motions with a closed form (translation, fixed-axis rotation, sinusoidal heave
+and pitch, smooth ramp) advance the pose exactly; motions defined by velocity
+functions (manoeuvre, composite) use the interval-midpoint rule.
 
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: October 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+The motion objects are immutable. The pose they advance belongs to the solver
+that moves the body: :class:`~openonda.fvm.motion.rigid.RigidMeshMotion` for
+the finite-volume mesh and :class:`~openonda.vpm.boundary_elements.vlm.VLMSolver`
+for each lifting surface.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field, fields
+from collections.abc import Callable
+from dataclasses import dataclass, field
 import math
 
 import numpy as np
 from numpy.typing import ArrayLike
 
+__all__ = [
+    "CompositeMotion",
+    "HeavingMotion",
+    "LinearPeriodicMotion",
+    "ManeuverMotion",
+    "PitchingMotion",
+    "RigidMotion",
+    "RigidPose",
+    "RotatingMotion",
+    "SmoothRampMotion",
+    "StaticMotion",
+    "TranslatingMotion",
+    "advance_pose",
+    "axis_rotation_matrix",
+    "finite_vector",
+    "rotation_vector_matrix",
+]
 
-def _vector(name: str, value: ArrayLike, *, unit: bool = False) -> tuple[float, float, float]:
+
+def finite_vector(name: str, value: ArrayLike, *, unit: bool = False) -> tuple[float, float, float]:
     """Return a finite three-component tuple, normalized when ``unit`` is set."""
     array = np.asarray(value, dtype=np.float64)
     if array.shape != (3,) or not np.all(np.isfinite(array)):
@@ -70,12 +84,12 @@ def rotation_vector_matrix(rotation_vector: ArrayLike) -> np.ndarray:
 
 @dataclass(frozen=True, eq=False)
 class RigidPose:
-    """Rigid placement ``x = rotation @ x_reference + translation`` of the mesh.
+    """Rigid placement ``x = rotation @ x_reference + translation`` of a body.
 
     Attributes
     ----------
     rotation : ndarray, shape (3, 3)
-        Proper rotation from the reference mesh to the current mesh.
+        Proper rotation from the reference configuration to the current one.
     translation : ndarray, shape (3,)
         Translation in m applied after the rotation.
     """
@@ -84,7 +98,7 @@ class RigidPose:
     translation: np.ndarray = field(default_factory=lambda: np.zeros(3))
 
     def apply(self, points: np.ndarray) -> np.ndarray:
-        """Map reference points, shape ``(n, 3)``, to the current mesh."""
+        """Map reference points, shape ``(n, 3)``, to the current configuration."""
         return points @ self.rotation.T + self.translation
 
     def is_identity(self) -> bool:
@@ -92,22 +106,21 @@ class RigidPose:
         return bool(np.array_equal(self.rotation, np.eye(3)) and not np.any(self.translation))
 
 
-class MeshKinematics(ABC):
-    """Prescribed rigid motion of a finite-volume mesh.
+class RigidMotion(ABC):
+    """Prescribed rigid motion of a body.
 
-    The mesh velocity at a point ``x`` is
+    The velocity of a point ``x`` of the body is
 
-    ``u_mesh(x, t) = V(t) + Omega(t) x (x - c(t))``,
+    ``u(x, t) = V(t) + Omega(t) x (x - c(t))``,
 
     with ``V`` from :meth:`get_velocity`, ``Omega`` from
     :meth:`get_angular_velocity` in rad/s, and ``c(t)`` the current position
-    of :attr:`rotation_centre`, which translates with the mesh. Times are in
-    seconds and the mesh as constructed is the configuration at the run start.
+    of :attr:`rotation_centre`, which translates with the body. Times are in
+    seconds and the body as placed is the configuration at the run start.
 
     Subclasses provide :meth:`increment`, the rotation about the current
     rotation centre and the displacement of that centre over one interval.
-    The default integrates the velocity functions at the interval midpoint,
-    as the VLM solver does.
+    The default integrates the velocity functions at the interval midpoint.
     """
 
     rotation_centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -134,7 +147,7 @@ class MeshKinematics(ABC):
         return rotation, self.get_velocity(midpoint) * time_step_size
 
 
-class _ExactTranslation(MeshKinematics):
+class _ExactTranslation(RigidMotion):
     """Translation with a closed-form displacement ``D(t)``."""
 
     @abstractmethod
@@ -150,13 +163,10 @@ class _ExactTranslation(MeshKinematics):
         return np.eye(3), self.displacement(time + time_step_size) - self.displacement(time)
 
 
-class _ExactAxisRotation(MeshKinematics):
+class _ExactAxisRotation(RigidMotion):
     """Rotation about a fixed axis with a closed-form angle ``theta(t)``."""
 
-    @property
-    @abstractmethod
-    def rotation_axis_vector(self) -> tuple[float, float, float]:
-        """Unit rotation axis."""
+    rotation_axis: tuple[float, float, float]
 
     @abstractmethod
     def rotation_angle(self, time: float) -> float:
@@ -169,12 +179,12 @@ class _ExactAxisRotation(MeshKinematics):
     def increment(self, time: float, time_step_size: float) -> tuple[np.ndarray, np.ndarray]:
         """Rotate by the exact angle change over the interval."""
         angle = self.rotation_angle(time + time_step_size) - self.rotation_angle(time)
-        return axis_rotation_matrix(self.rotation_axis_vector, angle), np.zeros(3)
+        return axis_rotation_matrix(self.rotation_axis, angle), np.zeros(3)
 
 
 @dataclass(frozen=True, slots=True)
-class StaticMotion(MeshKinematics):
-    """Keep the mesh fixed in its constructed position.
+class StaticMotion(RigidMotion):
+    """Keep the body fixed in its placed position.
 
     Examples
     --------
@@ -197,7 +207,7 @@ class StaticMotion(MeshKinematics):
 
 @dataclass(frozen=True, slots=True)
 class TranslatingMotion(_ExactTranslation):
-    """Translate the mesh with constant velocity.
+    """Translate the body with constant velocity.
 
     Parameters
     ----------
@@ -213,7 +223,9 @@ class TranslatingMotion(_ExactTranslation):
     velocity: tuple[float, float, float]
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "velocity", _vector("TranslatingMotion.velocity", self.velocity))
+        object.__setattr__(
+            self, "velocity", finite_vector("TranslatingMotion.velocity", self.velocity)
+        )
 
     def get_velocity(self, time: float) -> np.ndarray:
         """Return the constant velocity in m/s."""
@@ -226,13 +238,13 @@ class TranslatingMotion(_ExactTranslation):
 
 @dataclass(frozen=True, slots=True)
 class RotatingMotion(_ExactAxisRotation):
-    """Rotate the mesh about a fixed axis at constant angular speed.
+    """Rotate the body about a fixed axis at constant angular speed.
 
     Parameters
     ----------
     angular_speed : float
-        Signed angular speed in rad/s about ``axis``.
-    axis : array-like, shape (3,)
+        Signed angular speed in rad/s about ``rotation_axis``.
+    rotation_axis : array-like, shape (3,)
         Non-zero global rotation axis, normalized internally.
     rotation_centre : array-like, shape (3,), default=(0, 0, 0)
         Fixed pivot in m.
@@ -241,7 +253,7 @@ class RotatingMotion(_ExactAxisRotation):
     """
 
     angular_speed: float
-    axis: tuple[float, float, float]
+    rotation_axis: tuple[float, float, float]
     rotation_centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
     acceleration_time: float = 0.0
 
@@ -249,20 +261,21 @@ class RotatingMotion(_ExactAxisRotation):
         object.__setattr__(
             self, "angular_speed", _finite("RotatingMotion.angular_speed", self.angular_speed)
         )
-        object.__setattr__(self, "axis", _vector("RotatingMotion.axis", self.axis, unit=True))
         object.__setattr__(
-            self, "rotation_centre", _vector("RotatingMotion.rotation_centre", self.rotation_centre)
+            self,
+            "rotation_axis",
+            finite_vector("RotatingMotion.rotation_axis", self.rotation_axis, unit=True),
+        )
+        object.__setattr__(
+            self,
+            "rotation_centre",
+            finite_vector("RotatingMotion.rotation_centre", self.rotation_centre),
         )
         object.__setattr__(
             self,
             "acceleration_time",
             _finite("RotatingMotion.acceleration_time", self.acceleration_time, minimum=0.0),
         )
-
-    @property
-    def rotation_axis_vector(self) -> tuple[float, float, float]:
-        """Unit rotation axis."""
-        return self.axis
 
     def get_angular_velocity(self, time: float) -> np.ndarray:
         """Return the angular velocity in rad/s, including the smooth spin-up."""
@@ -271,7 +284,7 @@ class RotatingMotion(_ExactAxisRotation):
             if self.acceleration_time == 0.0
             else math.sin(0.5 * math.pi * min(max(time / self.acceleration_time, 0.0), 1.0)) ** 2
         )
-        return factor * self.angular_speed * np.array(self.axis)
+        return factor * self.angular_speed * np.array(self.rotation_axis)
 
     def rotation_angle(self, time: float) -> float:
         """Integrated rotation angle in rad since ``t = 0``."""
@@ -286,7 +299,7 @@ class RotatingMotion(_ExactAxisRotation):
 
 
 @dataclass(frozen=True, slots=True)
-class ManeuverMotion(MeshKinematics):
+class ManeuverMotion(RigidMotion):
     """Drive arbitrary rigid motion with user-supplied velocity functions.
 
     Parameters
@@ -298,7 +311,7 @@ class ManeuverMotion(MeshKinematics):
         ``g(time) -> array-like (3,)``, global angular velocity in rad/s.
         ``None`` gives zero.
     rotation_centre : array-like, shape (3,), default=(0, 0, 0)
-        Initial pivot in m; it translates with the mesh.
+        Initial pivot in m; it translates with the body.
 
     Notes
     -----
@@ -316,7 +329,9 @@ class ManeuverMotion(MeshKinematics):
             if value is not None and not callable(value):
                 raise TypeError(f"ManeuverMotion.{name} must be callable or None")
         object.__setattr__(
-            self, "rotation_centre", _vector("ManeuverMotion.rotation_centre", self.rotation_centre)
+            self,
+            "rotation_centre",
+            finite_vector("ManeuverMotion.rotation_centre", self.rotation_centre),
         )
 
     def get_velocity(self, time: float) -> np.ndarray:
@@ -360,7 +375,7 @@ class HeavingMotion(_ExactTranslation):
         )
         object.__setattr__(self, "phase", _finite("HeavingMotion.phase", self.phase))
         object.__setattr__(
-            self, "direction", _vector("HeavingMotion.direction", self.direction, unit=True)
+            self, "direction", finite_vector("HeavingMotion.direction", self.direction, unit=True)
         )
 
     def get_velocity(self, time: float) -> np.ndarray:
@@ -412,16 +427,13 @@ class PitchingMotion(_ExactAxisRotation):
         object.__setattr__(
             self,
             "rotation_axis",
-            _vector("PitchingMotion.rotation_axis", self.rotation_axis, unit=True),
+            finite_vector("PitchingMotion.rotation_axis", self.rotation_axis, unit=True),
         )
         object.__setattr__(
-            self, "rotation_centre", _vector("PitchingMotion.rotation_centre", self.rotation_centre)
+            self,
+            "rotation_centre",
+            finite_vector("PitchingMotion.rotation_centre", self.rotation_centre),
         )
-
-    @property
-    def rotation_axis_vector(self) -> tuple[float, float, float]:
-        """Unit pitch axis."""
-        return self.rotation_axis
 
     def get_angular_velocity(self, time: float) -> np.ndarray:
         """Return ``theta0 omega cos(omega t + phase)`` about the axis in rad/s."""
@@ -466,7 +478,9 @@ class LinearPeriodicMotion(_ExactTranslation):
             _finite("LinearPeriodicMotion.frequency", self.frequency, minimum=0.0),
         )
         object.__setattr__(
-            self, "direction", _vector("LinearPeriodicMotion.direction", self.direction, unit=True)
+            self,
+            "direction",
+            finite_vector("LinearPeriodicMotion.direction", self.direction, unit=True),
         )
         object.__setattr__(self, "phase", _finite("LinearPeriodicMotion.phase", self.phase))
 
@@ -483,7 +497,7 @@ class LinearPeriodicMotion(_ExactTranslation):
 
 
 @dataclass(frozen=True, slots=True)
-class CompositeMotion(MeshKinematics):
+class CompositeMotion(RigidMotion):
     """Superpose several motions about one common rotation centre.
 
     Velocities and angular velocities of the components are summed; each
@@ -493,35 +507,33 @@ class CompositeMotion(MeshKinematics):
 
     Parameters
     ----------
-    kinematics_components : sequence[MeshKinematics]
+    components : sequence[RigidMotion]
         Motions to combine.
     rotation_centre : array-like, shape (3,), default=(0, 0, 0)
-        Common pivot in m; it translates with the mesh.
+        Common pivot in m; it translates with the body.
     """
 
-    kinematics_components: tuple[MeshKinematics, ...]
+    components: tuple[RigidMotion, ...]
     rotation_centre: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
-        components = tuple(self.kinematics_components)
-        if not components or not all(isinstance(item, MeshKinematics) for item in components):
-            raise TypeError("CompositeMotion requires one or more MeshKinematics components")
-        object.__setattr__(self, "kinematics_components", components)
+        components = tuple(self.components)
+        if not components or not all(isinstance(item, RigidMotion) for item in components):
+            raise TypeError("CompositeMotion requires one or more RigidMotion components")
+        object.__setattr__(self, "components", components)
         object.__setattr__(
             self,
             "rotation_centre",
-            _vector("CompositeMotion.rotation_centre", self.rotation_centre),
+            finite_vector("CompositeMotion.rotation_centre", self.rotation_centre),
         )
 
     def get_velocity(self, time: float) -> np.ndarray:
         """Return the summed component velocity in m/s."""
-        return np.sum([item.get_velocity(time) for item in self.kinematics_components], axis=0)
+        return np.sum([item.get_velocity(time) for item in self.components], axis=0)
 
     def get_angular_velocity(self, time: float) -> np.ndarray:
         """Return the summed component angular velocity in rad/s."""
-        return np.sum(
-            [item.get_angular_velocity(time) for item in self.kinematics_components], axis=0
-        )
+        return np.sum([item.get_angular_velocity(time) for item in self.components], axis=0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -550,7 +562,7 @@ class SmoothRampMotion(_ExactTranslation):
         object.__setattr__(
             self,
             "final_velocity",
-            _vector("SmoothRampMotion.final_velocity", self.final_velocity),
+            finite_vector("SmoothRampMotion.final_velocity", self.final_velocity),
         )
         duration = _finite("SmoothRampMotion.acceleration_time", self.acceleration_time)
         if duration <= 0.0:
@@ -587,128 +599,17 @@ class SmoothRampMotion(_ExactTranslation):
 
 
 def advance_pose(
-    kinematics: MeshKinematics, pose: RigidPose, time: float, time_step_size: float
+    motion: RigidMotion, pose: RigidPose, time: float, time_step_size: float
 ) -> RigidPose:
-    """Advance ``pose`` at ``time`` over one interval of the kinematics.
+    """Advance ``pose`` at ``time`` over one interval of ``motion``.
 
     The increment rotates about the current position of the rotation centre
     and then translates that centre. The rotation is re-orthonormalized so
     round-off does not accumulate over long runs.
     """
-    centre_reference = np.asarray(kinematics.rotation_centre, dtype=np.float64)
+    centre_reference = np.asarray(motion.rotation_centre, dtype=np.float64)
     centre = pose.rotation @ centre_reference + pose.translation
-    increment_rotation, displacement = kinematics.increment(time, time_step_size)
+    increment_rotation, displacement = motion.increment(time, time_step_size)
     left, _, right = np.linalg.svd(increment_rotation @ pose.rotation)
     rotation = left @ right
     return RigidPose(rotation, centre + displacement - rotation @ centre_reference)
-
-
-def placement_pose(
-    translation: Sequence[float] | None,
-    rotation_degrees: Sequence[float] | None,
-    rotation_centre: Sequence[float] | None,
-) -> RigidPose:
-    """Return the initial placement used by :class:`MeshMotion`.
-
-    The rotations about global x, then y, then z (degrees) act about
-    ``rotation_centre`` and are followed by ``translation``, the convention of
-    :class:`~openonda.vpm.boundary_elements.vlm.config.VLMSurface`.
-    """
-    rotation = np.eye(3)
-    if rotation_degrees is not None:
-        for axis, angle in zip(np.eye(3), rotation_degrees, strict=True):
-            rotation = axis_rotation_matrix(axis, math.radians(angle)) @ rotation
-    centre = np.zeros(3) if rotation_centre is None else np.asarray(rotation_centre, dtype=float)
-    shift = np.zeros(3) if translation is None else np.asarray(translation, dtype=float)
-    return RigidPose(rotation, centre - rotation @ centre + shift)
-
-
-@dataclass(frozen=True, slots=True)
-class MeshMotion:
-    """Prescribed rigid-body motion of the whole FVM mesh.
-
-    The mesh, every boundary patch on it, and every moment centre on it move
-    with ``kinematics``. Wall patches become moving no-slip walls; inlet,
-    outlet and freestream values stay in the absolute (inertial) frame. Cell
-    velocity and pressure are absolute-frame quantities.
-
-    Parameters
-    ----------
-    kinematics : MeshKinematics
-        Motion of the mesh after its initial placement.
-    translation : array-like, shape (3,) or None
-        Initial translation of the constructed mesh in m.
-    rotation_degrees : array-like, shape (3,) or None
-        Initial rotations about global x, y and z in degrees.
-    rotation_centre : array-like, shape (3,) or None
-        Pivot of the initial rotation in m, in mesh coordinates.
-
-    Notes
-    -----
-    The rotation centre of ``kinematics`` is given in the placed (global)
-    coordinates. A mesh with ``empty`` patches (a 2-D model) may only move in
-    their plane.
-    """
-
-    kinematics: MeshKinematics
-    translation: tuple[float, float, float] | None = None
-    rotation_degrees: tuple[float, float, float] | None = None
-    rotation_centre: tuple[float, float, float] | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.kinematics, MeshKinematics):
-            raise TypeError("MeshMotion.kinematics must be a MeshKinematics instance")
-        for name in ("translation", "rotation_degrees", "rotation_centre"):
-            value = getattr(self, name)
-            if value is not None:
-                object.__setattr__(self, name, _vector(f"MeshMotion.{name}", value))
-
-    def placement(self) -> RigidPose:
-        """Return the initial placement pose of the constructed mesh."""
-        return placement_pose(self.translation, self.rotation_degrees, self.rotation_centre)
-
-
-def _kinematics_to_dict(kinematics: MeshKinematics) -> dict[str, object]:
-    """Describe one kinematics object by class name and constructor fields."""
-    data: dict[str, object] = {"type": type(kinematics).__name__}
-    for item in fields(kinematics):
-        value = getattr(kinematics, item.name)
-        if item.name == "kinematics_components":
-            value = [_kinematics_to_dict(component) for component in value]
-        data[item.name] = value
-    return data
-
-
-def mesh_motion_to_dict(motion: MeshMotion) -> dict[str, object]:
-    """Describe a mesh motion by its placement and kinematics.
-
-    Velocity functions of a :class:`ManeuverMotion` are kept as the function
-    objects; the restart digest identifies them by qualified name.
-    """
-    return {
-        "kinematics": _kinematics_to_dict(motion.kinematics),
-        "translation": motion.translation,
-        "rotation_degrees": motion.rotation_degrees,
-        "rotation_centre": motion.rotation_centre,
-    }
-
-
-__all__ = [
-    "CompositeMotion",
-    "HeavingMotion",
-    "LinearPeriodicMotion",
-    "ManeuverMotion",
-    "MeshKinematics",
-    "MeshMotion",
-    "PitchingMotion",
-    "RigidPose",
-    "RotatingMotion",
-    "SmoothRampMotion",
-    "StaticMotion",
-    "TranslatingMotion",
-    "advance_pose",
-    "axis_rotation_matrix",
-    "mesh_motion_to_dict",
-    "placement_pose",
-    "rotation_vector_matrix",
-]

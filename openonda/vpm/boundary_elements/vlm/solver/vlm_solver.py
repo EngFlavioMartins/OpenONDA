@@ -13,13 +13,19 @@ import numpy as np
 from numpy.typing import ArrayLike
 import taichi as ti
 
+from openonda.core.kinematics import (
+    RigidMotion,
+    RigidPose,
+    RotatingMotion,
+    StaticMotion,
+    advance_pose,
+)
 from openonda.core.metadata import metadata_value
 
 from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
 from ....io.logging import Logging
 from ....kernels import make_vortex_kernel
 from ..config import VLMConfig, VLMSurface
-from ..coupling.kinematics import RotatingVLM, StaticVLM
 from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
 from ..kernels.virtual_wake import make_virtual_wake_kernel
@@ -54,7 +60,6 @@ if TYPE_CHECKING:
     from ....physics.base import PhysicsBase
     from ....physics.induction.base import StageRates, StageState
     from ....physics.stage_rhs import _StageParticleView
-    from ..coupling.kinematics import VLMKinematics
 
 EPSILON = VLM_SMALL_VELOCITY
 
@@ -97,7 +102,10 @@ class VLMSolver:
         self.circulation_relaxation = config.circulation_relaxation
 
         # Multi-body storage: Dict[uid -> (Aircraft, kinematics)]
-        self.surfaces: dict[str, tuple[Aircraft, VLMKinematics]] = {}
+        self.surfaces: dict[str, tuple[Aircraft, RigidMotion]] = {}
+        # Accumulated rigid pose of each surface relative to its placement;
+        # the motions are immutable, so the moving state lives here.
+        self.surface_poses: dict[str, RigidPose] = {}
 
         # Combined aircraft for mesh generation (set by _register_surface)
         self.aircraft: Aircraft
@@ -529,11 +537,10 @@ class VLMSolver:
         surface_name = surface.name or aircraft.uid
         if surface_name in self.surfaces:
             raise ValueError(f"Duplicate VLM surface name: {surface_name}")
-        kinematics = (
-            copy.deepcopy(surface.kinematics) if surface.kinematics is not None else StaticVLM()
-        )
+        kinematics = surface.kinematics if surface.kinematics is not None else StaticMotion()
 
         self.surfaces[surface_name] = (aircraft, kinematics)
+        self.surface_poses[surface_name] = RigidPose()
         self._surface_group_ids[surface_name] = surface.group_id
         self._surface_sampling[surface_name] = (
             self.sample_surface_forces if surface.sample_forces is None else surface.sample_forces
@@ -632,33 +639,27 @@ class VLMSolver:
             self.aircraft = combined
             self.surface = combined
 
-    @property
-    def kinematics(self) -> "VLMKinematics | None":
-        """Get kinematics for single-surface mode."""
-        if len(self.surfaces) == 1:
-            _, (_, kin) = next(iter(self.surfaces.items()))
-            return kin
-        return None
+    def surface_rotation_centre(self, surface_name: str) -> np.ndarray:
+        """Return the current position in m of a surface's rotation centre.
 
-    @kinematics.setter
-    def kinematics(self, value: "VLMKinematics") -> None:
-        """Set kinematics for first surface."""
-        if self.surfaces:
-            first_name = next(iter(self.surfaces.keys()))
-            aircraft, _ = self.surfaces[first_name]
-            self.surfaces[first_name] = (aircraft, value)
+        The rotation centre of the surface motion is given in the placed
+        coordinates and moves with the accumulated surface pose.
+        """
+        _, motion = self.surfaces[surface_name]
+        centre = np.asarray(motion.rotation_centre, dtype=np.float64)
+        return self.surface_poses[surface_name].apply(centre[np.newaxis])[0]
 
     def _compute_rotor_tip_speed(
-        self, surface_name: str, kinematics: "VLMKinematics"
+        self, surface_name: str, kinematics: RigidMotion
     ) -> tuple[np.ndarray, float]:
-        """Return (velocity_vector, tip_speed) for a RotatingVLM surface, or (zeros, 0)."""
-        if not isinstance(kinematics, RotatingVLM) or not self._mesh_generated:
+        """Return (velocity_vector, tip_speed) for a RotatingMotion surface, or (zeros, 0)."""
+        if not isinstance(kinematics, RotatingMotion) or not self._mesh_generated:
             return np.zeros(3), 0.0
         angular_speed_magnitude = abs(kinematics.angular_speed)
         if angular_speed_magnitude < 1e-10:
             return np.zeros(3), 0.0
-        rotation_centre = kinematics.rotation_centre
-        rotation_axis = getattr(kinematics, "axis", np.array([0.0, 0.0, 1.0]))
+        rotation_centre = self.surface_rotation_centre(surface_name)
+        rotation_axis = np.asarray(kinematics.rotation_axis)
         collocation_point = self.lattice.get_collocation_points()
         wing_panel_ranges = self._build_wing_panel_ranges()
         surface_prefix = f"{surface_name}_" if len(self.surfaces) > 1 else ""
@@ -697,7 +698,7 @@ class VLMSolver:
         representative_velocity = np.zeros(3)
         maximum_speed = 0.0
         for surface_name, (_, kinematics) in self.surfaces.items():
-            if kinematics is None or isinstance(kinematics, StaticVLM):
+            if isinstance(kinematics, StaticMotion):
                 continue
             translational_velocity = kinematics.get_velocity(current_time)
             translational_speed = float(np.linalg.norm(translational_velocity))
@@ -723,21 +724,14 @@ class VLMSolver:
         kinematic_velocity = self._get_active_kinematic_velocity()
         return float(np.linalg.norm(kinematic_velocity))
 
-    def _get_active_kinematics(self) -> "VLMKinematics | None":
-        """
-        Get the active kinematics object.
-
-        For multi-surface, returns the first non-StaticVLM kinematics.
-        """
+    def _active_surface_pose(self) -> RigidPose:
+        """Return the pose of the single surface, or of the first moving one."""
         if len(self.surfaces) == 1:
-            return self.kinematics
-
-        # Multi-surface mode
-        for _name, (_, kinematics) in self.surfaces.items():
-            if kinematics is not None and not isinstance(kinematics, StaticVLM):
-                return kinematics
-
-        return None
+            return next(iter(self.surface_poses.values()))
+        for name, (_, kinematics) in self.surfaces.items():
+            if not isinstance(kinematics, StaticMotion):
+                return self.surface_poses[name]
+        return RigidPose()
 
     def update_trailing_directions(self, transport_velocity: np.ndarray) -> None:
         """
@@ -778,18 +772,38 @@ class VLMSolver:
 
     def _compute_panel_kinematic_velocity(
         self,
-        kinematics: "VLMKinematics",
+        kinematics: RigidMotion,
+        rotation_centre: np.ndarray,
         time: float,
         collocation_point: np.ndarray,
         start_idx: int,
         end_idx: int,
     ) -> np.ndarray:
-        """Return (end-start, 3) kinematic velocity array for a panel slice."""
+        """Return the rigid-body velocity ``V + Omega x (x - c)`` of a panel slice."""
         angular_velocity = kinematics.get_angular_velocity(time)
         translational_velocity = kinematics.get_velocity(time)
-        rotation_centre = getattr(kinematics, "rotation_centre", np.zeros(3))
         radial_position = collocation_point[start_idx:end_idx] - rotation_centre
         return translational_velocity + np.cross(angular_velocity, radial_position)
+
+    def _move_surface(
+        self, surface_name: str, time: float, time_step_size: float, start: int, stop: int
+    ) -> None:
+        """Move one surface's panels and pose over ``[time, time + time_step_size]``.
+
+        The increment of the surface motion rotates the panels about the
+        current rotation centre and translates them with that centre.
+        """
+        _, motion = self.surfaces[surface_name]
+        rotation, displacement = motion.increment(time, time_step_size)
+        if np.array_equal(rotation, np.eye(3)):
+            self.lattice.translate_panels(displacement, start, stop)
+        else:
+            self.lattice.rotate_translate_panels(
+                rotation, self.surface_rotation_centre(surface_name), displacement, start, stop
+            )
+        self.surface_poses[surface_name] = advance_pose(
+            motion, self.surface_poses[surface_name], time, time_step_size
+        )
 
     def advance_time(self, time_step_size: float, current_time: float) -> None:
         """Advance kinematics state and geometry for all surfaces."""
@@ -806,19 +820,24 @@ class VLMSolver:
         has_kinematics = False
         wing_ranges = self._build_wing_panel_ranges()
         for surface_name, (_aircraft_obj, kinematics) in self.surfaces.items():
-            if kinematics is None or isinstance(kinematics, StaticVLM):
+            if isinstance(kinematics, StaticMotion):
                 continue
             has_kinematics = True
             panel_range = self._find_surface_panel_range(surface_name, wing_ranges, n_panels)
             if panel_range is None:
                 continue
             start_idx, end_idx = panel_range
-            kinematics.update(
-                self, time - time_step_size, time_step_size, panel_range=(start_idx, end_idx)
+            self._move_surface(
+                surface_name, time - time_step_size, time_step_size, start_idx, end_idx
             )
             collocation_point = self.lattice.get_collocation_points()
             kinematic_velocity[start_idx:end_idx] = self._compute_panel_kinematic_velocity(
-                kinematics, time, collocation_point, start_idx, end_idx
+                kinematics,
+                self.surface_rotation_centre(surface_name),
+                time,
+                collocation_point,
+                start_idx,
+                end_idx,
             )
         self.lattice.set_kinematic_velocity(kinematic_velocity)
         if has_kinematics:
@@ -1056,44 +1075,28 @@ class VLMSolver:
             self.lattice.normal.to_numpy().copy(),
         ]
         kinematic = self.lattice.kinematic_velocity.to_numpy().copy()
-        moving = any(not isinstance(motion, StaticVLM) for _, motion in self.surfaces.values())
+        moving = any(not isinstance(motion, StaticMotion) for _, motion in self.surfaces.values())
         if abs(duration) < 1.0e-14 and not moving:
             return (*arrays, kinematic)
 
         ranges = self._build_wing_panel_ranges()
         for name, (_, motion) in self.surfaces.items():
             panel_range = self._find_surface_panel_range(name, ranges, self.lattice.n_panels)
-            if panel_range is None:
+            if panel_range is None or isinstance(motion, StaticMotion):
                 continue
             start, stop = panel_range
-            if not isinstance(motion, StaticVLM) and abs(duration) >= 1.0e-14:
-                midpoint = reference_time + 0.5 * duration
-                translation = np.asarray(motion.get_velocity(midpoint), dtype=np.float64) * duration
-                omega = np.asarray(motion.get_angular_velocity(midpoint), dtype=np.float64)
-                angle = float(np.linalg.norm(omega) * duration)
-                if isinstance(motion, RotatingVLM):
-                    signed_angle = motion.rotation_angle(stage_time) - motion.rotation_angle(
-                        reference_time
-                    )
-                    omega = np.asarray(motion.axis, dtype=np.float64) * np.sign(signed_angle)
-                    angle = abs(float(signed_angle))
-                rotation = np.eye(3)
-                if abs(angle) > 1.0e-14 and np.linalg.norm(omega) > 1.0e-14:
-                    axis = omega / np.linalg.norm(omega)
-                    x, y, z = axis
-                    skew = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]])
-                    rotation += np.sin(angle) * skew + (1.0 - np.cos(angle)) * (skew @ skew)
-                centre = np.asarray(getattr(motion, "rotation_centre", np.zeros(3)))
+            centre = self.surface_rotation_centre(name)
+            if abs(duration) >= 1.0e-14:
+                rotation, translation = motion.increment(reference_time, duration)
                 for array in arrays[:3]:
                     array[start:stop] = (
                         (array[start:stop] - centre) @ rotation.T + centre + translation
                     )
                 arrays[3][start:stop] = (rotation @ arrays[3][start:stop].T).T
-
-            if isinstance(motion, StaticVLM) or motion is None:
-                continue
+                centre = centre + translation
             kinematic[start:stop] = self._compute_panel_kinematic_velocity(
                 motion,
+                centre,
                 float(stage_time),
                 arrays[2],
                 start,
@@ -1492,6 +1495,7 @@ class VLMSolver:
             start, end = panel_range
             bound_kinematics[start:end] = self._compute_panel_kinematic_velocity(
                 motion,
+                self.surface_rotation_centre(name),
                 self._current_time or 0.0,
                 points,
                 start,
@@ -1607,15 +1611,9 @@ class VLMSolver:
         bound_vortex_midpoint = self.lattice.bound_vortex_midpoint.to_numpy()[
             : self.lattice.n_panels
         ]
-        kinematics = self._get_active_kinematics()
-        current_position = np.zeros(3)
-        current_orientation = np.eye(3)
-        if kinematics is not None and hasattr(kinematics, "current_position"):
-            current_position = kinematics.current_position
-            if hasattr(kinematics, "current_orientation"):
-                current_orientation = kinematics.current_orientation
+        pose = self._active_surface_pose()
         local_reference_point = np.array(self.aircraft.refs.get("reference_point", [0.0, 0.0, 0.0]))
-        reference_point = current_position + current_orientation @ local_reference_point
+        reference_point = pose.translation + pose.rotation @ local_reference_point
         total_moment = np.sum(
             np.cross(bound_vortex_midpoint - reference_point, panel_force)
             + panel_moment_correction,
@@ -1877,7 +1875,7 @@ class VLMSolver:
         )
         _, motion = self.surfaces[surface_name]
         time = self._current_time if self._current_time is not None else 0.0
-        centre = np.asarray(getattr(motion, "rotation_centre", motion.current_position))
+        centre = self.surface_rotation_centre(surface_name)
         positions = self.lattice.bound_vortex_midpoint.to_numpy()[indices]
         forces = panel_force[indices]
         panel_centers = self.lattice.panel_corner_position.to_numpy()[indices].mean(axis=1)
@@ -1908,7 +1906,7 @@ class VLMSolver:
             ("rotation_centre", centre),
             ("translation_velocity", translation_velocity),
             ("angular_velocity", angular_velocity),
-            ("position", motion.current_position),
+            ("position", self.surface_poses[surface_name].translation),
             ("centroid", centroid),
         ):
             result.update(

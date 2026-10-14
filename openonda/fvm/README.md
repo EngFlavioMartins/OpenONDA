@@ -14,7 +14,7 @@ The implementation is organized by numerical task:
 - `core/`: the solver, its state, time stepping, and parallel execution.
 - `diagnostics/`: derived fields (Courant number, vorticity, forces, y+) and
   step records.
-- `motion/`: prescribed rigid-body motion of the mesh (moving-mesh kinematics).
+- `motion/`: rigid motion of the whole mesh (`MeshMotion`, `RigidMeshMotion`); the motion classes are the shared ones in `openonda.core.kinematics`.
 - `sampling/`: force, y+, line and surface samplers.
 - `coupling/`: field exchange with the FVM–VPM driver.
 

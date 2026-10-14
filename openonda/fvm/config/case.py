@@ -13,7 +13,7 @@ from numpy.typing import NDArray
 from openonda.core.schedules import EveryTime
 from openonda.core.simulation.forcing import VelocityBoundary
 
-from ..motion.kinematics import MeshMotion
+from ..motion.mesh_motion import MeshMotion
 from ._validation import finite_real, vector_or_field
 from .boundaries import BoundaryConfig
 from .mesh_quality import MeshQualityConfig

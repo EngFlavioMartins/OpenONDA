@@ -6,8 +6,9 @@ from dataclasses import dataclass, field
 import math
 from typing import TYPE_CHECKING, Literal
 
+from openonda.core.kinematics import RigidMotion
+
 if TYPE_CHECKING:
-    from .coupling.kinematics import VLMKinematics
     from .geometry.aircraft import Aircraft
 
 
@@ -84,8 +85,9 @@ class VLMSurface:
         directly or imported from an OpenVSP description.
     name : str or None, optional
         Stable user-facing identifier; the geometry name is used when omitted.
-    kinematics : VLMKinematics or None, optional
-        Motion object implementing the VLM kinematics interface. ``None`` is static.
+    kinematics : RigidMotion or None, optional
+        Prescribed rigid motion of the placed surface, one of the shared
+        motions of :mod:`openonda.core.kinematics`. ``None`` is static.
     translation : tuple[float, float, float] or None, optional
         Initial Cartesian translation in m.
     rotation_degrees : tuple[float, float, float] or None, optional
@@ -100,7 +102,7 @@ class VLMSurface:
 
     surface: str | Aircraft
     name: str | None = None
-    kinematics: VLMKinematics | None = None
+    kinematics: RigidMotion | None = None
     translation: tuple[float, float, float] | None = None
     rotation_degrees: tuple[float, float, float] | None = None
     rotation_centre: tuple[float, float, float] | None = None
@@ -117,6 +119,8 @@ class VLMSurface:
                 if not all(math.isfinite(float(item)) for item in value):
                     raise ValueError(f"{field_name} coordinates must be finite")
                 object.__setattr__(self, field_name, tuple(float(item) for item in value))
+        if self.kinematics is not None and not isinstance(self.kinematics, RigidMotion):
+            raise TypeError("VLMSurface.kinematics must be a RigidMotion instance or None")
         if (
             isinstance(self.group_id, bool)
             or not isinstance(self.group_id, int)

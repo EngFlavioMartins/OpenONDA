@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from openonda.fvm.motion.kinematics import advance_pose
+from openonda.core.kinematics import advance_pose
 
 if TYPE_CHECKING:
     from openonda.fvm import FVMSolver

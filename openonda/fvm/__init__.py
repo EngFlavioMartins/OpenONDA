@@ -11,6 +11,19 @@ runs it. Meshes are generated with :mod:`openonda.fvm.mesher`::
         solver.run()
 """
 
+from openonda.core.kinematics import (
+    CompositeMotion,
+    HeavingMotion,
+    LinearPeriodicMotion,
+    ManeuverMotion,
+    PitchingMotion,
+    RigidMotion,
+    RigidPose,
+    RotatingMotion,
+    SmoothRampMotion,
+    StaticMotion,
+    TranslatingMotion,
+)
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly
 from openonda.core.simulation.forcing import VelocityBoundary, VelocityRamp
 from openonda.core.status import RunStatus
@@ -47,20 +60,7 @@ from .diagnostics.fields import (
 from .diagnostics.step import StepDiagnostics
 from .grid_study import analyse_grid_study, update_grid_study
 from .io.analysis import AnalysisSnapshot, BoundarySnapshot
-from .motion import (
-    CompositeMotion,
-    HeavingMotion,
-    LinearPeriodicMotion,
-    ManeuverMotion,
-    MeshKinematics,
-    MeshMotion,
-    PitchingMotion,
-    RigidPose,
-    RotatingMotion,
-    SmoothRampMotion,
-    StaticMotion,
-    TranslatingMotion,
-)
+from .motion import MeshMotion
 from .sampling import ForceSampler, LineSampler, SurfaceSampler, YPlusSampler
 from .solve.linear_interface import LinearSolveResult
 
@@ -89,13 +89,13 @@ __all__ = [
     "LoggingConfig",
     "ManeuverMotion",
     "MaximumCourantTimeStep",
-    "MeshKinematics",
     "MeshMotion",
     "MeshQualityConfig",
     "Numerics",
     "Output",
     "PimpleConfig",
     "PitchingMotion",
+    "RigidMotion",
     "RigidPose",
     "RotatingMotion",
     "RunAcceptanceLimits",

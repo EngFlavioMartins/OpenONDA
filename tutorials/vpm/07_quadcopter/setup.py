@@ -86,10 +86,10 @@ def run() -> None:
             vpm.VLMSurface(
                 str(counterclockwise_file if direction > 0 else clockwise_file),
                 name=f"{name}_blade_{blade_index}",
-                kinematics=vpm.RotatingVLM(
+                kinematics=vpm.RotatingMotion(
                     angular_speed=ANGULAR_VELOCITY * direction,
-                    axis=[0.0, 0.0, 1.0],
-                    rotation_centre=position,
+                    rotation_axis=(0.0, 0.0, 1.0),
+                    rotation_centre=tuple(position),
                 ),
                 translation=tuple(position),
                 rotation_degrees=(0.0, 0.0, 360.0 / NUMBER_OF_BLADES * blade_index),

@@ -155,7 +155,7 @@ A lifting surface is a lattice of vortex rings whose circulation cancels the nor
 
 - **Geometry:** a JSON surface of quadrilateral segments with vertices `a,b` on the leading edge and `d,c` on the trailing edge, and `n_chordwise_panels`, `n_spanwise_panels`. The [flat-plate setup](../tutorials/vpm/04_flat_plate/setup.py) writes one; `VLMMeshConfig.geometric(ratio, region)` clusters panels toward an edge.
 - **Placement:** `VLMSurface(surface, translation=..., rotation_degrees=..., rotation_centre=..., kinematics=...)`, collected in `Numerics(vlm=VLMConfig(surfaces=(...), density=..., kinematic_viscosity=...))`.
-- **Motion:** `StaticVLM`, `TranslatingVLM`, `SmoothRampVLM`, `RotatingVLM`, `PitchingVLM`, or `ManeuverVLM` driven by your own velocity functions.
+- **Motion:** the rigid motions shared with the FVM moving mesh ([moving meshes](fvm.md#moving-meshes)): `StaticMotion`, `TranslatingMotion`, `SmoothRampMotion`, `RotatingMotion`, `PitchingMotion`, `HeavingMotion`, `LinearPeriodicMotion`, `CompositeMotion`, or `ManeuverMotion` driven by your own velocity functions. Closed-form motions move the panels exactly; the solver keeps each surface's accumulated pose and stores it in its backups.
 - **Loads:** `ForceConfig.kutta_joukowski(unsteady=True)` adds the unsteady pressure load to the bound-vortex forces; `VLMSampler` writes surface geometry, circulation and loads.
 - **Wake:** `wake_core_overlap` (default 2.5) sets the core of shed particles relative to the panel and row size; refine $\Delta t$ with the panels.
 

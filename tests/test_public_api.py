@@ -15,6 +15,19 @@ def test_public_exports_and_case_construction(tmp_path):
         for name in module.__all__:
             assert getattr(module, name) is not None
     assert fvm.EverySteps is vpm.EverySteps
+    for name in (
+        "CompositeMotion",
+        "HeavingMotion",
+        "LinearPeriodicMotion",
+        "ManeuverMotion",
+        "PitchingMotion",
+        "RigidMotion",
+        "RotatingMotion",
+        "SmoothRampMotion",
+        "StaticMotion",
+        "TranslatingMotion",
+    ):
+        assert getattr(fvm, name) is getattr(vpm, name)
     mesh = fvm.mesher.coupling_box_mesh((0, 1, 0, 1, 0, 1), 0.5)
     flow = fvm.FVMCase(name="api", directory=tmp_path, run=fvm.RunPlan(end_time=0.1), mesh=mesh)
     particles = vpm.VPMCase(

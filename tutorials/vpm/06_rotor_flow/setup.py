@@ -50,9 +50,9 @@ def build_case(
     segments = read_json(blade_file)["wings"][0]["segments"]
     radial_panels = sum(segment["n_spanwise_panels"] for segment in segments)
     wake_spacing = (ROTOR_RADIUS - HUB_RADIUS) / radial_panels
-    rotation_kinematics = vpm.RotatingVLM(
+    rotor_motion = vpm.RotatingMotion(
         angular_speed=-ANGULAR_VELOCITY,
-        axis=[1.0, 0.0, 0.0],
+        rotation_axis=(1.0, 0.0, 0.0),
         acceleration_time=2.0 * np.pi / ANGULAR_VELOCITY,
     )
 
@@ -61,7 +61,7 @@ def build_case(
             vpm.VLMSurface(
                 str(blade_file),
                 name=f"blade_{blade_index}",
-                kinematics=rotation_kinematics,
+                kinematics=rotor_motion,
                 rotation_degrees=(azimuth, 0.0, 0.0),
                 group_id=blade_index,
             )

@@ -109,10 +109,10 @@ def build_case() -> vpm.VPMCase:
             vpm.VLMSurface(
                 str(surface_file),
                 name=name,
-                kinematics=vpm.ManeuverVLM(
+                kinematics=vpm.ManeuverMotion(
                     velocity_function=heave_velocity(phase),
                     angular_velocity_function=pitch_velocity(phase),
-                    rotation_centre=[x_position + PITCH_PIVOT, 0.0, 0.0],
+                    rotation_centre=(x_position + PITCH_PIVOT, 0.0, 0.0),
                 ),
                 translation=(x_position, 0.0, 0.0),
                 rotation_degrees=(0.0, 0.0, 180.0),

@@ -26,7 +26,7 @@ def _moving_coupled_case(directory):
         surfaces=(
             vpm.VLMSurface(
                 plate,
-                kinematics=vpm.TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0])),
+                kinematics=vpm.TranslatingMotion(velocity=(-10.0, 0.0, 0.0)),
             ),
         ),
         freestream_velocity=(10.0, 0.0, 0.0),
@@ -131,7 +131,8 @@ def test_newborn_wake_satisfies_the_solved_boundary_condition(
     setup = vpm.VLMConfig(
         surfaces=(
             vpm.VLMSurface(
-                plate, kinematics=vpm.RotatingVLM(angular_speed=0.4 / scale, axis=[0, 0, 1])
+                plate,
+                kinematics=vpm.RotatingMotion(angular_speed=0.4 / scale, rotation_axis=(0, 0, 1)),
             ),
         ),
         freestream_velocity=(10.0, 0.0, 0.0),
@@ -181,9 +182,7 @@ def test_coupled_checkpoint_continues_particles_motion_and_sampled_velocity(
     )
     vlm = vpm.VLMConfig(
         surfaces=(
-            vpm.VLMSurface(
-                plate, kinematics=vpm.TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0]))
-            ),
+            vpm.VLMSurface(plate, kinematics=vpm.TranslatingMotion(velocity=(-10.0, 0.0, 0.0))),
         ),
         freestream_velocity=(10.0, 0.0, 0.0),
         dtype="f64",
@@ -300,7 +299,7 @@ def test_changed_time_step_continuation_preserves_vlm_state_and_advances_coupled
             surfaces=(
                 vpm.VLMSurface(
                     plate,
-                    kinematics=vpm.TranslatingVLM(velocity=np.array([-10.0, 0.0, 0.0])),
+                    kinematics=vpm.TranslatingMotion(velocity=(-10.0, 0.0, 0.0)),
                 ),
             ),
             freestream_velocity=(10.0, 0.0, 0.0),
@@ -334,7 +333,7 @@ def test_changed_time_step_continuation_preserves_vlm_state_and_advances_coupled
         checkpoint = tmp_path / "original/solution/changed/vpm/vpm_000002.h5"
         expected_circulation = original.vlm_solver.lattice.get_circulation().copy()
         surface_name = next(iter(original.vlm_solver.surfaces))
-        expected_position = original.vlm_solver.surfaces[surface_name][1].current_position.copy()
+        expected_position = original.vlm_solver.surface_poses[surface_name].translation.copy()
         assert (original.step, original.time) == (2, pytest.approx(0.02))
     finally:
         original.close()
@@ -364,7 +363,7 @@ def test_changed_time_step_continuation_preserves_vlm_state_and_advances_coupled
             resumed.vlm_solver.lattice.get_circulation(), expected_circulation
         )
         np.testing.assert_array_equal(
-            resumed.vlm_solver.surfaces[surface_name][1].current_position,
+            resumed.vlm_solver.surface_poses[surface_name].translation,
             expected_position,
         )
 
@@ -388,7 +387,7 @@ def test_complete_coupled_state_is_galilean_invariant_after_wake_transport(tmp_p
     )
     states = []
     for moving in (False, True):
-        motion = vpm.TranslatingVLM(velocity=[-10.0, 0.0, 0.0]) if moving else vpm.StaticVLM()
+        motion = vpm.TranslatingMotion(velocity=(-10.0, 0.0, 0.0)) if moving else vpm.StaticMotion()
         setup = vpm.VLMConfig(
             surfaces=(vpm.VLMSurface(plate, kinematics=motion),),
             freestream_velocity=(10.0, 0.0, 0.0),

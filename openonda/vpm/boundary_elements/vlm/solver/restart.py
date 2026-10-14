@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from openonda.core.kinematics import RigidPose
 from openonda.core.metadata import metadata_value
 
 if TYPE_CHECKING:
@@ -42,7 +43,8 @@ _FIELDS = (
     "pressure_coefficient",
     "leading_edge_suction_parameter",
 )
-_MOTION_FIELDS = ("current_position", "current_orientation", "rotation_centre")
+# Accumulated rigid pose of each surface: x = rotation @ x_placed + translation.
+_POSE_SHAPES = {"rotation": (3, 3), "translation": (3,)}
 _OUTPUT_CONTROL_FIELDS = ("logging_interval_steps", "sample_surface_forces")
 
 
@@ -121,8 +123,8 @@ def restart_physics_hash(vlm: "VLMSolver") -> str:
 
 
 def write_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:
-    """Store lattice fields and mutable rigid-motion state without reducing precision."""
-    group.attrs["version"] = 8
+    """Store lattice fields and the accumulated surface poses without reducing precision."""
+    group.attrs["version"] = 9
     group.attrs["configuration_hash"] = vlm._restart_configuration_hash
     group.attrs["physics_hash"] = vlm._restart_physics_hash
     group.attrs["solved"] = vlm._solved
@@ -140,11 +142,10 @@ def write_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:
             name, data=getattr(vlm.lattice, name).to_numpy()[: vlm.lattice.n_panels]
         )
     motion = group.create_group("motion")
-    for index, (_, kinematics) in enumerate(vlm.surfaces.values()):
+    for index, pose in enumerate(vlm.surface_poses.values()):
         surface = motion.create_group(str(index))
-        for name in _MOTION_FIELDS:
-            if hasattr(kinematics, name):
-                surface.create_dataset(name, data=getattr(kinematics, name))
+        for name in _POSE_SHAPES:
+            surface.create_dataset(name, data=getattr(pose, name))
 
 
 def validate_vlm_restart(vlm: "VLMSolver", group: "h5py.Group | None") -> None:
@@ -152,7 +153,7 @@ def validate_vlm_restart(vlm: "VLMSolver", group: "h5py.Group | None") -> None:
     if group is None:
         raise ValueError("VPM backup is missing VLM continuation state")
     version = int(group.attrs.get("version", -1))
-    if version != 8:
+    if version != 9:
         raise ValueError("Incompatible VLM restart version; start a new run with this solver")
     expected_attributes = {
         "version",
@@ -191,14 +192,13 @@ def validate_vlm_restart(vlm: "VLMSolver", group: "h5py.Group | None") -> None:
     expected_motion = {str(i) for i in range(len(vlm.surfaces))}
     if set(group["motion"]) != expected_motion:
         raise ValueError("VLM restart motion surface count does not match")
-    for index, (_, kinematics) in enumerate(vlm.surfaces.values()):
+    for index in range(len(vlm.surfaces)):
         surface = group["motion"][str(index)]
-        expected_names = {name for name in _MOTION_FIELDS if hasattr(kinematics, name)}
-        if set(surface) != expected_names:
+        if set(surface) != set(_POSE_SHAPES):
             raise ValueError("VLM restart motion fields do not match")
-        for name in expected_names:
+        for name, shape in _POSE_SHAPES.items():
             value = np.asarray(surface[name])
-            if value.shape != np.shape(getattr(kinematics, name)) or not np.isfinite(value).all():
+            if value.shape != shape or not np.isfinite(value).all():
                 raise ValueError(f"Invalid VLM restart motion {name}")
     for name in ("time", "reference_speed", "reference_velocity"):
         if name not in group.attrs or not np.isfinite(group.attrs[name]).all():
@@ -216,9 +216,11 @@ def restore_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:
         values = field.to_numpy()
         values[: vlm.lattice.n_panels] = group[name][:]
         field.from_numpy(values)
-    for index, (_, kinematics) in enumerate(vlm.surfaces.values()):
-        for name, value in group["motion"][str(index)].items():
-            setattr(kinematics, name, np.asarray(value))
+    for index, name in enumerate(vlm.surfaces):
+        surface = group["motion"][str(index)]
+        vlm.surface_poses[name] = RigidPose(
+            np.asarray(surface["rotation"]), np.asarray(surface["translation"])
+        )
     vlm._solved = bool(group.attrs["solved"])
     vlm._coupled_mode = bool(group.attrs["coupled_mode"])
     vlm._current_time = float(group.attrs["time"])

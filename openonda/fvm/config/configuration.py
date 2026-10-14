@@ -7,7 +7,7 @@ from typing import Any
 
 from openonda.core.simulation.forcing import VelocityBoundary
 
-from ..motion.kinematics import MeshMotion, mesh_motion_to_dict
+from ..motion.mesh_motion import MeshMotion, mesh_motion_to_dict
 from .boundaries import BoundaryConfig
 from .case import FVMCase, InitialFields, RunPlan
 from .mesh_quality import MeshQualityConfig

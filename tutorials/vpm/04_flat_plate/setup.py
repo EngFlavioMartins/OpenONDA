@@ -68,8 +68,8 @@ def run(mode: str, angle_of_attack: float) -> None:
         ramp_time = 2.0 * RAMP_LENGTH * CHORD / FREESTREAM_SPEED
         cruise_time = (FINAL_TRAVEL - RAMP_LENGTH) * CHORD / FREESTREAM_SPEED
         n_steps = round((ramp_time + cruise_time) / TIME_STEP_SIZE)
-        motion = vpm.SmoothRampVLM(
-            final_velocity=[-FREESTREAM_SPEED, 0.0, 0.0],
+        motion = vpm.SmoothRampMotion(
+            final_velocity=(-FREESTREAM_SPEED, 0.0, 0.0),
             acceleration_time=ramp_time,
         )
         freestream_velocity = [0.0, 0.0, 0.0]
@@ -84,7 +84,7 @@ def run(mode: str, angle_of_attack: float) -> None:
             FREESTREAM_SPEED * math.sin(angle),
         )
         freestream_velocity = list(reference_velocity)
-        motion = vpm.StaticVLM()
+        motion = vpm.StaticMotion()
         geometry_angle = 0.0
 
     surface_dir = TUTORIAL_DIR / "assets" / "surfaces"

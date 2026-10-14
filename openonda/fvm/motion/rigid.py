@@ -22,11 +22,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from scipy import sparse
 
+from openonda.core.kinematics import RigidPose, advance_pose
+
 from ..fields.mixed_velocity_boundary import (
     update_normal_velocity_tangential_gradient_boundary,
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
-from .kinematics import MeshMotion, RigidPose, advance_pose
+from .mesh_motion import MeshMotion
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver

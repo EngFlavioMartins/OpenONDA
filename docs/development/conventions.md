@@ -87,6 +87,16 @@ physical time: `time` is its first column and there is no `step` column.
 Run status values are the `openonda.core.status.RunStatus` members, for
 example `completed`, `failed`, `unstable`.
 
+## Rigid-body motion
+
+Prescribed motion of an FVM mesh and of a VLM lifting surface uses the same
+frozen classes from `openonda.core.kinematics` (`StaticMotion`,
+`TranslatingMotion`, `RotatingMotion`, `PitchingMotion`, `HeavingMotion`,
+`LinearPeriodicMotion`, `SmoothRampMotion`, `ManeuverMotion`,
+`CompositeMotion`), exported by both solvers. A motion holds no state: it
+gives the velocity, the angular velocity and the exact pose increment over a
+step; each solver keeps the accumulated pose and stores it in its backups.
+
 ## Clock
 
 A solver commits `time = previous time + time_step_size` at each accepted

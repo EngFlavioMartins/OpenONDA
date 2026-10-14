@@ -29,11 +29,11 @@ def parameters(case_dir: Path, name: str | None = None) -> dict:
         "density": float(vlm["density"]),
         "speed": float(np.linalg.norm(vlm["freestream_velocity"])),
         "reference_velocity": np.asarray(vlm["freestream_velocity"], dtype=float),
-        "kinematics": "ramp" if motion["type"] == "SmoothRampVLM" else "static",
+        "kinematics": "ramp" if motion["type"] == "SmoothRampMotion" else "static",
         "ramp_time": float(motion["acceleration_time"])
-        if motion["type"] == "SmoothRampVLM"
+        if motion["type"] == "SmoothRampMotion"
         else 0.0,
-        "start_time": float(motion["start_time"]) if motion["type"] == "SmoothRampVLM" else 0.0,
+        "start_time": float(motion["start_time"]) if motion["type"] == "SmoothRampMotion" else 0.0,
     }
 
 

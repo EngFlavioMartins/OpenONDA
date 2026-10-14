@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from openonda import fvm
-from openonda.fvm.motion.kinematics import RigidPose, advance_pose, axis_rotation_matrix
+from openonda.core.kinematics import RigidPose, advance_pose, axis_rotation_matrix
 
 
 def _advance(kinematics, times):

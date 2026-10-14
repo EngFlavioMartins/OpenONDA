@@ -291,7 +291,9 @@ def test_upstream_jump_loads_downstream_panels_and_power_at_pressure_centres():
         solver, "plate", np.array([10.0, 0.0, 0.0]), 1.0
     )
     assert tables["chordwise"]["unsteady_force_z"].sum() == pytest.approx(expected.sum())
-    motion = vpm.RotatingVLM(angular_speed=2.0, axis=[0, 1, 0], rotation_centre=[0.2, 0, 0])
+    motion = vpm.RotatingMotion(
+        angular_speed=2.0, rotation_axis=(0, 1, 0), rotation_centre=(0.2, 0, 0)
+    )
     aircraft, _ = solver.surfaces["plate"]
     solver.surfaces["plate"] = (aircraft, motion)
     values = solver.compute_per_surface_forces(1.0, np.array([10.0, 0.0, 0.0]))["plate"]

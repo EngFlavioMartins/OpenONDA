@@ -142,19 +142,19 @@ motion = fvm.MeshMotion(
 )
 ```
 
-The motion classes mirror the VLM kinematics; times are in s, angles of the initial placement in degrees, angular velocities in rad/s:
+The motion classes live in `openonda.core.kinematics` and are the same objects the VLM surfaces use (`fvm.HeavingMotion is vpm.HeavingMotion`); times are in s, angles of the initial placement in degrees, angular velocities in rad/s:
 
 | Class | Motion |
 | --- | --- |
 | `StaticMotion()` | None |
 | `TranslatingMotion(velocity)` | Constant velocity |
-| `RotatingMotion(angular_speed, axis, rotation_centre, acceleration_time)` | Constant rotation about a fixed axis, optional sin² spin-up |
+| `RotatingMotion(angular_speed, rotation_axis, rotation_centre, acceleration_time)` | Constant rotation about a fixed axis, optional sin² spin-up |
 | `HeavingMotion(amplitude, frequency, phase, direction)` | $A\sin(2\pi ft+\phi)$ along `direction` (default z) |
 | `LinearPeriodicMotion(amplitude, frequency, direction, phase)` | The same sinusoidal translation with a required direction |
 | `PitchingMotion(amplitude_degrees, frequency, phase, rotation_axis, rotation_centre)` | $\theta_0\sin(2\pi ft+\phi)$ about a fixed pivot |
 | `SmoothRampMotion(final_velocity, acceleration_time, start_time)` | Acceleration from rest with a sin² velocity ramp |
 | `ManeuverMotion(velocity_function, angular_velocity_function, rotation_centre)` | Velocities given as functions of time |
-| `CompositeMotion(kinematics_components, rotation_centre)` | Sum of several motions about one pivot |
+| `CompositeMotion(components, rotation_centre)` | Sum of several motions about one pivot |
 
 Closed-form motions place the mesh exactly; `ManeuverMotion` and `CompositeMotion` integrate their velocities with the interval-midpoint rule. The mesh as constructed is the configuration at the start time, and every rotation centre moves with the mesh.
 

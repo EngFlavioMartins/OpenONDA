@@ -1,31 +1,9 @@
-"""Prescribed rigid-body motion of the finite-volume mesh."""
+"""Prescribed rigid-body motion of the finite-volume mesh.
 
-from .kinematics import (
-    CompositeMotion,
-    HeavingMotion,
-    LinearPeriodicMotion,
-    ManeuverMotion,
-    MeshKinematics,
-    MeshMotion,
-    PitchingMotion,
-    RigidPose,
-    RotatingMotion,
-    SmoothRampMotion,
-    StaticMotion,
-    TranslatingMotion,
-)
+The motion classes are the shared ones of :mod:`openonda.core.kinematics`;
+this package holds the mesh placement and the moving-mesh runtime.
+"""
 
-__all__ = [
-    "CompositeMotion",
-    "HeavingMotion",
-    "LinearPeriodicMotion",
-    "ManeuverMotion",
-    "MeshKinematics",
-    "MeshMotion",
-    "PitchingMotion",
-    "RigidPose",
-    "RotatingMotion",
-    "SmoothRampMotion",
-    "StaticMotion",
-    "TranslatingMotion",
-]
+from .mesh_motion import MeshMotion
+
+__all__ = ["MeshMotion"]
