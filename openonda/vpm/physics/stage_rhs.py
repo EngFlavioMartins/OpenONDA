@@ -14,6 +14,7 @@ from .induction.base import (
     InductionMethod,
     StageRates,
     StageState,
+    TaichiField,
     normalize_stretching_scheme,
 )
 from .induction.reuse import AcceptedStateInduction, InductionReuseStatistics
@@ -88,7 +89,9 @@ class _StageParticleView:
             background = np.asarray(value, dtype=np.float64)
         self._velocity_background = np.asarray(background, dtype=np.float64).reshape(3)
         dtype = getattr(stage_state.position, "dtype", ti.f64)
-        self._velocity_background_field = getattr(accepted_particles, "velocity_background", None)
+        self._velocity_background_field: TaichiField = getattr(
+            accepted_particles, "velocity_background", None
+        )
         if self._velocity_background_field is None and not np.any(self._velocity_background):
             self._velocity_background_field = getattr(physics, "_zero_velocity", None)
         if self._velocity_background_field is None:
@@ -101,7 +104,7 @@ class _StageParticleView:
         return self._count
 
     @property
-    def velocity_background(self) -> ti.Field:
+    def velocity_background(self) -> TaichiField:
         """Return a scalar Taichi vector field accepted by target evaluators."""
         return self._velocity_background_field
 
@@ -112,13 +115,13 @@ class _StageParticleView:
 
 @ti.kernel
 def _accumulate_vlm_stretching(
-    gradient: ti.template(),
-    strength: ti.template(),
-    rate: ti.template(),
-    total_gradient: ti.template(),
+    gradient: ti.template(),  # type: ignore[invalid-annotation]
+    strength: ti.template(),  # type: ignore[invalid-annotation]
+    rate: ti.template(),  # type: ignore[invalid-annotation]
+    total_gradient: ti.template(),  # type: ignore[invalid-annotation]
     count: ti.i32,
     mode: ti.i32,
-    has_gradient: ti.template(),
+    has_gradient: ti.template(),  # type: ignore[invalid-annotation]
 ):
     for i in range(count):
         jacobian = gradient[i]
@@ -165,9 +168,11 @@ class VLMStageContribution:
         self.particles = particles
         self._gradient = None
         self._native_rates = physics is not None and hasattr(vlm_solver, "add_stage_rates")
-        self._stage_weights = None
+        self._stage_weights: tuple[float, ...] | None = None
         self._consumed_stage_indices: set[int] = set()
         if physics is not None:
+            if physics.induction is None:
+                raise RuntimeError("VLM stage coupling requires a bound induction backend")
             self._stretching_mode = _STRETCHING_MODES[
                 normalize_stretching_scheme(physics.induction.stretching_scheme)
             ]
@@ -488,12 +493,14 @@ class StageRHS:
 
 
 @ti.kernel
-def _zero_stage_field(field: ti.template(), count: ti.i32):
+def _zero_stage_field(field: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
     for i in range(count):
         field[i] = ti.Vector([0.0, 0.0, 0.0])
 
 
-def _stage_array(field: ti.Field, count: int, physics: "PhysicsEngine" = None) -> np.ndarray:
+def _stage_array(
+    field: TaichiField, count: int, physics: "PhysicsEngine | None" = None
+) -> np.ndarray:
     """Return a bounded NumPy view/copy for host-side external providers."""
     if (
         physics is not None
@@ -506,7 +513,7 @@ def _stage_array(field: ti.Field, count: int, physics: "PhysicsEngine" = None) -
 
 
 def _accumulate_stage_array(
-    field: ti.Field, values: np.ndarray, count: int, physics: "PhysicsEngine" = None
+    field: TaichiField, values: np.ndarray, count: int, physics: "PhysicsEngine | None" = None
 ) -> None:
     """Accumulate a host provider result into NumPy or Taichi output storage."""
     if (
@@ -543,7 +550,10 @@ class ParticleExternalStageContribution:
     """
 
     def __init__(
-        self, particles: "Particles", physics: "PhysicsEngine", surface_sources: "VPMSolver" = None
+        self,
+        particles: "Particles",
+        physics: "PhysicsEngine",
+        surface_sources: "VPMSolver | None" = None,
     ) -> None:
         """Create a provider for particle background/body/source fields.
 
@@ -572,7 +582,7 @@ class ParticleExternalStageContribution:
         )
 
     @ti.kernel
-    def _add_background(self, velocity: ti.template(), count: ti.i32):
+    def _add_background(self, velocity: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
         for i in range(count):
             velocity[i] += self.particles.velocity_background[None]
 
@@ -598,7 +608,7 @@ class ParticleExternalStageContribution:
         sources = self.surface_sources
         source_count = int(getattr(sources, "n_sources", 0)) if sources is not None else 0
         source_gradient = None
-        if source_count:
+        if sources is not None and source_count:
             batches = (
                 sources._surface_source_batches()
                 if hasattr(sources, "_surface_source_batches")
@@ -691,7 +701,7 @@ class ParticleExternalStageContribution:
 class AxisymmetricNoSwirlStageProjection:
     """Project stage velocity and strength rates onto the declared symmetry."""
 
-    def __init__(self, physics: "PhysicsBase", orbit_id: ti.Field, axis: int) -> None:
+    def __init__(self, physics: "PhysicsBase", orbit_id: TaichiField, axis: int) -> None:
         """Create a projection provider for one Cartesian symmetry axis.
 
         Parameters

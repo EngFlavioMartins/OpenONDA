@@ -59,7 +59,7 @@ class GaussianMeshParameters:
             raise ValueError("order must be an even integer in [4, 10]")
         object.__setattr__(self, "order", int(self.order))
 
-    def resolve(self, source_core: object) -> "ResolvedGaussianMesh | None":
+    def resolve(self, source_core: np.ndarray) -> "ResolvedGaussianMesh":
         """Derive lengths from ALL cores without retaining or modifying them.
 
         Resolve again after core mutation. This result is not an identity for

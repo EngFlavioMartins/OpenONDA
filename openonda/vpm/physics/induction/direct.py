@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import taichi as ti
 
 from ...kernels.base import RadialVortexKernel, make_vortex_kernel
 from ...kernels.registry import kernel_names
-from .base import _STRETCHING_MODES, normalize_stretching_scheme
+from .base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
+
+if TYPE_CHECKING:
+    from ..base import PhysicsBase
 
 
 @ti.data_oriented
@@ -56,7 +59,7 @@ class DirectInduction:
         self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
         self.method = "DIRECT"
         self.kernel = make_vortex_kernel("GAUSSIAN")
-        self.physics = None
+        self.physics: PhysicsBase | None = None
         self.max_n_particles = 1
         self._strain_rate = None
 
@@ -71,7 +74,7 @@ class DirectInduction:
         """
         return type(self)(stretching_scheme=self.stretching_scheme)
 
-    def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
+    def bind(self, physics: PhysicsBase, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind the evaluator to one :class:`PhysicsEngine` workspace.
 
         Parameters
@@ -116,13 +119,13 @@ class DirectInduction:
     def evaluate_stage(
         self,
         *,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
-        velocity_out: object,
-        vortex_strength_rate_out: object,
-        velocity_gradient_out: object | None = None,
+        velocity_out: TaichiField,
+        vortex_strength_rate_out: TaichiField,
+        velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -212,16 +215,16 @@ class DirectInduction:
     def evaluate_targets(
         self,
         *,
-        target_position: object,
-        source_position: object,
-        source_vortex_strength: object,
-        source_core_radius: object,
-        target_velocity: object,
-        target_velocity_gradient: object,
+        target_position: TaichiField,
+        source_position: TaichiField,
+        source_vortex_strength: TaichiField,
+        source_core_radius: TaichiField,
+        target_velocity: TaichiField,
+        target_velocity_gradient: TaichiField,
         target_count: int,
         source_count: int,
         include_freestream: bool,
-        background_velocity: object,
+        background_velocity: TaichiField,
     ) -> None:
         """Evaluate direct induction at arbitrary target points.
 

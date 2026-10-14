@@ -12,8 +12,13 @@ from types import MethodType
 
 import numpy as np
 
+# Tagged, hashable encoding of an immutable value: (type name, value or parts).
+ImmutableToken = tuple[str, object]
+# Body geometry identity plus the slip-slab bounds it was evaluated with.
+BodyGeometryKey = tuple[ImmutableToken, tuple[str] | tuple[str, bytes]]
 
-def _same_callable(first: Callable, second: Callable) -> bool:
+
+def _same_callable(first: object, second: object) -> bool:
     return first is second or (
         type(first) is MethodType
         and type(second) is MethodType
@@ -31,30 +36,19 @@ class ImmutableBodyGeometryQueries:
     on every signature query; a revision label alone is insufficient.
     """
 
-    contains: object
-    blocks: object
-    signature: object
+    contains: Callable[[np.ndarray], np.ndarray]
+    blocks: Callable[[np.ndarray, np.ndarray], np.ndarray]
+    # Current (revision, content, runtime) signature, or None if unverifiable.
+    signature: Callable[[], tuple[object, object, object] | None]
     initial_content: object
     initial_runtime: object
 
     def key(
-        self, contains: Callable, blocks: Callable, revision: tuple[str]
-    ) -> (
-        tuple[
-            str,
-            tuple[
-                tuple[
-                    str,
-                    tuple[
-                        tuple[str, str],
-                        tuple[str, tuple[tuple[str, tuple[tuple[str, str], tuple[str, str]]]]],
-                    ],
-                ],
-                tuple[str, bytes],
-            ],
-        ]
-        | None
-    ):
+        self,
+        contains: Callable[[np.ndarray], np.ndarray] | None,
+        blocks: Callable[[np.ndarray, np.ndarray], np.ndarray] | None,
+        revision: object,
+    ) -> ImmutableToken | None:
         """Identity of the immutable body geometry these queries answer for."""
         if (
             type(self) is not ImmutableBodyGeometryQueries
@@ -82,7 +76,7 @@ class ImmutableBodyGeometryQueries:
         return _immutable_token((configured, content))
 
 
-def _immutable_token(value: object) -> object:
+def _immutable_token(value: object) -> ImmutableToken | None:
     if type(value) in (str, bytes, bool, int):
         return (type(value).__name__, value)
     if type(value) is float and math.isfinite(value):
@@ -136,49 +130,18 @@ class BodyGridGeometryCache:
     # Memory limit of the cached lattice geometry, in bytes.
     max_bytes = 64 * 1024 * 1024
 
-    def __init__(self):
-        self.record = None
+    def __init__(self) -> None:
+        self.record: _Record | None = None
 
     def prepare(
         self,
         origin: np.ndarray,
         spacing: float,
-        shape: tuple[int, int, int],
+        shape: tuple[int, ...],
         *,
-        contains: Callable,
-        blocks: Callable,
-        geometry_key: tuple[
-            tuple[
-                str,
-                tuple[
-                    tuple[
-                        str,
-                        tuple[
-                            tuple[str, str],
-                            tuple[str, tuple[tuple[str, tuple[tuple[str, str], tuple[str, str]]]]],
-                        ],
-                    ],
-                    tuple[str, bytes],
-                ],
-            ],
-            tuple[str, bytes],
-        ]
-        | tuple[
-            tuple[
-                str,
-                tuple[
-                    tuple[
-                        str,
-                        tuple[
-                            tuple[str, str],
-                            tuple[str, tuple[tuple[str, tuple[tuple[str, str], tuple[str, str]]]]],
-                        ],
-                    ],
-                    tuple[str, bytes],
-                ],
-            ],
-            tuple[str],
-        ],
+        contains: Callable[[np.ndarray], np.ndarray],
+        blocks: Callable[[np.ndarray, np.ndarray], np.ndarray] | None,
+        geometry_key: BodyGeometryKey,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return the cached geometry of one lattice, building it on a miss."""
         shape = tuple(int(n) for n in shape)
@@ -248,8 +211,8 @@ class BodyGridGeometryCache:
     @staticmethod
     def _links(
         old: "_Record | None",
-        axes64: tuple[np.ndarray, np.ndarray, np.ndarray],
-        shape: tuple[int, int, int],
+        axes64: tuple[np.ndarray, ...],
+        shape: tuple[int, ...],
         mask: np.ndarray,
         links: np.ndarray,
         spacing: float,

@@ -15,8 +15,8 @@ Date: January 2026
 Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
-from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, Any, Protocol, overload, runtime_checkable
 
 import numpy as np
 import taichi as ti
@@ -25,10 +25,46 @@ from openonda.core.slip_slab_images import slab_image_particles
 
 from ..config.constants import MAX_N_PARTICLES
 from ..kernels.registry import kernel_definition
+from .induction.base import InductionMethod, TaichiDataType, TaichiField
 
 if TYPE_CHECKING:
     from ..particles.container import Particles
     from .induction.treecode.lbvh import TaichiTreecode
+
+# A compiled Taichi kernel; its arguments are Taichi fields and scalars.
+TaichiKernel = Callable[..., Any]
+
+
+class ParticleSources(Protocol):
+    """Biot-Savart sources read by target queries: the particle container or a stage view."""
+
+    @property
+    def position(self) -> TaichiField: ...
+
+    @property
+    def vortex_strength(self) -> TaichiField: ...
+
+    @property
+    def core_radius(self) -> TaichiField: ...
+
+    @property
+    def velocity_background(self) -> TaichiField: ...
+
+    def velocity_background_cpu(self) -> np.ndarray: ...
+
+    def __len__(self) -> int: ...
+
+
+@runtime_checkable
+class HostParticleSources(ParticleSources, Protocol):
+    """Particle sources that also provide host copies of their fields."""
+
+    def position_cpu(self) -> np.ndarray: ...
+
+    def vortex_strength_cpu(self) -> np.ndarray: ...
+
+    def core_radius_cpu(self) -> np.ndarray: ...
+
 
 # Smallest treecode capacity worth allocating.  Below this the fixed per-node
 # cost is irrelevant and the doubling would just add rebuilds.
@@ -75,11 +111,29 @@ class PhysicsBase:
     coupled inviscid rates are selected through the induction conditions.
     """
 
+    # Taichi kernels bound for the particle kernel by _define_taichi_kernels.
+    compute_velocities_kernel: TaichiKernel
+    compute_vorticities_kernel: TaichiKernel
+    compute_velocity_gradients_kernel: TaichiKernel
+    compute_velocity_and_gradient_kernel: TaichiKernel
+    compute_target_velocity_kernel: TaichiKernel
+    compute_transport_target_velocity_kernel: TaichiKernel
+    compute_target_source_velocity_kernel: TaichiKernel
+    compute_target_source_velocity_gradient_kernel: TaichiKernel
+    compute_target_vorticity_kernel: TaichiKernel
+    compute_target_velocity_gradient_kernel: TaichiKernel
+    update_radius_csm_kernel: TaichiKernel
+    update_position_rwm_kernel: TaichiKernel
+    compute_velocity_and_stretching_rate_kernel: TaichiKernel
+
+    # Slip-slab z bounds, set only by a bound slip-slab induction.
+    _slip_slab_bounds: tuple[float, float]
+
     def __init__(
         self,
         particle_kernel: str = "GAUSSIAN",
         max_n_particles: int = MAX_N_PARTICLES,
-        accumulator_dtype: ti.types = ti.f32,
+        accumulator_dtype: TaichiDataType = ti.f32,
         max_evaluation_points: int = _HOST_TRANSFER_CHUNK_SIZE,
     ):
         """
@@ -112,13 +166,13 @@ class PhysicsBase:
         self._target_field_size = 0
 
         # Cached treecode instance (to avoid memory leak from repeated allocations)
-        self._treecode = None
+        self._treecode: TaichiTreecode | None = None
         self._treecode_max_particles = 0
-        self._vorticity_tree = None
+        self._vorticity_tree: TaichiTreecode | None = None
         # A target-query phase often asks for blending and coupling-face
         # fields from one immutable particle state.  Keep one source-tree key so
         # those traversals share the LBVH instead of rebuilding it per caller.
-        self._target_tree_key = None
+        self._target_tree_key: tuple[int, int, int, int] | None = None
 
         # Velocity-evaluation method — the single source of truth for how the
         # target-query fields are computed. Bound once through configure_velocity();
@@ -134,7 +188,7 @@ class PhysicsBase:
         # device fields are initialized.  Target queries use this same
         # conditions when available; standalone PhysicsEngine users retain the
         # direct-kernel fallback below.
-        self.induction = None
+        self.induction: InductionMethod | None = None
 
         # Cached filtered particle fields for zone-aware BC computation
         self._filtered_field_size = self.max_n_particles
@@ -146,9 +200,10 @@ class PhysicsBase:
         )
         self._filtered_rad = ti.field(dtype=self.accumulator_dtype, shape=(self.max_n_particles,))
 
-        self._host_vector_chunks = {}
-        self._host_scalar_chunks = {}
-        self._host_matrix_chunks = {}
+        # Fixed host staging arrays keyed by (direction, field identity).
+        self._host_vector_chunks: dict[tuple[str, int], np.ndarray] = {}
+        self._host_scalar_chunks: dict[tuple[str, int], np.ndarray] = {}
+        self._host_matrix_chunks: dict[tuple[str, int], np.ndarray] = {}
 
         self._axisymmetric_vector_sum_a = ti.Vector.field(
             3, dtype=compute_dtype, shape=(self.max_n_particles,)
@@ -237,10 +292,10 @@ class PhysicsBase:
     @ti.kernel
     def _reduce_axisymmetric_vectors(
         self,
-        position: ti.template(),
-        vector_a: ti.template(),
-        vector_b: ti.template(),
-        orbit_id: ti.template(),
+        position: ti.template(),  # type: ignore[invalid-annotation]
+        vector_a: ti.template(),  # type: ignore[invalid-annotation]
+        vector_b: ti.template(),  # type: ignore[invalid-annotation]
+        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
         axis: ti.i32,
         count: ti.i32,
     ):
@@ -256,10 +311,10 @@ class PhysicsBase:
     @ti.kernel
     def _apply_axisymmetric_vectors(
         self,
-        position: ti.template(),
-        vector_a: ti.template(),
-        vector_b: ti.template(),
-        orbit_id: ti.template(),
+        position: ti.template(),  # type: ignore[invalid-annotation]
+        vector_a: ti.template(),  # type: ignore[invalid-annotation]
+        vector_b: ti.template(),  # type: ignore[invalid-annotation]
+        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
         axis: ti.i32,
         count: ti.i32,
     ):
@@ -279,10 +334,10 @@ class PhysicsBase:
 
     def average_axisymmetric_no_swirl_rhs(
         self,
-        position: ti.Field,
-        vector_a: ti.Field,
-        vector_b: ti.Field,
-        orbit_id: ti.Field,
+        position: TaichiField,
+        vector_a: TaichiField,
+        vector_b: TaichiField,
+        orbit_id: TaichiField,
         axis: int,
         count: int,
     ) -> None:
@@ -296,8 +351,8 @@ class PhysicsBase:
     @ti.kernel
     def _reduce_axisymmetric_scalar(
         self,
-        scalar: ti.template(),
-        orbit_id: ti.template(),
+        scalar: ti.template(),  # type: ignore[invalid-annotation]
+        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
         count: ti.i32,
     ):
         for i in range(count):
@@ -308,8 +363,8 @@ class PhysicsBase:
     @ti.kernel
     def _apply_axisymmetric_scalar(
         self,
-        scalar: ti.template(),
-        orbit_id: ti.template(),
+        scalar: ti.template(),  # type: ignore[invalid-annotation]
+        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
         count: ti.i32,
     ):
         for i in range(count):
@@ -318,7 +373,9 @@ class PhysicsBase:
                 self._axisymmetric_orbit_count[orbit], self.accumulator_dtype
             )
 
-    def average_axisymmetric_scalar(self, scalar: ti.Field, orbit_id: ti.Field, count: int) -> None:
+    def average_axisymmetric_scalar(
+        self, scalar: TaichiField, orbit_id: TaichiField, count: int
+    ) -> None:
         """Average one scalar field over declared particle orbits."""
         if count <= 0:
             return
@@ -354,7 +411,11 @@ class PhysicsBase:
 
     @ti.kernel
     def _copy_ndarray_to_vec3_field(
-        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+        self,
+        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        start_idx: ti.i32,
+        n: ti.i32,
     ):
         """Copy n vec3 entries from a fixed-size NumPy buffer to a Taichi field."""
         for i in range(n):
@@ -363,7 +424,11 @@ class PhysicsBase:
 
     @ti.kernel
     def _copy_ndarray_to_scalar_field(
-        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+        self,
+        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        start_idx: ti.i32,
+        n: ti.i32,
     ):
         """Copy n scalar entries from a fixed-size NumPy buffer to a Taichi field."""
         for i in range(n):
@@ -371,7 +436,11 @@ class PhysicsBase:
 
     @ti.kernel
     def _copy_ndarray_to_mat3_field(
-        self, src: ti.types.ndarray(), dst: ti.template(), start_idx: ti.i32, n: ti.i32
+        self,
+        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        start_idx: ti.i32,
+        n: ti.i32,
     ):
         """Copy n mat3 entries from a fixed-size NumPy buffer to a Taichi field."""
         for i in range(n):
@@ -381,7 +450,11 @@ class PhysicsBase:
 
     @ti.kernel
     def _extract_vec3_field_prefix(
-        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+        self,
+        src: ti.template(),  # type: ignore[invalid-annotation]
+        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        start_idx: ti.i32,
+        n: ti.i32,
     ):
         """Copy n vec3 entries from a Taichi field to a fixed-size NumPy buffer."""
         for i in range(n):
@@ -390,7 +463,11 @@ class PhysicsBase:
 
     @ti.kernel
     def _extract_mat3_field_prefix(
-        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+        self,
+        src: ti.template(),  # type: ignore[invalid-annotation]
+        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        start_idx: ti.i32,
+        n: ti.i32,
     ):
         """Copy n mat3 entries from a Taichi field to a fixed-size NumPy buffer."""
         for i in range(n):
@@ -400,15 +477,20 @@ class PhysicsBase:
 
     @ti.kernel
     def _extract_scalar_field_prefix(
-        self, src: ti.template(), dst: ti.types.ndarray(), start_idx: ti.i32, n: ti.i32
+        self,
+        src: ti.template(),  # type: ignore[invalid-annotation]
+        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        start_idx: ti.i32,
+        n: ti.i32,
     ):
         """Copy n scalar entries from a Taichi field to a fixed-size NumPy buffer."""
         for i in range(n):
             dst[i] = src[start_idx + i]
 
-    def _host_transfer_buffer(self, family: str, field: ti.Field, direction: str) -> np.ndarray:
+    def _host_transfer_buffer(self, family: str, field: TaichiField, direction: str) -> np.ndarray:
         """Return a fixed staging array unique to a field and direction."""
         key = (direction, id(field))
+        shape: tuple[int, ...]
         if family == "vector":
             buffers = self._host_vector_chunks
             shape = (_HOST_TRANSFER_CHUNK_SIZE, 3)
@@ -427,7 +509,7 @@ class PhysicsBase:
             buffers[key] = np.empty(shape, dtype=dtype)
         return buffers[key]
 
-    def _upload_vector_array(self, src: np.ndarray, dst: ti.Field, n: int | None = None) -> None:
+    def _upload_vector_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
         """Upload a vec3 array through fixed-size ndarray chunks."""
         arr = np.ascontiguousarray(src, dtype=self.np_dtype)
         if arr.ndim != 2 or arr.shape[1] != 3:
@@ -441,7 +523,7 @@ class PhysicsBase:
             self._copy_ndarray_to_vec3_field(buf, dst, lo, n_chunk)
             ti.sync()
 
-    def _upload_scalar_array(self, src: np.ndarray, dst: ti.Field, n: int | None = None) -> None:
+    def _upload_scalar_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
         """Upload a scalar array through fixed-size ndarray chunks."""
         arr = np.ascontiguousarray(src, dtype=self.np_dtype)
         if arr.ndim != 1:
@@ -455,7 +537,7 @@ class PhysicsBase:
             self._copy_ndarray_to_scalar_field(buf, dst, lo, n_chunk)
             ti.sync()
 
-    def _upload_matrix_array(self, src: np.ndarray, dst: ti.Field, n: int | None = None) -> None:
+    def _upload_matrix_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
         """Upload a mat3 array through fixed-size ndarray chunks."""
         arr = np.ascontiguousarray(src, dtype=self.np_dtype)
         if arr.ndim != 3 or arr.shape[1:] != (3, 3):
@@ -469,7 +551,7 @@ class PhysicsBase:
             self._copy_ndarray_to_mat3_field(buf, dst, lo, n_chunk)
             ti.sync()
 
-    def _download_vector_field(self, src: ti.Field, n: int) -> np.ndarray:
+    def _download_vector_field(self, src: TaichiField, n: int) -> np.ndarray:
         """Download the active vec3 prefix without exposing variable ndarray shapes."""
         dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
@@ -483,7 +565,7 @@ class PhysicsBase:
             out[lo : lo + count] = buf[:count]
         return out
 
-    def _download_matrix_field(self, src: ti.Field, n: int) -> np.ndarray:
+    def _download_matrix_field(self, src: TaichiField, n: int) -> np.ndarray:
         """Download the active mat3 prefix without exposing variable ndarray shapes."""
         dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
@@ -497,7 +579,7 @@ class PhysicsBase:
             out[lo : lo + count] = buf[:count]
         return out
 
-    def _download_scalar_field(self, src: ti.Field, n: int) -> np.ndarray:
+    def _download_scalar_field(self, src: TaichiField, n: int) -> np.ndarray:
         """Download the active scalar prefix without transferring capacity padding."""
         dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
@@ -648,38 +730,44 @@ class PhysicsBase:
         self.treecode_traversal_block_dim = int(traversal_block_dim)
 
     @ti.kernel
-    def _copy_vec3(self, src: ti.template(), dst: ti.template(), N: ti.i32):
+    def _copy_vec3(self, src: ti.template(), dst: ti.template(), N: ti.i32):  # type: ignore[invalid-annotation]
         """Copy the first N entries of one vec3 field into another."""
         for i in range(N):
             dst[i] = src[i]
 
     @ti.kernel
-    def _copy_vec3_offset(self, src: ti.template(), dst: ti.template(), start: ti.i32, N: ti.i32):
+    def _copy_vec3_offset(self, src: ti.template(), dst: ti.template(), start: ti.i32, N: ti.i32):  # type: ignore[invalid-annotation]
         """Copy one bounded target batch into its field destination."""
         for i in range(N):
             dst[start + i] = src[i]
 
     @ti.kernel
     def _fill_vec3_from_background(
-        self, dst: ti.template(), background: ti.template(), start: ti.i32, N: ti.i32
+        self,
+        dst: ti.template(),  # type: ignore[invalid-annotation]
+        background: ti.template(),  # type: ignore[invalid-annotation]
+        start: ti.i32,
+        N: ti.i32,
     ):
         """Fill a field destination when a query has no contributing sources."""
         for i in range(N):
             dst[start + i] = background[None]
 
     @ti.kernel
-    def _zero_vec3_field(self, field: ti.template(), N: ti.i32):
+    def _zero_vec3_field(self, field: ti.template(), N: ti.i32):  # type: ignore[invalid-annotation]
         """Zero the first N entries of a vector field."""
         for i in range(N):
             field[i] = ti.Vector([0.0, 0.0, 0.0])
 
     @ti.kernel
-    def _copy_mat3(self, src: ti.template(), dst: ti.template(), N: ti.i32):
+    def _copy_mat3(self, src: ti.template(), dst: ti.template(), N: ti.i32):  # type: ignore[invalid-annotation]
         """Copy the first N entries of one 3×3 matrix field into another."""
         for i in range(N):
             dst[i] = src[i]
 
-    def _ensure_target_tree_current(self, particles: "Particles", theta: float) -> "TaichiTreecode":
+    def _ensure_target_tree_current(
+        self, particles: ParticleSources, theta: float
+    ) -> "TaichiTreecode":
         """Return a tree built for the current particle source revision.
 
         ``Particles.state_revision`` changes only when a Biot--Savart source
@@ -698,11 +786,31 @@ class PhysicsBase:
 
     # FIELD EVALUATION METHODS
 
+    @overload
     def compute_target_velocity(
         self,
-        particles: "Particles",
-        target_position: np.ndarray | ti.Field,
-        target_velocity: ti.Field | None = None,
+        particles: ParticleSources,
+        target_position: np.ndarray | TaichiField,
+        target_velocity: None = None,
+        include_freestream: bool = True,
+        zone_mask: np.ndarray | None = None,
+    ) -> np.ndarray: ...
+
+    @overload
+    def compute_target_velocity(
+        self,
+        particles: ParticleSources,
+        target_position: np.ndarray | TaichiField,
+        target_velocity: TaichiField,
+        include_freestream: bool = True,
+        zone_mask: np.ndarray | None = None,
+    ) -> np.ndarray | None: ...
+
+    def compute_target_velocity(
+        self,
+        particles: ParticleSources,
+        target_position: np.ndarray | TaichiField,
+        target_velocity: TaichiField | None = None,
         include_freestream: bool = True,
         zone_mask: np.ndarray | None = None,
     ) -> np.ndarray | None:
@@ -728,6 +836,8 @@ class PhysicsBase:
 
         # If zone_mask is provided, use filtered computation
         if zone_mask is not None and N > 0:
+            if not isinstance(particles, HostParticleSources):
+                raise TypeError("a particle zone mask requires host copies of the particle fields")
             return self._compute_target_velocity_filtered(
                 particles, target_position, zone_mask, include_freestream, target_velocity
             )
@@ -752,7 +862,7 @@ class PhysicsBase:
             if target_velocity is not None:
                 self._fill_vec3_from_background(target_velocity, background_velocity, 0, M)
                 return None
-            result = np.zeros((M, 3), dtype=self.np_dtype)
+            result: np.ndarray | None = np.zeros((M, 3), dtype=self.np_dtype)
             if include_freestream:
                 bg = particles.velocity_background_cpu()
                 result += bg
@@ -828,7 +938,7 @@ class PhysicsBase:
 
     def compute_transport_target_velocity(
         self,
-        particles: "Particles",
+        particles: ParticleSources,
         target_position: np.ndarray,
         target_core_radius: np.ndarray | float,
         *,
@@ -925,11 +1035,11 @@ class PhysicsBase:
 
     def _compute_target_velocity_taichi(
         self,
-        particles: "Particles",
-        target_position: ti.Field,
-        target_velocity: ti.Field | None,
+        particles: ParticleSources,
+        target_position: TaichiField,
+        target_velocity: TaichiField | None,
         include_freestream: bool,
-        background_velocity: ti.Field,
+        background_velocity: TaichiField,
         N: int,
     ) -> np.ndarray | None:
         """Handle velocity computation when target_position is a Taichi field."""
@@ -1018,11 +1128,11 @@ class PhysicsBase:
 
     def _compute_target_velocity_filtered(
         self,
-        particles: "Particles",
-        target_position: np.ndarray | ti.Field,
+        particles: HostParticleSources,
+        target_position: np.ndarray | TaichiField,
         zone_mask: np.ndarray,
         include_freestream: bool = True,
-        target_velocity: ti.Field | None = None,
+        target_velocity: TaichiField | None = None,
     ) -> np.ndarray | None:
         """
         Compute velocity at target position using only selected particles.
@@ -1070,6 +1180,7 @@ class PhysicsBase:
                     M,
                 )
                 return None
+            result: np.ndarray | None
             if include_freestream:
                 bg = particles.velocity_background_cpu()
                 result = np.tile(bg, (M, 1))
@@ -1210,6 +1321,7 @@ class PhysicsBase:
                 vorticity_out=particles.vorticity,
             )
             return
+        tree: TaichiTreecode | None
         if self.velocity_method == "TREECODE":
             tree = self._ensure_target_tree_current(particles, self.velocity_theta)
         else:
@@ -1234,7 +1346,7 @@ class PhysicsBase:
         tree.compute_gaussian_particle_vorticity(particles.vorticity, count)
 
     def compute_target_velocity_gradient(
-        self, particles: "Particles", target_position: np.ndarray
+        self, particles: ParticleSources, target_position: np.ndarray
     ) -> np.ndarray:
         """
         Compute velocity gradient tensors at arbitrary target position.
@@ -1303,7 +1415,7 @@ class PhysicsBase:
 
     def compute_target_velocity_hierarchical(
         self,
-        particles: "Particles",
+        particles: ParticleSources,
         target_position: np.ndarray,
         theta: float = 0.5,
         include_freestream: bool = True,
@@ -1341,7 +1453,7 @@ class PhysicsBase:
         )
 
     def compute_target_velocity_gradient_hierarchical(
-        self, particles: "Particles", target_position: np.ndarray, theta: float = 0.5
+        self, particles: ParticleSources, target_position: np.ndarray, theta: float = 0.5
     ) -> np.ndarray:
         """
         Compute velocity gradients at targets using Barnes-Hut treecode.
@@ -1371,7 +1483,7 @@ class PhysicsBase:
 
     def compute_target_velocity_and_gradients_hierarchical(
         self,
-        particles: "Particles",
+        particles: ParticleSources,
         target_position: np.ndarray,
         theta: float = 0.5,
         include_freestream: bool = True,
@@ -1409,7 +1521,7 @@ class PhysicsBase:
         )
 
     def compute_target_velocity_gradient_consistent(
-        self, particles: "Particles", target_position: np.ndarray
+        self, particles: ParticleSources, target_position: np.ndarray
     ) -> np.ndarray:
         """Evaluate a target Jacobian with the configured particle backend."""
         if self.velocity_method == "TREECODE":
@@ -1420,7 +1532,7 @@ class PhysicsBase:
 
     def compute_target_velocity_and_gradients_consistent(
         self,
-        particles: "Particles",
+        particles: ParticleSources,
         target_position: np.ndarray,
         *,
         include_freestream: bool = True,

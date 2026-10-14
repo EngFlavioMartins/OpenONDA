@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ....kernels.registry import kernel_names
-from ..base import normalize_stretching_scheme
+from ..base import TaichiField, normalize_stretching_scheme
 from .diagnostics import FMMDiagnostics
 from .interaction_lists import well_separated
 from .local_expansions import l2l, m2l
 from .multipoles import m2m, p2m
 from .near_field import p2p_velocity_gradient
 from .tree import FMMNode, FMMTree
+
+if TYPE_CHECKING:
+    from ...base import PhysicsBase
 
 
 @ti.data_oriented
@@ -43,7 +46,7 @@ class HostFMMReference:
 
     def __init__(
         self,
-        physics: object | None = None,
+        physics: PhysicsBase | None = None,
         *,
         tolerance: float = 1.0e-4,
         kernel: RadialVortexKernel | None = None,
@@ -92,7 +95,7 @@ class HostFMMReference:
         self.method = "FMM"
         self.tolerance = float(tolerance)
         self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
-        self.physics = None
+        self.physics: PhysicsBase | None = None
         self.max_n_particles = int(max_n_particles or 1)
         self.leaf_capacity = int(leaf_capacity)
         self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
@@ -111,7 +114,7 @@ class HostFMMReference:
             stretching_scheme=self.stretching_scheme,
         )
 
-    def bind(self, physics: object, *, kernel: RadialVortexKernel | None = None) -> Self:
+    def bind(self, physics: PhysicsBase, *, kernel: RadialVortexKernel | None = None) -> Self:
         """Bind this runtime evaluator to the shared particle precision context."""
         self.physics = physics
         if kernel is not None:
@@ -123,13 +126,13 @@ class HostFMMReference:
     def evaluate_stage(
         self,
         *,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
-        velocity_out: object,
-        vortex_strength_rate_out: object,
-        velocity_gradient_out: object | None = None,
+        velocity_out: TaichiField,
+        vortex_strength_rate_out: TaichiField,
+        velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
         stage_time: float = 0.0,
     ) -> None:
@@ -188,16 +191,16 @@ class HostFMMReference:
     def evaluate_targets(
         self,
         *,
-        target_position: ti.Field,
-        source_position: ti.Field,
-        source_vortex_strength: ti.Field,
-        source_core_radius: ti.Field,
-        target_velocity: ti.Field | None,
-        target_velocity_gradient: ti.Field | None,
+        target_position: TaichiField,
+        source_position: TaichiField,
+        source_vortex_strength: TaichiField,
+        source_core_radius: TaichiField,
+        target_velocity: TaichiField | None,
+        target_velocity_gradient: TaichiField | None,
         target_count: int,
         source_count: int,
         include_freestream: bool,
-        background_velocity: ti.Field,
+        background_velocity: TaichiField,
     ) -> None:
         """Evaluate arbitrary targets with the reference kernel conditions."""
         if self.physics is None:
@@ -397,8 +400,8 @@ class HostFMMReference:
         velocity[target_indices] += far_velocity + near_velocity
         gradient[target_indices] += far_gradient + near_gradient
 
-    def _write_vector(self, output: np.ndarray, values: np.ndarray) -> None:
-        if hasattr(self.physics, "_upload_vector_array"):
+    def _write_vector(self, output: TaichiField, values: np.ndarray) -> None:
+        if self.physics is not None:
             self.physics._upload_vector_array(values, output, len(values))
             return
         dtype = getattr(self.physics, "np_dtype", np.float32)
@@ -406,8 +409,8 @@ class HostFMMReference:
         padded[: len(values)] = values
         output.from_numpy(padded)
 
-    def _write_gradient(self, output: np.ndarray, values: np.ndarray) -> None:
-        if hasattr(self.physics, "_upload_matrix_array"):
+    def _write_gradient(self, output: TaichiField, values: np.ndarray) -> None:
+        if self.physics is not None:
             self.physics._upload_matrix_array(values, output, len(values))
             return
         dtype = getattr(self.physics, "np_dtype", np.float32)

@@ -16,8 +16,17 @@ import math
 from numbers import Integral
 import threading
 import time
+from typing import Any
 
 import numpy as np
+
+# CuPy is an optional GPU dependency without type information; its device
+# arrays and cuFFT plans are dynamic values.
+CuPyArray = Any
+CuPyMemoryPool = Any
+
+# Heterogeneous run report of counters, timings, sizes and settings.
+Diagnostics = dict[str, Any]
 
 
 def positive_integer(value: int, name: str) -> int:
@@ -88,7 +97,9 @@ class FFTPlanPair:
         memory_pool.check_context()
         self.memory_pool = memory_pool
         self.cp = memory_pool.cp
-        self.forward = self.inverse = None
+        # cuFFT PlanNd objects, None until the direction is built.
+        self.forward: Any = None
+        self.inverse: Any = None
         self.closed = False
         self.shape = tuple(positive_integer(n, "FFT dimension") for n in shape)
         if len(self.shape) != 3 or any(n > np.iinfo(np.int32).max for n in self.shape):
@@ -212,7 +223,7 @@ class FFTPlanPair:
 
     def _array(
         self,
-        array: object,
+        array: CuPyArray,
         shape: tuple[int, ...],
         dtype: np.dtype,
         *,
@@ -237,7 +248,7 @@ class FFTPlanPair:
             )
 
     def _execution_failed(
-        self, error: BaseException, *, direction: str, source: object, destination: object
+        self, error: BaseException, *, direction: str, source: CuPyArray, destination: CuPyArray
     ) -> None:
         error.add_note(
             f"Owned CuFFT {direction}: shape={self.shape}, dtype={self.dtype}, "
@@ -250,7 +261,7 @@ class FFTPlanPair:
         except BaseException as cleanup_error:
             error.add_note(f"FFT cleanup also failed: {cleanup_error!r}")
 
-    def rfft(self, array: object, *, aligned_scratch: object | None = None) -> object:
+    def rfft(self, array: CuPyArray, *, aligned_scratch: CuPyArray | None = None) -> CuPyArray:
         """Transform real data without allocating an implicit alignment copy.
 
         An odd-volume channel view may be scalar- but not complex-aligned.
@@ -292,7 +303,7 @@ class FFTPlanPair:
                 raise
             return result
 
-    def irfft(self, array: object, output: object) -> object:
+    def irfft(self, array: CuPyArray, output: CuPyArray) -> CuPyArray:
         """Inverse real FFT with the cached plan, into pool memory."""
         self._array(array, self.spectrum_shape, self.complex_dtype)
         self._array(output, self.shape, self.dtype)

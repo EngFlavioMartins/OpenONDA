@@ -47,18 +47,18 @@ def _exponential_upper(squared_lower: np.ndarray) -> "Interval":
 
 def defect_upper(
     envelope: "AlgebraicDefectEnvelope | GaussianDefectEnvelope", ratio_lower: np.ndarray
-) -> tuple["Interval", "Interval"] | None:
+) -> tuple["Interval", "Interval"]:
     """Upper bounds of E_T and E_J at partner ratios at least ``ratio_lower``.
 
     ``ratio_lower`` must be valid lower bounds of r/s_max, all at least the
     envelope's ``minimum_ratio``; the envelopes decrease beyond it.
     """
-    x = np.asarray(ratio_lower, dtype=np.float64)
-    if np.any(x < envelope.minimum_ratio):
+    ratio = np.asarray(ratio_lower, dtype=np.float64)
+    if np.any(ratio < envelope.minimum_ratio):
         raise KernelCoreSeparationError(
             "kernel defect envelope used inside its minimum partner ratio"
         )
-    x = point(x)
+    x = point(ratio)
     if isinstance(envelope, AlgebraicDefectEnvelope):
         power = point(1.0)
         for _ in range(envelope.power):
@@ -89,7 +89,7 @@ def source_defect_upper(
     distance_lower: float | np.ndarray,
     core_upper: float,
     strength_upper: float,
-) -> tuple["Interval", "Interval"] | None:
+) -> tuple["Interval", "Interval"]:
     """Velocity and Jacobian bounds of sources at ``distance_lower`` or beyond."""
     distance, core = point(distance_lower), point(core_upper)
     velocity, gradient = defect_upper(envelope, div_positive(distance, core).lower)

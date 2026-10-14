@@ -77,8 +77,8 @@ def correction_classification_bound(
     query_upper: np.ndarray,
     *,
     cutoff: float,
-    images: Sequence[tuple[float, bool]],
-) -> "CorrectionClassificationBound | None":
+    images: Sequence[tuple[int, bool]],
+) -> "CorrectionClassificationBound":
     """Validate the fixed correction.py classifier and return immutable evidence.
 
     Images are integer slab descriptors(k,odd). ``world_images`` uses exactly
@@ -113,7 +113,7 @@ def correction_classification_bound(
     descriptors = tuple(islice(iter(images), _MAX_IMAGES + 1))
     if len(descriptors) > _MAX_IMAGES:
         raise ValueError("finite image-count cap exceeded")
-    saved = []
+    saved: list[tuple[int, bool]] = []
     for descriptor in descriptors:
         if not isinstance(descriptor, (tuple, list)) or len(descriptor) != 2:
             raise ValueError("integer index and boolean reflection required")
@@ -121,7 +121,7 @@ def correction_classification_bound(
         if (
             isinstance(k, bool)
             or not isinstance(k, Integral)
-            or abs(k) > 2**30
+            or abs(int(k)) > 2**30
             or type(odd) not in (bool, np.bool_)
         ):
             raise ValueError("bounded integer index and boolean reflection required")

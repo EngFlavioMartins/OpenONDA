@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 import taichi as ti
 
+from .base import InductionMethod, TaichiDataType, TaichiField
 from .treecode.lbvh import _DeviceFields
 
 
@@ -30,13 +31,13 @@ class InductionReuseStatistics:
 
 
 @ti.kernel
-def _copy_field(source: ti.template(), target: ti.template(), count: ti.i32):
+def _copy_field(source: ti.template(), target: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
     for i in range(count):
         target[i] = source[i]
 
 
 @ti.kernel
-def _zero_vector(target: ti.template(), count: ti.i32):
+def _zero_vector(target: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
     for i in range(count):
         target[i] = ti.Vector([0.0, 0.0, 0.0])
 
@@ -44,7 +45,7 @@ def _zero_vector(target: ti.template(), count: ti.i32):
 class _InductionStorage:
     """Velocity, gradient and strength-rate fields in one disposable SNode tree."""
 
-    def __init__(self, capacity: int, dtype: object):
+    def __init__(self, capacity: int, dtype: TaichiDataType):
         self.capacity = capacity
         self.dtype = dtype
         self._fields = _DeviceFields()
@@ -82,7 +83,7 @@ class AcceptedStateInduction:
 
     def __init__(self) -> None:
         self._storage: _InductionStorage | None = None
-        self._backend = None
+        self._backend: InductionMethod | None = None
         self._revision: int | None = None
         self._count = 0
         self._has_gradient = False
@@ -102,7 +103,12 @@ class AcceptedStateInduction:
             storage.destroy()
 
     def matches(
-        self, backend: object, revision: int, count: int, gradient: bool, strength_rate: bool
+        self,
+        backend: InductionMethod,
+        revision: int,
+        count: int,
+        gradient: bool,
+        strength_rate: bool,
     ) -> bool:
         """Whether the stored field answers this request exactly."""
         return (
@@ -113,7 +119,7 @@ class AcceptedStateInduction:
             and (self._has_strength_rate or not strength_rate)
         )
 
-    def _ensure_storage(self, capacity: int, dtype: object) -> _InductionStorage:
+    def _ensure_storage(self, capacity: int, dtype: TaichiDataType) -> _InductionStorage:
         # Storage spans the full output capacity: reallocating as the particle
         # count grows would compile new copy kernels for every new field.
         storage = self._storage
@@ -124,14 +130,14 @@ class AcceptedStateInduction:
 
     def evaluate(
         self,
-        backend: object,
+        backend: InductionMethod,
         revision: int,
         *,
-        position: object,
-        vortex_strength: object,
-        core_radius: object,
+        position: TaichiField,
+        vortex_strength: TaichiField,
+        core_radius: TaichiField,
         count: int,
-        velocity_out: object,
+        velocity_out: TaichiField,
         gradient: bool,
         strength_rate: bool,
         stage_time: float,
@@ -159,13 +165,15 @@ class AcceptedStateInduction:
     def publish(
         self,
         *,
-        velocity_out: object,
-        vortex_strength_rate_out: object,
-        velocity_gradient_out: object | None,
+        velocity_out: TaichiField,
+        vortex_strength_rate_out: TaichiField,
+        velocity_gradient_out: TaichiField | None,
         strength_rate_enabled: bool,
     ) -> None:
         """Copy the stored outputs into the caller's fields."""
         storage, count = self._storage, self._count
+        if storage is None:
+            raise RuntimeError("no stored self-induced field to publish")
         _copy_field(storage.velocity, velocity_out, count)
         if velocity_gradient_out is not None:
             _copy_field(storage.gradient, velocity_gradient_out, count)

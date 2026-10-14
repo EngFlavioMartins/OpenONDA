@@ -18,11 +18,11 @@ from numba import njit
 import numpy as np
 import psutil
 from scipy.fft import irfftn, next_fast_len, rfftn
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
 from .coordinates import finite_images, image_tail_edges, slab_coordinates
 from .correction import _correction_factors, _possibly_near, _residual_factors, residual_family
-from .runtime import positive_integer
+from .runtime import Diagnostics, positive_integer
 
 _COMPONENTS = ((0, -1), (1, -1), (2, -1), (0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
 
@@ -65,7 +65,7 @@ def _stencil(points: np.ndarray, order: int, dtype: np.dtype) -> tuple[np.ndarra
     return first, weights
 
 
-def _geometry(points: np.ndarray, order: int) -> tuple[np.ndarray, tuple[int, int, int]]:
+def _geometry(points: np.ndarray, order: int) -> tuple[np.ndarray, tuple[int, ...]]:
     if not np.isfinite(points).all() or np.any(np.abs(points) > 2**52 - order):
         raise ValueError("normalized coordinates exceed exact lattice range")
     first = np.floor(points).astype(np.int64) - order // 2 + 1
@@ -75,8 +75,8 @@ def _geometry(points: np.ndarray, order: int) -> tuple[np.ndarray, tuple[int, in
 
 
 def _field_bytes(
-    shape: tuple[int, int, int], source_count: int, target_count: int, order: int, itemsize: int
-) -> tuple[tuple[int, int, int], int]:
+    shape: tuple[int, ...], source_count: int, target_count: int, order: int, itemsize: int
+) -> tuple[tuple[int, ...], int]:
     fft_shape = tuple(next_fast_len(2 * n - 1) for n in shape)
     volume = math.prod(fft_shape)
     spectrum = math.prod((*fft_shape[:2], fft_shape[2] // 2 + 1))
@@ -97,8 +97,8 @@ def _scatter(
     first: np.ndarray,
     weights: np.ndarray,
     strength: np.ndarray,
-    shape: tuple[int, int, int],
-    fft_shape: tuple[int, int, int],
+    shape: tuple[int, ...],
+    fft_shape: tuple[int, ...],
     dtype: np.dtype | type,
     component: int,
 ) -> np.ndarray:
@@ -138,8 +138,8 @@ def _gather(field: np.ndarray, first: np.ndarray, weights: np.ndarray) -> np.nda
 
 
 def _kernels(
-    shape: tuple[int, int, int],
-    fft_shape: tuple[int, int, int],
+    shape: tuple[int, ...],
+    fft_shape: tuple[int, ...],
     offset: np.ndarray,
     steps: np.ndarray,
     shifts: list[int],
@@ -236,8 +236,8 @@ def _image_tail_completion(
 @njit(cache=True, boundscheck=True)
 def _kernel_channels(
     result: np.ndarray,
-    axes: tuple[np.ndarray, np.ndarray, np.ndarray],
-    valid: tuple[np.ndarray, np.ndarray, np.ndarray],
+    axes: tuple[np.ndarray, ...],
+    valid: tuple[np.ndarray, ...],
     offset: np.ndarray,
     steps: np.ndarray,
     shifts: np.ndarray,
@@ -402,8 +402,10 @@ class GaussianHostImageFields:
     ):
         self.closed = False
         self._thread = threading.get_ident()
-        self._prepared_images = self._prepared_world_images = self._integer_images = None
-        self._tail_edges = {}
+        self._prepared_images: tuple[tuple[int, bool], ...] | None = None
+        self._prepared_world_images: tuple[tuple[float, bool], ...] | None = None
+        self._integer_images: tuple[tuple[int, bool], ...] | None = None
+        self._tail_edges: dict[bool, tuple[int, int]] = {}
         # Source cores are the kernel's Gaussian partner widths.
         self.kernel, self._residual = kernel, residual_family(kernel)
         self.cp = SimpleNamespace(asnumpy=np.asarray)
@@ -421,15 +423,12 @@ class GaussianHostImageFields:
             raise ValueError("positive finite tau, spacing and cutoff required")
         self.zmin, self.zmax, self.tau = float(zmin), float(zmax), float(tau)
         self.spacing, self.cutoff = float(spacing), float(cutoff)
-        for name in (
-            "max_scratch_bytes",
-            "max_correction_bytes",
-            "max_plan_bytes",
-            "max_total_bytes",
-            "max_images",
-            "max_query_points",
-        ):
-            setattr(self, name, positive_integer(locals()[name], name))
+        self.max_scratch_bytes = positive_integer(max_scratch_bytes, "max_scratch_bytes")
+        self.max_correction_bytes = positive_integer(max_correction_bytes, "max_correction_bytes")
+        self.max_plan_bytes = positive_integer(max_plan_bytes, "max_plan_bytes")
+        self.max_total_bytes = positive_integer(max_total_bytes, "max_total_bytes")
+        self.max_images = positive_integer(max_images, "max_images")
+        self.max_query_points = positive_integer(max_query_points, "max_query_points")
         if self.max_scratch_bytes + self.max_correction_bytes > self.max_total_bytes:
             raise MemoryError("combined scratch limits exceed total cap")
         if self.max_plan_bytes >= self.max_scratch_bytes:
@@ -499,7 +498,7 @@ class GaussianHostImageFields:
         lattice, _, _ = slab_coordinates(query, self.zmin, self.zmax, self.spacing)
         return bool(not len(lattice) or np.all(np.abs(lattice) <= 2**52 - self.order))
 
-    def prepare(self, images: Sequence[tuple[int, bool]]) -> dict[str, object]:
+    def prepare(self, images: Sequence[tuple[int, bool]]) -> Diagnostics:
         """Validate and store the image descriptors the field will sum."""
         self._check_context()
         self._prepared_images = self._prepared_world_images = self._integer_images = None
@@ -572,7 +571,9 @@ class GaussianHostImageFields:
             else:
                 stack.extend(((source, sorted_ids[middle:]), (source, sorted_ids[:middle])))
 
-    def _smooth(self, query: np.ndarray, report: dict[str, object]) -> np.ndarray | None:
+    def _smooth(self, query: np.ndarray, report: Diagnostics) -> np.ndarray:
+        if self._integer_images is None:
+            raise RuntimeError("no successfully prepared finite image field")
         lattice_q, _, _ = slab_coordinates(query, self.zmin, self.zmax, self.spacing)
         output = np.zeros((len(query), 12), dtype=self.dtype)
         source_ids, target_ids = np.arange(len(self.host_x)), np.arange(len(query))
@@ -638,7 +639,9 @@ class GaussianHostImageFields:
                 report["kernel_forward_transforms"] += 9
         return output
 
-    def _correction(self, query: np.ndarray, report: dict[str, object]) -> np.ndarray:
+    def _correction(self, query: np.ndarray, report: Diagnostics) -> np.ndarray:
+        if self._prepared_world_images is None:
+            raise RuntimeError("no successfully prepared finite image field")
         output = np.zeros((len(query), 12), dtype=self.correction_dtype)
         # One tree and one candidate list are live. The conservative per-source
         # reserve includes tree nodes, copied coordinates and candidate indices.
@@ -708,9 +711,7 @@ class GaussianHostImageFields:
             del tree
         return output
 
-    def evaluate_prepared(
-        self, targets: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]] | None:
+    def evaluate_prepared(self, targets: np.ndarray) -> tuple[np.ndarray, np.ndarray, Diagnostics]:
         """Velocity and gradient of the prepared images at ``targets``."""
         self._check_context()
         if self._prepared_images is None:
@@ -735,7 +736,7 @@ class GaussianHostImageFields:
             raise MemoryError(
                 "available host memory cannot hold one unchanged cardinal FFT block and outputs"
             )
-        report = {
+        report: Diagnostics = {
             "backend": "scipy_cpu",
             "execution_plan": "blocked_linear_convolution",
             "fft_blocks": 0,
@@ -784,7 +785,7 @@ class GaussianHostImageFields:
 
     def evaluate(
         self, images: Sequence[tuple[int, bool]]
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    ) -> tuple[np.ndarray, np.ndarray, Diagnostics]:
         """Prepare ``images`` and evaluate them at the initial targets."""
         self.prepare(images)
         return self.evaluate_prepared(self.host_targets)
