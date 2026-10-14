@@ -76,10 +76,12 @@ def theme():
 def case_style(name):
     """Return the established label, colour, and marker for one method."""
     label, palette, marker = {
-        "baseline": ("Baseline", "dark", "o"),
-        "selective_eddy_viscosity": ("Selective eddy viscosity", "vpm", "s"),
-        "pedrizzetti_relaxation": ("Pedrizzetti relaxation", "teal", "D"),
-        "particle_splitting": ("Particle splitting", "green", "^"),
+        "single_ring": ("Single ring", "dark", "o"),
+        "dns": ("DNS", "dark", "o"),
+        "les": ("LES", "amber", "s"),
+        "les_stabilized": ("LES + relaxation", "vpm", "D"),
+        "high_re_dns": ("DNS, $Re_\\Gamma=3\\times10^4$", "dark", "o"),
+        "high_re_les": ("LES, $Re_\\Gamma=3\\times10^4$", "amber", "s"),
     }[name]
     return {"label": label, "color": theme().COLORS[palette], "marker": marker}
 

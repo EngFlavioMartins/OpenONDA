@@ -579,6 +579,9 @@ class EvolutionStepper:
         if self.viscous_scheme in {"RWM", "DVH", "GBD"}:
             self._apply_viscous_diffusion(time_step_size)
 
+        if self.turbulence_model is not None:
+            self.turbulence_model.apply_strength_exchange(self.particles, time_step_size)
+
     def _apply_core_spreading_diffusion(self, time_step_size: float) -> None:
         """Advance the split Gaussian core-spreading operator."""
         if time_step_size <= 0.0 or len(self.particles) == 0:

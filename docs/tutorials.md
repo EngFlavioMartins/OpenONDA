@@ -41,7 +41,7 @@ When checking convergence, refine the spacing and the time step together. Result
 | --- | --- | --- |
 | [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md) | Viscous vortex, dipole and merger | Building particle fields; CS, RWM, DVH and GBD diffusion |
 | [Vortex ring](../tutorials/vpm/02_vortex_ring/README.md) | Perturbed vortex ring | Stretching schemes, LES, state limits |
-| [Leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) | Leapfrogging rings | Stabilization: eddy viscosity, strength alignment, splitting, regularization |
+| [Leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) | Leapfrogging rings | Long runs: DNS, selective LES and strength relaxation against an LBM reference |
 | [Flat plate](../tutorials/vpm/04_flat_plate/README.md) | Inclined flat plate | Lifting surfaces, startup loads, wake shedding, moving frames |
 | [Heaving delta wings](../tutorials/vpm/05_delta_wing/README.md) | Two heaving wings | Prescribed motion, wake–wing interaction |
 | [Wind turbine](../tutorials/vpm/06_rotor_flow/README.md) | Wind turbine | Rotating blades, power and thrust, LES wake, filament splitting |

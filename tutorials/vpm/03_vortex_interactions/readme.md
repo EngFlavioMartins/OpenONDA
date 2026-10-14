@@ -1,6 +1,6 @@
-# Leapfrogging vortex rings
+# Leapfrogging rings
 
-Two equal, coaxial Gaussian rings exchange radius and overtake each other. The DNS baseline is compared with selective eddy viscosity, strength alignment and particle splitting. See [toroidal initialization](../../../docs/vpm.md#particle-distributions) and [diffusion and stabilization](../../../docs/vpm.md#diffusion-and-les).
+Two equal, coaxial Gaussian rings pass through each other in turn, then merge into one ring. The case shows how to keep a vortex-particle run healthy for a long time without changing its physics: a DNS, a selective LES, and the LES with strength relaxation are compared against the lattice Boltzmann (LBM) simulation of [Cheng, Lou & Lim (2015)](assets/references/README.md). See [diffusion and LES](../../../docs/vpm.md#diffusion-and-les) and [long runs](../../../docs/vpm.md#long-runs).
 
 ## Run
 
@@ -11,27 +11,71 @@ From this directory:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous results and runs `baseline`, `selective_eddy_viscosity`, `pedrizzetti_relaxation` and `particle_splitting`. For one case, use `python setup.py baseline`. `./allcontinue.sh` resumes saved native checkpoints; `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous results and runs the six cases below, about seven hours on a laptop GPU (RTX 3060). For one case, use `python setup.py les_stabilized`. `./allcontinue.sh` resumes saved checkpoints; `./allplot.sh pdf` exports PDF.
 
-## Inputs and model comparisons
+## Inputs
 
-Edit [setup.py](setup.py): both rings have radius $R_0=1$ m, scalar circulation $\Gamma_0=\pi$ m²/s and Gaussian core $a_0=0.1$ m. Their centres start at $x=\pm0.5$ m. $Re_\Gamma=3000$ gives $\nu=\pi/3000$ m²/s. There is no imposed perturbation.
+Edit [setup.py](setup.py). Both rings have radius $R_0=1$ m, circulation $\Gamma_0=\pi$ m²/s and Gaussian core $\omega_\theta=\Gamma_0e^{-(r/a_0)^2}/(\pi a_0^2)$ with $a_0=0.1$ m, the convention of the reference. Their centres start at $x=\pm0.5$ m, and no disturbance is added. $Re_\Gamma=\Gamma_0/\nu=3000$.
 
-Toroidal particles have $h=\sigma=0.05$ m with physical-core compensation. All cases use transposed direct induction, SSPRK3 and core spreading at $\Delta t=0.00375$ s, requesting 2400 steps (9 s). Conservative group-preserving redistribution is common to every case.
+Particles sit on a toroidal lattice with spacing $h=0.05$ m and cores $\sigma=1.5h$. Core spreading carries the viscosity; when a core reaches $2.2h$ the field is redistributed on the lattice, conserving strength, impulse and each ring's identity. The time step is $\Delta t=0.00375$ s. A run stops when the vorticity-divergence error of the particle field exceeds 0.12, so the stopping time is its lifetime.
 
-| Variant | Added numerical model |
+| Case | Model |
 | --- | --- |
-| `baseline` | Molecular viscosity only. |
-| `selective_eddy_viscosity` | Positive-stretching diffusion, coefficient $C=0.5=2C_w^2$. |
-| `pedrizzetti_relaxation` | Aligns strength toward local vorticity, with global strength/impulse restoration. |
-| `particle_splitting` | Every five steps, bisects particles whose strength doubles; children retain core radius. |
+| `single_ring` | One ring for 1.1 s, for the translation speed. |
+| `dns` | Molecular viscosity only. |
+| `les` | Sigma-model eddy viscosity, switched on where a particle's strength departs from the resolved vorticity, applied by strength exchange. |
+| `les_stabilized` | `les` plus Pedrizzetti relaxation, factor 0.02 per step ($5.3$ s⁻¹). |
+| `high_re_dns`, `high_re_les` | `dns` and `les` at $Re_\Gamma=3\times10^4$. |
 
-The added models can change leapfrogging timing and dissipation. Longer survival does not establish improved physical accuracy. A particle state limit stop leaves a partial trajectory.
+The three rings cases at $Re_\Gamma=3000$ use the fast multipole method (FMM), since redistribution spreads the field over up to $3\times10^5$ particles. The single ring and the $Re_\Gamma=3\times10^4$ cases stay below $5\times10^4$ particles and use direct summation.
+
+## Validation
+
+![Ring speed](figures/ring_speed.png)
+
+A single ring moves within 1.3 % of Saffman's speed $U=\Gamma_0/(4\pi R)[\ln(8R/a)-0.558]$ with $a^2=a_0^2+4\nu t$.
+
+![Core paths](figures/core_trajectories.png)
+
+The first passage agrees with the LBM: the overtaken ring reaches $R/R_0=1.26$ at $x/R_0=1.46$, against 1.28 at 1.37, and the passing ring contracts to 0.62 (LBM 0.65). The second passage happens at $x/R_0=4.46$, against 3.59 in the LBM. This difference is not a resolution error of the particles: the second passage converges to $x/R_0\approx4.3$ ($4.46$, $4.30$ and $4.28$ at $h=0.05$, $0.035$ and $0.025$ m). Cheng et al. used a periodic box of $7R_0\times7R_0\times20R_0$; the VPM field is unbounded.
+
+![Core sections](figures/core_sections.png)
+
+Both simulations end the leapfrogging the same way. The passing ring deforms into a sheet, is wrapped around the leading ring and merges with it, as in Fig. 4 of Cheng et al. In the VPM this happens after the third passage ($t\Gamma_0/R_0^2\approx21$), one passage later than in the LBM. The stretched sheet is thinner than $h$ ($\sqrt{\nu/\varepsilon}\approx0.02$ m at the mutual strain $\varepsilon\approx2$ s⁻¹), and the third passage still moves with $h$ ($x/R_0=6.66$ at $h=0.05$, $6.30$ at $h=0.035$), so the timing of the merger is only resolved qualitatively here.
+
+## Lifetime
+
+![Diagnostic histories](figures/diagnostic_histories.png)
+
+| Case | Lifetime | $E/E_0$ at 3 s | First azimuthal mode above $10^{-2}$ |
+| --- | --- | --- | --- |
+| `dns` | 6.0 s | 0.854 | 5.3 s |
+| `les` | 6.0 s | 0.852 | 5.2 s |
+| `les_stabilized` | 12 s (end of run) | 0.853 | never |
+
+The energy, enstrophy and core paths of the three cases coincide for as long as the DNS runs. The DNS stops when the particle field fails. Panel (d) shows the cause: the strengths drift away from the vorticity they induce (misalignment) a second before the divergence error rises (panel c). The rings themselves are still smooth. Panel (e) shows the azimuthal amplitude $A_m$, the strength-weighted Fourier content of each ring around the axis. It starts at the level of the FMM and lattice noise and stays small: the flow remains axisymmetric, as in the LBM.
+
+**The LES leaves this flow alone, as it should.** At $Re_\Gamma=3000$ and this resolution the rings are laminar. There is no three-dimensional sub-grid motion for the model to remove, and the consistency switch keeps the eddy viscosity below the molecular value. What the coarse particles miss is the axisymmetric core deformation during a passage. That needs a finer $h$, not an eddy viscosity.
+
+**Relaxation fixes the particle field.** Each step turns every strength a fraction 0.02 toward the vorticity at its particle, then restores the net strength and impulse. This removes the misalignment before stretching can amplify it. The run continues through the merger to 12 s with the same energy history.
+
+Calibration of the relaxation factor (separate runs to 9 s):
+
+| Factor per step | Rate | Largest divergence error | First $A_m>10^{-2}$ |
+| --- | --- | --- | --- |
+| 0 (`les`) | — | stopped at 6.0 s | 5.2 s |
+| 0.005 | 1.3 s⁻¹ | 0.114, during the merger | 5.5 s |
+| 0.02 | 5.3 s⁻¹ | 0.058 | never |
+| 0.05 | 13 s⁻¹ | 0.049 | never; helicity rises 3 s later than in the DNS |
+
+Too little relaxation leaves the run on the edge of the divergence limit; too much also delays three-dimensional growth. The chosen 0.02 per step keeps the field healthy and lies between the physical growth rates (about 1 s⁻¹) and the core vorticity (35–100 s⁻¹).
+
+## Higher Reynolds number
+
+![High Reynolds number](figures/high_re_histories.png)
+
+At $Re_\Gamma=3\times10^4$ the cores hardly spread, no redistribution occurs, and the particle field degrades through misalignment as at $Re_\Gamma=3000$. The DNS stops at 8.2 s and the LES at 8.1 s. Before the field fails, the LES removes about 1.5 % more energy than the DNS by 6 s, a small cost next to a Smagorinsky model with $C_s=0.2$, which in a separate run had removed 15 % by 3 s (DNS: 2 %), the dissipation of a $Re_\Gamma=3000$ flow. Here too the run ends because the particles stop representing the vorticity, which relaxation addresses and an eddy viscosity does not. A run seeded with an $n=9$ disturbance of $0.005R_0$ was the only case in this study in which the LES lived longer than the DNS (6.4 s against 5.7 s).
 
 ## Read the results
 
-`samples/<method>/` holds integrals, group histories and meridional fields. `solution/<method>/` holds checkpoints. Figures show field-core paths, core sections, energy, enstrophy and group centroids.
-
-The [Cheng et al. reference](assets/references/README.md) is the unperturbed $Re_\Gamma=3000$ Fig. 5 case. Its periodic boundaries and much finer spacing differ from this unbounded VPM calculation; the overlay is a comparison, with convergence still required.
-
-Core paths follow dominant positive vorticity maxima. Tracking ends when a bridge or competing peak prevents assigning two cores. `group_id` tracks each initial ring's vorticity contribution after redistribution, even after merger; group centroids need not remain physical vortex centres. Particle indices change during redistribution and splitting, so index trails cannot represent fluid trajectories.
+`samples/<case>/` holds flow integrals, ring diagnostics, azimuthal modes and the meridional vorticity planes. `solution/<case>/` holds checkpoints and logs. Core paths follow the two strongest vorticity maxima on the plane $z=0$ and end when a bridge between them prevents assigning two cores, at the merger.

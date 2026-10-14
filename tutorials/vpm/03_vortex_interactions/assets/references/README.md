@@ -4,10 +4,10 @@
 
 The paper's axial coordinate $Z$ is the simulation's $x$. CSV coordinates are `x_over_R0` and `r_over_R0`; subtracting the reference midpoint 2.5 aligns its initial centres at $Z/R_0=2,3$ with $x/R_0=-0.5,0.5$. Only the origin changes.
 
-Fig. 5 uses unperturbed rings at $Re_\Gamma=3000$, physical core $a_0/R_0=0.1$ and separation $h_0/R_0=1$. The mode-8, amplitude-0.05 axial perturbation belongs to the separate Fig. 3 case at $Re_\Gamma=3415$ and is not used here.
+Fig. 5 uses rings with $\omega_\theta=\Gamma_0e^{-(r/\sigma_0)^2}/(\pi\sigma_0^2)$, $\sigma_0/R_0=0.1$, separation $h_0/R_0=1$ and $Re_\Gamma=3000$. The authors exclude flow instabilities from these runs; the mode-8 axial perturbation belongs to their Fig. 3 at $Re_\Gamma=3415$. At $Re_\Gamma=3000$ the rings leapfrog twice and then merge: the contracting ring's core deforms strongly, loses circulation and is engulfed by the leading ring (their Fig. 4).
 
-The LBM reference has periodic boundaries in a $20R_0\times7R_0\times7R_0$ box and spacing $0.005R_0$. The VPM tutorial has unbounded induction and spacing $0.05R_0$. This is a kinematic comparison; boundary and resolution differences prevent a matched validation claim.
+The LBM uses periodic boundaries in a $7R_0\times7R_0\times20R_0$ box with spacing $R_0/200$. The VPM tutorial has unbounded induction and spacing $R_0/20$.
 
 The plot follows two dominant sampled vorticity maxima and stops identity assignment if a bridge or competing peak becomes comparable. Its cutoff is a diagnostic choice, not a physical merger criterion. Group centroids represent each initial ring's vorticity contribution; material-core shapes would require separate passive tracers.
 
-Numerical-model sources: [Winckelmans' 1989 thesis, p. 89](https://thesis.caltech.edu/697/5/winckelmans-gs_1989.pdf) for fixed-core splitting at offsets $h/4$, and [Winckelmans (1995), Eq. 26](https://ntrs.nasa.gov/citations/19960022324) for positive-production selective viscosity. The implementation uses $h=V_p^{1/3}$ and coefficient $C=2C_w^2$; optional feedback is disabled in this case.
+Numerical-model sources: the sigma model of Nicoud, Toda, Cabrit, Bose & Lee (2011), [Using singular values to build a subgrid-scale model for large eddy simulations](https://doi.org/10.1063/1.3623274), *Physics of Fluids* 23, 085106; particle strength exchange after Degond & Mas-Gallic (1989), *Mathematics of Computation* 53, 485–526; strength relaxation after Pedrizzetti (1992), *Fluid Dynamics Research* 10, 101–115, in the form of [Winckelmans (1995), Eq. 11](https://ntrs.nasa.gov/citations/19960022324).

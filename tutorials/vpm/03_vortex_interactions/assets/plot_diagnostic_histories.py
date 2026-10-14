@@ -1,4 +1,4 @@
-"""Plot native scalar histories for the vortex-interaction methods."""
+"""Plot energy, enstrophy, particle-field health and non-axisymmetry histories."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from assets.postprocess import case_style, comparison_legend, figure_size, save_
 FIGURE_NAME = "diagnostic_histories"
 
 
-def plot(runs, output, formats):
+def plot(runs, output, formats, figure_name=FIGURE_NAME):
     """Render six quantities directly from each native flow-integrals table."""
     plotting = theme()
     plotting.set_thesis_style()
@@ -27,19 +27,23 @@ def plot(runs, output, formats):
         ("total_enstrophy", "$Z/Z_0$", True),
         ("vorticity_divergence_error", "Divergence error", False),
         ("vortex_strength_misalignment_degrees", "Misalignment [deg]", False),
-        ("lagrangian_cfl", "Lagrangian CFL", False),
+        ("max_azimuthal_mode", "$\\max_m A_m$", False),
         ("n_particles_total", "$N_p/10^5$", False),
     )
     for run in runs:
         path = setup.TUTORIAL_DIR / "samples" / run / "flow_integrals.csv"
         frame = pd.DataFrame(read_csv_table(path))
+        modes = pd.DataFrame(read_csv_table(path.with_name("azimuthal_modes.csv")))
+        amplitude = modes.filter(like="mode_").max(axis=1).groupby(modes.time).max()
+        frame["max_azimuthal_mode"] = frame.time.map(amplitude)
         style = case_style(run)
         time = frame.time * setup.RING_CIRCULATION / setup.RING_RADIUS**2
         for axis, (column, _label, normalize) in zip(axes.flat, quantities, strict=True):
             values = frame[column] / frame[column].iloc[0] if normalize else frame[column]
             if column == "n_particles_total":
                 values = values / 100000.0
-            axis.plot(
+            plot = axis.semilogy if column == "max_azimuthal_mode" else axis.plot
+            plot(
                 time,
                 values,
                 label=style["label"],
@@ -49,10 +53,13 @@ def plot(runs, output, formats):
                 markevery=max(1, len(frame) // 12),
                 lw=1,
             )
-    for index, (axis, (_column, label, _normalize)) in enumerate(
+    for index, (axis, (_column, label, normalize)) in enumerate(
         zip(axes.flat, quantities, strict=True)
     ):
         axis.set_ylabel(label)
+        if normalize:
+            # A range of at least 15 % keeps plain tick labels for slowly decaying runs.
+            axis.set_ylim(min(axis.get_ylim()[0], 0.85), None)
         label_on_right = index in {0, 1, 4}
         axis.text(
             0.96 if label_on_right else 0.04,
@@ -69,9 +76,9 @@ def plot(runs, output, formats):
     handles, labels = axes[0, 0].get_legend_handles_labels()
     comparison_legend(fig, handles, labels, location="bottom")
     plotting.centered_subplots_adjust(
-        fig, outer=0.115, bottom=0.235, top=0.97, hspace=0.18, wspace=0.36
+        fig, outer=0.14, bottom=0.235, top=0.97, hspace=0.18, wspace=0.36
     )
-    save_figure(fig, output / FIGURE_NAME, axes.flat, formats)
+    save_figure(fig, output / figure_name, axes.flat, formats)
     plt.close(fig)
 
 
@@ -80,9 +87,10 @@ def main():
     parser.add_argument("runs", nargs="+")
     parser.add_argument("--output", type=Path, default=setup.TUTORIAL_DIR / "figures")
     parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--figure-name", default=FIGURE_NAME)
     args = parser.parse_args()
     formats = ("pdf", "png") if args.format == "both" else (args.format,)
-    plot(args.runs, args.output, formats)
+    plot(args.runs, args.output, formats, args.figure_name)
 
 
 if __name__ == "__main__":

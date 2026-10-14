@@ -3,7 +3,9 @@ set -e
 
 cd "$(dirname "$0")"
 
-python setup.py baseline
-python setup.py selective_eddy_viscosity
-python setup.py pedrizzetti_relaxation
-python setup.py particle_splitting
+python setup.py single_ring
+python setup.py dns
+python setup.py les
+python setup.py les_stabilized
+python setup.py high_re_dns
+python setup.py high_re_les

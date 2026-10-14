@@ -33,11 +33,13 @@ from assets.postprocess import theme as plotting_theme
 
 def arrange_records(records, runs, times):
     """Arrange the requested existing physical states in a time-by-method grid."""
+    frames = {run: [(record["time"], record) for record in records if record["run"] == run] for run in runs}
+    # A run stopped by a particle-state limit has no state after its last frame.
     return [
         [
-            saved_frame(
-                [(record["time"], record) for record in records if record["run"] == run], time
-            )[1]
+            saved_frame(frames[run], time)[1]
+            if time <= max(clock for clock, _ in frames[run]) + 1e-9
+            else None
             for run in runs
         ]
         for time in times
@@ -57,12 +59,7 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
     contour_levels = np.array([0.05, 0.1, 0.2, 0.4, 0.8])
     panels = []
     for column, run in enumerate(runs):
-        label = case_style(run)["label"].replace(
-            "Selective eddy viscosity", "Selective\neddy\nviscosity"
-        )
-        label = label.replace("Pedrizzetti ", "Pedrizzetti\n").replace(
-            "Particle splitting", "Particle\nsplitting"
-        )
+        label = case_style(run)["label"].replace("LES + relaxation", "LES +\nrelaxation")
         axes[0, column].set_title(label, color=case_style(run)["color"], pad=4)
     for row, (time, row_records) in enumerate(zip(times, grid, strict=True)):
         for column, (run, record) in enumerate(zip(runs, row_records, strict=True)):
@@ -75,6 +72,11 @@ def render(records, output, auxiliary_output, runs, times, formats=("png",)):
                 labelleft=column == 0,
             )
             panel = {"run": run, "requested_time": time}
+            if record is None:
+                ax.set_facecolor(theme.COLORS["light_gray"])
+                ax.tick_params(left=False, labelleft=False, bottom=False, labelbottom=False)
+                panels.append({**panel, "recorded_time": None})
+                continue
             x, r, omega = read_core_section(record["path"])
             weights = np.abs(omega).sum(axis=1)
             centre = float(np.average(x, weights=weights)) if weights.sum() else float(x.mean())

@@ -97,3 +97,41 @@ def sample_group(position, vortex_strength):
         *vortex_strength.sum(axis=0),
         float(magnitude.max(initial=0.0)),
     )
+
+
+AZIMUTHAL_MODES = np.arange(1, 17)
+
+
+class AzimuthalModeSampler:
+    """Strength-weighted azimuthal Fourier amplitudes of each ring, ``azimuthal_modes.csv``.
+
+    ``A_m = |sum_p |Gamma_p| exp(i m theta_p)| / sum_p |Gamma_p|``, with ``theta`` the
+    azimuth about the x axis. The rings start axisymmetric, so ``A_m`` measures the
+    growth of three-dimensional disturbances, and its maximum over ``m`` marks breakdown.
+    """
+
+    file_name = "azimuthal_modes"
+    csv_columns = ("group_id", *(f"mode_{m}" for m in AZIMUTHAL_MODES))
+
+    def __init__(self, *, schedule=None, initial=False):
+        self.schedule = schedule
+        self.initial = initial
+
+    def sample(self, solver):
+        position = np.asarray(solver.particle_position, dtype=np.float64)
+        magnitude = np.linalg.norm(np.asarray(solver.particle_vortex_strength, dtype=np.float64), axis=1)
+        group_ids = np.asarray(solver.particle_group_id, dtype=np.int32)
+        azimuth = np.arctan2(position[:, 2], position[:, 1])
+        rows = []
+        for group in np.unique(group_ids):
+            selected = group_ids == group
+            phase = np.exp(1j * np.outer(AZIMUTHAL_MODES, azimuth[selected]))
+            amplitude = np.abs(phase @ magnitude[selected]) / magnitude[selected].sum()
+            rows.append((group, amplitude))
+        return {
+            "group_id": np.asarray([group for group, _ in rows], dtype=np.int32),
+            **{
+                f"mode_{m}": np.asarray([amplitude[k] for _, amplitude in rows])
+                for k, m in enumerate(AZIMUTHAL_MODES)
+            },
+        }

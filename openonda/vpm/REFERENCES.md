@@ -28,12 +28,13 @@ The [Lamb–Oseen tutorial](../../tutorials/vpm/01_lamb_oseen_vortex/README.md) 
 
 ## LES
 
-The [ring](../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [rotor](../../tutorials/vpm/06_rotor_flow/README.md) uses an LES wake.
+The [ring](../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [rotor](../../tutorials/vpm/06_rotor_flow/README.md) uses an LES wake; the [leapfrogging rings](../../tutorials/vpm/03_vortex_interactions/readme.md) use the switched sigma model.
 
 - **[Smagorinsky1963]** Smagorinsky, J. (1963). General circulation experiments with the primitive equations. *Monthly Weather Review* 91(3), 99–164. Strain-based eddy viscosity.
 - **[Lilly1966]** Lilly, D. K. (1966). On the application of the eddy viscosity concept in the inertial subrange of turbulence. NCAR Manuscript 123. Coefficient scaling.
 - **[Yoshizawa1985]** Yoshizawa, A. (1985). A statistically-derived subgrid model. *Physics of Fluids* 28, 1377. Equilibrium subgrid kinetic energy.
 - **[MKM1998]** Mansfield, J. R., Knio, O. M. & Meneveau, C. (1998). A dynamic LES scheme for the vorticity transport equation. *Journal of Computational Physics* 145, 693–730. Vortex-method LES context. OpenONDA uses $\Delta=V_p^{1/3}$ by default, not particle core radius.
+- **[Nicoud2011]** Nicoud, F., Toda, H. B., Cabrit, O., Bose, S. & Lee, J. (2011). [Using singular values to build a subgrid-scale model for large eddy simulations](https://doi.org/10.1063/1.3623274). *Physics of Fluids* 23, 085106. Sigma model. The strength-vorticity consistency switch and its application by particle strength exchange [Degond1989] are OpenONDA additions.
 
 ## Vortex lattice method
 

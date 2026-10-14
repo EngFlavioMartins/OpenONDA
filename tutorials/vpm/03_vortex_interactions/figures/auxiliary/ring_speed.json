@@ -1,0 +1,10 @@
+{
+  "figure": "ring_speed",
+  "speed": 0.9120889498306135,
+  "saffman_speed": 0.9239042594778976,
+  "relative_error": -0.01278845673247675,
+  "fit_window_s": [
+    0.2,
+    1.125
+  ]
+}

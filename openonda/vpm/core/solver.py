@@ -464,6 +464,15 @@ class VPMSolver:
         max_p = getattr(final_setup, "max_n_particles", MAX_N_PARTICLES)
         self.turbulence_model = None
         if self.flow_model == "LES":
+            from ..physics.induction.slip_slab import SlipSlabInduction
+
+            if final_setup.turbulence.subgrid_transport == "STRENGTH_EXCHANGE" and isinstance(
+                final_setup.induction, SlipSlabInduction
+            ):
+                raise ValueError(
+                    "STRENGTH_EXCHANGE sub-grid transport has no slip-plane images; "
+                    "use CORE_SPREADING between slip planes"
+                )
             self.turbulence_model = ParticlesLES(
                 model_name=final_setup.turbulence.model,
                 max_n_particles=max_p,
@@ -471,7 +480,11 @@ class VPMSolver:
                 smagorinsky_coefficient=final_setup.turbulence.smagorinsky_coefficient,
                 subgrid_dissipation_coefficient=final_setup.turbulence.subgrid_dissipation_coefficient,
                 filter_width=final_setup.turbulence.filter_width,
+                sigma_coefficient=final_setup.turbulence.sigma_coefficient,
+                consistency_angle=final_setup.turbulence.consistency_angle,
+                subgrid_transport=final_setup.turbulence.subgrid_transport,
                 accumulator_dtype=self.accumulator_dtype,
+                particle_dtype=self.compute_dtype,
             )
         self.field_diagnostics = ParticleFieldEvaluation(
             particle_kernel=self.particle_kernel,

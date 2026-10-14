@@ -78,6 +78,15 @@ $$
 
 with $C_s=0.20$ by default; `filter_width` fixes $\Delta$ in metres. LES works with core spreading and grid-based diffusion. See the [ring](../tutorials/vpm/02_vortex_ring/README.md) for a DNS/LES comparison and the [wind turbine](../tutorials/vpm/06_rotor_flow/README.md) for an LES wake.
 
+Smagorinsky does not vanish in laminar strain. On resolved vortex rings it dissipates four to eleven times more energy than the molecular viscosity at $Re_\Gamma=3\times10^4$, which mostly lowers the effective Reynolds number. `les_sigma()` is selective instead. It uses the sigma model (Nicoud et al., 2011),
+
+$$
+\nu_t=s\,(C_\sigma\Delta)^2\frac{\sigma_3(\sigma_1-\sigma_2)(\sigma_2-\sigma_3)}{\sigma_1^2},\qquad
+s=\frac{\sin^2\theta}{\sin^2\theta+\sin^2\theta_0},
+$$
+
+with $\sigma_i$ the singular values of $\nabla\mathbf{u}$ and $C_\sigma=1.35$. The switch $s$ uses the angle $\theta$ between a particle's strength and the resolved vorticity $\nabla\times\mathbf{u}$ at the particle. It stays near zero while the particles represent the vorticity ($\theta\ll\theta_0=3^\circ$) and approaches one where the particle scale is no longer resolved. `subgrid_transport="STRENGTH_EXCHANGE"`, the default here, applies $\nu_t$ by particle strength exchange after each step. This conserves the total strength and leaves every core to the molecular viscosity: core spreading with a varying $\nu_t$ would grow neighbouring cores unevenly and spoil the overlap where the model acts. Strength exchange is not available between slip planes. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) compare DNS, this LES and stabilization.
+
 ## Stabilization
 
 Particles drift apart and stretch, so a long run gradually loses resolution. `StabilizationConfig` gathers the remedies. Each changes the numerical evolution, so compare with a baseline as the [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) do.
@@ -101,6 +110,18 @@ $$
 with $s\in[0,1]$ the normalized depth and $A$ the number of e-folds (`outflow_fringe_attenuation`, 8 by default). Make a fringe at least two wake wavelengths deep, as in the [coupled cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md).
 
 `ParticleStateLimits` checks every accepted step: finite values, a Lagrangian Courant limit, maximum strength, divergence, strength–vorticity misalignment and growth rates. `RunPlan(state_limit_action="STOP")` ends a run cleanly at a crossed limit instead of raising an error.
+
+### Long runs
+
+A particle run usually ends because the particles stop representing a solenoidal vorticity field, not because the physics changes. Noise from the lattice and the fast induction misaligns strengths with the vorticity they induce; stretching then amplifies the divergent part until the divergence limit stops the run. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) measure each remedy against the DNS while the DNS is still valid:
+
+1. Overlap the cores, $\sigma/h=1.5$. Against $\sigma=h$ it adds about a third to the lifetime without extra dissipation.
+2. Remesh only when core spreading has grown the cores (`regularization_core_radius_trigger`). Every regeneration on the lattice seeds lattice-symmetric modes, so remeshing at fixed short intervals shortens the run.
+3. If a sub-grid model is needed, use `les_sigma()`. It stays off laminar vortices that the particles resolve, so it does not lower the Reynolds number the way Smagorinsky does. It does not by itself stop a field from degrading: in the leapfrogging rings the LES and the DNS ended at the same time at both $Re_\Gamma=3000$ and $3\times10^4$.
+4. Add Pedrizzetti relaxation with moment restoration: `pedrizzetti_relaxation(factor, preserve_vortex_strength=False, preserve_moments=True)`. Choose the rate $f/\Delta t$ above the physical growth rates (about 1 s⁻¹ here) and well below the core vorticity. At $f/\Delta t\approx5$ s⁻¹ the rings ran to the end of the 12 s run, twice the DNS lifetime, with the same energy, enstrophy and paths. At 1.3 s⁻¹ the run nearly reached the divergence limit during the merger; at 13 s⁻¹ three-dimensional growth was delayed by about three seconds against the DNS.
+5. Judge every change by the energy, enstrophy, mode and path histories against the DNS over the time the DNS remains valid. A longer run with a different history is no longer the same flow.
+
+Fast induction adds noise: with `FMMInduction` the rings' DNS ended at 6.0 s, against 7.8 s with direct summation.
 
 ## Planar flow
 

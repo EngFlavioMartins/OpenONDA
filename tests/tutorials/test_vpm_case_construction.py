@@ -69,7 +69,7 @@ def test_all_vpm_tutorials_construct_cases_with_the_public_api(tmp_path, monkeyp
         "rotor_flow": lambda setup: setup.run(),
         "lamb_oseen_vortex": lambda setup: setup.run_case("vortex", "CS", surfaces=False),
         "vortex_ring": lambda setup: setup.run_case("dns_mixed", n_steps=1),
-        "vortex_interactions": lambda setup: setup.build_case("baseline", n_steps=1),
+        "vortex_interactions": lambda setup: setup.build_case("les_stabilized"),
     }
     for name, build in builders.items():
         case_dir = copy_tutorial(f"vpm/{name}", tmp_path / name)
