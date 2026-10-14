@@ -120,7 +120,13 @@ def main() -> int:
                 failures.append(f"{name}: solver stopped before the requested final step")
             expected_steps = np.arange(state["initial_step"] + 1, final_step + 1)
             expected_steps = expected_steps[expected_steps % vlm["logging_interval_steps"] == 0]
-            if not np.array_equal(df["step"].to_numpy(), expected_steps):
+            time_step_size = metadata["configuration"]["numerics"]["time_step_size"]
+            expected_times = (
+                state["initial_time"] + (expected_steps - state["initial_step"]) * time_step_size
+            )
+            if len(df) != len(expected_times) or not np.allclose(
+                df["time"].to_numpy(), expected_times, rtol=1.0e-12, atol=1.0e-12
+            ):
                 failures.append(f"{name}: missing, repeated or unordered force samples")
             if not vlm["force"].get("unsteady", False):
                 failures.append(f"{name}: missing the authored unsteady pressure force model")

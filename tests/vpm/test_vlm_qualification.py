@@ -275,7 +275,6 @@ def test_coupled_bound_strength_includes_the_on_wing_trailing_legs(tmp_path):
         SimpleNamespace(n_particles_total=1),
         closing_wake[None, :],
         history,
-        step=1,
         time=0.1,
         samples_dir=tmp_path,
     )
@@ -656,6 +655,4 @@ def test_multisurface_loading_uses_wing_local_segment_ids_and_reports_output_fai
 
     monkeypatch.setattr(VLMLoadingDistribution, "export_distribution_csv", fail_write)
     with pytest.raises(OSError, match="sample write failed"):
-        VLMLoadingDistribution.record_loading_distributions(
-            solver, {}, solver.logging_interval_steps, 0.0125, str(tmp_path)
-        )
+        VLMLoadingDistribution.record_loading_distributions(solver, {}, 0.0125, str(tmp_path))

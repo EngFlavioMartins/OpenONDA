@@ -488,15 +488,15 @@ class EvolutionStepper:
 
         def snapshot() -> tuple[np.ndarray, np.ndarray, object]:
             return (
-                self.physics._download_vector_field(self.particles.position, count),
-                self.physics._download_vector_field(self.particles.vortex_strength, count),
+                self.physics.download_vector_field(self.particles.position, count),
+                self.physics.download_vector_field(self.particles.vortex_strength, count),
                 deepcopy(getattr(self.physics, "last_solid_projection", None)),
             )
 
         def restore(saved: tuple[np.ndarray, np.ndarray, object]) -> None:
             position, strength, budget = saved
-            self.physics._upload_vector_array(position, self.particles.position, count)
-            self.physics._upload_vector_array(strength, self.particles.vortex_strength, count)
+            self.physics.upload_vector_array(position, self.particles.position, count)
+            self.physics.upload_vector_array(strength, self.particles.vortex_strength, count)
             self.physics.last_solid_projection = deepcopy(budget)
             self.particles.touch_state()
 

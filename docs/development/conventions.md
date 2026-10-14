@@ -67,7 +67,8 @@ numerics, then the keyword-only output arguments
 `*, file_name=None, schedule=EverySteps(1), initial=True`. A line sampler takes
 exactly one of `n_points` or `spacing`. Samplers write with `write_csv` and
 `write_vtk`. Field samples share the base columns in
-`openonda.core.sampling.FIELD_SAMPLE_COLUMNS`.
+`openonda.core.sampling.FIELD_SAMPLE_COLUMNS`. Every sample CSV is keyed by
+physical time: `time` is its first column and there is no `step` column.
 
 ## Solver lifecycle
 
@@ -76,7 +77,9 @@ exactly one of `n_points` or `spacing`. Samplers write with `write_csv` and
 | `run(*, start_from=None)` | Run the case to `RunPlan.end_time` |
 | `start_from(selection="latest")` | Select the initial state or a backup |
 | `advance(*, defer_output=False, time=None)` | Advance one accepted step |
+| `write_initial_output()` | Write the initial frame and samples of a fresh run |
 | `write_step_output()` | Write output deferred by `advance(defer_output=True)` |
+| `write_final_output()` | Write the final frame and final-only samples |
 | `save_backup(path=None)` / `load_backup(path, ...)` | Restart files |
 | `write_run_metadata(*, status)` | `solution/<solver>_metadata.json` |
 | `flush_output()` | Finish pending file output |

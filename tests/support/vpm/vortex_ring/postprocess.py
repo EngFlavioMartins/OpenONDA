@@ -150,7 +150,6 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
     for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv", "ring_modes.csv"):
         try:
             data = pd.read_csv(SAMPLES_DIR / name / csv_name)
-            last_step = int(data["step"].iloc[-1])
             last_time = float(data["time"].iloc[-1])
         except (
             OSError,
@@ -162,7 +161,7 @@ def _run_validation(name: str) -> tuple[dict, set[int], list[str]]:
         ) as error:
             failures.append(f"{name}: invalid {csv_name} ({error})")
             continue
-        if last_step != completed_steps or not np.isclose(
+        if not np.isclose(
             last_time,
             completed_time,
             rtol=0.0,
@@ -180,10 +179,10 @@ def _readable_finite_csv(path: Path) -> bool:
     numeric = data.select_dtypes(include=[np.number]).copy()
     if data.empty or numeric.empty:
         return False
-    if not {"time", "step"}.issubset(data.columns):
+    if "time" not in data.columns:
         return False
     for column in INITIAL_DIAGNOSTIC_COLUMNS & set(numeric.columns):
-        invalid = numeric[column].isna() & (data["step"] != 0)
+        invalid = numeric[column].isna() & (data["time"] != 0.0)
         if invalid.any():
             return False
         numeric[column] = numeric[column].fillna(0.0)
@@ -341,16 +340,18 @@ def build_summary(samples_dir: Path, figures_dir: Path) -> dict:
             for csv_name in ("flow_integrals.csv", "ring_diagnostics.csv"):
                 try:
                     data = pd.read_csv(variant_samples / csv_name)
-                    if not data.empty and {"step", "time"}.issubset(data.columns):
-                        observed_rows.append(data.loc[data["step"].idxmax()])
+                    if not data.empty and "time" in data.columns:
+                        observed_rows.append(data.loc[data["time"].idxmax()])
                 except (OSError, ValueError, pd.errors.ParserError):
                     continue
             if observed_rows:
-                latest = max(observed_rows, key=lambda row: int(row["step"]))
+                latest = max(observed_rows, key=lambda row: float(row["time"]))
                 particle_count = latest.get("n_particles")
                 metadata = dict(metadata)
                 metadata["status"] = "partial"
-                metadata["completed_steps"] = int(latest["step"])
+                metadata["completed_steps"] = round(
+                    float(latest["time"]) / float(numerics["time_step_size"])
+                )
                 metadata["final_time"] = float(latest["time"])
                 metadata["n_final_particles"] = (
                     int(particle_count) if pd.notna(particle_count) else None

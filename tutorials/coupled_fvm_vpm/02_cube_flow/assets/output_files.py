@@ -128,7 +128,7 @@ class NativeVelocity:
         self.k = k
 
     def sample(self, source, queries, *, mask=None):
-        from openonda.fvm.sampling.fields import _PointProbe
+        from openonda.fvm.sampling import interpolate_cell_field
 
         grid = pv.read(source)
         velocity = np.asarray(grid.cell_data["velocity"], dtype=float)
@@ -142,8 +142,8 @@ class NativeVelocity:
             inside = local_grid.find_containing_cell(points) >= 0
             if mask is not None:
                 inside &= mask(points)
-            values = _PointProbe(points, n_neighbours=self.k, reconstruction="affine")._interpolate(
-                ordered, self.centres
+            values = interpolate_cell_field(
+                ordered, self.centres, points, n_neighbours=self.k, reconstruction="affine"
             )
             values[~inside] = np.nan
             result[name] = values

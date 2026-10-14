@@ -107,7 +107,7 @@ def test_wall_adjacent_m4_preserves_local_strength_and_first_moment(phase):
     position = np.array([[0.57, 0.13, 0.1]])
     strength = np.array([[0.2, -0.4, 1.0]])
     origin = np.array([-1.5 + phase, -1.5, -1.5])
-    indices, delta, diagnostics = physics._m4_wall_corrections(
+    indices, delta, diagnostics = physics.compute_m4_wall_corrections(
         position, strength, origin, 0.25, (17, 17, 17)
     )
     assert diagnostics["wall_adjacent_particles"] == 1
@@ -156,7 +156,9 @@ def test_device_wall_scatter_and_zero_flux_diffusion_conserve_fluid_strength():
         0,
         1,
     )
-    nodes, correction, _ = physics._m4_wall_corrections(positions, strengths, origin, 0.25, shape)
+    nodes, correction, _ = physics.compute_m4_wall_corrections(
+        positions, strengths, origin, 0.25, shape
+    )
     physics._add_sparse_wall_corrections_kernel(
         physics._grid_a, np.ascontiguousarray(nodes.reshape(-1)), correction, len(nodes)
     )

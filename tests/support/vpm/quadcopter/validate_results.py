@@ -119,13 +119,13 @@ def main():
             or not np.isfinite(rows.select_dtypes("number")).all().all()
         ):
             failures.append(f"{rotor}: duplicate or non-finite samples")
-        if rows.step.max() < steps - config["numerics"]["vlm"]["logging_interval_steps"]:
-            failures.append(f"{rotor}: incomplete force/power samples")
-        tail = rows[rows.time > end - 6 * p.period]
         cadence = (
             config["numerics"]["vlm"]["logging_interval_steps"]
             * config["numerics"]["time_step_size"]
         )
+        if rows.time.max() < end - cadence * (1.0 + 1.0e-9):
+            failures.append(f"{rotor}: incomplete force/power samples")
+        tail = rows[rows.time > end - 6 * p.period]
         if len(tail) < 4 or tail.time.max() - tail.time.min() < 6 * p.period - 2 * cadence:
             failures.append(f"{rotor}: fewer than six revolutions of final force samples")
             continue

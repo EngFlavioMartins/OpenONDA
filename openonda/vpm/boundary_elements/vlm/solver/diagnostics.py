@@ -54,7 +54,6 @@ class VLMDiagnostics:
         particles: Particles,
         particle_vortex_strength: np.ndarray,
         diagnostics_history: dict,
-        step: int,
         time: float,
         samples_dir: Path,
     ) -> None:
@@ -70,8 +69,6 @@ class VLMDiagnostics:
             Vortex-strength array (N, 3) for the current particles [m³/s].
         diagnostics_history:
             Solver's ``_diagnostics_history`` dict (mutated in-place).
-        step:
-            Current integer step counter.
         time:
             Current simulation time [s].
         samples_dir:
@@ -112,7 +109,6 @@ class VLMDiagnostics:
             max_leading_edge_suction_parameter,
             n_p,
             time,
-            step,
             samples_dir,
         )
 
@@ -127,7 +123,6 @@ class VLMDiagnostics:
         max_leading_edge_suction_parameter: float,
         n_p: int,
         time: float,
-        step: int,
         samples_dir: Path,
     ) -> None:
         """Append one row to ``<samples_dir>/vlm_forces.csv``.
@@ -146,8 +141,6 @@ class VLMDiagnostics:
             Number of VPM particles at this step.
         time:
             Current simulation time [s].
-        step:
-            Integer step counter.
         samples_dir:
             Sample directory of the case.
         """
@@ -166,7 +159,6 @@ class VLMDiagnostics:
 
         row = {
             "time": time,
-            "step": step,
             "lift_coefficient": forces.get("lift_coefficient", 0.0),
             "drag_coefficient": forces.get("drag_coefficient", 0.0),
             "side_force_coefficient": forces.get("side_force_coefficient", 0.0),
@@ -218,7 +210,6 @@ class VLMDiagnostics:
             [
                 {
                     "time": time,
-                    "step": step,
                     "surface": name,
                     "force_density": force_density,
                     "force_units": "N",

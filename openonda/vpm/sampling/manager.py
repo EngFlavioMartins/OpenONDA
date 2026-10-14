@@ -81,7 +81,7 @@ class SamplerManager:
     ``write_vtk(solver, path, time)`` writes one frame per event,
     ``<name>_{step:06d}<vtk_extension>``, listed in ``<name>.pvd``. A sampler
     with ``sample(solver)`` and ``csv_columns`` appends rows
-    ``time, step, *csv_columns`` to ``<name>.csv``.
+    ``time, *csv_columns`` to ``<name>.csv``.
     """
 
     def __init__(self, solver: VPMSolver) -> None:
@@ -229,7 +229,7 @@ class SamplerManager:
             if not context.continuing_output:
                 path.unlink(missing_ok=True)
             arrays = [np.asarray(data[column]).reshape(-1) for column in columns]
-            rows = [[context.time, context.step, *values] for values in zip(*arrays, strict=True)]
-            append_csv_rows(path, ("time", "step", *columns), rows)
+            rows = [[context.time, *values] for values in zip(*arrays, strict=True)]
+            append_csv_rows(path, ("time", *columns), rows)
         else:
             raise TypeError("sampler must implement write(), write_vtk() or sample()")

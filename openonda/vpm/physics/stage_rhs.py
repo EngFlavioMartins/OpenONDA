@@ -498,9 +498,9 @@ def _stage_array(field: ti.Field, count: int, physics: "PhysicsEngine" = None) -
     if (
         physics is not None
         and hasattr(field, "to_numpy")
-        and hasattr(physics, "_download_vector_field")
+        and hasattr(physics, "download_vector_field")
     ):
-        return physics._download_vector_field(field, count).astype(np.float64, copy=False)
+        return physics.download_vector_field(field, count).astype(np.float64, copy=False)
     values = field.to_numpy() if hasattr(field, "to_numpy") else np.asarray(field)
     return np.asarray(values[:count]).copy()
 
@@ -512,12 +512,12 @@ def _accumulate_stage_array(
     if (
         physics is not None
         and hasattr(field, "to_numpy")
-        and hasattr(physics, "_download_vector_field")
+        and hasattr(physics, "download_vector_field")
     ):
         if values.ndim == 2 and values.shape[1] == 3:
-            stored = physics._download_vector_field(field, count)
+            stored = physics.download_vector_field(field, count)
             stored += values.astype(stored.dtype, copy=False)
-            physics._upload_vector_array(stored, field, count)
+            physics.upload_vector_array(stored, field, count)
             return
         if values.ndim == 3 and hasattr(physics, "_download_matrix_field"):
             stored = physics._download_matrix_field(field, count)
@@ -637,9 +637,9 @@ class ParticleExternalStageContribution:
         body_gradient = getattr(self.physics, "body_velocity_gradient", None)
         if body is None and body_gradient is None and source_gradient is None:
             return
-        if hasattr(self.physics, "_download_vector_field"):
-            position = self.physics._download_vector_field(stage_state.position, count)
-            velocity = self.physics._download_vector_field(stage_rates.velocity, count)
+        if hasattr(self.physics, "download_vector_field"):
+            position = self.physics.download_vector_field(stage_state.position, count)
+            velocity = self.physics.download_vector_field(stage_rates.velocity, count)
         else:
             position = stage_state.position.to_numpy()[:count]
             velocity = stage_rates.velocity.to_numpy()[:count]
@@ -659,8 +659,8 @@ class ParticleExternalStageContribution:
             external_gradient += _validate_external_gradient(
                 body_gradient(position, stage_time), count
             )
-        if hasattr(self.physics, "_upload_vector_array"):
-            self.physics._upload_vector_array(velocity, stage_rates.velocity, count)
+        if hasattr(self.physics, "upload_vector_array"):
+            self.physics.upload_vector_array(velocity, stage_rates.velocity, count)
         else:
             uploaded = np.zeros((self.physics.max_n_particles, 3), dtype=velocity.dtype)
             uploaded[:count] = velocity

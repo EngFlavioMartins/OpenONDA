@@ -541,11 +541,13 @@ class CoupledSolver:
 
         Notes
         -----
-        A fresh run writes the initial frames of both solvers, then advances
-        the exchanges, writes the scheduled output and backups, the final
-        frames and, with ``Backup.write_at_end``, a final coupled backup. The
-        run status is recorded in ``solution/coupler_metadata.json``. Every
-        MPI rank calls this method.
+        A fresh run writes the initial frames and samples of both solvers
+        with their ``write_initial_output``; a restarted run does not repeat
+        them. The run then advances the exchanges, writes the scheduled output
+        and backups, a final coupled backup with ``Backup.write_at_end``, and
+        the final frames and final-only samples with ``write_final_output``.
+        The run status is recorded in ``solution/coupler_metadata.json``.
+        Every MPI rank calls this method.
         """
         if self._run_started:
             raise RuntimeError("CoupledSolver.run() may be called only once")
@@ -689,18 +691,36 @@ class CoupledSolver:
             self._frame_step = self.step
 
     def _write_initial_output(self) -> None:
-        self._write_frames(
-            fvm_frame=self.fvm_case.run.initial_output,
-            vpm_frame=self.vpm_case.run.initial_output,
-        )
+        """Write the initial frames and samples of both solvers; a particle frame brings an FVM frame."""
+        fvm = self.fvm_solver
+        fvm_frame = self.fvm_case.run.initial_output
+        vpm_frame = self.vpm_case.run.initial_output
+        fvm.write_initial_output()
+        if vpm_frame and not fvm_frame:
+            fvm.write_vtk()
+        fvm.flush_output()
+        with collective_phase(self._comm, "VPM initial output"):
+            if self._is_root:
+                self.vpm_solver.write_initial_output()
+        if fvm_frame or vpm_frame:
+            self._frame_step = self.step
 
     def _write_final_output(self) -> None:
+        """Write the final backup, frames and samples of both solvers."""
         if self.config.backup.write_at_end and self._backup_step != self.step:
             self.save_backup()
-        self._write_frames(
-            fvm_frame=self.fvm_case.run.final_output,
-            vpm_frame=self.vpm_case.run.final_output,
-        )
+        fvm = self.fvm_solver
+        fvm_frame = self.fvm_case.run.final_output
+        vpm_frame = self.vpm_case.run.final_output
+        if vpm_frame and not fvm_frame and not self._fvm_frame_written():
+            fvm.write_vtk()
+        fvm.write_final_output()
+        fvm.flush_output()
+        with collective_phase(self._comm, "VPM final output"):
+            if self._is_root:
+                self.vpm_solver.write_final_output()
+        if fvm_frame or vpm_frame:
+            self._frame_step = self.step
 
     def _backup_due(self, step: int) -> bool:
         schedule = self.config.backup.schedule

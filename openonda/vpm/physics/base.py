@@ -422,7 +422,7 @@ class PhysicsBase:
             buffers[key] = np.empty(shape, dtype=dtype)
         return buffers[key]
 
-    def _upload_vector_array(self, src: np.ndarray, dst: ti.Field, n: int | None = None) -> None:
+    def upload_vector_array(self, src: np.ndarray, dst: ti.Field, n: int | None = None) -> None:
         """Upload a vec3 array through fixed-size ndarray chunks."""
         arr = np.ascontiguousarray(src, dtype=self.np_dtype)
         if arr.ndim != 2 or arr.shape[1] != 3:
@@ -464,7 +464,7 @@ class PhysicsBase:
             self._copy_ndarray_to_mat3_field(buf, dst, lo, n_chunk)
             ti.sync()
 
-    def _download_vector_field(self, src: ti.Field, n: int) -> np.ndarray:
+    def download_vector_field(self, src: ti.Field, n: int) -> np.ndarray:
         """Download the active vec3 prefix without exposing variable ndarray shapes."""
         dtype = np.float32 if src.dtype == ti.f32 else np.float64
         if n == 0:
@@ -508,7 +508,7 @@ class PhysicsBase:
 
     def extract_target_velocity(self, n: int) -> np.ndarray:
         """Return first n target velocity as a NumPy array (no full alloc transfer)."""
-        return self._download_vector_field(self.target_velocity, n)
+        return self.download_vector_field(self.target_velocity, n)
 
     def _resize_filtered_fields(self, N: int) -> None:
         """
@@ -773,7 +773,7 @@ class PhysicsBase:
                 background = np.array([bg[None][0], bg[None][1], bg[None][2]], dtype=np.float32)
             for start, stop in self._target_batch_slices(M):
                 values = tree.compute_target_velocity(target_position[start:stop], background)
-                self._upload_vector_array(values, self.target_velocity)
+                self.upload_vector_array(values, self.target_velocity)
                 self._copy_vec3_offset(self.target_velocity, target_velocity, start, stop - start)
             return None
 
@@ -782,7 +782,7 @@ class PhysicsBase:
             result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
             for start, stop in self._target_batch_slices(M):
                 count = stop - start
-                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                self.upload_vector_array(target_position[start:stop], self.target_position, count)
                 target_backend.evaluate_targets(
                     target_position=self.target_position,
                     source_position=particles.position,
@@ -804,7 +804,7 @@ class PhysicsBase:
         result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
         for start, stop in self._target_batch_slices(M):
             count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.upload_vector_array(target_position[start:stop], self.target_position, count)
             self.compute_target_velocity_kernel(
                 self.target_position,
                 particles.position,
@@ -875,7 +875,7 @@ class PhysicsBase:
             self._transport_target_core = ti.field(
                 dtype=self.accumulator_dtype, shape=self.max_evaluation_points
             )
-        self._upload_vector_array(targets, self.target_position, len(targets))
+        self.upload_vector_array(targets, self.target_position, len(targets))
         backend = getattr(self, "induction", None)
         if use_induction_backend and np.ndim(target_core_radius) == 0 and backend is not None:
             if not hasattr(self, "_transport_source_core"):
@@ -901,7 +901,7 @@ class PhysicsBase:
                 if include_freestream
                 else self._zero_velocity,
             )
-            return self._download_vector_field(self.target_velocity, len(targets))
+            return self.download_vector_field(self.target_velocity, len(targets))
         self._upload_scalar_array(
             np.ascontiguousarray(radii), self._transport_target_core, len(targets)
         )
@@ -916,7 +916,7 @@ class PhysicsBase:
             len(targets),
             len(particles),
         )
-        return self._download_vector_field(self.target_velocity, len(targets))
+        return self.download_vector_field(self.target_velocity, len(targets))
 
     def _compute_target_velocity_taichi(
         self,
@@ -930,14 +930,14 @@ class PhysicsBase:
         """Handle velocity computation when target_position is a Taichi field."""
         M = target_position.shape[0]
         if self._target_field_size < M:
-            positions = self._download_vector_field(target_position, M)
+            positions = self.download_vector_field(target_position, M)
             result = self.compute_target_velocity(
                 particles,
                 positions,
                 include_freestream=include_freestream,
             )
             if target_velocity is not None:
-                self._upload_vector_array(result, target_velocity, M)
+                self.upload_vector_array(result, target_velocity, M)
                 return None
             return result
         if N == 0:
@@ -964,12 +964,12 @@ class PhysicsBase:
         if isinstance(target_backend, TreecodeInduction) or (
             not hasattr(target_backend, "evaluate_targets") and self.velocity_method == "treecode"
         ):
-            positions = self._download_vector_field(target_position, M)
+            positions = self.download_vector_field(target_position, M)
             result = self.compute_target_velocity(
                 particles, positions, include_freestream=include_freestream
             )
             if target_velocity is not None:
-                self._upload_vector_array(result, target_velocity, M)
+                self.upload_vector_array(result, target_velocity, M)
                 return None
             return result
         if target_backend is not None and hasattr(target_backend, "evaluate_targets"):
@@ -988,7 +988,7 @@ class PhysicsBase:
                 background_velocity=background_velocity,
             )
             if target_velocity is None:
-                return self._download_vector_field(out_field, M)
+                return self.download_vector_field(out_field, M)
             return None
 
         out_field = target_velocity if target_velocity is not None else self.target_velocity
@@ -1008,7 +1008,7 @@ class PhysicsBase:
         )
 
         if target_velocity is None:
-            return self._download_vector_field(out_field, M)
+            return self.download_vector_field(out_field, M)
         return None
 
     def _compute_target_velocity_filtered(
@@ -1076,8 +1076,8 @@ class PhysicsBase:
         self._resize_filtered_fields(N_filtered)
 
         # Copy filtered data through fixed-shape external buffers.
-        self._upload_vector_array(filtered_pos, self._filtered_pos, N_filtered)
-        self._upload_vector_array(
+        self.upload_vector_array(filtered_pos, self._filtered_pos, N_filtered)
+        self.upload_vector_array(
             filtered_vortex_strength, self._filtered_vortex_strength, N_filtered
         )
         self._upload_scalar_array(filtered_rad, self._filtered_rad, N_filtered)
@@ -1091,7 +1091,7 @@ class PhysicsBase:
         result = np.empty((M, 3), dtype=self.np_dtype) if target_velocity is None else None
         for start, stop in self._target_batch_slices(M):
             count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.upload_vector_array(target_position[start:stop], self.target_position, count)
             self.compute_target_velocity_kernel(
                 self.target_position,
                 self._filtered_pos,
@@ -1167,13 +1167,13 @@ class PhysicsBase:
         vorticity = np.zeros((N, 3), dtype=np.float64)
         for start, stop in self._target_batch_slices(N):
             count = stop - start
-            self._upload_vector_array(position[start:stop], self.target_position, count)
+            self.upload_vector_array(position[start:stop], self.target_position, count)
             for first, last in self._target_batch_slices(len(source_position)):
                 sources = last - first
-                self._upload_vector_array(
+                self.upload_vector_array(
                     source_position[first:last], self._slab_source_position, sources
                 )
-                self._upload_vector_array(
+                self.upload_vector_array(
                     source_strength[first:last], self._slab_source_strength, sources
                 )
                 self._upload_scalar_array(source_core[first:last], self._slab_source_core, sources)
@@ -1186,8 +1186,8 @@ class PhysicsBase:
                     count,
                     sources,
                 )
-                vorticity[start:stop] += self._download_vector_field(self.target_vorticity, count)
-        self._upload_vector_array(vorticity, particles.vorticity, N)
+                vorticity[start:stop] += self.download_vector_field(self.target_vorticity, count)
+        self.upload_vector_array(vorticity, particles.vorticity, N)
 
     def _compute_gaussian_vorticities(self, particles: "Particles") -> None:
         """Reuse induction hierarchy storage, or allocate bounded diagnostic scratch."""
@@ -1260,7 +1260,7 @@ class PhysicsBase:
             result = np.empty((M, 9), dtype=self.np_dtype)
             for start, stop in self._target_batch_slices(M):
                 count = stop - start
-                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                self.upload_vector_array(target_position[start:stop], self.target_position, count)
                 target_backend.evaluate_targets(
                     target_position=self.target_position,
                     source_position=particles.position,
@@ -1281,7 +1281,7 @@ class PhysicsBase:
         result = np.empty((M, 9), dtype=self.np_dtype)
         for start, stop in self._target_batch_slices(M):
             count = stop - start
-            self._upload_vector_array(target_position[start:stop], self.target_position, count)
+            self.upload_vector_array(target_position[start:stop], self.target_position, count)
             self.compute_target_velocity_gradient_kernel(
                 self.target_position,
                 particles.position,
@@ -1450,7 +1450,7 @@ class PhysicsBase:
             )
             for start, stop in self._target_batch_slices(target_count):
                 count = stop - start
-                self._upload_vector_array(target_position[start:stop], self.target_position, count)
+                self.upload_vector_array(target_position[start:stop], self.target_position, count)
                 backend.evaluate_targets(
                     target_position=self.target_position,
                     source_position=particles.position,

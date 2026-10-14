@@ -79,7 +79,7 @@ def test_latest_replays_unsaved_tail_and_completed_rerun_is_idle(tmp_path, monke
     # as well as discarding the future event at step three.
     table = directory / "samples/flow_integrals.csv"
     rows = pd.read_csv(table)
-    rows[rows["step"] != 2].to_csv(table, index=False)
+    rows[~np.isclose(rows["time"], 0.02)].to_csv(table, index=False)
     resumed = vpm.VPMSolver(_build(directory, with_vlm))
     resumed.run(start_from="latest")
     assert resumed.step == 3
@@ -130,7 +130,7 @@ def test_initial_ignores_old_native_backup_and_restarts_output_history(tmp_path)
     fresh.run(start_from="initial")
     assert fresh.step == 1
     table = pd.read_csv(tmp_path / "samples/flow_integrals.csv")
-    assert table["step"].tolist() == [0, 1]
+    assert table["time"].tolist() == pytest.approx([0.0, 0.01])
 
     resumed = vpm.VPMSolver(replace(case, run=vpm.RunPlan(end_time=0.01)))
     assert resumed.start_from("latest")
@@ -162,4 +162,5 @@ def test_latest_without_backup_replaces_prior_output_history(tmp_path):
     add_counter_rotating_pair(fresh)
     fresh.run(start_from="latest")
     assert fresh.step == 1
-    assert pd.read_csv(tmp_path / "samples/flow_integrals.csv")["step"].tolist() == [0, 1]
+    table = pd.read_csv(tmp_path / "samples/flow_integrals.csv")
+    assert table["time"].tolist() == pytest.approx([0.0, 0.01])

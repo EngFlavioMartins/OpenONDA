@@ -72,6 +72,7 @@ from openonda import vpm
 # particle spacing [m], core radius [m], viscosity [m²/s]
 h, a, nu = 0.2, 0.35, 0.01
 
+
 class GaussianColumn:
     """Vortex column of unit circulation along z, sampled on a cubic lattice."""
 
@@ -91,6 +92,7 @@ class GaussianColumn:
             kinematic_viscosity=np.full(n, nu),
             spacing=h,
         )
+
 
 case = vpm.VPMCase(
     name="gaussian_column",

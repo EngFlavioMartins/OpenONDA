@@ -135,7 +135,7 @@ def field_ensemble(
 
 
 def table_ensemble(frames: Sequence["pd.DataFrame"]) -> tuple["pd.DataFrame", dict[str, object]]:
-    """Align current single-entity tables without averaging time or step.
+    """Align current single-entity tables without averaging their time column.
 
     Return the first realization's clock and common categorical columns,
     plus numeric physical columns stacked along the realization dimension.
@@ -144,34 +144,24 @@ def table_ensemble(frames: Sequence["pd.DataFrame"]) -> tuple["pd.DataFrame", di
     if len(frames) < 2:
         raise ValueError("Ensemble statistics require at least two independent realizations")
     columns = tuple(frames[0].columns)
-    if not {"step", "time"}.issubset(columns) or any(
+    if "time" not in columns or any(
         set(frame.columns) != set(columns) or not len(frame) for frame in frames
     ):
         raise ValueError("Ensemble tables require the same nonempty native schema")
-    clock = frames[0][["step", "time"]].reset_index(drop=True).copy()
+    clock = frames[0][["time"]].reset_index(drop=True).copy()
     for frame in frames:
-        steps = frame["step"].to_numpy(dtype=float)
         times = frame["time"].to_numpy(dtype=float)
-        if (
-            not np.isfinite(steps).all()
-            or np.any(steps < 0)
-            or np.any(steps != np.rint(steps))
-            or np.any(np.diff(steps) <= 0)
-        ):
-            raise ValueError("Ensemble tables have non-finite or unordered native step clocks")
+        if not np.isfinite(times).all() or np.any(np.diff(times) <= 0):
+            raise ValueError("Ensemble tables have non-finite or unordered native time clocks")
         match_saved_times(times)
-        if (
-            not np.array_equal(steps, clock["step"].to_numpy())
-            or len(times) != len(clock)
-            or any(
-                not same_saved_time(time, reference)
-                for time, reference in zip(times, clock["time"], strict=True)
-            )
+        if len(times) != len(clock) or any(
+            not same_saved_time(time, reference)
+            for time, reference in zip(times, clock["time"], strict=True)
         ):
             raise ValueError("Ensemble tables have different native physical clocks")
     stacks = {}
     for name in columns:
-        if name in {"step", "time"}:
+        if name == "time":
             continue
         series = [frame[name] for frame in frames]
         if all(pd.api.types.is_numeric_dtype(values) for values in series):

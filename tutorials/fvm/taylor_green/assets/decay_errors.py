@@ -18,7 +18,7 @@ def flow_integrals(fields) -> tuple[float, float]:
 
 def history_row(
     fields, exact_velocity, kinematic_viscosity, initial_total_kinetic_energy, initial_enstrophy
-) -> dict[str, float | int]:
+) -> dict[str, float]:
     centres = fields.cell_centre
     cell_volume = fields.cell_volume
     analytic = exact_velocity(centres, fields.time, kinematic_viscosity)
@@ -28,7 +28,6 @@ def history_row(
     )
     analytic_total_enstrophy = initial_enstrophy * np.exp(-4.0 * kinematic_viscosity * fields.time)
     return {
-        "step": fields.step,
         "time": fields.time,
         "total_kinetic_energy": total_kinetic_energy,
         "analytic_total_kinetic_energy": analytic_total_kinetic_energy,

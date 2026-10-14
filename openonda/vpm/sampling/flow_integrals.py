@@ -48,7 +48,6 @@ def flow_integral_row(solver: VPMSolver) -> dict[str, Any]:
 
     row: dict[str, Any] = {
         "time": solver.time,
-        "step": solver.step,
         "total_kinetic_energy": solver.total_kinetic_energy,
         "energy_measurement": integrals.get("energy_measurement", "unknown"),
         "total_enstrophy": solver.total_enstrophy,

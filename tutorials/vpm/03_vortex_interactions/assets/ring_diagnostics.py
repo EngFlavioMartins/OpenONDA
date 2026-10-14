@@ -10,7 +10,6 @@ import numpy as np
 
 CSV_COLUMNS = (
     "time",
-    "step",
     "group_id",
     "vortex_centroid_x",
     "vortex_centroid_y",
@@ -34,7 +33,7 @@ class RingDiagnosticsSampler:
     """Sample grouped ring diagnostics into ``ring_diagnostics.csv``."""
 
     file_name = "ring_diagnostics"
-    csv_columns = CSV_COLUMNS[2:]
+    csv_columns = CSV_COLUMNS[1:]
 
     def __init__(self, *, schedule=None, initial=True):
         self.schedule = schedule
@@ -65,7 +64,7 @@ def sample_group(position, vortex_strength):
     magnitude = np.linalg.norm(vortex_strength, axis=1)
     magnitude_sum = float(magnitude.sum())
     if magnitude_sum <= np.finfo(float).tiny:
-        return (np.nan,) * (len(CSV_COLUMNS) - 3)
+        return (np.nan,) * (len(CSV_COLUMNS) - 2)
 
     # Strength-weighted centroid and in-plane radius from the second moment
     centroid = np.einsum("i,ij->j", magnitude, position) / magnitude_sum

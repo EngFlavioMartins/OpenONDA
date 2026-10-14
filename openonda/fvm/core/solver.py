@@ -1750,10 +1750,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self._ensure_evolution_usable()
             restored = self._restart_loaded
             self.apply_velocity_boundaries(self.time)
-            if run_plan.initial_output and not restored:
-                if self.auto_write:
-                    self.write_vtk()
-                self._execute_sampler_event(OutputEvent.initial)
+            self.write_initial_output()
             if start_from is not None and not restored:
                 self._save_scheduled_backup()
             if self._configuration.numerics.pimple.algorithm == "simple":
@@ -1765,14 +1762,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 while self.time < end_time - tolerance:
                     self.advance()
                 final_status = RunStatus.completed
-            if run_plan.final_output:
-                if self.auto_write and self._last_vtk_state != (
-                    self.step,
-                    self.time,
-                    self._state_revision,
-                ):
-                    self.write_vtk()
-                self._execute_sampler_event(OutputEvent.final)
+            self.write_final_output()
             if (
                 self._configuration.backup.write_at_end or start_from is not None
             ) and self._step_phase == "accepted":
@@ -1918,6 +1908,37 @@ class FVMSolver(CouplerInterfaceMixin):
 
         if not defer_output:
             self.write_step_output()
+
+    def write_initial_output(self) -> None:
+        """Write the initial frame and the samplers with ``initial=True``.
+
+        :meth:`run` calls this before the first step; a driver that advances
+        the solver itself, such as the FVM--VPM coupler, calls it once at the
+        start of a fresh run. Both follow ``RunPlan.initial_output``. A state
+        restored from a backup already has its initial output, so the call
+        does nothing then. Collective under MPI.
+        """
+        if self._restart_loaded or not self._configuration.run.initial_output:
+            return
+        if self.auto_write:
+            self.write_vtk()
+        self._execute_sampler_event(OutputEvent.initial)
+
+    def write_final_output(self) -> None:
+        """Write the final frame and the final-only samplers of the accepted state.
+
+        :meth:`run` calls this after the last step; a driver that advances
+        the solver itself calls it once at the end of the run. Both follow
+        ``RunPlan.final_output``; a frame already written for this state is
+        not repeated. Collective under MPI.
+        """
+        if self._step_phase != "accepted":
+            raise RuntimeError("Output requires an accepted FVM state")
+        if not self._configuration.run.final_output:
+            return
+        if self.auto_write and self._last_vtk_state != (self.step, self.time, self._state_revision):
+            self.write_vtk()
+        self._execute_sampler_event(OutputEvent.final)
 
     def write_step_output(self) -> None:
         """Write the diagnostics and the due output of the accepted state.

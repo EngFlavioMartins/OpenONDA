@@ -16,7 +16,7 @@ recorded unsteady contribution; it is not reconstructed pressure.
 
 Call pattern (mirrors VLMDiagnostics):
   VLMLoadingDistribution.record_loading_distributions(
-      vlm_solver, diagnostics_history, time_step_size, time, samples_dir)
+      vlm_solver, diagnostics_history, time, samples_dir)
 """
 
 from __future__ import annotations
@@ -41,7 +41,6 @@ class VLMLoadingDistribution:
     def record_loading_distributions(
         vlm_solver: VLMSolver,
         diagnostics_history: dict,
-        step: int,
         time: float,
         samples_dir: Path,
     ) -> None:
@@ -67,7 +66,6 @@ class VLMLoadingDistribution:
                 surface_name,
                 distributions,
                 time,
-                step,
                 samples_dir,
             )
 
@@ -499,7 +497,6 @@ class VLMLoadingDistribution:
         surface_name: str,
         distributions: dict[str, Any],
         time: float,
-        step: int,
         samples_dir: Path,
     ) -> None:
         """Append one time-step's distributions to the per-surface CSVs."""
@@ -520,8 +517,7 @@ class VLMLoadingDistribution:
             # prepend metadata columns
             df = df.copy()
             df.insert(0, "time", time)
-            df.insert(1, "step", step)
-            df.insert(2, "surface", surface_name)
+            df.insert(1, "surface", surface_name)
 
             csv_path = samples_dir / fname_tpl
             if not csv_path.exists():

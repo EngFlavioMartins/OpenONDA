@@ -27,21 +27,7 @@ def accepted_history(data: pd.DataFrame, metadata: dict[str, object]) -> pd.Data
     times = data.time.to_numpy()
     if not np.isfinite(times).all():
         raise ValueError("native history has non-finite timestamps")
-    if "step" in data:
-        steps = data.step.to_numpy()
-        current = steps >= state["initial_step"]
-        expected = state["initial_time"] + (steps - state["initial_step"]) * dt
-        if (
-            not np.isfinite(steps).all()
-            or np.any(steps < 0)
-            or np.any(steps != np.rint(steps))
-            or not np.allclose(times[current], expected[current], rtol=0, atol=tolerance)
-            or np.any(times[~current] > state["initial_time"] + tolerance)
-        ):
-            raise ValueError("native history step/time clock disagrees with recorded solver clock")
-        accepted = (steps <= state["step"]) & (times <= horizon + tolerance)
-    else:
-        accepted = times <= horizon + tolerance
+    accepted = times <= horizon + tolerance
     if not np.any(accepted):
         raise ValueError("native history has no rows within the accepted horizon")
     if not np.all(accepted):
@@ -89,22 +75,16 @@ def vlm_surface(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return corners, circulation
 
 
-def loading_clock(data: pd.DataFrame, label: str) -> tuple[np.ndarray, np.ndarray]:
-    """Return one strictly increasing accepted-step/time clock per VLM history."""
-    required = {"step", "time"}
-    missing = required - set(data.columns)
-    if missing:
-        raise ValueError(f"{label} history lacks required clock columns: {sorted(missing)}")
-    clock = data[["step", "time"]].drop_duplicates()
-    if clock["step"].duplicated().any() or clock["time"].duplicated().any():
-        raise ValueError(f"{label} history has duplicate or conflicting clock rows")
-    steps = clock["step"].to_numpy()
-    times = clock["time"].to_numpy(dtype=float)
-    if len(clock) < 2 or not np.isfinite(times).all():
+def loading_clock(data: pd.DataFrame, label: str) -> np.ndarray:
+    """Return the strictly increasing accepted times of one VLM history."""
+    if "time" not in data.columns:
+        raise ValueError(f"{label} history lacks the time column")
+    times = data["time"].drop_duplicates().to_numpy(dtype=float)
+    if len(times) < 2 or not np.isfinite(times).all():
         raise ValueError(f"{label} history has an incomplete or non-finite clock")
-    if np.any(np.diff(steps) <= 0) or np.any(np.diff(times) <= 0):
+    if np.any(np.diff(times) <= 0):
         raise ValueError(f"{label} history clock is not strictly increasing")
-    return steps, times
+    return times
 
 
 def loading_station_keys(
@@ -116,21 +96,21 @@ def loading_station_keys(
 ) -> set[tuple]:
     """Validate native station keys, retaining chordwise panel identity.
 
-    Spanwise histories have one row per ``(step, station_id)``.  Chordwise
+    Spanwise histories have one row per ``(time, station_id)``.  Chordwise
     histories intentionally have several rows for that same station, so their
-    unique row key is ``(step, station_id, chord_index)``.  The grouped
+    unique row key is ``(time, station_id, chord_index)``.  The grouped
     station keys returned for the span/chord merge are only produced after
     every station has the complete panel set.
     """
-    required = {"step", "station_id"}
+    required = {"time", "station_id"}
     missing = required - set(data.columns)
     if missing:
         raise ValueError(f"{label} history lacks station keys: {sorted(missing)}")
-    station_columns = ["step", "station_id"]
+    station_columns = ["time", "station_id"]
     if panel_column is None:
         keys = data[station_columns]
         if keys.duplicated().any():
-            raise ValueError(f"{label} history has duplicate step/station keys")
+            raise ValueError(f"{label} history has duplicate time/station keys")
     else:
         if panel_column not in data.columns:
             raise ValueError(f"{label} history lacks panel key: {panel_column!r}")
@@ -139,7 +119,7 @@ def loading_station_keys(
         if panel_keys[panel_column].isna().any():
             raise ValueError(f"{label} history has non-finite chord-panel keys")
         if panel_keys.duplicated().any():
-            raise ValueError(f"{label} history has duplicate step/station/chord-panel keys")
+            raise ValueError(f"{label} history has duplicate time/station/chord-panel keys")
         observed_panels = frozenset(panel_keys[panel_column].unique())
         expected_panels = (
             observed_panels if expected_panel_indices is None else frozenset(expected_panel_indices)
@@ -181,9 +161,9 @@ def loading_window(
     """Select one shared final window after matching span/chord clocks."""
     if duration <= 0:
         raise ValueError("window duration must be positive")
-    span_steps, span_times = loading_clock(span, "spanwise")
-    chord_steps, chord_times = loading_clock(chord, "chordwise")
-    if not np.array_equal(span_steps, chord_steps) or not np.allclose(
+    span_times = loading_clock(span, "spanwise")
+    chord_times = loading_clock(chord, "chordwise")
+    if len(span_times) != len(chord_times) or not np.allclose(
         span_times, chord_times, rtol=0.0, atol=1.0e-10
     ):
         raise ValueError("spanwise and chordwise VLM clocks do not match")
@@ -195,7 +175,7 @@ def loading_window(
         expected_panel_indices=expected_chord_panels,
     )
     if span_keys != chord_keys:
-        raise ValueError("spanwise and chordwise step/station keys do not match")
+        raise ValueError("spanwise and chordwise time/station keys do not match")
     if expected_cadence is not None:
         if expected_cadence <= 0.0:
             raise ValueError("expected_cadence must be positive")
@@ -226,9 +206,9 @@ def loading_window(
     first = span_times[np.searchsorted(span_times, cutoff, side="right") - 1]
     span_window = span[span.time >= first].copy()
     chord_window = chord[chord.time >= first].copy()
-    window_span_steps, window_span_times = loading_clock(span_window, "spanwise window")
-    window_chord_steps, window_chord_times = loading_clock(chord_window, "chordwise window")
-    if not np.array_equal(window_span_steps, window_chord_steps) or not np.allclose(
+    window_span_times = loading_clock(span_window, "spanwise window")
+    window_chord_times = loading_clock(chord_window, "chordwise window")
+    if len(window_span_times) != len(window_chord_times) or not np.allclose(
         window_span_times, window_chord_times, rtol=0.0, atol=1.0e-10
     ):
         raise ValueError("spanwise and chordwise averaging windows do not match")

@@ -831,8 +831,7 @@ class VPMSolver:
             invalid_state_failure = None
             if self._restart_loaded:
                 self._sampler_manager.resume()
-            elif self.case.run.initial_output:
-                self._write_initial_output()
+            self.write_initial_output()
             for _ in range(remaining_steps):
                 if deadline is not None and perf_counter() >= deadline:
                     budget_exhausted = True
@@ -851,9 +850,9 @@ class VPMSolver:
                 status = RunStatus.unstable
                 failure = invalid_state_failure
             else:
-                stopped_early = budget_exhausted or state_limit_failure is not None
                 try:
-                    self._write_final_output(stopped_early=stopped_early)
+                    self._write_end_backup()
+                    self.write_final_output()
                 except Exception as output_failure:
                     if state_limit_failure is not None:
                         output_failure.add_note(
@@ -896,34 +895,56 @@ class VPMSolver:
         if primary_failure is not None:
             raise primary_failure.with_traceback(primary_failure.__traceback__)
 
-    def _write_initial_output(self) -> None:
-        """Write the initial particle frame and the samplers with ``initial=True``."""
+    def write_initial_output(self) -> None:
+        """Write the initial particle frame and the samplers with ``initial=True``.
+
+        :meth:`run` calls this before the first step; a driver that advances
+        the solver itself, such as the FVM--VPM coupler, calls it once at the
+        start of a fresh run. Both follow ``RunPlan.initial_output``. A state
+        restored from a backup already has its initial output, so the call
+        does nothing then.
+        """
+        if self._restart_loaded or not self.case.run.initial_output:
+            return
+        self._ensure_evolution_usable()
+        self._build_initial_conditions()
+        self._log_configuration_once()
         with self._output_preparation():
             self._refresh_diagnostics_for_output()
             self.write_vtk()
             self._sampler_manager.dispatch(OutputEvent.initial)
 
-    def _write_final_output(self, *, stopped_early: bool) -> None:
-        """Write the final backup, frame and samplers of a run that ended validly.
+    def write_final_output(self) -> None:
+        """Write the final particle frame and the final-only samplers.
 
-        A run stopped before its end time also writes every sampler that has
-        no sample of the last state.
+        :meth:`run` calls this after the last step; a driver that advances
+        the solver itself calls it once at the end of the run. Both follow
+        ``RunPlan.final_output``; a frame already written for this state is
+        not repeated. A run stopped before its final step also writes every
+        sampler that has no sample of the last state.
         """
+        if not self.case.run.final_output:
+            return
         with self._output_preparation():
             self._refresh_diagnostics_for_output()
-            if self.case.backup.write_at_end and self._last_backup_state != self._state_key():
-                self._allow_backup_velocity_reuse = True
-                try:
-                    self.save_backup()
-                finally:
-                    self._allow_backup_velocity_reuse = False
-            if self.case.run.final_output:
-                if self._last_frame_state != self._state_key():
-                    self.write_vtk()
-                if stopped_early:
-                    self._sampler_manager.write_all(OutputEvent.final)
-                else:
-                    self._sampler_manager.dispatch(OutputEvent.final)
+            if self._last_frame_state != self._state_key():
+                self.write_vtk()
+            if self.step < self._run_final_step:
+                self._sampler_manager.write_all(OutputEvent.final)
+            else:
+                self._sampler_manager.dispatch(OutputEvent.final)
+
+    def _write_end_backup(self) -> None:
+        """Write the end-of-run backup unless the accepted state already has one."""
+        if not self.case.backup.write_at_end or self._last_backup_state == self._state_key():
+            return
+        with self._output_preparation():
+            self._refresh_diagnostics_for_output()
+            self._allow_backup_velocity_reuse = True
+            try:
+                self.save_backup()
+            finally:
+                self._allow_backup_velocity_reuse = False
 
     def _build_initial_conditions(self) -> None:
         """Build each declarative initial condition exactly once."""
@@ -1269,14 +1290,12 @@ class VPMSolver:
             self.particles,
             self.particle_vortex_strength,
             self._diagnostics_history,
-            self.step,
             self.time,
             self.samples_dir,
         )
         VLMLoadingDistribution.record_loading_distributions(
             self.vlm_solver,
             self._diagnostics_history,
-            self.step,
             self.time,
             self.samples_dir,
         )
@@ -1438,8 +1457,8 @@ class VPMSolver:
                 count = stop - start
                 positions = self.physics.target_position
                 velocities = self.physics.target_velocity
-                self.physics._upload_vector_array(points[start:stop], positions, count)
-                self.physics._upload_vector_array(velocity[start:stop], velocities, count)
+                self.physics.upload_vector_array(points[start:stop], positions, count)
+                self.physics.upload_vector_array(velocity[start:stop], velocities, count)
                 for source_count in self._surface_source_batches():
                     self.physics.kernels["compute_target_source_velocity_kernel"](
                         positions,
@@ -1479,7 +1498,7 @@ class VPMSolver:
         for start in range(0, self.n_sources, self._source_batch_size):
             stop = min(start + self._source_batch_size, self.n_sources)
             count = stop - start
-            self.physics._upload_vector_array(positions[start:stop], self.source_position, count)
+            self.physics.upload_vector_array(positions[start:stop], self.source_position, count)
             self.physics._upload_scalar_array(strengths[start:stop], self.source_strength, count)
             self.physics._upload_scalar_array(radii[start:stop], self.source_core_radius, count)
             yield count

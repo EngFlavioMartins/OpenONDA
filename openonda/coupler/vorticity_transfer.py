@@ -747,7 +747,9 @@ class VorticityTransfer:
         viscous = numerics.viscous
         # Wall-visible M4' scatter of off-lattice particles, from the VPM GBD grid.
         vpm = getattr(coupler, "vpm_solver", None)
-        self._wall_scatter_correction = None if vpm is None else vpm.physics._m4_wall_corrections
+        self._wall_scatter_correction = (
+            None if vpm is None else vpm.physics.compute_m4_wall_corrections
+        )
         if viscous.scheme != "gbd":
             raise ValueError("buffered_m4_renewal currently requires the GBD viscous scheme")
         if not np.isfinite(coupler.vpm_core_radius_ratio):

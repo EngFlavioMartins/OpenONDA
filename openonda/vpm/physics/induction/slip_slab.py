@@ -102,7 +102,7 @@ def _active_snapshots(
     snapshots = {}
     for source, count in sizes.items():
         download = (
-            physics._download_vector_field
+            physics.download_vector_field
             if hasattr(source, "n")
             else physics._download_scalar_field
         )

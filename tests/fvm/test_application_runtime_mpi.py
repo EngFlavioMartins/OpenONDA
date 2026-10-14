@@ -63,7 +63,7 @@ def analyse(fields):
     np.testing.assert_allclose(fields.velocity, np.tile(velocity, (64,1)), atol=1e-8)
     if mode == "analysis_failure":
         raise ValueError("injected analysis failure")
-    return [fields.step, fields.time, len(fields.velocity), float(np.sum(fields.cell_volume))]
+    return [fields.time, len(fields.velocity), float(np.sum(fields.cell_volume))]
 
 try:
     solver = fvm.FVMSolver(fvm.FVMCase(
@@ -78,10 +78,10 @@ try:
     assert solver.parallel.size == cores
     with solver:
         row = solver.evaluate(analyse)
-        solver.write_csv("analysis.csv", [row], columns=("step","time","cells","volume"))
+        solver.write_csv("analysis.csv", [row], columns=("time","cells","volume"))
         solver.run()
         row = solver.evaluate(analyse)
-        solver.write_csv("analysis.csv", [row], columns=("step","time","cells","volume"), append=True)
+        solver.write_csv("analysis.csv", [row], columns=("time","cells","volume"), append=True)
     status = "completed"
 except (RuntimeError, ValueError) as error:
     expected = "injected meshing failure" if mode == "mesh_failure" else "injected analysis failure"

@@ -29,7 +29,7 @@ class _HostPhysics:
     np_dtype = np.float64
 
     @staticmethod
-    def _download_vector_field(values, count):
+    def download_vector_field(values, count):
         return np.asarray(values[:count], dtype=np.float64).copy()
 
     @staticmethod
@@ -37,7 +37,7 @@ class _HostPhysics:
         return np.asarray(values[:count], dtype=np.float64).copy()
 
     @staticmethod
-    def _upload_vector_array(values, output, count):
+    def upload_vector_array(values, output, count):
         output[:count] = values
 
     @staticmethod

@@ -147,8 +147,8 @@ class HostFMMReference:
         # Taichi fields.  ``Field.to_numpy()`` would download the complete
         # capacity (which can be much larger than the active cloud) on every
         # RK stage and is the main avoidable memory spike of this host backend.
-        position_np = self.physics._download_vector_field(position, count)
-        strength_np = self.physics._download_vector_field(vortex_strength, count)
+        position_np = self.physics.download_vector_field(position, count)
+        strength_np = self.physics.download_vector_field(vortex_strength, count)
         radius_np = self.physics._download_scalar_field(core_radius, count)
         self.tree.build(position_np, strength_np, radius_np, count)
         self.diagnostics.hierarchy_builds += 1
@@ -202,9 +202,9 @@ class HostFMMReference:
         """Evaluate arbitrary targets with the reference kernel conditions."""
         if self.physics is None:
             raise RuntimeError("HostFMMReference must be bound before target evaluation")
-        targets = self.physics._download_vector_field(target_position, int(target_count))
-        sources = self.physics._download_vector_field(source_position, int(source_count))
-        strengths = self.physics._download_vector_field(source_vortex_strength, int(source_count))
+        targets = self.physics.download_vector_field(target_position, int(target_count))
+        sources = self.physics.download_vector_field(source_position, int(source_count))
+        strengths = self.physics.download_vector_field(source_vortex_strength, int(source_count))
         radii = self.physics._download_scalar_field(source_core_radius, int(source_count))
         displacement = targets[:, None, :] - sources[None, :, :]
         radius = np.linalg.norm(displacement, axis=-1)
@@ -225,7 +225,7 @@ class HostFMMReference:
                 dtype=velocity.dtype,
             )
         if target_velocity is not None:
-            self.physics._upload_vector_array(velocity, target_velocity, int(target_count))
+            self.physics.upload_vector_array(velocity, target_velocity, int(target_count))
         if target_velocity_gradient is not None:
             zeta_value = self.kernel.zeta(rho)
             q_prime = rho * rho * zeta_value
@@ -398,8 +398,8 @@ class HostFMMReference:
         gradient[target_indices] += far_gradient + near_gradient
 
     def _write_vector(self, output: np.ndarray, values: np.ndarray) -> None:
-        if hasattr(self.physics, "_upload_vector_array"):
-            self.physics._upload_vector_array(values, output, len(values))
+        if hasattr(self.physics, "upload_vector_array"):
+            self.physics.upload_vector_array(values, output, len(values))
             return
         dtype = getattr(self.physics, "np_dtype", np.float32)
         padded = np.zeros((self.max_n_particles, 3), dtype=dtype)

@@ -195,6 +195,40 @@ class _PointProbe(Sampler):
         return data
 
 
+def interpolate_cell_field(
+    field: np.ndarray,
+    cell_centre: np.ndarray,
+    points: np.ndarray,
+    *,
+    n_neighbours: int = 5,
+    inverse_distance_power: float = 2.0,
+    reconstruction: str = "idw",
+) -> np.ndarray:
+    """Interpolate a cell-centred field at points with the sampler stencil.
+
+    Parameters
+    ----------
+    field : numpy.ndarray
+        Cell values, shape ``(n_cells,)`` or ``(n_cells, n_components)``.
+    cell_centre : numpy.ndarray
+        Cell-centre coordinates in m, shape ``(n_cells, 3)``.
+    points : numpy.ndarray
+        Probe points in m, shape ``(n_points, 3)``.
+    n_neighbours, inverse_distance_power, reconstruction
+        Stencil of :class:`LineSampler` and :class:`SurfaceSampler`:
+        ``"idw"`` inverse-distance weights or ``"affine"`` linear-exact
+        local reconstruction.
+
+    Returns
+    -------
+    numpy.ndarray
+        Interpolated values, shape ``(n_points,)`` or
+        ``(n_points, n_components)``.
+    """
+    probe = _PointProbe(points, n_neighbours, inverse_distance_power, reconstruction)
+    return probe._interpolate(field, cell_centre)
+
+
 class LineSampler(_PointProbe):
     """Sample the fields at equally spaced points on a line segment.
 

@@ -18,6 +18,8 @@ def summarize():
         d = rm.load_sampled_ring_data(root / "ring_diagnostics.csv")
         f = pd.DataFrame(read_history_table(root / "flow_integrals.csv"))
         numerics = metadata["configuration"]["numerics"]
+        d_step = np.rint(d.time / numerics["time_step_size"]).astype(int)
+        f_step = np.rint(f.time / numerics["time_step_size"]).astype(int)
         vector = d[
             ["net_vortex_strength_x", "net_vortex_strength_y", "net_vortex_strength_z"]
         ].to_numpy()
@@ -52,14 +54,14 @@ def summarize():
                 f.mean_particle_core_radius.iloc[-1] / rm.RING_RADIUS
             ),
             "missing_sample_steps": sorted(
-                set(range(0, int(d.step.iloc[-1]) + 1, 5)) - set(d.step)
+                set(range(0, int(d_step.iloc[-1]) + 1, 5)) - set(d_step)
             ),
             "common_step_100": None,
         }
-        common = d[d.step == 100]
+        common = d[d_step == 100]
         if not common.empty:
             i = common.index[0]
-            fs = f[(f.step > 0) & (f.step <= 100)]
+            fs = f[(f_step > 0) & (f_step <= 100)]
             ts = time <= 100 * numerics["time_step_size"] / rm.REFERENCE_TIME
             out["common_step_100"] = {
                 "normalized_time": float(d.time.iloc[i] / rm.REFERENCE_TIME),

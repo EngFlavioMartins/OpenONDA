@@ -53,10 +53,10 @@ def main():
         expected_chord_panels=expected_chord_panels,
         cadence_start_time=inputs.metadata["state"]["initial_time"],
     )
-    positions = chord.groupby(["step", "station_id"])[["bound_y", "bound_z"]].mean()
+    positions = chord.groupby(["time", "station_id"])[["bound_y", "bound_z"]].mean()
     positions["radius"] = np.linalg.norm(positions, axis=1)
     sampled = span.merge(
-        positions[["radius"]], on=["step", "station_id"], how="left", validate="one_to_one"
+        positions[["radius"]], on=["time", "station_id"], how="left", validate="one_to_one"
     )
     fields = ["radius", "circulation_magnitude", "section_lift_coefficient_from_circulation"]
     sampled = pd.DataFrame(

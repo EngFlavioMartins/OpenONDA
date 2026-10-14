@@ -33,7 +33,7 @@ class SolidParticleGuard:
     def _project(self, position, strength, count, *, accepted, starts=None):
         if self.boundary.revision != self.revision:
             raise RuntimeError("Solid geometry changed after the GBD mask was built")
-        positions = self.physics._download_vector_field(position, count)
+        positions = self.physics.download_vector_field(position, count)
         if count == 0:
             return positions, False
         corrected, changed, delta, maximum = self.boundary.constrain_motion(
@@ -43,8 +43,8 @@ class SolidParticleGuard:
         )
         if not np.any(changed):
             return positions, False
-        strengths = self.physics._download_vector_field(strength, count)[changed]
-        self.physics._upload_vector_array(corrected, position, count)
+        strengths = self.physics.download_vector_field(strength, count)[changed]
+        self.physics.upload_vector_array(corrected, position, count)
         impulse_change = 0.5 * np.cross(delta, strengths).sum(axis=0)
         budget = getattr(self.physics, "last_solid_projection", None)
         if budget is None:

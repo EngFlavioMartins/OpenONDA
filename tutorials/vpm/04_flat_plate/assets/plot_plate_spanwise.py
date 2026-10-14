@@ -54,7 +54,7 @@ y_ll_over_b = df_ll["span_coordinate_normalized"].to_numpy()
 def load_spanwise_csv(name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     csv = SAMPLES_DIR / name / "vlm_spanwise_flat_plate.csv"
     df = pd.DataFrame(read_csv_table(csv))
-    df = df[df["step"] == df["step"].max()].sort_values("span_coordinate").reset_index(drop=True)
+    df = df[df["time"] == df["time"].max()].sort_values("span_coordinate").reset_index(drop=True)
     y = df["span_coordinate"].to_numpy()
     cl = df["section_lift_coefficient"].to_numpy()
     y_over_b = 2.0 * y / SPAN

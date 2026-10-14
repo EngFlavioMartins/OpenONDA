@@ -97,7 +97,6 @@ def create_fvm_case() -> fvm.FVMCase:
 
 def main() -> None:
     fields = (
-        "step",
         "time",
         "total_kinetic_energy",
         "analytic_total_kinetic_energy",

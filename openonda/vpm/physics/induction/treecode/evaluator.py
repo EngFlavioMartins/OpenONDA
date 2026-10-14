@@ -369,7 +369,7 @@ class TreecodeInduction:
         tree = self.physics._get_or_create_treecode(source_count, self.theta)
         tree.build(source_position, source_vortex_strength, source_core_radius, source_count)
         self.physics._target_tree_key = None
-        target_np = self.physics._download_vector_field(target_position, target_count)
+        target_np = self.physics.download_vector_field(target_position, target_count)
         background_np = None
         if include_freestream:
             background_np = np.asarray(
@@ -384,11 +384,11 @@ class TreecodeInduction:
             velocity, gradient = tree.compute_target_velocity_and_gradients(
                 target_np, background_np
             )
-            self.physics._upload_vector_array(velocity, target_velocity, target_count)
+            self.physics.upload_vector_array(velocity, target_velocity, target_count)
             self.physics._upload_matrix_array(gradient, target_velocity_gradient, target_count)
         elif target_velocity is not None:
             velocity = tree.compute_target_velocity(target_np, background_np)
-            self.physics._upload_vector_array(velocity, target_velocity, target_count)
+            self.physics.upload_vector_array(velocity, target_velocity, target_count)
         elif target_velocity_gradient is not None:
             gradient = tree.compute_target_velocity_gradient(target_np)
             self.physics._upload_matrix_array(gradient, target_velocity_gradient, target_count)

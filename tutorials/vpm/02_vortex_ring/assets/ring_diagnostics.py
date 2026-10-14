@@ -6,7 +6,6 @@ import numpy as np
 
 CSV_COLUMNS = (
     "time",
-    "step",
     "group_id",
     "vortex_centroid_x",
     "vortex_centroid_y",
@@ -24,7 +23,6 @@ CSV_COLUMNS = (
 )
 MODE_CSV_COLUMNS = (
     "time",
-    "step",
     "group_id",
     "mode",
     "radial_amplitude",
@@ -41,7 +39,7 @@ class RingDiagnosticsSampler:
     """Sample ring motion and vortex strength without writing a particle backup."""
 
     file_name = "ring_diagnostics"
-    csv_columns = CSV_COLUMNS[2:]
+    csv_columns = CSV_COLUMNS[1:]
     initial = True
 
     def __init__(self, *, schedule=None) -> None:
@@ -83,7 +81,7 @@ class RingModeDiagnosticsSampler:
     """
 
     file_name = "ring_modes"
-    csv_columns = MODE_CSV_COLUMNS[2:]
+    csv_columns = MODE_CSV_COLUMNS[1:]
     initial = True
 
     def __init__(
@@ -193,7 +191,7 @@ def _sample_ring_group(position: np.ndarray, vortex_strength: np.ndarray) -> tup
     vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
     vortex_strength_magnitude_sum = float(vortex_strength_magnitude.sum())
     if vortex_strength_magnitude_sum <= np.finfo(float).tiny:
-        return (np.nan,) * (len(CSV_COLUMNS) - 3)
+        return (np.nan,) * (len(CSV_COLUMNS) - 2)
     vortex_centroid = (
         np.einsum("i,ij->j", vortex_strength_magnitude, position) / vortex_strength_magnitude_sum
     )

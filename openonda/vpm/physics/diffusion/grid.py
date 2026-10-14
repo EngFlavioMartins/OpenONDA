@@ -1168,7 +1168,7 @@ class _GridDiffusionMixin:
             "conservation. Refine the particle spacing near the wall or narrow gap."
         )
 
-    def _m4_wall_corrections(
+    def compute_m4_wall_corrections(
         self,
         positions: np.ndarray,
         strengths: np.ndarray,
@@ -2674,7 +2674,7 @@ class _GridDiffusionMixin:
         if getattr(self, "_body_mask_active", False):
             if remeshing_kernel != "m4_prime":
                 raise RuntimeError("solid-wall GBD redistribution requires M4_PRIME")
-            correction_nodes, correction_values, wall_budget = self._m4_wall_corrections(
+            correction_nodes, correction_values, wall_budget = self.compute_m4_wall_corrections(
                 pos_np,
                 vortex_strength,
                 grid_min_np,
