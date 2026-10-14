@@ -34,6 +34,7 @@ When checking convergence, refine the spacing and the time step together. Result
 | [Square cylinder](../tutorials/fvm/cube_flow/README.md) | Square-cylinder shedding | Force coefficients, Strouhal number |
 | [STL body](../tutorials/fvm/cartesian_mesher/README.md) | Flow around an STL body | Octree meshing, refinement regions, slip walls |
 | [NACA 0012 airfoil](../tutorials/fvm/airfoil_flow/README.md) | NACA 0012 airfoil | Far-field boundaries, surface pressure |
+| [Oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md) | Cylinder heaving across a stream at $Re=100$ | Moving meshes, prescribed motion, lock-in |
 
 ## VPM and VLM: vortex particles and lifting surfaces
 
@@ -53,6 +54,7 @@ When checking convergence, refine the spacing and the time step together. Result
 | --- | --- | --- |
 | [Cylinder wake](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$ | Coupling setup, planar flow with one particle layer, outflow fringes, a sensitivity study |
 | [Cube wake](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated flow at $Re=1000$ | Three-dimensional coupling, LES in both solvers |
+| [Oscillating cylinder](../tutorials/coupled_fvm_vpm/03_oscillating_cylinder/README.md) | Cylinder heaving across the stream at $Re=150$ | A moving FVM box, particles in the moving frame |
 
 Each coupled case has a `reference_flow/` subdirectory that solves the same flow with the FVM alone on a large domain; the cube reference also shows a grid-convergence study and MPI parallel runs.
 

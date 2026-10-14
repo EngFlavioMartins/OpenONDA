@@ -128,7 +128,8 @@ class ForceSampler(Sampler):
         reference_length : float, default=1.0
             Reference length in m for the pitching-moment coefficient.
         moment_centre : sequence[float], default=(0, 0, 0)
-            Moment origin, shape ``(3,)``, in m.
+            Moment origin, shape ``(3,)``, in m. On a moving mesh it is the
+            start position of a point that moves with the mesh.
         file_name : str, default="forces_history"
             Output CSV stem.
         schedule : RunSchedule or None, default=None
@@ -170,6 +171,10 @@ class ForceSampler(Sampler):
         """
         density, effective_kinematic_viscosity = _context_transport(context)
         dynamic_viscosity = effective_kinematic_viscosity * density
+        moment_centre = np.asarray(self.moment_centre, dtype=np.float64)
+        mesh_motion = getattr(context, "mesh_motion", None)
+        if mesh_motion is not None:
+            moment_centre = mesh_motion.current_position(moment_centre)
 
         forces = diagnostics.compute_surface_forces(
             context.velocity,
@@ -183,7 +188,7 @@ class ForceSampler(Sampler):
             reference_velocity=self.reference_velocity,
             reference_area=self.reference_area,
             reference_length=self.reference_length,
-            moment_centre=self.moment_centre,
+            moment_centre=moment_centre,
             gradient=context._velocity_gradient(),
         )
         if context.parallel.is_partitioned:

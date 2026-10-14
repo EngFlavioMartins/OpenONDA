@@ -117,6 +117,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         volumetric_face_flux_old: np.ndarray | None = None,
         volumetric_face_flux_older: np.ndarray | None = None,
         previous_time_step_size: float | None = None,
+        mesh_face_flux: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, object]]:
         """Perform one PIMPLE time step.
 
@@ -135,6 +136,10 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 with ``velocity_older`` for variable-step BDF2.
             source_explicit: Explicit acceleration source [m/s²].
             source_implicit: Non-negative implicit source coefficient [1/s].
+            mesh_face_flux: Face flux swept by a moving mesh, ``u_mesh . Sf``
+                [m³/s], on the end-of-step geometry. Momentum is convected and
+                inflow/outflow faces are selected with ``phi - mesh_face_flux``;
+                continuity keeps the absolute flux ``phi``.
 
         Returns:
             tuple: Updated ``(velocity, kinematic_pressure, volumetric_face_flux, residuals)``.
@@ -149,6 +154,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             self.mesh_data,
             self.geo_data,
             self.boundaries,
+            mesh_face_flux=mesh_face_flux,
         )
         n_outer = int(self.params.get("n_outer_correctors", 1))
         n_corr = int(self.params["n_correctors"])
@@ -190,6 +196,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 self.boundaries,
                 ddt_scheme,
                 previous_time_step_size=previous_time_step_size,
+                mesh_face_flux=mesh_face_flux,
             )
 
         simple_solver.update_scalar_boundaries(
@@ -270,7 +277,11 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
             def _solve_predictor(
                 src_explicit,
-                volumetric_face_flux=volumetric_face_flux,
+                volumetric_face_flux=(
+                    volumetric_face_flux
+                    if mesh_face_flux is None
+                    else volumetric_face_flux - mesh_face_flux
+                ),
                 velocity_relaxation=outer_velocity_relaxation,
                 momentum_tolerance=momentum_tolerance,
                 momentum_relative_tolerance=momentum_relative_tolerance,
@@ -406,6 +417,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         reuse_matrix=reuse_pressure_matrix,
                         frozen_velocity_h_over_a=frozen_velocity_h_over_a,
                         return_workspace=True,
+                        mesh_face_flux=mesh_face_flux,
                     )
                     pressure_geometry = pressure_workspace
                     if frozen_velocity_h_over_a is None:

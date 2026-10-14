@@ -15,6 +15,7 @@ from openonda.core.write_precision import (
     validate_write_precision,
 )
 
+from ..motion.kinematics import MeshMotion, mesh_motion_from_dict, mesh_motion_to_dict
 from .scheduling import RunSchedule
 
 
@@ -1189,6 +1190,9 @@ class FVMSetup:
         factory-specific default.
     initial_kinematic_pressure : float or None, default=0.0
         Uniform initial ``p/rho`` in m²/s².
+    mesh_motion : MeshMotion or None, default=None
+        Prescribed rigid-body motion of the whole mesh. ``None`` is a static
+        mesh.
 
     Prefer :class:`openonda.fvm.config.case.FVMCase` for new standalone
     applications. This mutable object supplies resolved controls to
@@ -1226,6 +1230,7 @@ class FVMSetup:
 
     initial_velocity: list[float] | None = field(default_factory=lambda: [0.0, 0.0, 0.0])
     initial_kinematic_pressure: float | None = 0.0
+    mesh_motion: MeshMotion | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.cores, bool) or not isinstance(self.cores, int):
@@ -1288,6 +1293,11 @@ class FVMSetup:
             if not isinstance(getattr(sampler, "schedule", None), RunSchedule):
                 raise TypeError(f"FVMSetup.samplers[{index}] must provide a RunSchedule")
         self.samplers = tuple(self.samplers or ())
+        if self.mesh_motion is not None:
+            if not isinstance(self.mesh_motion, MeshMotion):
+                raise TypeError("FVMSetup.mesh_motion must be a MeshMotion or None")
+            if self.pimple.algorithm == "SIMPLE":
+                raise ValueError("A moving mesh requires the transient PISO or PIMPLE algorithm")
 
     def algorithm_params(self) -> dict[str, Any]:
         """Return the flat controls consumed by the algorithm layer."""
@@ -1309,6 +1319,8 @@ class FVMSetup:
         data = asdict(self)
         if self.samplers:
             data["samplers"] = [sampler_to_dict(sampler) for sampler in self.samplers]
+        if self.mesh_motion is not None:
+            data["mesh_motion"] = mesh_motion_to_dict(self.mesh_motion)
         with open(
             filepath,
             "w",
@@ -1401,6 +1413,11 @@ class FVMSetup:
             initial_kinematic_pressure=data.get(
                 "initial_kinematic_pressure",
                 0.0,
+            ),
+            mesh_motion=(
+                None
+                if data.get("mesh_motion") is None
+                else mesh_motion_from_dict(data["mesh_motion"])
             ),
         )
 

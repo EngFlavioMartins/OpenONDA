@@ -136,14 +136,23 @@ def prepare_freestream_boundaries(
     mesh_data: dict[str, object],
     geo_data: dict[str, object],
     boundaries: list[dict],
+    mesh_face_flux: np.ndarray | None = None,
 ) -> None:
-    """Select each mixed boundary branch once for the momentum/projection solve."""
+    """Select each mixed boundary branch once for the momentum/projection solve.
+
+    On a moving mesh the branch follows the flux relative to the moving face,
+    ``face_flux - mesh_face_flux``, and ``inletOutlet`` patches are selected
+    once per step as well.
+    """
+    selection_flux = face_flux if mesh_face_flux is None else face_flux - mesh_face_flux
+    selected = (
+        (BoundaryStrategy.FREESTREAM,)
+        if mesh_face_flux is None
+        else (BoundaryStrategy.FREESTREAM, BoundaryStrategy.INLET_OUTLET)
+    )
     changed = False
     for boundary in boundaries:
-        if (
-            BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "ghost")
-            is not BoundaryStrategy.FREESTREAM
-        ):
+        if BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "ghost") not in selected:
             continue
         start = int(boundary["start_face"])
         stop = start + int(boundary["n_faces"])
@@ -151,7 +160,7 @@ def prepare_freestream_boundaries(
         boundary["_freestream_outflow"] = (
             np.asarray(fixed, dtype=bool)
             if fixed is not None
-            else np.asarray(face_flux[start:stop] >= 0.0)
+            else np.asarray(selection_flux[start:stop] >= 0.0)
         )
         changed = True
     if changed:
@@ -185,6 +194,7 @@ def compute_ddt_flux_correction(
     boundaries: list[dict],
     ddt_scheme: str,
     previous_time_step_size: float | None = None,
+    mesh_face_flux: np.ndarray | None = None,
 ) -> np.ndarray | None:
     r"""Return the transient Rhie--Chow face-history correction.
 
@@ -198,6 +208,10 @@ def compute_ddt_flux_correction(
     reconstruction.  Applying a second correction double-counts that history.
     Boundary-driven domains still require the correction to couple the cell
     and face transient operators.
+
+    On a moving mesh the coupling coefficient is normalised by the old flux
+    relative to the moving faces, ``phi_old - mesh_face_flux``, so the
+    correction is independent of a uniform frame velocity.
     """
     if volumetric_face_flux_old is None or time_step_size is None or velocity_old is None:
         return None
@@ -241,6 +255,11 @@ def compute_ddt_flux_correction(
     neighbours = mesh_data["neighbours"]
     weights = geo_data["face_interpolation_weight"]
     face_area_vector = geo_data["face_area_vector"]
+    coupling_flux = (
+        volumetric_face_flux_old
+        if mesh_face_flux is None
+        else volumetric_face_flux_old - np.asarray(mesh_face_flux, dtype=np.float64)
+    )
     correction = np.zeros(n_faces, dtype=np.float64)
     chunk_size = 250_000
 
@@ -259,8 +278,7 @@ def compute_ddt_flux_correction(
             "ij,ij->i", old_face, face_area_vector[start:stop]
         )
         coupling = 1.0 - np.minimum(
-            np.abs(reference)
-            / (np.abs(volumetric_face_flux_old[start:stop]) + np.finfo(np.float64).tiny),
+            np.abs(reference) / (np.abs(coupling_flux[start:stop]) + np.finfo(np.float64).tiny),
             1.0,
         )
         correction[start:stop] = coupling * phi_corr / float(time_step_size)
@@ -285,8 +303,7 @@ def compute_ddt_flux_correction(
             "ij,ij->i", old_face, face_area_vector[faces]
         )
         coupling = 1.0 - np.minimum(
-            np.abs(reference)
-            / (np.abs(volumetric_face_flux_old[faces]) + np.finfo(np.float64).tiny),
+            np.abs(reference) / (np.abs(coupling_flux[faces]) + np.finfo(np.float64).tiny),
             1.0,
         )
         correction[faces] = coupling * phi_corr / float(time_step_size)
@@ -915,6 +932,7 @@ def adjust_boundary_flux_for_continuity(
     mesh_data: dict[str, object],
     n_interior: int,
     n_faces: int,
+    mesh_face_flux: np.ndarray | None = None,
 ) -> np.ndarray:
     """Rescale adjustable outflow boundary fluxes so the net is zero.
 
@@ -933,6 +951,10 @@ def adjust_boundary_flux_for_continuity(
     perturbs cases that were already conservative.  The reduction is global so
     a partitioned coupling patch spread over several ranks is balanced once,
     not per rank.
+
+    On a moving mesh the outflow and its scaling refer to the flux relative to
+    the moving faces, ``volumetric_face_flux - mesh_face_flux``; a rigid mesh
+    sweeps no net volume through its closed boundary.
 
     ``volumetric_face_flux`` is mutated in place.
     """
@@ -954,6 +976,8 @@ def adjust_boundary_flux_for_continuity(
         if nf == 0:
             continue
         patch_flux = volumetric_face_flux[start : start + nf]
+        if mesh_face_flux is not None:
+            patch_flux = patch_flux - mesh_face_flux[start : start + nf]
         # Cyclic faces pair internally and never carry net domain flux.
         if np.any(boundary_neighbour_cell[start : start + nf] >= 0):
             continue
@@ -986,7 +1010,11 @@ def adjust_boundary_flux_for_continuity(
     scale = (outflow_total - net) / outflow_total
     for start, nf, outflow in adjustable_slices:
         patch = volumetric_face_flux[start : start + nf]
-        patch[outflow] *= scale
+        if mesh_face_flux is None:
+            patch[outflow] *= scale
+        else:
+            moving = mesh_face_flux[start : start + nf]
+            patch[outflow] = moving[outflow] + scale * (patch[outflow] - moving[outflow])
         volumetric_face_flux[start : start + nf] = patch
     return volumetric_face_flux
 
@@ -1184,6 +1212,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     reuse_matrix: bool = False,
     frozen_velocity_h_over_a: np.ndarray | None = None,
     return_workspace: bool = False,
+    mesh_face_flux: np.ndarray | None = None,
 ) -> "tuple[sparse.spmatrix, np.ndarray, np.ndarray, PressureCorrectionWorkspace] | tuple[sparse.spmatrix, np.ndarray, np.ndarray]":
     """Assemble the Rhie--Chow pressure-correction equation for one PIMPLE pass.
 
@@ -1230,6 +1259,9 @@ def assemble_pressure_correction_equation_rhie_chow(
     return_workspace : bool, default=False
         If true, append the :class:`PressureCorrectionWorkspace` to the return
         tuple for reuse by a subsequent corrector.
+    mesh_face_flux : ndarray, shape (n_faces,) or None, optional
+        Face flux swept by a moving mesh, used to balance boundary outflow
+        relative to the moving faces.
 
     Returns
     -------
@@ -1513,7 +1545,9 @@ def assemble_pressure_correction_equation_rhie_chow(
     # call locally lets those ranks advance into PETSc's next collective while
     # boundary-owning ranks are still reducing the boundary flux, deadlocking
     # the solve.
-    adjust_boundary_flux_for_continuity(flux_vf, boundaries, mesh_data, n_interior, n_faces)
+    adjust_boundary_flux_for_continuity(
+        flux_vf, boundaries, mesh_data, n_interior, n_faces, mesh_face_flux=mesh_face_flux
+    )
 
     # 4. Assemble Matrix and RHS
     flux_data = {"flux_vf": flux_vf}

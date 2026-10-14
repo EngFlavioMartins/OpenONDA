@@ -11,6 +11,7 @@ The implementation is organized by numerical task:
 - `fields/` and `schemes/`: field reconstruction and discrete operators.
 - `solve/`: momentum and pressure equations, SIMPLE/PISO/PIMPLE, linear solvers.
 - `core/`: solver state, time stepping, and parallel execution.
+- `motion/`: prescribed rigid-body motion of the mesh (moving-mesh kinematics).
 - `sampling/`: online sampling and replay of saved fields.
 - `coupling/`: field exchange with the FVM–VPM driver.
 

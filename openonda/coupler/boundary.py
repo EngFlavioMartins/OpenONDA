@@ -283,6 +283,10 @@ def evaluate_vpm_boundary(
                     evaluated_velocity=vpm_boundary_condition_velocity,
                 )
             )
+            # The FVM takes inertial-frame velocities on its moving mesh.
+            velocity_boundary_condition = coupler.absolute_interface_velocity(
+                velocity_boundary_condition
+            )
             if coupler._velocity_boundary_condition_old is None:
                 coupler._velocity_boundary_condition_old = velocity_boundary_condition.copy()
             assert tangential_normal_gradient is not None
@@ -436,6 +440,7 @@ def update_boundary_history_after_replacement(
                 evaluated_velocity=corrected_boundary,
             )
         )
+        corrected_boundary = coupler.absolute_interface_velocity(corrected_boundary)
         freestream_speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
         drift = (
             float(
@@ -534,8 +539,10 @@ def apply_fvm_boundary(
     prescribed_velocity: np.ndarray,
     normal_velocity: np.ndarray | None = None,
     tangential_gradient: np.ndarray | None = None,
+    *,
+    accepted_time: float,
 ) -> None:
-    """Apply the configured VPM boundary condition trace and advance one FVM step."""
+    """Apply the VPM boundary condition trace and advance one FVM step to ``accepted_time``."""
     assert coupler.fvm_solver is not None
     freestream_velocity = np.asarray(coupler.freestream_velocity, dtype=np.float64)
     freestream_speed = float(np.linalg.norm(freestream_velocity)) + 1e-30
@@ -569,9 +576,9 @@ def apply_fvm_boundary(
     )
 
     if getattr(coupler.setup, "interface_iterations", 1) > 1:
-        coupler.fvm_solver.advance_time(defer_output=True)
+        coupler.fvm_solver.advance_time(defer_output=True, time=accepted_time)
     else:
-        coupler.fvm_solver.advance_time()
+        coupler.fvm_solver.advance_time(time=accepted_time)
     coupler.fvm_solver.logger.step_end(time.perf_counter() - step_wall_time_start)
 
     if prescribed_velocity.shape[0] > 0:
@@ -630,8 +637,17 @@ def advance_fvm_substeps(
             ),
         )
 
+    # Substeps land on the exchange clock; the last one exactly on its end time.
+    exchange = coupler.fvm_solver.step // n_substeps
+    exchange_start_time = coupler.exchange_time(exchange)
+    exchange_end_time = coupler.exchange_time(exchange + 1)
     for substep in range(n_substeps):
         alpha = (substep + 1) / n_substeps
+        substep_time = (
+            exchange_end_time
+            if substep + 1 == n_substeps
+            else exchange_start_time + (substep + 1) * coupler.fvm_time_step_size
+        )
         interpolated_velocity = (1.0 - alpha) * previous_velocity + alpha * next_velocity
         normal_velocity = None
         interpolated_tangential_gradient = None
@@ -652,4 +668,5 @@ def advance_fvm_substeps(
             interpolated_velocity,
             normal_velocity=normal_velocity,
             tangential_gradient=interpolated_tangential_gradient,
+            accepted_time=substep_time,
         )

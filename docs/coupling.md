@@ -6,6 +6,7 @@ The coupled solver splits the flow where each method is strongest. The finite-vo
 | --- | --- |
 | [Cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar planar shedding at $Re=150$; one FVM cell and one particle layer across the span. Includes a parameter sensitivity study. |
 | [Cube](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated three-dimensional flow at $Re=1000$ with LES in both solvers. |
+| [Oscillating cylinder](../tutorials/coupled_fvm_vpm/03_oscillating_cylinder/README.md) | The cylinder heaving across the stream at $Re=150$; the FVM box moves with it. |
 
 Each case has an FVM-only `reference_flow` that solves the same problem on a large domain. Read the [FVM](fvm.md) and [VPM](vpm.md) guides first.
 
@@ -57,6 +58,14 @@ The particles near the body are renewed from the FVM vorticity at every exchange
 - `transfer_amplification_cap`: limits how strongly a particle strength may be corrected when the particles cannot represent a sharp near-wall target.
 
 Renewal corrects the difference between the FVM vorticity and the field the particles represent, so a field the particles already reproduce is left unchanged, and total strength and impulse are conserved.
+
+## Moving bodies
+
+A body moving with prescribed translation carries its FVM box with it: give the FVM setup a `fvm.MeshMotion` with a translating motion, for example `fvm.HeavingMotion`; see [moving meshes](fvm.md#moving-meshes). The coupler solves the particles in the frame translating with the box. A uniform frame translation leaves the vorticity equation unchanged, so the particles keep their strengths and only drift with the stream relative to the box, $\mathbf{U}_\infty-\mathbf{V}(t)$. Over each exchange the particle stream uses the mean box velocity, so the particles stay exactly placed relative to the moved box, and the box, transfer region, walls and particle diffusion grid remain fixed in that frame.
+
+The FVM keeps inertial-frame velocities on its moving mesh; the boundary trace is converted to the inertial frame and the FVM velocity seen by the particles to the box frame. The particle positions, particle output and `domain_bounds` therefore refer to the box at the start of the run: add `mesh_translation` from `solution/coupler_diagnostics.jsonl` to place a particle field in the inertial frame. The particle domain moves with the body, and its outflow fringe stays downstream of the box. The particle stream $\mathbf{U}_\infty-\mathbf{V}$ varies during the run, and the renewal belt is sized for its largest value.
+
+The coupler stops before the first step if the mesh rotates: the particle solver has no rotating frame.
 
 ## Configuration
 

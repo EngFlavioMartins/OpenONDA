@@ -71,21 +71,29 @@ class BufferedVTKWriter:
         snapshot = {
             name: np.ascontiguousarray(np.asarray(values)).copy() for name, values in fields.items()
         }
+        # A moving mesh changes its coordinates while the worker writes.
+        vertex_position = np.array(self._mesh_data["vertex_position"], dtype=np.float64)
         with self._lock:
             if self._closed:
                 raise RuntimeError("Cannot submit output after the buffered writer is closed")
             if self._pending is not None:
                 self._pending.result()
             self._pending = self._executor.submit(
-                self._write_snapshot, filename, float(time), snapshot
+                self._write_snapshot, filename, float(time), snapshot, vertex_position
             )
 
-    def _write_snapshot(self, filename: str, time: float, fields: dict[str, np.ndarray]) -> None:
+    def _write_snapshot(
+        self,
+        filename: str,
+        time: float,
+        fields: dict[str, np.ndarray],
+        vertex_position: np.ndarray,
+    ) -> None:
         if self._exporter is None:
             self._exporter = VTKExporter(self._mesh_data, self._output)
         if self._pvd is None:
             self._pvd = PVDManager(self._pvd_path)
-        self._exporter.export(filename, fields)
+        self._exporter.export(filename, fields, vertex_position=vertex_position)
         self._pvd.add_step(time, filename)
 
     def flush(self) -> None:

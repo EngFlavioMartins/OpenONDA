@@ -216,6 +216,12 @@ class VTKExporter:
         self._grid = self._initialize_grid()
         self._point_operators: dict[bool, dict[str, np.ndarray]] = {}
 
+    def _set_vertex_position(self, vertex_position: np.ndarray | None) -> None:
+        """Place the grid points at the snapshot's (possibly moving) mesh coordinates."""
+        points = self.mesh_data["vertex_position"] if vertex_position is None else vertex_position
+        if not np.array_equal(self._grid.points, points):
+            self._grid.points = np.array(points, dtype=np.float64)
+
     def _field_array(self, data: np.ndarray) -> np.ndarray:
         """Return a contiguous array matching the qualified output precision."""
         return cast_for_write(data, self.output.precision)
@@ -620,6 +626,7 @@ class VTKExporter:
         interpolate_to_points: bool = False,
         *,
         point_fields: dict[str, np.ndarray] | None = None,
+        vertex_position: np.ndarray | None = None,
     ) -> str:
         """Export fields to a ``.vtu`` file (VTK unstructured grid format).
 
@@ -634,10 +641,13 @@ class VTKExporter:
                                    :meth:`pyvista.DataSetFilters.cell_data_to_point_data`
                                    for smoother visualisation in ParaView.  The
                                    default keeps raw finite-volume cell data.
+            vertex_position:       Vertex coordinates of this snapshot; the
+                                   mesh's current coordinates when omitted.
 
         Returns:
             The output file path.
         """
+        self._set_vertex_position(vertex_position)
         directory = os.path.dirname(filename)
         if directory:
             os.makedirs(directory, exist_ok=True)
@@ -697,6 +707,7 @@ class VTKExporter:
         self, filename: str, cell_ids: np.ndarray, fields: dict[str, np.ndarray]
     ) -> str:
         """Write an explicitly selected cell partition without interpolation."""
+        self._set_vertex_position(None)
         ids = np.asarray(cell_ids, dtype=np.int64)
         if ids.ndim != 1 or np.any(ids < 0) or np.any(ids >= self.mesh_data["n_cells"]):
             raise ValueError("cell_ids must be valid one-dimensional global cell indices")
