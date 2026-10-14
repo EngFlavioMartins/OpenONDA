@@ -1,5 +1,7 @@
 """One surface representation for live VLM samples and saved-state visualization."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -76,7 +78,7 @@ def write_lattice_vtk(
     surface.SetPoints(points)
     surface.SetPolys(cells)
 
-    def add(data: "vtkFieldData", name: str, values: np.ndarray) -> None:
+    def add(data: vtkFieldData, name: str, values: np.ndarray) -> None:
         """Attach a named deep-copy array to VTK cell or field data."""
         array = numpy_to_vtk(np.ascontiguousarray(values), deep=True)
         array.SetName(name)

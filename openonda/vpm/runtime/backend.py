@@ -376,9 +376,10 @@ def reset_taichi_backend(*, solver: object | None = None) -> None:
     Typical usage in a script that runs several cases back-to-back::
 
         from openonda.vpm import VPMSolver
+        from openonda.vpm.runtime.backend import reset_taichi_backend
 
         for case in cases:
-            VPMSolver.reset_gpu()          # free all GPU memory from previous run
+            reset_taichi_backend()         # free all GPU memory from previous run
             solver = VPMSolver(case)
             for _ in range(n_steps):
                 solver.advance()

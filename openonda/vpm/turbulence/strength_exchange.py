@@ -121,7 +121,11 @@ class StrengthExchange:
     def _cell_of(self, x, lower, cell_size, nx: ti.i32, ny: ti.i32, nz: ti.i32):
         c = ti.cast(ti.floor((x - lower) / cell_size), ti.i32)
         return ti.Vector(
-            [ti.min(ti.max(c[0], 0), nx - 1), ti.min(ti.max(c[1], 0), ny - 1), ti.min(ti.max(c[2], 0), nz - 1)]
+            [
+                ti.min(ti.max(c[0], 0), nx - 1),
+                ti.min(ti.max(c[1], 0), ny - 1),
+                ti.min(ti.max(c[2], 0), nz - 1),
+            ]
         )
 
     @ti.kernel
@@ -196,7 +200,10 @@ class StrengthExchange:
                             if r2 < _SUPPORT_RADII**2 * eps2:
                                 eta = normalization * ti.exp(-r2 / eps2) / (eps2 * ti.sqrt(eps2))
                                 rate += (
-                                    viscosity * eta / eps2 * (vp * vortex_strength[q] - particle_volume[q] * ap)
+                                    viscosity
+                                    * eta
+                                    / eps2
+                                    * (vp * vortex_strength[q] - particle_volume[q] * ap)
                                 )
             self._rate[p] = rate
 

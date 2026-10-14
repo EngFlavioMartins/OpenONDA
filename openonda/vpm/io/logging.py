@@ -375,8 +375,6 @@ class Logging:
         history = system._diagnostics_history
         if history["time"] and history["time"][-1] == system.time and history["vortex_centroid"]:
             rows.append(("centroid", tuple(history["vortex_centroid"][-1]), "m"))
-        for group, centroid in values.get("vortex_centroids_by_group", {}).items():
-            rows.append((f"group {group}, centroid", tuple(centroid), "m"))
         Logging._pending_sections["flow integrals"] = tuple(rows)
         wall_time = getattr(system, "elapsed_wall_time", getattr(system, "wall_time", 0.0))
         Logging._report_step(

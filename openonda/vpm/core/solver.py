@@ -178,7 +178,6 @@ class VPMSolver:
         self._run_started = False
         self._run_wall_started_at: float | None = None
         self._run_wall_finished_at: float | None = None
-        self._run_finished = False
         self.run_status = "not_started"
         self.run_failure: BaseException | None = None
         self._evolution_failure: BaseException | None = None
@@ -219,16 +218,6 @@ class VPMSolver:
         self._backup_path.mkdir(parents=True, exist_ok=True)
         self._log_path.mkdir(parents=True, exist_ok=True)
         self.samples_dir.mkdir(parents=True, exist_ok=True)
-
-    def reset_gpu(self=None) -> None:
-        """Reset the Taichi runtime and release device allocations.
-
-        Call before constructing a new solver when several VPM cases are run
-        sequentially in the same Python process.  When called through a live
-        solver instance, its runtime reservation is released first; a shared
-        runtime is reset only when no compatible solver remains.
-        """
-        reset_taichi_backend(solver=self)
 
     def _cleanup_failed_construction(self) -> None:
         """Release every resource acquired before construction failed."""
@@ -498,8 +487,6 @@ class VPMSolver:
         self._body_induced_fn = None
         self._particles_removed_this_step = 0
         self._vortex_strength_removed_this_step = np.zeros(3, dtype=self.np_dtype)
-        # Size of the last core-spreading moment projection, relative to |vortex_strength|.
-        self.core_spreading_correction_relative = 0.0
 
     def _init_solvers(self, final_setup: Numerics) -> None:
         """Initialize the stabilization master and the optional sub-solvers."""
@@ -860,7 +847,6 @@ class VPMSolver:
         remaining_steps = max(0, self._run_final_step - self.step)
         if getattr(self, "_restart_terminal_noop", False):
             self._run_wall_finished_at = perf_counter()
-            self._run_finished = True
             self.run_status = "completed"
             self._sync_restart_state()
             try:
@@ -943,7 +929,6 @@ class VPMSolver:
             if primary_failure is not None:
                 status = "failed"
                 failure = primary_failure
-            self._run_finished = status == "completed"
             self.run_status = status
             self.run_failure = failure
             self._sync_restart_state()
@@ -1212,29 +1197,9 @@ class VPMSolver:
         return self._get_particle_field("zone_id")
 
     @property
-    def particle_kinematic_viscosity(self) -> np.ndarray:
-        """Return molecular kinematic viscosity, shape ``(N,)`` in m²/s."""
-        return self._get_particle_field("kinematic_viscosity")
-
-    @property
-    def particle_eddy_viscosity(self) -> np.ndarray:
-        """Return modeled turbulent viscosity, shape ``(N,)`` in m²/s."""
-        return self._get_particle_field("eddy_viscosity")
-
-    @property
-    def particle_effective_viscosity(self) -> np.ndarray:
-        """Return molecular plus eddy viscosity, shape ``(N,)`` in m²/s."""
-        return self._get_particle_field("effective_viscosity")
-
-    @property
     def particle_velocity_gradient(self) -> np.ndarray:
         """Return ``J[i,j] = d u_i/d x_j``, shape ``(N, 3, 3)`` in 1/s."""
         return self._get_particle_field("velocity_gradient")
-
-    @property
-    def particle_strain_rate(self) -> np.ndarray:
-        """Return symmetric strain tensors, shape ``(N, 3, 3)`` in 1/s."""
-        return self._get_particle_field("strain_rate")
 
     @property
     def freestream_velocity(self) -> np.ndarray:
@@ -1375,11 +1340,6 @@ class VPMSolver:
         return self._flow_integrals.get("kinetic_energy_rate", 0.0)
 
     @property
-    def kinetic_energy_rate_source(self) -> str:
-        """Return the native source information of the reported energy-rate value."""
-        return self._flow_integrals.get("kinetic_energy_rate_source", "unknown")
-
-    @property
     def net_vortex_strength(self) -> np.ndarray:
         """Return the net circulation vector, shape ``(3,)`` in m³/s."""
         return self._flow_integrals.get("net_vortex_strength", np.array([0.0, 0.0, 0.0]))
@@ -1398,16 +1358,6 @@ class VPMSolver:
             self.particle_position.astype(np.float64),
             self.particle_vortex_strength.astype(np.float64),
         ).sum(axis=0, dtype=np.float64)
-
-    @property
-    def total_angular_impulse(self) -> np.ndarray:
-        """Return the kernel-corrected angular impulse, shape ``(3,)`` in m⁵/s."""
-        return self._flow_integrals.get("angular_impulse", np.array([0.0, 0.0, 0.0]))
-
-    @property
-    def vortex_centroids_by_group(self) -> dict[int, np.ndarray]:
-        """Return strength-magnitude-weighted centroids keyed by group ID in m."""
-        return self.field_diagnostics.compute_vortex_centroids_by_group(self.particles)
 
     @property
     def vortex_centroid(self) -> np.ndarray:
@@ -1549,70 +1499,6 @@ class VPMSolver:
             np.zeros((len(points), 3), dtype=self.np_dtype),
             include_body=True,
         )
-
-    def set_body_induced_velocity(
-        self,
-        fn: Callable[[np.ndarray, float], np.ndarray] | None,
-        gradient_fn: Callable[[np.ndarray, float], np.ndarray] | None = None,
-        time_derivative_fn: Callable[[np.ndarray, float], np.ndarray] | None = None,
-    ) -> None:
-        """Set the optional stage-aware boundary-element velocity callback.
-
-        The callback must map ``(stage_position, stage_time)`` to an ``(N, 3)``
-        velocity array. ``gradient_fn`` is optional and maps the same inputs to
-        ``J[i,j] = ∂u_i/∂x_j``. When omitted, the stage provider uses a centered
-        finite difference of ``fn`` so the non-uniform field still contributes
-        the transposed stretching rate ``J.T @ Γ``. Pass ``None`` to disable
-        body induction. ``time_derivative_fn`` optionally maps the same inputs
-        to ``∂u/∂t`` for pressure diagnostics. Target-query diagnostics invoke
-        the callbacks at the solver's accepted time.
-
-        Parameters
-        ----------
-        fn : callable or None
-            Callback ``fn(position, time) -> velocity``. ``position`` has
-            shape ``(N, 3)`` in m, ``time`` is seconds, and the result has
-            shape ``(N, 3)`` in m/s. ``None`` disables body induction.
-        gradient_fn : callable or None, default=None
-            Optional callback returning ``(N, 3, 3)`` with
-            ``J[i,j] = d u_i/d x_j`` in 1/s.
-        time_derivative_fn : callable or None, default=None
-            Optional callback returning ``(N, 3)`` for ``d u/dt`` in m/s²,
-            used by pressure diagnostics.
-
-        Side Effects
-        ------------
-        Replaces callbacks used by RK-stage providers, target queries, and
-        pressure evaluation. Disabling ``fn`` also clears installed device
-        hooks.
-        """
-        self._body_induced_fn = fn
-        self._pressure_body_induced_fn = fn
-        self._pressure_body_induced_time_derivative_fn = time_derivative_fn
-        self.physics.body_velocity = fn
-        self.physics.body_velocity_gradient = gradient_fn
-
-    def set_surface_sources(
-        self, position: np.ndarray, vortex_strength: np.ndarray, core_radius: np.ndarray
-    ) -> None:
-        """Set regularized potential sources for velocity and particle evolution.
-
-        ``position`` has shape (N, 3), scalar source flux ``vortex_strength``
-        has shape (N,), and positive ``core_radius`` has shape (N,).
-        Every source is retained; evaluation uses bounded device batches.
-        """
-        positions = np.asarray(position, dtype=self.np_dtype)
-        strengths = np.asarray(vortex_strength, dtype=self.np_dtype)
-        radii = np.asarray(core_radius, dtype=self.np_dtype)
-        count = len(positions)
-        if positions.shape != (count, 3) or strengths.shape != (count,) or radii.shape != (count,):
-            raise ValueError("Surface sources require positions (N, 3), strengths (N,), radii (N,)")
-        if not all(np.isfinite(values).all() for values in (positions, strengths, radii)):
-            raise ValueError("Surface sources must be finite")
-        if np.any(radii <= 0):
-            raise ValueError("Surface source radii must be positive")
-        self._surface_sources = (positions.copy(), strengths.copy(), radii.copy())
-        self.n_sources = count
 
     def _surface_source_batches(self) -> Iterator[int]:
         """Upload every source through the reusable device workspace."""
@@ -1799,157 +1685,7 @@ class VPMSolver:
             raise RuntimeError("Mixed VPM target evaluation returned non-finite data")
         return np.asarray(complete_velocity, dtype=np.float64), tangential
 
-    def compute_pressure_gradient_at_points(
-        self,
-        evaluation_position: np.ndarray,
-        density: float = 1.0,
-        kinematic_viscosity: float | None = None,
-        include_viscous: bool = True,
-        include_temporal: bool = True,
-        include_freestream: bool = True,
-        particle_spacing: float | None = None,
-        temporal_method: str = "lagrangian",
-        velocity_previous: np.ndarray | None = None,
-        time_step_size: float | None = None,
-        return_velocity: bool = False,
-        include_body: bool = True,
-    ) -> dict | tuple[dict, np.ndarray]:
-        """Evaluate pressure-gradient terms at arbitrary points.
-
-        The result contains the total pressure gradient and its convective, viscous,
-        and temporal contributions. ``temporal_method='eulerian'`` requires
-        ``velocity_previous`` and ``time_step_size`` when the temporal term is enabled.
-        ``include_body=False`` omits the optional boundary-element velocity from
-        the hierarchical pressure evaluation while retaining particles and the
-        configured freestream.
-
-        Parameters
-        ----------
-        evaluation_position : numpy.ndarray
-            Target coordinates, shape ``(N, 3)``, in m.
-        density : float, default=1.0
-            Fluid density in kg/m³.
-        kinematic_viscosity : float or None, default=None
-            Molecular viscosity in m²/s. When omitted, the particle mean is
-            used, or ``1e-5`` for an empty cloud.
-        include_viscous, include_temporal, include_freestream, include_body : bool
-            Enable the corresponding pressure-gradient contributions.
-        particle_spacing : float or None, default=None
-            Difference spacing in m for Laplacian/temporal terms.
-        temporal_method : {"lagrangian", "eulerian"}, default="lagrangian"
-            Temporal derivative formulation. Eulerian mode requires
-            ``velocity_previous`` and ``time_step_size`` when temporal terms
-            are enabled.
-        velocity_previous : numpy.ndarray or None, default=None
-            Previous target velocity, shape ``(N, 3)``, in m/s.
-        time_step_size : float or None, default=None
-            Physical time increment in seconds for Eulerian differencing.
-        return_velocity : bool, default=False
-            Include target velocity alongside pressure components.
-
-        Returns
-        -------
-        dict or tuple[dict, numpy.ndarray]
-            Pressure-gradient component arrays and, when requested, velocity.
-
-        Raises
-        ------
-        ValueError
-            If the temporal method or its required inputs are inconsistent.
-        """
-        if kinematic_viscosity is None:
-            kinematic_viscosity = (
-                float(np.mean(self.particle_kinematic_viscosity))
-                if self.particles.n_particles_total > 0
-                else 1e-5
-            )
-        if not hasattr(self, "_pressure_physics"):
-            from openonda.vpm.physics.pressure import PressurePhysics
-
-            self._pressure_physics = PressurePhysics(
-                particle_kernel=self.particle_kernel,
-                max_n_particles=int(self.setup.max_n_particles),
-                accumulator_dtype=self.accumulator_dtype,
-            )
-        body_fn = None
-        body_gradient_fn = None
-        body_time_derivative_fn = None
-        if include_body:
-            body_fn = getattr(self, "_pressure_body_induced_fn", self._body_induced_fn)
-            body_gradient_fn = getattr(self.physics, "body_velocity_gradient", None)
-            body_time_derivative_fn = getattr(
-                self, "_pressure_body_induced_time_derivative_fn", None
-            )
-        # Pressure's analytical temporal term reads the accepted particle
-        # velocity, velocity gradient, and width-rate fields.  Those are
-        # derived state, so a deferred-output advance may leave them stale
-        # until another diagnostic refreshes them.  Refresh the complete
-        # stage conditions here, including external/body contributions, so the
-        # pressure result is independent of diagnostic call order.
-        if self.particles.n_particles_total > 0:
-            self.stepper._update_velocity_and_gradients()
-
-        # Only Core Spreading has a smooth material core-width derivative.
-        # RWM/DVH/GBD keep the width fixed between discrete diffusion/remap
-        # events; feeding their molecular viscosity into the analytical
-        # pressure term would invent a Gaussian width rate that their accepted
-        # state did not take.
-        pressure_core_radius_rate = None
-        if self.viscous_scheme != "CS" and self.particles.n_particles_total > 0:
-            pressure_core_radius_rate = np.zeros(
-                self.particles.n_particles_total,
-                dtype=np.float64,
-            )
-
-        if temporal_method == "eulerian":
-            return self._pressure_physics.compute_target_pressure_gradient_hierarchical(
-                self.particles,
-                evaluation_position,
-                density=density,
-                kinematic_viscosity=kinematic_viscosity,
-                include_viscous=include_viscous,
-                include_temporal=include_temporal,
-                include_freestream=include_freestream,
-                temporal_method=temporal_method,
-                velocity_previous=velocity_previous,
-                time_step_size=time_step_size,
-                particle_spacing=particle_spacing,
-                return_velocity=return_velocity,
-                theta=_PRESSURE_HIERARCHICAL_OPENING,
-                freestream_velocity=self.freestream_velocity,
-                body_fn=body_fn,
-                body_gradient_fn=body_gradient_fn,
-                body_time_derivative_fn=body_time_derivative_fn,
-                external_time=float(self.time),
-            )
-
-        return self._pressure_physics.compute_target_pressure_gradient_components(
-            self.particles,
-            evaluation_position,
-            density=density,
-            kinematic_viscosity=kinematic_viscosity,
-            include_viscous=include_viscous,
-            include_temporal=include_temporal,
-            laplacian_spacing=particle_spacing,
-            include_freestream=include_freestream,
-            temporal_method=temporal_method,
-            velocity_previous=velocity_previous,
-            time_step_size=time_step_size,
-            return_velocity=return_velocity,
-            external_velocity_fn=body_fn,
-            external_velocity_gradient_fn=body_gradient_fn,
-            external_velocity_time_derivative_fn=body_time_derivative_fn,
-            external_time=float(self.time),
-            core_radius_rate=pressure_core_radius_rate,
-        )
-
     # Diagnostics
-    def info(self) -> None:
-        """Print a summary of the solver configuration and current state."""
-        Logging.set_routine_messages_enabled(True)
-        Logging.message(Logging.solver_info(self), flush=True)
-        self._configuration_logged = True
-
     def _log_configuration_once(self) -> None:
         """Ensure the complete static time-zero configuration is visible once."""
         if getattr(self, "_configuration_logged", False):
@@ -1964,49 +1700,18 @@ class VPMSolver:
         self._configuration_logged = True
 
     # Particle management
-    def remove_particles(
-        self, particle_indices: list[int] | None = None, remove_all: bool = False
-    ) -> None:
-        """Remove selected particles and record removed-strength diagnostics.
-
-        Parameters
-        ----------
-        particle_indices : list[int] or None, default=None
-            Active zero-based indices to remove. ``None`` means no indexed
-            removal unless ``remove_all`` is true.
-        remove_all : bool, default=False
-            Remove the complete active cloud. The full-cloud branch takes
-            precedence when true.
+    def remove_all_particles(self) -> None:
+        """Remove the complete active cloud and record removed-strength diagnostics.
 
         Side Effects
         ------------
-        Compacts device particle fields, updates stabilization refinement reference, and
-        stores removed count/circulation for diagnostics.
+        Compacts device particle fields, resets the stabilization refinement
+        reference, and stores the removed count and circulation for diagnostics.
         """
-        if particle_indices is not None and len(particle_indices) > 0:
-            # Reduce removed vortex strength on device.
-            vortex_strength_removed, _ = self.particles.subset_moments(particle_indices)
-            self._particles_removed_this_step = len(particle_indices)
-            self._vortex_strength_removed_this_step = vortex_strength_removed
-
-        elif remove_all:
-            # Sum removed vortex strength on device.
-            vortex_strength_removed = self.particles.net_vortex_strength()
-
-            self._particles_removed_this_step = len(self.particles)
-            self._vortex_strength_removed_this_step = vortex_strength_removed
-
-        else:
-            self._particles_removed_this_step = 0
-            self._vortex_strength_removed_this_step = np.zeros(3)
-
-        # Trim the stabilization refinement references to match the removed set.
-        if remove_all:
-            self.stabilization.on_removal(remove_all=True)
-        elif particle_indices is not None and len(particle_indices) > 0:
-            self.stabilization.on_removal(indices=particle_indices)
-
-        self.particles.remove_vortex_particles(indices=particle_indices, remove_all=remove_all)
+        self._particles_removed_this_step = len(self.particles)
+        self._vortex_strength_removed_this_step = self.particles.net_vortex_strength()
+        self.stabilization.on_removal(remove_all=True)
+        self.particles.remove_vortex_particles(remove_all=True)
 
     def add_vortex_particles(
         self,

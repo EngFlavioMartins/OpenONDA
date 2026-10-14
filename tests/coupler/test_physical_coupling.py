@@ -51,7 +51,6 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
         _coupler,
         _patch,
         velocity,
-        pressure_gradient=None,
         normal_velocity=None,
         tangential_gradient=None,
     ):

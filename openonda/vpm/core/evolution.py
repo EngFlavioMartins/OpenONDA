@@ -393,13 +393,10 @@ class EvolutionStepper:
             count,
         )
 
-    def _update_les_state(self, time_step_size: float | None = None) -> None:
+    def _update_les_state(self) -> None:
         """Update LES viscosity from the current strain-rate field."""
         if self.flow_model == "LES":
-            self.turbulence_model.compute(
-                self.particles,
-                time_step_size=self.time_step_size if time_step_size is None else time_step_size,
-            )
+            self.turbulence_model.compute(self.particles, time_step_size=self.time_step_size)
             if self.axisymmetric_axis >= 0:
                 self._validate_axisymmetric_orbits()
                 self.physics.average_axisymmetric_scalar(
@@ -587,7 +584,6 @@ class EvolutionStepper:
         if time_step_size <= 0.0 or len(self.particles) == 0:
             return
         self.physics.core_spreading_diffusion(self.particles, time_step_size)
-        self.solver.core_spreading_correction_relative = 0.0
 
     def _apply_viscous_diffusion(self, time_step_size: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""

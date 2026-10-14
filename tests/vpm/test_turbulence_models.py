@@ -154,7 +154,9 @@ def test_sigma_model_matches_singular_values_and_vanishes_for_two_dimensional_fl
         les = ParticlesLES("LES_SIGMA", max_n_particles=len(gradients))
         les.compute(cloud)
         s = np.linalg.svd(gradients, compute_uv=False)
-        expected = (1.35 * 0.05) ** 2 * s[:, 2] * (s[:, 0] - s[:, 1]) * (s[:, 1] - s[:, 2]) / s[:, 0] ** 2
+        expected = (
+            (1.35 * 0.05) ** 2 * s[:, 2] * (s[:, 0] - s[:, 1]) * (s[:, 1] - s[:, 2]) / s[:, 0] ** 2
+        )
         nu_t = cloud.eddy_viscosity.to_numpy()
         np.testing.assert_allclose(nu_t[:6], expected[:6], rtol=1e-6)
         np.testing.assert_allclose(nu_t[6:], 0.0, atol=1e-9)
@@ -171,7 +173,11 @@ def test_consistency_switch_spares_aligned_strengths_and_exchange_keeps_core_vis
     try:
         gradient = np.random.default_rng(5).normal(size=(3, 3))
         vorticity = np.array(
-            [gradient[2, 1] - gradient[1, 2], gradient[0, 2] - gradient[2, 0], gradient[1, 0] - gradient[0, 1]]
+            [
+                gradient[2, 1] - gradient[1, 2],
+                gradient[0, 2] - gradient[2, 0],
+                gradient[1, 0] - gradient[0, 1],
+            ]
         )
         normal = np.cross(vorticity, [1.0, 0.0, 0.0])
         normal /= np.linalg.norm(normal)
@@ -190,7 +196,9 @@ def test_consistency_switch_spares_aligned_strengths_and_exchange_keeps_core_vis
         )
         les.compute(cloud)
         # Aligned: no eddy viscosity; misaligned by theta_0: half of the model value.
-        np.testing.assert_allclose(cloud.eddy_viscosity.to_numpy(), [0.0, 0.5 * unswitched], atol=1e-14)
+        np.testing.assert_allclose(
+            cloud.eddy_viscosity.to_numpy(), [0.0, 0.5 * unswitched], atol=1e-14
+        )
         np.testing.assert_allclose(cloud.effective_viscosity.to_numpy(), 1.0e-4)
     finally:
         ti.reset()
@@ -241,9 +249,13 @@ def test_strength_exchange_conserves_strength_and_matches_pairwise_sum():
         np.fill_diagonal(eta, 0.0)
         pair = 0.5 * (eddy[:, None] + eddy[None]) * eta / eps2
         rate = np.einsum(
-            "pq,pqk->pk", pair, volume[:, None, None] * strength[None] - volume[None, :, None] * strength[:, None]
+            "pq,pqk->pk",
+            pair,
+            volume[:, None, None] * strength[None] - volume[None, :, None] * strength[:, None],
         )
-        np.testing.assert_allclose(updated, strength + dt * rate, rtol=0, atol=1e-7 * np.abs(dt * rate).max())
+        np.testing.assert_allclose(
+            updated, strength + dt * rate, rtol=0, atol=1e-7 * np.abs(dt * rate).max()
+        )
         np.testing.assert_allclose(updated.sum(axis=0), strength.sum(axis=0), rtol=0, atol=1e-15)
     finally:
         ti.reset()

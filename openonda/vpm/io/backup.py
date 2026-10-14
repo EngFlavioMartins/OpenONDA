@@ -231,7 +231,7 @@ class _BackupIO:
         )
 
         if solver.particles.n_particles_total:
-            solver.remove_particles(remove_all=True)
+            solver.remove_all_particles()
 
         if (
             stabilization is not None
@@ -623,7 +623,7 @@ class _BackupIO:
             "  <Collection>",
         ]
         lines.extend(
-            f'    <DataSet timestep="{time:.17g}" file="{filename}"/>'
+            f'    <DataSet timestep="{float(time)!r}" file="{filename}"/>'
             for _, time, filename in frames
         )
         lines.extend(("  </Collection>", "</VTKFile>", ""))

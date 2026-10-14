@@ -191,7 +191,6 @@ class Particles:
         # and linear impulse of removed particles) — kept on device to avoid a
         # full position/vortex strength download just to sum a handful of indices.
         self._subset_vortex_strength = ti.Vector.field(3, dtype=dtype, shape=())
-        self._subset_impulse = ti.Vector.field(3, dtype=dtype, shape=())
 
         # Global background velocity (single 3D vector shared by all particles)
         self.velocity_background = ti.Vector.field(3, dtype=dtype, shape=())
@@ -448,46 +447,6 @@ class Particles:
         """Copy first n integer entries from Taichi field to NumPy array."""
         for i in range(n):
             dst[i] = src[start_idx + i]
-
-    @ti.kernel
-    def _accumulate_subset_moments(self, indices: ti.types.ndarray(), n_idx: ti.i32):
-        """Sum ``Gamma`` and ``0.5*sum(r x Gamma)`` for selected particles."""
-        self._subset_vortex_strength[None] = ti.Vector.zero(self._taichi_dtype, 3)
-        self._subset_impulse[None] = ti.Vector.zero(self._taichi_dtype, 3)
-        for m in range(n_idx):
-            i = indices[m]
-            p = self.position[i]
-            c = self.vortex_strength[i]
-            self._subset_vortex_strength[None] += c
-            self._subset_impulse[None] += 0.5 * p.cross(c)
-
-    def subset_moments(self, indices: np.ndarray | Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
-        """Reduce circulation and linear impulse for selected particles.
-
-        Parameters
-        ----------
-        indices : numpy.ndarray
-            Integer active-particle indices, shape ``(K,)``.
-
-        Returns
-        -------
-        tuple[numpy.ndarray, numpy.ndarray]
-            ``(sum(Gamma), 0.5 * sum(position × Gamma))``; both arrays have
-            shape ``(3,)`` and units m³/s and m⁴/s respectively.
-
-        Notes
-        -----
-        Only the index list is uploaded and the two reduced vectors are
-        downloaded. The complete particle cloud is not transferred to the CPU.
-        """
-        idx = np.ascontiguousarray(indices, dtype=np.int32)
-        if idx.size == 0:
-            zero = np.zeros(3, dtype=self._np_float_dtype)
-            return zero, zero.copy()
-        self._accumulate_subset_moments(idx, idx.size)
-        vortex_strength = self._subset_vortex_strength[None].to_numpy()
-        impulse = self._subset_impulse[None].to_numpy()
-        return vortex_strength, impulse
 
     @ti.kernel
     def _accumulate_prefix_vortex_strength(self, n: ti.i32):

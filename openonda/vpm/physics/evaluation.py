@@ -512,46 +512,6 @@ class ParticleFieldEvaluation:
         # Store kernel as instance method
         self.compute_flow_integrals_kernel = compute_flow_integrals_kernel
 
-    def _define_group_vortex_centroid_kernel(self) -> None:
-        """Define and store the group-vortex_centroid kernel."""
-
-        @ti.kernel
-        def compute_group_vortex_centroid_kernel(
-            position: ti.template(),
-            vortex_strength: ti.template(),
-            group_id: ti.template(),
-            n_particles_total: ti.i32,
-            target_group: ti.i32,
-            result: ti.template(),
-        ):
-            """
-            Compute vortex_centroid of vortex strength for a specific group.
-
-            Centroid = Σ(r × Γ) / Σ|Γ| for particles in the group
-            """
-            weighted_pos = ti.Vector([0.0, 0.0, 0.0])
-            total_strength_mag = 0.0
-
-            for i in range(n_particles_total):
-                if group_id[i] == target_group:
-                    str_mag = vortex_strength[i].norm()
-                    if str_mag > EPSILON:
-                        ti.atomic_add(weighted_pos[0], position[i][0] * str_mag)
-                        ti.atomic_add(weighted_pos[1], position[i][1] * str_mag)
-                        ti.atomic_add(weighted_pos[2], position[i][2] * str_mag)
-                        ti.atomic_add(total_strength_mag, str_mag)
-
-            if total_strength_mag > EPSILON:
-                result[0] = weighted_pos[0] / total_strength_mag
-                result[1] = weighted_pos[1] / total_strength_mag
-                result[2] = weighted_pos[2] / total_strength_mag
-            else:
-                result[0] = 0.0
-                result[1] = 0.0
-                result[2] = 0.0
-
-        self.compute_group_vortex_centroid_kernel = compute_group_vortex_centroid_kernel
-
     def _define_global_vortex_centroid_kernel(self) -> None:
         """Define and store the global-vortex_centroid kernel."""
 
@@ -591,7 +551,6 @@ class ParticleFieldEvaluation:
 
     def _define_vortex_centroid_kernels(self, kernel_functions: dict[str, Callable]) -> None:
         """Define kernels for vortex-strength-magnitude-weighted vortex_centroids."""
-        self._define_group_vortex_centroid_kernel()
         self._define_global_vortex_centroid_kernel()
 
     # PUBLIC API METHODS
@@ -969,50 +928,6 @@ class ParticleFieldEvaluation:
         # simultaneous old-grid measurement as a one-interval derivative
         # bridge; the reported energy itself remains the raw new-grid value.
         return new_spectral, False, old_spectral
-
-    def compute_vortex_centroids_by_group(self, particles: "Particles") -> dict[int, np.ndarray]:
-        """
-        Compute vortex-strength-magnitude-weighted vortex_centroids by particle group.
-
-        Args:
-            particles: Particles object
-
-        Returns:
-            Dict[int, np.ndarray]: Dictionary mapping group_id to vortex_centroid position [x, y, z]
-        """
-        N = len(particles)
-        if N == 0:
-            return {}
-
-        # Check if particles have group_id (field name is singular, not "group_id")
-        if not hasattr(particles, "group_id"):
-            return {}
-
-        self._resize_fields(N)
-
-        # Evaluate each distinct particle group.
-        group_ids_np = particles.group_id_cpu()
-        unique_groups = np.unique(group_ids_np)
-
-        vortex_centroids = {}
-        for group_id in unique_groups:
-            # Reset the reusable result field.
-            self._vortex_centroid_result.fill(0)
-
-            # Compute vortex_centroid
-            self.compute_group_vortex_centroid_kernel(
-                particles.position,
-                particles.vortex_strength,
-                particles.group_id,
-                N,
-                int(group_id),
-                self._vortex_centroid_result,
-            )
-
-            # Extract result (copy before reusing field)
-            vortex_centroids[int(group_id)] = self._vortex_centroid_result.to_numpy().copy()
-
-        return vortex_centroids
 
     # ENERGY DISSIPATION RATE COMPUTATION
 
