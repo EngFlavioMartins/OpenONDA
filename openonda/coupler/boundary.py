@@ -7,9 +7,11 @@ import time
 
 import numpy as np
 
-from openonda.coupler.reporting import boundary_induction_summary, format_coupler_log
+from openonda.core.simulation.parallel import collective_phase
 
-logger = logging.getLogger("coupler")
+from .reporting import boundary_induction_summary, format_coupler_log
+
+logger = logging.getLogger("openonda.coupler")
 
 _MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
 
@@ -227,11 +229,8 @@ def evaluate_vpm_boundary(
     boundary_condition_wall_time = time.perf_counter()
     vpm_boundary_condition_velocity = None
     tangential_normal_gradient: np.ndarray | None = None
-    from .parallel import collective_phase
-
-    comm = getattr(getattr(coupler.fvm_solver, "parallel", None), "comm", None)
-    with collective_phase(comm, "VPM boundary evaluation"):
-        if coupler._is_master:
+    with collective_phase(coupler._comm, "VPM boundary evaluation"):
+        if coupler._is_root:
             assert coupler.vpm_solver is not None
             query_started = time.perf_counter()
             vpm_boundary_condition_velocity, tangential_normal_gradient = (
@@ -269,7 +268,7 @@ def evaluate_vpm_boundary(
                     "VPM target evaluation returned an identically zero field despite a "
                     "nonzero freestream; aborting before the corrupted VPM boundary-condition data reaches the FVM"
                 )
-        if coupler._is_master:
+        if coupler._is_root:
             assert coupler.fvm_box is not None
             velocity_boundary_condition, coupler._last_vpm_boundary_condition_flux_diagnostics = (
                 evaluate_vpm_velocity(
@@ -333,10 +332,10 @@ def initialize_vpm_boundary_history(
     """Evaluate the physical ``t_n`` trace before the first VPM advance."""
     needs_boundary_history = coupler._velocity_boundary_condition_old is None
     # Every rank enters the same boundary evaluation after restart.
-    comm = getattr(getattr(coupler.fvm_solver, "parallel", None), "comm", None)
+    comm = coupler._comm
     if comm is not None and comm.Get_size() > 1:
         needs_boundary_history = comm.bcast(
-            needs_boundary_history if coupler._is_master else None, root=0
+            needs_boundary_history if coupler._is_root else None, root=0
         )
     if not needs_boundary_history:
         return
@@ -356,7 +355,7 @@ def advance_fvm(
     fvm_wall_time_start = time.perf_counter()
     advance_fvm_substeps(
         coupler,
-        coupler.setup.coupling_patch,
+        coupler.config.coupling_patch,
         face_centre,
         face_normal,
         face_area,
@@ -373,7 +372,7 @@ def advance_fvm(
         face_normal,
         velocity_boundary_condition,
     )
-    if coupler._is_master:
+    if coupler._is_root:
         coupler._velocity_boundary_condition_old = velocity_boundary_condition
         if coupler._normal_velocity_boundary_condition is not None:
             coupler._normal_velocity_boundary_condition_old = (
@@ -397,7 +396,7 @@ def update_boundary_history_after_replacement(
     Otherwise each interval starts from a stale prediction. Not a Picard
     sweep: the FVM is not re-solved.
     """
-    if coupler._is_master:
+    if coupler._is_root:
         assert coupler.vpm_solver is not None
         tangential_normal_gradient: np.ndarray | None = None
         query_started = time.perf_counter()
@@ -471,8 +470,8 @@ def _record_fvm_boundary_trace(
 ) -> None:
     """Record the actual reconstructed FVM face trace, not merely its input data."""
     assert coupler.fvm_solver is not None
-    face_velocity = coupler.fvm_solver.get_boundary_face_velocity(coupler.setup.coupling_patch)
-    if not coupler._is_master:
+    face_velocity = coupler.fvm_solver.gather_boundary_face_velocity(coupler.config.coupling_patch)
+    if not coupler._is_root:
         return
     difference = np.asarray(face_velocity) - np.asarray(vpm_target_velocity)
     speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1.0e-30
@@ -552,29 +551,10 @@ def apply_fvm_boundary(
         patch,
     )
     coupler.fvm_solver.set_flux_consistent_pressure_boundary_condition(patch)
-
-    step_time_step_size = coupler.fvm_solver.time_step_size
-    step_wall_time_start = time.perf_counter()
-    coupler.fvm_solver.logger.step_begin(
-        coupler.fvm_solver.step + 1,
-        coupler.fvm_solver.time + step_time_step_size,
-        step_time_step_size,
+    # Iterated exchanges publish the FVM output once the interface converges.
+    coupler.fvm_solver.advance(
+        defer_output=coupler.config.interface_iterations > 1, time=accepted_time
     )
-
-    coupler.fvm_solver.solve_pimple()
-
-    time_config = coupler.fvm_solver._time_config
-    adjustment = time_config.adjustment
-    coupler.fvm_solver.logger.courant_info(
-        coupler.fvm_solver.max_courant_number,
-        adjustment.maximum if adjustment is not None else None,
-    )
-
-    if getattr(coupler.setup, "interface_iterations", 1) > 1:
-        coupler.fvm_solver.advance_time(defer_output=True, time=accepted_time)
-    else:
-        coupler.fvm_solver.advance_time(time=accepted_time)
-    coupler.fvm_solver.logger.step_end(time.perf_counter() - step_wall_time_start)
 
     if prescribed_velocity.shape[0] > 0:
         streamwise = prescribed_velocity @ (freestream_velocity / freestream_speed)

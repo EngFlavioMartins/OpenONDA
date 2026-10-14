@@ -203,7 +203,7 @@ class RunConfig:
         if size > 1:
             if size != self.cpu_cores:
                 raise RuntimeError(
-                    f"MPI launched {size} ranks, but FVMSetup requests cores={self.cpu_cores}"
+                    f"MPI launched {size} ranks, but the case requests cores={self.cpu_cores}"
                 )
             _configure_mpi_exception_reporting()
             self._set_thread_count(1)

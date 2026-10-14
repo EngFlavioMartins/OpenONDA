@@ -117,6 +117,8 @@ class VLMSolver:
         )
         self.logging_interval_steps = config.logging_interval_steps
         self.density = config.density
+        # Density of the latest force evaluation, restored from backups.
+        self._force_density = config.density
         self.kinematic_viscosity = config.kinematic_viscosity
         self.wake_core_overlap = config.wake_core_overlap
         # The present source representation uses one point/trace radius for
@@ -163,6 +165,11 @@ class VLMSolver:
 
         # Force evaluation configuration
         self.force = config.force
+        self._last_forces: dict[str, Any] | None = None
+        self._last_reference_velocity: np.ndarray | None = None
+        self._previous_panel_corners: np.ndarray | None = None
+        self._transport_tableau: Any = None
+        self._virtual_wake_kernel: Any = None
 
         # Explicit initialization of optional attributes to avoid AttributeError
         self._surface_transforms: dict[str, SurfaceTransform] = {}
@@ -1009,7 +1016,6 @@ class VLMSolver:
         right_hand_side_end_time = time.time()
         if save_old:
             self.lattice.save_old_circulation()
-            self._vlm_step_count = getattr(self, "_vlm_step_count", 0) + 1
         if coupled and save_old:
             self._augment_near_wake_particles()
         circulation_np = self._run_linear_solver(n_panels)
@@ -1362,7 +1368,7 @@ class VLMSolver:
             rates.velocity_gradient is not None,
         )
         if self._stage_response_active and self._stage_wake_sources:
-            if not hasattr(self, "_virtual_wake_kernel"):
+            if self._virtual_wake_kernel is None:
                 self._virtual_wake_kernel = make_virtual_wake_kernel(
                     self._wake_kernel.name, lattice.dtype
                 )
@@ -1395,7 +1401,7 @@ class VLMSolver:
                 int(weighted_dt != 0.0),
                 rates.velocity_gradient is not None,
             )
-        if weighted_dt != 0.0 and getattr(self, "_transport_tableau", None) is not None:
+        if weighted_dt != 0.0 and self._transport_tableau is not None:
             stage_index = getattr(state, "stage_index", None)
             if stage_index is not None:
                 self._stage_exchange_history[int(stage_index)] = (
@@ -1759,9 +1765,7 @@ class VLMSolver:
         """
         if not self._solved:
             raise RuntimeError("Must solve system before computing forces")
-        panel_force = self.lattice.get_forces() * (
-            density / getattr(self, "_force_density", self.density)
-        )
+        panel_force = self.lattice.get_forces() * (density / self._force_density)
         total_force = np.sum(panel_force, axis=0)
         force_x, force_y, force_z = total_force
         reference_velocity = self._resolve_reference_velocity(
@@ -1775,7 +1779,7 @@ class VLMSolver:
             panel_force,
             reference_chord,
             self.lattice.panel_moment_correction.to_numpy()[: self.lattice.n_panels]
-            * (density / getattr(self, "_force_density", self.density)),
+            * (density / self._force_density),
         )
         result = self._build_force_coefficients(
             lift,
@@ -1794,7 +1798,7 @@ class VLMSolver:
             reference_span,
         )
         unsteady = self.lattice.unsteady_panel_force.to_numpy()[: self.lattice.n_panels].sum(axis=0)
-        unsteady *= density / getattr(self, "_force_density", self.density)
+        unsteady *= density / self._force_density
         result.update(
             {
                 f"unsteady_force_{axis}": float(value)
@@ -1932,9 +1936,7 @@ class VLMSolver:
         """
         if not self._solved:
             return {}
-        panel_force = self.lattice.get_forces() * (
-            density / getattr(self, "_force_density", self.density)
-        )
+        panel_force = self.lattice.get_forces() * (density / self._force_density)
         reference_velocity = self._resolve_reference_velocity(
             reference_velocity, self.lattice.n_panels
         )
@@ -1948,7 +1950,7 @@ class VLMSolver:
             else np.array([1.0, 0.0, 0.0])
         )
         moment_correction = self.lattice.panel_moment_correction.to_numpy()[: self.lattice.n_panels]
-        moment_correction *= density / getattr(self, "_force_density", self.density)
+        moment_correction *= density / self._force_density
         return {
             name: self._compute_one_surface_forces(
                 name,
@@ -2140,7 +2142,7 @@ class VLMSolver:
         """Construct one row from previous TE positions convected to the new clock."""
         n = self.lattice.n_panels
         corners = self.lattice.panel_corner_position.to_numpy()[:n]
-        old = getattr(self, "_previous_panel_corners", corners)
+        old = corners if self._previous_panel_corners is None else self._previous_panel_corners
         indices = np.flatnonzero(self.lattice.is_trailing_edge.to_numpy()[:n])
         points = corners[indices][:, [3, 2]].reshape(-1, 3)
         if physics is None or particles is None:
@@ -2394,7 +2396,7 @@ class VLMSolver:
             accepted[:, 2] - accepted[:, 3]
         )
         stage_index = getattr(stage_particles, "stage_index", None)
-        tableau = getattr(self, "_transport_tableau", None)
+        tableau = self._transport_tableau
         if tableau is not None and stage_index is not None:
             old_bound = self._stage_bound_initial[:n].copy()
             for j, coefficient in enumerate(tableau.a[int(stage_index)]):
@@ -2427,12 +2429,11 @@ class VLMSolver:
     def _resolve_coupling_reference_velocity(self, config: "Numerics") -> np.ndarray:
         """Resolve the reference velocity used by coupled advance."""
         if (
-            hasattr(self, "freestream_velocity")
-            and self.freestream_velocity is not None
+            self.freestream_velocity is not None
             and np.linalg.norm(self.freestream_velocity) > 1e-10
         ):
             return self.freestream_velocity
-        if hasattr(config, "freestream_velocity") and config.freestream_velocity is not None:
+        if config.freestream_velocity is not None:
             background_velocity = np.array(config.freestream_velocity)
             if np.linalg.norm(background_velocity) > 1e-10:
                 return background_velocity

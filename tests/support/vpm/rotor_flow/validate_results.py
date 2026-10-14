@@ -62,8 +62,8 @@ def main():
     args = parser.parse_args()
     p = rotor_inputs()
     config, state = p.metadata["configuration"], p.metadata["state"]
-    final_step = state["initial_step"] + config["run"]["steps"]
-    end = state["initial_time"] + config["run"]["steps"] * p.time_step_size
+    final_step = state["target_step"]
+    end = config["run"]["end_time"]
     failures = []
     if p.metadata["run_status"]["status"] != "completed" or state["step"] != final_step:
         print(

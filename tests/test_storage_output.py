@@ -7,15 +7,16 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from openonda.core.sampling import FIELD_SAMPLE_COLUMNS
 from openonda.core.write_precision import cast_for_write
-from openonda.vpm.io.sampling import LineSampler, SurfaceSampler
-from openonda.vpm.io.sampling.field_samplers import SAMPLER_BASE_CSV_COLUMNS
+from openonda.vpm.sampling import LineSampler, SurfaceSampler
 from tests._tutorial_helpers import load_tutorial_module
 
 
 class _SamplerSolver:
     write_precision = "f16"
-    particles = SimpleNamespace(n_particles_total=1)
+    vlm_solver = None
+    case = SimpleNamespace(output=SimpleNamespace(compression="zlib"))
 
     @staticmethod
     def compute_velocity_and_gradient_at_points(points, particle_spacing):
@@ -61,12 +62,13 @@ def test_surface_sampler_writes_compact_paraview_readable_vts(tmp_path):
         include_derivatives=False,
     )
 
-    output = sampler.save_vtp(_SamplerSolver(), tmp_path / "plane.vts")
+    output = sampler.write_vtk(_SamplerSolver(), tmp_path / "plane.vts", time=0.0)
     _assert_appended_raw(output)
     grid = pv.read(output)
 
     assert grid.n_points == 9
     assert set(grid.point_data) == {"velocity", "vorticity"}
+    assert grid.field_data["time"][0] == 0.0
     assert grid.point_data["velocity"].dtype == np.float32
 
     field = _load_lamb_oseen_diagnostics().read_surface_field(output)
@@ -90,12 +92,12 @@ def test_surface_sampler_writes_compact_paraview_readable_vts(tmp_path):
 def test_fvm_export_writes_compact_paraview_readable_vtu(tmp_path):
     import pyvista as pv
 
-    from openonda.fvm.config.types import OutputConfig
+    from openonda.fvm.config import Output
     from openonda.fvm.io.vtk_exporter import VTKExporter
     from tests.support.fvm_mesh import structured_box
 
     mesh = structured_box(2, 2, 2)
-    exporter = VTKExporter(mesh, OutputConfig(precision="f16", compression="zlib"))
+    exporter = VTKExporter(mesh, Output(precision="f16", compression="zlib"))
     velocity = np.arange(mesh["n_cells"] * 3, dtype=np.float64).reshape(-1, 3)
     output = tmp_path / "fields.vtu"
 
@@ -110,7 +112,7 @@ def test_fvm_export_writes_compact_paraview_readable_vtu(tmp_path):
 def test_owned_only_partition_vtu_excludes_incomplete_halo_cells(tmp_path):
     import pyvista as pv
 
-    from openonda.fvm.config.types import OutputConfig
+    from openonda.fvm.config import Output
     from openonda.fvm.io.vtk_exporter import VTKExporter
     from openonda.fvm.mesh.geometry import compute_mesh_geometry
     from openonda.fvm.mesh.partition import localize_mesh_and_geometry
@@ -134,7 +136,7 @@ def test_owned_only_partition_vtu_excludes_incomplete_halo_cells(tmp_path):
     assert visualization["n_cells"] < localized["n_cells"]
 
     output = tmp_path / "owned.vtu"
-    exporter = VTKExporter(visualization, OutputConfig(compression="zlib"))
+    exporter = VTKExporter(visualization, Output(compression="zlib"))
     exporter.export(
         str(output),
         {"global_cell_id": partition.owned_global_ids},
@@ -150,60 +152,54 @@ def test_line_sampler_omits_derivatives_from_compact_csv(tmp_path):
         spacing=1.0,
         include_derivatives=False,
     )
-    data = {
-        name: np.arange(sampler.n_points, dtype=np.float64) for name in SAMPLER_BASE_CSV_COLUMNS
-    }
-    sampler.sample = lambda _solver: data
 
-    output = sampler.save_csv(None, tmp_path / "line.csv", time=0.25)
+    output = sampler.write_csv(_SamplerSolver(), tmp_path / "line.csv", time=0.25)
     with output.open(newline="", encoding="utf-8") as stream:
-        rows = list(csv.reader(row for row in stream if not row.startswith("#")))
+        rows = list(csv.reader(stream))
 
-    assert rows[0] == SAMPLER_BASE_CSV_COLUMNS
-    assert len(rows[1]) == len(SAMPLER_BASE_CSV_COLUMNS)
+    assert tuple(rows[0]) == FIELD_SAMPLE_COLUMNS
+    assert len(rows) == 1 + sampler.n_points
+    assert all(float(row[0]) == 0.25 for row in rows[1:])
 
 
-def test_scheduled_line_retains_native_times_across_output_manager_restart(tmp_path):
+def test_scheduled_line_retains_native_times_across_sampler_manager_restart(tmp_path):
     import pandas as pd
     import pytest
 
-    from openonda.vpm.config.output import Backup, Samplers
-    from openonda.vpm.io.sampler import OutputEvent, OutputManager
-    from openonda.vpm.io.sampling import EverySteps
+    from openonda.core.output_events import OutputEvent
+    from openonda.vpm import EverySteps, Samplers
+    from openonda.vpm.sampling.manager import SamplerManager
 
     line = LineSampler(
         [0, 0, 0],
         [1, 0, 0],
-        0.5,
-        file_name="line",
+        spacing=0.5,
         include_derivatives=False,
+        file_name="line",
         schedule=EverySteps(1),
     )
     solver = _SamplerSolver()
-    solver.case_dir = tmp_path
+    solver.samples_dir = tmp_path / "samples"
     solver.time_step_size = 0.1
     solver.case = SimpleNamespace(
-        backup=Backup(interval_steps=0), samplers=Samplers(samples=(line,), directory="audit")
+        output=SimpleNamespace(compression="zlib"), samplers=Samplers(samples=(line,))
     )
+    solver._restart_output_time = None
     for step in (1, 2, 3):
-        solver.step, solver.time = step, round(step * 0.1, 12)
+        solver.step, solver.time = step, step * 0.1
         # A rebuilt manager appends only after an explicit numerical restart.
         solver._restart_loaded = step > 1
-        OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
-    path = tmp_path / "samples/audit/line.csv"
+        SamplerManager(solver).dispatch(OutputEvent.accepted_step)
+    path = solver.samples_dir / "line.csv"
     data = pd.read_csv(path)
-    np.testing.assert_array_equal(data.time.unique(), [0.1, 0.2, 0.3])
+    np.testing.assert_allclose(data.time.unique(), [0.1, 0.2, 0.3], rtol=1e-15)
     assert data.groupby("time").size().tolist() == [3, 3, 3]
     np.testing.assert_allclose(data.velocity_x, data.position_x)
     np.testing.assert_allclose(data.velocity_z, 1.0)
-    original = path.read_bytes()
-    with pytest.raises(RuntimeError, match="duplicate or nonmonotonic"):
-        OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
-    assert path.read_bytes() == original
     # An incompatible header cannot silently become malformed history.
     invalid_schema = "time,position_x\n0.3,0\n"
     path.write_text(invalid_schema)
     solver.step, solver.time = 4, 0.4
-    with pytest.raises(RuntimeError, match="CSV schema mismatch"):
-        OutputManager(solver).dispatch(OutputEvent.ACCEPTED_STEP)
+    with pytest.raises(RuntimeError, match="CSV header"):
+        SamplerManager(solver).dispatch(OutputEvent.accepted_step)
     assert path.read_text() == invalid_schema

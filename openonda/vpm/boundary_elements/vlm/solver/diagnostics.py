@@ -77,7 +77,7 @@ class VLMDiagnostics:
         samples_dir:
             Sample directory of the case; the table is ``vlm_forces.csv``.
         """
-        if vlm_solver is None or not hasattr(vlm_solver, "_last_forces"):
+        if vlm_solver is None or vlm_solver._last_forces is None:
             return
         forces = vlm_solver._last_forces
         n_panels = vlm_solver.lattice.n_panels
@@ -156,10 +156,10 @@ class VLMDiagnostics:
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 
-        force_density = float(getattr(vlm_solver, "_force_density", vlm_solver.density))
-        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
+        force_density = float(vlm_solver._force_density)
+        reference_velocity = vlm_solver._last_reference_velocity
         if reference_velocity is None:
-            reference_velocity = getattr(vlm_solver, "freestream_velocity", None)
+            reference_velocity = vlm_solver.freestream_velocity
         reference_speed = (
             float(np.linalg.norm(reference_velocity)) if reference_velocity is not None else 0.0
         )
@@ -205,9 +205,9 @@ class VLMDiagnostics:
             "reference_speed": reference_speed,
             "reference_speed_units": "m/s",
         }
-        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
+        reference_velocity = vlm_solver._last_reference_velocity
         if reference_velocity is None:
-            reference_velocity = getattr(vlm_solver, "freestream_velocity", None)
+            reference_velocity = vlm_solver.freestream_velocity
         surface_forces = vlm_solver.compute_per_surface_forces(
             vlm_solver.density, reference_velocity
         )

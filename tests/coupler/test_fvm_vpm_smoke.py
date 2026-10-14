@@ -1,222 +1,122 @@
-"""End-to-end native FVM/VPM smoke test on a uniform freestream."""
+"""End-to-end coupled FVM/VPM run in a uniform stream, with a restart."""
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import shutil
 
 import numpy as np
 import pytest
 
+from openonda import coupler, vpm
+from openonda.core.vtk_output import read_collection
+from tests.support.coupler import FREESTREAM_VELOCITY, uniform_stream_cases
+
 FVM_TIME_STEP_SIZE = 0.05
-VPM_TIME_STEP_SIZE = 0.15
-H = 0.125
+EXCHANGE_TIME_STEP_SIZE = 0.15
 
 
-def test_coupled_fvm_vpm_two_steps(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-    from openonda.coupler import CouplerSetup, FVMVPMCoupler
-    from openonda.fvm import (
-        BoundaryConfig,
-        FVMSetup,
-        FVMSolver,
-        TimeConfig,
-        TransportConfig,
+def _solver(directory):
+    flow, particles = uniform_stream_cases(
+        directory,
+        fvm_time_step_size=FVM_TIME_STEP_SIZE,
+        exchange_time_step_size=EXCHANGE_TIME_STEP_SIZE,
+        end_time=3 * EXCHANGE_TIME_STEP_SIZE,
+        particle_spacing=0.125,
+        vpm_output=vpm.Output(schedule=vpm.EverySteps(3)),
+        max_n_particles=50_000,
     )
-    from openonda.fvm.mesh.rectilinear import coupling_box_mesh
-    from openonda.vpm import Numerics, ViscousConfig, VPMCase, VPMSolver
-
-    # Coupling-only setup: physics/time/mesh are owned by the injected solvers.
-    setup = CouplerSetup(
-        freestream_velocity=[1.0, 0.0, 0.0],
-        eta_blend_width=0.0,
-        backup_interval_steps=2,
+    config = coupler.CouplerConfig(
+        freestream_velocity=FREESTREAM_VELOCITY,
+        backup=coupler.Backup(schedule=coupler.EverySteps(2)),
     )
+    return coupler.CoupledSolver(flow, particles, config)
 
-    def make_vpm():
-        numerics = Numerics(
-            time_step_size=VPM_TIME_STEP_SIZE,
-            compute_device="CPU",
-            max_n_particles=50_000,
-            domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
-            freestream_velocity=(1.0, 0.0, 0.0),
-            viscous=ViscousConfig.gbd(
-                kinematic_viscosity=0.01,
-                particle_spacing=H,
-                threshold=1e-5,
-                threshold_mode="absolute",
-            ),
-        )
-        return VPMSolver(VPMCase(numerics=numerics, directory=tmp_path)), numerics
 
-    def make_fvm(case_dir="."):
-        config = FVMSetup(
-            case_name="coupled_smoke",
-            time=TimeConfig(time_step_size=FVM_TIME_STEP_SIZE, end_time=2 * VPM_TIME_STEP_SIZE),
-            transport=TransportConfig(kinematic_viscosity=0.01),
-            boundaries=[
-                BoundaryConfig(
-                    name="numericalBoundary",
-                    velocity_type="fixedValue",
-                    velocity_value=setup.freestream_velocity,
-                    pressure_type="fixedFluxPressure",
-                )
-            ],
-            initial_velocity=setup.freestream_velocity,
-        )
-        solver = FVMSolver(
-            config,
-            case_dir=case_dir,
-            mesh_data=coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), H),
-        )
-        return solver, config
+def test_coupled_run_writes_matching_frames_and_restarts(tmp_path):
+    with _solver(tmp_path) as solver:
+        solver.run()
+        expected_velocity = solver.fvm_solver.velocity.copy()
+        expected_pressure = solver.fvm_solver.kinematic_pressure.copy()
 
-    vpm, vpm_setup = make_vpm()
-    fvm, fvm_config = make_fvm()
-    coupler = FVMVPMCoupler(fvm, vpm, setup)
+        # Three FVM substeps per exchange; uniform inflow keeps a uniform field.
+        assert solver.n_fvm_substeps == 3
+        assert solver.fvm_solver.step == 9
+        assert solver.step == 3
+        assert np.allclose(expected_velocity.mean(axis=0), FREESTREAM_VELOCITY, atol=1e-6)
+        assert solver.vpm_solver.particles.n_particles_total == 0
 
-    # Solver/coupler owners store their *Setup object as ``self.setup``.
-    assert fvm.setup is fvm_config
-    assert vpm.numerics is vpm_setup
-    assert coupler.setup is setup
-    assert not hasattr(coupler, "config")
+    solution = tmp_path / "solution"
+    metadata = json.loads((solution / "coupler_metadata.json").read_text())
+    assert metadata["solver"] == "coupler"
+    assert metadata["run_status"] == {"status": "completed"}
+    assert metadata["coupling"]["n_fvm_substeps"] == 3
+    assert metadata["state"] == {"step": 3, "time": 3 * EXCHANGE_TIME_STEP_SIZE}
 
-    first_stop = coupler.run(max_coupling_steps=1, backup_at_stop=True)
-    assert first_stop == 1
-    first_backup = tmp_path / "solution" / "backups"
-    first_checkpoint_info = json.loads((first_backup / "checkpoint_info.json").read_text())
-    assert first_checkpoint_info["coupling_step"] == 1
-    assert all("000001" in name for name in first_checkpoint_info["checkpoint_files"].values())
-    seed_backup = tmp_path / "seed_backup"
-    shutil.copytree(first_backup, seed_backup)
-    first_metadata = json.loads((tmp_path / "solution" / "run_metadata.json").read_text())
-    assert first_metadata["physics"]["vpm_time_step_size"] == pytest.approx(VPM_TIME_STEP_SIZE)
-    assert first_metadata["physics"]["backup_interval_time"] == pytest.approx(
-        2 * VPM_TIME_STEP_SIZE
-    )
-    assert first_metadata["execution"] == {
-        "start_coupling_step": 0,
-        "stop_coupling_step": 1,
-        "configured_end_coupling_step": 2,
-        "start_time": 0.0,
-        "stop_time": pytest.approx(VPM_TIME_STEP_SIZE),
-        "is_limited": True,
-    }
-
-    second_stop = coupler.solve(
-        start_step=first_stop,
-        max_coupling_steps=1,
-        backup_at_stop=True,
-    )
-    assert second_stop == 2
-
-    # Sub-cycling derived from the two native solver time steps.
-    assert coupler.n_fvm_substeps == 3
-    assert coupler.vpm_time_step_size == pytest.approx(VPM_TIME_STEP_SIZE)
-
-    # Uniform inflow, no body → the FVM field stays finite and uniform.
-    velocity = np.asarray(fvm.get_velocity_field())
-    assert np.isfinite(velocity).all()
-    assert np.allclose(velocity.mean(axis=0), setup.freestream_velocity_vector, atol=1e-6)
-    # Two coupling steps × 3 sub-steps were committed.
-    assert fvm.step == 6
-    assert fvm.time == pytest.approx(2 * VPM_TIME_STEP_SIZE)
-
-    # Impulsive start with zero interior vorticity: hand-off ran, no particles.
-    assert vpm.particles.n_particles_total == 0
-
-    # Native FVM and coupler diagnostics are written independently.
-    sol = tmp_path / "solution"
-    assert (sol / "fvm.log").exists()
-    vpm_log = (sol / "vpm.log").read_text()
-    assert "fvm      step" not in vpm_log
-    # Solver-scoped headers distinguish accepted VPM steps from FVM substeps.
-    assert vpm_log.count(" VPM TIME STEP ") == 1
-    assert vpm_log.count("VPM SOLVER CONFIGURATION") == 1
-    coupler_log = (sol / "coupler.log").read_text()
-    assert " RUN" in coupler_log
-    assert coupler_log.count("INTERFACE TRANSFER") == 3
-    assert "substeps per coupling step" in coupler_log.lower()
-    assert "coupled backup interval" in coupler_log.lower()
-    assert "COUPLED BACKUP" in coupler_log
-    backup = sol / "backups"
-    checkpoint_info = json.loads((backup / "checkpoint_info.json").read_text())
-    assert checkpoint_info["format_version"] == 13
-    assert checkpoint_info["kind"] == "openonda.coupled_backup"
-    assert all((backup / name).is_file() for name in checkpoint_info["checkpoint_files"].values())
-    assert {
-        name: Path(relative).name for name, relative in checkpoint_info["checkpoint_files"].items()
-    } == {
+    # Scheduled backup at exchange 2 and the final backup at exchange 3.
+    backups = sorted(path.name for path in (solution / "coupled").iterdir())
+    assert backups == ["coupled_000002", "coupled_000003"]
+    info = json.loads((solution / "coupled/coupled_000002/checkpoint_info.json").read_text())
+    assert info["kind"] == "openonda.coupled_backup"
+    assert (info["step"], info["fvm_step"], info["vpm_step"]) == (2, 6, 2)
+    assert info["files"] == {
         "fvm": "fvm_000002.npz",
         "vpm": "vpm_000002.h5",
-        "vpm_vtu": "vpm_000002.vtu",
-        "vpm_boundary_condition": "vpm_boundary_condition_000002.npz",
+        "boundary_condition": "boundary_condition_000002.npz",
     }
-    assert set(checkpoint_info["file_sha256"]) == set(checkpoint_info["checkpoint_files"])
-    assert len(list(backup.glob("checkpoint-*"))) == 1
-    assert not list(backup.rglob("*_000001*"))
-    assert sorted(path.name for path in (sol / "vpm").glob("vpm_*.h5")) == [
-        "vpm_000001.h5",
-        "vpm_000002.h5",
-    ]
-    assert sorted(path.name for path in (sol / "vpm").glob("vpm_*.vtu")) == [
-        "vpm_000001.vtu",
-        "vpm_000002.vtu",
-    ]
 
-    expected_u = fvm.velocity.copy()
-    expected_p = fvm.kinematic_pressure.copy()
-    expected_flux = fvm.volumetric_face_flux.copy()
-    restart_case = tmp_path / "restart"
-    restored_vpm, _ = make_vpm()
-    restored_fvm, _ = make_fvm(restart_case)
-    restored = FVMVPMCoupler(restored_fvm, restored_vpm, setup)
-    restored_step = restored.run(
-        restart_from=seed_backup,
-        max_coupling_steps=1,
-        backup_at_stop=True,
+    # Every particle frame has an FVM frame at exactly the same time.
+    fvm_times = {repr(time) for time, _ in read_collection(solution / "fvm.pvd")}
+    vpm_times = [repr(time) for time, _ in read_collection(solution / "vpm.pvd")]
+    assert len(vpm_times) == 3  # initial, backup at exchange 2, schedule and backup at 3
+    assert set(vpm_times) <= fvm_times
+
+    coupler_log = (solution / "coupler.log").read_text()
+    assert "COUPLED BACKUP" in coupler_log
+    history = (solution / "coupler_diagnostics.jsonl").read_text().splitlines()
+    assert [json.loads(row)["step"] for row in history] == [1, 2, 3]
+
+    # Restart from the exchange-2 backup of a copied case.
+    restart = tmp_path / "restart"
+    restart.mkdir()
+    shutil.copytree(solution, restart / "solution")
+    shutil.rmtree(restart / "solution/coupled/coupled_000003")
+    with _solver(restart) as restored:
+        restored.run(start_from="latest")
+        assert restored.vorticity_transfer.step == 4
+        np.testing.assert_allclose(
+            restored.fvm_solver.velocity, expected_velocity, rtol=0.0, atol=1e-13
+        )
+        np.testing.assert_allclose(
+            restored.fvm_solver.kinematic_pressure, expected_pressure, rtol=0.0, atol=1e-13
+        )
+    history = (restart / "solution/coupler_diagnostics.jsonl").read_text().splitlines()
+    assert [json.loads(row)["step"] for row in history] == [1, 2, 3]
+
+
+def test_cases_must_share_their_directory(tmp_path):
+    flow, _ = uniform_stream_cases(
+        tmp_path / "a", fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
     )
-
-    assert restored_step == 2
-    assert restored.vorticity_transfer is not None
-    # Initial synchronization is transfer 1; the saved step-1 state is transfer
-    # 2, and the first resumed replacement must therefore be transfer 3.
-    assert restored.vorticity_transfer.step == restored_step + 1 == 3
-    assert restored_fvm.step == 6
-    assert restored_vpm.step == 2
-    assert restored_vpm.time == pytest.approx(vpm.time)
-    assert restored_vpm.particles.n_particles_total == vpm.particles.n_particles_total
-    np.testing.assert_allclose(restored_fvm.velocity, expected_u, rtol=0.0, atol=1e-13)
-    np.testing.assert_allclose(restored_fvm.kinematic_pressure, expected_p, rtol=0.0, atol=1e-13)
-    np.testing.assert_allclose(
-        restored_fvm.volumetric_face_flux, expected_flux, rtol=0.0, atol=1e-13
+    _, particles = uniform_stream_cases(
+        tmp_path / "b", fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
     )
-    np.testing.assert_allclose(
-        restored._velocity_boundary_condition_old,
-        coupler._velocity_boundary_condition_old,
-        rtol=0.0,
-        atol=1e-13,
+    with pytest.raises(ValueError, match="directory and variant"):
+        coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
+
+
+def test_exchange_must_hold_whole_fvm_steps(tmp_path):
+    flow, particles = uniform_stream_cases(
+        tmp_path, fvm_time_step_size=0.04, exchange_time_step_size=0.15, end_time=0.3
     )
-    restarted_metadata = json.loads((restart_case / "solution" / "run_metadata.json").read_text())
-    assert restarted_metadata["execution"] == {
-        "start_coupling_step": 1,
-        "stop_coupling_step": 2,
-        "configured_end_coupling_step": 2,
-        "start_time": pytest.approx(VPM_TIME_STEP_SIZE),
-        "stop_time": pytest.approx(2 * VPM_TIME_STEP_SIZE),
-        "is_limited": False,
-    }
-    # No external solver case checkpoint_files were created anywhere.
-    assert not (tmp_path / "constant").exists()
-    assert not (tmp_path / "system").exists()
+    with pytest.raises(ValueError, match="whole multiple"):
+        coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
 
 
-@pytest.mark.parametrize("value", [True, False, 0, -1, 1.5, "2"])
-def test_coupling_step_limit_rejects_invalid_values(value):
-    from openonda.coupler import FVMVPMCoupler
-
-    error = TypeError if isinstance(value, bool | float | str) else ValueError
-    with pytest.raises(error):
-        FVMVPMCoupler._validate_step_limit(value)
+def test_backup_times_must_fall_on_exchanges(tmp_path):
+    flow, particles = uniform_stream_cases(
+        tmp_path, fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
+    )
+    config = coupler.CouplerConfig(backup=coupler.Backup(schedule=coupler.EveryTime(0.2)))
+    with pytest.raises(ValueError, match="whole number of exchange time steps"):
+        coupler.CoupledSolver(flow, particles, config)

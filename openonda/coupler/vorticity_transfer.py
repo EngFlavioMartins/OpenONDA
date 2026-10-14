@@ -23,11 +23,11 @@ from openonda.coupler.stable_renewal import (
 )
 
 if TYPE_CHECKING:
-    from openonda.coupler.solver import FVMVPMCoupler
+    from openonda.coupler.solver import CoupledSolver
     from openonda.fvm import FVMSolver
     from openonda.vpm import VPMSolver
 
-logger = logging.getLogger("coupler")
+logger = logging.getLogger("openonda.coupler")
 
 _PARTICLE_REDUCTION_CHUNK_SIZE = 65_536
 
@@ -298,7 +298,7 @@ def replace_particles_from_buffered_m4_renewal(
     release_prune_threshold: float | None = None,
 ) -> TransferResult:
     """Atomically apply the recovered whole-belt M4' renewal to a GBD cloud."""
-    if str(getattr(vpm, "viscous_scheme", "")).upper() != "GBD":
+    if vpm.viscous_scheme != "gbd":
         raise ValueError("buffered_m4_renewal requires the GBD viscous scheme")
     viscosity = float(kinematic_viscosity)
     if not np.isfinite(viscosity) or viscosity < 0.0:
@@ -694,7 +694,7 @@ class VorticityTransfer:
     """Synchronize the inner VPM cloud with absolute cell-centred FVM state.
 
     This runtime component is constructed internally by
-    :class:`FVMVPMCoupler` after both solver discretizations are known. It
+    :class:`CoupledSolver` after both solver discretizations are known. It
     derives vorticity ``omega = curl(u)`` from the accepted FVM gradient,
     represents ``Gamma = omega * V`` on the renewal lattice,
     and atomically replaces the FVM-derived portion of the particle
@@ -702,7 +702,7 @@ class VorticityTransfer:
 
     Parameters
     ----------
-    coupler : FVMVPMCoupler
+    coupler : CoupledSolver
         Initialized driver providing the transfer settings, FVM box, shared
         viscosity in m²/s, VPM spacing/core ratio, and coupling time step in s.
 
@@ -737,20 +737,18 @@ class VorticityTransfer:
     setup itself only builds donor/lattice metadata.
     """
 
-    def __init__(self, coupler: FVMVPMCoupler) -> None:
+    def __init__(self, coupler: CoupledSolver) -> None:
         """Resolve transfer controls from an initialized coupling driver."""
-        cfg = coupler.setup
+        cfg = coupler.config
         if coupler.kinematic_viscosity is None or coupler.fvm_box is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
         self.config = cfg
-        candidate_vpm = getattr(coupler, "vpm_solver", None)
-        self._wall_scatter_correction = getattr(
-            getattr(candidate_vpm, "physics", None), "_m4_wall_corrections", None
-        )
-        if (
-            candidate_vpm is not None
-            and str(getattr(candidate_vpm, "viscous_scheme", "")).upper() != "GBD"
-        ):
+        numerics = coupler.vpm_case.numerics
+        viscous = numerics.viscous
+        # Wall-visible M4' scatter of off-lattice particles, from the VPM GBD grid.
+        vpm = getattr(coupler, "vpm_solver", None)
+        self._wall_scatter_correction = None if vpm is None else vpm.physics._m4_wall_corrections
+        if viscous.scheme != "gbd":
             raise ValueError("buffered_m4_renewal currently requires the GBD viscous scheme")
         if not np.isfinite(coupler.vpm_core_radius_ratio):
             raise RuntimeError("VorticityTransfer requires the resolved VPM core-radius ratio")
@@ -758,37 +756,27 @@ class VorticityTransfer:
         if not np.isfinite(coupler.vpm_particle_spacing):
             raise RuntimeError("VorticityTransfer requires the resolved VPM particle spacing")
         self.particle_spacing = float(coupler.vpm_particle_spacing)
-        induction = getattr(candidate_vpm, "induction", None)
-        self._slip_slab = getattr(induction, "method", None) == "SLIP_SLAB"
-        self._slip_z = (
-            (float(induction.z_min), float(induction.z_max))
-            if self._slip_slab and induction is not None
-            else None
-        )
+        induction = numerics.induction
+        self._slip_slab = getattr(induction, "method", None) == "slip_slab"
+        self._slip_z = (float(induction.z_min), float(induction.z_max)) if self._slip_slab else None
         self.eta_blend_width = float(cfg.eta_blend_width)
         self.vpm_only_width = float(cfg.vpm_only_width)
         self.transfer_prune_threshold_abs = (
             float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
         )
-        self.transfer_release_prune_threshold_abs = self.transfer_prune_threshold_abs
-        if candidate_vpm is not None:
-            viscous = candidate_vpm.setup.viscous
-            if str(viscous.gbd_threshold_mode).lower() != "absolute":
-                raise ValueError(
-                    "buffered_m4_renewal requires GBD threshold_mode='absolute' so "
-                    "release-belt pruning has a resolved physical floor"
-                )
-            self.transfer_release_prune_threshold_abs = float(viscous.gbd_threshold)
-            if self.transfer_release_prune_threshold_abs > self.transfer_prune_threshold_abs:
-                raise ValueError(
-                    "transfer_vorticity_cutoff must be at least the VPM GBD vorticity floor"
-                )
+        if str(viscous.gbd_threshold_mode).lower() != "absolute":
+            raise ValueError(
+                "buffered_m4_renewal requires GBD threshold_mode='absolute' so "
+                "release-belt pruning has a resolved physical floor"
+            )
+        self.transfer_release_prune_threshold_abs = float(viscous.gbd_threshold)
+        if self.transfer_release_prune_threshold_abs > self.transfer_prune_threshold_abs:
+            raise ValueError(
+                "transfer_vorticity_cutoff must be at least the VPM GBD vorticity floor"
+            )
         self.transfer_amplification_cap = float(cfg.transfer_amplification_cap)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
-        coupling_time_step = getattr(coupler, "vpm_time_step_size", None)
-        if coupling_time_step is None:
-            raise RuntimeError("VorticityTransfer requires the resolved VPM time step")
-        self.coupling_time_step = float(coupling_time_step)
+        self.coupling_time_step = float(coupler.vpm_time_step_size)
         self.renewal_buffer_length = required_renewal_buffer_length(
             cfg.freestream_velocity,
             self.coupling_time_step,
@@ -972,25 +960,23 @@ class VorticityTransfer:
         self._box = np.asarray(
             self.config.transfer_region_bounds or self._fvm_box, dtype=np.float64
         )
-        self._cell_centre = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64).reshape(
-            -1, 3
-        )
-        self._cell_volume = np.asarray(fvm.get_cell_volume(), dtype=np.float64).reshape(-1)
+        self._cell_centre = np.asarray(
+            fvm.gather_cell_centre_coordinates(), dtype=np.float64
+        ).reshape(-1, 3)
+        self._cell_volume = np.asarray(fvm.gather_cell_volume(), dtype=np.float64).reshape(-1)
 
         # These partitioned getters are collective, even though only rank zero
         # receives the assembled arrays. Keep their call order identical.
-        resolved_setup = getattr(fvm, "_resolved_setup", fvm.setup)
         wall_patches = [
             boundary_condition.name
-            for boundary_condition in resolved_setup.boundaries
+            for boundary_condition in fvm.case.boundaries
             if boundary_condition.mesh_type == "wall"
         ]
-        get_wall_triangles = getattr(fvm, "get_wall_surface_triangles", None)
-        wall_triangles = get_wall_triangles() if callable(get_wall_triangles) else None
+        wall_triangles = fvm.gather_wall_surface_triangles()
 
         from openonda.core.simulation.parallel import collective_phase
 
-        comm = getattr(getattr(fvm, "parallel", None), "comm", None)
+        comm = fvm.parallel.comm
         with collective_phase(comm, "transfer geometry"):
             if len(self._cell_centre) == 0:
                 self._build_face_cell_index()

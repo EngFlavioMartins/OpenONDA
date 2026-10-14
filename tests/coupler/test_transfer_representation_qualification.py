@@ -5,8 +5,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from openonda import fvm
+from openonda.coupler import CouplerConfig
 from openonda.coupler.boundary import apply_fvm_boundary, tangential_normal_velocity_gradient
-from openonda.coupler.config.types import CouplerSetup
 from openonda.coupler.geometry import TriangulatedWall
 from openonda.coupler.stable_renewal import (
     gaussian_represented_vortex_strength,
@@ -15,17 +16,6 @@ from openonda.coupler.stable_renewal import (
     vortex_strength_from_velocity_trace,
 )
 from openonda.coupler.vorticity_transfer import VorticityTransfer
-from openonda.fvm import (
-    BoundaryConfig,
-    DiscretizationConfig,
-    FVMSetup,
-    LinearSolverConfig,
-    PimpleControl,
-    RunSchedule,
-    TimeConfig,
-    TransportConfig,
-    create_fvm_solver,
-)
 from openonda.fvm.coupling.coupler_interface import CouplerInterfaceMixin
 from openonda.fvm.mesh.rectilinear import box_mesh_3d, coupling_box_mesh
 
@@ -69,6 +59,34 @@ def _taylor_green_pressure_gradient(position, time, viscosity=0.01):
     )
 
 
+def _transfer_owner(config, box, particle_spacing):
+    """Coupled-solver attributes read by the vorticity transfer."""
+    viscous = SimpleNamespace(scheme="gbd", gbd_threshold_mode="absolute", gbd_threshold=0.0)
+    return SimpleNamespace(
+        config=config,
+        kinematic_viscosity=0.01,
+        fvm_box=box,
+        vpm_core_radius_ratio=1.0,
+        vpm_particle_spacing=particle_spacing,
+        vpm_time_step_size=0.01,
+        vpm_case=SimpleNamespace(
+            numerics=SimpleNamespace(viscous=viscous, induction=SimpleNamespace())
+        ),
+    )
+
+
+def _donor_cells(position, volume, wall_triangles=(), *, wall=None):
+    """FVM solver attributes read by the vorticity transfer setup."""
+    boundaries = [] if wall is None else [SimpleNamespace(name=wall, mesh_type="wall")]
+    return SimpleNamespace(
+        case=SimpleNamespace(boundaries=boundaries),
+        parallel=SimpleNamespace(comm=None),
+        gather_cell_centre_coordinates=lambda: position,
+        gather_cell_volume=lambda: np.full(len(position), volume),
+        gather_wall_surface_triangles=lambda: np.asarray(wall_triangles).reshape(-1, 3, 3),
+    )
+
+
 def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
     """Advance an n×n FVM mesh through 0.05 s using exact endpoint boundary data.
 
@@ -83,50 +101,53 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         nodes=(axis, axis, np.array([-0.125, 0.125])),
         empty_spanwise=True,
     )
-    setup = FVMSetup(
-        case_name=f"reference_{mode}_{n}",
-        time=TimeConfig(
+    case = fvm.FVMCase(
+        name=f"reference_{mode}_{n}",
+        directory=output / f"{mode}_{n}",
+        numerics=fvm.Numerics(
             time_step_size=dt,
-            end_time=steps * dt,
-            output_schedule=RunSchedule(every_n_steps=100000),
-        ),
-        schemes=DiscretizationConfig(
-            convection_scheme="linear", gradient_scheme="lsq", time_scheme="backward"
-        ),
-        linear=LinearSolverConfig(
-            linear_solver="spsolve",
-            pressure_solver="spsolve",
-            pressure_tolerance=1e-12,
-            momentum_tolerance=1e-12,
-            pressure_relative_tolerance=0.0,
-            momentum_relative_tolerance=0.0,
-        ),
-        pimple=PimpleControl(
-            n_outer_correctors=3, n_correctors=2, velocity_relaxation=1.0, pressure_relaxation=1.0
-        ),
-        transport=TransportConfig(kinematic_viscosity=0.01),
-        boundaries=[
-            BoundaryConfig(
-                name="numericalBoundary",
-                velocity_type="fixedValue",
-                velocity_value=[1, 0, 0],
-                pressure_type="fixedFluxPressure",
+            schemes=fvm.DiscretizationConfig(
+                convection_scheme="central", gradient_scheme="lsq", time_scheme="backward"
             ),
-            BoundaryConfig.empty("zmin"),
-            BoundaryConfig.empty("zmax"),
-        ],
-        initial_velocity=[1, 0, 0],
+            linear=fvm.LinearSolverConfig(
+                linear_solver="spsolve",
+                pressure_solver="spsolve",
+                pressure_tolerance=1e-12,
+                momentum_tolerance=1e-12,
+                pressure_relative_tolerance=0.0,
+                momentum_relative_tolerance=0.0,
+            ),
+            pimple=fvm.PimpleConfig(
+                n_outer_correctors=3,
+                n_correctors=2,
+                velocity_relaxation=1.0,
+                pressure_relaxation=1.0,
+            ),
+            transport=fvm.TransportConfig(kinematic_viscosity=0.01),
+        ),
+        initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=steps * dt, initial_output=False, final_output=False),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig(
+                name="numericalBoundary",
+                velocity_value=(1.0, 0.0, 0.0),
+                pressure_type="fixed_flux_pressure",
+            ),
+            fvm.BoundaryConfig.empty("zmin"),
+            fvm.BoundaryConfig.empty("zmax"),
+        ),
     )
-    with create_fvm_solver(setup, case_dir=output / f"{mode}_{n}", mesh=mesh) as solver:
-        coupler_setup = CouplerSetup()
+    with fvm.FVMSolver(case) as solver:
+        config = CouplerConfig()
         coupler = SimpleNamespace(
             fvm_solver=solver,
-            setup=coupler_setup,
-            freestream_velocity=coupler_setup.freestream_velocity_vector,
+            config=config,
+            freestream_velocity=config.freestream_velocity_vector,
         )
-        centre = solver.get_cell_centre_coordinates()
-        face = solver.get_boundary_face_centre_coordinates("numericalBoundary")
-        normal = solver.get_boundary_face_normal("numericalBoundary")
+        centre = solver.gather_cell_centre_coordinates()
+        face = solver.gather_boundary_face_centre_coordinates("numericalBoundary")
+        normal = solver.gather_boundary_face_normal("numericalBoundary")
         initial, _, pressure = _taylor_green_fields(centre, 0)
         velocity, jacobian, _ = _taylor_green_fields(face, 0)
         solver.set_normal_velocity_tangential_gradient_boundary_condition(
@@ -149,8 +170,8 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         assert solver.step == steps
         assert solver.time == steps * dt
         expected, _, _ = _taylor_green_fields(centre, solver.time)
-        error = solver.get_velocity_field() - expected
-        volumes = solver.get_cell_volume()
+        error = solver.gather_velocity_field() - expected
+        volumes = solver.gather_cell_volume()
         rms = np.sqrt(np.sum(volumes * np.sum(error**2, axis=1)) / volumes.sum())
         return {
             "n": n,
@@ -201,32 +222,10 @@ def test_anisotropic_donors_preserve_constant_vorticity_target(cell_spacing, rec
     box = np.array([-1.0, 1.0] * 3)
     axes = [np.arange(-1.0 + d / 2, 1.0, d) for d in cell_spacing]
     position = np.array(np.meshgrid(*axes, indexing="ij")).reshape(3, -1).T
-    setup = CouplerSetup(
-        transfer_region_bounds=tuple(box),
-        transfer_vorticity_cutoff=0.0,
+    coupler = _transfer_owner(
+        CouplerConfig(transfer_region_bounds=tuple(box), transfer_vorticity_cutoff=0.0), box, h
     )
-    coupler = SimpleNamespace(
-        setup=setup,
-        kinematic_viscosity=0.01,
-        fvm_box=box,
-        vpm_core_radius_ratio=1.0,
-        vpm_particle_spacing=h,
-        vpm_time_step_size=0.01,
-        vpm_solver=SimpleNamespace(
-            viscous_scheme="GBD",
-            setup=SimpleNamespace(
-                viscous=SimpleNamespace(
-                    gbd_threshold_mode="absolute",
-                    gbd_threshold=0.0,
-                )
-            ),
-        ),
-    )
-    donors = SimpleNamespace(
-        setup=SimpleNamespace(boundaries=[]),
-        get_cell_centre_coordinates=lambda: position,
-        get_cell_volume=lambda: np.full(len(position), np.prod(cell_spacing)),
-    )
+    donors = _donor_cells(position, np.prod(cell_spacing))
     transfer = VorticityTransfer(coupler)
     transfer.setup(donors)
     lattice = transfer._stable_renewal_lattice
@@ -272,14 +271,19 @@ def _native_wall_view(mesh):
     view = CouplerInterfaceMixin()
     view.mesh_data = mesh
     view.boundaries = mesh["boundary"]
-    view.setup = SimpleNamespace(boundaries=[SimpleNamespace(name="body", mesh_type="wall")])
+    view._configuration = SimpleNamespace(
+        boundaries=[SimpleNamespace(name="body", mesh_type="wall")]
+    )
+    view.parallel = SimpleNamespace(
+        is_partitioned=False, root_view=lambda values, trailing_shape=(): values
+    )
     return view
 
 
 def test_native_wall_triangles_preserve_orientation_and_area():
     axis = np.linspace(-1.0, 1.0, 9)
     mesh = box_mesh_3d(axis, axis, axis, hole_box=(-0.5, 0.5) * 3, wall_patch_name="body")
-    triangles = _native_wall_view(mesh).get_wall_surface_triangles()
+    triangles = _native_wall_view(mesh).gather_wall_surface_triangles()
     area_vector = 0.5 * np.cross(
         triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
     )
@@ -323,34 +327,12 @@ def test_curved_wall_uses_actual_triangles_without_a_shape_substitution(capped):
     axis = np.arange(-0.875, 1, 0.25)
     donors = np.array(np.meshgrid(axis, axis, axis, indexing="ij")).reshape(3, -1).T
     donors = donors[np.linalg.norm(donors[:, :2], axis=1) > 0.5]
-    cfg = CouplerSetup(transfer_region_bounds=(-0.9, 0.9) * 3)
-    coupler = SimpleNamespace(
-        setup=cfg,
-        kinematic_viscosity=0.01,
-        fvm_box=np.array([-1, 1] * 3),
-        vpm_core_radius_ratio=1.0,
-        vpm_particle_spacing=0.125,
-        vpm_time_step_size=0.01,
-        vpm_solver=SimpleNamespace(
-            viscous_scheme="GBD",
-            setup=SimpleNamespace(
-                viscous=SimpleNamespace(
-                    gbd_threshold_mode="absolute",
-                    gbd_threshold=0.0,
-                )
-            ),
-        ),
+    coupler = _transfer_owner(
+        CouplerConfig(transfer_region_bounds=(-0.9, 0.9) * 3), np.array([-1.0, 1.0] * 3), 0.125
     )
-    fvm = SimpleNamespace(
-        setup=SimpleNamespace(boundaries=[SimpleNamespace(name="cylinder", mesh_type="wall")]),
-        get_cell_centre_coordinates=lambda: donors,
-        get_cell_volume=lambda: np.full(len(donors), 0.25**3),
-        get_boundary_face_centre_coordinates=lambda patch: triangles.mean(axis=1),
-        get_boundary_face_normal=lambda patch: normals,
-        get_wall_surface_triangles=lambda: triangles,
-    )
+    fvm_cells = _donor_cells(donors, 0.25**3, triangles, wall="cylinder")
     transfer = VorticityTransfer(coupler)
-    transfer.setup(fvm)
+    transfer.setup(fvm_cells)
     assert transfer.solid_boundary is not None
     np.testing.assert_array_equal(
         transfer._points_in_solid(query, include_boundary=True), [True, True, False, False]

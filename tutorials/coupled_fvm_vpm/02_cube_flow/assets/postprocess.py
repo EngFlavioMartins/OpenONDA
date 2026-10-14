@@ -9,7 +9,6 @@ import pyvista as pv
 from openonda import plotting as _THEME
 from assets.output_files import (
     NativeVelocity,
-    load_vpm_particles,
     read_csv_table,
     read_history_table,
     read_json,
@@ -94,19 +93,23 @@ def _path(source, name, suffix):
 
 
 def metadata():
-    return read_json(SOLUTION / "run_metadata.json")
+    return read_json(SOLUTION / "coupler_metadata.json")
 
 
 def run_constants():
     recorded = metadata()
-    physics = recorded["physics"]
-    velocity = np.asarray(physics["freestream_velocity"], dtype=float)
+    configuration, coupling = recorded["configuration"], recorded["coupling"]
+    # The freestream after the startup ramp
+    ramp = configuration["freestream"]
+    velocity = np.asarray(
+        configuration["freestream_velocity"] if ramp is None else ramp["final"], dtype=float
+    )
     return {
         "freestream_speed": float(np.linalg.norm(velocity)),
         "freestream_velocity": velocity,
         "reference_length": 1.0,
-        "kinematic_viscosity": float(physics["kinematic_viscosity"]),
-        "box": recorded["fvm_solver"]["fvm_domain"],
+        "kinematic_viscosity": float(coupling["kinematic_viscosity"]),
+        "box": coupling["fvm_box"],
     }
 
 

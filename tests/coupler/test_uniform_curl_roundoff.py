@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from openonda.coupler import CouplerSetup
+from openonda.coupler import CouplerConfig
 from openonda.coupler import vorticity_transfer as module
 
 
@@ -16,18 +16,24 @@ def test_cached_buffered_transfer_preserves_uniform_flow_and_resolved_weak_curl(
 ):
     coordinates = np.array(np.meshgrid(*([np.linspace(-0.75, 0.75, 4)] * 3), indexing="ij"))
     donors = coordinates.reshape(3, -1).T
+    viscous = SimpleNamespace(scheme="gbd", gbd_threshold_mode="absolute", gbd_threshold=0.0)
     driver = SimpleNamespace(
-        setup=CouplerSetup(),
+        config=CouplerConfig(),
         kinematic_viscosity=0.01,
         fvm_box=np.array([-1.0, 1.0] * 3),
         vpm_core_radius_ratio=1.0,
         vpm_particle_spacing=0.25,
         vpm_time_step_size=0.01,
+        vpm_case=SimpleNamespace(
+            numerics=SimpleNamespace(viscous=viscous, induction=SimpleNamespace())
+        ),
     )
     fvm = SimpleNamespace(
-        setup=SimpleNamespace(boundaries=[]),
-        get_cell_centre_coordinates=lambda: donors,
-        get_cell_volume=lambda: np.full(len(donors), 0.5**3),
+        case=SimpleNamespace(boundaries=[]),
+        parallel=SimpleNamespace(comm=None),
+        gather_cell_centre_coordinates=lambda: donors,
+        gather_cell_volume=lambda: np.full(len(donors), 0.5**3),
+        gather_wall_surface_triangles=lambda: np.empty((0, 3, 3)),
     )
     transfer = module.VorticityTransfer(driver)
     transfer.setup(fvm)

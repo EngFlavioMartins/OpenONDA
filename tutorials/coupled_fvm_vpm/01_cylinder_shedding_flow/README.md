@@ -31,7 +31,7 @@ A transverse freestream of 0.1 m/s and a weak vortex behind the cylinder break t
 ./allplot.sh
 ```
 
-`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest backup. The mesh is generated once and kept as `assets/coupled_cylinder_flow_mesh.npz`, with a `.vtu` copy for ParaView. Install the optional [CUDA Gaussian mesh](../../../docs/installation.md): without it, the image sums of `SlipSlabInduction` fall back to a much slower CPU evaluation.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest coupled backup in `solution/coupled/`. The mesh is generated once and kept as `assets/coupled_cylinder_flow_mesh.npz`, with a `.vtu` copy for ParaView. Install the optional [CUDA Gaussian mesh](../../../docs/installation.md): without it, the image sums of `SlipSlabInduction` fall back to a much slower CPU evaluation.
 
 ## Results
 
@@ -40,7 +40,7 @@ A transverse freestream of 0.1 m/s and a weak vortex behind the cylinder break t
 | `figures/forces` | $C_D$ and $C_L$ against the reference; the mean drag, lift amplitude and Strouhal number of developed shedding are printed |
 | `figures/velocity_profiles` | Mean streamwise velocity and transverse velocity fluctuation at $x/D=2$ and $4$ |
 | `figures/coupling_cost` | Wall time of each exchange and the particle count |
-| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; `assets/paraview_state.py` loads both in ParaView |
+| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; every particle frame, written with each coupled backup, has an FVM frame of the same time. `assets/paraview_state.py` loads both in ParaView |
 
 ## Sensitivity study
 

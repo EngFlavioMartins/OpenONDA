@@ -1,21 +1,16 @@
 """Logging, metadata, and per-step diagnostics for coupled runs."""
 
 from collections.abc import Mapping
-from dataclasses import asdict, fields
-from datetime import UTC, datetime
-import json
+from dataclasses import fields
 import logging
-import os
 from pathlib import Path
-import sys
 import time
 
 import numpy as np
 
 from openonda.core import log_style
-from openonda.coupler.backup import BACKUP_DIRECTORY
-
-_REAL_STDOUT = sys.stdout
+from openonda.core.file_output import append_jsonl
+from openonda.core.simulation.parallel import collective_phase
 
 
 def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
@@ -62,115 +57,27 @@ def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
         active.remove(object_id)
 
 
-class OutputRedirector:
-    """Temporarily redirect Python and native stdout/stderr to a case log.
-
-    Parameters
-    ----------
-    logfile : str, os.PathLike, or None, optional
-        Text-file destination. ``None`` makes the context manager a no-op,
-        which is used on non-owner MPI ranks.
-    append : bool, default=True
-        Append to an existing file when true; truncate it on entry otherwise.
-
-    Notes
-    -----
-    Entering duplicates file descriptors 1 and 2 so native numerical-library
-    output is captured as well as Python writes. Exiting restores both
-    descriptors and closes the file opened by this object, including after an
-    exception.
-    """
-
-    def __init__(
-        self,
-        logfile: str | os.PathLike[str] | None = None,
-        append: bool = True,
-    ) -> None:
-        """Configure a temporary output redirection context."""
-        self.logfile = logfile
-        self.append = append
-        self._log_fd = None
-        self._saved_stdout_fd = None
-        self._saved_stderr_fd = None
-        self.log_file = None
-
-    def __enter__(self):
-        """Open the configured log and return this context manager."""
-        if not self.logfile:
-            return self
-
-        mode = "a" if self.append else "w"
-        self.log_file = open(self.logfile, mode)
-        self._log_fd = self.log_file.fileno()
-
-        self._saved_stdout_fd = os.dup(1)
-        self._saved_stderr_fd = os.dup(2)
-
-        sys.stdout.flush()
-        sys.stderr.flush()
-
-        os.dup2(self._log_fd, 1)
-        os.dup2(self._log_fd, 2)
-        return self
-
-    def __exit__(self, _exc_type, _exc_value, _traceback):
-        """Restore stdout/stderr and close the opened log file."""
-        if not self.logfile:
-            return
-
-        sys.stdout.flush()
-        sys.stderr.flush()
-
-        if self._saved_stdout_fd is not None:
-            os.dup2(self._saved_stdout_fd, 1)
-            os.close(self._saved_stdout_fd)
-
-        if self._saved_stderr_fd is not None:
-            os.dup2(self._saved_stderr_fd, 2)
-            os.close(self._saved_stderr_fd)
-
-        if self.log_file:
-            self.log_file.close()
-
-
-class _CaseFileHandler(logging.FileHandler):
-    """File handler used for the per-case coupler log."""
-
-
-def configure_logging(solution_dir: Path, logger: logging.Logger) -> logging.FileHandler:
-    """Attach the case log while preserving caller-installed handlers."""
-    log_path = (solution_dir / "coupler.log").resolve()
-    for handler in list(logger.handlers):
-        if isinstance(handler, _CaseFileHandler):
-            logger.removeHandler(handler)
-            handler.close()
-
+def configure_coupler_logging(path: Path | None, *, console: bool) -> logging.Logger:
+    """Send ``openonda.coupler`` to ``solution/coupler.log`` and buffer each exchange."""
+    logger = log_style.configure_logging("openonda.coupler", path, console=console)
     for progress_filter in list(logger.filters):
         if isinstance(progress_filter, _CouplingProgress):
             logger.removeFilter(progress_filter)
     logger.addFilter(_CouplingProgress())
-    has_external_handlers = bool(logger.handlers)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    file_handler = _CaseFileHandler(log_path, mode="a")
-    file_handler.setFormatter(log_style.Formatter())
-    logger.addHandler(file_handler)
-    if not has_external_handlers:
-        console_handler = logging.StreamHandler(_REAL_STDOUT)
-        console_handler.setFormatter(log_style.Formatter())
-        logger.addHandler(console_handler)
-    return file_handler
+    return logger
+
+
+def close_coupler_logging() -> None:
+    """Close the handlers and the exchange buffer of ``openonda.coupler``."""
+    logger = logging.getLogger("openonda.coupler")
+    for progress_filter in list(logger.filters):
+        if isinstance(progress_filter, _CouplingProgress):
+            logger.removeFilter(progress_filter)
+    log_style.close_logging("openonda.coupler")
 
 
 def flush_log(logger: logging.Logger) -> None:
-    """Flush all handlers attached to a logger.
-
-    Parameters
-    ----------
-    logger : logging.Logger
-        Coupler logger whose file and console handlers should publish buffered
-        records before a barrier, backup, or process exit.
-    """
+    """Flush all handlers attached to ``logger``."""
     for handler in logger.handlers:
         handler.flush()
 
@@ -254,79 +161,6 @@ def format_coupler_log(topic: str, *rows: log_style.Row) -> log_style.Event:
     return log_style.Event(topic, rows)
 
 
-def _domain_dict(box: np.ndarray) -> dict[str, float]:
-    return dict(
-        zip(
-            ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
-            (float(value) for value in box),
-            strict=True,
-        )
-    )
-
-
-def write_run_metadata(
-    coupler,
-    *,
-    start_step: int = 0,
-    stop_step: int | None = None,
-) -> None:
-    """Write the resolved solver and coupling state used by post-processing."""
-    assert coupler.fvm_box is not None
-    assert coupler.vpm_solver is not None
-    viscous_config = asdict(coupler.vpm_solver.setup.viscous)
-    configured_end_step = coupler._derive_coupling_step_count(
-        coupler.end_time,
-        coupler.vpm_time_step_size,
-    )
-    resolved_stop_step = configured_end_step if stop_step is None else int(stop_step)
-    metadata = {
-        "schema_version": 3,
-        "coupling_method": "buffered_m4_renewal",
-        "generated_utc": datetime.now(UTC).isoformat(),
-        "case_dir": str(coupler.case_dir),
-        "physics": {
-            "freestream_velocity": coupler.setup.freestream_velocity,
-            "kinematic_viscosity": coupler.kinematic_viscosity,
-            "density": coupler.density,
-            "fvm_time_step_size": coupler.fvm_time_step_size,
-            "vpm_time_step_size": coupler.vpm_time_step_size,
-            "end_time": coupler.end_time,
-            "backup_interval_steps": coupler.setup.backup_interval_steps,
-            "backup_interval_time": (
-                None
-                if coupler.setup.backup_interval_steps == 0
-                else coupler.setup.backup_interval_steps * coupler.vpm_time_step_size
-            ),
-        },
-        "fvm_solver": {
-            "coupling_patch": coupler.setup.coupling_patch,
-            "boundary_condition_mode": "vorticity_mixed",
-            "fvm_domain": _domain_dict(coupler.fvm_box),
-        },
-        "vpm_solver": {
-            "vpm_particle_spacing": coupler.vpm_particle_spacing,
-            "vpm_core_radius_ratio": coupler.vpm_core_radius_ratio,
-            "eta_blend_width": coupler.setup.eta_blend_width,
-            "viscous_scheme": coupler.vpm_solver.setup.viscous.scheme,
-            "viscous_config": viscous_config,
-        },
-        **coupler.setup.to_dict(),
-        "vpm_time_step_size": coupler.vpm_time_step_size,
-        "n_fvm_substeps": coupler.n_fvm_substeps,
-        "execution": {
-            "start_coupling_step": int(start_step),
-            "stop_coupling_step": resolved_stop_step,
-            "configured_end_coupling_step": configured_end_step,
-            "start_time": float(start_step * coupler.vpm_time_step_size),
-            "stop_time": float(resolved_stop_step * coupler.vpm_time_step_size),
-            "is_limited": resolved_stop_step < configured_end_step,
-        },
-    }
-    (coupler.solution_dir / "run_metadata.json").write_text(
-        json.dumps(metadata, indent=2), encoding="utf-8"
-    )
-
-
 def boundary_induction_summary(vpm_solver, *, target_count: int, wall_seconds: float) -> dict:
     """Capture scalar query evidence before another operation replaces it.
 
@@ -392,7 +226,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
 
     Parameters
     ----------
-    coupler : FVMVPMCoupler-compatible object
+    coupler : CoupledSolver
         Driver exposing the latest boundary, transfer, solver, and recovery
         state.
     transfer_result : TransferResult or None, optional
@@ -565,23 +399,19 @@ def record_step(
     transfer_result,
     *,
     logger: logging.Logger,
-    comm=None,
-    exchange_started: float | None = None,
-    state_checks_and_sampling_seconds: float = 0.0,
+    exchange_started: float,
+    output_seconds: float,
 ) -> None:
-    """Report one accepted exchange through its scheduled checkpoint attempt.
+    """Report one accepted exchange, write its due backup and its diagnostics record.
 
     Boundary time includes the initial trace and all post-renewal refreshes.
     Transfer includes renewal and interface state capture/restoration. The four
-    evolution timers exclude state checks/output and backup. The end-to-end
-    clock includes those phases, reporting preparation, logging and collective
-    waits. Publishing this final timing record itself is outside its scope.
-    Nested breakdowns (for example donor gather) are descriptive, not additive.
-    A failed checkpoint does not undo the accepted numerical step. Preserve one
-    diagnostic row for it, then re-raise the checkpoint failure on every rank.
+    evolution timers exclude output and backup; the total includes them,
+    reporting, logging and collective waits. A failed backup does not undo the
+    accepted exchange: its diagnostics record is written and the backup error
+    is raised on every rank.
     """
-    from .parallel import collective_phase
-
+    comm = coupler._comm
     reporting_started = time.perf_counter()
     with collective_phase(comm, "coupled step reporting"):
         t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
@@ -596,11 +426,11 @@ def record_step(
             "fvm": float(t_fvm),
             "transfer": float(t_transfer),
             "evolution_total": float(sum(timing)),
-            "state_checks_and_samplers": float(state_checks_and_sampling_seconds),
+            "state_checks_and_samplers": float(output_seconds),
         }
-        stats = getattr(coupler, "_step_transfer_stats", None) or {}
+        stats = coupler._step_transfer_stats or {}
         timing_data["last_sweep_donor_gather"] = float(stats.get("donor_gather_seconds", 0.0))
-        if coupler._is_master:
+        if coupler._is_root:
             logger.info(
                 format_coupler_log(
                     "FVM",
@@ -610,7 +440,6 @@ def record_step(
                     ("Courant, max", coupler.fvm_solver.max_courant_number),
                 )
             )
-            stats = coupler._step_transfer_stats or {}
             logger.info(
                 format_coupler_log(
                     "VPM",
@@ -628,44 +457,22 @@ def record_step(
                     ),
                 )
             )
-            finish_coupling_step(logger, final=step == coupler._log_stop_step)
+            finish_coupling_step(logger, final=step == coupler.n_steps)
             flush_log(logger)
 
     reporting_time = time.perf_counter() - reporting_started
     backup_started = time.perf_counter()
-    backup_due = (
-        coupler.setup.backup_interval_steps > 0 and step % coupler.setup.backup_interval_steps == 0
-    )
+    backup_due = coupler._backup_due(step)
     backup_failure = None
-    try:
-        if backup_due:
-            backup_directory = coupler.solution_dir / BACKUP_DIRECTORY
-            coupler.save_backup(backup_directory, coupling_step=step)
-            if coupler._is_master:
-                logger.info(
-                    format_coupler_log(
-                        "coupled backup",
-                        ("coupling step", step),
-                        ("flow time", coupler.vpm_time_step_size * step, "s"),
-                        ("directory", str(backup_directory)),
-                    )
-                )
-                flush_log(logger)
-    except BaseException as error:
-        backup_failure = error
+    if backup_due:
+        try:
+            coupler.save_backup()
+        except BaseException as error:
+            backup_failure = error
     backup_time = time.perf_counter() - backup_started
-    # save_backup already owns its MPI collectives. Only propagate the captured
-    # local failure here, after that call has returned/raised on every rank; no
-    # rank skips output writing while another is entering its collective.
-    try:
-        with collective_phase(comm, "accepted exchange backup completion"):
-            if backup_failure is not None:
-                raise backup_failure
-    except BaseException as error:
-        backup_failure = error
     measured_end = time.perf_counter()
-    phases = float(sum(timing) + state_checks_and_sampling_seconds + reporting_time + backup_time)
-    total = phases if exchange_started is None else measured_end - exchange_started
+    phases = float(sum(timing) + output_seconds + reporting_time + backup_time)
+    total = measured_end - exchange_started
     timing_data.update(
         {
             "reporting": float(reporting_time),
@@ -675,20 +482,19 @@ def record_step(
         }
     )
     try:
-        with collective_phase(comm, "accepted exchange timing output writing"):
-            if coupler._is_master:
+        with collective_phase(comm, "accepted exchange diagnostics output"):
+            if coupler._is_root:
                 diagnostics.update(
                     {
                         "step": int(step),
                         "time": float(time_end),
                         "timing_seconds": timing_data,
-                        "timing_scope": "accepted exchange through checkpoint attempt, before timing output writing",
                         "backup_phase": {
                             "scheduled": backup_due,
                             "status": (
                                 "failed"
                                 if backup_failure is not None
-                                else "complete"
+                                else "completed"
                                 if backup_due
                                 else "not_scheduled"
                             ),
@@ -701,12 +507,8 @@ def record_step(
                     }
                 )
                 diagnostics = _diagnostic_json_value(diagnostics, "accepted exchange diagnostic")
-                encoded = json.dumps(diagnostics, separators=(",", ":"), allow_nan=False)
                 coupler.coupling_diagnostics.append(diagnostics)
-                with (coupler.solution_dir / "coupler_diagnostics.jsonl").open(
-                    "a", encoding="utf-8"
-                ) as stream:
-                    stream.write(encoded + "\n")
+                append_jsonl(coupler.solution_dir / "coupler_diagnostics.jsonl", diagnostics)
                 logger.info(
                     format_coupler_log(
                         "timing",
@@ -715,11 +517,7 @@ def record_step(
                         ("  boundary", f"{timing_data['vpm_boundary_condition']:.3f}", "s"),
                         ("  fvm", f"{timing_data['fvm']:.3f}", "s"),
                         ("  transfer", f"{timing_data['transfer']:.3f}", "s"),
-                        (
-                            "  state checks and samplers",
-                            f"{state_checks_and_sampling_seconds:.3f}",
-                            "s",
-                        ),
+                        ("  state checks and samplers", f"{output_seconds:.3f}", "s"),
                         ("  reporting", f"{reporting_time:.3f}", "s"),
                         ("  backup", f"{backup_time:.3f}", "s"),
                         ("  control and wait", f"{total - phases:.3f}", "s"),
@@ -730,7 +528,7 @@ def record_step(
         if backup_failure is None:
             raise
         backup_failure.add_note(
-            "Accepted-step diagnostic output writing also failed: "
+            "Accepted-step diagnostic output also failed: "
             f"{type(output_failure).__name__}: {output_failure}"
         )
     if backup_failure is not None:
@@ -738,13 +536,13 @@ def record_step(
 
 
 __all__ = [
-    "OutputRedirector",
+    "begin_coupling_step",
+    "boundary_induction_summary",
+    "close_coupler_logging",
     "compute_diagnostics",
-    "configure_logging",
+    "configure_coupler_logging",
+    "finish_coupling_step",
     "flush_log",
     "format_coupler_log",
-    "begin_coupling_step",
-    "finish_coupling_step",
     "record_step",
-    "write_run_metadata",
 ]

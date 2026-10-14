@@ -10,6 +10,8 @@ import sys
 
 import pytest
 
+import openonda
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
@@ -101,11 +103,13 @@ rank = MPI.COMM_WORLD.Get_rank()
         "_OPENONDA_MPI_CHILD",
     ):
         env.pop(key, None)
+    # Run the checkout under test, not whichever checkout is installed.
+    env["PYTHONPATH"] = str(Path(openonda.__file__).resolve().parents[1])
     if mode == "four_ranks":
         # A resource reservation is not an MPI world, either before launch
         # or in the children using four of its available tasks.
         env["SLURM_NTASKS"] = "64"
-    # Installed checkout: exercise the same plain invocation used by tutorials.
+    # Exercise the same plain invocation used by tutorials.
     completed = subprocess.run(
         [sys.executable, "setup.py", mode],
         cwd=tmp_path,

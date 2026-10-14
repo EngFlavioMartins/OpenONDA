@@ -24,7 +24,7 @@ def test_lamb_oseen_workspace_reserves_full_time_diffusion(physics, monkeypatch,
 
     monkeypatch.setattr(setup.vpm, "VPMSolver", capture)
     with pytest.raises(CaseCapturedError):
-        setup.run_case(physics, "DVH", surfaces=False)
+        setup.run_case(physics, "dvh", surfaces=False)
     case = captured[0]
     viscosity = case.numerics.viscous.kinematic_viscosity
     heat_margin = 3.6 * (4.0 * viscosity * setup.TOTAL_TIME) ** 0.5
@@ -39,19 +39,19 @@ def test_lamb_oseen_workspace_reserves_full_time_diffusion(physics, monkeypatch,
 @pytest.mark.parametrize(
     "backend, stretching",
     [
-        ("DIRECT", "transposed"),
-        ("DIRECT", "mixed"),
-        ("FMM", "mixed"),
-        ("TREECODE", "direct"),
+        ("direct", "transposed"),
+        ("direct", "mixed"),
+        ("fmm", "mixed"),
+        ("treecode", "direct"),
     ],
 )
 def test_lamb_oseen_selects_backend_and_stretching_independently(monkeypatch, backend, stretching):
     setup = _load_lamb_oseen_setup()
-    monkeypatch.setitem(setup.COMPUTE_METHOD, "CS", backend)
+    monkeypatch.setitem(setup.COMPUTE_METHOD, "cs", backend)
     monkeypatch.setattr(setup, "STRETCHING_SCHEME", stretching)
-    runtime = setup.induction_config("CS").build()
+    runtime = setup.induction_config("cs").build()
     assert runtime.method == backend
-    assert runtime.stretching_scheme.lower() == stretching
+    assert runtime.stretching_scheme == stretching
 
 
 def test_all_vpm_tutorials_construct_cases_with_the_public_api(tmp_path, monkeypatch):
@@ -67,8 +67,8 @@ def test_all_vpm_tutorials_construct_cases_with_the_public_api(tmp_path, monkeyp
         "quadcopter": lambda setup: setup.run(),
         "flat_plate": lambda setup: setup.run("static", 8),
         "rotor_flow": lambda setup: setup.run(),
-        "lamb_oseen_vortex": lambda setup: setup.run_case("vortex", "CS", surfaces=False),
-        "vortex_ring": lambda setup: setup.run_case("dns_mixed", n_steps=1),
+        "lamb_oseen_vortex": lambda setup: setup.run_case("vortex", "cs", surfaces=False),
+        "vortex_ring": lambda setup: setup.run_case("dns_mixed", end_time=setup.TIME_STEP_SIZE),
         "vortex_interactions": lambda setup: setup.build_case("les_stabilized"),
     }
     for name, build in builders.items():

@@ -20,20 +20,9 @@ import numpy as np
 import taichi as ti
 
 import openonda
+from openonda import fvm
 from openonda.core.solution_layout import vpm_backup_files
 import openonda.coupler
-from openonda.fvm import (
-    BoundaryConfig,
-    ComputeConfig,
-    DiscretizationConfig,
-    FVMSetup,
-    LinearSolverConfig,
-    PimpleControl,
-    RunSchedule,
-    TimeConfig,
-    TransportConfig,
-    create_fvm_solver,
-)
 import openonda.fvm.mesher as msh
 import openonda.vpm
 
@@ -195,39 +184,36 @@ def _verify_native_fvm() -> dict[str, float | int]:
         hole_box=(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5),
         wall_patch_name="body",
     )
-    setup = FVMSetup(
-        case_name="installedWheelSmoke",
-        execution=ComputeConfig(operator_backend="numpy"),
-        time=TimeConfig(
-            time_step_size=0.01,
-            end_time=0.01,
-            output_schedule=RunSchedule(every_n_steps=100),
-        ),
-        schemes=DiscretizationConfig(convection_scheme="upwind"),
-        linear=LinearSolverConfig(linear_solver="bicgstab", pressure_solver="amg"),
-        pimple=PimpleControl(n_correctors=1, n_outer_correctors=1),
-        transport=TransportConfig(density=1.0, kinematic_viscosity=0.01),
-        boundaries=[
-            BoundaryConfig.inlet("numericalBoundary", [1.0, 0.0, 0.0]),
-            BoundaryConfig.wall("body"),
-        ],
-        initial_velocity=[1.0, 0.0, 0.0],
-        initial_kinematic_pressure=0.0,
-    )
-
     with (
         tempfile.TemporaryDirectory(prefix="openonda-installed-fvm-") as case_dir,
         contextlib.redirect_stdout(io.StringIO()),
     ):
-        solver = create_fvm_solver(setup, case_dir=case_dir, mesh=mesh)
-        try:
+        case = fvm.FVMCase(
+            name="installed_wheel_smoke",
+            directory=case_dir,
+            numerics=fvm.Numerics(
+                time_step_size=0.01,
+                execution=fvm.ComputeConfig(operator_backend="numpy"),
+                schemes=fvm.DiscretizationConfig(convection_scheme="upwind"),
+                linear=fvm.LinearSolverConfig(linear_solver="bicgstab", pressure_solver="amg"),
+                pimple=fvm.PimpleConfig(n_correctors=1, n_outer_correctors=1),
+                transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
+            ),
+            initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
+            run=fvm.RunPlan(end_time=0.01),
+            logging=fvm.LoggingConfig(console=False),
+            mesh=mesh,
+            boundaries=(
+                fvm.BoundaryConfig.inlet("numericalBoundary", (1.0, 0.0, 0.0)),
+                fvm.BoundaryConfig.wall("body"),
+            ),
+        )
+        with fvm.FVMSolver(case) as solver:
             solver.auto_write = False
             solver.advance()
             velocity = np.asarray(solver.velocity[: mesh["n_cells"]], dtype=float)
             pressure = np.asarray(solver.kinematic_pressure[: mesh["n_cells"]], dtype=float)
             diagnostics = solver.last_diagnostics
-        finally:
-            solver.close()
 
     if not np.all(np.isfinite(velocity)) or not np.all(np.isfinite(pressure)):
         raise RuntimeError("Native FVM installation smoke produced non-finite fields")
@@ -259,16 +245,18 @@ def _verify_native_vpm() -> dict[str, object]:
         contextlib.redirect_stdout(io.StringIO()),
     ):
         case = vpm.VPMCase(
+            name="installed_wheel_smoke",
             directory=Path(directory) / "original",
             numerics=vpm.Numerics(
-                compute_device="CPU",
+                compute_device="cpu",
                 max_n_particles=8,
                 time_step_size=0.01,
                 viscous=vpm.ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.2),
-                verbose=False,
             ),
-            backup=vpm.Backup(interval_steps=1),
-            run=vpm.RunPlan(steps=1, initial_samples=False),
+            run=vpm.RunPlan(end_time=0.01, initial_output=False),
+            output=vpm.Output(schedule=vpm.EverySteps(1)),
+            backup=vpm.Backup(schedule=vpm.EverySteps(1)),
+            logging=vpm.LoggingConfig(console=False),
         )
         solver = vpm.VPMSolver(case)
         try:
@@ -312,58 +300,66 @@ def _verify_native_vpm() -> dict[str, object]:
                 raise RuntimeError("VPM restarted step produced an invalid state")
         finally:
             resumed.close()
-    return {"n_particles": 2, "steps": 1, "restart_step": 2, "backend": "CPU"}
+    return {"n_particles": 2, "steps": 1, "restart_step": 2, "backend": "cpu"}
 
 
 def _verify_native_coupled() -> dict[str, object]:
-    """Advance and resume both installed solvers through the public factory."""
+    """Advance and resume both installed solvers through the coupled solver."""
     from openonda import coupler, vpm
 
-    velocity = [1.0, 0.0, 0.0]
-    flow = FVMSetup(
-        case_name="installed_coupled",
-        execution=ComputeConfig(operator_backend="numpy"),
-        time=TimeConfig(time_step_size=0.01, end_time=0.04),
-        transport=TransportConfig(kinematic_viscosity=0.01),
-        boundaries=[BoundaryConfig.inlet("numericalBoundary", velocity)],
-        initial_velocity=velocity,
-    )
-    particles = vpm.VPMCase(
-        numerics=vpm.Numerics(
-            compute_device="CPU",
-            time_step_size=0.02,
-            max_n_particles=4000,
-            domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
-            freestream_velocity=velocity,
-            induction=vpm.DirectInduction(),
-            # The coupled transfer remeshes onto the GBD lattice.
-            viscous=vpm.ViscousConfig.gbd(
-                kinematic_viscosity=0.01,
-                particle_spacing=0.25,
-                threshold=1e-5,
-                threshold_mode="absolute",
-            ),
-        ),
-    )
-    exchange = coupler.CouplerSetup(freestream_velocity=velocity)
+    velocity = (1.0, 0.0, 0.0)
     mesh = msh.coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), 0.25)
     with (
         tempfile.TemporaryDirectory(prefix="openonda-installed-coupled-") as directory,
         contextlib.redirect_stdout(io.StringIO()),
     ):
-        with coupler.create_coupler(
-            flow, particles, exchange, mesh=mesh, case_dir=directory
-        ) as first:
-            if first.run(start_from="latest", max_coupling_steps=1) != 1:
-                raise RuntimeError("Installed coupled solver did not accept its first exchange")
-        with coupler.create_coupler(
-            flow, particles, exchange, mesh=mesh, case_dir=directory
-        ) as resumed:
-            if resumed.run(start_from="latest") != 2:
+        flow = fvm.FVMCase(
+            name="installed_coupled",
+            directory=directory,
+            numerics=fvm.Numerics(
+                time_step_size=0.01,
+                execution=fvm.ComputeConfig(operator_backend="numpy"),
+                transport=fvm.TransportConfig(kinematic_viscosity=0.01),
+            ),
+            initial_conditions=fvm.InitialFields(velocity=velocity),
+            run=fvm.RunPlan(end_time=0.04),
+            logging=fvm.LoggingConfig(console=False),
+            mesh=mesh,
+            boundaries=(fvm.BoundaryConfig.inlet("numericalBoundary", velocity),),
+        )
+        particles = vpm.VPMCase(
+            name="installed_coupled",
+            directory=directory,
+            numerics=vpm.Numerics(
+                compute_device="cpu",
+                time_step_size=0.02,
+                max_n_particles=4000,
+                domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
+                freestream_velocity=velocity,
+                induction=vpm.DirectInduction(),
+                # The coupled transfer remeshes onto the GBD lattice.
+                viscous=vpm.ViscousConfig.gbd(
+                    kinematic_viscosity=0.01,
+                    particle_spacing=0.25,
+                    threshold=1e-5,
+                    threshold_mode="absolute",
+                ),
+            ),
+            run=vpm.RunPlan(end_time=0.04),
+            logging=vpm.LoggingConfig(console=False),
+        )
+        exchange = coupler.CouplerConfig(freestream_velocity=velocity)
+        with coupler.CoupledSolver(flow, particles, exchange) as first:
+            first.start_from("latest")
+            first.advance()
+            first.save_backup()
+        with coupler.CoupledSolver(flow, particles, exchange) as resumed:
+            if not resumed.start_from("latest") or resumed.step != 1:
                 raise RuntimeError("Installed coupled solver did not resume its accepted exchange")
+            resumed.run()
             fvm_step = resumed.fvm_solver.step
             vpm_step = resumed.vpm_solver.step
-            field = resumed.fvm_solver.get_velocity_field()
+            field = resumed.fvm_solver.gather_velocity_field()
             if fvm_step != 4 or vpm_step != 2 or not np.isfinite(field).all():
                 raise RuntimeError("Installed coupled restart produced invalid fields or clocks")
     return {"n_cells": int(mesh["n_cells"]), "fvm_step": fvm_step, "vpm_step": vpm_step}

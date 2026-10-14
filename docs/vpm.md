@@ -48,11 +48,11 @@ Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above
 
 | Setting | Options |
 | --- | --- |
-| `particle_kernel` | `GAUSSIAN` (default), `HIGH_ORDER_GAUSSIAN`, `SUPER_GAUSSIAN`, `WINCKELMANS` (algebraic). |
+| `particle_kernel` | `gaussian` (default), `high_order_gaussian`, `super_gaussian`, `winckelmans` (algebraic). |
 | `induction` | `DirectInduction()`: exact sum over all pairs, for small or reference cases. `TreecodeInduction(theta=0.4, multipole_order=3)`: hierarchical far field for Gaussian and Winckelmans kernels; a smaller `theta` is more accurate. `FMMInduction()`: fast multipole method, every kernel. `SlipSlabInduction(base, z_min, z_max)`: free-slip span planes, see [planar flow](#planar-flow). |
-| `stretching_scheme` | `TRANSPOSED` (default) uses $J^T\boldsymbol{\Gamma}$ and conserves total strength; `DIRECT` uses $J\boldsymbol{\Gamma}$; `MIXED` uses the symmetric part $S\boldsymbol{\Gamma}$. The [vortex ring](../tutorials/vpm/02_vortex_ring/README.md) compares them. |
+| `stretching_scheme` | `transposed` (default) uses $J^T\boldsymbol{\Gamma}$ and conserves total strength; `direct` uses $J\boldsymbol{\Gamma}$; `mixed` uses the symmetric part $S\boldsymbol{\Gamma}$. The [vortex ring](../tutorials/vpm/02_vortex_ring/README.md) compares them. |
 | `integrator` | `RK2()`, `SSPRK3()` or `RK4()`, advancing positions and strengths together. |
-| `compute_device`, `precision` | `AUTO`, `CPU`, `CUDA`, `VULKAN` or `METAL`; `f32` or `f64`. |
+| `compute_device`, `precision` | `auto`, `cpu`, `cuda`, `vulkan` or `metal`; `f32` or `f64`. |
 
 Choose the induction backend by particle count. On a CUDA GPU, `DirectInduction` is the fastest up to about 50k particles and `FMMInduction()` above that; at 81k particles FMM took 0.6 s per step against 0.9 s for direct summation and 2.8 s for the treecode (core spreading, RTX 3060 Laptop). FMM keeps the velocity within $3\times10^{-4}$ and its gradient within $1.4\times10^{-3}$ of direct summation (relative $L_2$ error on an 81k-particle vortex ring). `TreecodeInduction()` is more accurate, within $3\times10^{-4}$ and $7\times10^{-4}$, about fifty times below the particle discretization error of the 8.8k-particle ring, but slower on GPUs; second-order multipoles are cheaper and more than ten times less accurate. On a CPU the fast methods pay off below 10k particles, and FMM was about twice as fast as the treecode at 81k particles.
 

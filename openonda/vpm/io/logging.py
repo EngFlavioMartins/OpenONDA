@@ -589,7 +589,7 @@ class Logging:
             vlm = system.vlm_solver
             if vlm is None or not vlm._solved:
                 return
-            if not hasattr(vlm, "_last_forces"):
+            if vlm._last_forces is None:
                 return
 
             forces = vlm._last_forces

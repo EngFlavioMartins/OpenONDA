@@ -3,10 +3,15 @@
 import numpy as np
 import pytest
 
-from openonda.coupler.boundary import tangential_normal_velocity_gradient
 from openonda.fvm.fields.mixed_velocity_boundary import (
     reconstruct_normal_velocity_tangential_gradient,
 )
+
+
+def tangential_normal_velocity_gradient(jacobian, normals):
+    """Tangential part of du/dn = J n, with J[i, j] = du_i/dx_j."""
+    gradient = np.einsum("fij,fj->fi", jacobian, normals)
+    return gradient - np.einsum("fi,fi->f", gradient, normals)[:, np.newaxis] * normals
 
 
 def test_mixed_boundary_exactly_reconstructs_divergence_free_linear_fields():

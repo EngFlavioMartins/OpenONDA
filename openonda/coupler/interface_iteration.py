@@ -8,13 +8,14 @@ from typing import TypeAlias, TypedDict
 
 import numpy as np
 
+from openonda.core.schedules import EverySteps, EveryTime
+from openonda.core.simulation.parallel import collective_phase
 from openonda.fvm.io.backup import capture_restart_state, restore_restart_state
 
 from .boundary import advance_fvm, update_boundary_history_after_replacement
-from .parallel import collective_phase
 from .vorticity_transfer import _particle_state_snapshot, _restore_particle_state
 
-logger = logging.getLogger("coupler")
+logger = logging.getLogger("openonda.coupler")
 _TRACE_FIELDS = (
     "velocity_boundary_condition",
     "normal_velocity_boundary_condition",
@@ -35,26 +36,34 @@ class IterationRow(TypedDict):
     converged: bool
 
 
-def validate_output_schedules(coupler) -> None:
-    """Reject output events that would fall inside a provisional interval."""
-    fvm = coupler.fvm_solver
-    schedules = [fvm._output_schedule, fvm._backup_config.schedule]
-    schedules.extend(fvm._sampler_schedules.values())
-    if coupler.n_fvm_substeps > 1 and any(
-        getattr(sampler, "schedule", None) is None for sampler in getattr(fvm, "_samplers", ())
-    ):
-        raise ValueError("Iterated coupling requires explicit aligned FVM sampler schedules")
+def validate_output_schedules(
+    fvm_case, n_fvm_substeps: int, exchange_time_step_size: float
+) -> None:
+    """Reject FVM frames and samples that would fall inside a provisional interval.
+
+    Iterated exchanges defer the FVM output to the converged end of each
+    exchange, so every FVM output schedule must select exchange times only.
+    """
+    schedules = [fvm_case.output.schedule]
+    schedules.extend(sampler.schedule for sampler in fvm_case.samplers.samples)
     for schedule in schedules:
-        if schedule is None or schedule.final_only:
-            continue
-        if schedule.every_n_steps is not None:
-            aligned = schedule.every_n_steps % coupler.n_fvm_substeps == 0
+        if isinstance(schedule, EverySteps):
+            aligned = schedule.interval % n_fvm_substeps == 0 and (
+                schedule.first_step is None or schedule.first_step % n_fvm_substeps == 0
+            )
+        elif isinstance(schedule, EveryTime):
+            aligned = all(
+                np.isclose(ratio, round(ratio), rtol=0.0, atol=1.0e-9)
+                for ratio in (
+                    schedule.interval / exchange_time_step_size,
+                    schedule.start_time / exchange_time_step_size,
+                )
+            )
         else:
-            ratio = schedule.every_time / coupler.vpm_time_step_size
-            aligned = round(ratio) >= 1 and np.isclose(ratio, round(ratio), rtol=0, atol=1e-10)
+            aligned = True
         if not aligned:
             raise ValueError(
-                "Iterated coupling requires FVM output and sampling schedules aligned with VPM exchange times"
+                "Iterated coupling requires FVM output and sampling schedules on exchange times"
             )
 
 
@@ -114,7 +123,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     with collective_phase(comm, "interface initial state capture"):
         fvm_start = capture_restart_state(fvm)
         particles_start = (
-            _particle_state_snapshot(vpm, slot="coupler-predictor") if coupler._is_master else None
+            _particle_state_snapshot(vpm, slot="coupler-predictor") if coupler._is_root else None
         )
         old = _read_trace(coupler, old=True)
         predictor = _read_trace(coupler, velocity=next_velocity)
@@ -130,14 +139,14 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
     fvm_seconds = transfer_seconds = 0.0
     rows: list[IterationRow] = []
     tolerance = (
-        coupler.setup.interface_normal_tolerance,
-        coupler.setup.interface_gradient_tolerance,
+        coupler.config.interface_normal_tolerance,
+        coupler.config.interface_gradient_tolerance,
     )
-    for sweep in range(1, coupler.setup.interface_iterations + 1):
+    for sweep in range(1, coupler.config.interface_iterations + 1):
         started = perf_counter()
         if sweep > 1:
             restore_restart_state(fvm, fvm_start)
-            if coupler._is_master:
+            if coupler._is_root:
                 _restore_particle_state(vpm, particles_start)
             transfer.step = transfer_step
             _write_trace(coupler, old, old=True)
@@ -151,7 +160,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         update_boundary_history_after_replacement(coupler, *geometry)
         phase_seconds["boundary_refresh"] += perf_counter() - started
         row: IterationRow | None = None
-        if coupler._is_master:
+        if coupler._is_root:
             updated = _read_trace(coupler, old=True)
             normal = float(np.sqrt(np.average((updated[1] - candidate[1]) ** 2, weights=face_area)))
             gradient = float(
@@ -181,7 +190,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         else None
     )
     started = perf_counter()
-    fvm.write_accepted_step_output()
+    fvm.write_step_output()
     phase_seconds["accepted_output"] = perf_counter() - started
     fvm_seconds += phase_seconds["accepted_output"]
     transfer_seconds += phase_seconds["state_capture"] + phase_seconds["state_restore"]
@@ -192,7 +201,7 @@ def advance_iterated_interface(coupler, geometry, next_velocity):
         "residuals": rows,
         "phase_seconds": phase_seconds,
     }
-    if coupler._is_master:
+    if coupler._is_root:
         logger.log(
             logging.INFO if converged else logging.WARNING,
             "coupler  interface iteration | sweeps=%d | converged=%s | normal=%.3e | gradient=%.3e",

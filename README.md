@@ -70,7 +70,7 @@ import numpy as np
 from openonda import vpm
 
 # particle spacing [m], core radius [m], viscosity [m²/s]
-h, a, nu = 0.2, 0.35, 0.01 
+h, a, nu = 0.2, 0.35, 0.01
 
 class GaussianColumn:
     """Vortex column of unit circulation along z, sampled on a cubic lattice."""
@@ -93,15 +93,16 @@ class GaussianColumn:
         )
 
 case = vpm.VPMCase(
+    name="gaussian_column",
     directory="vpm-example",
     numerics=vpm.Numerics(
         time_step_size=0.01,
-        compute_device="CPU",
+        compute_device="cpu",
         max_n_particles=5000,
         viscous=vpm.ViscousConfig.cs(kinematic_viscosity=nu, particle_spacing=h),
     ),
     initial_conditions=(GaussianColumn(),),
-    run=vpm.RunPlan(steps=2),
+    run=vpm.RunPlan(end_time=0.02),
 )
 vpm.VPMSolver(case).run()
 ```
@@ -122,6 +123,7 @@ case = fvm.FVMCase(
     directory="fvm-example",
     mesh=mesh,
     numerics=fvm.Numerics(
+        time_step_size=0.01,
         transport=fvm.TransportConfig(kinematic_viscosity=0.01),
     ),
     boundaries=(
@@ -133,7 +135,7 @@ case = fvm.FVMCase(
         fvm.BoundaryConfig.empty("zmax"),
     ),
     initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
-    run=fvm.RunPlan(end_time=0.05, time_step_size=0.01),
+    run=fvm.RunPlan(end_time=0.05),
 )
 with fvm.FVMSolver(case) as solver:
     solver.run()

@@ -51,12 +51,10 @@ class VLMLoadingDistribution:
         run. Output failures propagate so a run cannot claim success
         while required scientific samples are missing.
         """
-        if vlm_solver is None or not hasattr(vlm_solver, "_surface_sampling"):
+        if vlm_solver is None or not vlm_solver._surface_sampling:
             return
-        if not vlm_solver._surface_sampling:
-            return
-        reference_velocity = getattr(vlm_solver, "_last_reference_velocity", None)
-        density = getattr(vlm_solver, "density", 1.0)
+        reference_velocity = vlm_solver._last_reference_velocity
+        density = vlm_solver.density
 
         for surface_name, enabled in vlm_solver._surface_sampling.items():
             if not enabled:

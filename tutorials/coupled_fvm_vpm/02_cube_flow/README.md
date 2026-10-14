@@ -32,7 +32,7 @@ The layout follows the coupling rules found with the [cylinder](../01_cylinder_s
 ./allplot.sh
 ```
 
-`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest backup. The mesh is generated once and kept as `assets/coupled_cube_flow_mesh.npz`. The FVM runs on four MPI processes and the particles on the GPU. Expect several days for 100 s of flow on a laptop GPU, mostly in the FVM; `./allplot.sh` works on any completed portion once $t>40$ s.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest coupled backup in `solution/coupled/`. The mesh is generated once and kept as `assets/coupled_cube_flow_mesh.npz`. The FVM runs on four MPI processes and the particles on the GPU. Expect several days for 100 s of flow on a laptop GPU, mostly in the FVM; `./allplot.sh` works on any completed portion once $t>40$ s.
 
 ## Results
 
@@ -43,6 +43,6 @@ The layout follows the coupling rules found with the [cylinder](../01_cylinder_s
 | `figures/coupled_fvm_vpm_fields_t*` | Coupled FVM and particle velocity in the mid-plane, every 2 s |
 | `figures/reference_fvm_*_fields_t*` | The same plane against the reference; instantaneous, so the shed vortices' phases differ once shedding develops |
 | `figures/coupling_diagnostics` | Boundary-trace convergence, particle count and wall time per exchange |
-| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; `assets/paraview_state.py` loads both in ParaView |
+| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; every particle frame, written with each coupled backup, has an FVM frame of the same time. `assets/paraview_state.py` loads both in ParaView |
 
 `./allplot.sh` first samples the saved FVM fields of both runs on a common lattice (`python -m assets.postprocess`), then draws the figures. Compare force statistics and mean profiles while refining the cell and particle spacing and the exchange step.

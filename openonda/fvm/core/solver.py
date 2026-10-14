@@ -1653,23 +1653,6 @@ class FVMSolver(CouplerInterfaceMixin):
         name = f"fvm_{step:06d}" if self.parallel.is_partitioned else f"fvm_{step:06d}.npz"
         return component_directory(self.solution_dir, "fvm") / name
 
-    def _latest_backup(self) -> Path | None:
-        """Return the complete backup with the highest step, or ``None``."""
-        records = []
-        for path in component_directory(self.solution_dir, "fvm").glob("fvm_*"):
-            stem = path.name.removesuffix(".npz")
-            digits = stem.removeprefix("fvm_")
-            if len(digits) < 6 or not digits.isdigit():
-                continue
-            complete = (
-                path.is_file() and path.suffix == ".npz"
-                if not path.is_dir()
-                else (path / "checkpoint_info.json").is_file()
-            )
-            if complete:
-                records.append((int(digits), path))
-        return max(records)[1] if records else None
-
     def start_from(self, selection: str | Path = "latest") -> bool:
         """Select the initial state or a backup before the first step.
 
@@ -1686,7 +1669,7 @@ class FVMSolver(CouplerInterfaceMixin):
         bool
             Whether a backup was loaded.
         """
-        from openonda.core.restart import reset_run_outputs
+        from openonda.core.restart import reset_run_outputs, select_backup
 
         if selection == "initial":
             state_error = None
@@ -1707,7 +1690,6 @@ class FVMSolver(CouplerInterfaceMixin):
                     reset_run_outputs(
                         self.solution_dir,
                         kind="fvm",
-                        backup_path=component_directory(self.solution_dir, "fvm"),
                         samples_dir=self.samples_dir,
                         sample_names={sampler.name for sampler in self._samplers},
                     )
@@ -1722,7 +1704,7 @@ class FVMSolver(CouplerInterfaceMixin):
         error = None
         if self.parallel.is_root:
             try:
-                selected = self._latest_backup() if selection == "latest" else Path(selection)
+                selected = select_backup(selection, directory=self.solution_dir, kind="fvm")
             except Exception as exc:
                 error = exc
         self._collective_io_failure(error, "restart selection")

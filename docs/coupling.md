@@ -60,21 +60,24 @@ Renewal corrects the difference between the FVM vorticity and the field the part
 
 ## Configuration
 
-`FVMSetup`, `VPMCase` and the mesh define the flow; `CouplerSetup` defines the overlap, the convergence controls and the backup interval. `CouplerSetup.freestream` may ramp the background velocity with a `coupler.VelocityRamp`, and `solver.run(initial_velocity=...)` adds an initial disturbance. The cube case uses:
+An `fvm.FVMCase` (mesh, boundaries, inner-flow output) and a `vpm.VPMCase` (particle wake and its output) in the same directory define the flow; `coupler.CouplerConfig` defines the overlap, the interface iteration and the coupled backups. `CouplerConfig.freestream` may ramp the background velocity with a `coupler.VelocityRamp`. The cube case uses:
 
 ```python
 from openonda import coupler
 
-cfg = coupler.CouplerSetup(
-    freestream_velocity=[1.0, 0.0, 0.0],
+config = coupler.CouplerConfig(
+    freestream_velocity=(1.0, 0.0, 0.0),
     coupling_patch="numericalBoundary",
     transfer_region_bounds=(-1.45, 1.45, -1.45, 1.45, -1.45, 1.45),
     eta_blend_width=6 * 0.045,
     vpm_only_width=2 * 0.045,
     interface_iterations=3,
+    backup=coupler.Backup(schedule=coupler.EveryTime(1.0)),
 )
-with coupler.create_coupler(FVM_SETUP, VPM_CASE, cfg, mesh=FVM_MESH) as solver:
+with coupler.CoupledSolver(FVM_CASE, VPM_CASE, config) as solver:
     solver.run(start_from="latest")
 ```
+
+`CoupledSolver` builds the FVM solver on every MPI rank and the VPM solver on the root rank. It owns one exchange clock: both solvers accept exactly the same time at every exchange, `run()` advances to the common end time, and `advance()` steps one exchange. Coupled backups `solution/coupled/coupled_{step:06d}/` hold the FVM backup, the VPM backup and the interface trace of one exchange, and replace the backups of the two solvers, so neither case takes a backup schedule. Each coupled backup also writes the FVM and particle frames of its time (`solution/fvm.pvd`, `solution/vpm.pvd`); whenever the particles write a frame on `VPMCase.output`, the FVM writes one at the same time. The run status and the coupling settings are recorded in `solution/coupler_metadata.json` and the log in `solution/coupler.log`.
 
 The FVM step must divide the exchange step, and output intervals must fall on exchanges. Read forces and profiles together with `solution/coupler_diagnostics.jsonl`, which records the boundary-trace convergence, particle counts and timings per exchange. Before trusting a result, refine the cell and particle spacing, the exchange step and the box size; the cylinder's [sensitivity study](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) shows how.

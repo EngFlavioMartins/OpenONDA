@@ -73,7 +73,7 @@ with fvm.FVMSolver(case) as solver:
     solver.run(start_from="latest")
 ```
 
-`run()` writes the initial state, advances to `RunPlan.end_time` and writes the final state and a backup. A custom time loop calls `start_from("latest")`, then `advance()` per step; a coupler calls `solve_step()` and `accept_step(time=...)` instead. Output, backups, samplers and log records take a schedule: `EverySteps(n)`, `EveryTime(interval)` or `FinalOnly()`.
+`run()` writes the initial state, advances to `RunPlan.end_time` and writes the final state and a backup. A custom time loop calls `start_from("latest")`, then `advance()` per step; a driver that owns the clock, such as the coupler, passes the accepted time, `advance(time=...)`. Output, backups, samplers and log records take a schedule: `EverySteps(n)`, `EveryTime(interval)` or `FinalOnly()`.
 
 ## Mesh setup
 
