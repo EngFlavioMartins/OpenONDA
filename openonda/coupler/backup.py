@@ -263,10 +263,11 @@ def _rewind_coupler_diagnostics(path: Path, time: float, history: list | None = 
 
 
 def _same_coupled_time(left: float, right: float, fvm_step: int) -> bool:
-    """Compare physical clocks allowing only accumulated float64 roundoff."""
+    """Compare restored physical clocks allowing only accumulated float64 roundoff."""
     if not np.isfinite(left) or not np.isfinite(right):
         return False
-    # FVM adds each accepted substep; VPM rounds its macro-step clock.
+    # Clocks restored from a backup are checked against the exchange clock
+    # before both solvers are set to it exactly.
     rounding = fvm_step * np.finfo(np.float64).eps
     tolerance = 1e-12 + rounding / (1.0 - rounding) * max(abs(left), abs(right))
     return abs(left - right) <= tolerance
@@ -292,18 +293,13 @@ def save_coupled_backup(coupler, directory, *, coupling_step: int | None = None)
         if not np.isfinite(clock) or clock < 0:
             raise ValueError("FVM backup time must be finite and non-negative")
         if coupler._is_master and (
-            coupler.vpm_solver.step != step
-            or not _same_coupled_time(clock, coupler.vpm_solver.time, coupler.fvm_solver.step)
+            coupler.vpm_solver.step != step or clock != coupler.vpm_solver.time
         ):
             raise ValueError("FVM and VPM backup steps/times are not synchronized")
     if comm is not None and comm.Get_size() > 1:
         clocks = comm.allgather((step, clock))
         root_step, root_clock = clocks[0]
-        if any(
-            s != root_step
-            or not _same_coupled_time(t, root_clock, root_step * coupler.n_fvm_substeps)
-            for s, t in clocks
-        ):
+        if any(s != root_step or t != root_clock for s, t in clocks):
             raise ValueError("FVM backup steps/times differ across MPI ranks")
     target = Path(directory)
     generation: str | None = None
@@ -700,6 +696,17 @@ def load_coupled_backup(
     if error is not None:
         raise ValueError(error)
     coupling_step = int(checkpoint_info["coupling_step"])
+    exchange_time = coupler.exchange_time(coupling_step)
+    if not _same_coupled_time(coupler.fvm_solver.time, exchange_time, coupler.fvm_solver.step):
+        raise ValueError(
+            f"Coupled backup time {coupler.fvm_solver.time!r} s is not the time "
+            f"{exchange_time!r} s of exchange {coupling_step}"
+        )
+    # Continue on the exchange clock so both solvers write identical times.
+    coupler.fvm_solver.time = exchange_time
+    if coupler._is_master:
+        coupler.vpm_solver.time = exchange_time
+        coupler.vpm_solver._sync_restart_state()
     if coupler.vorticity_transfer is None:
         raise RuntimeError("Coupled backup load requires an initialized vorticity transfer")
     # A fresh run performs one initial synchronization plus one transfer after

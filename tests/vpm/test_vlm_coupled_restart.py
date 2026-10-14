@@ -387,7 +387,7 @@ def test_changed_time_step_continuation_preserves_vlm_state_and_advances_coupled
         assert (resumed.step, resumed.time) == (3, pytest.approx(0.025))
         assert resumed.vlm_solver._current_time == pytest.approx(0.025)
         pvd = (tmp_path / "resumed/solution/vlm.pvd").read_text(encoding="utf-8")
-        assert 'timestep="0.025000000000000001" file="vlm/vlm_000003.vtp"' in pvd
+        assert 'timestep="0.025" file="vlm/vlm_000003.vtp"' in pvd
         forces = resumed.vlm_solver.compute_forces(1.3)
         assert all(np.isfinite(value).all() for value in forces.values())
         assert resumed.particles.n_particles_total > 0

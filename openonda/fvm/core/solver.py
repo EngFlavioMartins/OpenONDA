@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterable, Sequence
 from contextlib import suppress
 from copy import deepcopy
 import json
+import math
 import os
 from pathlib import Path
 from types import TracebackType
@@ -2083,7 +2084,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 if primary_failure is None:
                     raise
 
-    def advance_time(self, *, defer_output: bool = False) -> None:
+    def advance_time(self, *, defer_output: bool = False, time: float | None = None) -> None:
         """Commit the solved candidate and advance the accepted FVM clock.
 
         This coupler-facing method rolls the BDF2 velocity/flux history,
@@ -2092,6 +2093,17 @@ class FVMSolver(CouplerInterfaceMixin):
         successful candidate from :meth:`solve_pimple`; calling it twice or
         before a solve raises `RuntimeError`. The field arrays are mutated in
         place and the resulting state is the only state eligible for restart.
+
+        Parameters
+        ----------
+        defer_output : bool, default=False
+            Skip diagnostics and scheduled output; the caller publishes them
+            later with :meth:`write_accepted_step_output`.
+        time : float or None, default=None
+            Accepted physical time in s imposed by a driver that owns the
+            clock, such as the FVM--VPM coupler at its exchange times. It
+            replaces the summed ``time + time_step_size`` and must agree with
+            it to floating-point round-off. ``None`` sums the step size.
         """
         if self._step_phase != "candidate":
             raise RuntimeError("Cannot commit an FVM step before a successful solve")
@@ -2099,6 +2111,14 @@ class FVMSolver(CouplerInterfaceMixin):
         pending_counters = self._pending_acceptance_counters
         if pending_counters is None:
             raise RuntimeError("FVM candidate has not passed acceptance checks")
+        summed_time = self.time + self._accepted_time_step_size
+        if time is not None and not math.isclose(
+            time, summed_time, rel_tol=1.0e-12, abs_tol=1.0e-9 * self._accepted_time_step_size
+        ):
+            raise ValueError(
+                f"Imposed FVM time {time!r} s does not follow {self.time!r} s "
+                f"by one time step of {self._accepted_time_step_size!r} s"
+            )
         self._timer.start("Field history commit")
 
         # Roll the BDF time-history ring: U_old_old <- u^n, U_old <- u^{n+1}.
@@ -2108,7 +2128,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.volumetric_face_flux_old[:] = self.volumetric_face_flux[:]
         self._n_committed_time_steps += 1
         self.step += 1
-        self.time += self._accepted_time_step_size
+        self.time = summed_time if time is None else float(time)
         self._run_metadata_written = False
         step_time_step_size = self._accepted_time_step_size
         self._previous_time_step_size = step_time_step_size

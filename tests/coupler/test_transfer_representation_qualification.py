@@ -144,9 +144,10 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
                 velocity,
                 normal_velocity=np.einsum("ij,ij->i", velocity, normal),
                 tangential_gradient=tangential_normal_velocity_gradient(jacobian, normal),
+                accepted_time=step * dt,
             )
         assert solver.step == steps
-        assert solver.time == pytest.approx(steps * dt, rel=0.0, abs=1e-14)
+        assert solver.time == steps * dt
         expected, _, _ = _taylor_green_fields(centre, solver.time)
         error = solver.get_velocity_field() - expected
         volumes = solver.get_cell_volume()
