@@ -84,10 +84,10 @@ def _restart_case(root: Path) -> None:
                 continuous.advance(defer_output=True)
             for _ in range(2):
                 interrupted.advance(defer_output=True)
-            interrupted.save_backup()
+            backup = interrupted.save_backup()
         resumed = build("resumed")
         with contextlib.redirect_stdout(io.StringIO()):
-            resumed.load_backup(str(root / "interrupted/solution/vpm/vpm_000002"))
+            resumed.load_backup(backup)
             for _ in range(2):
                 resumed.advance(defer_output=True)
         assert continuous.step == resumed.step == 4
