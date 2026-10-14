@@ -21,6 +21,7 @@ Some tests need MPI/PETSc or optional meshing tools. See the
 | Does a moving mesh preserve a uniform stream, stay Galilean invariant, restart exactly and run partitioned? | `tests/fvm/test_mesh_motion.py` |
 | Does an oscillating cylinder carry Wang's (1968) added mass and Stokes-layer drag? | `tests/fvm/test_moving_mesh_qualification.py` |
 | Does the coupling on a translating FVM mesh match the fixed-body flow, restart and run partitioned? | `tests/coupler/test_moving_mesh_coupling.py` |
+| Does a cylinder inside a circular freestream far field keep periodic Re = 100 shedding (St, lift, drag) while its wake crosses the far field? | `tests/fvm/test_freestream_far_field_qualification.py` |
 | Does FVM-to-VPM interpolation preserve affine fields and converge under refinement? | `tests/coupler/test_interpolation_qualification.py` |
 | Do renewal and pruning preserve their circulation and impulse budgets? | `tests/coupler/test_stable_renewal.py` |
 | Do interface sweeps restore the predictor without advancing time twice? | `tests/coupler/test_interface_iteration.py` |

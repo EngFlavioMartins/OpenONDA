@@ -163,9 +163,6 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         momentum_method = self.params.get("momentum_solver") or self.params["linear_solver"]
         pressure_method = self.params.get("pressure_solver") or self.params["linear_solver"]
         pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
-        pressure_matrix_reusable = simple_solver._pressure_boundary_matrix_is_reusable(
-            self.boundaries
-        )
 
         def _linear_tolerances(equation: str, *, final: bool) -> tuple[float, float]:
             absolute = float(self.params.get(f"{equation}_tolerance", 1e-8))
@@ -390,9 +387,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                             )
                         )
                         pressure_geometry = None
-                    reuse_pressure_matrix = (
-                        pressure_geometry is not None and pressure_matrix_reusable
-                    )
+                    reuse_pressure_matrix = pressure_geometry is not None
                     self._timer.start("Pressure Assembly")
                     (
                         pressure_matrix,
@@ -427,7 +422,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         sink=logger,
                     )
                     has_pressure_nullspace = simple_solver._pressure_requires_constraint(
-                        self.boundaries, velocity_iter, self.mesh_data, self.geo_data
+                        self.boundaries, self.mesh_data, self.geo_data
                     )
 
                     self._timer.start("Pressure Solve")

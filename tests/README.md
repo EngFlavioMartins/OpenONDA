@@ -9,7 +9,7 @@ checks for individual past defects are not kept.
 | --- | --- |
 | Root modules | Public API, documented examples, the installed-package check (`openonda-verify-install`), installers, MPI runtime, Numba cache, slip-slab images and ParaView-readable output. |
 | [vpm/](vpm/) | Biot–Savart, treecode and FMM accuracy, kernel conformance, Runge–Kutta order, free-space energy, DVH/GBD diffusion, LES, slip-slab (planar) physics, Gaussian image mesh, VLM lifting line and restart. |
-| [fvm/](fvm/) | Manufactured gradients and curl, PISO correctors, slip walls, mixed and non-orthogonal boundaries, time-step control, cyclic planar flow, mesher acceptance, MPI and restart, moving meshes (kinematics, free-stream preservation, Galilean invariance, oscillating-cylinder forces). |
+| [fvm/](fvm/) | Manufactured gradients and curl, PISO correctors, slip walls, mixed and non-orthogonal boundaries, vortex shedding through a circular freestream far field, time-step control, cyclic planar flow, mesher acceptance, MPI and restart, moving meshes (kinematics, free-stream preservation, Galilean invariance, oscillating-cylinder forces). |
 | [coupler/](coupler/) | Transfer and interpolation accuracy, renewal conservation, interface iteration, coupled MPI launch, end-to-end coupled runs and restart, translating FVM meshes (frame invariance, restart, MPI). |
 | [tutorials/](tutorials/) | Every tutorial setup reaches its solver, launchers clean, run and continue, and the tutorial style rule. |
 | [support/](support/), [mesh_parity/](mesh_parity/) | Verification tools for tutorial results and the cfMesh reference; not collected as tests. |

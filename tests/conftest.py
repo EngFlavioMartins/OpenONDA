@@ -18,6 +18,7 @@ QUALIFICATION_MODULES = frozenset(
     {
         "test_core_numerical_qualification.py",
         "test_interpolation_qualification.py",
+        "test_freestream_far_field_qualification.py",
         "test_manufactured_gradient_qualification.py",
         "test_moving_mesh_qualification.py",
         "test_transfer_representation_qualification.py",

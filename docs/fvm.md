@@ -103,7 +103,7 @@ Every mesh patch needs a `BoundaryConfig` with the same name.
 | `outlet(name, kinematic_pressure=0)` | Pressure datum, zero-gradient outflow velocity | [Square cylinder](../tutorials/fvm/cube_flow/README.md) |
 | `wall(name)` | Stationary no-slip wall | [Flat plate](../tutorials/fvm/boundary_layer/README.md) |
 | `slip(name)` | Impermeable, shear-free boundary | [STL body](../tutorials/fvm/cartesian_mesher/README.md) |
-| `freestream(name, [U, V, W])` | Far field: inflow takes the freestream velocity, outflow the pressure datum | [Airfoil](../tutorials/fvm/airfoil_flow/README.md) |
+| `freestream(name, [U, V, W])` | Far field split by the stream direction: upstream faces ($\mathbf{U}_\infty\cdot\mathbf{n}<0$) take the freestream velocity, downstream faces the pressure datum with zero-gradient outflow and the freestream on reverse flow | [Airfoil](../tutorials/fvm/airfoil_flow/README.md) |
 | `cyclic(name, neighbour)` | Periodic pair; declare both directions | [Taylor–Green](../tutorials/fvm/taylor_green/README.md) |
 | `empty(name)` | Span faces of a one-cell 2-D mesh | [Backward-facing step](../tutorials/fvm/step_profile/README.md) |
 
@@ -164,7 +164,7 @@ $$
 \qquad \oint_{S}\mathbf{U}\cdot d\mathbf{S}=0,
 $$
 
-with the mesh velocity $\mathbf{U}_\mathrm{m}=\mathbf{V}+\boldsymbol{\Omega}\times(\mathbf{x}-\mathbf{c})$. A rigid mesh keeps every cell volume and its swept face fluxes sum to zero in each cell, so a uniform stream stays exactly uniform. Momentum is convected by the flux relative to the moving faces; continuity uses the absolute flux. Velocity and pressure are absolute-frame (inertial) quantities, as are the inlet, outlet and freestream values. Inflow and outflow faces are selected by the relative flux, and the Courant number is relative to the moving cells.
+with the mesh velocity $\mathbf{U}_\mathrm{m}=\mathbf{V}+\boldsymbol{\Omega}\times(\mathbf{x}-\mathbf{c})$. A rigid mesh keeps every cell volume and its swept face fluxes sum to zero in each cell, so a uniform stream stays exactly uniform. Momentum is convected by the flux relative to the moving faces; continuity uses the absolute flux. Velocity and pressure are absolute-frame (inertial) quantities, as are the inlet, outlet and freestream values. Inflow and outflow faces of `inletOutlet` patches are selected by the relative flux, the upstream and downstream sides of a `freestream` patch by the freestream velocity relative to the moving faces, and the Courant number is relative to the moving cells.
 
 | Patch | On a moving mesh |
 | --- | --- |
@@ -175,7 +175,7 @@ with the mesh velocity $\mathbf{U}_\mathrm{m}=\mathbf{V}+\boldsymbol{\Omega}\tim
 
 Volume output writes the moved mesh, and a `ForceSampler` moment centre moves with the mesh. Restarts restore the mesh position. The [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md) shows a complete case.
 
-A far-field `freestream` boundary switches each face between inflow and outflow conditions as the relative flow crosses it: when a body oscillates in still fluid, over the whole far field every half period, and wherever wake vortices leave the domain. The switching disturbs the forces. Prefer a fixed `inlet` upstream and a fixed-pressure outlet downstream, as in the [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md), or a fixed zero velocity on a distant boundary around a body oscillating in still fluid. Without outer correctors, PISO convects with the flux of the previous step; add `n_outer_correctors` when the flow relative to the mesh changes quickly within a step. The FVM–VPM coupler follows translating meshes; see [moving bodies](coupling.md#moving-bodies).
+A far-field `freestream` boundary keeps its pressure split fixed while the stream relative to its faces keeps its direction, so wake vortices crossing a static far field do not switch it. When the far field moves with an oscillating body the relative stream turns with the motion; in still fluid it is the mesh motion itself, and the whole far field switches between inflow and outflow conditions every half period. The switching disturbs the forces. For a moving far field, prefer a fixed `inlet` upstream and a fixed-pressure outlet downstream, as in the [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md), or a fixed zero velocity on a distant boundary around a body oscillating in still fluid. Without outer correctors, PISO convects with the flux of the previous step; add `n_outer_correctors` when the flow relative to the mesh changes quickly within a step. The FVM–VPM coupler follows translating meshes; see [moving bodies](coupling.md#moving-bodies).
 
 ## Turbulence and LES
 

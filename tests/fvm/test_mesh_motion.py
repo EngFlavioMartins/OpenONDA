@@ -341,7 +341,12 @@ motion = fvm.MeshMotion(fvm.CompositeMotion((
 )))
 case = fvm.FVMCase(
     name="moving", directory=f"run_{cores}", mesh=mesh, cores=cores,
-    numerics=fvm.Numerics(transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01)),
+    numerics=fvm.Numerics(
+        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
+        # Converge both runs far below the comparison tolerance so the check
+        # measures the partitioning, not the linear-solver stopping point.
+        linear=fvm.LinearSolverConfig(momentum_tolerance=1e-13, pressure_tolerance=1e-13),
+    ),
     boundaries=(
         fvm.BoundaryConfig.freestream("inlet", (1.0, 0.0, 0.0)),
         fvm.BoundaryConfig.freestream("outlet", (1.0, 0.0, 0.0)),

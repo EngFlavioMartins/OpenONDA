@@ -501,7 +501,7 @@ class CouplerInterfaceMixin:
             )
         b["velocity_type"] = "fixedValue"
         b["velocity_value_field"] = field
-        b.pop("_fixed_freestream_outflow", None)
+        b.pop("_freestream_pressure_outflow", None)
         b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
 
@@ -545,7 +545,7 @@ class CouplerInterfaceMixin:
             float(np.max(np.abs(removed_normal_component))) if n_faces else 0.0
         )
         b.pop("velocity_value_field", None)
-        b.pop("_fixed_freestream_outflow", None)
+        b.pop("_freestream_pressure_outflow", None)
         b.pop("_freestream_outflow", None)
         update_normal_velocity_tangential_gradient_boundary(
             self.velocity, b, self.mesh_data, self.geo_data

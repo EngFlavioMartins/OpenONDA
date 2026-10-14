@@ -93,40 +93,80 @@ def _resolve_pressure_constraint(params: dict[str, object]) -> str:
 
 def _pressure_requires_constraint(
     boundaries: list[dict],
-    velocity_star: np.ndarray,
     mesh_data: dict[str, object],
     geo_data: dict[str, object],
 ) -> bool:
     """Return whether the assembled pressure operator has a constant null space."""
-    n_cells = mesh_data["n_cells"]
-    n_interior = mesh_data["n_interior_faces"]
     for boundary in boundaries:
         boundary_condition_type = boundary.get("pressure_type")
         strategy = BOUNDARIES.strategy(boundary_condition_type, "kinematic_pressure", "pressure")
-        if strategy is BoundaryStrategy.FIXED_VALUE:
+        if strategy is BoundaryStrategy.FIXED_VALUE or (
+            strategy is BoundaryStrategy.FREESTREAM
+            and np.any(_freestream_pressure_outflow(boundary, geo_data))
+        ):
             local_requires_constraint = False
             break
-        if strategy is BoundaryStrategy.FREESTREAM:
-            start = boundary["start_face"]
-            nf = boundary["n_faces"]
-            ghosts = n_cells + np.arange(start - n_interior, start - n_interior + nf)
-            flux = np.sum(
-                velocity_star[ghosts] * geo_data["face_area_vector"][start : start + nf], axis=1
-            )
-            outflow = boundary.get("_fixed_freestream_outflow")
-            if outflow is None:
-                outflow = boundary.get("_freestream_outflow")
-            if outflow is None:
-                outflow = flux >= 0.0
-            if np.any(outflow):
-                local_requires_constraint = False
-                break
     else:
         local_requires_constraint = True
     parallel = mesh_data.get("_parallel_context")
     if parallel is not None and parallel.is_partitioned:
         return parallel.global_all(local_requires_constraint)
     return local_requires_constraint
+
+
+def select_freestream_faces(
+    boundary: dict,
+    face_flux: np.ndarray,
+    geo_data: dict[str, object],
+    mesh_face_flux: np.ndarray | None = None,
+) -> None:
+    r"""Classify the faces of one freestream patch for pressure and velocity.
+
+    The pressure branch follows the prescribed stream,
+    :math:`\mathbf{U}_\infty\cdot\mathbf{S}_f - \phi_{mesh} \ge 0`: downstream
+    faces carry the pressure datum, upstream faces a zero normal gradient.  On
+    a static mesh this split is fixed in time.  The velocity is the prescribed
+    stream on upstream faces and ``inletOutlet`` on downstream faces (zero
+    gradient for an outgoing flux, the stream on reverse flow).
+
+    Selecting the pressure branch with the instantaneous face flux instead
+    switches it wherever the local flux reverses: on nearly tangential faces
+    during the impulsive start and when wake vortices cross the far field.
+    Even a few faces switching between Dirichlet and Neumann pressure leave a
+    disturbance that does not decay and later destabilises a circular far
+    field. The velocity branch may follow the flux without that effect.
+
+    Sets ``_freestream_pressure_outflow`` (pressure Dirichlet faces) and
+    ``_freestream_outflow`` (velocity zero-gradient faces).
+    """
+    start = int(boundary["start_face"])
+    stop = start + int(boundary["n_faces"])
+    stream_flux = _freestream_stream_flux(boundary, geo_data)
+    flux = np.asarray(face_flux[start:stop], dtype=float)
+    if mesh_face_flux is not None:
+        stream_flux = stream_flux - mesh_face_flux[start:stop]
+        flux = flux - mesh_face_flux[start:stop]
+    downstream = stream_flux >= 0.0
+    boundary["_freestream_pressure_outflow"] = downstream
+    boundary["_freestream_outflow"] = downstream & (flux >= 0.0)
+
+
+def _freestream_stream_flux(boundary: dict, geo_data: dict[str, object]) -> np.ndarray:
+    """Return the prescribed-stream flux ``U_inf . S_f`` through each patch face."""
+    start = int(boundary["start_face"])
+    surface = geo_data["face_area_vector"][start : start + int(boundary["n_faces"])]
+    stream = boundary.get("velocity_value_field")
+    if stream is None:
+        stream = np.broadcast_to(np.asarray(boundary["velocity_value"], dtype=float), surface.shape)
+    return np.einsum("ij,ij->i", stream, surface)
+
+
+def _freestream_pressure_outflow(boundary: dict, geo_data: dict[str, object]) -> np.ndarray:
+    """Return the freestream faces with a fixed pressure (downstream of the stream)."""
+    outflow = boundary.get("_freestream_pressure_outflow")
+    if outflow is None:
+        outflow = _freestream_stream_flux(boundary, geo_data) >= 0.0
+    return np.asarray(outflow, dtype=bool)
 
 
 def prepare_freestream_boundaries(
@@ -142,26 +182,21 @@ def prepare_freestream_boundaries(
 
     On a moving mesh the branch follows the flux relative to the moving face,
     ``face_flux - mesh_face_flux``, and ``inletOutlet`` patches are selected
-    once per step as well.
+    once per step as well. Freestream faces are classified by
+    :func:`select_freestream_faces`.
     """
     selection_flux = face_flux if mesh_face_flux is None else face_flux - mesh_face_flux
-    selected = (
-        (BoundaryStrategy.FREESTREAM,)
-        if mesh_face_flux is None
-        else (BoundaryStrategy.FREESTREAM, BoundaryStrategy.INLET_OUTLET)
-    )
     changed = False
     for boundary in boundaries:
-        if BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "ghost") not in selected:
+        strategy = BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "ghost")
+        if strategy is BoundaryStrategy.FREESTREAM:
+            select_freestream_faces(boundary, face_flux, geo_data, mesh_face_flux)
+        elif strategy is BoundaryStrategy.INLET_OUTLET and mesh_face_flux is not None:
+            start = int(boundary["start_face"])
+            stop = start + int(boundary["n_faces"])
+            boundary["_freestream_outflow"] = np.asarray(selection_flux[start:stop] >= 0.0)
+        else:
             continue
-        start = int(boundary["start_face"])
-        stop = start + int(boundary["n_faces"])
-        fixed = boundary.get("_fixed_freestream_outflow")
-        boundary["_freestream_outflow"] = (
-            np.asarray(fixed, dtype=bool)
-            if fixed is not None
-            else np.asarray(selection_flux[start:stop] >= 0.0)
-        )
         changed = True
     if changed:
         _update_velocity_bcs(
@@ -455,10 +490,7 @@ def _update_fixed_flux_pressure_boundaries(
     fixed_flux_patches = []
     for boundary in boundaries:
         strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "kinematic_pressure", "ghost")
-        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE or (
-            strategy is BoundaryStrategy.FREESTREAM
-            and boundary.get("_directional_fixed_flux_pressure", False)
-        ):
+        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
             fixed_flux_patches.append(boundary)
     parallel = mesh_data.get("_parallel_context")
     has_fixed_flux = bool(fixed_flux_patches)
@@ -539,15 +571,7 @@ def _update_fixed_flux_pressure_boundaries(
             "ij,ij->i", grad_tangent, tangential_displacement
         )
         boundary["fixed_flux_pressure_delta"] = delta
-        if boundary.get("_directional_fixed_flux_pressure", False):
-            outflow = np.asarray(boundary["_fixed_freestream_outflow"], dtype=bool)
-            kinematic_pressure[ghost] = np.where(
-                outflow,
-                float(boundary.get("kinematic_pressure_value", 0.0)),
-                kinematic_pressure[own] + delta,
-            )
-        else:
-            kinematic_pressure[ghost] = kinematic_pressure[own] + delta
+        kinematic_pressure[ghost] = kinematic_pressure[own] + delta
         changed = True
 
     if parallel is not None and parallel.is_partitioned:
@@ -584,10 +608,7 @@ def _fixed_flux_pressure_face_drive(
         strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "kinematic_pressure", "ghost")
         if boundary.get("fixed_flux_pressure_external", False):
             continue
-        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE or (
-            strategy is BoundaryStrategy.FREESTREAM
-            and boundary.get("_directional_fixed_flux_pressure", False)
-        ):
+        if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
             start = int(boundary["start_face"])
             faces.append(np.arange(start, start + int(boundary["n_faces"])))
     if not faces:
@@ -813,26 +834,6 @@ def _pressure_boundary_signature(
     return tuple(signature)
 
 
-def _pressure_boundary_matrix_is_reusable(boundaries: list[dict]) -> bool:
-    """Return whether pressure boundary coefficients stay fixed this step.
-
-    Ordinary freestream faces switch between pressure Dirichlet and Neumann
-    with the evolving face flux. A directional coupling patch carries an
-    immutable geometric outflow mask, so its pressure matrix is just as static
-    as a conventional fixed-value/fixed-gradient layout.
-    """
-    for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(
-            boundary.get("pressure_type"), "kinematic_pressure", "pressure"
-        )
-        if (
-            strategy is BoundaryStrategy.FREESTREAM
-            and boundary.get("_fixed_freestream_outflow") is None
-        ):
-            return False
-    return True
-
-
 def build_pressure_boundary_layout(
     boundaries: list[dict], n_interior: int, n_faces: int
 ) -> PressureBoundaryLayout:
@@ -893,6 +894,7 @@ def _build_boundary_face_arrays(
     boundaries: list[dict],
     n_interior: int,
     n_faces: int,
+    geo_data: dict[str, object],
     layout: "PressureBoundaryLayout | None" = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return the standard pressure boundary arrays.
@@ -912,13 +914,9 @@ def _build_boundary_face_arrays(
     codes = layout.type_codes.copy()
     for boundary in boundaries:
         if boundary.get("pressure_type") == "freestream":
-            mask = boundary.get("_fixed_freestream_outflow")
-            if mask is None:
-                mask = boundary.get("_freestream_outflow")
-            if mask is not None:
-                start = int(boundary["start_face"]) - n_interior
-                stop = start + int(boundary["n_faces"])
-                codes[start:stop] = np.where(mask, 1, 0)
+            start = int(boundary["start_face"]) - n_interior
+            stop = start + int(boundary["n_faces"])
+            codes[start:stop] = np.where(_freestream_pressure_outflow(boundary, geo_data), 1, 0)
     return (
         codes,
         _pressure_boundary_values(boundaries, n_interior, n_faces),
@@ -1291,18 +1289,9 @@ def assemble_pressure_correction_equation_rhie_chow(
     _validate_reference_density(density)
 
     for boundary in boundaries:
-        if boundary.get("pressure_type") != "freestream":
-            continue
-        fixed = boundary.get("_fixed_freestream_outflow")
-        if fixed is not None:
-            boundary["_freestream_outflow"] = np.asarray(fixed, dtype=bool)
-        elif boundary.get("_freestream_outflow") is None:
-            start = int(boundary["start_face"])
-            nf = int(boundary["n_faces"])
-            ghost = velocity_star[n_cells + start - n_interior : n_cells + start - n_interior + nf]
-            boundary["_freestream_outflow"] = (
-                np.einsum("ij,ij->i", ghost, geo_data["face_area_vector"][start : start + nf])
-                >= 0.0
+        if boundary.get("pressure_type") == "freestream":
+            boundary["_freestream_pressure_outflow"] = _freestream_pressure_outflow(
+                boundary, geo_data
             )
     update_scalar_boundaries(
         kinematic_pressure, mesh_data, boundaries, field_name="kinematic_pressure"
@@ -1431,7 +1420,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     n_boundary_faces = n_faces - n_interior
     if n_boundary_faces > 0:
         bc_codes, p_vals, bnd_face_idx = _build_boundary_face_arrays(
-            boundaries, n_interior, n_faces, layout=boundary_layout
+            boundaries, n_interior, n_faces, geo_data, layout=boundary_layout
         )
 
         pressure_velocity_coefficient_components = (
@@ -1566,7 +1555,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     )
 
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.
-    if _pressure_requires_constraint(boundaries, velocity_star, mesh_data, geo_data):
+    if _pressure_requires_constraint(boundaries, mesh_data, geo_data):
         if pressure_constraint == "reference":
             pressure_matrix, pressure_right_hand_side = cavity_utils.fix_pressure_reference(
                 pressure_matrix, pressure_right_hand_side
@@ -1612,7 +1601,6 @@ def _extend_kinematic_pressure_correction_bcs(
     kinematic_pressure_correction: np.ndarray,
     mesh_data: dict[str, object],
     boundaries: list[dict],
-    volumetric_face_flux: np.ndarray = None,
 ) -> np.ndarray:
     """Extend the pressure-correction array with ghost-cell values.
 
@@ -1649,15 +1637,8 @@ def _extend_kinematic_pressure_correction_bcs(
                 paired
             ]
         elif strategy is BoundaryStrategy.FREESTREAM:
-            outflow = boundary.get("_freestream_outflow")
-            if outflow is None:
-                if volumetric_face_flux is None:
-                    raise ValueError(
-                        "Freestream pressure correction requires the predicted face flux"
-                    )
-                outflow = np.asarray(volumetric_face_flux)[start : start + nf] >= 0.0
             kinematic_pressure_correction_extended[idx : idx + nf] = np.where(
-                outflow, 0.0, kinematic_pressure_correction[own]
+                boundary["_freestream_pressure_outflow"], 0.0, kinematic_pressure_correction[own]
             )
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
@@ -1739,11 +1720,10 @@ def _correct_boundary_fluxes(
                 kinematic_pressure_correction[own] - kinematic_pressure_correction[paired]
             )
         elif strategy is BoundaryStrategy.FREESTREAM:
-            outflow = boundary.get("_freestream_outflow")
-            if outflow is None:
-                outflow = volumetric_face_flux[idx] >= 0.0
             volumetric_face_flux[idx] += np.where(
-                outflow, geo_diff_b * kinematic_pressure_correction[own], 0.0
+                boundary["_freestream_pressure_outflow"],
+                geo_diff_b * kinematic_pressure_correction[own],
+                0.0,
             )
         elif strategy not in (
             BoundaryStrategy.ZERO_GRADIENT,
@@ -2040,7 +2020,6 @@ def correct_velocity_and_flux(
         velocity_pressure_correction,
         mesh_data,
         boundaries,
-        volumetric_face_flux=volumetric_face_flux,
     )
     _grad_fn = gradients._resolve_gradient_fn(geo_data)
     kinematic_pressure_correction_gradient = _grad_fn(
@@ -2140,8 +2119,13 @@ def _apply_scalar_bc(
             raise ValueError(f"Cyclic patch {boundary.get('name')!r} is not paired")
         field_values[indices] = field_values[paired_owners]
     elif strategy is BoundaryStrategy.FREESTREAM:
-        outflow = boundary.get("_freestream_outflow")
+        outflow = boundary.get(
+            "_freestream_pressure_outflow"
+            if field_name == "kinematic_pressure"
+            else "_freestream_outflow"
+        )
         if outflow is None:
+            # Before the first step selects the freestream branches.
             if volumetric_face_flux is None:
                 raise ValueError("Freestream scalar update requires face fluxes")
             outflow = np.asarray(volumetric_face_flux) >= 0.0
@@ -2155,18 +2139,7 @@ def _apply_scalar_bc(
             raise ValueError(
                 f"Freestream {field_name} boundary {boundary.get('name')!r} has no value"
             )
-        if field_name == "kinematic_pressure" and boundary.get(
-            "_directional_fixed_flux_pressure", False
-        ):
-            delta = boundary.get("fixed_flux_pressure_delta")
-            owner_value = (
-                field_values[owners_b]
-                if delta is None
-                else field_values[owners_b] + np.asarray(delta)
-            )
-            field_values[indices] = np.where(outflow, val, owner_value)
-        else:
-            field_values[indices] = np.where(outflow, val, field_values[owners_b])
+        field_values[indices] = np.where(outflow, val, field_values[owners_b])
     else:
         raise ValueError(
             f"Unsupported scalar boundary strategy {strategy!r} "
@@ -2417,7 +2390,7 @@ class SIMPLESolver:
         # 2. Solve pressure correction
         pressure_constraint = _resolve_pressure_constraint(self.params)
         has_pressure_nullspace = _pressure_requires_constraint(
-            self.boundaries, velocity_star, self.mesh_data, self.geo_data
+            self.boundaries, self.mesh_data, self.geo_data
         )
         pressure_matrix, pressure_right_hand_side, volumetric_face_flux_star = (
             assemble_pressure_correction_equation_rhie_chow(
