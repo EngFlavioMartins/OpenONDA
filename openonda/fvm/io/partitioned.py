@@ -102,7 +102,7 @@ def _raise_collective_backup_error(error_record: dict[str, object]) -> None:
 
 def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> Path:
     """Publish a complete backup without invalidating the prior generation."""
-    from .backup import _solver_setup, config_hash
+    from .backup import _solver_setup, config_hash, mesh_pose_arrays
 
     target = Path(directory)
     previous_info = None
@@ -149,6 +149,7 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
             ],
             dtype=np.int64,
         ),
+        **mesh_pose_arrays(solver),
     }
 
     # All ranks write their temporary archives concurrently, so reserve space
@@ -238,6 +239,7 @@ def load_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
     from .backup import (
         _solver_setup,
         config_hash,
+        mesh_pose_arrays,
         restore_restart_state,
         validate_restart_state,
     )
@@ -339,6 +341,7 @@ def load_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
             "previous_time_step_size",
             "max_courant_number",
             "n_consecutive_accepted_steps",
+            *mesh_pose_arrays(solver),
         }
         state.pop("storage_layout", None)
         unexpected = sorted(set(state) - required_state)

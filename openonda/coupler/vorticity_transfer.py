@@ -11,6 +11,7 @@ import numpy as np
 from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
 
 from openonda.core import log_style
+from openonda.coupler.frame import MeshFrame
 from openonda.coupler.geometry import SolidBoundary, TriangulatedWall
 from openonda.coupler.interpolation import FVMVelocityInterpolator
 from openonda.coupler.reporting import format_coupler_log
@@ -969,11 +970,13 @@ class VorticityTransfer:
         fields, VPM particles, or either accepted clock.
         """
         self._buffered_trace_stencils = None
+        # Donor cells and walls are read in the frame of a translating mesh.
+        frame = MeshFrame(fvm)
         self._box = np.asarray(
             self.config.transfer_region_bounds or self._fvm_box, dtype=np.float64
         )
-        self._cell_centre = np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64).reshape(
-            -1, 3
+        self._cell_centre = frame.to_frame(
+            np.asarray(fvm.get_cell_centre_coordinates(), dtype=np.float64).reshape(-1, 3)
         )
         self._cell_volume = np.asarray(fvm.get_cell_volume(), dtype=np.float64).reshape(-1)
 
@@ -987,6 +990,8 @@ class VorticityTransfer:
         ]
         get_wall_triangles = getattr(fvm, "get_wall_surface_triangles", None)
         wall_triangles = get_wall_triangles() if callable(get_wall_triangles) else None
+        if wall_triangles is not None:
+            wall_triangles = frame.to_frame(wall_triangles)
 
         from openonda.core.simulation.parallel import collective_phase
 

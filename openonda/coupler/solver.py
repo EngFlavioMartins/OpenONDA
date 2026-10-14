@@ -26,6 +26,7 @@ from openonda.coupler.boundary import (
     update_boundary_history_after_replacement,
 )
 from openonda.coupler.config.types import CouplerSetup
+from openonda.coupler.frame import MeshFrame
 from openonda.coupler.parallel import collective_phase
 from openonda.coupler.reporting import (
     OutputRedirector,
@@ -36,7 +37,7 @@ from openonda.coupler.reporting import (
     record_step,
     write_run_metadata,
 )
-from openonda.coupler.vorticity_transfer import VorticityTransfer
+from openonda.coupler.vorticity_transfer import VorticityTransfer, required_renewal_buffer_length
 from openonda.runtime import detected_world_size
 
 if TYPE_CHECKING:
@@ -266,6 +267,8 @@ class FVMVPMCoupler:
         self.vpm_core_radius_ratio = float("nan")
         self.n_fvm_substeps = 1
         self.freestream_velocity = np.array(coupler_setup.freestream_velocity, dtype=np.float64)
+        self.absolute_freestream_velocity = self.freestream_velocity.copy()
+        self.frame: MeshFrame | None = None
 
     def close(self, *, failure: BaseException | None = None) -> None:
         """Close factory-owned solvers and this driver's log; safe to repeat.
@@ -440,20 +443,24 @@ class FVMVPMCoupler:
         Collective (all ranks) — the face-geometry getter gathers globally.
         """
         assert self.fvm_solver is not None
-        fc = np.asarray(
-            self.fvm_solver.get_boundary_face_centre_coordinates(self.setup.coupling_patch),
-            dtype=np.float64,
-        ).reshape(-1, 3)
+        fc = self.frame.to_frame(
+            np.asarray(
+                self.fvm_solver.get_boundary_face_centre_coordinates(self.setup.coupling_patch),
+                dtype=np.float64,
+            ).reshape(-1, 3)
+        )
         resolved_setup = getattr(self.fvm_solver, "_resolved_setup", self.fvm_solver.setup)
         outer_faces = [fc]
         for boundary in resolved_setup.boundaries:
             if boundary.name == self.setup.coupling_patch or boundary.mesh_type == "wall":
                 continue
             outer_faces.append(
-                np.asarray(
-                    self.fvm_solver.get_boundary_face_centre_coordinates(boundary.name),
-                    dtype=np.float64,
-                ).reshape(-1, 3)
+                self.frame.to_frame(
+                    np.asarray(
+                        self.fvm_solver.get_boundary_face_centre_coordinates(boundary.name),
+                        dtype=np.float64,
+                    ).reshape(-1, 3)
+                )
             )
         box = None
         error = None
@@ -541,6 +548,9 @@ class FVMVPMCoupler:
         cfg = self.setup
 
         self.fvm_solver = self._injected_fvm
+        # The VPM runs in the frame translating with the FVM mesh; all
+        # coupling geometry is read in that frame.
+        self.frame = MeshFrame(self.fvm_solver)
 
         world_size = int(self._comm.Get_size()) if self._comm is not None else detected_world_size()
         if world_size > 1 and int(self.fvm_solver.n_procs()) == 1:
@@ -551,6 +561,8 @@ class FVMVPMCoupler:
             )
 
         self._read_fvm_state()
+        assert self.end_time is not None and self.fvm_time_step_size is not None
+        self.frame.validate(self.fvm_solver.time, self.end_time, self.fvm_time_step_size)
 
         candidate_vpm = self._injected_vpm
         inactive_rank = bool(getattr(candidate_vpm, "_openonda_inactive_rank", False))
@@ -636,6 +648,17 @@ class FVMVPMCoupler:
             )
 
         self.vorticity_transfer = VorticityTransfer(self)
+        if self.frame.moving:
+            # The renewal belt must hold one exchange of drift relative to the mesh.
+            relative_speed = self.frame.maximum_relative_speed(
+                self._absolute_freestream,
+                self.fvm_solver.time,
+                self.end_time,
+                self.vpm_time_step_size,
+            )
+            self.vorticity_transfer.renewal_buffer_length = required_renewal_buffer_length(
+                [relative_speed, 0.0, 0.0], self.vpm_time_step_size, self.vpm_particle_spacing
+            )
         self.vorticity_transfer.setup(self.fvm_solver)
         with collective_phase(self._comm, "VPM grid configuration"):
             boundary = self.vorticity_transfer.solid_boundary
@@ -823,7 +846,7 @@ class FVMVPMCoupler:
 
         apply_velocity_boundaries(self.fvm_solver, self.fvm_solver.time)
         with collective_phase(self._comm, "initial freestream history"):
-            self._update_freestream(self.fvm_solver.time)
+            self._update_freestream(self.fvm_solver.time, self.frame.velocity(self.fvm_solver.time))
         if initial_velocity is not None and start_step == 0 and restart_from is None:
             from openonda.core.simulation.forcing import apply_initial_velocity
 
@@ -925,7 +948,7 @@ class FVMVPMCoupler:
         face_geometry, n_steps = self._prepare_run()
         with collective_phase(self._comm, "coupled start state"):
             start_step = self._validate_start_step(start_step, n_steps)
-            self._update_freestream(self.fvm_solver.time)
+            self._update_freestream(self.fvm_solver.time, self.frame.velocity(self.fvm_solver.time))
         step_limit = self._validate_step_limit(max_coupling_steps)
         stop_step = n_steps if step_limit is None else min(n_steps, start_step + step_limit)
         self._n_steps = stop_step
@@ -958,7 +981,7 @@ class FVMVPMCoupler:
             exchange_started = time.perf_counter()
             time_end = self.exchange_time(step)
             with collective_phase(self._comm, "accepted-endpoint freestream"):
-                self._update_freestream(time_end)
+                self._update_freestream(time_end, self._exchange_frame_velocity(step))
             vpm_time = self._advance_vpm(step, time_end)
             velocity_boundary_condition_old, next_velocity, boundary_time = evaluate_vpm_boundary(
                 self, *face_geometry
@@ -1046,9 +1069,11 @@ class FVMVPMCoupler:
                 )
             )
 
-        face_centre = np.asarray(
-            self.fvm_solver.get_boundary_face_centre_coordinates(patch), dtype=np.float64
-        ).reshape(-1, 3)
+        face_centre = self.frame.to_frame(
+            np.asarray(
+                self.fvm_solver.get_boundary_face_centre_coordinates(patch), dtype=np.float64
+            ).reshape(-1, 3)
+        )
         face_normal = np.asarray(
             self.fvm_solver.get_boundary_face_normal(patch), dtype=np.float64
         ).reshape(-1, 3)
@@ -1068,14 +1093,33 @@ class FVMVPMCoupler:
         assert self.vpm_time_step_size is not None
         return step * self.vpm_time_step_size
 
-    def _update_freestream(self, time: float) -> None:
+    def _absolute_freestream(self, time: float) -> np.ndarray:
+        """Inertial-frame freestream velocity in m/s at ``time``."""
         if self.setup.freestream is not None:
-            self.freestream_velocity = self.setup.freestream.at(time)
+            return np.asarray(self.setup.freestream.at(time), dtype=np.float64)
+        return np.asarray(self.setup.freestream_velocity, dtype=np.float64)
+
+    def _exchange_frame_velocity(self, step: int) -> np.ndarray:
+        """Mean mesh velocity over the FVM substeps of exchange ``step``, in m/s."""
+        start = self.exchange_time(step - 1)
+        substep_times = start + self.fvm_time_step_size * np.arange(1, self.n_fvm_substeps + 1)
+        substep_times[-1] = self.exchange_time(step)
+        return self.frame.step_velocity(substep_times)
+
+    def _update_freestream(self, time: float, frame_velocity: np.ndarray) -> None:
+        """Set the freestream at ``time`` and the VPM freestream relative to the mesh."""
+        self.absolute_freestream_velocity = self._absolute_freestream(time)
+        if self.setup.freestream is not None or self.frame.moving:
+            self.freestream_velocity = self.absolute_freestream_velocity - frame_velocity
             self.vorticity_transfer.config = replace(
                 self.setup, freestream_velocity=self.freestream_velocity.tolist()
             )
             if self._is_master:
                 self.vpm_solver._set_freestream_velocity(self.freestream_velocity)
+
+    def absolute_interface_velocity(self, velocity: np.ndarray) -> np.ndarray:
+        """Convert a VPM velocity, with the VPM freestream, to the inertial frame."""
+        return velocity + (self.absolute_freestream_velocity - self.freestream_velocity)
 
     def _advance_vpm(self, step: int, time_end: float) -> float:
         t0 = time.perf_counter()
@@ -1117,6 +1161,9 @@ class FVMVPMCoupler:
         """Replace the FVM-derived part of the particle cloud."""
         t_transfer = time.perf_counter()
         velocity_global = self._get_velocity_field_buffer()
+        if self.frame.moving:
+            # The particles see the flow relative to the mesh.
+            velocity_global = velocity_global - self.frame.velocity(self.fvm_solver.time)
         gradient_global = self._get_velocity_gradient_field_buffer()
         gather_seconds = time.perf_counter() - t_transfer
         transfer_result = None

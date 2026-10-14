@@ -20,6 +20,7 @@ from numpy.typing import NDArray
 
 from openonda.core.simulation.forcing import VelocityBoundary
 
+from ..motion.kinematics import MeshMotion
 from .scheduling import RunSchedule
 from .types import (
     BackupConfig,
@@ -247,6 +248,8 @@ class FVMCase:
         or m²/s according to their field; see their class docstrings.
     cores : int, default=1
         Requested execution size for solver construction, including coupled runs.
+    mesh_motion : MeshMotion or None, default=None
+        Prescribed rigid-body motion of the whole mesh; ``None`` is static.
 
     Notes
     -----
@@ -268,6 +271,7 @@ class FVMCase:
     samplers: Samplers = field(default_factory=Samplers)
     backup: BackupConfig = field(default_factory=BackupConfig)
     cores: int = 1
+    mesh_motion: MeshMotion | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
@@ -290,6 +294,8 @@ class FVMCase:
             raise TypeError("FVMCase.backup must be a BackupConfig instance")
         if isinstance(self.cores, bool) or not isinstance(self.cores, int) or self.cores < 1:
             raise ValueError("FVMCase.cores must be a positive integer")
+        if self.mesh_motion is not None and not isinstance(self.mesh_motion, MeshMotion):
+            raise TypeError("FVMCase.mesh_motion must be a MeshMotion or None")
         object.__setattr__(self, "directory", Path(self.directory))
         object.__setattr__(self, "boundaries", tuple(self.boundaries))
         object.__setattr__(self, "velocity_boundaries", tuple(self.velocity_boundaries))
@@ -332,6 +338,7 @@ class FVMCase:
             velocity_boundaries=self.velocity_boundaries,
             samplers=self.samplers.samples,
             turbulence=self.numerics.turbulence,
+            mesh_motion=self.mesh_motion,
             initial_velocity=fields.velocity,
             initial_kinematic_pressure=fields.kinematic_pressure,
         )

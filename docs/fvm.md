@@ -1,6 +1,6 @@
 # Finite-volume flow
 
-The finite-volume method (FVM) solves constant-density incompressible flow on a static mesh. Use it where walls, pressure and thin shear layers must be resolved. The tutorials teach it step by step:
+The finite-volume method (FVM) solves constant-density incompressible flow on a static or rigidly moving mesh. Use it where walls, pressure and thin shear layers must be resolved. The tutorials teach it step by step:
 
 | To learn | Start with |
 | --- | --- |
@@ -10,6 +10,7 @@ The finite-volume method (FVM) solves constant-density incompressible flow on a 
 | Bluff-body shedding, force coefficients | [Square cylinder](../tutorials/fvm/cube_flow/README.md) |
 | Meshing around an STL body | [STL body](../tutorials/fvm/cartesian_mesher/README.md) |
 | Far-field boundaries, surface pressure | [NACA 0012 airfoil](../tutorials/fvm/airfoil_flow/README.md) |
+| Moving meshes, prescribed body motion | [Oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md) |
 | LES, MPI parallel runs, grid studies | [Cube reference flow](../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/README.md) |
 
 ## Physical model and units
@@ -127,6 +128,54 @@ A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..
 | `ilu` | SciPy's thresholded incomplete LU (`ilu_drop_tolerance`, `ilu_fill_factor`, `reuse_ilu`). Stronger for poorly conditioned steady solves; its triangular solves cost far more per application. |
 
 The preconditioner changes only the iterations, not the converged tolerance; the PETSc backend uses its own block-Jacobi preconditioner. The default `momentum_tolerance=1e-9` converges each momentum predictor well below the discretisation error: on the cylinder reference a looser `1e-6` with `momentum_relative_tolerance=0.05` shifted the developed lift amplitude by 2.6 %, while DILU keeps the tight solve cheaper than the old loose ILU one. Repeat a case with finer cells and a smaller step before treating drag, shedding frequency or wall shear as converged; `fvm.update_grid_study` and `fvm.analyse_grid_study` estimate the discretisation error from a grid family, as in the [cube reference flow](../tutorials/coupled_fvm_vpm/02_cube_flow/reference_flow/README.md).
+
+## Moving meshes
+
+`MeshMotion` moves the whole mesh as one rigid body with a prescribed motion. Pass it as `FVMCase(mesh_motion=...)` or `FVMSetup(mesh_motion=...)`:
+
+```python
+motion = fvm.MeshMotion(
+    fvm.HeavingMotion(amplitude=0.2, frequency=0.165, direction=(0, 1, 0)),
+    rotation_degrees=(0, 0, 5),  # optional initial placement of the mesh
+)
+```
+
+The motion classes mirror the VLM kinematics; times are in s, angles of the initial placement in degrees, angular velocities in rad/s:
+
+| Class | Motion |
+| --- | --- |
+| `StaticMotion()` | None |
+| `TranslatingMotion(velocity)` | Constant velocity |
+| `RotatingMotion(angular_speed, axis, rotation_centre, acceleration_time)` | Constant rotation about a fixed axis, optional sin² spin-up |
+| `HeavingMotion(amplitude, frequency, phase, direction)` | $A\sin(2\pi ft+\phi)$ along `direction` (default z) |
+| `LinearPeriodicMotion(amplitude, frequency, direction, phase)` | The same sinusoidal translation with a required direction |
+| `PitchingMotion(amplitude_degrees, frequency, phase, rotation_axis, rotation_centre)` | $\theta_0\sin(2\pi ft+\phi)$ about a fixed pivot |
+| `SmoothRampMotion(final_velocity, acceleration_time, start_time)` | Acceleration from rest with a sin² velocity ramp |
+| `ManeuverMotion(velocity_function, angular_velocity_function, rotation_centre)` | Velocities given as functions of time |
+| `CompositeMotion(kinematics_components, rotation_centre)` | Sum of several motions about one pivot |
+
+Closed-form motions place the mesh exactly; `ManeuverMotion` and `CompositeMotion` integrate their velocities with the interval-midpoint rule. The mesh as constructed is the configuration at the start time, and every rotation centre moves with the mesh.
+
+The equations are solved in the arbitrary Lagrangian–Eulerian form
+
+$$
+\frac{d}{dt}\int_{V}\mathbf{U}\,dV+\oint_{S}\mathbf{U}\,(\mathbf{U}-\mathbf{U}_\mathrm{m})\cdot d\mathbf{S}
+=-\oint_{S}q\,d\mathbf{S}+\oint_{S}\nu_\mathrm{eff}\nabla\mathbf{U}\cdot d\mathbf{S},
+\qquad \oint_{S}\mathbf{U}\cdot d\mathbf{S}=0,
+$$
+
+with the mesh velocity $\mathbf{U}_\mathrm{m}=\mathbf{V}+\boldsymbol{\Omega}\times(\mathbf{x}-\mathbf{c})$. A rigid mesh keeps every cell volume and its swept face fluxes sum to zero in each cell, so a uniform stream stays exactly uniform. Momentum is convected by the flux relative to the moving faces; continuity uses the absolute flux. Velocity and pressure are absolute-frame (inertial) quantities, as are the inlet, outlet and freestream values. Inflow and outflow faces are selected by the relative flux, and the Courant number is relative to the moving cells.
+
+| Patch | On a moving mesh |
+| --- | --- |
+| `wall` | No-slip wall moving with the mesh; a configured wall velocity is added, rotated with the mesh |
+| `slip` | Impermeable plane; when it moves along its normal it takes the mesh normal velocity and pushes the fluid with it, so bound an open stream with inlet and outlet patches instead |
+| `empty` | Must stay in its plane: a 2-D mesh translates in-plane and rotates about the span axis |
+| `cyclic` | The periodic pair moves together |
+
+Volume output writes the moved mesh, and a `ForceSampler` moment centre moves with the mesh. Restarts restore the mesh position. The [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md) shows a complete case.
+
+A far-field `freestream` boundary switches each face between inflow and outflow conditions as the relative flow crosses it: when a body oscillates in still fluid, over the whole far field every half period, and wherever wake vortices leave the domain. The switching disturbs the forces. Prefer a fixed `inlet` upstream and a fixed-pressure outlet downstream, as in the [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md), or a fixed zero velocity on a distant boundary around a body oscillating in still fluid. Without outer correctors, PISO convects with the flux of the previous step; add `n_outer_correctors` when the flow relative to the mesh changes quickly within a step. The FVM–VPM coupler follows translating meshes; see [moving bodies](coupling.md#moving-bodies).
 
 ## Turbulence and LES
 

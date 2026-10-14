@@ -200,7 +200,9 @@ class FVMSolver(CouplerInterfaceMixin):
     Construction allocates solver arrays and may create output directories. It
     does not advance the solution. Use :meth:`run` for the framework-owned
     finite run or :meth:`advance`/the candidate APIs for interactive and
-    coupled control. The solver is static-mesh only.
+    coupled control. A :class:`~openonda.fvm.motion.MeshMotion` in the setup
+    moves the whole mesh rigidly (arbitrary Lagrangian–Eulerian form); see
+    :attr:`mesh_motion`.
     """
 
     @property
@@ -307,8 +309,12 @@ class FVMSolver(CouplerInterfaceMixin):
         key = ("courant", float(time_step_size))
         courant = self._derived_fields.get(key)
         if courant is None:
+            # On a moving mesh the transport Courant number uses the flux
+            # relative to the moving faces.
             courant = diagnostics.compute_courant_number(
-                self.volumetric_face_flux,
+                self.volumetric_face_flux
+                if self.mesh_motion is None
+                else self.volumetric_face_flux - self.mesh_motion.mesh_face_flux,
                 time_step_size,
                 self.mesh_data,
                 self.geo_data,
@@ -800,6 +806,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.state = FieldState(self.velocity, self.kinematic_pressure, self.volumetric_face_flux)
         self._initialize_algorithm()
         self._initialize_turbulence()
+        self._initialize_mesh_motion()
 
         # Final housekeeping
         self.io = solver_io.SolverIO(self)
@@ -955,6 +962,64 @@ class FVMSolver(CouplerInterfaceMixin):
         self.volumetric_face_flux_old = self.volumetric_face_flux.copy()
         self.volumetric_face_flux_older = self.volumetric_face_flux.copy()
         self._timer.log("Flux Init", sink=self.logger)
+
+    def _initialize_mesh_motion(self) -> None:
+        """Place a moving mesh at its start pose and impose its boundary motion."""
+        self.mesh_motion = None
+        motion = self._resolved_setup.mesh_motion
+        if motion is None:
+            return
+        from ..motion.rigid import RigidMeshMotion
+
+        previous_surface = np.array(self.geo_data["face_area_vector"])
+        self.mesh_motion = RigidMeshMotion(motion, self)
+        self._carry_face_fluxes(previous_surface)
+        self.mesh_motion.update_boundaries(self)
+        self.volumetric_face_flux_old[:] = self.volumetric_face_flux
+        self.volumetric_face_flux_older[:] = self.volumetric_face_flux
+        self._invalidate_derived_fields()
+        self._publish_state()
+
+    def _carry_face_fluxes(
+        self, previous_surface: np.ndarray, *, include_current: bool = True
+    ) -> None:
+        """Carry the stored face fluxes onto faces rotated by the mesh motion."""
+        if np.array_equal(previous_surface, self.geo_data["face_area_vector"]):
+            return
+        levels = [
+            (self.volumetric_face_flux_old, self.velocity_old),
+            (self.volumetric_face_flux_older, self.velocity_older),
+        ]
+        if include_current:
+            levels.append((self.volumetric_face_flux, self.velocity))
+        for flux, velocity in levels:
+            self.mesh_motion.reexpress_flux(flux, velocity, previous_surface)
+
+    def move_mesh(self, time_step_size: float) -> None:
+        """Place a moving mesh at the end ``time + time_step_size`` of the next step.
+
+        :meth:`solve_pimple` calls this itself. A coupling driver calls it
+        first when boundary data must be evaluated on the end-of-step
+        geometry. Repeated calls for the same step do nothing; the pose is
+        always advanced from the accepted pose, so a different step size
+        replaces an earlier placement. A static mesh is unaffected.
+        """
+        if self.mesh_motion is None:
+            return
+        target = self.time + float(time_step_size)
+        if self.mesh_motion.time == target:
+            return
+        previous_mesh_flux = self.mesh_motion.mesh_face_flux.copy()
+        previous_surface = self.mesh_motion.move_to(target)
+        # The convecting flux starts from the flux relative to the mesh, a
+        # scalar carried with the faces: it is exact for fluid moving with the
+        # mesh, for still fluid around a steadily rotating mesh, and for
+        # steady translation. The history fluxes keep their Rhie-Chow part.
+        self.volumetric_face_flux += self.mesh_motion.mesh_face_flux - previous_mesh_flux
+        self._carry_face_fluxes(previous_surface, include_current=False)
+        self.mesh_motion.update_boundaries(self)
+        self._invalidate_derived_fields()
+        self._publish_state()
 
     def _initialize_algorithm(self) -> None:
         """Initialise the numerical solver algorithm.
@@ -1390,6 +1455,11 @@ class FVMSolver(CouplerInterfaceMixin):
                 raise ValueError("FVM time-step size must be finite and positive")
             self._pending_step_size = step_time_step_size
         self._accepted_time_step_size = float(step_time_step_size)
+        try:
+            self.move_mesh(step_time_step_size)
+        except BaseException as error:
+            self._mark_evolution_failure(error)
+            raise
 
         # Diagnostics from the previously completed step cache full-mesh
         # Courant, velocity-gradient, and vorticity arrays.  None is valid once
@@ -1438,6 +1508,9 @@ class FVMSolver(CouplerInterfaceMixin):
                     ),
                     previous_time_step_size=(
                         self._previous_time_step_size if self._n_committed_time_steps >= 1 else None
+                    ),
+                    mesh_face_flux=(
+                        None if self.mesh_motion is None else self.mesh_motion.mesh_face_flux
                     ),
                 )
             )
@@ -2129,6 +2202,8 @@ class FVMSolver(CouplerInterfaceMixin):
         self._n_committed_time_steps += 1
         self.step += 1
         self.time = summed_time if time is None else float(time)
+        if self.mesh_motion is not None:
+            self.mesh_motion.accept(self.time)
         self._run_metadata_written = False
         step_time_step_size = self._accepted_time_step_size
         self._previous_time_step_size = step_time_step_size

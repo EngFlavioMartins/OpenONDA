@@ -493,6 +493,9 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         "gbd_moment_recovery": gbd_moment_recovery,
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "n_transfer_particles": int(particle_count),
+        # VPM positions are relative to the FVM mesh; add this to recover
+        # inertial-frame positions.
+        "mesh_translation": coupler.frame.translation().tolist(),
     }
     if vpm_solver is not None:
         physics = vpm_solver.physics

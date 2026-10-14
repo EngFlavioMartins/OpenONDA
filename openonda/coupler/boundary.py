@@ -283,6 +283,10 @@ def evaluate_vpm_boundary(
                     evaluated_velocity=vpm_boundary_condition_velocity,
                 )
             )
+            # The FVM takes inertial-frame velocities on its moving mesh.
+            velocity_boundary_condition = coupler.absolute_interface_velocity(
+                velocity_boundary_condition
+            )
             if coupler._velocity_boundary_condition_old is None:
                 coupler._velocity_boundary_condition_old = velocity_boundary_condition.copy()
             assert tangential_normal_gradient is not None
@@ -436,6 +440,7 @@ def update_boundary_history_after_replacement(
                 evaluated_velocity=corrected_boundary,
             )
         )
+        corrected_boundary = coupler.absolute_interface_velocity(corrected_boundary)
         freestream_speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
         drift = (
             float(

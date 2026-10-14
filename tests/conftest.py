@@ -19,6 +19,7 @@ QUALIFICATION_MODULES = frozenset(
         "test_core_numerical_qualification.py",
         "test_interpolation_qualification.py",
         "test_manufactured_gradient_qualification.py",
+        "test_moving_mesh_qualification.py",
         "test_transfer_representation_qualification.py",
     }
 )
@@ -27,6 +28,7 @@ INTEGRATION_MODULES = frozenset(
     {
         "test_arbitrary_wall_run_stages.py",
         "test_fvm_vpm_smoke.py",
+        "test_moving_mesh_coupling.py",
         "test_physical_coupling.py",
         "test_stable_renewal.py",
     }
@@ -38,6 +40,7 @@ SLOW_MODULES = QUALIFICATION_MODULES | frozenset(
         "test_arbitrary_wall_run_stages.py",
         "test_continuation.py",
         "test_mesh_consistency.py",
+        "test_moving_mesh_coupling.py",
         "test_start_latest.py",
         "test_vlm_coupled_restart.py",
         "test_vlm_qualification.py",

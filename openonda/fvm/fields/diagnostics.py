@@ -552,8 +552,12 @@ def compute_y_plus(
         if not np.all(np.isfinite(d)) or np.any(d <= 0.0):
             raise ValueError(f"wall distance must be finite and positive on patch {name!r}")
 
-        # 2. Velocity at cell centre (tangential to wall)
+        # 2. Velocity at cell centre relative to the (possibly moving) wall
         cell_velocity = velocity[own]
+        if boundary.get("type") == "wall":
+            n_cells = mesh_data["n_cells"]
+            ghosts = n_cells + idx - mesh_data["n_interior_faces"]
+            cell_velocity = cell_velocity - velocity[ghosts]
         sf = geo_data["face_area_vector"][idx]
         mag_sf = np.linalg.norm(sf, axis=1)
         if not np.all(np.isfinite(mag_sf)) or np.any(mag_sf <= 0.0):

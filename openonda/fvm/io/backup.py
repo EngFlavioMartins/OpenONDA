@@ -36,6 +36,7 @@ class RestartState:
     kinematic_viscosity: float
     max_courant_number: float
     n_consecutive_accepted_steps: dict[str, int]
+    mesh_pose: tuple[np.ndarray, np.ndarray] | None = None
 
 
 # Deflate finds almost nothing in raw float64: the mantissa bytes look like
@@ -102,6 +103,20 @@ def decode_state(stored: dict) -> dict:
     return decoded
 
 
+MESH_POSE_FIELDS = ("mesh_rotation", "mesh_translation")
+
+
+def mesh_pose_arrays(solver: FVMSolver) -> dict[str, np.ndarray]:
+    """Return the accepted pose of a moving mesh, or nothing for a static mesh."""
+    motion = getattr(solver, "mesh_motion", None)
+    if motion is None:
+        return {}
+    return {
+        "mesh_rotation": np.array(motion.accepted_pose.rotation),
+        "mesh_translation": np.array(motion.accepted_pose.translation),
+    }
+
+
 def _update_digest(digest: hashlib._Hash, value: object) -> None:
     if isinstance(value, np.ndarray):
         array = np.ascontiguousarray(value)
@@ -120,6 +135,10 @@ def _update_digest(digest: hashlib._Hash, value: object) -> None:
             _update_digest(digest, item)
     elif isinstance(value, np.generic):
         _update_digest(digest, value.item())
+    elif callable(value) and hasattr(value, "__qualname__"):
+        # A function's repr contains its memory address; its name is stable.
+        digest.update(b"callable")
+        digest.update(f"{getattr(value, '__module__', '')}.{value.__qualname__}".encode())
     else:
         digest.update(type(value).__name__.encode())
         digest.update(repr(value).encode())
@@ -164,7 +183,10 @@ def config_hash(setup: FVMSetup) -> str:
 
 
 def mesh_hash(mesh_data: dict[str, object]) -> str:
-    """Hash the mesh topology, coordinates, and stable patch names and types."""
+    """Hash the mesh topology, coordinates, and stable patch names and types.
+
+    A moving mesh is identified by its constructed coordinates.
+    """
     patches = [
         {
             "name": patch["name"],
@@ -175,7 +197,7 @@ def mesh_hash(mesh_data: dict[str, object]) -> str:
         for patch in mesh_data["boundary"]
     ]
     mesh_description = {
-        "vertex_position": mesh_data["vertex_position"],
+        "vertex_position": mesh_data.get("reference_vertex_position", mesh_data["vertex_position"]),
         "faces": mesh_data["faces"],
         "owners": mesh_data["owners"],
         "neighbours": mesh_data["neighbours"],
@@ -228,6 +250,7 @@ def save_backup(solver: FVMSolver, path: Path | str) -> Path:
             ],
             dtype=np.int64,
         ),
+        **mesh_pose_arrays(solver),
     }
 
     state_bytes = sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values())
@@ -376,6 +399,20 @@ def validate_restart_state(
     if any(value < 0 for value in counters.values()):
         raise ValueError("Backup acceptance counters must be non-negative")
 
+    mesh_pose = None
+    if getattr(solver, "mesh_motion", None) is not None:
+        rotation = np.asarray(state["mesh_rotation"], dtype=np.float64)
+        translation = np.asarray(state["mesh_translation"], dtype=np.float64)
+        if rotation.shape != (3, 3) or translation.shape != (3,):
+            raise ValueError("Backup mesh pose has an invalid shape")
+        if not (np.all(np.isfinite(rotation)) and np.all(np.isfinite(translation))):
+            raise ValueError("Backup mesh pose must be finite")
+        if not np.allclose(rotation @ rotation.T, np.eye(3), atol=1.0e-10) or not np.isclose(
+            np.linalg.det(rotation), 1.0, atol=1.0e-10
+        ):
+            raise ValueError("Backup mesh rotation is not a proper rotation")
+        mesh_pose = (rotation, translation)
+
     return RestartState(
         fields=fields,
         eddy_viscosity=np.ascontiguousarray(eddy_viscosity),
@@ -388,11 +425,18 @@ def validate_restart_state(
         kinematic_viscosity=kinematic_viscosity,
         max_courant_number=max_courant_number,
         n_consecutive_accepted_steps=counters,
+        mesh_pose=mesh_pose,
     )
 
 
 def restore_restart_state(solver: FVMSolver, restart_state: RestartState) -> None:
     """Apply a staged restart state after all validation checks have succeeded."""
+    motion = getattr(solver, "mesh_motion", None)
+    if motion is not None:
+        # Place the mesh and its moving boundaries first; the saved fields,
+        # including their boundary values, then overwrite the solver state.
+        motion.restore(restart_state.time, *restart_state.mesh_pose)
+        motion.update_boundaries(solver)
     for name, values in restart_state.fields.items():
         getattr(solver, name)[:] = values
     # The pressure-free flux update stores its boundary increment separately
@@ -464,6 +508,14 @@ def capture_restart_state(solver: FVMSolver) -> RestartState:
         kinematic_viscosity=solver._kinematic_viscosity,
         max_courant_number=solver.max_courant_number,
         n_consecutive_accepted_steps=solver._n_consecutive_accepted_steps.copy(),
+        mesh_pose=(
+            None
+            if getattr(solver, "mesh_motion", None) is None
+            else (
+                solver.mesh_motion.accepted_pose.rotation.copy(),
+                solver.mesh_motion.accepted_pose.translation.copy(),
+            )
+        ),
     )
 
 
@@ -489,6 +541,7 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> RestartState:
         "max_courant_number",
         "n_consecutive_accepted_steps",
         "storage_layout",
+        *mesh_pose_arrays(solver),
     }
     with np.load(source, allow_pickle=False) as archive:
         archive_keys = set(archive.files)
