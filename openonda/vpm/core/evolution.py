@@ -214,18 +214,21 @@ class EvolutionStepper:
         """
         self.solver.replace_vortex_particles(**properties)
 
-    def advance(self, *, defer_output: bool = False) -> None:
+    def advance(self, *, defer_output: bool = False, time: float | None = None) -> None:
         """Advance the VPM solution by one time step.
 
         The inviscid update advances particle motion and, when enabled, vortex
         stretching. Viscous diffusion is then applied by operator splitting. Core
         spreading uses symmetric Strang splitting in the coupled integrator.
         ``defer_output`` lets an external coupler synchronize the particle state
-        before scheduled samples and backups are written.
+        before scheduled samples and backups are written. ``time`` is the
+        accepted time imposed by a driver that owns the clock.
         """
 
         target_step = self.solver.step + 1
-        target_time = round(self.solver.time + self.time_step_size, 12)
+        target_time = (
+            round(self.solver.time + self.time_step_size, 12) if time is None else float(time)
+        )
         Logging.begin_step(target_step)
 
         self.stabilization.begin_step(

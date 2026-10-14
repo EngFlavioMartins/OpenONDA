@@ -956,7 +956,7 @@ class FVMVPMCoupler:
         self._log_stop_step = stop_step
         for step in range(1 + start_step, stop_step + 1):
             exchange_started = time.perf_counter()
-            time_end = step * self.vpm_time_step_size
+            time_end = self.exchange_time(step)
             with collective_phase(self._comm, "accepted-endpoint freestream"):
                 self._update_freestream(time_end)
             vpm_time = self._advance_vpm(step, time_end)
@@ -1058,6 +1058,16 @@ class FVMVPMCoupler:
         self._n_steps = n_steps
         return (face_centre, face_normal, face_area), n_steps
 
+    def exchange_time(self, step: int) -> float:
+        """Return the physical time of exchange ``step``, in s.
+
+        The coupler owns the clock. Both solvers accept exactly this time at
+        every exchange, so their outputs carry identical time values; summing
+        time-step sizes would drift by round-off between the two solvers.
+        """
+        assert self.vpm_time_step_size is not None
+        return step * self.vpm_time_step_size
+
     def _update_freestream(self, time: float) -> None:
         if self.setup.freestream is not None:
             self.freestream_velocity = self.setup.freestream.at(time)
@@ -1085,7 +1095,7 @@ class FVMVPMCoupler:
                 begin_coupling_step(logger, step, self._n_steps, time_end)
 
                 with self.vpm_redirector:
-                    self.vpm_solver.advance(defer_output=True)
+                    self.vpm_solver.advance(defer_output=True, time=time_end)
                 self.vpm_solver.synchronize()
                 if str(getattr(self.vpm_solver, "viscous_scheme", "")).upper() == "GBD":
                     _validate_gbd_moment_recovery(
