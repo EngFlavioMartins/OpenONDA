@@ -21,11 +21,6 @@ node solved independently (no serial stack, no shared scratch, Vulkan-portable):
 The Morton sort is a least-significant-digit radix sort over the active keys
 in a single kernel launch on every backend. It is stable, so equal Morton keys
 keep ascending particle index. The level bound is derived from N.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: February 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import math
@@ -123,7 +118,7 @@ class TaichiTreecode:
         max_nodes: int = 200000,
         theta: float = 0.5,
         max_leaf_size: int = 32,
-        kernel_type: str = "WINCKELMANS",
+        kernel_type: str = "winckelmans",
         multipole_order: int = 1,
         sort_particle_targets: bool = False,
         traversal_block_dim: int = 128,
@@ -144,7 +139,7 @@ class TaichiTreecode:
             improve accuracy.
         max_leaf_size : int, default=32
             Maximum source count in a leaf before further subdivision.
-        kernel_type : str, default="WINCKELMANS"
+        kernel_type : str, default="winckelmans"
             Supported regularization kernel name.
         multipole_order : {1, 2, 3}, default=1
             Order of stored source moments.  Higher order costs memory and
@@ -181,7 +176,7 @@ class TaichiTreecode:
         self.theta = theta
         self.max_leaf_size = max_leaf_size
         self.theta_sq = theta * theta
-        self.kernel_type = kernel_type.upper()
+        self.kernel_type = kernel_type.lower()
         gaussian = create_gaussian_kernels(ti.f32)
         self._gaussian_q = gaussian["q_"]
         self._gaussian_zeta = gaussian["zeta_"]
@@ -346,7 +341,7 @@ class TaichiTreecode:
         combinations up front, so reaching this error means the treecode was
         constructed outside the normal configuration path.
         """
-        normalized = kernel_type.upper()
+        normalized = kernel_type.lower()
         if normalized not in treecode_kernel_names():
             raise ValueError(
                 f"Unsupported treecode kernel_type: {kernel_type}. "

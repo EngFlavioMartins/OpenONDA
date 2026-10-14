@@ -136,7 +136,7 @@ class KernelDefinition:
     treecode_kernel_id: int | None = None
 
     def __post_init__(self) -> None:
-        if self.name != self.name.upper() or not self.name:
+        if self.name != self.name.lower() or not self.name:
             raise ValueError("kernel names are nonempty upper-case identifiers")
         if not math.isfinite(self.second_moment):
             raise ValueError("kernel second moment must be finite")

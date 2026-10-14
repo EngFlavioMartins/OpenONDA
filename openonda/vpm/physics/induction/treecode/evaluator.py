@@ -42,7 +42,7 @@ class TreecodeInduction:
     """
 
     supported_kernels = frozenset(treecode_kernel_names())
-    supported_devices = frozenset({"AUTO", "CPU", "VULKAN", "CUDA", "METAL"})
+    supported_devices = frozenset({"auto", "cpu", "vulkan", "cuda", "metal"})
     supports_gradient = True
     supports_variable_core_radius = True
     supports_target_fields = True
@@ -54,7 +54,7 @@ class TreecodeInduction:
     def __init__(
         self,
         *,
-        stretching_scheme: str = "TRANSPOSED",
+        stretching_scheme: str = "transposed",
         theta: float = _TREECODE_THETA,
         multipole_order: int = _TREECODE_MULTIPOLE_ORDER,
         sort_particle_targets: bool = _TREECODE_SORT_PARTICLE_TARGETS,
@@ -64,7 +64,7 @@ class TreecodeInduction:
 
         Parameters
         ----------
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Formulation that turns the hierarchical velocity gradient
             into ``dGamma/dt``. The tree traversal and induced velocity are
             unchanged by this choice.
@@ -109,10 +109,10 @@ class TreecodeInduction:
             or traversal_block_dim < 0
         ):
             raise ValueError("treecode traversal_block_dim must be a non-negative integer")
-        self.method = "TREECODE"
+        self.method = "treecode"
         self.stretching_scheme = stretching_scheme
         self._stretching_mode = _STRETCHING_MODES[stretching_scheme]
-        self.kernel = make_vortex_kernel("GAUSSIAN")
+        self.kernel = make_vortex_kernel("gaussian")
         self.physics = None
         self.theta = float(theta)
         self.multipole_order = int(multipole_order)
@@ -135,7 +135,7 @@ class TreecodeInduction:
         multipole_order: int = _TREECODE_MULTIPOLE_ORDER,
         sort_particle_targets: bool = _TREECODE_SORT_PARTICLE_TARGETS,
         traversal_block_dim: int = _TREECODE_TRAVERSAL_BLOCK_DIM,
-        stretching_scheme: str = "TRANSPOSED",
+        stretching_scheme: str = "transposed",
     ) -> Self:
         """Construct a tuned evaluator for controlled qualification studies.
 
@@ -150,7 +150,7 @@ class TreecodeInduction:
             Whether particle targets are reordered for traversal locality.
         traversal_block_dim : int, default=128
             Device traversal block size; zero leaves the runtime default.
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Strength-rate contraction formulation.
 
         Returns
@@ -210,7 +210,7 @@ class TreecodeInduction:
         """
         self.physics = physics
         physics.configure_velocity(
-            "TREECODE",
+            "treecode",
             self.theta,
             multipole_order=self.multipole_order,
             sort_particle_targets=self.sort_particle_targets,
@@ -289,7 +289,7 @@ class TreecodeInduction:
         tree.build(position, vortex_strength, core_radius, count)
         self.physics._target_tree_key = None
         self.physics.configure_velocity(
-            "TREECODE",
+            "treecode",
             self.theta,
             multipole_order=self.multipole_order,
             sort_particle_targets=self.sort_particle_targets,

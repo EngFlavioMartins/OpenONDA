@@ -26,14 +26,7 @@ def _clock(step: int, time: float) -> tuple[int, float]:
 def _physics(record: dict[str, object]) -> str:
     configuration = record["configuration"]
     numerics = deepcopy(configuration["numerics"])
-    for name in (
-        "random_seed",
-        "compute_device",
-        "write_precision",
-        "debug_mode",
-        "diagnostics",
-        "verbose",
-    ):
+    for name in ("random_seed", "compute_device"):
         numerics.pop(name, None)
     vlm = numerics.get("vlm")
     if vlm is not None:
@@ -59,7 +52,7 @@ def realization_metadata(records: list[dict[str, object]]) -> tuple[dict, ...]:
         raise ValueError("Ensemble statistics require at least two independent realizations")
     case_names, seeds, physics, clocks = [], [], [], []
     for record in records:
-        if record["schema_version"] != 2 or record["solver"] != "VPM":
+        if record["schema_version"] != 3 or record["solver"] != "vpm":
             raise ValueError("Ensembles require current native VPM metadata")
         case_name = record["case_name"]
         seed = record["configuration"]["numerics"]["random_seed"]

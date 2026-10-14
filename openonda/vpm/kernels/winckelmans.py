@@ -1,10 +1,5 @@
 """
 Factory for the Winckelmans-Leonard algebraic regularization kernel set.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Callable
@@ -218,7 +213,7 @@ WINCKELMANS_DEFECT = AlgebraicDefectEnvelope(
 )
 
 DEFINITION = KernelDefinition(
-    name="WINCKELMANS",
+    name="winckelmans",
     q=q_host,
     zeta=zeta_host,
     device_factory=create_winckelmans_kernels,

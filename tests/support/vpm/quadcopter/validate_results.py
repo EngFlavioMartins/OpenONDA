@@ -21,7 +21,7 @@ def validate_wake(p, end):
     config = p.metadata["configuration"]
     declared = {
         sampler["file_name"]: sampler
-        for sampler in config["samplers"]["items"]
+        for sampler in config["samplers"]["samples"]
         if sampler["type"] == "SurfaceSampler"
     }
     failures = []
@@ -100,8 +100,8 @@ def main():
     args = parser.parse_args()
     p = rotor_inputs()
     config, state = p.metadata["configuration"], p.metadata["state"]
-    steps = state["initial_step"] + config["run"]["steps"]
-    end = state["initial_time"] + config["run"]["steps"] * config["numerics"]["time_step_size"]
+    steps = state["target_step"]
+    end = config["run"]["end_time"]
     failures = []
     if p.metadata["run_status"]["status"] != "completed" or state["step"] != steps:
         print(

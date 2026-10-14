@@ -24,41 +24,44 @@ def main():
             patch["name"] = name
         return result
 
-    setup = fvm.FVMSetup(
-        case_name="single_layer_cyclic",
-        cores=cores,
+    case = fvm.FVMCase(
+        name="single_layer_cyclic",
+        directory=directory,
+        numerics=fvm.Numerics(
+            time_step_size=0.008,
+            schemes=fvm.DiscretizationConfig(
+                convection_scheme="limited_linear", gradient_scheme="lsq", time_scheme="backward"
+            ),
+            linear=fvm.LinearSolverConfig(
+                linear_solver="spsolve",
+                pressure_solver="spsolve",
+                pressure_tolerance=1e-11,
+                momentum_tolerance=1e-11,
+            ),
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=1 / 150),
+        ),
+        initial_conditions=fvm.InitialFields(velocity=(1, 0, 0)),
+        run=fvm.RunPlan(end_time=0.016),
+        backup=fvm.Backup(write_at_end=False),
         logging=fvm.LoggingConfig(console=False),
-        backup=fvm.BackupConfig(schedule=None, write_at_end=False),
-        time=fvm.TimeConfig(
-            time_step_size=0.008, end_time=0.016, output_schedule=fvm.RunSchedule(every_n_steps=100)
-        ),
-        schemes=fvm.DiscretizationConfig(
-            convection_scheme="limitedLinear", gradient_scheme="lsq", time_scheme="backward"
-        ),
-        linear=fvm.LinearSolverConfig(
-            linear_solver="spsolve",
-            pressure_solver="spsolve",
-            pressure_tolerance=1e-11,
-            momentum_tolerance=1e-11,
-        ),
-        transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=1 / 150),
-        boundaries=[
+        mesh=mesh,
+        boundaries=tuple(
             fvm.BoundaryConfig(
                 name=name,
-                velocity_type="fixedValue",
-                velocity_value=[1, 0, 0],
-                pressure_type="fixedFluxPressure",
+                velocity_type="fixed_value",
+                velocity_value=(1, 0, 0),
+                pressure_type="fixed_flux_pressure",
             )
             for name in ("xmin", "xmax", "ymin", "ymax")
-        ]
-        + [fvm.BoundaryConfig.cyclic("zmin", "zmax"), fvm.BoundaryConfig.cyclic("zmax", "zmin")],
-        initial_velocity=[1, 0, 0],
+        )
+        + (fvm.BoundaryConfig.cyclic("zmin", "zmax"), fvm.BoundaryConfig.cyclic("zmax", "zmin")),
+        cores=cores,
     )
 
     def exact(points):
         return np.column_stack((1 + 0.1 * points[:, 1], np.zeros((len(points), 2))))
 
-    with fvm.create_fvm_solver(setup, case_dir=directory, mesh=mesh) as solver:
+    with fvm.FVMSolver(case) as solver:
         solver.auto_write = False
         n = solver.mesh_data["n_cells"]
         assert n == 30
@@ -69,7 +72,7 @@ def main():
             if patch["name"].startswith("z"):
                 continue
             faces = np.arange(patch["start_face"], patch["start_face"] + patch["n_faces"])
-            solver.set_dirichlet_velocity_boundary_condition_vec(
+            solver.set_dirichlet_velocity_boundary_condition(
                 exact(solver.geo_data["face_centre"][faces]), patch["name"]
             )
         expected = exact(solver.geo_data["cell_centre"][:n])

@@ -35,7 +35,7 @@ def assess_wake_signal_onset(
     config = p.metadata["configuration"]
     declared = {
         item["file_name"]: item
-        for item in config["samplers"]["items"]
+        for item in config["samplers"]["samples"]
         if item["type"] == "SurfaceSampler"
     }
     if name not in declared:
@@ -203,7 +203,7 @@ def native_plane_windows(
     config, state = p.metadata["configuration"], p.metadata["state"]
     dt = config["numerics"]["time_step_size"]
     horizon = state["time"]
-    declared = [item for item in config["samplers"]["items"] if item["type"] == "SurfaceSampler"]
+    declared = [item for item in config["samplers"]["samples"] if item["type"] == "SurfaceSampler"]
     if required_names is not None:
         required_names = tuple(required_names)
         declared_by_name = {item["file_name"]: item for item in declared}

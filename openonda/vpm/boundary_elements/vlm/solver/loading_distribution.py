@@ -6,8 +6,8 @@ data already computed by the VLM solver.  No force recomputation is performed;
 this is a pure reduction of existing lattice fields.
 
 Output CSVs:
-  <case_dir>/samples/vlm_spanwise_<surface>.csv   — one row per spanwise station
-  <case_dir>/samples/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
+  <samples_dir>/vlm_spanwise_<surface>.csv   — one row per spanwise station
+  <samples_dir>/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
 
 The exported section/panel force components are dimensional newtons and each
 row records ``force_density``. ``circulation_pressure_jump_proxy`` is the
@@ -16,12 +16,7 @@ recorded unsteady contribution; it is not reconstructed pressure.
 
 Call pattern (mirrors VLMDiagnostics):
   VLMLoadingDistribution.record_loading_distributions(
-      vlm_solver, diagnostics_history, time_step_size, time, case_dir)
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: June 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+      vlm_solver, diagnostics_history, time_step_size, time, samples_dir)
 """
 
 from __future__ import annotations
@@ -32,8 +27,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from openonda.vpm.io.logging import Logging
-
-from ....io.sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
     from .vlm_solver import VLMSolver
@@ -50,8 +43,7 @@ class VLMLoadingDistribution:
         diagnostics_history: dict,
         step: int,
         time: float,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
         """Export mandatory solver-clock loading distributions for each surface.
 
@@ -78,8 +70,7 @@ class VLMLoadingDistribution:
                 distributions,
                 time,
                 step,
-                case_dir,
-                sample_directory,
+                samples_dir,
             )
 
     # GRID INDEX
@@ -511,15 +502,11 @@ class VLMLoadingDistribution:
         distributions: dict[str, Any],
         time: float,
         step: int,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
         """Append one time-step's distributions to the per-surface CSVs."""
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(
-            case_dir, None if sample_directory is None else str(sample_directory)
-        )
         samples_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = surface_name.replace("/", "_").replace(" ", "_")

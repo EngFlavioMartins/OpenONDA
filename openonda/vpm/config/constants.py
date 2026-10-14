@@ -1,10 +1,5 @@
 """
 Physical and numerical constants shared by the VPM solver.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import numpy as np
@@ -38,11 +33,9 @@ DEFAULT_CUTOFF_RADIUS_FACTOR = 100
 # in kernels/gaussian.py; the number of terms depends on precision.
 GAUSSIAN_Q_SERIES_CROSSOVER = 1.0
 
-# Default VPM Smagorinsky constant C_s.  The vortex-ring stability calibration
-# qualified C_s=0.20 for the transposed VPM LES formulation; callers may still
-# override it for a case-specific validation.  Internally, the k-equilibrium
-# model converts it to C_k via C_k = (C_s² √C_e)^(2/3).
-SMAGORINSKY_CONSTANT = 0.20
+# Default Smagorinsky constant C_s, shared with the FVM. Internally, the
+# k-equilibrium model converts it to C_k via C_k = (C_s² √C_e)^(2/3).
+SMAGORINSKY_CONSTANT = 0.17
 
 # Regularization of the singular VLM Biot-Savart segments [m]
 VLM_EPSILON = 1e-8

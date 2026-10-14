@@ -1,47 +1,39 @@
-"""Public configuration models for the incompressible FVM solver."""
+"""Configuration classes of the FVM solver."""
 
-from .case import Backup, FVMCase, InitialFields, Numerics, Output, RunPlan, Samplers
-from .scheduling import RunSchedule
-from .types import (
-    BackupConfig,
-    BoundaryConfig,
+from .boundaries import BoundaryConfig
+from .case import FVMCase, InitialFields, MeshSource, RunPlan
+from .mesh_quality import MeshQualityConfig
+from .numerics import (
     ComputeConfig,
     DiscretizationConfig,
-    FVMSetup,
     LinearSolverConfig,
-    LoggingConfig,
     MaximumCourantTimeStep,
-    MeshQualityConfig,
-    OutputConfig,
-    PimpleControl,
+    Numerics,
+    PimpleConfig,
     RunAcceptanceLimits,
-    TimeConfig,
     TransportConfig,
-    TurbulenceConfig,
 )
+from .output import Backup, LoggingConfig, Output, Samplers
+from .turbulence import TurbulenceConfig
 
 __all__ = [
     "Backup",
-    "BackupConfig",
     "BoundaryConfig",
     "ComputeConfig",
     "DiscretizationConfig",
-    "FVMSetup",
     "FVMCase",
     "InitialFields",
     "LinearSolverConfig",
     "LoggingConfig",
     "MaximumCourantTimeStep",
     "MeshQualityConfig",
+    "MeshSource",
     "Numerics",
     "Output",
-    "OutputConfig",
-    "PimpleControl",
+    "PimpleConfig",
     "RunAcceptanceLimits",
     "RunPlan",
-    "RunSchedule",
     "Samplers",
-    "TimeConfig",
     "TransportConfig",
     "TurbulenceConfig",
 ]

@@ -49,7 +49,7 @@ class HostFMMReference:
         kernel: RadialVortexKernel | None = None,
         max_n_particles: int | None = None,
         leaf_capacity: int = 8,
-        stretching_scheme: str = "TRANSPOSED",
+        stretching_scheme: str = "transposed",
     ) -> None:
         """Configure the inspectable host reference FMM.
 
@@ -68,7 +68,7 @@ class HostFMMReference:
             and adopts the bound physics capacity when available.
         leaf_capacity : int, default=8
             Maximum source count in an FMM leaf before subdivision.
-        stretching_scheme : {"DIRECT", "TRANSPOSED", "MIXED"}, default="TRANSPOSED"
+        stretching_scheme : {"direct", "transposed", "mixed"}, default="transposed"
             Contraction used for the returned strength rate when gradients are
             requested. Velocity and gradient evaluation are otherwise the
             same; see :func:`normalize_stretching_scheme`.
@@ -89,9 +89,9 @@ class HostFMMReference:
             raise ValueError("FMM tolerance must lie in (0, 1)")
         if int(leaf_capacity) < 1:
             raise ValueError("FMM leaf_capacity must be positive")
-        self.method = "FMM"
+        self.method = "fmm"
         self.tolerance = float(tolerance)
-        self.kernel = make_vortex_kernel("GAUSSIAN") if kernel is None else kernel
+        self.kernel = make_vortex_kernel("gaussian") if kernel is None else kernel
         self.physics = None
         self.max_n_particles = int(max_n_particles or 1)
         self.leaf_capacity = int(leaf_capacity)
@@ -162,9 +162,9 @@ class HostFMMReference:
 
         if strength_rate_enabled:
             strength_np = self.tree.vortex_strength
-            if self.stretching_scheme == "DIRECT":
+            if self.stretching_scheme == "direct":
                 rate_np = np.einsum("nij,nj->ni", gradient_np, strength_np)
-            elif self.stretching_scheme == "TRANSPOSED":
+            elif self.stretching_scheme == "transposed":
                 rate_np = np.einsum("nji,nj->ni", gradient_np, strength_np)
             else:
                 rate_np = 0.5 * np.einsum(

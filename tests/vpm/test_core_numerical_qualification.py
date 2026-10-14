@@ -9,7 +9,6 @@ import numpy as np
 from scipy.special import erf
 
 from openonda.vpm import (
-    Backup,
     DirectInduction,
     Numerics,
     TreecodeInduction,
@@ -22,14 +21,13 @@ from openonda.vpm import (
 def _solver(tmp_path, name: str, induction, *, precision: str = "f32"):
     case = VPMCase(
         directory=tmp_path / name,
-        backup=Backup(0),
+        name="test",
         numerics=Numerics(
-            compute_device="CPU",
+            compute_device="cpu",
             precision=precision,
             induction=induction,
             viscous=ViscousConfig.inviscid(particle_spacing=0.15),
             max_n_particles=1_024,
-            verbose=False,
         ),
     )
     with contextlib.redirect_stdout(io.StringIO()):
@@ -163,7 +161,7 @@ def test_gaussian_biot_savart_velocity_and_gradient_match_the_closed_form(
     record_property("velocity_relative_l2", velocity_error)
     record_property("gradient_relative_l2", gradient_error)
     record_property("precision", "f64")
-    record_property("backend", "CPU")
+    record_property("backend", "cpu")
     assert velocity_error < 2.0e-7
     assert gradient_error < 2.0e-7
 
@@ -211,6 +209,6 @@ def test_treecode_converges_to_direct_summation_as_the_opening_angle_closes(
     record_property("theta_0p2_relative_l2", errors[2])
     record_property("observed_theta_order", observed_order)
     record_property("precision", "f32")
-    record_property("backend", "CPU")
+    record_property("backend", "cpu")
     assert errors[0] > errors[1] > errors[2]
     assert errors[2] < 5.0e-3

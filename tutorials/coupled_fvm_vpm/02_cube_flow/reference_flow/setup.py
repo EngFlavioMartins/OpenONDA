@@ -44,7 +44,7 @@ PROFILE_SAMPLE_INTERVAL = 0.25
 PROFILE_SPACING = 0.06
 
 CASE_DIR = Path(__file__).resolve().parent
-VELOCITY = [FREESTREAM_VELOCITY, 0.0, 0.0]
+VELOCITY = (FREESTREAM_VELOCITY, 0.0, 0.0)
 
 
 def create_solver(name: str, h: float) -> fvm.FVMSolver:
@@ -75,82 +75,77 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         start_time=TAPER_START,
         end_time=TAPER_END,
     )
-    setup = fvm.FVMSetup(
-        backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=BACKUP_INTERVAL), write_at_end=True
+    sample_profiles = fvm.EveryTime(PROFILE_SAMPLE_INTERVAL)
+    samplers = (
+        fvm.ForceSampler(
+            patch_names=["cube"],
+            reference_velocity=FREESTREAM_VELOCITY,
+            reference_area=CUBE_SIDE**2,
+            reference_length=CUBE_SIDE,
+            schedule=fvm.EveryTime(FORCE_SAMPLE_INTERVAL),
         ),
-        case_name=name,
-        cores=CORES,
-        execution=fvm.ComputeConfig(operator_backend="numba"),
-        time=fvm.TimeConfig(
-            time_step_size=TIME_STEP_SIZE,
-            end_time=END_TIME,
-            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL),
-            adjustment=fvm.MaximumCourantTimeStep(
-                maximum=MAX_COURANT_NUMBER,
-                maximum_time_step_size=TIME_STEP_SIZE,
-            ),
+        fvm.LineSampler(
+            (DOMAIN[0], 0.0, 0.0),
+            (DOMAIN[1], 0.0, 0.0),
+            spacing=PROFILE_SPACING,
+            n_neighbours=12,
+            reconstruction="affine",
+            file_name="centreline",
+            schedule=sample_profiles,
         ),
+        fvm.LineSampler(
+            (DOMAIN[0], 0.75, 0.0),
+            (DOMAIN[1], 0.75, 0.0),
+            spacing=PROFILE_SPACING,
+            n_neighbours=12,
+            reconstruction="affine",
+            file_name="offaxis_y075",
+            schedule=sample_profiles,
+        ),
+    )
+    numerics = fvm.Numerics(
+        time_step_size=TIME_STEP_SIZE,
+        time_step_control=fvm.MaximumCourantTimeStep(
+            maximum=MAX_COURANT_NUMBER, maximum_time_step_size=TIME_STEP_SIZE
+        ),
+        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
         schemes=fvm.DiscretizationConfig(
-            convection_scheme="linearUpwind",
-            gradient_scheme="gauss",
-            time_scheme="backward",
+            convection_scheme="linear_upwind", gradient_scheme="gauss", time_scheme="backward"
         ),
         linear=fvm.LinearSolverConfig(
-            pressure_solver="amg",
-            pressure_tolerance=1.0e-7,
-            pressure_relative_tolerance=0.005,
+            pressure_solver="amg", pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005
         ),
-        pimple=fvm.PimpleControl(
+        pimple=fvm.PimpleConfig(
             n_outer_correctors=2,
             n_nonorthogonal_correctors=1,
             velocity_relaxation=0.7,
             pressure_relaxation=0.3,
         ),
-        samplers=(
-            fvm.ForceSampler(
-                patch_names=["cube"],
-                reference_velocity=FREESTREAM_VELOCITY,
-                reference_area=CUBE_SIDE**2,
-                reference_length=CUBE_SIDE,
-                schedule=fvm.RunSchedule(every_time=FORCE_SAMPLE_INTERVAL),
-            ),
-            fvm.LineSampler(
-                start=[DOMAIN[0], 0.0, 0.0],
-                end=[DOMAIN[1], 0.0, 0.0],
-                spacing=PROFILE_SPACING,
-                k=12,
-                reconstruction="affine",
-                file_name="centreline",
-                schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
-            ),
-            fvm.LineSampler(
-                start=[DOMAIN[0], 0.75, 0.0],
-                end=[DOMAIN[1], 0.75, 0.0],
-                spacing=PROFILE_SPACING,
-                k=12,
-                reconstruction="affine",
-                file_name="offaxis_y075",
-                schedule=fvm.RunSchedule(every_time=PROFILE_SAMPLE_INTERVAL),
-            ),
-        ),
-        transport=fvm.TransportConfig(
-            density=DENSITY,
-            kinematic_viscosity=KINEMATIC_VISCOSITY,
-        ),
+        execution=fvm.ComputeConfig(operator_backend="numba"),
         turbulence=fvm.TurbulenceConfig.equilibrium_smagorinsky(
-            subgrid_kinetic_energy_coefficient=0.094,
-            subgrid_dissipation_coefficient=1.048,
+            subgrid_kinetic_energy_coefficient=0.094, subgrid_dissipation_coefficient=1.048
         ),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", list(STARTUP_VELOCITY)),
+    )
+    case = fvm.FVMCase(
+        name=name,
+        directory=CASE_DIR,
+        variant=name,
+        numerics=numerics,
+        initial_conditions=fvm.InitialFields(velocity=STARTUP_VELOCITY),
+        run=fvm.RunPlan(end_time=END_TIME),
+        output=fvm.Output(schedule=fvm.EveryTime(OUTPUT_INTERVAL)),
+        samplers=fvm.Samplers(samplers),
+        backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", STARTUP_VELOCITY),
             fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
             fvm.BoundaryConfig.slip("ymin"),
             fvm.BoundaryConfig.slip("ymax"),
             fvm.BoundaryConfig.slip("zmin"),
             fvm.BoundaryConfig.slip("zmax"),
             fvm.BoundaryConfig.wall("cube"),
-        ],
+        ),
         # The startup transverse velocity enters at the inlet and crosses the lateral walls
         velocity_boundaries=(
             fvm.VelocityBoundary(patches=("inlet",), velocity=startup),
@@ -158,15 +153,9 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
                 patches=("ymin", "ymax", "zmin", "zmax"), velocity=startup, normal_only=True
             ),
         ),
-        initial_velocity=list(STARTUP_VELOCITY),
+        cores=CORES,
     )
-    return fvm.create_fvm_solver(
-        setup,
-        case_dir=CASE_DIR,
-        solution_dir=CASE_DIR / "solution" / name,
-        samples_dir=CASE_DIR / "samples" / name,
-        mesh=mesh,
-    )
+    return fvm.FVMSolver(case)
 
 
 def main() -> None:

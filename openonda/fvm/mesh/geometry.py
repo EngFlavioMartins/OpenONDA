@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
-
-if TYPE_CHECKING:
-    from ..io.logging import Logging, Timer
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
@@ -110,9 +107,6 @@ def compute_geometry(
     n_faces: int,
     n_interior_faces: int,
     cell_face_indices: tuple[np.ndarray, np.ndarray],
-    *,
-    logger: Logging | None = None,
-    timer: Timer | None = None,
 ) -> dict[str, object]:
     """Compute centres, oriented areas, volumes, and interpolation geometry.
 
@@ -134,8 +128,6 @@ def compute_geometry(
     cell_face_indices : sequence or tuple[numpy.ndarray, numpy.ndarray]
         Cell-to-face incidence, either one face-index sequence per cell or a
         CSR ``(indices, offsets)`` pair.
-    logger, timer : object or None
-        Optional timing/logging sinks; geometry computation itself is unchanged.
 
     Returns
     -------
@@ -168,11 +160,6 @@ def compute_geometry(
     wall_distance = np.zeros(n_faces, dtype=np.float64)
 
     # --- Process Basic Face Geometry ---
-    from ..io import logging
-
-    timer = logging.Timer() if timer is None else timer
-    timer.start("Basic Face Geometry")
-
     # 1. Convert faces to a compact padded array.  Rectilinear meshes already
     # store fixed-width quads contiguously, so avoid rebuilding them through a
     # Python loop.
@@ -233,14 +220,7 @@ def compute_geometry(
         face_area_vector[start:stop] = sf_sum
         face_area[start:stop] = area_sum
 
-    timer.log(
-        "Basic Face Geometry",
-        sink=logger,
-    )
-
     # --- Process Element Geometry ---
-    timer.start("Element Geometry")
-
     # ``compute_mesh_geometry`` normally passes CSR connectivity.  Only the
     # counts persist globally; padded connectivity and all gathered face
     # tensors are bounded to one block.
@@ -305,10 +285,6 @@ def compute_geometry(
         safe_volume = np.where(local_sum == 0.0, 1.0, local_sum)
         cell_centre[start:stop] = weighted / safe_volume[:, np.newaxis]
         cell_volume[start:stop] = local_sum
-    timer.log(
-        "Element Geometry",
-        sink=logger,
-    )
 
     # Evaluate interior-face owner/neighbour geometry in bounded vectorized blocks.
     secondary_chunk = 200_000
@@ -366,8 +342,6 @@ def compute_mesh_geometry(
     gradient_scheme: str = "gauss",
     *,
     compute_lsq: bool = True,
-    logger: Logging | None = None,
-    timer: Timer | None = None,
 ) -> dict[str, object]:
     """Compute cell and face geometry for a validated native mesh dictionary.
 
@@ -384,8 +358,6 @@ def compute_mesh_geometry(
         Gradient geometry requested for downstream field reconstruction.
     compute_lsq : bool, default=True
         Whether to build least-squares stencil geometry when selected.
-    logger, timer : object or None
-        Optional timing/logging sinks.
 
     Returns
     -------
@@ -419,8 +391,6 @@ def compute_mesh_geometry(
         mesh_data["n_faces"],
         mesh_data["n_interior_faces"],
         (cell_face_indices, cell_face_offset),
-        logger=logger,
-        timer=timer,
     )
 
     # Pre‑compute LSQ gradient geometry if requested

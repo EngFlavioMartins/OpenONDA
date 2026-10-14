@@ -302,7 +302,7 @@ class GaussianCoreCorrectionGPU:
         max_scratch_bytes: int = 256 * 1024**2,
         accumulation_dtype: str = "float64",
         max_images: int = 513,
-        kernel: str = "GAUSSIAN",
+        kernel: str = "gaussian",
     ):
         self._cleanup_failure = None
         self._memory_pool = CUDAMemoryPool(max_scratch_bytes)

@@ -14,10 +14,10 @@ def test_one_layer_dvh_step_is_the_two_dimensional_heat_kernel(tmp_path):
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=viscous.dvh_required_time_step_size(),
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f32",
                 max_n_particles=1024,
                 domain_bounds=(-0.8, 0.8, -0.8, 0.8, *planes),
@@ -25,7 +25,6 @@ def test_one_layer_dvh_step_is_the_two_dimensional_heat_kernel(tmp_path):
                     vpm.DirectInduction(), z_min=planes[0], z_max=planes[1]
                 ),
                 viscous=viscous,
-                verbose=False,
             ),
         )
     )

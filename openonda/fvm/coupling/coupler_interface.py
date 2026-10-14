@@ -3,14 +3,14 @@
 Implements the compact coupling API on the FVM ``FVMSolver``:
 
 Getters
-    ``get_cell_centre_coordinates``, ``get_cell_volume``, ``get_velocity_field``,
-    ``get_velocity_field_into``, ``get_velocity_gradient_field``,
-    ``get_velocity_gradient_field_into``,
-    ``get_boundary_face_centre_coordinates``,
-    ``get_boundary_face_normal``, ``get_boundary_face_area``,
-    ``get_boundary_face_velocity``, ``n_procs``.
+    ``gather_cell_centre_coordinates``, ``gather_cell_volume``, ``gather_velocity_field``,
+    ``gather_velocity_field_into``, ``gather_velocity_gradient_field``,
+    ``gather_velocity_gradient_field_into``,
+    ``gather_boundary_face_centre_coordinates``,
+    ``gather_boundary_face_normal``, ``gather_boundary_face_area``,
+    ``gather_boundary_face_velocity``, ``n_procs``.
 Setters
-    ``set_dirichlet_velocity_boundary_condition_vec``,
+    ``set_dirichlet_velocity_boundary_condition``,
     ``set_normal_velocity_tangential_gradient_boundary_condition``,
     ``set_flux_consistent_pressure_boundary_condition``.
 Driver
@@ -35,10 +35,7 @@ from ..fields.mixed_velocity_boundary import (
 
 
 class CouplerInterfaceMixin:
-    """Coupler-facing methods.  Expects the host to provide ``mesh_data``,
-    ``geo_data``, ``boundaries``, ``velocity``, ``kinematic_pressure``, ``setup``,
-    ``registered_fields``
-    and ``time_step_size`` (all set up by ``FVMSolver.__init__``)."""
+    """Field gathers and boundary setters of :class:`~openonda.fvm.FVMSolver`."""
 
     parallel: Any
     mesh_data: dict[str, Any]
@@ -46,11 +43,12 @@ class CouplerInterfaceMixin:
     boundaries: list[dict[str, Any]]
     velocity: np.ndarray
     kinematic_pressure: np.ndarray
-    setup: Any
+    _configuration: Any
     registered_fields: dict[str, np.ndarray]
     time_step_size: float
     _accepted_time_step_size: float
     _coupling_patch_ids_by_rank: dict[str, Any]
+    _coupling_cell_ids_by_rank: dict[str, Any]
 
     def _velocity_gradient(self) -> np.ndarray:
         raise NotImplementedError
@@ -58,14 +56,11 @@ class CouplerInterfaceMixin:
     def _root_view(
         self, values: np.ndarray, *, trailing_shape: tuple[int, int] | tuple[int] = ()
     ) -> np.ndarray:
-        parallel = getattr(self, "parallel", None)
-        if parallel is None:
-            return np.ascontiguousarray(values, dtype=np.float64)
-        return parallel.root_view(values, trailing_shape=trailing_shape)
+        return self.parallel.root_view(values, trailing_shape=trailing_shape)
 
     def _broadcast_root_value(self, values: np.ndarray | None) -> np.ndarray:
-        parallel = getattr(self, "parallel", None)
-        if parallel is None or not parallel.is_parallel:
+        parallel = self.parallel
+        if not parallel.is_parallel:
             return values
         rank_field_data = values if parallel.is_root else None
         return parallel.bcast(rank_field_data, root=0)
@@ -74,21 +69,18 @@ class CouplerInterfaceMixin:
         self, cache_name: str, local_ids: np.ndarray
     ) -> list[np.ndarray] | tuple[()]:
         """Gather immutable partition IDs once and reuse the rank layout."""
-        cached = getattr(self, cache_name, None)
+        cached = self._coupling_cell_ids_by_rank.get(cache_name)
         if cached is None:
             gathered = self.parallel.comm.gather(np.asarray(local_ids, dtype=np.int64), root=0)
             cached = gathered if self.parallel.is_root else ()
-            setattr(self, cache_name, cached)
+            self._coupling_cell_ids_by_rank[cache_name] = cached
         return cached
 
     def _cached_patch_ids(
         self, patch_name: str, local_ids: np.ndarray
     ) -> list[np.ndarray] | tuple[()]:
         """Gather an immutable face layout once per coupling patch."""
-        cache = getattr(self, "_coupling_patch_ids_by_rank", None)
-        if cache is None:
-            cache = {}
-            self._coupling_patch_ids_by_rank = cache
+        cache = self._coupling_patch_ids_by_rank
         if patch_name not in cache:
             gathered = self.parallel.comm.gather(np.asarray(local_ids, dtype=np.int64), root=0)
             cache[patch_name] = gathered if self.parallel.is_root else ()
@@ -98,8 +90,8 @@ class CouplerInterfaceMixin:
         self, values: np.ndarray, *, trailing_shape: tuple[int, int] | tuple[int] = ()
     ) -> np.ndarray:
         """Gather an owned-cell field into global cell-ID order on rank zero."""
-        parallel = getattr(self, "parallel", None)
-        if parallel is None or not parallel.is_partitioned:
+        parallel = self.parallel
+        if not parallel.is_partitioned:
             return self._root_view(values, trailing_shape=trailing_shape)
 
         partition = parallel.partition
@@ -173,8 +165,8 @@ class CouplerInterfaceMixin:
         self, patch_name: str, values: np.ndarray, *, trailing_shape: tuple[int] = ()
     ) -> np.ndarray:
         """Gather a physical patch field into global face-ID order on rank zero."""
-        parallel = getattr(self, "parallel", None)
-        if parallel is None or not parallel.is_partitioned:
+        parallel = self.parallel
+        if not parallel.is_partitioned:
             return self._root_view(values, trailing_shape=trailing_shape)
 
         _, global_ids, _ = self._local_patch_face_ids(patch_name)
@@ -217,8 +209,8 @@ class CouplerInterfaceMixin:
         self, patch_name: str, values: np.ndarray | None, *, trailing_shape: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Scatter a rank-zero, global-ID-ordered patch field to local faces."""
-        parallel = getattr(self, "parallel", None)
-        if parallel is None or not parallel.is_partitioned:
+        parallel = self.parallel
+        if not parallel.is_partitioned:
             values = self._broadcast_root_value(values)
             return np.ascontiguousarray(
                 np.asarray(values, dtype=np.float64).reshape(-1, *trailing_shape)
@@ -291,7 +283,7 @@ class CouplerInterfaceMixin:
         return b, slice(start, start + nf)
 
     # Getters: cell fields.
-    def get_wall_surface_triangles(self) -> np.ndarray:
+    def gather_wall_surface_triangles(self) -> np.ndarray:
         """Collect body-fitted wall triangles on root, empty on other ranks.
 
         Triangles have shape ``(N, 3, 3)`` and normals out of the fluid.
@@ -299,8 +291,7 @@ class CouplerInterfaceMixin:
         fan follows the native polygon geometry, including hanging nodes.
         This getter is collective, including ranks without wall faces.
         """
-        resolved = getattr(self, "_resolved_setup", self.setup)
-        wall_names = {bc.name for bc in resolved.boundaries if bc.mesh_type == "wall"}
+        wall_names = {bc.name for bc in self._configuration.boundaries if bc.mesh_type == "wall"}
         vertices = np.asarray(self.mesh_data["vertex_position"], dtype=np.float64)
         triangles = []
         for boundary in self.boundaries:
@@ -318,15 +309,15 @@ class CouplerInterfaceMixin:
                     if np.linalg.norm(np.cross(triangle[1] - centre, triangle[2] - centre)) > 0.0:
                         triangles.append(triangle)
         local = np.asarray(triangles, dtype=np.float64).reshape(-1, 3, 3)
-        parallel = getattr(self, "parallel", None)
-        if parallel is None or not parallel.is_partitioned:
+        parallel = self.parallel
+        if not parallel.is_partitioned:
             return self._root_view(local, trailing_shape=(3, 3))
         gathered = parallel.comm.gather(local, root=0)
         if parallel.is_root:
             return np.concatenate(gathered, axis=0)
         return np.empty((0, 3, 3), dtype=np.float64)
 
-    def get_cell_centre_coordinates(self) -> np.ndarray:
+    def gather_cell_centre_coordinates(self) -> np.ndarray:
         """Return cell-centre coordinates ``(nCells, 3)``, C-contiguous.
 
         Returns:
@@ -335,7 +326,7 @@ class CouplerInterfaceMixin:
         n = self.mesh_data["n_cells"]
         return self._gather_owned_cells(self.geo_data["cell_centre"][:n], trailing_shape=(3,))
 
-    def get_cell_volume(self) -> np.ndarray:
+    def gather_cell_volume(self) -> np.ndarray:
         """Return cell volumes ``(nCells,)``, C-contiguous.
 
         Returns:
@@ -343,7 +334,7 @@ class CouplerInterfaceMixin:
         """
         return self._gather_owned_cells(self.geo_data["cell_volume"])
 
-    def get_velocity_field(self) -> np.ndarray:
+    def gather_velocity_field(self) -> np.ndarray:
         """Return the current velocity field ``(nCells, 3)``, C-contiguous.
 
         Returns:
@@ -352,7 +343,7 @@ class CouplerInterfaceMixin:
         n = self.mesh_data["n_cells"]
         return self._gather_owned_cells(self.velocity[:n], trailing_shape=(3,))
 
-    def get_velocity_field_into(self, out: np.ndarray) -> np.ndarray:
+    def gather_velocity_field_into(self, out: np.ndarray) -> np.ndarray:
         """Copy the velocity field into a pre-allocated buffer.
 
         Avoids an extra allocation when the caller already owns the
@@ -367,7 +358,7 @@ class CouplerInterfaceMixin:
         Raises:
             ValueError: If *out* has the wrong dtype, shape, or memory layout.
         """
-        values = self.get_velocity_field()
+        values = self.gather_velocity_field()
         n = values.shape[0]
         arr = np.asarray(out)
         if arr.dtype != np.float64 or arr.shape != (n, 3) or not arr.flags.c_contiguous:
@@ -376,12 +367,12 @@ class CouplerInterfaceMixin:
             np.copyto(arr, values)
         return arr
 
-    def get_pressure_field(self) -> np.ndarray:
+    def gather_pressure_field(self) -> np.ndarray:
         """Return kinematic pressure at cell centres ``(nCells,)``."""
         n = self.mesh_data["n_cells"]
         return self._gather_owned_cells(np.asarray(self.kinematic_pressure, dtype=np.float64)[:n])
 
-    def get_velocity_gradient_field(self) -> np.ndarray:
+    def gather_velocity_gradient_field(self) -> np.ndarray:
         """Return the velocity gradient at cell centres with shape ``(nCells, 3, 3)``."""
         if not self.parallel.is_partitioned and not self.parallel.is_root:
             return np.empty((0, 3, 3), dtype=np.float64)
@@ -392,9 +383,9 @@ class CouplerInterfaceMixin:
             trailing_shape=(3, 3),
         )
 
-    def get_velocity_gradient_field_into(self, out: np.ndarray) -> np.ndarray:
+    def gather_velocity_gradient_field_into(self, out: np.ndarray) -> np.ndarray:
         """Copy the velocity gradient into a C-contiguous ``(nCells, 3, 3)`` buffer."""
-        values = self.get_velocity_gradient_field()
+        values = self.gather_velocity_gradient_field()
         n = values.shape[0]
         arr = np.asarray(out)
         if arr.dtype != np.float64 or arr.shape != (n, 3, 3) or not arr.flags.c_contiguous:
@@ -404,7 +395,7 @@ class CouplerInterfaceMixin:
         return arr
 
     # Getters: boundary-face geometry (per patch).
-    def get_boundary_face_centre_coordinates(self, patch_name: str) -> np.ndarray:
+    def gather_boundary_face_centre_coordinates(self, patch_name: str) -> np.ndarray:
         """Return face-centre coordinates ``(nFaces, 3)`` for a patch.
 
         Args:
@@ -423,7 +414,7 @@ class CouplerInterfaceMixin:
             trailing_shape=(3,),
         )
 
-    def get_boundary_face_area(self, patch_name: str) -> np.ndarray:
+    def gather_boundary_face_area(self, patch_name: str) -> np.ndarray:
         """Return face area magnitudes ``(nFaces,)`` for a patch.
 
         Args:
@@ -441,7 +432,7 @@ class CouplerInterfaceMixin:
             np.linalg.norm(self.geo_data["face_area_vector"][face_slice], axis=1),
         )
 
-    def get_boundary_face_normal(self, patch_name: str) -> np.ndarray:
+    def gather_boundary_face_normal(self, patch_name: str) -> np.ndarray:
         """Return unit face normals ``(nFaces, 3)`` for a patch.
 
         Normals point outward from the domain.
@@ -460,7 +451,7 @@ class CouplerInterfaceMixin:
         mag = np.linalg.norm(sf, axis=1, keepdims=True)
         return self._gather_patch_faces(patch_name, sf / (mag + 1e-30), trailing_shape=(3,))
 
-    def get_boundary_face_velocity(self, patch_name: str) -> np.ndarray:
+    def gather_boundary_face_velocity(self, patch_name: str) -> np.ndarray:
         """Return the actual face-centred velocity stored for a boundary patch."""
         if self.parallel.is_partitioned:
             boundary, _, face_slice = self._local_patch_face_ids(patch_name)
@@ -479,14 +470,15 @@ class CouplerInterfaceMixin:
             local = self.velocity[first : first + boundary["n_faces"]]
         return self._gather_patch_faces(patch_name, local, trailing_shape=(3,))
 
-    def n_procs(self) -> int:
-        """Number of ranks participating in the native FVM solve."""
-        return int(getattr(getattr(self, "parallel", None), "size", 1))
+    @property
+    def n_ranks(self) -> int:
+        """Number of MPI ranks of the FVM solve."""
+        return int(self.parallel.size)
 
     # Setters: registered volume fields (fvOptions source inputs).
     # Setters: scalar parameters.
     # Setters: velocity boundary conditions.
-    def set_dirichlet_velocity_boundary_condition_vec(
+    def set_dirichlet_velocity_boundary_condition(
         self, prescribed_velocity: np.ndarray, patch_name: str
     ) -> None:
         """Impose a Dirichlet velocity from an ``(N, 3)`` boundary array."""
@@ -499,7 +491,7 @@ class CouplerInterfaceMixin:
                 f"Dirichlet data for patch {patch_name!r} must be finite with shape "
                 f"({b['n_faces']}, 3)"
             )
-        b["velocity_type"] = "fixedValue"
+        b["velocity_type"] = "fixed_value"
         b["velocity_value_field"] = field
         b.pop("_fixed_freestream_outflow", None)
         b.pop("_freestream_outflow", None)
@@ -538,7 +530,7 @@ class CouplerInterfaceMixin:
         removed_normal_component = np.einsum("ij,ij->i", gradient_field, normals)
         gradient_field = gradient_field - removed_normal_component[:, np.newaxis] * normals
 
-        b["velocity_type"] = "normalValueTangentialGradient"
+        b["velocity_type"] = "normal_value_tangential_gradient"
         b["normal_velocity_field"] = normal_field
         b["tangential_gradient_field"] = gradient_field
         b["max_removed_tangential_gradient_normal_component"] = (
@@ -554,7 +546,7 @@ class CouplerInterfaceMixin:
         self._publish_state()
 
     def set_flux_consistent_pressure_boundary_condition(self, patch_name: str) -> None:
-        """Pair a prescribed velocity flux with native ``fixedFluxPressure``.
+        """Pair a prescribed velocity flux with native ``fixed_flux_pressure``.
 
         Reapplying the native condition retains its accepted pressure increment
         for the next momentum predictor. The pressure correction recomputes it
@@ -564,17 +556,15 @@ class CouplerInterfaceMixin:
         b = self._optional_patch(patch_name)
         if b is None:
             return
-        retain_native_history = b.get("pressure_type") == "fixedFluxPressure" and not b.get(
+        retain_native_history = b.get("pressure_type") == "fixed_flux_pressure" and not b.get(
             "fixed_flux_pressure_external", False
         )
-        b["pressure_type"] = "fixedFluxPressure"
+        b["pressure_type"] = "fixed_flux_pressure"
         b.pop("fixed_flux_pressure_external", None)
         if not retain_native_history:
             b.pop("fixed_flux_pressure_delta", None)
         b.pop("fixed_gradient_delta", None)
-        invalidate = getattr(self, "_invalidate_derived_fields", None)
-        if invalidate is not None:
-            invalidate()
+        self._invalidate_derived_fields()
 
     # Helper.
     def _write_patch_ghosts(self, boundary: dict[str, object], field: np.ndarray) -> None:

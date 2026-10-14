@@ -87,9 +87,9 @@ def _emit_warning(log_sink: "Logging | None", message: str, *args: object) -> No
     """Route a user-facing warning through the active FVM logger."""
     text = message % args if args else message
     if log_sink is None:
-        from ..io.logging import emit_standalone_report
+        from ..io.logging import standalone_report
 
-        emit_standalone_report("warnings", (text, ""), warning=True)
+        standalone_report("warnings", (text, ""), warning=True)
     else:
         log_sink.warning(text)
 
@@ -97,7 +97,7 @@ def _emit_warning(log_sink: "Logging | None", message: str, *args: object) -> No
 def _emit_debug(log_sink: "Logging | None", message: str, *args: object) -> None:
     """Route a debug-mode note through the active FVM logger."""
     if log_sink is not None:
-        log_sink.debug_message(message, *args)
+        log_sink.debug(message, *args)
 
 
 class LinearSolveError(RuntimeError):

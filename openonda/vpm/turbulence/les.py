@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 @ti.data_oriented
-class ParticlesLES:
+class ParticleLES:
     """Evaluate the configured VPM sub-grid eddy-viscosity model.
 
     The model (:class:`SmagorinskyModel` or :class:`SigmaModel`) writes eddy
@@ -36,14 +36,14 @@ class ParticlesLES:
         self,
         model_name: str,
         max_n_particles: int = MAX_N_PARTICLES,
-        particle_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "gaussian",
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
         filter_width: float | None = None,
         sigma_coefficient: float = SIGMA_CONSTANT,
         consistency_angle: float | None = None,
-        subgrid_transport: str = "CORE_SPREADING",
+        subgrid_transport: str = "core_spreading",
         particle_dtype: ti.types = ti.f32,
     ) -> None:
         """Create a particle LES model and allocate its reduction fields.
@@ -51,11 +51,10 @@ class ParticlesLES:
         Parameters
         ----------
         model_name : str
-            Registered model name: ``"SMAGORINSKY"``, ``"LES_SMAGORINSKY"`` or
-            ``"LES_SIGMA"``.
+            Registered model name: ``"smagorinsky"`` or ``"sigma"``.
         max_n_particles : int, default=MAX_N_PARTICLES
             Particle capacity used for device reductions.
-        particle_kernel : str, default="GAUSSIAN"
+        particle_kernel : str, default="gaussian"
             VPM radial kernel used by the wrapped model.
         smagorinsky_coefficient : float, default=SMAGORINSKY_CONSTANT
             Dimensionless Smagorinsky coefficient.
@@ -69,7 +68,7 @@ class ParticlesLES:
             Dimensionless sigma-model constant.
         consistency_angle : float or None, default=None
             Switch reference angle ``theta_0`` in degrees; None disables the switch.
-        subgrid_transport : {'CORE_SPREADING', 'STRENGTH_EXCHANGE'}
+        subgrid_transport : {'core_spreading', 'strength_exchange'}
             How the eddy viscosity acts on the particles.
         particle_dtype : taichi scalar type, default=ti.f32
             Precision of the particle fields, for the exchange work fields.
@@ -79,17 +78,17 @@ class ParticlesLES:
         ValueError
             If ``model_name`` is not supported.
         """
-        self.model_name = model_name.upper()
+        self.model_name = model_name.lower()
         self.max_n_particles = max_n_particles
-        self.particle_kernel = particle_kernel.upper()
-        if self.model_name not in {"SMAGORINSKY", "LES_SMAGORINSKY", "LES_SIGMA"}:
+        self.particle_kernel = particle_kernel.lower()
+        if self.model_name not in {"smagorinsky", "sigma"}:
             raise ValueError(f"Unknown LES model: {model_name!r}")
-        self.subgrid_transport = subgrid_transport.upper()
-        if self.subgrid_transport not in {"CORE_SPREADING", "STRENGTH_EXCHANGE"}:
+        self.subgrid_transport = subgrid_transport.lower()
+        if self.subgrid_transport not in {"core_spreading", "strength_exchange"}:
             raise ValueError(f"Unknown sub-grid transport: {subgrid_transport!r}")
         self.consistency_angle = consistency_angle
 
-        if self.model_name == "LES_SIGMA":
+        if self.model_name == "sigma":
             self.model = SigmaModel(
                 max_n_particles=max_n_particles,
                 sigma_coefficient=sigma_coefficient,
@@ -107,7 +106,7 @@ class ParticlesLES:
             )
         self.strength_exchange = (
             StrengthExchange(max_n_particles, particle_dtype)
-            if self.subgrid_transport == "STRENGTH_EXCHANGE"
+            if self.subgrid_transport == "strength_exchange"
             else None
         )
 
@@ -139,15 +138,15 @@ class ParticlesLES:
         cls,
         turbulence_config: object,
         max_n_particles: int = MAX_N_PARTICLES,
-        particle_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "gaussian",
         accumulator_dtype: ti.types = ti.f32,
-    ) -> "ParticlesLES":
+    ) -> "ParticleLES":
         """Construct LES from a configuration-like object."""
         return cls(
             sigma_coefficient=getattr(turbulence_config, "sigma_coefficient", SIGMA_CONSTANT),
             consistency_angle=getattr(turbulence_config, "consistency_angle", None),
-            subgrid_transport=getattr(turbulence_config, "subgrid_transport", "CORE_SPREADING"),
-            model_name=getattr(turbulence_config, "model", "LES_SMAGORINSKY"),
+            subgrid_transport=getattr(turbulence_config, "subgrid_transport", "core_spreading"),
+            model_name=getattr(turbulence_config, "model", "smagorinsky"),
             max_n_particles=max_n_particles,
             particle_kernel=particle_kernel,
             smagorinsky_coefficient=getattr(

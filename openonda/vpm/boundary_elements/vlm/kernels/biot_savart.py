@@ -1,11 +1,6 @@
 """
 Biot-Savart @ti.func kernels for the VLM: bound, semi-infinite, horseshoe, and
 vortex-ring induced velocity.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import taichi as ti

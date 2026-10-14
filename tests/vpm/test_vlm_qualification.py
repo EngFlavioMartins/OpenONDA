@@ -12,7 +12,9 @@ import pytest
 import pyvista as pv
 import taichi as ti
 
-from openonda.vpm.boundary_elements.vlm.config import VLMSetup, VLMSurfaceSetup
+from openonda.core.output_events import OutputEvent
+from openonda.vpm import EverySteps, VLMSampler
+from openonda.vpm.boundary_elements.vlm.config import VLMConfig, VLMSurface
 from openonda.vpm.boundary_elements.vlm.coupling.kinematics import (
     SmoothRampVLM,
     TranslatingVLM,
@@ -33,9 +35,8 @@ from openonda.vpm.boundary_elements.vlm.solver.restart import (
     write_vlm_restart,
 )
 from openonda.vpm.boundary_elements.vlm.solver.vlm_solver import VLMSolver
-from openonda.vpm.config.output import Backup, Samplers
-from openonda.vpm.io.sampler import OutputEvent, OutputManager
-from openonda.vpm.io.sampling import EverySteps, VLMSampler
+from openonda.vpm.config.output import Samplers
+from openonda.vpm.sampling import SamplerManager
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -108,9 +109,9 @@ def _plate(angle=5.0, motion=None, placement=None, name=None, nc=8, ns=14, wake_
         n_chordwise_panels=nc,
         n_spanwise_panels=ns,
     )
-    setup = VLMSurfaceSetup(plate, kinematics=motion, name=name, translation=placement)
+    setup = VLMSurface(plate, kinematics=motion, name=name, translation=placement)
     solver = VLMSolver(
-        VLMSetup(
+        VLMConfig(
             surfaces=(setup,),
             dtype="f64",
             freestream_velocity=(10.0, 0.0, 0.0),
@@ -276,7 +277,7 @@ def test_coupled_bound_strength_includes_the_on_wing_trailing_legs(tmp_path):
         history,
         step=1,
         time=0.1,
-        case_dir=str(tmp_path),
+        samples_dir=tmp_path,
     )
     assert history["vlm_bound_vortex_strength_y"] == pytest.approx([closed[1]])
     assert history["vlm_wake_vortex_strength_y"] == pytest.approx([-closed[1]])
@@ -381,7 +382,7 @@ def test_shedding_closes_a_deformed_previous_wake(body_rotation):
 @pytest.mark.parametrize("overlap", [0, -1, float("inf"), float("nan")])
 def test_wake_overlap_is_validated_by_the_solver_api(overlap):
     with pytest.raises(ValueError, match="wake_core_overlap"):
-        VLMSetup(surfaces=(VLMSurfaceSetup(create_flat_plate()),), wake_core_overlap=overlap)
+        VLMConfig(surfaces=(VLMSurface(create_flat_plate()),), wake_core_overlap=overlap)
 
 
 def test_steady_plate_lift_loading_and_drag_match_lifting_line():
@@ -501,38 +502,39 @@ def test_bicgstab_checks_relative_residual_even_for_small_rhs(scale):
         solver.solve(matrix, rhs, x, 3, max_iterations=0, tolerance=1e-10)
 
 
-def test_vlm_sampler_uses_field_samples_path_and_resumable_polydata_index(tmp_path):
-    solver = _plate(nc=2, ns=3)
-    _solve_steady(solver, [10.0, 0.0, 0.0])
-    samples = Samplers((VLMSampler(schedule=EverySteps(1)),), "case_a")
-    runtime = SimpleNamespace(
-        case_dir=tmp_path,
-        _backup_path=tmp_path / "solution",
+def _sampler_runtime(tmp_path, solver, samples):
+    return SimpleNamespace(
+        case=SimpleNamespace(samplers=Samplers(samples)),
+        samples_dir=tmp_path / "samples/case_a",
         step=1,
         time=0.1,
         time_step_size=0.1,
-        case=SimpleNamespace(samplers=samples, backup=Backup()),
         vlm_solver=solver,
+        _restart_loaded=False,
+        _restart_output_time=None,
     )
-    manager = OutputManager(runtime)
-    manager.dispatch(OutputEvent.ACCEPTED_STEP)
+
+
+def test_vlm_sampler_uses_field_samples_path_and_resumable_polydata_index(tmp_path):
+    solver = _plate(nc=2, ns=3)
+    _solve_steady(solver, [10.0, 0.0, 0.0])
+    runtime = _sampler_runtime(tmp_path, solver, (VLMSampler(schedule=EverySteps(1)),))
+    SamplerManager(runtime).dispatch(OutputEvent.accepted_step)
     folder = tmp_path / "samples/case_a"
     assert (folder / "vlm_000001.vtp").is_file()
     assert not (tmp_path / "solution/vlm_000001.vtp").exists()
     runtime.step = 2
     runtime.time = 0.2
     runtime._restart_loaded = True
-    OutputManager(runtime).dispatch(OutputEvent.ACCEPTED_STEP)
+    SamplerManager(runtime).dispatch(OutputEvent.accepted_step)
     assert (folder / "vlm.pvd").read_text().count("<DataSet") == 2
-    import pyvista as pv
-
     vtk = pv.read(folder / "vlm_000002.vtp")
     expected = 2 * vtk["circulation"] / (10 * vtk["panel_chord"])
     np.testing.assert_allclose(vtk["circulation_pressure_jump_proxy"], expected)
     assert vtk.field_data["time"][0] == 0.2
 
 
-def test_vlm_sampler_and_backup_use_distinct_field_series(tmp_path, monkeypatch):
+def test_vlm_sampler_and_field_sampler_keep_distinct_series(tmp_path):
     solver = _plate(nc=2, ns=3)
     _solve_steady(solver, [10.0, 0.0, 0.0])
 
@@ -541,72 +543,27 @@ def test_vlm_sampler_and_backup_use_distinct_field_series(tmp_path, monkeypatch)
         schedule = EverySteps(1)
         vtk_extension = ".vts"
 
-        def save_vtp(self, _solver, filepath, time=None):
-            filepath.write_text(f"time={time}", encoding="utf-8")
+        def write_vtk(self, _solver, path, time):
+            path.write_text(f"time={time}", encoding="utf-8")
+            return path
 
-    samples = Samplers((VLMSampler(schedule=EverySteps(2)), FieldSnapshot()), "case_a")
-    runtime = SimpleNamespace(
-        case_dir=tmp_path,
-        _backup_path=tmp_path / "native_solution",
-        step=2,
-        time=0.2,
-        time_step_size=0.1,
-        case=SimpleNamespace(
-            samplers=samples,
-            backup=Backup(interval_steps=3),
-        ),
-        vlm_solver=solver,
+    runtime = _sampler_runtime(
+        tmp_path, solver, (VLMSampler(schedule=EverySteps(2)), FieldSnapshot())
     )
-    calls = []
-    original_save_results = solver.save_results
+    manager = SamplerManager(runtime)
+    for step in (2, 3, 4):
+        runtime.step = step
+        runtime.time = 0.1 * step
+        manager.dispatch(OutputEvent.accepted_step)
 
-    def counted_save_results(*args, **kwargs):
-        calls.append((runtime.step, runtime.time))
-        return original_save_results(*args, **kwargs)
-
-    monkeypatch.setattr(solver, "save_results", counted_save_results)
-
-    def write_backup():
-        from openonda.vpm.io.vlm_backup import write_vlm_backup
-
-        write_vlm_backup(
-            runtime.vlm_solver,
-            runtime._backup_path,
-            step=runtime.step,
-            time=runtime.time,
-        )
-
-    runtime._write_backup = write_backup
-    manager = OutputManager(runtime)
-    manager.dispatch(OutputEvent.ACCEPTED_STEP)
-    runtime.step = 3
-    runtime.time = 0.3
-    manager.dispatch(OutputEvent.ACCEPTED_STEP)
-    runtime.step = 4
-    runtime.time = 0.4
-    manager.dispatch(OutputEvent.ACCEPTED_STEP)
-
-    folder = tmp_path / "native_solution"
-    sample_folder = tmp_path / "samples/case_a"
-    assert calls == [(2, 0.2), (3, 0.3), (4, 0.4)]
-    assert sorted(path.name for path in (folder / "vlm").glob("vlm_*.vtp")) == ["vlm_000003.vtp"]
-    assert (folder / "vlm.pvd").read_text().count("<DataSet") == 1
-    assert pv.get_reader(folder / "vlm.pvd").time_values == [0.3]
-    assert sorted(path.name for path in sample_folder.glob("vlm_*.vtp")) == [
+    folder = tmp_path / "samples/case_a"
+    assert sorted(path.name for path in folder.glob("vlm_*.vtp")) == [
         "vlm_000002.vtp",
         "vlm_000004.vtp",
     ]
-    assert pv.get_reader(sample_folder / "vlm.pvd").time_values == [0.2, 0.4]
-    from openonda.vpm.io.vlm_backup import write_vlm_backup
-
-    write_vlm_backup(runtime.vlm_solver, folder, step=4, time=0.4)
-    assert pv.get_reader(folder / "vlm.pvd").time_values == [0.3, 0.4]
-    with pytest.raises(ValueError, match="filename/time conflicts"):
-        write_vlm_backup(runtime.vlm_solver, folder, step=5, time=0.4)
-    assert list((tmp_path / "samples").rglob("vlm_*.vtp"))
-    assert list((tmp_path / "samples").rglob("vlm.pvd"))
-    assert all((tmp_path / f"samples/case_a/wake_{step:06d}.vts").is_file() for step in (2, 3, 4))
-    assert (tmp_path / "samples/case_a/wake.pvd").read_text().count("<DataSet") == 3
+    assert pv.get_reader(folder / "vlm.pvd").time_values == pytest.approx([0.2, 0.4])
+    assert all((folder / f"wake_{step:06d}.vts").is_file() for step in (2, 3, 4))
+    assert (folder / "wake.pvd").read_text().count("<DataSet") == 3
 
 
 def test_vlm_restart_restores_motion_circulation_and_next_solve(tmp_path):
@@ -674,10 +631,10 @@ def test_multisurface_loading_uses_wing_local_segment_ids_and_reports_output_fai
         n_spanwise_panels=3,
     )
     solver = VLMSolver(
-        VLMSetup(
+        VLMConfig(
             surfaces=(
-                VLMSurfaceSetup(plate, name="front"),
-                VLMSurfaceSetup(plate, name="rear", translation=(5.0, 0.0, 0.0)),
+                VLMSurface(plate, name="front"),
+                VLMSurface(plate, name="rear", translation=(5.0, 0.0, 0.0)),
             ),
             dtype="f64",
             freestream_velocity=(10.0, 0.0, 0.0),

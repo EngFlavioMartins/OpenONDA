@@ -18,7 +18,7 @@ from setup import ROTOR_RADIUS, WAKE_PLANE_DIAMETERS
 ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 FIGURES_DIR = CASE_DIR / "figures"
-SOLUTION_DIR = CASE_DIR / "solution"
+SOLUTION_DIR = CASE_DIR / "solution" / "rotor"
 OPERATING_WINDOW_REVOLUTIONS = 5
 FIELD_STATIONARITY_COMPARISON_REVOLUTIONS = 5
 REQUIRED_PLANE_NAMES = tuple((f"wake_{distance}D" for distance in WAKE_PLANE_DIAMETERS))
@@ -66,7 +66,7 @@ def rotor_inputs():
         blade=blade,
         density=vlm["density"],
         n_blades=len(vlm["surfaces"]),
-        samples_dir=CASE_DIR / "samples" / configuration["samplers"]["directory"],
+        samples_dir=CASE_DIR / "samples" / configuration["variant"],
         freestream_speed=speed,
         angular_velocity=omega,
         rotor_radius=radius,

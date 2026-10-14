@@ -20,7 +20,6 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.vpm import Backup, Samplers
 
 from assets.generate_blade import create_rotor_blade, save_blade
 
@@ -44,7 +43,7 @@ DEGREES_PER_STEP = 3.75
 TIME_STEP_SIZE = np.deg2rad(DEGREES_PER_STEP) / ANGULAR_VELOCITY  # [s]
 STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
 NUMBER_OF_REVOLUTIONS = 24
-N_STEPS = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION
+END_TIME = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION * TIME_STEP_SIZE  # [s]
 SAMPLE_INTERVAL_TIME = 12 * TIME_STEP_SIZE  # eight field snapshots per revolution
 BACKUP_INTERVAL_TIME = 3 * TIME_STEP_SIZE  # 32 VPM/VLM backups per revolution
 
@@ -82,9 +81,9 @@ def run() -> None:
         ("rotor_2", [-ARM_LENGTH, -ARM_LENGTH, 0.0], 1.0),
         ("rotor_3", [ARM_LENGTH, -ARM_LENGTH, 0.0], -1.0),
     )
-    vlm_setup = vpm.VLMSetup(
+    vlm_setup = vpm.VLMConfig(
         surfaces=tuple(
-            vpm.VLMSurfaceSetup(
+            vpm.VLMSurface(
                 str(counterclockwise_file if direction > 0 else clockwise_file),
                 name=f"{name}_blade_{blade_index}",
                 kinematics=vpm.RotatingVLM(
@@ -105,8 +104,11 @@ def run() -> None:
     )
 
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
+    backup_schedule = vpm.EverySteps(round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE))
     case = vpm.VPMCase(
         name=CASE_NAME,
+        directory=TUTORIAL_DIR,
+        variant=CASE_NAME,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             vlm=vlm_setup,
@@ -114,8 +116,8 @@ def run() -> None:
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             induction=vpm.FMMInduction(stretching_scheme="transposed"),
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(),
-            particle_kernel="WINCKELMANS",
+            turbulence=vpm.TurbulenceConfig.smagorinsky(),
+            particle_kernel="winckelmans",
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
             stabilization=vpm.StabilizationConfig(
                 filament_refinement=vpm.FilamentRefinementConfig.adaptive(interval_steps=1),
@@ -123,12 +125,9 @@ def run() -> None:
             ),
             max_n_particles=500_000,
         ),
-        backup=Backup(
-            interval_steps=round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE),
-            directory="solution",
-            log_directory="solution",
-        ),
-        samplers=Samplers(
+        run=vpm.RunPlan(end_time=END_TIME, state_limit_action="stop"),
+        output=vpm.Output(schedule=backup_schedule),
+        samplers=vpm.Samplers(
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
                 *(
@@ -144,13 +143,8 @@ def run() -> None:
                     for plane_name, height in WAKE_PLANES
                 ),
             ),
-            directory=CASE_NAME,
         ),
-        run=vpm.RunPlan(
-            steps=N_STEPS,
-            state_limit_action="STOP",
-        ),
-        directory=TUTORIAL_DIR,
+        backup=vpm.Backup(schedule=backup_schedule),
     )
     vpm.VPMSolver(case).run(start_from=START_FROM)
 

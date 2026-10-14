@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -15,14 +15,13 @@ import numpy as np
 from .storage import require_free_space
 
 if TYPE_CHECKING:
-    from ..config.types import FVMSetup
     from ..core.solver import FVMSolver
 
-FORMAT_VERSION = 10
+FORMAT_VERSION = 11
 
 
 @dataclass(frozen=True)
-class RestartState:
+class FieldRestartState:
     """Fully validated restart data, detached from a live solver."""
 
     fields: dict[str, np.ndarray]
@@ -131,39 +130,12 @@ def _hash(value: dict[str, object]) -> str:
     return digest.hexdigest()
 
 
-def _setup_dict(setup: FVMSetup, *, numerical_only: bool = True) -> dict:
-    from openonda.fvm.sampling.base import sampler_to_dict
-
-    data = asdict(setup)
-    if numerical_only:
-        # Output cadence, log settings, restart location and the requested
-        # horizon are run controls.  They may change when extending or
-        # relocating a run without changing the equations represented by a
-        # numerical restart.
-        data.pop("output", None)
-        data.pop("logging", None)
-        data.pop("backup", None)
-        data.pop("samplers", None)
-        time_data = dict(data.get("time") or {})
-        time_data.pop("end_time", None)
-        time_data.pop("output_schedule", None)
-        data["time"] = time_data
-    if not numerical_only and getattr(setup, "samplers", ()):
-        data["samplers"] = [sampler_to_dict(sampler) for sampler in setup.samplers]
-    return data
+def configuration_digest(solver: FVMSolver) -> str:
+    """Return the SHA-256 digest of the settings a restart must match."""
+    return _hash(solver._configuration.restart_configuration())
 
 
-def _solver_setup(solver: FVMSolver) -> FVMSetup:
-    """Return the detached setup snapshot validated by the solver."""
-    return getattr(solver, "_resolved_setup", solver.setup)
-
-
-def config_hash(setup: FVMSetup) -> str:
-    """Return a deterministic hash of equation-affecting FVM controls."""
-    return _hash(_setup_dict(setup, numerical_only=True))
-
-
-def mesh_hash(mesh_data: dict[str, object]) -> str:
+def mesh_digest(mesh_data: dict[str, object]) -> str:
     """Hash the mesh topology, coordinates, and stable patch names and types."""
     patches = [
         {
@@ -194,13 +166,9 @@ def save_backup(solver: FVMSolver, path: Path | str) -> Path:
 
     metadata = {
         "format_version": FORMAT_VERSION,
-        "config_hash": config_hash(_solver_setup(solver)),
-        "mesh_hash": mesh_hash(solver.mesh_data),
-        "kinematic_viscosity": float(
-            getattr(
-                solver, "_kinematic_viscosity", _solver_setup(solver).transport.kinematic_viscosity
-            )
-        ),
+        "configuration_sha256": configuration_digest(solver),
+        "mesh_sha256": mesh_digest(solver.mesh_data),
+        "kinematic_viscosity": float(solver._kinematic_viscosity),
     }
     arrays = {
         "metadata": np.asarray(json.dumps(metadata, sort_keys=True)),
@@ -280,7 +248,7 @@ def validate_restart_state(
     state: dict,
     *,
     kinematic_viscosity: float | None = None,
-) -> RestartState:
+) -> FieldRestartState:
     """Validate a decoded backup without mutating *solver*.
 
     This is intentionally shared by serial and partitioned validation.  A
@@ -323,7 +291,7 @@ def validate_restart_state(
         eddy_viscosity.shape == (0,)
         and step == 0
         and n_committed == 0
-        and time == float(solver._time_config.start_time)
+        and time == float(solver._configuration.run.start_time)
     ):
         # Before the first momentum solve LES viscosity has not been computed.
         # Preserve that native initial state; accepted steps must carry it.
@@ -351,18 +319,14 @@ def validate_restart_state(
         raise ValueError("Backup max_courant_number must be finite and non-negative")
 
     if kinematic_viscosity is None:
-        kinematic_viscosity = float(
-            getattr(
-                solver, "_kinematic_viscosity", _solver_setup(solver).transport.kinematic_viscosity
-            )
-        )
+        kinematic_viscosity = float(solver._kinematic_viscosity)
     if not np.isfinite(kinematic_viscosity) or kinematic_viscosity <= 0.0:
         raise ValueError("Restart molecular viscosity must be finite and positive")
 
-    start_time = float(solver._time_config.start_time)
+    start_time = float(solver._configuration.run.start_time)
     if time < start_time - max(1.0e-12, abs(start_time) * 1.0e-12):
         raise ValueError(f"Backup time {time} precedes the configured start time {start_time}")
-    end_time = float(solver._time_config.end_time)
+    end_time = float(solver._configuration.run.end_time)
     if time > end_time + max(1.0e-12, abs(end_time) * 1.0e-12):
         raise ValueError(f"Backup time {time} exceeds the configured end time {end_time}")
 
@@ -376,7 +340,7 @@ def validate_restart_state(
     if any(value < 0 for value in counters.values()):
         raise ValueError("Backup acceptance counters must be non-negative")
 
-    return RestartState(
+    return FieldRestartState(
         fields=fields,
         eddy_viscosity=np.ascontiguousarray(eddy_viscosity),
         time=time,
@@ -391,7 +355,7 @@ def validate_restart_state(
     )
 
 
-def restore_restart_state(solver: FVMSolver, restart_state: RestartState) -> None:
+def restore_restart_state(solver: FVMSolver, restart_state: FieldRestartState) -> None:
     """Apply a staged restart state after all validation checks have succeeded."""
     for name, values in restart_state.fields.items():
         getattr(solver, name)[:] = values
@@ -399,8 +363,8 @@ def restore_restart_state(solver: FVMSolver, restart_state: RestartState) -> Non
     # from the pressure field. Reconstruct it from the saved accepted ghosts
     # before PIMPLE refreshes them; otherwise restart silently replaces that
     # boundary history with the constructor's zero-gradient value.
-    for boundary in getattr(solver, "boundaries", ()):
-        if boundary.get("pressure_type") != "fixedFluxPressure":
+    for boundary in solver.boundaries:
+        if boundary.get("pressure_type") != "fixed_flux_pressure":
             continue
         start, count = int(boundary["start_face"]), int(boundary["n_faces"])
         mesh = solver.mesh_data
@@ -424,16 +388,14 @@ def restore_restart_state(solver: FVMSolver, restart_state: RestartState) -> Non
     solver._n_consecutive_accepted_steps.update(restart_state.n_consecutive_accepted_steps)
     solver.last_diagnostics = None
     solver._invalidate_derived_fields()
-    if hasattr(solver, "_publish_state"):
-        solver._publish_state()
-    if hasattr(solver, "_pending_step_size"):
-        solver._pending_step_size = None
-        solver._pending_acceptance_counters = None
-        solver._step_phase = "accepted"
-        solver._evolution_failure = None
+    solver._publish_state()
+    solver._pending_step_size = None
+    solver._pending_acceptance_counters = None
+    solver._step_phase = "accepted"
+    solver._evolution_failure = None
 
 
-def capture_restart_state(solver: FVMSolver) -> RestartState:
+def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
     """Copy the standard accepted state into memory for coupling sweeps.
 
     This has the same numerical content as a disk restart, without compression,
@@ -450,7 +412,7 @@ def capture_restart_state(solver: FVMSolver) -> RestartState:
         "velocity_old",
         "velocity_older",
     )
-    return RestartState(
+    return FieldRestartState(
         fields={name: getattr(solver, name).copy() for name in names},
         eddy_viscosity=(
             np.empty(0) if solver.eddy_viscosity is None else solver.eddy_viscosity.copy()
@@ -467,7 +429,7 @@ def capture_restart_state(solver: FVMSolver) -> RestartState:
     )
 
 
-def _load_backup_local(solver: FVMSolver, path: Path | str) -> RestartState:
+def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState:
     """Validate and restore one standard FVM backup."""
     source = Path(path)
     required = {
@@ -502,8 +464,8 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> RestartState:
         metadata_keys = set(metadata)
         expected_metadata = {
             "format_version",
-            "config_hash",
-            "mesh_hash",
+            "configuration_sha256",
+            "mesh_sha256",
             "kinematic_viscosity",
         }
         if metadata_keys != expected_metadata:
@@ -517,9 +479,9 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> RestartState:
             raise ValueError(
                 f"Unsupported FVM backup version {version!r}; expected {FORMAT_VERSION}"
             )
-        if metadata.get("mesh_hash") != mesh_hash(solver.mesh_data):
+        if metadata.get("mesh_sha256") != mesh_digest(solver.mesh_data):
             raise ValueError("FVM backup mesh hash does not match the active mesh")
-        if metadata.get("config_hash") != config_hash(_solver_setup(solver)):
+        if metadata.get("configuration_sha256") != configuration_digest(solver):
             raise ValueError("FVM backup configuration hash does not match the active case")
         archived_viscosity = metadata.get("kinematic_viscosity")
         if (
@@ -531,13 +493,7 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> RestartState:
             raise ValueError("FVM backup molecular viscosity record is invalid")
         if not np.isclose(
             float(archived_viscosity),
-            float(
-                getattr(
-                    solver,
-                    "_kinematic_viscosity",
-                    _solver_setup(solver).transport.kinematic_viscosity,
-                )
-            ),
+            float(solver._kinematic_viscosity),
             rtol=0.0,
             atol=1.0e-15,
         ):
@@ -564,19 +520,19 @@ def load_backup(solver: FVMSolver, path: Path | str) -> None:
     apply the restart state only after every rank has accepted it.  This keeps a
     corrupt or malformed archive from leaving peers at different clocks.
     """
-    parallel = getattr(solver, "parallel", None)
-    restart_state: RestartState | None = None
+    parallel = solver.parallel
+    restart_state: FieldRestartState | None = None
     local_error = None
     try:
         restart_state = _load_backup_local(solver, path)
     except BaseException as error:
         local_error = {
-            "rank": int(getattr(parallel, "rank", 0)),
+            "rank": int(parallel.rank),
             "type": type(error).__name__,
             "message": str(error),
         }
 
-    if parallel is not None and parallel.is_parallel and not parallel.is_partitioned:
+    if parallel.is_parallel and not parallel.is_partitioned:
         errors = parallel.comm.allgather(local_error)
         failure = next((item for item in errors if item is not None), None)
         if failure is not None:

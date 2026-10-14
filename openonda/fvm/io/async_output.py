@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 from threading import Lock
 
 import numpy as np
 
-from ..config.types import OutputConfig
-from .vtk_exporter import PVDManager, VTKExporter
+from openonda.core.vtk_output import read_collection, write_collection
+
+from ..config.output import Output
+from .vtk_exporter import VTKExporter
 
 
 class BufferedVTKWriter:
@@ -19,22 +22,14 @@ class BufferedVTKWriter:
     :meth:`submit` blocks until the previous write finishes, which bounds
     the memory used by pending output to one complete field copy.
 
-    The writer reuses its :class:`VTKExporter` and :class:`PVDManager`
-    across calls — they are created once on the worker thread.
-
-    Examples
-    --------
-    >>> writer = BufferedVTKWriter(mesh_data, "solution/sim.pvd")
-    >>> writer.submit("step_0001.vtu", 0.1, fields)
-    >>> writer.flush()
-    >>> writer.close()
+    The :class:`VTKExporter` is created once on the worker thread.
     """
 
     def __init__(
         self,
         mesh_data: dict[str, object],
-        pvd_path: str,
-        output: OutputConfig | None = None,
+        collection: Path,
+        output: Output,
     ) -> None:
         """Allocate a bounded one-worker VTK output queue.
 
@@ -42,11 +37,10 @@ class BufferedVTKWriter:
         ----------
         mesh_data : dict
             Native FVM mesh consumed by :class:`VTKExporter`.
-        pvd_path : str
-            Destination collection file for the time series.
-        output : OutputConfig or None, default=None
-            Visualization precision/format settings. A default settings are used
-            when omitted.
+        collection : pathlib.Path
+            ParaView collection listing the frames.
+        output : Output
+            Visualization precision and compression.
 
         Notes
         -----
@@ -55,8 +49,8 @@ class BufferedVTKWriter:
         ``flush()`` must be called to surface background errors.
         """
         self._mesh_data = mesh_data
-        self._pvd_path = pvd_path
-        self._output = output or OutputConfig()
+        self._collection = Path(collection)
+        self._output = output
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fvm-vtk")
         self._pending: Future | None = None
         self._closed = False
@@ -64,9 +58,9 @@ class BufferedVTKWriter:
         # The worker is single-threaded, so these objects are constructed once
         # on that worker and safely reused for every snapshot.
         self._exporter: VTKExporter | None = None
-        self._pvd: PVDManager | None = None
+        self._entries: list[tuple[float, str]] | None = None
 
-    def submit(self, filename: str, time: float, fields: dict[str, np.ndarray]) -> None:
+    def submit(self, filename: Path, time: float, fields: dict[str, np.ndarray]) -> None:
         """Queue one immutable snapshot, waiting for the previous write if needed."""
         snapshot = {
             name: np.ascontiguousarray(np.asarray(values)).copy() for name, values in fields.items()
@@ -80,13 +74,18 @@ class BufferedVTKWriter:
                 self._write_snapshot, filename, float(time), snapshot
             )
 
-    def _write_snapshot(self, filename: str, time: float, fields: dict[str, np.ndarray]) -> None:
+    def _write_snapshot(self, filename: Path, time: float, fields: dict[str, np.ndarray]) -> None:
         if self._exporter is None:
             self._exporter = VTKExporter(self._mesh_data, self._output)
-        if self._pvd is None:
-            self._pvd = PVDManager(self._pvd_path)
-        self._exporter.export(filename, fields)
-        self._pvd.add_step(time, filename)
+        if self._entries is None:
+            self._entries = read_collection(self._collection)
+        self._exporter.export(str(filename), fields)
+        relative = (
+            Path(filename).resolve().relative_to(self._collection.parent.resolve()).as_posix()
+        )
+        self._entries = [entry for entry in self._entries if entry[1] != relative]
+        self._entries.append((time, relative))
+        write_collection(self._collection, self._entries)
 
     def flush(self) -> None:
         """Wait for pending output and propagate any writer exception."""
@@ -96,10 +95,10 @@ class BufferedVTKWriter:
                 self._pending = None
 
     def rewind(self, time: float) -> None:
-        """Flush pending output and restore the worker-owned PVD index."""
+        """Flush pending output and reread the rewound collection at the next frame."""
+        del time
         self.flush()
-        if self._pvd is not None:
-            self._pvd.rewind(time)
+        self._entries = None
 
     def close(self) -> None:
         """Flush and stop the writer. This method is idempotent."""

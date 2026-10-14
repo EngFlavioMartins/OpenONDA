@@ -23,7 +23,7 @@ def _ratio(value: object, name: str) -> float | None:
     return value
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ResolvedGaussianMesh:
     """Auxiliary lengths derived from an actual core snapshot."""
 
@@ -33,7 +33,7 @@ class ResolvedGaussianMesh:
     order: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class GaussianMeshParameters:
     """Case-independent, explicit discretization controls.
 

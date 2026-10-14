@@ -1,7 +1,6 @@
 """VTK unstructured-grid output of FVM cell fields and ParaView ``.pvd`` time series."""
 
 from array import array
-from html import escape, unescape
 import os
 from pathlib import Path
 import tempfile
@@ -13,7 +12,7 @@ from openonda.core._numba import cacheable_njit as njit
 from openonda.core.vtk_output import configure_writer
 from openonda.core.write_precision import cast_for_write
 
-from ..config.types import OutputConfig
+from ..config.output import Output
 
 try:
     import pyvista as pv
@@ -162,27 +161,6 @@ def mesh_cell_fields(
     return fields
 
 
-def atomic_write_text(path: str | Path, content: str) -> None:
-    """Atomically write a UTF-8 metadata file after durable temporary output."""
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{target.name}.",
-        suffix=".tmp",
-        dir=target.parent,
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-        raise
-
-
 class VTKExporter:
     """
     Exporters results to VTU format using PyVista.
@@ -195,7 +173,7 @@ class VTKExporter:
     def __init__(
         self,
         mesh_data: dict[str, Any],
-        output: OutputConfig | None = None,
+        output: Output | None = None,
     ) -> None:
         """Initialise the VTK exporter.
 
@@ -212,7 +190,7 @@ class VTKExporter:
                 "VTK export requires the declared runtime dependency: pip install vtk"
             )
         self.mesh_data = mesh_data
-        self.output = output or OutputConfig()
+        self.output = output or Output()
         self._grid = self._initialize_grid()
         self._point_operators: dict[bool, dict[str, np.ndarray]] = {}
 
@@ -715,111 +693,3 @@ class VTKExporter:
             os.makedirs(directory, exist_ok=True)
         self._write_grid(filename, grid)
         return filename
-
-
-class PVDManager:
-    """Manages ParaView Data (``.pvd``) files for time-series animation.
-
-    A collection file that references individual ``.vtu`` snapshots at
-    their respective time values, enabling time-dependent visualisation
-    in ParaView.
-
-    Args:
-        filename: Output ``.pvd`` file path.
-    """
-
-    def __init__(self, filename: str) -> None:
-        """Open or create a ParaView collection at ``filename``.
-
-        Parameters
-        ----------
-        filename : str
-            ``.pvd`` path. Existing entries are parsed and retained; malformed
-            or incomplete dataset rows are ignored by the tolerant parser.
-
-        Side Effects
-        ------------
-        Reads the existing collection during construction. File writes occur
-        only when :meth:`add_step` or :meth:`rewind` is called.
-        """
-        self.filename = filename
-        self.entries: list[tuple[float, str]] = []
-        if os.path.exists(filename):
-            self._parse_existing()
-
-    def _parse_existing(self) -> None:
-        """Parse an existing ``.pvd`` file with tolerant attribute ordering."""
-        import defusedxml.ElementTree as SafeElementTree
-
-        tree = SafeElementTree.parse(self.filename)
-        collection = tree.find(".//Collection")
-        if collection is None:
-            return
-        entries: dict[str, float] = {}
-        for dataset in collection.findall("DataSet"):
-            filename = dataset.attrib.get("file")
-            timestep = dataset.attrib.get("timestep")
-            if filename is None or timestep is None:
-                continue
-            entries[unescape(filename)] = float(timestep)
-        self.entries = sorted(
-            ((time, filename) for filename, time in entries.items()),
-            key=lambda item: (item[0], item[1]),
-        )
-
-    def add_step(self, time: float, vtu_file: str) -> None:
-        """Register a time step and re-write the ``.pvd`` file.
-
-        The *vtu_file* path is stored as relative to the ``.pvd`` file
-        location for portability.  Both paths must be expressed against
-        the same base: callers build them from a shared solution
-        directory, so a relative *vtu_file* is resolved against the
-        process working directory exactly as ``self.filename`` was.
-
-        Args:
-            time:     Simulation time for this snapshot.
-            vtu_file: Path to the ``.vtu`` file.
-        """
-        rel_path = os.path.relpath(vtu_file, os.path.dirname(self.filename))
-        # Each output step has a corresponding filename.  Re-emitting an accepted
-        # state after restart replaces the existing entry instead of creating
-        # duplicate or nonmonotonic PVD records.
-        self.entries = [
-            (existing_time, filename)
-            for existing_time, filename in self.entries
-            if filename != rel_path
-        ]
-        self.entries.append((float(time), rel_path))
-        self.entries.sort(key=lambda item: (item[0], item[1]))
-        self.write()
-
-    def rewind(self, time: float) -> None:
-        """Drop future entries while retaining the prior branch on disk."""
-        self.entries = [
-            (entry_time, filename)
-            for entry_time, filename in self.entries
-            if entry_time <= float(time) + 1.0e-12
-        ]
-        seen: set[str] = set()
-        unique_entries: list[tuple[float, str]] = []
-        for entry in self.entries:
-            if entry[1] not in seen:
-                seen.add(entry[1])
-                unique_entries.append(entry)
-        self.entries = unique_entries
-        self.entries.sort(key=lambda item: (item[0], item[1]))
-        self.write()
-
-    def write(self) -> None:
-        """Write the ``.pvd`` collection file."""
-        lines = [
-            '<?xml version="1.0"?>',
-            '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
-            "  <Collection>",
-        ]
-        lines.extend(
-            f'    <DataSet timestep="{time}" group="" part="0" file="{escape(fpath, quote=True)}"/>'
-            for time, fpath in self.entries
-        )
-        lines.extend(["  </Collection>", "</VTKFile>"])
-        atomic_write_text(self.filename, "\n".join(lines) + "\n")

@@ -40,63 +40,18 @@ MAX_TIME_STEP_SIZE = 0.05  # upper bound on the adapted time step [s]
 OUTPUT_INTERVAL_TIME = 5.0  # save a snapshot every this many seconds
 
 
-def create_fvm_setup(depth: float) -> fvm.FVMSetup:
-    """Build the FVM setup for the square-cylinder case."""
+def create_fvm_case(depth: float) -> fvm.FVMCase:
+    """Build the FVM case of the square cylinder."""
     kinematic_viscosity = FREESTREAM_VELOCITY * SIDE / REYNOLDS_NUMBER
+    snapshots = fvm.EveryTime(OUTPUT_INTERVAL_TIME)
 
-    schemes = fvm.DiscretizationConfig(
-        gradient_scheme="gauss",
+    forces = fvm.ForceSampler(
+        patch_names=["cube"],
+        reference_velocity=FREESTREAM_VELOCITY,
+        reference_area=SIDE * depth,  # frontal area of the extruded square
+        reference_length=SIDE,
+        moment_centre=[0.0, 0.0, 0.5 * depth],
     )
-    forces = [
-        fvm.ForceSampler(
-            patch_names=["cube"],
-            reference_velocity=FREESTREAM_VELOCITY,
-            reference_area=SIDE * depth,  # frontal area of the extruded square
-            reference_length=SIDE,
-            moment_centre=[0.0, 0.0, 0.5 * depth],
-        )
-    ]
-
-    return fvm.FVMSetup(
-        backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True
-        ),
-        case_name=CASE_NAME,
-        time=fvm.TimeConfig(
-            time_step_size=TIME_STEP_SIZE,
-            end_time=FINAL_TIME,
-            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
-            adjustment=fvm.MaximumCourantTimeStep(
-                maximum_time_step_size=MAX_TIME_STEP_SIZE,
-            ),
-        ),
-        schemes=schemes,
-        samplers=forces,
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
-            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
-            # Slip lateral boundaries: 20 D apart (5% blockage), no wall BL.
-            fvm.BoundaryConfig(
-                name="bottom",
-                velocity_type="slip",
-                pressure_type="zeroGradient",
-            ),
-            fvm.BoundaryConfig(
-                name="top",
-                velocity_type="slip",
-                pressure_type="zeroGradient",
-            ),
-            fvm.BoundaryConfig.wall("cube"),
-            fvm.BoundaryConfig.empty("front"),
-            fvm.BoundaryConfig.empty("back"),
-        ],
-        # A small transverse perturbation seeds asymmetric shedding.
-        initial_velocity=[FREESTREAM_VELOCITY, 0.05 * FREESTREAM_VELOCITY, 0.0],
-    )
-
-
-def main() -> None:
     mesh = partial(
         square_cylinder_mesh,
         grid_spacing=SPACING,
@@ -107,10 +62,41 @@ def main() -> None:
         core_y=CORE_Y,
         ratio=MESH_STRETCHING,
     )
-    solver = fvm.create_fvm_solver(
-        create_fvm_setup(SPACING), case_dir=Path(__file__).parent, mesh=mesh
+
+    return fvm.FVMCase(
+        name=CASE_NAME,
+        directory=Path(__file__).parent,
+        numerics=fvm.Numerics(
+            time_step_size=TIME_STEP_SIZE,
+            time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
+            schemes=fvm.DiscretizationConfig(gradient_scheme="gauss"),
+        ),
+        # A small transverse perturbation seeds asymmetric shedding.
+        initial_conditions=fvm.InitialFields(
+            velocity=(FREESTREAM_VELOCITY, 0.05 * FREESTREAM_VELOCITY, 0.0)
+        ),
+        run=fvm.RunPlan(end_time=FINAL_TIME),
+        output=fvm.Output(schedule=snapshots),
+        samplers=fvm.Samplers((forces,)),
+        backup=fvm.Backup(schedule=snapshots),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", (FREESTREAM_VELOCITY, 0.0, 0.0)),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            # Slip lateral boundaries: 20 D apart (5% blockage), no wall boundary layer.
+            fvm.BoundaryConfig(name="bottom", velocity_type="slip"),
+            fvm.BoundaryConfig(name="top", velocity_type="slip"),
+            fvm.BoundaryConfig.wall("cube"),
+            fvm.BoundaryConfig.empty("front"),
+            fvm.BoundaryConfig.empty("back"),
+        ),
     )
-    solver.run(start_from=START_FROM)
+
+
+def main() -> None:
+    with fvm.FVMSolver(create_fvm_case(SPACING)) as solver:
+        solver.run(start_from=START_FROM)
 
 
 if __name__ == "__main__":

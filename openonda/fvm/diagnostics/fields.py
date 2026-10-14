@@ -1,13 +1,4 @@
-#!/usr/bin/env python3
-"""
-Diagnostic Field Computations for OpenONDA FVM Solver.
-=====================================================
-
-Implements functions for computing:
-- Courant Number (CFL)
-- Vorticity
-- y+ for wall boundaries
-"""
+"""Derived flow fields and integrals: Courant number, vorticity, continuity, y+ and forces."""
 
 from collections.abc import Sequence
 
@@ -15,7 +6,7 @@ import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
-from . import gradients
+from ..fields import gradients
 
 
 def compute_courant_number(
@@ -637,7 +628,7 @@ def compute_surface_face_loads(
         Per-face centers, areas, normals, pressure values, pressure/viscous
         forces, and wall-shear vectors.
     """
-    from .gradients import _resolve_gradient_fn as _resolve_grad
+    from ..fields.gradients import _resolve_gradient_fn as _resolve_grad
 
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]

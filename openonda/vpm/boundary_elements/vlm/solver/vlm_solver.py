@@ -1,11 +1,6 @@
 """
 Vortex-lattice-method solver (VLMSolver): assembles and solves the panel
 circulation system and evaluates forces.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from collections.abc import Iterator, Sequence
@@ -18,11 +13,12 @@ import numpy as np
 from numpy.typing import ArrayLike
 import taichi as ti
 
+from openonda.core.metadata import metadata_value
+
 from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
 from ....io.logging import Logging
-from ....io.metadata import _metadata_value
 from ....kernels import make_vortex_kernel
-from ..config import VLMSetup, VLMSurfaceSetup
+from ..config import VLMConfig, VLMSurface
 from ..coupling.kinematics import RotatingVLM, StaticVLM
 from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
@@ -84,21 +80,21 @@ class VLMSolver:
 
     **Linear Solver Options:**
 
-    - ``'SCIPY'``: CPU direct solver, selected by default below 1000 panels
-    - ``'BICGSTAB_GPU'``: GPU iterative solver for non-symmetric systems
+    - ``'scipy'``: CPU direct solver, selected by default below 1000 panels
+    - ``'bicgstab_gpu'``: GPU iterative solver for non-symmetric systems
 
     Geometry, kinematics, transforms, mesh spacing, and fluid data are all
-    declared in :class:`VLMSetup`. The runtime solver does not expose
+    declared in :class:`VLMConfig`. The runtime solver does not expose
     configuration mutation methods.
     """
 
-    def __init__(self, setup: VLMSetup):
+    def __init__(self, config: VLMConfig):
         """Initialize from one complete, immutable VLM definition."""
         # Solver configuration
-        self.setup = setup
-        self.dtype: Literal["f32", "f64"] = setup.dtype
+        self.config = config
+        self.dtype: Literal["f32", "f64"] = config.dtype
         self.epsilon = VLM_EPSILON
-        self.circulation_relaxation = setup.circulation_relaxation
+        self.circulation_relaxation = config.circulation_relaxation
 
         # Multi-body storage: Dict[uid -> (Aircraft, kinematics)]
         self.surfaces: dict[str, tuple[Aircraft, VLMKinematics]] = {}
@@ -116,29 +112,29 @@ class VLMSolver:
         # Flight condition / Fluid properties
         self.freestream_velocity = (
             None
-            if setup.freestream_velocity is None
-            else np.array(setup.freestream_velocity, dtype=np.float64)
+            if config.freestream_velocity is None
+            else np.array(config.freestream_velocity, dtype=np.float64)
         )
-        self.logging_interval_steps = setup.logging_interval_steps
-        self.density = setup.density
-        self.kinematic_viscosity = setup.kinematic_viscosity
-        self.wake_core_overlap = setup.wake_core_overlap
+        self.logging_interval_steps = config.logging_interval_steps
+        self.density = config.density
+        self.kinematic_viscosity = config.kinematic_viscosity
+        self.wake_core_overlap = config.wake_core_overlap
         # The present source representation uses one point/trace radius for
         # the bound operator.  It is named separately from particle radii in
         # the field conditions so a future distributed sheet can change it
         # deliberately without changing the transport rule.
         self.bound_source_radius = float(VLM_EPSILON)
-        self.boundary_response = setup.boundary_response
+        self.boundary_response = config.boundary_response
         self.field_settings = BoundSurfaceFieldSettings(
             numerical_epsilon=float(VLM_EPSILON),
             bound_source_radius=self.bound_source_radius,
             near_wake_treatment=(
                 "affine_row_history_transport_v2"
-                if setup.boundary_response == "responsive"
+                if config.boundary_response == "responsive"
                 else "partial_newborn_row_stage_responsive"
             ),
         )
-        self._wake_kernel = make_vortex_kernel("GAUSSIAN")
+        self._wake_kernel = make_vortex_kernel("gaussian")
 
         # Transverse shedding threshold
         # Minimum |ΔΓ| for emitting a transverse (closure) wake particle.
@@ -166,28 +162,28 @@ class VLMSolver:
         self._stage_exchange_history: dict[int, np.ndarray] = {}
 
         # Force evaluation configuration
-        self.force = setup.force
+        self.force = config.force
 
         # Explicit initialization of optional attributes to avoid AttributeError
         self._surface_transforms: dict[str, SurfaceTransform] = {}
         self._surface_group_ids: dict[str, int] = {}
         self._surface_sampling: dict[str, bool] = {}
-        self.sample_surface_forces = setup.sample_surface_forces
+        self.sample_surface_forces = config.sample_surface_forces
 
-        for surface_setup in setup.surfaces:
-            self._register_surface(surface_setup)
+        for surface in config.surfaces:
+            self._register_surface(surface)
 
         n_panels = self.aircraft.total_n_panels()
-        self.max_n_panels = setup.max_n_panels if setup.max_n_panels is not None else n_panels
+        self.max_n_panels = config.max_n_panels if config.max_n_panels is not None else n_panels
         if self.max_n_panels < n_panels:
             raise ValueError(
                 f"VLM max_n_panels={self.max_n_panels} is smaller than the "
                 f"{n_panels} panels declared by the surfaces"
             )
         self.linear_solver: str = (
-            setup.linear_solver
-            if setup.linear_solver is not None
-            else ("SCIPY" if n_panels < 1000 else "BICGSTAB_GPU")
+            config.linear_solver
+            if config.linear_solver is not None
+            else ("scipy" if n_panels < 1000 else "bicgstab_gpu")
         )
 
         Logging.record(
@@ -254,7 +250,7 @@ class VLMSolver:
             self._lattice_initialized = True
 
     def generate_mesh(self) -> None:
-        """Generate the VLM mesh using the distribution declared in ``setup``."""
+        """Generate the VLM mesh using the distribution declared in ``config``."""
         self._ensure_lattice_initialized()
 
         if self._mesh_generated:
@@ -265,9 +261,9 @@ class VLMSolver:
         generate_vlm_mesh(
             self.aircraft,
             self.lattice,
-            spanwise_spacing=self.setup.mesh.spacing,
-            spanwise_spacing_ratio=self.setup.mesh.ratio,
-            spanwise_spacing_region=self.setup.mesh.region,
+            spanwise_spacing=self.config.mesh.spacing,
+            spanwise_spacing_ratio=self.config.mesh.ratio,
+            spanwise_spacing_region=self.config.mesh.region,
         )
 
         # Apply per-surface transformations AFTER mesh generation
@@ -286,7 +282,7 @@ class VLMSolver:
 
         from .restart import restart_configuration_hash
 
-        self._restart_geometry_references = _metadata_value(self.aircraft.refs)
+        self._restart_geometry_references = metadata_value(self.aircraft.refs)
         self._restart_configuration_hash = restart_configuration_hash(self)
         from .restart import restart_physics_hash
 
@@ -516,29 +512,29 @@ class VLMSolver:
 
         return rotation_matrix
 
-    def _register_surface(self, setup: VLMSurfaceSetup) -> str:
+    def _register_surface(self, surface: VLMSurface) -> str:
         """Load one declared surface before any Taichi fields are allocated."""
         aircraft = (
-            _load_surface(setup.surface)
-            if isinstance(setup.surface, str)
-            else copy.deepcopy(setup.surface)
+            _load_surface(surface.surface)
+            if isinstance(surface.surface, str)
+            else copy.deepcopy(surface.surface)
         )
-        surface_name = setup.name or aircraft.uid
+        surface_name = surface.name or aircraft.uid
         if surface_name in self.surfaces:
             raise ValueError(f"Duplicate VLM surface name: {surface_name}")
         kinematics = (
-            copy.deepcopy(setup.kinematics) if setup.kinematics is not None else StaticVLM()
+            copy.deepcopy(surface.kinematics) if surface.kinematics is not None else StaticVLM()
         )
 
         self.surfaces[surface_name] = (aircraft, kinematics)
-        self._surface_group_ids[surface_name] = setup.group_id
+        self._surface_group_ids[surface_name] = surface.group_id
         self._surface_sampling[surface_name] = (
-            self.sample_surface_forces if setup.sample_forces is None else setup.sample_forces
+            self.sample_surface_forces if surface.sample_forces is None else surface.sample_forces
         )
         self._surface_transforms[surface_name] = {
-            "translation": setup.translation,
-            "rotation_degrees": setup.rotation_degrees,
-            "rotation_centre": setup.rotation_centre,
+            "translation": surface.translation,
+            "rotation_degrees": surface.rotation_degrees,
+            "rotation_centre": surface.rotation_centre,
         }
 
         self._update_combined_aircraft()
@@ -546,7 +542,7 @@ class VLMSolver:
             "VLM surface",
             ("name", surface_name),
             ("panels", aircraft.total_n_panels()),
-            ("group", setup.group_id),
+            ("group", surface.group_id),
         )
         return surface_name
 

@@ -15,9 +15,9 @@ from tests.vpm._vpm_case import add_counter_rotating_pair, small_case
 def _build(directory, with_vlm):
     case = small_case(directory)
     if with_vlm:
-        vlm = vpm.VLMSetup(
+        vlm = vpm.VLMConfig(
             surfaces=(
-                vpm.VLMSurfaceSetup(
+                vpm.VLMSurface(
                     create_flat_plate(
                         chord=1,
                         span=2,
@@ -33,11 +33,9 @@ def _build(directory, with_vlm):
         case = replace(case, numerics=replace(case.numerics, vlm=vlm))
     return replace(
         case,
-        run=vpm.RunPlan(steps=3),
-        backup=vpm.Backup(interval_steps=2),
-        samplers=vpm.Samplers(
-            samples=(vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(1), initial=True),)
-        ),
+        run=vpm.RunPlan(end_time=0.03),
+        backup=vpm.Backup(schedule=vpm.EverySteps(2)),
+        samplers=vpm.Samplers(samples=(vpm.FlowIntegralsSampler(),)),
     )
 
 
@@ -127,14 +125,14 @@ def test_initial_ignores_old_native_backup_and_restarts_output_history(tmp_path)
     previous.run(start_from="latest")
     assert previous.step == 3
 
-    fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
+    fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(end_time=0.01)))
     add_counter_rotating_pair(fresh)
     fresh.run(start_from="initial")
     assert fresh.step == 1
     table = pd.read_csv(tmp_path / "samples/flow_integrals.csv")
     assert table["step"].tolist() == [0, 1]
 
-    resumed = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
+    resumed = vpm.VPMSolver(replace(case, run=vpm.RunPlan(end_time=0.01)))
     assert resumed.start_from("latest")
     assert resumed.step == 1
     resumed.close()
@@ -144,7 +142,7 @@ def test_initial_ignores_corrupt_old_backup(tmp_path):
     backup = tmp_path / "solution/vpm/vpm_000010.h5"
     backup.parent.mkdir(parents=True)
     backup.write_text("not a native backup")
-    solver = vpm.VPMSolver(replace(_build(tmp_path, False), run=vpm.RunPlan(steps=1)))
+    solver = vpm.VPMSolver(replace(_build(tmp_path, False), run=vpm.RunPlan(end_time=0.01)))
     add_counter_rotating_pair(solver)
     solver.run(start_from="initial")
     assert solver.step == 1
@@ -160,7 +158,7 @@ def test_latest_without_backup_replaces_prior_output_history(tmp_path):
 
     for path in vpm_backup_files(tmp_path / "solution"):
         path.unlink()
-    fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(steps=1)))
+    fresh = vpm.VPMSolver(replace(case, run=vpm.RunPlan(end_time=0.01)))
     add_counter_rotating_pair(fresh)
     fresh.run(start_from="latest")
     assert fresh.step == 1

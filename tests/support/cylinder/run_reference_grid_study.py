@@ -41,27 +41,28 @@ def grid_name(spacing: float) -> str:
     return "grid_h" + format(spacing, ".8g").replace(".", "p")
 
 
-def grid_case(spacing: float, end_time: float):
-    """Return the reference setup and mesh at one wall spacing."""
-    case = load_reference()
-    case.CELL_SIZE = spacing
-    flow, mesh = case.build_case()
-    flow = replace(flow, case_name=grid_name(spacing), time=replace(flow.time, end_time=end_time))
-    return case, flow, mesh
+def grid_case(directory: Path, spacing: float, end_time: float):
+    """Return the reference module and its case at one wall spacing."""
+    reference = load_reference()
+    reference.CELL_SIZE = spacing
+    name = grid_name(spacing)
+    case = replace(
+        reference.build_case(),
+        name=name,
+        directory=directory,
+        variant=name,
+    )
+    case = replace(case, run=replace(case.run, end_time=end_time))
+    return reference, case
 
 
 def run_grid(directory: Path, spacing: float, end_time: float) -> None:
-    case, flow, mesh = grid_case(spacing, end_time)
-    solver = case.fvm.create_fvm_solver(
-        flow,
-        case_dir=directory,
-        solution_dir=directory / "solution" / flow.case_name,
-        samples_dir=directory / "samples" / flow.case_name,
-        mesh=mesh,
-    )
-    with solver:
-        solver.run(start_from="latest", initial_velocity=case.initial_velocity)
-        case.fvm.update_grid_study(solver, spacing, profiles=("centreline",))
+    reference, case = grid_case(directory, spacing, end_time)
+    with reference.fvm.FVMSolver(case) as solver:
+        cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
+        solver.set_initial_velocity(reference.initial_velocity(cell_centres))
+        solver.run(start_from="latest")
+        reference.fvm.update_grid_study(solver, spacing, profiles=("centreline",))
 
 
 def main() -> None:

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ....io.metadata import _metadata_value
+from openonda.core.metadata import metadata_value
 
 if TYPE_CHECKING:
     import h5py
@@ -58,7 +58,7 @@ def _restart_controls(
     vlm: "VLMSolver", *, include_output_controls: bool = True
 ) -> dict[str, object]:
     """Return the deterministic VLM controls used by restart hashes."""
-    controls = _metadata_value(vlm.setup)
+    controls = metadata_value(vlm.config)
     # The setup describes user choices; this explicit field settings also
     # describes the geometric source/trace/transport operators so a
     # checkpoint cannot silently continue under a different field model.
@@ -82,19 +82,26 @@ def _configuration_hash(vlm: "VLMSolver", controls: dict[str, object]) -> str:
     controls["geometry_references"] = getattr(
         vlm,
         "_restart_geometry_references",
-        _metadata_value(vlm.aircraft.refs),
+        metadata_value(vlm.aircraft.refs),
     )
     digest = hashlib.sha256(json.dumps(controls, sort_keys=True, allow_nan=False).encode())
     # Generic motion callbacks can depend on closed-over phase and case globals.
     # Record their code and captured construction values without executing them.
-    for surface in vlm.setup.surfaces:
+    for surface in vlm.config.surfaces:
         motion = surface.kinematics
         for name in ("velocity_function", "angular_velocity_function"):
             function = getattr(motion, name, None)
             if inspect.isfunction(function):
                 closure = inspect.getclosurevars(function)
                 digest.update(marshal.dumps(_portable_code(function.__code__)))
-                captured = _metadata_value({**closure.globals, **closure.nonlocals})
+                captured = metadata_value(
+                    {
+                        key: {"type": type(value).__name__}
+                        if inspect.ismodule(value) or callable(value)
+                        else value
+                        for key, value in {**closure.globals, **closure.nonlocals}.items()
+                    }
+                )
                 digest.update(json.dumps(captured, sort_keys=True, allow_nan=False).encode())
     for name in ("panel_corner_position", "normal"):
         digest.update(getattr(vlm.lattice, name).to_numpy()[: vlm.lattice.n_panels].tobytes())

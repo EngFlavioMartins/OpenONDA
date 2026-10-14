@@ -93,24 +93,24 @@ def _limited_linear(r: np.ndarray, k: float = 1.0) -> np.ndarray:
     return np.maximum(0.0, np.minimum(two_by_k * r, 1.0))
 
 
-# Registry keyed by lower-case scheme name.
+# Registry keyed by scheme name.
 LIMITERS = {
-    "vanleer": _van_leer,
+    "van_leer": _van_leer,
     "minmod": _minmod,
     "muscl": _muscl,
     "superbee": _superbee,
-    "limitedlinear": _limited_linear,
+    "limited_linear": _limited_linear,
 }
 
 
 def is_limited_scheme(name: str) -> bool:
     """True if ``name`` selects a gradient-based TVD limiter (needs ∇φ)."""
-    return str(name).lower() in LIMITERS
+    return name in LIMITERS
 
 
 def apply_limiter(name: str, r: np.ndarray) -> np.ndarray:
     """Evaluate the named standard limiter without altering its TVD range."""
-    fn = LIMITERS.get(str(name).lower())
+    fn = LIMITERS.get(name)
     if fn is None:
         raise ValueError(f"Unknown TVD limiter '{name}'. Known: {sorted(LIMITERS)}")
     values = fn(r)

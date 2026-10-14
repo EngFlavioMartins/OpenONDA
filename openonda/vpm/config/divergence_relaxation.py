@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DivergenceRelaxationConfig:
     """Configure a guarded projection that reduces particle-field divergence.
 

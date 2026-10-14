@@ -3,11 +3,6 @@ Taichi backend initialization and management.
 =============================================
 This module provides a centralized way to initialize Taichi with consistent
 settings across different solvers (VPM, VLM, Couplers).
-
-Author: Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import contextlib
@@ -40,7 +35,7 @@ _BACKEND_SOLVER_LOCK = threading.RLock()
 def acquire_taichi_backend(
     solver: object,
     *,
-    preferred_backend: str = "AUTO",
+    preferred_backend: str = "auto",
     precision: str = "f32",
 ) -> None:
     """Reserve a compatible solver on the process-global Taichi runtime.
@@ -66,29 +61,29 @@ def acquire_taichi_backend(
         # declared configuration.
         if not _BACKEND_SOLVERS and _BACKEND_CONFIGURATION is not None:
             active_backend, active_precision = _BACKEND_CONFIGURATION
-            requested_backend = str(preferred_backend).upper()
+            requested_backend = str(preferred_backend).lower()
             requested_precision = str(precision).lower()
             if active_precision != requested_precision or (
-                requested_backend not in {"AUTO", active_backend}
+                requested_backend not in {"auto", active_backend}
             ):
                 with contextlib.suppress(Exception):
                     ti.sync()
                 with contextlib.suppress(Exception):
                     ti.reset()
-                constants_module.TAICHI_BACKEND = "UNKNOWN"
+                constants_module.TAICHI_BACKEND = "unknown"
                 _BACKEND_CONFIGURATION = None
 
         if solver in _BACKEND_SOLVERS:
             return
         if _BACKEND_CONFIGURATION is not None:
             active_backend, active_precision = _BACKEND_CONFIGURATION
-            requested_backend = str(preferred_backend).upper()
+            requested_backend = str(preferred_backend).lower()
             if active_precision != str(precision).lower():
                 raise RuntimeError(
                     "The Taichi backend is already initialized at "
                     f"precision={active_precision!r}; requested {precision!r}"
                 )
-            if requested_backend not in {"AUTO", active_backend}:
+            if requested_backend not in {"auto", active_backend}:
                 raise RuntimeError(
                     "The Taichi backend is already initialized as "
                     f"{active_backend!r}; requested {requested_backend!r}"
@@ -177,7 +172,7 @@ _INTEGRATED_GPU_POOL_BYTES: int = 1536 * (1 << 20)  # 1.5 GiB
 
 def _safe_device_memory_for_init(
     desired_fraction: float,
-    backend: str = "VULKAN",
+    backend: str = "vulkan",
     minimum_pool_bytes: int = 0,
 ) -> dict[str, float]:
     """Return ``ti.init()`` memory kwargs appropriate for the current GPU.
@@ -200,7 +195,7 @@ def _safe_device_memory_for_init(
     workspace, subject to the driver's current memory budget.
     """
     # -- Metal (macOS) path --------------------------------------------------
-    if platform.system() == "Darwin" or backend == "METAL":
+    if platform.system() == "Darwin" or backend == "metal":
         if _is_apple_silicon():
             # Apple Silicon: GPU shares system RAM (unified memory).
             # Metal backend does NOT accept device_memory_GB / device_memory_fraction.
@@ -214,7 +209,7 @@ def _safe_device_memory_for_init(
         return {}
 
     # -- Linux / Vulkan / CUDA path --------------------------------------
-    if backend in {"CUDA"}:
+    if backend in {"cuda"}:
         return {"device_memory_fraction": desired_fraction}
 
     is_integrated = False
@@ -290,21 +285,21 @@ def _resolve_gpu_backend() -> tuple:
     This function never raises; it always returns a valid ``(arch, name)`` pair.
     """
     if platform.system() == "Darwin":
-        return (ti.metal, "METAL")
+        return (ti.metal, "metal")
     if _has_nvidia_gpu():
-        return (ti.cuda, "CUDA")
+        return (ti.cuda, "cuda")
     # Default GPU on Linux / Windows: Vulkan (driver-agnostic).
-    return (ti.vulkan, "VULKAN")
+    return (ti.vulkan, "vulkan")
 
 
 def _cpu_candidates() -> list[tuple]:
     """Ordered list of CPU ``(arch, name)`` pairs to try as the final fallback."""
     cands: list[tuple] = []
     if hasattr(ti, "cpu"):
-        cands.append((ti.cpu, "CPU"))
+        cands.append((ti.cpu, "cpu"))
     if hasattr(ti, "x64") and ti.x64 != getattr(ti, "cpu", None):
-        cands.append((ti.x64, "CPU"))
-    return cands or [(ti.cpu, "CPU")]
+        cands.append((ti.x64, "cpu"))
+    return cands or [(ti.cpu, "cpu")]
 
 
 def _supported_backend_chain(
@@ -313,7 +308,7 @@ def _supported_backend_chain(
     """Filter resolved devices against a numerical method's qualified backends."""
     if supported_devices is None:
         return candidates
-    supported = {str(device).upper() for device in supported_devices}
+    supported = {str(device).lower() for device in supported_devices}
     return [candidate for candidate in candidates if candidate[1] in supported]
 
 
@@ -326,25 +321,25 @@ def _build_backend_chain(
     cpu_chain = _cpu_candidates()
     system = platform.system()
 
-    if preferred_backend == "CPU":
+    if preferred_backend == "cpu":
         return _supported_backend_chain(cpu_chain, supported_devices)
 
-    if preferred_backend == "METAL":
+    if preferred_backend == "metal":
         if system != "Darwin":
-            raise ValueError("compute_device='METAL' is supported only on macOS")
+            raise ValueError("compute_device='metal' is supported only on macOS")
         if precision == "f64":
             raise ValueError(
                 "precision='f64' is not supported by the Metal backend; use f32 or CPU"
             )
-        return _supported_backend_chain([(ti.metal, "METAL")], supported_devices)
+        return _supported_backend_chain([(ti.metal, "metal")], supported_devices)
 
-    if preferred_backend == "CUDA":
-        return _supported_backend_chain([(ti.cuda, "CUDA")], supported_devices)
+    if preferred_backend == "cuda":
+        return _supported_backend_chain([(ti.cuda, "cuda")], supported_devices)
 
-    if preferred_backend == "VULKAN":
+    if preferred_backend == "vulkan":
         if system == "Darwin":
-            raise ValueError("compute_device='VULKAN' is unavailable on macOS; use AUTO or METAL")
-        return _supported_backend_chain([(ti.vulkan, "VULKAN")], supported_devices)
+            raise ValueError("compute_device='vulkan' is unavailable on macOS; use AUTO or METAL")
+        return _supported_backend_chain([(ti.vulkan, "vulkan")], supported_devices)
 
     if system == "Darwin":
         if precision == "f64":
@@ -352,12 +347,12 @@ def _build_backend_chain(
                 "precision='f64' is not supported by the macOS GPU backend; "
                 "request CPU explicitly or use f32"
             )
-        return _supported_backend_chain([(ti.metal, "METAL")], supported_devices)
+        return _supported_backend_chain([(ti.metal, "metal")], supported_devices)
 
-    vulkan = (ti.vulkan, "VULKAN")
-    cuda = (ti.cuda, "CUDA")
+    vulkan = (ti.vulkan, "vulkan")
+    cuda = (ti.cuda, "cuda")
     best = _resolve_gpu_backend()
-    gpu_order = [best, cuda if best[1] != "CUDA" else vulkan]
+    gpu_order = [best, cuda if best[1] != "cuda" else vulkan]
     chain: list[tuple] = []
     for cand in gpu_order:
         if cand not in chain:
@@ -419,7 +414,7 @@ def reset_taichi_backend(*, solver: object | None = None) -> None:
             # before the process exits or the next ti.init() runs.
             gc.collect()
             # Clear the cached backend flag so the next init runs unconditionally.
-            constants_module.TAICHI_BACKEND = "UNKNOWN"
+            constants_module.TAICHI_BACKEND = "unknown"
         finally:
             _BACKEND_CONFIGURATION = None
 
@@ -436,11 +431,11 @@ def _active_backend_name() -> str:
     """Return a stable public name for an already-initialized Taichi arch."""
     active_arch = ti.lang.impl.current_cfg().arch
     for attribute, name in (
-        ("cpu", "CPU"),
-        ("x64", "CPU"),
-        ("vulkan", "VULKAN"),
-        ("cuda", "CUDA"),
-        ("metal", "METAL"),
+        ("cpu", "cpu"),
+        ("x64", "cpu"),
+        ("vulkan", "vulkan"),
+        ("cuda", "cuda"),
+        ("metal", "metal"),
     ):
         candidate = getattr(ti, attribute, None)
         if candidate is not None and active_arch == candidate:
@@ -449,7 +444,7 @@ def _active_backend_name() -> str:
 
 
 def initialize_taichi_backend(
-    preferred_backend: str = "AUTO",
+    preferred_backend: str = "auto",
     debug_mode: bool = False,
     precision: str = "f32",
     random_seed: int = 42,
@@ -465,8 +460,8 @@ def initialize_taichi_backend(
     an unexpectedly slow CPU run.
 
     Args:
-          preferred_backend: ``'AUTO'``, ``'METAL'``, ``'VULKAN'``,
-              ``'CUDA'``, or ``'CPU'``.
+          preferred_backend: ``'auto'``, ``'metal'``, ``'vulkan'``,
+              ``'cuda'``, or ``'cpu'``.
           debug_mode: Enable Taichi debug features (default ``False``).
           precision: Floating-point precision — ``'f32'`` (default) or
               ``'f64'`` (CPU only; Vulkan/Metal have limited f64 support).
@@ -481,18 +476,18 @@ def initialize_taichi_backend(
 
     Returns:
           str: Name of the successfully initialised backend
-              (``'METAL'``, ``'VULKAN'``, ``'CUDA'``, or ``'CPU'``).
+              (``'metal'``, ``'vulkan'``, ``'cuda'``, or ``'cpu'``).
     """
     global _BACKEND_CONFIGURATION
     # Check if Taichi is already initialized
     if ti.lang.impl.get_runtime().prog is not None:
         cached = getattr(constants_module, "TAICHI_BACKEND", None)
-        if cached in {"CPU", "VULKAN", "CUDA", "METAL"}:
+        if cached in {"cpu", "vulkan", "cuda", "metal"}:
             resolved = cached
         else:
             resolved = _active_backend_name()
         if supported_devices is not None and resolved not in {
-            str(device).upper() for device in supported_devices
+            str(device).lower() for device in supported_devices
         }:
             raise RuntimeError(
                 f"The initialized Taichi backend {resolved!r} is not supported by "
@@ -513,7 +508,7 @@ def initialize_taichi_backend(
             f"No qualified Taichi backend remains for compute_device={preferred_backend!r}; "
             f"supported devices: {supported}"
         )
-    strict_gpu = preferred_backend in {"AUTO", "METAL", "VULKAN", "CUDA"} and precision == "f32"
+    strict_gpu = preferred_backend in {"auto", "metal", "vulkan", "cuda"} and precision == "f32"
 
     # Adapt the automatic pool share to the backend's memory budget.
     device_memory_fraction = 0.5
@@ -524,9 +519,9 @@ def initialize_taichi_backend(
     for arch, name in chain:
         # Per-backend memory kwargs: Metal manages its own pool; CUDA/Vulkan
         # use integrated-GPU detection; CPU takes a host memory fraction.
-        if name == "CPU":
+        if name == "cpu":
             memory_kwargs: dict = {"device_memory_fraction": device_memory_fraction}
-        elif name == "METAL":
+        elif name == "metal":
             memory_kwargs = {}  # Metal does not accept device_memory_* kwargs
         else:
             memory_kwargs = _safe_device_memory_for_init(
@@ -545,7 +540,7 @@ def initialize_taichi_backend(
         }
         if "TI_CPU_MAX_NUM_THREADS" not in os.environ:
             init_kwargs["cpu_max_num_threads"] = worker_thread_count()
-        if name != "METAL":
+        if name != "metal":
             init_kwargs["random_seed"] = random_seed
             init_kwargs["advanced_optimization"] = True
         if memory_kwargs:
@@ -559,7 +554,7 @@ def initialize_taichi_backend(
             finally:
                 for line in startup_output.getvalue().splitlines():
                     if not line.startswith("[Taichi] Starting on arch="):
-                        Logging.info("Taichi runtime: %s", line)
+                        Logging.info(f"Taichi runtime: {line}")
             active_arch = ti.lang.impl.current_cfg().arch
             if active_arch != arch:
                 raise RuntimeError(
@@ -569,11 +564,11 @@ def initialize_taichi_backend(
             _probe_taichi_backend()
             constants_module.TAICHI_BACKEND = name
             _BACKEND_CONFIGURATION = (name, str(precision).lower())
-            Logging.info("backend %s initialized at precision %s", name, precision)
+            Logging.info(f"backend {name} initialized at precision {precision}")
             return name
         except Exception as exc:
             last_exc = exc
-            Logging.debug("Backend '%s' init failed: %s", name, exc)
+            Logging.debug(f"Backend {name!r} init failed: {exc}")
             # Reset any partial runtime state before trying the next candidate.
             with contextlib.suppress(Exception):
                 ti.reset()
@@ -582,5 +577,5 @@ def initialize_taichi_backend(
         raise RuntimeError(
             f"Requested Taichi backend {preferred_backend} failed to initialise"
         ) from last_exc
-    Logging.error("All Taichi backends failed to initialise (last error: %s)", last_exc)
-    return getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN")
+    Logging.error(f"All Taichi backends failed to initialise (last error: {last_exc})")
+    return getattr(constants_module, "TAICHI_BACKEND", "unknown")

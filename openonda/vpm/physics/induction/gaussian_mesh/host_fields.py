@@ -398,7 +398,7 @@ class GaussianHostImageFields:
         source_only_primary: bool = False,
         complete_image_tail: bool = False,
         profile: bool = False,
-        kernel: str = "GAUSSIAN",
+        kernel: str = "gaussian",
     ):
         self.closed = False
         self._thread = threading.get_ident()

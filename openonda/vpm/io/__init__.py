@@ -1,11 +1,5 @@
-"""I/O services for the VPM solver."""
+"""Input and output of the VPM solver: logs, backups, frames and metadata."""
 
 from .logging import Logging
-from .runtime_profiler import RuntimeProfiler
-from .solver_io import SolverIO
 
-__all__ = [
-    "Logging",
-    "RuntimeProfiler",
-    "SolverIO",
-]
+__all__ = ["Logging"]

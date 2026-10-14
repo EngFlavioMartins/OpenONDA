@@ -34,8 +34,8 @@ def plate():
         n_spanwise_panels=2,
     )
     solver = VLMSolver(
-        vpm.VLMSetup(
-            surfaces=(vpm.VLMSurfaceSetup(geometry, name="plate"),),
+        vpm.VLMConfig(
+            surfaces=(vpm.VLMSurface(geometry, name="plate"),),
             dtype="f64",
             force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
         )
@@ -53,8 +53,8 @@ def single_panel_plate():
         n_spanwise_panels=1,
     )
     solver = VLMSolver(
-        vpm.VLMSetup(
-            surfaces=(vpm.VLMSurfaceSetup(geometry, name="single_panel"),),
+        vpm.VLMConfig(
+            surfaces=(vpm.VLMSurface(geometry, name="single_panel"),),
             dtype="f64",
             force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
         )

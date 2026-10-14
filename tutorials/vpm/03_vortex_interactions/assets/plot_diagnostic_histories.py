@@ -28,7 +28,7 @@ def plot(runs, output, formats, figure_name=FIGURE_NAME):
         ("vorticity_divergence_error", "Divergence error", False),
         ("vortex_strength_misalignment_degrees", "Misalignment [deg]", False),
         ("max_azimuthal_mode", "$\\max_m A_m$", False),
-        ("n_particles_total", "$N_p/10^5$", False),
+        ("n_particles", "$N_p/10^5$", False),
     )
     for run in runs:
         path = setup.TUTORIAL_DIR / "samples" / run / "flow_integrals.csv"
@@ -40,7 +40,7 @@ def plot(runs, output, formats, figure_name=FIGURE_NAME):
         time = frame.time * setup.RING_CIRCULATION / setup.RING_RADIUS**2
         for axis, (column, _label, normalize) in zip(axes.flat, quantities, strict=True):
             values = frame[column] / frame[column].iloc[0] if normalize else frame[column]
-            if column == "n_particles_total":
+            if column == "n_particles":
                 values = values / 100000.0
             plot = axis.semilogy if column == "max_azimuthal_mode" else axis.plot
             plot(

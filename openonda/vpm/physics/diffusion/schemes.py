@@ -3,9 +3,6 @@
 :class:`DiffusionPhysics` composes the shared grid mixin with the per-scheme
 algorithm modules in this package: core spreading, random walk, and the DVH/GBD
 driver methods provided by :class:`_GridDiffusionMixin`.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from typing import TYPE_CHECKING
@@ -33,7 +30,7 @@ class DiffusionPhysics(PhysicsBase, _GridDiffusionMixin):
 
     def __init__(
         self,
-        particle_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "gaussian",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
     ):

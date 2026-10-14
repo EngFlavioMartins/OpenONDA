@@ -9,11 +9,6 @@ Owns all logic for:
 Nothing in this module should import from the top-level VPM Solver class; all
 required data is passed in explicitly so the solver itself stays a thin
 step controller.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: March 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from __future__ import annotations
@@ -22,8 +17,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-
-from ....io.sampling import resolve_samples_dir
 
 if TYPE_CHECKING:
     from ....particles.container import Particles
@@ -63,8 +56,7 @@ class VLMDiagnostics:
         diagnostics_history: dict,
         step: int,
         time: float,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
         """Record VLM force and vector-strength scalars and flush one solver sample.
 
@@ -82,9 +74,8 @@ class VLMDiagnostics:
             Current integer step counter.
         time:
             Current simulation time [s].
-        case_dir:
-            Solver backup/output root directory (CSV is written under
-            ``<case_dir>/samples/vlm_forces.csv``).
+        samples_dir:
+            Sample directory of the case; the table is ``vlm_forces.csv``.
         """
         if vlm_solver is None or not hasattr(vlm_solver, "_last_forces"):
             return
@@ -122,8 +113,7 @@ class VLMDiagnostics:
             n_p,
             time,
             step,
-            case_dir,
-            sample_directory,
+            samples_dir,
         )
 
     # CSV export
@@ -138,10 +128,9 @@ class VLMDiagnostics:
         n_p: int,
         time: float,
         step: int,
-        case_dir: str | Path,
-        sample_directory: str | Path | None = None,
+        samples_dir: Path,
     ) -> None:
-        """Append one row to ``<case_dir>/samples/vlm_forces.csv``.
+        """Append one row to ``<samples_dir>/vlm_forces.csv``.
 
         Parameters
         ----------
@@ -159,14 +148,11 @@ class VLMDiagnostics:
             Current simulation time [s].
         step:
             Integer step counter.
-        case_dir:
-            Output root; CSV is written under ``<case_dir>/samples/``.
+        samples_dir:
+            Sample directory of the case.
         """
         import pandas as pd
 
-        samples_dir = resolve_samples_dir(
-            case_dir, None if sample_directory is None else str(sample_directory)
-        )
         samples_dir.mkdir(parents=True, exist_ok=True)
         csv_path = samples_dir / "vlm_forces.csv"
 

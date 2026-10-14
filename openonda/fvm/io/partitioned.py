@@ -13,18 +13,19 @@ from uuid import uuid4
 
 import numpy as np
 
+from openonda.core.file_output import write_text_atomic
 from openonda.core.write_precision import cast_for_write
 
-from ..config.types import OutputConfig
+from ..config.output import Output
 from .backup import decode_state, encode_state
 from .storage import InsufficientStorageError, require_free_space
-from .vtk_exporter import VTKExporter, atomic_write_text
+from .vtk_exporter import VTKExporter
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
     from ..mesh.partition import CellPartition
 
-PARTITIONED_BACKUP_VERSION = 9
+PARTITIONED_BACKUP_VERSION = 10
 
 
 def _prune_partitioned_generations(target: Path, current: dict, previous: dict | None) -> None:
@@ -36,7 +37,7 @@ def _prune_partitioned_generations(target: Path, current: dict, previous: dict |
     keep = set(current["files"])
     if previous is not None:
         keep.update(previous["files"])
-        atomic_write_text(
+        write_text_atomic(
             target / "checkpoint_info.previous.json", json.dumps(previous, indent=2) + "\n"
         )
     for path in target.iterdir():
@@ -102,7 +103,7 @@ def _raise_collective_backup_error(error_record: dict[str, object]) -> None:
 
 def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> Path:
     """Publish a complete backup without invalidating the prior generation."""
-    from .backup import _solver_setup, config_hash
+    from .backup import configuration_digest
 
     target = Path(directory)
     previous_info = None
@@ -194,15 +195,9 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
         checkpoint_info = {
             "format_version": PARTITIONED_BACKUP_VERSION,
             "generation": generation,
-            "config_hash": config_hash(_solver_setup(solver)),
-            "mesh_hash": solver.mesh_data["global_mesh_hash"],
-            "kinematic_viscosity": float(
-                getattr(
-                    solver,
-                    "_kinematic_viscosity",
-                    _solver_setup(solver).transport.kinematic_viscosity,
-                )
-            ),
+            "configuration_sha256": configuration_digest(solver),
+            "mesh_sha256": solver.mesh_data["global_mesh_hash"],
+            "kinematic_viscosity": float(solver._kinematic_viscosity),
             "n_global_cells": partition.n_global_cells,
             "n_ranks": partition.size,
             "files": files,
@@ -236,8 +231,7 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
 def load_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> None:
     """Collectively stage and restore a complete partitioned backup."""
     from .backup import (
-        _solver_setup,
-        config_hash,
+        configuration_digest,
         restore_restart_state,
         validate_restart_state,
     )
@@ -263,8 +257,8 @@ def load_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
         expected_info_keys = {
             "format_version",
             "generation",
-            "config_hash",
-            "mesh_hash",
+            "configuration_sha256",
+            "mesh_sha256",
             "kinematic_viscosity",
             "n_global_cells",
             "n_ranks",
@@ -276,9 +270,9 @@ def load_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
             raise ValueError("Unsupported partitioned FVM backup version")
         if checkpoint_info.get("n_ranks") != solver.parallel.size:
             raise ValueError("Partitioned backup communicator size does not match")
-        if checkpoint_info.get("mesh_hash") != solver.mesh_data.get("global_mesh_hash"):
+        if checkpoint_info.get("mesh_sha256") != solver.mesh_data.get("global_mesh_hash"):
             raise ValueError("Partitioned backup mesh hash does not match")
-        if checkpoint_info.get("config_hash") != config_hash(_solver_setup(solver)):
+        if checkpoint_info.get("configuration_sha256") != configuration_digest(solver):
             raise ValueError("Partitioned backup configuration hash does not match")
         archived_viscosity = checkpoint_info.get("kinematic_viscosity")
         if (
@@ -290,13 +284,7 @@ def load_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
             raise ValueError("Partitioned backup molecular viscosity is invalid")
         if not np.isclose(
             float(archived_viscosity),
-            float(
-                getattr(
-                    solver,
-                    "_kinematic_viscosity",
-                    _solver_setup(solver).transport.kinematic_viscosity,
-                )
-            ),
+            float(solver._kinematic_viscosity),
             rtol=0.0,
             atol=1.0e-15,
         ):
@@ -411,7 +399,7 @@ def write_partition_vtu(
     fields: dict[str, np.ndarray],
     comm: object,
     *,
-    output: OutputConfig | None = None,
+    output: Output | None = None,
     exporter: VTKExporter | None = None,
 ) -> Path:
     """Atomically write one rank piece and a root parallel collection.
@@ -423,7 +411,7 @@ def write_partition_vtu(
     """
     if not stem or Path(stem).name != stem:
         raise ValueError("stem must be a non-empty filename component")
-    output = output or OutputConfig()
+    output = output or Output()
     target = Path(directory)
     n_owned = len(partition.owned_global_ids)
     local_count = len(partition.local_global_ids)
@@ -540,7 +528,7 @@ def write_partition_vtu(
                 for rank in range(partition.size)
             )
             lines.extend(["  </PUnstructuredGrid>", "</VTKFile>"])
-            atomic_write_text(collection, "\n".join(lines) + "\n")
+            write_text_atomic(collection, "\n".join(lines) + "\n")
         except BaseException as error:
             output_error = _error_record(error, rank=partition.rank)
     output_error = comm.bcast(output_error, root=0)

@@ -13,13 +13,13 @@ _THRESHOLD_MODES = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ViscousConfig:
     """Configure molecular viscous diffusion and particle regeneration.
 
     Parameters
     ----------
-    scheme : {'CS', 'RWM', 'NONE', 'DVH', 'GBD'}, default='CS'
+    scheme : {'cs', 'rwm', 'none', 'dvh', 'gbd'}, default='cs'
         Core spreading, random walk, no diffusion, Diffused Vortex
         Hydrodynamics, or Grid-Based Diffusion. Names are normalized uppercase.
     core_radius_ratio : float, default=2.5
@@ -35,7 +35,7 @@ class ViscousConfig:
         fraction of peak node strength, and ``absolute`` is a threshold in m³/s.
     dvh_threshold_mode, gbd_threshold_mode : {'budget', 'relative_max', 'absolute'}
         Interpretation of the associated threshold.
-    gbd_remeshing_kernel : {'M4_PRIME', 'LAGRANGE6'}, default='M4_PRIME'
+    gbd_remeshing_kernel : {'m4_prime', 'lagrange6'}, default='m4_prime'
         Particle-to-grid scatter. The six-point Lagrange option is experimental,
         non-positivity-preserving, and requires at least four padding cells.
     dvh_support_radius_ratio : {3, 4, 5}, default=4
@@ -72,7 +72,7 @@ class ViscousConfig:
     ... )
     """
 
-    scheme: Literal["CS", "RWM", "NONE", "DVH", "GBD"] = "CS"
+    scheme: Literal["cs", "rwm", "none", "dvh", "gbd"] = "cs"
 
     core_radius_ratio: float = 2.5
     """Regenerated-particle core radius divided by regeneration-grid spacing."""
@@ -101,7 +101,7 @@ class ViscousConfig:
     gbd_threshold_mode: str = "budget"
     """GBD pruning mode."""
 
-    gbd_remeshing_kernel: str = "M4_PRIME"
+    gbd_remeshing_kernel: str = "m4_prime"
     """Scatter kernel: M4_PRIME or experimental six-point LAGRANGE6."""
 
     dvh_support_radius_ratio: int = 4
@@ -114,10 +114,8 @@ class ViscousConfig:
     """Representative inter-particle spacing ``h`` [m]."""
 
     def __post_init__(self) -> None:
-        scheme = self.scheme.upper()
-        if scheme not in {"CS", "RWM", "NONE", "DVH", "GBD"}:
+        if self.scheme not in {"cs", "rwm", "none", "dvh", "gbd"}:
             raise ValueError(f"Invalid viscous scheme: {self.scheme!r}")
-        object.__setattr__(self, "scheme", scheme)
 
         if self.core_radius_ratio <= 0.0 or not math.isfinite(self.core_radius_ratio):
             raise ValueError("core_radius_ratio must be finite and positive")
@@ -141,9 +139,9 @@ class ViscousConfig:
             raise ValueError(f"dvh_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
         if self.gbd_threshold_mode not in _THRESHOLD_MODES:
             raise ValueError(f"gbd_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
-        if self.gbd_remeshing_kernel not in {"M4_PRIME", "LAGRANGE6"}:
+        if self.gbd_remeshing_kernel not in {"m4_prime", "lagrange6"}:
             raise ValueError("gbd_remeshing_kernel must be M4_PRIME or LAGRANGE6")
-        if self.gbd_remeshing_kernel == "LAGRANGE6" and self.gbd_domain_padding < 4:
+        if self.gbd_remeshing_kernel == "lagrange6" and self.gbd_domain_padding < 4:
             raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
 
     def rwm_accuracy_time_step_size(self) -> float:
@@ -200,7 +198,7 @@ class ViscousConfig:
         ``core_radius_ratio`` is the dimensionless regenerated ``sigma/h``.
         """
         return ViscousConfig(
-            scheme="CS",
+            scheme="cs",
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=particle_spacing,
             core_radius_ratio=core_radius_ratio,
@@ -219,7 +217,7 @@ class ViscousConfig:
         variable effective viscosity.
         """
         return ViscousConfig(
-            scheme="RWM",
+            scheme="rwm",
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=particle_spacing,
             core_radius_ratio=core_radius_ratio,
@@ -232,7 +230,7 @@ class ViscousConfig:
     ) -> ViscousConfig:
         """Configure inviscid particle evolution without molecular diffusion."""
         return ViscousConfig(
-            scheme="NONE",
+            scheme="none",
             particle_spacing=particle_spacing,
             core_radius_ratio=core_radius_ratio,
         )
@@ -255,7 +253,7 @@ class ViscousConfig:
         required diffusion interval is reached.
         """
         return ViscousConfig(
-            scheme="DVH",
+            scheme="dvh",
             particle_spacing=particle_spacing,
             dvh_grid_spacing=particle_spacing,
             dvh_domain_padding=padding,
@@ -274,7 +272,7 @@ class ViscousConfig:
         threshold_mode: str = "budget",
         kinematic_viscosity: float | None = None,
         core_radius_ratio: float = 2.5,
-        remeshing_kernel: str = "M4_PRIME",
+        remeshing_kernel: str = "m4_prime",
         gbd_grid_spacing: float | None = None,
     ) -> ViscousConfig:
         """Return Grid-Based Diffusion configuration.
@@ -293,7 +291,7 @@ class ViscousConfig:
         if gbd_grid_spacing is None:
             gbd_grid_spacing = particle_spacing
         return ViscousConfig(
-            scheme="GBD",
+            scheme="gbd",
             particle_spacing=particle_spacing,
             gbd_grid_spacing=gbd_grid_spacing,
             gbd_domain_padding=padding,

@@ -90,7 +90,7 @@ def _manager(particles, *, time_step_size=0.04):
     return SimpleNamespace(
         ctx=SimpleNamespace(
             particles=particles,
-            flow_model="INVISCID",
+            flow_model="inviscid",
             np_dtype=np.float64,
             state=SimpleNamespace(time_step_size=time_step_size),
             mutations=SimpleNamespace(set_properties=set_properties),

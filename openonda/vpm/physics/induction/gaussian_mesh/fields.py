@@ -439,7 +439,7 @@ class GaussianImageFields:
         source_only_primary: bool = False,
         complete_image_tail: bool = False,
         profile: bool = False,
-        kernel: str = "GAUSSIAN",
+        kernel: str = "gaussian",
         _lattice_origin: np.ndarray | None = None,
     ):
         self._memory_pool = self._plans = self._correction = None

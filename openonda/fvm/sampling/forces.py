@@ -1,46 +1,31 @@
-"""Force and wall-diagnostic samplers for the FVM solver.
+"""Surface-force and wall-resolution samplers of the FVM solver.
 
-``ForceSampler`` integrates pressure and viscous loads on boundary patches and
-appends one row per patch to a force-history CSV.  ``YPlusSampler`` computes
-wall y+ statistics without a force-sampling dependency.
-
-The numerical force and y+ routines live in
-:mod:`openonda.fvm.fields.diagnostics`; these samplers only call them and
-serialise the results, so offline post-processing and live runs share the exact
-same mathematics.
-
-Examples
---------
->>> from openonda.fvm.config import RunSchedule
->>> forces = ForceSampler(
-...     patch_names=["cube"],
-...     reference_velocity=1.0, reference_area=1.0, reference_length=1.0,
-...     moment_centre=[0, 0, 0],
-...     file_name="forces_history",
-...     schedule=RunSchedule(every_n_steps=10),
-... )
->>> y_plus = YPlusSampler(patch_names=["cube"])
+:class:`ForceSampler` integrates the pressure and viscous forces on boundary
+patches and appends one row per patch to ``samples/<name>.csv``;
+:class:`YPlusSampler` computes the wall y+ statistics. The force and y+
+computations are in :mod:`openonda.fvm.diagnostics.fields`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ..fields import diagnostics
-from .base import Sampler, _register_sampler, append_csv_rows
+from openonda.core.file_output import append_csv_rows
+from openonda.core.sampling import Sampler
+from openonda.core.schedules import EverySteps, Schedule
+
+from ..diagnostics import fields as diagnostics
 
 if TYPE_CHECKING:
-    from ..config.scheduling import RunSchedule
-    from ..config.types import FVMSetup
     from ..core.solver import FVMSolver
 
-FORCES_HEADER = [
+FORCE_SAMPLE_COLUMNS = (
     "time",
-    "step",
-    "accepted_time_step_size",
+    "time_step_size",
     "patch",
     "pressure_force_x",
     "pressure_force_y",
@@ -58,35 +43,23 @@ FORCES_HEADER = [
     "lift_coefficient",
     "side_force_coefficient",
     "pitching_moment_coefficient",
-]
+)
+Y_PLUS_SAMPLE_COLUMNS = ("time", "patch", "min", "max", "avg")
 
 
-def _context_setup(context: FVMSolver) -> FVMSetup:
-    """Return the validated setup used by live and offline sampling contexts."""
-    return getattr(context, "_resolved_setup", context.setup)
-
-
-def _context_transport(context: FVMSolver) -> tuple[float, float | np.ndarray]:
-    """Return ``(density, effective_kinematic_viscosity)`` for the sampled state."""
-    setup = _context_setup(context)
-    density = setup.transport.density
-    effective_kinematic_viscosity = getattr(
-        context,
-        "_kinematic_viscosity",
-        setup.transport.kinematic_viscosity,
-    )
-    eddy_viscosity = getattr(context, "eddy_viscosity", None)
-    if eddy_viscosity is not None:
-        effective_kinematic_viscosity = (
-            effective_kinematic_viscosity + eddy_viscosity[: context.mesh_data["n_cells"]]
-        )
-    return density, effective_kinematic_viscosity
+def _effective_viscosity(context: FVMSolver) -> tuple[float, float | np.ndarray]:
+    """Return the density in kg/m³ and the effective kinematic viscosity in m²/s."""
+    density = context.case.numerics.transport.density
+    viscosity = context._kinematic_viscosity
+    if context.eddy_viscosity is not None:
+        viscosity = viscosity + context.eddy_viscosity[: context.mesh_data["n_cells"]]
+    return density, viscosity
 
 
 class ForceSampler(Sampler):
     """Compute per-patch surface forces/coefficients and append them to CSV.
 
-    Wraps :func:`openonda.fvm.fields.diagnostics.compute_surface_forces`,
+    Wraps :func:`openonda.fvm.diagnostics.fields.compute_surface_forces`,
     which it calls directly — no force mathematics lives in the sampler.
     ``sample()`` is MPI-collective in partitioned runs (it merges patch-force
     fragments across ranks); ``write_csv()`` is the root-only file step.
@@ -112,8 +85,10 @@ class ForceSampler(Sampler):
         reference_area: float = 1.0,
         reference_length: float = 1.0,
         moment_centre: Sequence[float] = (0.0, 0.0, 0.0),
-        file_name: str = "forces_history",
-        schedule: RunSchedule | None = None,
+        *,
+        file_name: str | None = "forces_history",
+        schedule: Schedule = EverySteps(1),
+        initial: bool = True,
     ) -> None:
         """Create a surface-force sampler.
 
@@ -131,10 +106,12 @@ class ForceSampler(Sampler):
             Moment origin, shape ``(3,)``, in m.
         file_name : str, default="forces_history"
             Output CSV stem.
-        schedule : RunSchedule or None, default=None
-            Accepted-step/time cadence.
+        schedule : EverySteps, EveryTime or FinalOnly, default=EverySteps(1)
+            Accepted states that are sampled.
+        initial : bool, default=True
+            Sample the initial state.
         """
-        super().__init__(file_name=file_name, schedule=schedule)
+        super().__init__(file_name=file_name, schedule=schedule, initial=initial)
         self.patch_names = patch_names
         self.reference_velocity = reference_velocity
         self.reference_area = reference_area
@@ -168,7 +145,7 @@ class ForceSampler(Sampler):
             Patch force vectors in N, moments in N·m, face counts, and
             coefficient scalars.
         """
-        density, effective_kinematic_viscosity = _context_transport(context)
+        density, effective_kinematic_viscosity = _effective_viscosity(context)
         dynamic_viscosity = effective_kinematic_viscosity * density
 
         forces = diagnostics.compute_surface_forces(
@@ -190,7 +167,7 @@ class ForceSampler(Sampler):
             forces = diagnostics.merge_partition_forces(context.parallel.comm.allgather(forces))
         return forces
 
-    def write_csv(self, context: FVMSolver, samples_dir: str, forces: dict) -> None:
+    def write_csv(self, context: FVMSolver, samples_dir: str | Path, forces: dict) -> None:
         """Append one row per patch for an already-sampled force result.
 
         Parameters
@@ -212,7 +189,6 @@ class ForceSampler(Sampler):
             rows.append(
                 [
                     context.time,
-                    context.step,
                     context._accepted_time_step_size,
                     pname,
                     pressure_force[0],
@@ -233,7 +209,7 @@ class ForceSampler(Sampler):
                     C.get("pitching_moment_coefficient"),
                 ]
             )
-        append_csv_rows(f"{samples_dir}/{self.file_name}.csv", FORCES_HEADER, rows)
+        append_csv_rows(Path(samples_dir) / f"{self.name}.csv", FORCE_SAMPLE_COLUMNS, rows)
 
 
 class YPlusSampler(Sampler):
@@ -253,8 +229,10 @@ class YPlusSampler(Sampler):
     def __init__(
         self,
         patch_names: Sequence[str] | None = None,
+        *,
         file_name: str | None = None,
-        schedule: RunSchedule | None = None,
+        schedule: Schedule = EverySteps(1),
+        initial: bool = True,
     ) -> None:
         """Create a wall-unit diagnostic sampler.
 
@@ -264,10 +242,13 @@ class YPlusSampler(Sampler):
             Patches to inspect; ``None`` selects all wall patches.
         file_name : str or None, default=None
             Optional CSV stem. ``None`` only logs the statistics.
-        schedule : RunSchedule or None, default=None
-            Accepted-step/time cadence.
+        schedule : EverySteps, EveryTime or FinalOnly, default=EverySteps(1)
+            Accepted states that are sampled.
+        initial : bool, default=True
+            Sample the initial state.
         """
-        super().__init__(file_name=file_name, schedule=schedule)
+        super().__init__(file_name=file_name, schedule=schedule, initial=initial)
+        self.write_file = file_name is not None
         self.patch_names = patch_names
 
     def config_dict(self) -> dict:
@@ -286,11 +267,7 @@ class YPlusSampler(Sampler):
         """
         stats = diagnostics.compute_y_plus(
             context.velocity,
-            getattr(
-                context,
-                "_kinematic_viscosity",
-                _context_setup(context).transport.kinematic_viscosity,
-            ),
+            context._kinematic_viscosity,
             context.mesh_data,
             context.geo_data,
             context.boundaries,
@@ -303,19 +280,14 @@ class YPlusSampler(Sampler):
     def write_csv(
         self,
         context: FVMSolver,
-        samples_dir: str,
+        samples_dir: str | Path,
         stats: dict[str, dict[str, float]],
     ) -> None:
-        """Append one y+ row per patch to the history CSV."""
-        if self.file_name is None:
+        """Append one y+ row per patch to ``<samples_dir>/<name>.csv``."""
+        if not self.write_file:
             return
-        header = ["time", "step", "patch", "min", "max", "avg"]
         rows = [
-            [context.time, context.step, name, v["min"], v["max"], v["avg"]]
-            for name, v in sorted(stats.items())
+            [context.time, name, values["min"], values["max"], values["avg"]]
+            for name, values in sorted(stats.items())
         ]
-        append_csv_rows(f"{samples_dir}/{self.file_name}.csv", header, rows)
-
-
-_register_sampler(ForceSampler)
-_register_sampler(YPlusSampler)
+        append_csv_rows(Path(samples_dir) / f"{self.name}.csv", Y_PLUS_SAMPLE_COLUMNS, rows)

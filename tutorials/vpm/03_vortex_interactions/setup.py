@@ -25,9 +25,9 @@ PARTICLE_CORE_RADIUS = 1.5 * PARTICLE_SPACING  # sigma/h = 1.5: blobs overlap
 REMESH_CORE_RADIUS = 2.2 * PARTICLE_SPACING  # core spreading grows sigma; remesh above this
 TOROIDAL_TAIL_FRACTION = 1.0e-4
 TIME_STEP_SIZE = 0.00375
-N_STEPS = 3200  # 12 s
-HIGH_RE_STEPS = 2400  # 9 s
-SINGLE_RING_STEPS = 300
+END_TIME = 12.0  # [s]
+HIGH_RE_END_TIME = 9.0  # [s]
+SINGLE_RING_END_TIME = 1.125  # [s]
 MAX_N_PARTICLES = 600_000
 RELAXATION_FACTOR = 0.02  # per step: a relaxation rate of 5.3 1/s
 TUTORIAL_DIR = Path(__file__).parent
@@ -67,12 +67,12 @@ def core_section_samplers(*, interval=0.15):
         include_derivatives=False,
     )
     return (
-        vpm.SurfaceSampler(**plane, schedule=vpm.EveryTime(interval), initial=True),
-        vpm.SurfaceSampler(**plane, schedule=vpm.FinalOnly()),
+        vpm.SurfaceSampler(**plane, schedule=vpm.EveryTime(interval)),
+        vpm.SurfaceSampler(**plane, schedule=vpm.FinalOnly(), initial=False),
     )
 
 
-def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, n_steps=N_STEPS, direct=False):
+def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, end_time=END_TIME, direct=False):
     kinematic_viscosity = RING_CIRCULATION / reynolds_number
     # Gaussian redistribution restores the lattice once core spreading has grown
     # the cores to REMESH_CORE_RADIUS; it conserves strength, impulse and groups.
@@ -97,13 +97,14 @@ def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, n_steps=N_STEPS, direct=F
     # fast multipole method is quicker; below about 5e4 particles (one ring, or
     # Re = 3e4 where the cores hardly grow) direct summation is faster and exact.
     induction = (
-        vpm.DirectInduction(stretching_scheme="TRANSPOSED")
+        vpm.DirectInduction(stretching_scheme="transposed")
         if direct
-        else vpm.FMMInduction(stretching_scheme="TRANSPOSED")
+        else vpm.FMMInduction(stretching_scheme="transposed")
     )
     return vpm.VPMCase(
         name=name,
         directory=TUTORIAL_DIR,
+        variant=name,
         initial_conditions=rings[1:] if name == "single_ring" else rings,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
@@ -117,7 +118,6 @@ def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, n_steps=N_STEPS, direct=F
             stabilization=remesh,
             max_n_particles=MAX_N_PARTICLES,
             random_seed=42,
-            verbose=False,
             # The run stops once the particles no longer represent a solenoidal
             # vorticity field: the lifetime of each case.
             state_limits=vpm.ParticleStateLimits(
@@ -125,28 +125,25 @@ def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, n_steps=N_STEPS, direct=F
                 divergence=vpm.DivergenceLimit(maximum=0.12),
             ),
         ),
-        backup=vpm.Backup(
-            interval_steps=200, directory=f"solution/{name}", log_directory=f"solution/{name}"
-        ),
+        run=vpm.RunPlan(end_time=end_time, state_limit_action="stop"),
         samplers=vpm.Samplers(
-            directory=name,
             samples=(
-                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10), initial=True),
-                RingDiagnosticsSampler(schedule=vpm.EverySteps(10), initial=True),
-                AzimuthalModeSampler(schedule=vpm.EverySteps(10), initial=True),
+                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(10)),
+                RingDiagnosticsSampler(schedule=vpm.EverySteps(10)),
+                AzimuthalModeSampler(schedule=vpm.EverySteps(10)),
                 *core_section_samplers(),
             ),
         ),
-        run=vpm.RunPlan(steps=n_steps, final_backup=True, state_limit_action="STOP"),
+        backup=vpm.Backup(schedule=vpm.EverySteps(200)),
     )
 
 
 def build_case(name):
     if name == "single_ring":
-        return dns_case(name, n_steps=SINGLE_RING_STEPS, direct=True)
+        return dns_case(name, end_time=SINGLE_RING_END_TIME, direct=True)
     if name.startswith("high_re"):
         case = dns_case(
-            name, reynolds_number=HIGH_REYNOLDS_NUMBER, n_steps=HIGH_RE_STEPS, direct=True
+            name, reynolds_number=HIGH_REYNOLDS_NUMBER, end_time=HIGH_RE_END_TIME, direct=True
         )
     else:
         case = dns_case(name)
@@ -154,7 +151,7 @@ def build_case(name):
     if name.endswith(("les", "les_stabilized")):
         # Sigma model, active only where a particle's strength departs from the
         # resolved vorticity, applied by strength exchange so cores stay uniform.
-        numerics = replace(numerics, turbulence=vpm.TurbulenceConfig.les_sigma())
+        numerics = replace(numerics, turbulence=vpm.TurbulenceConfig.sigma())
     if name == "les_stabilized":
         # Pedrizzetti relaxation turns each strength toward the resolved vorticity;
         # net strength and impulse are restored after every application.

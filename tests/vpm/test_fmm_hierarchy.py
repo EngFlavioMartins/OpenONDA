@@ -80,7 +80,7 @@ def test_multipole_and_local_translations_preserve_leading_coefficients():
 
 
 def test_near_field_p2p_uses_the_shared_radial_kernel_and_excludes_self_pairs():
-    kernel = make_vortex_kernel("GAUSSIAN")
+    kernel = make_vortex_kernel("gaussian")
     position = np.array([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0]])
     strength = np.array([[0.0, 0.2, 0.0], [0.0, -0.1, 0.0]])
     core_radius = np.array([0.1, 0.3])
@@ -108,7 +108,7 @@ def test_near_field_p2p_uses_the_shared_radial_kernel_and_excludes_self_pairs():
 
 
 def test_near_field_p2p_preserves_matching_indices_for_distinct_sets():
-    kernel = make_vortex_kernel("GAUSSIAN")
+    kernel = make_vortex_kernel("gaussian")
     target_position = np.array([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0]])
     source_position = np.array([[0.1, 0.1, 0.0], [0.5, 0.1, 0.0]])
     source_strength = np.array([[0.0, 0.2, 0.0], [0.0, -0.1, 0.0]])
@@ -135,11 +135,11 @@ def test_near_field_p2p_preserves_matching_indices_for_distinct_sets():
 
 
 @pytest.mark.parametrize("induction_type", (DirectInduction, TreecodeInduction, FMMInduction))
-@pytest.mark.parametrize("scheme", ("DIRECT", "TRANSPOSED", "MIXED"))
+@pytest.mark.parametrize("scheme", ("direct", "transposed", "mixed"))
 def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
     tmp_path, monkeypatch, induction_type, scheme
 ):
-    from openonda.vpm import Backup, Numerics, ViscousConfig, VPMCase, VPMSolver
+    from openonda.vpm import Numerics, ViscousConfig, VPMCase, VPMSolver
 
     rng = np.random.default_rng(20260901)
     count = 64
@@ -151,13 +151,12 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
     solver = VPMSolver(
         VPMCase(
             directory=tmp_path,
-            backup=Backup(0),
+            name="test",
             numerics=Numerics(
-                compute_device="CPU",
+                compute_device="cpu",
                 max_n_particles=count,
                 induction=induction_type(stretching_scheme=scheme),
                 viscous=ViscousConfig.inviscid(particle_spacing=0.2),
-                verbose=False,
             ),
         )
     )
@@ -185,7 +184,7 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
 
     # Analytical pair Jacobians are independently checked against finite
     # differences in test_vortex_kernel_formulation, and use unequal pair cores.
-    kernel = make_vortex_kernel("GAUSSIAN")
+    kernel = make_vortex_kernel("gaussian")
     displacement = position[:, None, :].astype(float) - position[None, :, :]
     expected_velocity = kernel.velocity_pair(
         displacement, strength[None, :, :], radius[:, None], radius[None, :]
@@ -195,9 +194,9 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
     )
     expected_gradient = expected_gradient.sum(axis=1)
     operator = {
-        "DIRECT": expected_gradient,
-        "TRANSPOSED": expected_gradient.swapaxes(1, 2),
-        "MIXED": 0.5 * (expected_gradient + expected_gradient.swapaxes(1, 2)),
+        "direct": expected_gradient,
+        "transposed": expected_gradient.swapaxes(1, 2),
+        "mixed": 0.5 * (expected_gradient + expected_gradient.swapaxes(1, 2)),
     }[scheme]
     expected_rate = np.einsum("nij,nj->ni", operator, strength)
     rate_tolerance = 3.0e-5 if induction_type is DirectInduction else 1.5e-2
@@ -230,7 +229,7 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
             assert diagnostics.host_particle_transfers == 0
             assert diagnostics.hierarchy_builds == 2
             assert diagnostics.stretching_scheme == scheme
-            if scheme == "TRANSPOSED":
+            if scheme == "transposed":
                 assert diagnostics.last_relative_rate_defect <= 1.0e-3
         solver.induction.evaluate_stage(**stage, strength_rate_enabled=False)
         np.testing.assert_array_equal(rate.to_numpy(), 0.0)
@@ -238,7 +237,7 @@ def test_backends_evaluate_the_selected_stretching_on_the_supplied_stage(
         solver.close()
 
 
-@pytest.mark.parametrize("scheme", ("DIRECT", "TRANSPOSED", "MIXED"))
+@pytest.mark.parametrize("scheme", ("direct", "transposed", "mixed"))
 def test_private_host_fmm_reference_qualifies_all_radial_kernels(scheme):
     rng = np.random.default_rng(20260903)
     count = 16
@@ -247,7 +246,7 @@ def test_private_host_fmm_reference_qualifies_all_radial_kernels(scheme):
     radius = rng.uniform(0.08, 0.15, size=count)
     physics = _HostPhysics()
 
-    for name in ("GAUSSIAN", "HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN", "WINCKELMANS"):
+    for name in ("gaussian", "high_order_gaussian", "super_gaussian", "winckelmans"):
         induction = HostFMMReference(
             physics,
             kernel=make_vortex_kernel(name),
@@ -288,9 +287,9 @@ def test_private_host_fmm_reference_qualifies_all_radial_kernels(scheme):
         expected_velocity = expected_velocity.sum(axis=1)
         expected_gradient = expected_gradient.sum(axis=1)
         operator = {
-            "DIRECT": expected_gradient,
-            "TRANSPOSED": expected_gradient.swapaxes(1, 2),
-            "MIXED": 0.5 * (expected_gradient + expected_gradient.swapaxes(1, 2)),
+            "direct": expected_gradient,
+            "transposed": expected_gradient.swapaxes(1, 2),
+            "mixed": 0.5 * (expected_gradient + expected_gradient.swapaxes(1, 2)),
         }[scheme]
         expected_rate = np.einsum("nij,nj->ni", operator, strength)
 

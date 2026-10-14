@@ -27,7 +27,6 @@ import math
 from pathlib import Path
 
 import openonda.vpm as vpm
-from openonda.vpm import Backup, Samplers
 
 from assets.generate_surface import (
     create_flat_plate,
@@ -102,23 +101,26 @@ def run(mode: str, angle_of_attack: float) -> None:
     )
 
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
-    vlm_setup = vpm.VLMSetup(
-        surfaces=(vpm.VLMSurfaceSetup(str(surface_file), kinematics=motion),),
-        mesh=vpm.VLMMeshSetup.geometric(ratio=4.0, region="end"),
+    vlm_setup = vpm.VLMConfig(
+        surfaces=(vpm.VLMSurface(str(surface_file), kinematics=motion),),
+        mesh=vpm.VLMMeshConfig.geometric(ratio=4.0, region="end"),
         density=DENSITY,
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         freestream_velocity=reference_velocity,
         force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
         wake_core_overlap=PARTICLE_CORE_FACTOR,
     )
+    backup_steps = round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE)
     case = vpm.VPMCase(
         name=name,
+        directory=TUTORIAL_DIR,
+        variant=name,
         numerics=vpm.Numerics(
-            turbulence=vpm.TurbulenceConfig.les_smagorinsky(
+            turbulence=vpm.TurbulenceConfig.smagorinsky(
                 smagorinsky_coefficient=SMAGORINSKY_COEFFICIENT
             ),
             time_step_size=TIME_STEP_SIZE,
-            compute_device="CPU",
+            compute_device="cpu",
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
@@ -127,17 +129,12 @@ def run(mode: str, angle_of_attack: float) -> None:
             induction=vpm.DirectInduction(stretching_scheme="transposed"),
             max_n_particles=120_000,
         ),
-        backup=Backup(
-            interval_steps=round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE),
-            directory=f"solution/{name}",
-            log_directory=f"solution/{name}",
-        ),
-        samplers=Samplers(
+        run=vpm.RunPlan(end_time=n_steps * TIME_STEP_SIZE),
+        output=vpm.Output(schedule=vpm.EverySteps(backup_steps)),
+        samplers=vpm.Samplers(
             samples=(vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),),
-            directory=name,
         ),
-        run=vpm.RunPlan(steps=n_steps),
-        directory=TUTORIAL_DIR,
+        backup=vpm.Backup(schedule=vpm.EverySteps(backup_steps)),
     )
     vpm.VPMSolver(case).run(start_from=START_FROM)
 

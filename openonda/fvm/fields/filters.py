@@ -2,10 +2,6 @@
 
 One-ring, volume-weighted box filtering. Used by the coupler's blending-zone
 relaxation to relax only the scales its target can represent.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from __future__ import annotations

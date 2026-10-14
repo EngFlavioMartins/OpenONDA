@@ -1,10 +1,10 @@
-"""Structured convergence and run-field and convergence records for the FVM solver."""
+"""Convergence and field records of one FVM time step."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .linear_interface import LinearSolveResult
+from ..solve.linear_interface import LinearSolveResult
 
 
 @dataclass(frozen=True)

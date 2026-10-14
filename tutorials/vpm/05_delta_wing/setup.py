@@ -19,7 +19,6 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.vpm import Backup, Samplers
 
 from assets.generate_surface import (
     create_delta_wing,
@@ -52,7 +51,6 @@ ANGULAR_FREQUENCY = 2.0 * np.pi * HEAVE_FREQUENCY
 # Resolution
 END_TIME = 20.0  # [s]
 TIME_STEP_SIZE = 0.0025  # [s]
-N_STEPS = round(END_TIME / TIME_STEP_SIZE)
 SAMPLE_INTERVAL_TIME = 0.025  # 40 coupled VPM/VLM backups per heave cycle; >=30 fps
 
 
@@ -106,9 +104,9 @@ def build_case() -> vpm.VPMCase:
         ("front_wing", WING_SEPARATION, 0.0),
         ("rear_wing", 0.0, np.pi),
     )
-    vlm_setup = vpm.VLMSetup(
+    vlm_setup = vpm.VLMConfig(
         surfaces=tuple(
-            vpm.VLMSurfaceSetup(
+            vpm.VLMSurface(
                 str(surface_file),
                 name=name,
                 kinematics=vpm.ManeuverVLM(
@@ -123,7 +121,7 @@ def build_case() -> vpm.VPMCase:
             )
             for surface_index, (name, x_position, phase) in enumerate(wings)
         ),
-        mesh=vpm.VLMMeshSetup.geometric(ratio=3.0, region="end"),
+        mesh=vpm.VLMMeshConfig.geometric(ratio=3.0, region="end"),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         wake_core_overlap=2.5,
@@ -143,9 +141,11 @@ def build_case() -> vpm.VPMCase:
     )
     case = vpm.VPMCase(
         name=CASE_NAME,
+        directory=TUTORIAL_DIR,
+        variant=CASE_NAME,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="CPU",
+            compute_device="cpu",
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
@@ -164,20 +164,15 @@ def build_case() -> vpm.VPMCase:
             ),
             max_n_particles=250_000,
         ),
-        backup=Backup(
-            interval_steps=sample_steps,
-            directory="solution",
-            log_directory="solution",
-        ),
-        samplers=Samplers(
+        run=vpm.RunPlan(end_time=END_TIME),
+        output=vpm.Output(schedule=vpm.EverySteps(sample_steps)),
+        samplers=vpm.Samplers(
             samples=(
                 vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
                 *samplers,
             ),
-            directory=CASE_NAME,
         ),
-        run=vpm.RunPlan(steps=N_STEPS),
-        directory=TUTORIAL_DIR,
+        backup=vpm.Backup(schedule=vpm.EverySteps(sample_steps)),
     )
     return case
 

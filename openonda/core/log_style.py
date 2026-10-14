@@ -8,10 +8,38 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from datetime import datetime
 import logging
 from numbers import Integral, Real
+from pathlib import Path
+import platform
+import sys
 import textwrap
 from typing import SupportsFloat, SupportsInt
+
+from .version import __version__
+
+__all__ = [
+    "WIDTH",
+    "Event",
+    "FormattedText",
+    "Formatter",
+    "Row",
+    "block_report",
+    "block_section",
+    "close_logging",
+    "configure_logging",
+    "count",
+    "elapsed_time",
+    "quantity",
+    "ratio",
+    "record",
+    "run_header",
+    "section",
+    "step_header",
+    "step_section_order",
+    "value_text",
+]
 
 WIDTH = 88
 _VALUE_END = 63
@@ -195,3 +223,115 @@ def quantity(value: SupportsFloat, digits: int = 3) -> str:
 def ratio(value: SupportsFloat, digits: int = 3) -> str:
     """Format a dimensionless ratio in fixed-point notation."""
     return f"{float(value):.{digits}f}"
+
+
+def run_header(solver_name: str, precision: str, *rows: Row) -> FormattedText:
+    """Return the report that opens a solver run.
+
+    Parameters
+    ----------
+    solver_name : str
+        Solver shown in the title, for example ``"FVM"`` or ``"VPM"``.
+    precision : str
+        Floating-point precision of the solution fields, for example
+        ``"f64"``.
+    *rows : Row
+        Further ``(label, value[, unit])`` rows, for example the compute
+        backend, appended after the common rows.
+
+    Returns
+    -------
+    FormattedText
+        ``OpenONDA <solver_name>`` report with the OpenONDA version, the
+        precision, the start date, the platform and the Python version.
+    """
+    return block_report(
+        f"OpenONDA {solver_name}",
+        [
+            (
+                "run",
+                [
+                    ("version", __version__),
+                    ("precision", precision),
+                    ("started", f"{datetime.now():%Y-%m-%d %H:%M:%S}"),
+                    ("platform", f"{platform.system()} {platform.machine()}"),
+                    ("Python", platform.python_version()),
+                    *rows,
+                ],
+            )
+        ],
+    )
+
+
+class _RunFileHandler(logging.FileHandler):
+    """Case log file installed by :func:`configure_logging`."""
+
+
+class _RunConsoleHandler(logging.StreamHandler):
+    """Console output installed by :func:`configure_logging`."""
+
+
+def close_logging(name: str) -> None:
+    """Remove and close the handlers installed by :func:`configure_logging`.
+
+    Handlers installed by the caller stay attached.
+
+    Parameters
+    ----------
+    name : str
+        Logger name, for example ``"openonda.fvm"``.
+    """
+    logger = logging.getLogger(name)
+    for handler in list(logger.handlers):
+        if isinstance(handler, _RunFileHandler | _RunConsoleHandler):
+            logger.removeHandler(handler)
+            handler.close()
+
+
+def configure_logging(
+    name: str,
+    path: str | Path | None,
+    *,
+    console: bool = True,
+    level: int = logging.INFO,
+) -> logging.Logger:
+    """Send a standard-library logger to a case log file and the console.
+
+    Both outputs use the shared :class:`Formatter`. Calling the function
+    again replaces the handlers of the previous call; handlers installed by
+    the caller stay attached. The logger does not propagate to the root
+    logger.
+
+    Parameters
+    ----------
+    name : str
+        Logger name, for example ``"openonda.fvm"``.
+    path : str or pathlib.Path or None
+        Log file, opened for appending; missing parent directories are
+        created. ``None`` writes no file.
+    console : bool, default=True
+        Also write to standard output.
+    level : int, default=logging.INFO
+        Lowest level that is written.
+
+    Returns
+    -------
+    logging.Logger
+        The configured logger.
+    """
+    close_logging(name)
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.propagate = False
+    formatter = Formatter()
+    if path is not None:
+        log_path = Path(path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = _RunFileHandler(log_path, mode="a", encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    if console:
+        console_handler = _RunConsoleHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+    return logger

@@ -11,13 +11,13 @@ if TYPE_CHECKING:
     from .geometry.aircraft import Aircraft
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ForceConfig:
     """Select aerodynamic load evaluation for an attached vortex-lattice model.
 
     Parameters
     ----------
-    method : {'KUTTA_JOUKOWSKI'}, default='KUTTA_JOUKOWSKI'
+    method : {'kutta_joukowski'}, default='kutta_joukowski'
         Bound-leg Kutta–Joukowski loads, optionally with unsteady pressure.
     unsteady : bool, default=False
         Include the backward time difference of the surface potential jump
@@ -25,7 +25,7 @@ class ForceConfig:
         a positive physical time step in postprocessing.
     """
 
-    method: Literal["KUTTA_JOUKOWSKI"] = "KUTTA_JOUKOWSKI"
+    method: Literal["kutta_joukowski"] = "kutta_joukowski"
     unsteady: bool = False
 
     @staticmethod
@@ -34,8 +34,8 @@ class ForceConfig:
         return ForceConfig(unsteady=unsteady)
 
 
-@dataclass(frozen=True)
-class VLMMeshSetup:
+@dataclass(frozen=True, slots=True)
+class VLMMeshConfig:
     """Configure chordwise/spanwise panel spacing for all declared VLM surfaces.
 
     Parameters
@@ -68,13 +68,13 @@ class VLMMeshSetup:
         ratio: float = 3.0,
         *,
         region: Literal["start", "end", "both"] = "both",
-    ) -> VLMMeshSetup:
+    ) -> VLMMeshConfig:
         """Configure geometric panel spacing toward the selected region."""
-        return VLMMeshSetup(spacing="geometric", ratio=ratio, region=region)
+        return VLMMeshConfig(spacing="geometric", ratio=ratio, region=region)
 
 
-@dataclass(frozen=True)
-class VLMSurfaceSetup:
+@dataclass(frozen=True, slots=True)
+class VLMSurface:
     """Declare one lifting surface and its placement in a VLM/VPM case.
 
     Parameters
@@ -125,8 +125,8 @@ class VLMSurfaceSetup:
             raise ValueError("VLM surface group_id must be a non-negative integer")
 
 
-@dataclass(frozen=True)
-class VLMSetup:
+@dataclass(frozen=True, slots=True)
+class VLMConfig:
     """Complete VLM solver definition.
 
     ``max_n_panels`` is optional. When omitted, capacity is derived exactly from
@@ -134,15 +134,15 @@ class VLMSetup:
 
     Parameters
     ----------
-    surfaces : tuple[VLMSurfaceSetup, ...]
+    surfaces : tuple[VLMSurface, ...]
         One or more lifting-surface declarations.
-    mesh : VLMMeshSetup
+    mesh : VLMMeshConfig
         Shared panel-distribution settings.
     max_n_panels : int or None, optional
         Positive allocation ceiling; ``None`` derives exact capacity.
     dtype : {'f32', 'f64'}, default='f32'
         VLM field precision.
-    linear_solver : {'SCIPY', 'BICGSTAB_GPU'} or None, optional
+    linear_solver : {'scipy', 'bicgstab_gpu'} or None, optional
         Circulation solver; ``None`` selects a backend-appropriate default.
     circulation_relaxation : float, default=1
         New/old circulation blend fraction in ``(0, 1]``.
@@ -178,11 +178,11 @@ class VLMSetup:
         cases require this solver-sample output and reject an explicit opt-out.
     """
 
-    surfaces: tuple[VLMSurfaceSetup, ...]
-    mesh: VLMMeshSetup = field(default_factory=VLMMeshSetup)
+    surfaces: tuple[VLMSurface, ...]
+    mesh: VLMMeshConfig = field(default_factory=VLMMeshConfig)
     max_n_panels: int | None = None
     dtype: Literal["f32", "f64"] = "f32"
-    linear_solver: Literal["SCIPY", "BICGSTAB_GPU"] | None = None
+    linear_solver: Literal["scipy", "bicgstab_gpu"] | None = None
     circulation_relaxation: float = 1.0
     kinematic_viscosity: float = 1.0
     density: float = 1.0
@@ -197,7 +197,7 @@ class VLMSetup:
         """Validate declared settings and normalize immutable configuration values."""
         object.__setattr__(self, "surfaces", tuple(self.surfaces))
         if not self.surfaces:
-            raise ValueError("VLMSetup requires at least one surface")
+            raise ValueError("VLMConfig requires at least one surface")
         if self.max_n_panels is not None and (
             isinstance(self.max_n_panels, bool)
             or not isinstance(self.max_n_panels, int)
@@ -206,7 +206,7 @@ class VLMSetup:
             raise ValueError("VLM max_n_panels must be a positive integer when provided")
         if self.dtype not in {"f32", "f64"}:
             raise ValueError("VLM dtype must be f32 or f64")
-        if self.linear_solver not in {None, "SCIPY", "BICGSTAB_GPU"}:
+        if self.linear_solver not in {None, "scipy", "bicgstab_gpu"}:
             raise ValueError("VLM linear_solver must be SCIPY or BICGSTAB_GPU")
         if not 0 < self.circulation_relaxation <= 1:
             raise ValueError("circulation_relaxation must be in (0, 1]")
@@ -236,4 +236,4 @@ class VLMSetup:
             )
 
 
-__all__ = ["ForceConfig", "VLMMeshSetup", "VLMSurfaceSetup", "VLMSetup"]
+__all__ = ["ForceConfig", "VLMConfig", "VLMMeshConfig", "VLMSurface"]

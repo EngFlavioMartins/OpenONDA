@@ -42,51 +42,15 @@ OUTPUT_INTERVAL_TIME = 2.0  # save a snapshot every this many seconds
 GRADIENT_SCHEME = "gauss"
 
 
-def create_fvm_setup(kinematic_viscosity: float) -> fvm.FVMSetup:
-    """Build the FVM setup for the flat-plate case."""
-    schemes = fvm.DiscretizationConfig(
-        gradient_scheme=GRADIENT_SCHEME,
+def create_fvm_case(kinematic_viscosity: float) -> fvm.FVMCase:
+    """Build the FVM case of the flat plate."""
+    snapshots = fvm.EveryTime(OUTPUT_INTERVAL_TIME)
+
+    forces = fvm.ForceSampler(
+        patch_names=["plate"],
+        reference_velocity=FREESTREAM_VELOCITY,
+        reference_length=PLATE_LENGTH,
     )
-    forces = [
-        fvm.ForceSampler(
-            patch_names=["plate"],
-            reference_velocity=FREESTREAM_VELOCITY,
-            reference_length=PLATE_LENGTH,
-        )
-    ]
-
-    return fvm.FVMSetup(
-        backup=fvm.BackupConfig(
-            schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME), write_at_end=True
-        ),
-        case_name=CASE_NAME,
-        time=fvm.TimeConfig(
-            time_step_size=TIME_STEP_SIZE,
-            end_time=FINAL_TIME,
-            output_schedule=fvm.RunSchedule(every_time=OUTPUT_INTERVAL_TIME),
-            adjustment=fvm.MaximumCourantTimeStep(
-                maximum_time_step_size=MAX_TIME_STEP_SIZE,
-            ),
-        ),
-        schemes=schemes,
-        samplers=forces,
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-        boundaries=[
-            fvm.BoundaryConfig.inlet("inlet", [FREESTREAM_VELOCITY, 0.0, 0.0]),
-            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
-            fvm.BoundaryConfig(name="floor", velocity_type="slip", pressure_type="zeroGradient"),
-            fvm.BoundaryConfig.wall("plate"),
-            fvm.BoundaryConfig(name="top", velocity_type="slip", pressure_type="zeroGradient"),
-            fvm.BoundaryConfig.empty("front"),
-            fvm.BoundaryConfig.empty("back"),
-        ],
-        initial_velocity=[FREESTREAM_VELOCITY, 0.0, 0.0],
-    )
-
-
-def main() -> None:
-    case_dir = Path(__file__).parent
-    kinematic_viscosity = FREESTREAM_VELOCITY * PLATE_LENGTH / REYNOLDS_NUMBER
     mesh = partial(
         flat_plate_mesh,
         x_up=UPSTREAM_LIMIT,
@@ -97,13 +61,45 @@ def main() -> None:
         dy_wall=WALL_CELL_HEIGHT,
         ratio=WALL_STRETCHING,
     )
-    solver = fvm.create_fvm_solver(
-        create_fvm_setup(kinematic_viscosity), case_dir=case_dir, mesh=mesh
+
+    return fvm.FVMCase(
+        name=CASE_NAME,
+        directory=Path(__file__).parent,
+        numerics=fvm.Numerics(
+            time_step_size=TIME_STEP_SIZE,
+            time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
+            schemes=fvm.DiscretizationConfig(gradient_scheme=GRADIENT_SCHEME),
+        ),
+        initial_conditions=fvm.InitialFields(velocity=(FREESTREAM_VELOCITY, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=FINAL_TIME),
+        output=fvm.Output(schedule=snapshots),
+        samplers=fvm.Samplers((forces,)),
+        backup=fvm.Backup(schedule=snapshots),
+        mesh=mesh,
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", (FREESTREAM_VELOCITY, 0.0, 0.0)),
+            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            fvm.BoundaryConfig(name="floor", velocity_type="slip"),
+            fvm.BoundaryConfig.wall("plate"),
+            fvm.BoundaryConfig(name="top", velocity_type="slip"),
+            fvm.BoundaryConfig.empty("front"),
+            fvm.BoundaryConfig.empty("back"),
+        ),
     )
-    solver.run(start_from=START_FROM)
-    solver.evaluate(
-        write_profiles, case_dir / "solution", kinematic_viscosity, FREESTREAM_VELOCITY, STATIONS
-    )
+
+
+def main() -> None:
+    kinematic_viscosity = FREESTREAM_VELOCITY * PLATE_LENGTH / REYNOLDS_NUMBER
+    with fvm.FVMSolver(create_fvm_case(kinematic_viscosity)) as solver:
+        solver.run(start_from=START_FROM)
+        solver.evaluate(
+            write_profiles,
+            solver.solution_dir,
+            kinematic_viscosity,
+            FREESTREAM_VELOCITY,
+            STATIONS,
+        )
 
 
 if __name__ == "__main__":

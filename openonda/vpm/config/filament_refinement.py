@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FilamentRefinementConfig:
     """Configure conservative splitting of stretched vortex-line particles.
 

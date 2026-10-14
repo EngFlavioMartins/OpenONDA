@@ -52,7 +52,7 @@ def rotor_inputs(metadata_path: Path | None = None):
 
     import numpy as np
 
-    metadata_path = metadata_path or CASE_DIR / "solution/vpm_metadata.json"
+    metadata_path = metadata_path or CASE_DIR / "solution/quadcopter/vpm_metadata.json"
     metadata = read_json(metadata_path)
     config = metadata["configuration"]
     vlm = config["numerics"]["vlm"]

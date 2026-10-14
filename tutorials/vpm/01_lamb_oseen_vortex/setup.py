@@ -3,9 +3,9 @@
 
 Examples (from this case directory)::
 
-    python setup.py vortex CS
-    python setup.py dipole DVH
-    python setup.py merging GBD
+    python setup.py vortex cs
+    python setup.py dipole dvh
+    python setup.py merging gbd
 
 Independent RWM ensembles use
 ``python -m assets.rwm_ensemble CASE``.
@@ -20,7 +20,6 @@ from pathlib import Path
 import numpy as np
 
 import openonda.vpm as vpm
-from openonda.vpm import Backup, Samplers
 
 from assets.initial_conditions import TriangularPrismDistribution, VortexFilament
 
@@ -48,17 +47,17 @@ BACKUP_INTERVAL_TIME = 10.0 * 0.291  # time between snapshots [s]
 INITIAL_STRENGTH_CUTOFF = 1e-4  # minimum initial strength relative to the peak
 MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD population)
 
-ALL_VISCOUS_SCHEMES = ("CS", "RWM", "DVH", "GBD")
+ALL_VISCOUS_SCHEMES = ("cs", "rwm", "dvh", "gbd")
 RWM_ENSEMBLE_SIZE = 10
 
 # Backend selection is independent of the stretching formulation.
 STRETCHING_SCHEME = "transposed"  # "direct", "mixed", or "transposed"
 
 COMPUTE_METHOD = {
-    "CS": "DIRECT",
-    "RWM": "DIRECT",
-    "DVH": "TREECODE",
-    "GBD": "TREECODE",
+    "cs": "direct",
+    "rwm": "direct",
+    "dvh": "treecode",
+    "gbd": "treecode",
 }
 
 # Physical case definitions
@@ -74,15 +73,15 @@ TUTORIAL_DIR = Path(__file__).resolve().parent
 
 def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> vpm.ViscousConfig:
     return {
-        "CS": vpm.ViscousConfig.cs(
+        "cs": vpm.ViscousConfig.cs(
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=spacing,
         ),
-        "RWM": vpm.ViscousConfig.rwm(
+        "rwm": vpm.ViscousConfig.rwm(
             kinematic_viscosity=kinematic_viscosity,
             particle_spacing=spacing,
         ),
-        "DVH": vpm.ViscousConfig.dvh(
+        "dvh": vpm.ViscousConfig.dvh(
             particle_spacing=spacing,
             padding=5,
             kinematic_viscosity=kinematic_viscosity,
@@ -91,7 +90,7 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             threshold_mode="budget",
             core_radius_ratio=CORE_RADIUS_RATIO,
         ),
-        "GBD": vpm.ViscousConfig.gbd(
+        "gbd": vpm.ViscousConfig.gbd(
             particle_spacing=spacing,
             padding=5,
             kinematic_viscosity=kinematic_viscosity,
@@ -99,17 +98,17 @@ def viscous_config(scheme: str, kinematic_viscosity: float, spacing: float) -> v
             threshold_mode="budget",
             core_radius_ratio=CORE_RADIUS_RATIO,
         ),
-    }[scheme.upper()]
+    }[scheme]
 
 
 def induction_config(scheme: str):
     """Select an induction backend while keeping stretching independently configurable."""
     methods = {
-        "DIRECT": vpm.DirectInduction,
-        "TREECODE": vpm.TreecodeInduction,
-        "FMM": vpm.FMMInduction,
+        "direct": vpm.DirectInduction,
+        "treecode": vpm.TreecodeInduction,
+        "fmm": vpm.FMMInduction,
     }
-    return methods[COMPUTE_METHOD[scheme.upper()]](stretching_scheme=STRETCHING_SCHEME)
+    return methods[COMPUTE_METHOD[scheme]](stretching_scheme=STRETCHING_SCHEME)
 
 
 def _initial_conditions(physics: str, kinematic_viscosity: float):
@@ -161,10 +160,9 @@ def run_case(
     random_seed: int = 42,
     surfaces: bool = True,
     backup_steps: int | None = None,
-    compute_device: str = "AUTO",
+    compute_device: str = "auto",
 ) -> None:
-    scheme = scheme.upper()
-    case_name = name or f"{physics}_{scheme.lower()}"
+    case_name = name or f"{physics}_{scheme}"
     # Derived physical quantities
     spacing = SPACING
     field_spacing = FIELD_SPACING
@@ -227,7 +225,7 @@ def run_case(
     # Field samplers
     sample_plane_fraction = 0.25  # sample at z = L/4
     integral_interval_steps = field_interval_steps
-    if scheme == "DVH":
+    if scheme == "dvh":
         diffusion_steps = math.ceil(viscous.dvh_required_time_step_size() / TIME_STEP_SIZE)
         # Energy-rate samples span a complete DVH diffusion interval.
         integral_interval_steps *= math.ceil(diffusion_steps / integral_interval_steps)
@@ -245,13 +243,10 @@ def run_case(
             )
         )
 
-    sample_directory = case_name
-    solution_directory = Path("solution") / case_name
-
-    n_steps = round(TOTAL_TIME / TIME_STEP_SIZE)
-
     case = vpm.VPMCase(
         name=case_name,
+        directory=TUTORIAL_DIR,
+        variant=case_name,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             viscous=viscous,
@@ -263,14 +258,9 @@ def run_case(
             random_seed=random_seed,
         ),
         initial_conditions=initial_conditions,
-        backup=Backup(
-            interval_steps=backup_steps,
-            directory=str(solution_directory),
-            log_directory=str(solution_directory),
-        ),
-        samplers=Samplers(samples=tuple(samplers), directory=sample_directory),
-        run=vpm.RunPlan(steps=n_steps),
-        directory=TUTORIAL_DIR,
+        run=vpm.RunPlan(end_time=TOTAL_TIME),
+        samplers=vpm.Samplers(samples=tuple(samplers)),
+        backup=vpm.Backup(schedule=vpm.EverySteps(backup_steps)),
     )
 
     solver = vpm.VPMSolver(case)
@@ -280,6 +270,6 @@ def run_case(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", nargs="?", default="vortex", choices=tuple(PHYSICS_CIRCULATIONS))
-    parser.add_argument("viscous_scheme", nargs="?", default="CS", choices=ALL_VISCOUS_SCHEMES)
+    parser.add_argument("viscous_scheme", nargs="?", default="cs", choices=ALL_VISCOUS_SCHEMES)
     args = parser.parse_args()
     run_case(args.case, args.viscous_scheme)

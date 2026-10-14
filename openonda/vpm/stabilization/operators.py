@@ -14,11 +14,6 @@ projection, conservative regularization) live beside them in this package.
 ``apply_pedrizzetti_relaxation``
     Rotates each strength toward the vorticity direction it induces, which is
     the quantity the divergence-driven three-dimensional instability grows.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: August 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from typing import TYPE_CHECKING

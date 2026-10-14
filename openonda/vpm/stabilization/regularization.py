@@ -20,11 +20,6 @@ The global judgement of whether the event helped is left to
 The explicit transfer-only mode keeps the Gaussian remap and moment correction
 but omits the stabilizing adjustments. Its signed quadratic transfer is audited
 against symmetric error bounds; it never broadens cores or projects the field.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: August 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from __future__ import annotations

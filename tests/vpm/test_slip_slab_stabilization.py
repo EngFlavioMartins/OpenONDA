@@ -360,10 +360,10 @@ def _planar_solver(directory, viscous, stabilization):
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=directory,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=0.1,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f64",
                 max_n_particles=2000,
                 integrator=vpm.RK2(),
@@ -372,7 +372,6 @@ def _planar_solver(directory, viscous, stabilization):
                 ),
                 viscous=viscous,
                 stabilization=stabilization,
-                verbose=False,
             ),
         )
     )
@@ -391,12 +390,12 @@ def _planar_solver(directory, viscous, stabilization):
     return solver, strength[:, 2].sum()
 
 
-@pytest.mark.parametrize("scheme", ["CS", "RWM"])
+@pytest.mark.parametrize("scheme", ["cs", "rwm"])
 def test_planar_core_spreading_and_random_walk_stay_in_the_slab(tmp_path, scheme):
     from openonda import vpm
     from openonda.vpm.config.stabilization import StabilizationConfig
 
-    viscous = (vpm.ViscousConfig.cs if scheme == "CS" else vpm.ViscousConfig.rwm)(
+    viscous = (vpm.ViscousConfig.cs if scheme == "cs" else vpm.ViscousConfig.rwm)(
         kinematic_viscosity=2e-3, particle_spacing=H, core_radius_ratio=1.5
     )
     # Core spreading is paired with the regularization that resets its cores.
@@ -409,7 +408,7 @@ def test_planar_core_spreading_and_random_walk_stay_in_the_slab(tmp_path, scheme
             regularization_divergence_trigger=None,
             regularization_misalignment_trigger=None,
         )
-        if scheme == "CS"
+        if scheme == "cs"
         else StabilizationConfig()
     )
     solver, circulation = _planar_solver(tmp_path, viscous, stabilization)
@@ -421,7 +420,7 @@ def test_planar_core_spreading_and_random_walk_stay_in_the_slab(tmp_path, scheme
         assert np.all(np.abs(position[:, 2]) <= 0.5 * H)
         assert strength[:, 2].sum() == pytest.approx(circulation, rel=1e-12)
         assert not np.any(strength[:, :2])
-        if scheme == "CS":
+        if scheme == "cs":
             assert solver.stabilization.regularization_events >= 1
             np.testing.assert_array_equal(position[:, 2], 0.0)
     finally:
@@ -458,10 +457,10 @@ def test_thick_slab_ring_runs_every_stabilization_operator(tmp_path):
     solver = vpm.VPMSolver(
         vpm.VPMCase(
             directory=tmp_path,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=0.02,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f64",
                 max_n_particles=4000,
                 integrator=vpm.RK2(),
@@ -470,7 +469,6 @@ def test_thick_slab_ring_runs_every_stabilization_operator(tmp_path):
                 ),
                 viscous=vpm.ViscousConfig.inviscid(particle_spacing=H, core_radius_ratio=1.5),
                 stabilization=stabilization,
-                verbose=False,
             ),
         )
     )

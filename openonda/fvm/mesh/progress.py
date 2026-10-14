@@ -157,9 +157,9 @@ def mesher_log_session(
 
     logger = MesherLog(path, reporter=reporter)
     if announce:
-        from ..io.logging import emit_standalone_report
+        from ..io.logging import standalone_report
 
-        emit_standalone_report("mesh", ("log", str(logger.path)))
+        standalone_report("mesh", ("log", str(logger.path)))
     token = _ACTIVE_MESHER_LOG.set(logger)
     try:
         yield logger

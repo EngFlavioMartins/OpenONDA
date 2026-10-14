@@ -1,163 +1,30 @@
-"""
-Console/file logging for the solver: a line-buffered log stream, startup banner,
-and the Logging helper.
+"""Log records of the VPM solver, written to the ``openonda.vpm`` logger.
 
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
+The solver configures the logger with :func:`openonda.core.log_style.configure_logging`
+to write ``solution/vpm.log`` and, optionally, the console.
 """
 
-from datetime import datetime
-import os
-import platform
-from typing import TYPE_CHECKING, Any, TextIO
+import logging
+from typing import TYPE_CHECKING
 import warnings
 
 import taichi as ti
 
 from openonda.core import log_style
-from openonda.core.version import __version__
+from openonda.core.schedules import EverySteps, Schedule
 
 if TYPE_CHECKING:
     from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
     from ..core.solver import VPMSolver
 
-
-class _LineBufferedLogStream:
-    """Minimal stream adapter so print() writes are flushed to a log file in real time."""
-
-    def __init__(self, file_obj: TextIO) -> None:
-        self._file_obj = file_obj
-
-    def write(self, data: str) -> int:
-        if not data:
-            return 0
-        written = self._file_obj.write(data)
-        self._file_obj.flush()
-        return written
-
-    def flush(self) -> None:
-        self._file_obj.flush()
-
-    def isatty(self) -> bool:
-        return False
-
-    @property
-    def encoding(self) -> str:
-        return getattr(self._file_obj, "encoding", "utf-8")
-
-    def fileno(self) -> int:
-        return self._file_obj.fileno()
+LOGGER = logging.getLogger("openonda.vpm")
 
 
-class _TeeLogStream(_LineBufferedLogStream):
-    """Line-buffered stream that mirrors writes to the original console."""
-
-    def __init__(self, file_obj: TextIO, console_stream: TextIO) -> None:
-        super().__init__(file_obj)
-        self._console_stream = console_stream
-
-    def write(self, data: str) -> int:
-        if not data:
-            return 0
-        super().write(data)
-        self._console_stream.write(data)
-        self._console_stream.flush()
-        return len(data)
-
-    def flush(self) -> None:
-        super().flush()
-        self._console_stream.flush()
-
-    def isatty(self) -> bool:
-        return bool(getattr(self._console_stream, "isatty", lambda: False)())
-
-    @property
-    def encoding(self) -> str:
-        return getattr(self._console_stream, "encoding", "utf-8")
-
-    def fileno(self) -> int:
-        return self._console_stream.fileno()
-
-
-def print_openonda_header(precision: str = "f32") -> None:
-    """Report run identity through the shared initialization layout."""
-    from ..config import constants as constants_module
-
-    Logging.message(
-        log_style.block_report(
-            "OpenONDA VPM",
-            [
-                (
-                    "run",
-                    [
-                        ("version", __version__),
-                        ("backend", getattr(constants_module, "TAICHI_BACKEND", "UNKNOWN")),
-                        ("precision", precision),
-                        ("started", f"{datetime.now():%Y-%m-%d %H:%M:%S}"),
-                        ("platform", f"{platform.system()} {platform.machine()}"),
-                        ("Python", platform.python_version()),
-                        ("Taichi", str(ti.__version__)),
-                    ],
-                )
-            ],
-        ),
-        flush=True,
+def run_header(precision: str, backend: str) -> log_style.FormattedText:
+    """Return the report that opens a VPM run."""
+    return log_style.run_header(
+        "VPM", precision, ("backend", backend), ("Taichi", str(ti.__version__))
     )
-
-
-class _ActiveOutputRedirection:
-    """Own one process-global VPM stdout/stderr redirection."""
-
-    def __init__(
-        self,
-        stdout_original: TextIO,
-        stderr_original: TextIO,
-        stdout_redirected: _TeeLogStream,
-        stderr_redirected: _TeeLogStream,
-        file_handle: TextIO,
-    ) -> None:
-        self.stdout_original = stdout_original
-        self.stderr_original = stderr_original
-        self.stdout_redirected = stdout_redirected
-        self.stderr_redirected = stderr_redirected
-        self.file_handle = file_handle
-        self.closed = False
-
-    def restore(self) -> None:
-        """Restore streams if still owned by this redirection and close its file."""
-        global _ACTIVE_OUTPUT_REDIRECTION
-
-        if self.closed:
-            if _ACTIVE_OUTPUT_REDIRECTION is self:
-                _ACTIVE_OUTPUT_REDIRECTION = None
-            return
-
-        import sys
-
-        if sys.stdout is self.stdout_redirected:
-            sys.stdout = self.stdout_original
-        if sys.stderr is self.stderr_redirected:
-            sys.stderr = self.stderr_original
-
-        try:
-            self.file_handle.flush()
-        finally:
-            self.file_handle.close()
-            self.closed = True
-            if _ACTIVE_OUTPUT_REDIRECTION is self:
-                _ACTIVE_OUTPUT_REDIRECTION = None
-
-
-_ACTIVE_OUTPUT_REDIRECTION: _ActiveOutputRedirection | None = None
-_OUTPUT_ATEXIT_REGISTERED = False
-
-
-def _restore_active_output_redirection() -> None:
-    """Close the one active VPM log redirection, if any."""
-    if _ACTIVE_OUTPUT_REDIRECTION is not None:
-        _ACTIVE_OUTPUT_REDIRECTION.restore()
 
 
 class Logging:
@@ -171,12 +38,21 @@ class Logging:
     """
 
     _routine_messages_enabled = True
-    _debug_enabled = False
     _active_step: int | None = None
     _reported_step: int | None = None
-    _last_progress_wall: float | None = None
-    _progress_interval_seconds = 30.0
+    _schedule: Schedule = EverySteps(1)
+    _time_step_size = 1.0
     _pending_sections: dict[str, tuple[log_style.Row, ...]] = {}
+
+    @staticmethod
+    def configure(schedule: Schedule, time_step_size: float) -> None:
+        """Reset the step state and set the step-report cadence of a new solver."""
+        Logging._routine_messages_enabled = True
+        Logging._active_step = None
+        Logging._reported_step = None
+        Logging._pending_sections.clear()
+        Logging._schedule = schedule
+        Logging._time_step_size = float(time_step_size)
 
     @staticmethod
     def set_routine_messages_enabled(enabled: bool) -> None:
@@ -190,27 +66,26 @@ class Logging:
             return
         if not isinstance(text, log_style.FormattedText):
             text = log_style.block_section("events", [(text, "")])
-        print(text, flush=flush)
+        LOGGER.info(text)
 
     @staticmethod
-    def info(text: str, *args, flush: bool = False) -> None:
-        """Record a module event; interpolate only when routine output is enabled."""
+    def info(text: str, *, flush: bool = False) -> None:
+        """Record a module event."""
         if Logging._routine_messages_enabled:
-            Logging.record(text % args if args else text, flush=flush)
+            Logging.record(text, flush=flush)
 
     @staticmethod
-    def debug(text: str, *args) -> None:
-        """Emit optional module details only in the configured debug mode."""
-        if Logging._debug_enabled:
-            Logging.info(text, *args)
+    def debug(text: str) -> None:
+        """Record module detail in the debug logging mode."""
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug(log_style.block_section("events", [(text, "")]))
 
     @staticmethod
-    def warning(text: str, *args, flush: bool = True) -> None:
+    def warning(text: str, *, flush: bool = True) -> None:
         """Immediately report a warning, including the attempted step if active."""
-        rows = [(text % args if args else text, "")]
         if Logging._active_step is not None:
-            rows.insert(0, ("VPM step", Logging._active_step))
-        print(log_style.block_section("warnings", rows), flush=True)
+            text = f"VPM step {Logging._active_step}: {text}"
+        LOGGER.warning(text)
 
     @staticmethod
     def runtime_warning(text: str, *, stacklevel: int = 2) -> None:
@@ -218,9 +93,9 @@ class Logging:
         warnings.warn(text, RuntimeWarning, stacklevel=stacklevel + 1)
 
     @staticmethod
-    def error(text: str, *args) -> None:
-        """Immediately report a module error through the same sink and layout."""
-        print(log_style.block_section("errors", [(text % args if args else text, "")]), flush=True)
+    def error(text: str) -> None:
+        """Immediately report a module error."""
+        LOGGER.error(text)
 
     @staticmethod
     def begin_step(step: int) -> None:
@@ -235,12 +110,10 @@ class Logging:
         Logging._pending_sections.clear()
 
     @staticmethod
-    def progress_due(step: int, wall_time: float, total_steps: int | None = None) -> bool:
-        """Check the report cadence without formatting or touching solver fields."""
-        previous = Logging._last_progress_wall
+    def report_due(step: int, time: float, total_steps: int | None = None) -> bool:
+        """Return whether the accepted step is reported by the logging schedule."""
         return Logging._routine_messages_enabled and (
-            previous is None
-            or wall_time - previous >= Logging._progress_interval_seconds
+            Logging._schedule.is_due(step, time, Logging._time_step_size)
             or (total_steps is not None and step == total_steps)
         )
 
@@ -268,10 +141,9 @@ class Logging:
         Logging._pending_sections.clear()
         Logging.message(log_style.FormattedText("\n".join(parts)), flush=True)
         Logging._reported_step = step
-        Logging._last_progress_wall = float(wall_time)
 
     @staticmethod
-    def time_step(
+    def end_step(
         step: int,
         flow_time: float,
         wall_time: float,
@@ -279,8 +151,8 @@ class Logging:
         total_steps: int | None = None,
         n_particles: int | None = None,
     ) -> None:
-        """Report accepted progress at most every 30 wall seconds, plus endpoints."""
-        if not Logging.progress_due(step, wall_time, total_steps):
+        """Report an accepted step when the logging schedule selects it."""
+        if not Logging.report_due(step, flow_time, total_steps):
             return
         rows = [] if n_particles is None else [("active particles", n_particles)]
         Logging._report_step(step, flow_time, wall_time, total_steps, rows)
@@ -345,7 +217,7 @@ class Logging:
         details = [(topic, ""), *rows]
         if Logging._active_step is not None:
             details.insert(0, ("VPM step", Logging._active_step))
-        print(log_style.block_section("warnings", details), flush=True)
+        LOGGER.warning(log_style.block_section(topic, details))
 
     @staticmethod
     def flow_diagnostics(system: "VPMSolver") -> None:
@@ -406,7 +278,7 @@ class Logging:
         ]
         if failure is not None:
             rows.append((type(failure).__name__, str(failure)))
-        print(log_style.block_report("VPM run finished", [("run", rows)]), flush=True)
+        LOGGER.info(log_style.block_report("VPM run finished", [("run", rows)]))
         Logging._pending_sections.clear()
         Logging._active_step = None
 
@@ -420,7 +292,7 @@ class Logging:
         induction = getattr(system, "induction", None)
         induction_name = induction.__class__.__name__ if induction is not None else "unknown"
         rows.append(("induction", induction_name.removesuffix("Induction")))
-        axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
+        axis = system.numerics.axisymmetric_no_swirl_axis
         if axis is not None:
             rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))
         rows.extend(
@@ -434,7 +306,7 @@ class Logging:
     @staticmethod
     def _format_particle_system(system: "VPMSolver") -> list:
         """Return static particle-storage configuration rows."""
-        setup = getattr(system, "setup", None)
+        setup = system.numerics
         rows = [
             ("particles, maximum", f"{int(getattr(setup, 'max_n_particles', 0)):,}"),
             ("precision", str(getattr(system, "precision", "unknown"))),
@@ -467,21 +339,21 @@ class Logging:
         and DVH uses a required diffusion interval. A GBD macro-step exceeding
         the molecular stage limit therefore does not itself indicate instability.
         """
-        config = system.setup.viscous
+        config = system.numerics.viscous
         if config.kinematic_viscosity is None or config.kinematic_viscosity <= 0.0:
             return []
-        if config.scheme == "RWM" and config.particle_spacing is not None:
+        if config.scheme == "rwm" and config.particle_spacing is not None:
             return [
                 ("accuracy limit", config.rwm_accuracy_time_step_size(), "s"),
                 ("criterion", "particle spacing squared / (4 * kinematic viscosity)"),
             ]
-        if config.scheme == "GBD" and config.gbd_grid_spacing is not None:
+        if config.scheme == "gbd" and config.gbd_grid_spacing is not None:
             return [
                 ("molecular explicit stage limit", config.gbd_max_time_step_size(), "s"),
                 ("criterion", "GBD grid spacing squared / (6 * kinematic viscosity)"),
                 ("molecular diffusion", "substepped within each macro-step when needed"),
             ]
-        if config.scheme == "DVH" and config.dvh_grid_spacing is not None:
+        if config.scheme == "dvh" and config.dvh_grid_spacing is not None:
             return [("required diffusion interval", config.dvh_required_time_step_size(), "s")]
         return []
 
@@ -501,19 +373,25 @@ class Logging:
         """Return the turbulence-model rows."""
         if system.turbulence_model is not None:
             return system.turbulence_model.report_rows()
-        if system.flow_model == "INVISCID":
+        if system.flow_model == "inviscid":
             return [("status", "not applicable, inviscid, stretching only")]
-        if system.flow_model == "POTENTIAL":
+        if system.flow_model == "potential":
             return [("status", "not applicable, potential flow")]
         return [("status", "not applicable, direct numerical simulation")]
 
     @staticmethod
     def _format_monitoring_io(system: "VPMSolver") -> list:
         """Return the monitoring and output rows."""
+        case = system.case
+
+        def cadence(schedule: object) -> str:
+            return "none" if schedule is None else schedule.describe()
+
         return [
-            ("backup interval", f"{system.case.backup.interval_steps:,}", "steps"),
-            ("backup directory", system._backup_path),
-            ("log directory", system._log_path),
+            ("particle frames", cadence(case.output.schedule)),
+            ("backups", cadence(case.backup.schedule)),
+            ("solution directory", system.solution_dir),
+            ("sample directory", system.samples_dir),
         ]
 
     @staticmethod
@@ -550,7 +428,7 @@ class Logging:
     def _format_stabilization_config(system: "VPMSolver") -> list:
         """Return the solution-check, stabilization, and particle-retention rows."""
         rows: list[log_style.Row] = []
-        cfg = getattr(system.setup, "stabilization", None)
+        cfg = system.numerics.stabilization
         stability_limit = system.state_limits.lagrangian_cfl.maximum
         if stability_limit is None:
             rows.append(("solution stability check", "disabled"))
@@ -633,7 +511,7 @@ class Logging:
             ("flow model", getattr(system, "flow_model_description", system.flow_model)),
             ("integrator", getattr(getattr(system, "integrator", None), "name", "unknown")),
         ]
-        axis = getattr(getattr(system, "setup", None), "axisymmetric_no_swirl_axis", None)
+        axis = system.numerics.axisymmetric_no_swirl_axis
         if axis is not None:
             rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))
         rows.extend(
@@ -662,7 +540,7 @@ class Logging:
                     ("  max neighbours needed", f"{filter_info['max_neighbors_needed']:,}"),
                 )
             )
-        elif system.flow_model != "POTENTIAL":
+        elif system.flow_model != "potential":
             rows.append(("  model", system.flow_model))
         else:
             rows.append(("  model", "potential, no turbulence"))
@@ -674,9 +552,6 @@ class Logging:
                 ("  simulation time", f"{system.time:.2e}", "s"),
                 ("  evolution wall time", f"{system.wall_time:.2e}", "s"),
                 ("  vortex strength", f"{system.vortex_strength_magnitude_sum:.2e}", "m^3/s"),
-                ("output:", ""),
-                ("  backup interval", f"{system.case.backup.interval_steps:,}", "steps"),
-                ("  backup prefix", "vpm"),
             )
         )
         return log_style.section("vpm solver  initialization summary", rows)
@@ -778,67 +653,3 @@ class Logging:
             rows.append((operation, f"{duration:.6f}", "s"))
             rows.append(("  Share of step", f"{100.0 * fraction:.1f}", "%"))
         Logging.section("TIMING", *rows)
-
-    @staticmethod
-    def setup_output_redirection(solver: Any) -> None:
-        """Configure process-global VPM output redirection.
-
-        Only one solver can own ``sys.stdout``/``sys.stderr`` at a time. Before
-        a new solver takes allocation lifetime, any previous VPM redirection is restored
-        and its log file is closed. This prevents sequential solver construction
-        from leaking one file descriptor per solver.
-
-        The standard log filename is always ``vpm.log``.
-        """
-        import atexit
-        import sys
-
-        global _ACTIVE_OUTPUT_REDIRECTION, _OUTPUT_ATEXIT_REGISTERED
-
-        # A previous solver may have finished on a non-reporting step.  Startup
-        # diagnostics for a newly constructed solver must never inherit that
-        # step's suppression state.
-        Logging.set_routine_messages_enabled(True)
-        Logging._active_step = None
-        Logging._pending_sections.clear()
-        Logging._reported_step = None
-        Logging._debug_enabled = bool(solver.setup.debug_mode)
-        Logging._last_progress_wall = None
-
-        if _ACTIVE_OUTPUT_REDIRECTION is not None:
-            _ACTIVE_OUTPUT_REDIRECTION.restore()
-
-        solver._stdout_original = sys.stdout
-        solver._stderr_original = sys.stderr
-
-        log_basename = "vpm.log"
-        log_directory = solver._log_path
-        os.makedirs(log_directory, exist_ok=True)
-
-        solver.log_file_path = os.path.join(log_directory, log_basename)
-        file_handle = open(  # noqa: SIM115
-            solver.log_file_path,
-            "a",
-            buffering=1,
-            encoding="utf-8",
-        )
-
-        stdout_redirected = _TeeLogStream(file_handle, solver._stdout_original)
-        stderr_redirected = _TeeLogStream(file_handle, solver._stderr_original)
-
-        sys.stdout = stdout_redirected
-        sys.stderr = stderr_redirected
-
-        redirection = _ActiveOutputRedirection(
-            solver._stdout_original,
-            solver._stderr_original,
-            stdout_redirected,
-            stderr_redirected,
-            file_handle,
-        )
-        _ACTIVE_OUTPUT_REDIRECTION = redirection
-        solver._restore_output_streams = redirection.restore
-
-        if not _OUTPUT_ATEXIT_REGISTERED:
-            atexit.register(_restore_active_output_redirection)
-            _OUTPUT_ATEXIT_REGISTERED = True

@@ -16,7 +16,7 @@ from assets.scenes import export_animation, figure_frame
 from openonda.vpm.io.postprocess import backup_frames, surface_mean, vlm_surface
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-SOLUTION_DIR = CASE_DIR / "solution"
+SOLUTION_DIR = CASE_DIR / "solution/delta_wing"
 SAMPLES_DIR = CASE_DIR / "samples/delta_wing"
 FIGURES_DIR = CASE_DIR / "figures"
 DEFAULT_GIF_OUTPUT = FIGURES_DIR / "delta_wing_30fps.gif"

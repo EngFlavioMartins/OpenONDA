@@ -8,9 +8,10 @@ import numpy as np
 
 from openonda.vpm import (
     SSPRK3,
-    Backup,
     DirectInduction,
+    LoggingConfig,
     Numerics,
+    Output,
     StabilizationConfig,
     ViscousConfig,
     VPMCase,
@@ -30,15 +31,15 @@ def small_case(
     stabilization: StabilizationConfig | None = None,
 ) -> VPMCase:
     return VPMCase(
+        name="small_case",
         directory=case_directory,
-        backup=Backup(interval_steps=0, directory="solution", log_directory="solution"),
+        output=Output(precision="f16"),
+        logging=LoggingConfig(console=False),
         numerics=Numerics(
             time_step_size=time_step_size,
-            compute_device="CPU",
+            compute_device="cpu",
             max_n_particles=max_n_particles,
             domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),
-            write_precision="f16",
-            verbose=False,
             integrator=SSPRK3() if integrator is None else integrator,
             viscous=(
                 ViscousConfig.cs(kinematic_viscosity=0.01, particle_spacing=0.2)

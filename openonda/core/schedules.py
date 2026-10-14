@@ -1,8 +1,9 @@
 """Output schedules shared by the FVM and VPM solvers.
 
 A schedule selects accepted solver states for an output event: samples,
-visualization frames, backups or log lines. Schedules are immutable value
-objects that retain no event history; each solver's output manager owns
+visualization frames, backups or log lines. A schedule is never due at step
+0; the initial state is written by the initial output event. Schedules are
+immutable value objects that retain no event history; each solver owns
 exactly-once delivery and restart history trimming.
 """
 
@@ -13,13 +14,22 @@ import math
 from numbers import Real
 from typing import Protocol
 
+__all__ = [
+    "EverySteps",
+    "EveryTime",
+    "FinalOnly",
+    "OutputSchedule",
+    "Schedule",
+    "schedule_from_dict",
+]
+
 
 class OutputSchedule(Protocol):
     """Pure predicate selecting accepted solver states for output.
 
     Implementations retain no event history. They receive the current accepted
-    step/time and the step duration in seconds; exactly-once delivery and
-    restart history trimming belong to :class:`OutputManager`.
+    step, the time in s and the time-step size in s; exactly-once delivery
+    and restart history trimming belong to the solver.
     """
 
     @property
@@ -32,7 +42,7 @@ class OutputSchedule(Protocol):
         ...
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class EverySteps:
     """Select every positive integer number of accepted steps.
 
@@ -104,13 +114,14 @@ class EverySteps:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class EveryTime:
     """Run when an accepted state lands on a physical-time cadence.
 
     A due event is detected when the accepted state crosses a cadence boundary.
     It does not interpolate fields; when a boundary falls between accepted
-    states, the first state after it is sampled exactly once.
+    states, the first state after it is sampled exactly once. Step 0 is never
+    due, also when ``start_time`` is a multiple of ``interval``.
 
     Parameters
     ----------
@@ -170,7 +181,7 @@ class EveryTime:
         return current_bucket >= 0 and current_bucket > previous_bucket
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class FinalOnly:
     """Select exactly one explicit framework final-output event.
 
@@ -179,7 +190,7 @@ class FinalOnly:
 
     Notes
     -----
-    This parameterless value object retains no state. ``OutputManager`` owns
+    This parameterless value object retains no state. The solver owns
     exactly-once final dispatch and restart history trimming.
     """
 
@@ -202,7 +213,7 @@ class FinalOnly:
         return {"type": "FinalOnly"}
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
-        """Return false; final events are dispatched explicitly by the manager."""
+        """Return false; the solver dispatches the final event explicitly."""
         del step, time, time_step_size
         return False
 

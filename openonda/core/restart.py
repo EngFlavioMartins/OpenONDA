@@ -5,7 +5,9 @@ from pathlib import Path
 import re
 import shutil
 
+from openonda.core.file_output import TIME_TOLERANCE
 from openonda.core.solution_layout import vpm_backup_files
+from openonda.core.vtk_output import read_collection, rewind_collection
 
 
 def select_backup(start_from, *, directory, kind, backup_path=None):
@@ -110,11 +112,9 @@ def reset_run_outputs(directory, *, kind, backup_path=None, samples_dir=None, sa
 
 def rewind_vpm_frames(directory, step, time):
     """Delete output frames beyond the restored step and flow time."""
-    from openonda.fvm.io.solver_io import SolverIO
-
     directory = Path(directory)
     for component in ("vpm", "vlm"):
-        SolverIO._rewind_pvd(directory / f"{component}.pvd", time)
+        rewind_collection(directory / f"{component}.pvd", time)
     for component in ("vpm", "vlm"):
         for folder in (directory / component, directory):
             for path in folder.glob(f"{component}_*"):
@@ -132,14 +132,9 @@ def output_has_time(directory, name, time):
             rows = csv.DictReader(stream)
             if "time" not in (rows.fieldnames or ()):
                 return False
-            if any(abs(float(row["time"]) - time) <= 1e-12 for row in rows):
+            if any(abs(float(row["time"]) - time) <= TIME_TOLERANCE for row in rows):
                 return True
-    collection = directory / f"{name}.pvd"
-    if collection.is_file():
-        from defusedxml.ElementTree import parse
-
-        return any(
-            abs(float(item.attrib["timestep"]) - time) <= 1e-12
-            for item in parse(collection).findall(".//DataSet")
-        )
-    return False
+    return any(
+        abs(frame_time - time) <= TIME_TOLERANCE
+        for frame_time, _ in read_collection(directory / f"{name}.pvd")
+    )

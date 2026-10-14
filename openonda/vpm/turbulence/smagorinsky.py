@@ -17,7 +17,7 @@ class SmagorinskyModel:
     def __init__(
         self,
         max_n_particles: int = MAX_N_PARTICLES,
-        particle_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "gaussian",
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
@@ -29,7 +29,7 @@ class SmagorinskyModel:
         ----------
         max_n_particles : int, default=MAX_N_PARTICLES
             Fixed particle capacity for model work fields.
-        particle_kernel : str, default="GAUSSIAN"
+        particle_kernel : str, default="gaussian"
             Kernel label used by the surrounding VPM configuration. It is
             normalized to uppercase for reporting.
         smagorinsky_coefficient : float, default=SMAGORINSKY_CONSTANT
@@ -48,9 +48,9 @@ class SmagorinskyModel:
         a particle container. :meth:`compute` later writes eddy and effective
         viscosity for the active particle prefix in m²/s.
         """
-        self.model_name = "SMAGORINSKY"
+        self.model_name = "smagorinsky"
         self.max_n_particles = max_n_particles
-        self.particle_kernel = particle_kernel.upper()
+        self.particle_kernel = particle_kernel.lower()
         self.smagorinsky_coefficient = smagorinsky_coefficient
         self.subgrid_dissipation_coefficient = subgrid_dissipation_coefficient
         self.filter_width = filter_width

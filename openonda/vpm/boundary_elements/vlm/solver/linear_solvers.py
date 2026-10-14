@@ -1,10 +1,5 @@
 """
 Linear solvers for the VLM circulation system: SciPy dense LU and Taichi BiCGSTAB.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from abc import ABC, abstractmethod
@@ -78,8 +73,8 @@ class ScipySolver(VLMLinearSolver):
 
     @property
     def name(self) -> str:
-        """Return the stable registry name ``"SCIPY"``."""
-        return "SCIPY"
+        """Return the stable registry name ``"scipy"``."""
+        return "scipy"
 
     def solve(
         self,
@@ -228,8 +223,8 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
 
     @property
     def name(self) -> str:
-        """Return the stable registry name ``"BICGSTAB_GPU"``."""
-        return "BICGSTAB_GPU"
+        """Return the stable registry name ``"bicgstab_gpu"``."""
+        return "bicgstab_gpu"
 
     def _matvec_p_to_v(self, aerodynamic_influence_coefficient: ti.Field, n: int) -> None:
         """Compute v = A @ (M⁻¹ @ p)."""
@@ -533,20 +528,20 @@ def _bicgstab_update_p(
 # Solver Factory
 
 _SOLVER_REGISTRY: dict[str, type[VLMLinearSolver]] = {
-    "SCIPY": ScipySolver,
-    "BICGSTAB_GPU": TaichiBiCGSTABSolver,
+    "scipy": ScipySolver,
+    "bicgstab_gpu": TaichiBiCGSTABSolver,
 }
 
 
 def get_linear_solver(
-    solver_type: str = "SCIPY",
+    solver_type: str = "scipy",
     max_n_panels: int = 10000,
 ) -> VLMLinearSolver:
     """Construct a VLM linear-solver strategy by registry name.
 
     Parameters
     ----------
-    solver_type : {"SCIPY", "BICGSTAB_GPU"}, default="SCIPY"
+    solver_type : {"scipy", "bicgstab_gpu"}, default="scipy"
         Case-insensitive backend name.  SciPy is a CPU direct solve;
         BiCGSTAB is the GPU backend for non-symmetric VLM matrices.
     max_n_panels : int, default=10000
@@ -564,16 +559,16 @@ def get_linear_solver(
 
     Examples
     --------
-    >>> solver = get_linear_solver("SCIPY")
+    >>> solver = get_linear_solver("scipy")
     >>> solver.name
-    'SCIPY'
+    'scipy'
     """
-    solver_name = solver_type.upper()
+    solver_name = solver_type.lower()
 
     if solver_name not in _SOLVER_REGISTRY:
         available = ", ".join(_SOLVER_REGISTRY.keys())
         raise ValueError(f"Unknown solver type '{solver_name}'. Available: {available}")
 
-    if solver_name == "BICGSTAB_GPU":
+    if solver_name == "bicgstab_gpu":
         return TaichiBiCGSTABSolver(max_n_panels=max_n_panels)
     return ScipySolver()

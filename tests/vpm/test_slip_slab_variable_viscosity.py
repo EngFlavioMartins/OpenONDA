@@ -18,10 +18,10 @@ def _gbd_solver(directory, z_bounds, induction, capacity):
     return vpm.VPMSolver(
         vpm.VPMCase(
             directory=directory,
-            backup=vpm.Backup(interval_steps=0),
+            name="test",
             numerics=vpm.Numerics(
                 time_step_size=DT,
-                compute_device="CPU",
+                compute_device="cpu",
                 precision="f32",
                 max_n_particles=capacity,
                 domain_bounds=(-0.8, 0.8, -0.8, 0.8, *z_bounds),
@@ -29,7 +29,6 @@ def _gbd_solver(directory, z_bounds, induction, capacity):
                 viscous=vpm.ViscousConfig.gbd(
                     particle_spacing=H, padding=3.0, kinematic_viscosity=NU
                 ),
-                verbose=False,
             ),
         )
     )
@@ -56,7 +55,7 @@ def test_slab_accepts_les_with_grid_diffusion():
     Numerics(
         induction=slab,
         viscous=ViscousConfig.gbd(particle_spacing=H, kinematic_viscosity=NU),
-        turbulence=TurbulenceConfig(model="LES_SMAGORINSKY"),
+        turbulence=TurbulenceConfig(model="smagorinsky"),
     )
 
 

@@ -33,7 +33,10 @@ from assets.postprocess import theme as plotting_theme
 
 def arrange_records(records, runs, times):
     """Arrange the requested existing physical states in a time-by-method grid."""
-    frames = {run: [(record["time"], record) for record in records if record["run"] == run] for run in runs}
+    frames = {
+        run: [(record["time"], record) for record in records if record["run"] == run]
+        for run in runs
+    }
     # A run stopped by a particle-state limit has no state after its last frame.
     return [
         [

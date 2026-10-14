@@ -11,7 +11,7 @@ import numpy as np
 from openonda.runtime import detected_world_size
 
 if TYPE_CHECKING:
-    from ..config.types import ComputeConfig
+    from ..config.numerics import ComputeConfig
 
 
 class _MPICommunicator(Protocol):
@@ -96,7 +96,7 @@ class ParallelContext:
     ``"petsc_partitioned"``), the ``mpi4py`` communicator, rank and size,
     and an optional local :class:`~openonda.fvm.mesh.partition.CellPartition`.
 
-    Use the :meth:`create` factory to validate an :class:`ExecutionConfig`
+    Use the :meth:`create` factory to validate a :class:`ComputeConfig`
     and build the appropriate context.  Properties like :attr:`is_root`,
     :attr:`is_parallel`, and :attr:`is_partitioned` provide safe guards
     around operations that may differ between serial and parallel modes.
@@ -176,8 +176,7 @@ class ParallelContext:
             if launcher_size > 1:
                 raise RuntimeError(
                     f"FVM serial mode was launched with {launcher_size} MPI ranks. "
-                    "Create the solver with create_fvm_solver and set FVMSetup.cores "
-                    "to the requested process count; the factory owns MPI setup."
+                    "Set FVMCase.cores to the number of MPI ranks."
                 )
             return cls()
 

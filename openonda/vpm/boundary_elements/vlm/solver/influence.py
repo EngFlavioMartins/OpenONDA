@@ -1,11 +1,6 @@
 """
 VLM influence kernels: aerodynamic_influence_coefficient assembly, RHS construction, and induced-velocity and
 pressure-coefficient evaluation.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 import taichi as ti

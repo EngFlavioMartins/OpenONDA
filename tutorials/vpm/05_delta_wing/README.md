@@ -32,7 +32,7 @@ The Gaussian wake uses CPU/FMM induction, transposed stretching and core spreadi
 
 ## Results and scope
 
-Force/loading/motion tables are in `samples/delta_wing/`, with wake planes and integrals every 0.025 s. Coupled backups use the same interval; open `solution/vlm.pvd` or `solution/vpm.pvd` in ParaView.
+Force/loading/motion tables are in `samples/delta_wing/`, with wake planes and integrals every 0.025 s. Particle frames and backups use the same interval; open `solution/delta_wing/vlm.pvd` or `solution/delta_wing/vpm.pvd` in ParaView.
 
 Figures show vertical forces, motion power, the last three heave cycles, particle strength and three downstream wake planes. The strength sum is $\sum_p|\boldsymbol{\Gamma}_p|$ in m³/s, not conserved scalar circulation. Wake fields average one full measured heave cycle.
 

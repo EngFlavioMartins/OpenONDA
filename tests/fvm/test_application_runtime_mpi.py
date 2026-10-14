@@ -17,7 +17,6 @@ import pytest
     [
         "partitioned",
         "replicated",
-        "public_case",
         "mesh_failure",
         "analysis_failure",
         "four_ranks",
@@ -47,13 +46,12 @@ def build_mesh():
         raise ValueError("injected meshing failure")
     return coupling_box_mesh((-.5,.5,-.5,.5,-.5,.5), .25)
 
-velocity = [1.,0.,0.]
-boundaries = [fvm.BoundaryConfig(name="numericalBoundary",
-    velocity_type="fixedValue", velocity_value=velocity,
-    pressure_type="fixedFluxPressure")]
+velocity = (1.,0.,0.)
+boundaries = (fvm.BoundaryConfig(name="numericalBoundary",
+    velocity_type="fixed_value", velocity_value=velocity,
+    pressure_type="fixed_flux_pressure"),)
 if mode == "freestream":
-    boundaries = [fvm.BoundaryConfig.freestream("numericalBoundary", velocity)]
-backup = fvm.BackupConfig(schedule=fvm.RunSchedule(every_n_steps=1), write_at_end=True)
+    boundaries = (fvm.BoundaryConfig.freestream("numericalBoundary", velocity),)
 execution = fvm.ComputeConfig(linear_backend="petsc", parallel_mode="petsc_replicated") if mode == "replicated" else fvm.ComputeConfig()
 def analyse(fields):
     print("ANALYSIS_WRITTEN_ONCE", flush=True)
@@ -66,19 +64,15 @@ def analyse(fields):
     return [fields.step, fields.time, len(fields.velocity), float(np.sum(fields.cell_volume))]
 
 try:
-    if mode == "public_case":
-        solver = fvm.FVMSolver(fvm.FVMCase(
-            name="runtime", cores=cores, mesh=build_mesh, directory=directory,
-            boundaries=tuple(boundaries), initial_conditions=fvm.InitialFields(velocity=[1.,0.,0.]),
-            run=fvm.RunPlan(time_step_size=.01, end_time=.01, output_schedule=fvm.RunSchedule(every_n_steps=1)),
-            backup=backup,
-        ))
-    else:
-        solver = fvm.create_fvm_solver(fvm.FVMSetup(
-            case_name="runtime", cores=cores, boundaries=boundaries,
-            initial_velocity=velocity, execution=execution, backup=backup,
-            time=fvm.TimeConfig(time_step_size=.01, end_time=.01, output_schedule=fvm.RunSchedule(every_n_steps=1)),
-        ), case_dir=directory, mesh=build_mesh)
+    solver = fvm.FVMSolver(fvm.FVMCase(
+        name="runtime", directory=directory,
+        numerics=fvm.Numerics(time_step_size=.01, execution=execution),
+        initial_conditions=fvm.InitialFields(velocity=velocity),
+        run=fvm.RunPlan(end_time=.01),
+        output=fvm.Output(schedule=fvm.EverySteps(1)),
+        backup=fvm.Backup(schedule=fvm.EverySteps(1)),
+        mesh=build_mesh, boundaries=boundaries, cores=cores,
+    ))
     assert solver.parallel.size == cores
     with solver:
         row = solver.evaluate(analyse)

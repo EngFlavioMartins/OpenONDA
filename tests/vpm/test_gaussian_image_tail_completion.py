@@ -91,10 +91,10 @@ def _planar_circulation_fraction(kernel, rho):
     corrected Gaussian (the super-Gaussian is it at rho/sqrt(2)), and
     2/(pi (1 + rho^2)^3) for the Winckelmans kernel.
     """
-    if kernel == "GAUSSIAN":
+    if kernel == "gaussian":
         return 1 - np.exp(-(rho**2))
-    if kernel in {"HIGH_ORDER_GAUSSIAN", "SUPER_GAUSSIAN"}:
-        x2 = rho**2 / (2 if kernel == "SUPER_GAUSSIAN" else 1)
+    if kernel in {"high_order_gaussian", "super_gaussian"}:
+        x2 = rho**2 / (2 if kernel == "super_gaussian" else 1)
         return 1 - (1 - x2) * np.exp(-x2)
     return 1 - (1 + rho**2) ** -2
 
@@ -102,14 +102,14 @@ def _planar_circulation_fraction(kernel, rho):
 @pytest.mark.parametrize(
     "backend,kernel,core_over_layer,tolerance",
     [
-        ("cpu", "GAUSSIAN", 1.0, 2e-5),
-        pytest.param("cupy_cuda", "GAUSSIAN", 1.0, 2e-5, marks=pytest.mark.gpu),
+        ("cpu", "gaussian", 1.0, 2e-5),
+        pytest.param("cupy_cuda", "gaussian", 1.0, 2e-5, marks=pytest.mark.gpu),
         # The corrected Gaussian's span spectrum carries (1 + k^2 sigma^2/4).
-        ("cpu", "HIGH_ORDER_GAUSSIAN", 1.5, 2e-5),
-        ("cpu", "SUPER_GAUSSIAN", 1.0, 2e-5),
+        ("cpu", "high_order_gaussian", 1.5, 2e-5),
+        ("cpu", "super_gaussian", 1.0, 2e-5),
         # An algebraic core ripples along the span like exp(-2 pi sigma/h).
-        ("cpu", "WINCKELMANS", 3.0, 1e-5),
-        pytest.param("cupy_cuda", "WINCKELMANS", 3.0, 1e-5, marks=pytest.mark.gpu),
+        ("cpu", "winckelmans", 3.0, 1e-5),
+        pytest.param("cupy_cuda", "winckelmans", 3.0, 1e-5, marks=pytest.mark.gpu),
     ],
 )
 def test_one_layer_slab_query_field_is_the_two_dimensional_vortex(

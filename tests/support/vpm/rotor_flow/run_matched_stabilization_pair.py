@@ -87,7 +87,7 @@ def _stabilization(variant: str) -> vpm.StabilizationConfig:
 
 def _output_directories(output_tag: str) -> tuple[Path, Path]:
     tag = _validate_tag(output_tag)
-    return Path("solution") / tag, Path("samples") / CASE_NAME / tag
+    return Path("solution") / tag, Path("samples") / tag
 
 
 def build_trial_case(
@@ -101,18 +101,16 @@ def build_trial_case(
     """Build a fresh or same-model continuation case without private mutation."""
     if isinstance(steps, bool) or not isinstance(steps, int) or steps < 1:
         raise ValueError("steps must be a positive integer")
-    solution_directory, sample_directory = _output_directories(output_tag)
     case = build_case(
         time_step_size=time_step_size,
-        steps=steps,
-        solution_directory=solution_directory,
-        sample_directory=sample_directory,
+        end_time=steps * time_step_size,
+        variant=output_tag,
     )
     run = replace(
         case.run,
         # Device selection does not change the checkpoint's numerical identity.
-        runtime_compute_device="CPU",
-        initial_samples=False if resumed else case.run.initial_samples,
+        runtime_compute_device="cpu",
+        initial_output=False if resumed else case.run.initial_output,
     )
     return replace(
         case,

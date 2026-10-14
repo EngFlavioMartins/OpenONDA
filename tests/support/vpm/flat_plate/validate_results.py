@@ -115,7 +115,7 @@ def main() -> int:
             metadata = json.loads((case_dir / "solution" / name / "vpm_metadata.json").read_text())
             state = metadata["state"]
             vlm = metadata["configuration"]["numerics"]["vlm"]
-            final_step = state["initial_step"] + state["requested_steps"]
+            final_step = state["target_step"]
             if state["step"] != final_step:
                 failures.append(f"{name}: solver stopped before the requested final step")
             expected_steps = np.arange(state["initial_step"] + 1, final_step + 1)
@@ -125,7 +125,7 @@ def main() -> int:
             if not vlm["force"].get("unsteady", False):
                 failures.append(f"{name}: missing the authored unsteady pressure force model")
                 continue
-            if metadata["configuration"]["numerics"]["induction"]["method"] != "DIRECT":
+            if metadata["configuration"]["numerics"]["induction"]["method"] != "direct":
                 failures.append(
                     f"{name}: preceding result does not use the direct reference backend"
                 )

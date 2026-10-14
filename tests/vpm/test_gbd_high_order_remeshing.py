@@ -89,16 +89,16 @@ def test_translating_gaussian_excess_diffusion_is_reduced():
         * np.exp(-nu * dt * steps * (kx * kx + ky * ky) - 1j * dt * steps * (kx + 0.3 * ky))
     ).real
     errors = []
-    for method in ["M4_PRIME", "LAGRANGE6"]:
+    for method in ["m4_prime", "lagrange6"]:
         symbol = np.ones((n, n), dtype=complex)
         for velocity, kk in [(1.0, kx), (0.3, ky)]:
             shift = velocity * dt / h
             base = int(np.floor(shift))
             fraction = shift - base
-            nodes = np.arange(-1, 3) if method == "M4_PRIME" else np.arange(-2, 4)
+            nodes = np.arange(-1, 3) if method == "m4_prime" else np.arange(-2, 4)
             weights = (
                 _m4_prime_1d(nodes - fraction)
-                if method == "M4_PRIME"
+                if method == "m4_prime"
                 else _lagrange6_weights(fraction)
             )
             symbol *= sum(
@@ -113,7 +113,7 @@ def test_translating_gaussian_excess_diffusion_is_reduced():
 
 def test_wide_stencil_requires_room_for_diffusion_halo():
     with pytest.raises(ValueError, match="four grid cells"):
-        ViscousConfig.gbd(particle_spacing=0.04, padding=3, remeshing_kernel="LAGRANGE6")
+        ViscousConfig.gbd(particle_spacing=0.04, padding=3, remeshing_kernel="lagrange6")
 
 
 def test_gbd_factory_can_separate_particle_and_grid_spacing():

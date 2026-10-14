@@ -29,7 +29,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
     def __init__(
         self,
-        particle_kernel: str = "GAUSSIAN",
+        particle_kernel: str = "gaussian",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: ti.types = ti.f32,
         max_evaluation_points: int = _HOST_TRANSFER_CHUNK_SIZE,
@@ -39,7 +39,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
 
         Parameters
         ----------
-        particle_kernel : str, default="GAUSSIAN"
+        particle_kernel : str, default="gaussian"
             Kernel family used by inherited particle-field evaluation.
         max_n_particles : int, default=MAX_N_PARTICLES
             Fixed particle capacity for device fields.

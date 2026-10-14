@@ -1,26 +1,17 @@
-"""FVM sampling package: forces, line/surface field samplers and post-processing.
+"""Samplers of the FVM solver: surface forces, wall y+, line and surface fields.
 
-All samplers share the :class:`~.base.Sampler` abstraction and write
-exclusively to ``<case_root>/samples/``.  Offline post-processing
-(:class:`~.postprocess.PostProcess`) drives the same samplers over archived
-snapshots, so live and archived output are byte-for-byte comparable.
+Samplers write below ``samples/`` of the case.
 """
 
-from .base import SAMPLER_CSV_COLUMNS, Sampler, samples_dir
-from .executor import FVMSamplerExecutor
-from .fields import LineSampler, SurfaceSampler
-from .forces import ForceSampler, YPlusSampler
-from .postprocess import PostProcess, SnapshotContext
+from .fields import LINE_SAMPLE_COLUMNS, LineSampler, SurfaceSampler
+from .forces import FORCE_SAMPLE_COLUMNS, Y_PLUS_SAMPLE_COLUMNS, ForceSampler, YPlusSampler
 
 __all__ = [
-    "SAMPLER_CSV_COLUMNS",
+    "FORCE_SAMPLE_COLUMNS",
+    "LINE_SAMPLE_COLUMNS",
+    "Y_PLUS_SAMPLE_COLUMNS",
     "ForceSampler",
-    "FVMSamplerExecutor",
     "LineSampler",
-    "PostProcess",
-    "Sampler",
-    "SnapshotContext",
     "SurfaceSampler",
     "YPlusSampler",
-    "samples_dir",
 ]

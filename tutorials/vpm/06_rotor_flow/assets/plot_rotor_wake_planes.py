@@ -95,7 +95,7 @@ def induced_field_drift(
 
 def native_plane_windows(p, rotations=OPERATING_WINDOW_REVOLUTIONS):
     """Average the native velocity over the selected number of rotor revolutions."""
-    items = p.metadata["configuration"]["samplers"]["items"]
+    items = p.metadata["configuration"]["samplers"]["samples"]
     names = [item["file_name"] for item in items if item["type"] == "SurfaceSampler"]
     collections = {name: read_pvd_frames(p.samples_dir / f"{name}.pvd") for name in names}
     end = min((frames[-1][0] for frames in collections.values()))

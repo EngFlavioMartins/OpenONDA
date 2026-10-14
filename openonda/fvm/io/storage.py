@@ -1,9 +1,8 @@
-"""Capacity checks and recoverable append helpers for solver output."""
+"""Free-space check before an atomic solver output."""
 
 from __future__ import annotations
 
 import errno
-import os
 from pathlib import Path
 import shutil
 
@@ -53,24 +52,3 @@ def require_free_space(
     if free < required:
         raise InsufficientStorageError(destination, required, free)
     return free
-
-
-def append_line_recoverably(path: str | Path, line: str) -> None:
-    """Append one text record and remove a partial tail if the write fails."""
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("a+", encoding="utf-8") as stream:
-        stream.seek(0, os.SEEK_END)
-        original_size = stream.tell()
-        try:
-            stream.write(line)
-            stream.flush()
-        except OSError:
-            # Truncation releases blocks and does not need additional capacity;
-            # preserve a valid JSONL/CSV prefix for restart and post-processing.
-            try:
-                stream.seek(original_size)
-                stream.truncate()
-            except OSError:
-                pass
-            raise

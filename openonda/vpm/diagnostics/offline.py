@@ -1,11 +1,6 @@
 """
 Offline post-processing diagnostics: flow integrals (energy, total_enstrophy,
 vortex strength, impulse) computed from saved particle states.
-
-Author:  Flavio A. C. Martins (f.m.martins@tudelft.nl), OpenONDA Team
-Date: January 2026
-
-Copyright (C) 2026 Flavio A. C. Martins, OpenONDA
 """
 
 from dataclasses import dataclass
@@ -233,7 +228,7 @@ class OfflineFlowDiagnostics:
         """
         # Reuse the evaluator's energy history for dE/dt.
         self.evaluator = ParticleFieldEvaluation(
-            particle_kernel="GAUSSIAN",
+            particle_kernel="gaussian",
             max_n_particles=self._estimate_max_particles(),
             accumulator_dtype=ti.f64,
         )
