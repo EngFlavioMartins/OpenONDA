@@ -1,8 +1,10 @@
 # state file generated using paraview version 6.1.0
 from pathlib import Path
-from openonda.saved_times import match_saved_times, read_pvd_times
 
 import paraview
+
+paraview.compatibility.major = 6
+paraview.compatibility.minor = 1
 
 from paraview.simple import *
 
@@ -10,10 +12,6 @@ from paraview.simple import *
 # Resolve input paths from the tutorial directory. ParaView readers use strings.
 CASE_DIR = Path(__file__).resolve().parent.parent
 SOLUTION_DIR = CASE_DIR / "solution"
-matched_times = match_saved_times(
-    read_pvd_times(SOLUTION_DIR / "vpm.pvd"),
-    read_pvd_times(SOLUTION_DIR / "fvm.pvd"),
-)
 
 # Keep the saved camera when displaying the first source.
 paraview.simple._DisableFirstRenderCameraReset()
@@ -66,11 +64,11 @@ appendSelections = CreateSelection(
 
 # setup the data processing pipelines
 
-vpmReader = PVDReader(
+vpmpvd = PVDReader(
     registrationName="vpm.pvd",
     FileName=str(SOLUTION_DIR / "vpm.pvd"),
 )
-vpmReader.PointArrays = [
+vpmpvd.PointArrays = [
     "core_radius",
     "eddy_viscosity",
     "effective_viscosity",
@@ -82,11 +80,6 @@ vpmReader.PointArrays = [
     "vorticity",
     "zone_id",
 ]
-
-vpmpvd = ExtractTimeSteps(registrationName="VPM common saved times", Input=vpmReader)
-vpmpvd.SelectionMode = "Select Time Steps"
-vpmpvd.TimeStepIndices = list(matched_times.indices[0])
-vpmpvd.ApproximationMode = "Nearest Time Step"
 
 clip1 = Clip(registrationName="Clip1", Input=vpmpvd)
 clip1.Set(
@@ -110,11 +103,11 @@ cubestl = STLReader(
     FileNames=[str(CASE_DIR / "assets" / "cube.stl")],
 )
 
-fvmReader = PVDReader(
+fvmpvd = PVDReader(
     registrationName="fvm.pvd",
     FileName=str(SOLUTION_DIR / "fvm.pvd"),
 )
-fvmReader.CellArrays = [
+fvmpvd.CellArrays = [
     "velocity",
     "kinematic_pressure",
     "courant_number",
@@ -126,11 +119,6 @@ fvmReader.CellArrays = [
     "cell_equivalent_size",
     "global_cell_id",
 ]
-
-fvmpvd = ExtractTimeSteps(registrationName="FVM common saved times", Input=fvmReader)
-fvmpvd.SelectionMode = "Select Time Steps"
-fvmpvd.TimeStepIndices = list(matched_times.indices[1])
-fvmpvd.ApproximationMode = "Nearest Time Step"
 
 cellDatatoPointData1 = CellDatatoPointData(registrationName="CellDatatoPointData1", Input=fvmpvd)
 
@@ -372,13 +360,10 @@ vorticityPWF.Set(
 
 timeKeeper1 = GetTimeKeeper()
 
-# Only the common saved VPM clock drives playback. Derived filters may retain
-# their original reader's time metadata even though their inputs are selected.
+# Play the particle frames; the FVM writes a frame at every particle-frame time.
 vpmpvd.UpdatePipelineInformation()
-fvmpvd.UpdatePipelineInformation()
+vpm_times = list(vpmpvd.TimestepValues)
 timeKeeper1.SuppressedTimeSources = [
-    vpmReader,
-    fvmReader,
     fvmpvd,
     cubestl,
     clip1,
@@ -395,9 +380,9 @@ animationScene1.UpdateAnimationUsingDataTimeSteps()
 animationScene1.Set(
     ViewModules=renderView1,
     Cues=timeAnimationCue1,
-    AnimationTime=matched_times.times[-1],
-    StartTime=matched_times.times[0],
-    EndTime=matched_times.times[-1],
+    AnimationTime=vpm_times[-1],
+    StartTime=vpm_times[0],
+    EndTime=vpm_times[-1],
     PlayMode="Snap To TimeSteps",
 )
 

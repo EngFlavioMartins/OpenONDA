@@ -27,11 +27,8 @@ REYNOLDS_NUMBER = 150.0
 DENSITY = 1.0  # kg/m^3
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY[0] * DIAMETER / REYNOLDS_NUMBER  # m^2/s
 
-# Startup: a transverse freestream and a weak near-wake vortex trigger shedding
-STARTUP_VELOCITY = (1.0, 0.1, 0.0)  # m/s
-TAPER_START = 1.0  # s, the transverse component then decays smoothly ...
-TAPER_END = 2.0  # s, ... to the freestream
-DISTURBANCE_AMPLITUDE = 1.0e-3  # m^2/s, streamfunction peak
+# Startup: a near-wake vortex breaks the symmetry and triggers shedding
+DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, streamfunction peak
 DISTURBANCE_RADIUS = 0.5  # m
 DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
@@ -64,13 +61,13 @@ RENEWAL_CHECK_INTERVAL = 2.4  # s, costly checks of how well particles represent
 
 
 def initial_velocity(position):
-    """Startup freestream plus the curl of psi = A (1 - r^2/R^2)^4 behind the cylinder."""
+    """Freestream plus the curl of psi = A (1 - r^2/R^2)^4 behind the cylinder."""
     x = position[:, 0] - DISTURBANCE_CENTRE
     y = position[:, 1]
     support = np.maximum(1.0 - (x**2 + y**2) / DISTURBANCE_RADIUS**2, 0.0)
     swirl = 8.0 * DISTURBANCE_AMPLITUDE / DISTURBANCE_RADIUS**2 * support**3
 
-    velocity = np.tile(STARTUP_VELOCITY, (len(position), 1))
+    velocity = np.tile(FREESTREAM_VELOCITY, (len(position), 1))
     velocity[:, 0] -= swirl * y
     velocity[:, 1] += swirl * x
     return velocity
@@ -151,14 +148,14 @@ def build_case(
             # Particles supply the normal velocity and the normal derivative of tangential velocity
             fvm.BoundaryConfig(
                 name="numericalBoundary",
-                velocity_value=list(STARTUP_VELOCITY),
+                velocity_value=list(FREESTREAM_VELOCITY),
                 pressure_type="fixedFluxPressure",
             ),
             fvm.BoundaryConfig.cyclic("zmin", "zmax"),
             fvm.BoundaryConfig.cyclic("zmax", "zmin"),
             fvm.BoundaryConfig.wall("cylinder"),
         ],
-        initial_velocity=list(STARTUP_VELOCITY),
+        initial_velocity=list(FREESTREAM_VELOCITY),
         samplers=(
             # Drag and lift coefficients per unit span
             fvm.ForceSampler(
@@ -186,7 +183,7 @@ def build_case(
         directory=CASE_DIR,
         numerics=vpm.Numerics(
             time_step_size=exchange_time_step,
-            freestream_velocity=STARTUP_VELOCITY,
+            freestream_velocity=FREESTREAM_VELOCITY,
             integrator=vpm.RK2(),
             # Full 3D induction of the particle layer and all its images in the span planes
             induction=vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=-half_span, z_max=half_span),
@@ -224,13 +221,7 @@ def build_case(
     )
 
     coupling = coupler.CouplerSetup(
-        freestream_velocity=list(STARTUP_VELOCITY),
-        freestream=coupler.VelocityRamp(
-            initial=STARTUP_VELOCITY,
-            final=FREESTREAM_VELOCITY,
-            start_time=TAPER_START,
-            end_time=TAPER_END,
-        ),
+        freestream_velocity=list(FREESTREAM_VELOCITY),
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
         eta_blend_width=BLEND_WIDTH * CELL_SIZE,
         vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,

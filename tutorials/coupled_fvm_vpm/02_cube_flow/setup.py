@@ -3,7 +3,7 @@
 
 The FVM resolves the no-slip cube and its near wake on a body-fitted Cartesian
 mesh; vortex particles carry the outer wake. Both solvers use the same
-equilibrium Smagorinsky closure. A short transverse startup breaks the
+equilibrium Smagorinsky closure. A vortex behind the cube breaks the
 symmetry of the impulsively started flow so that the wake sheds.
 """
 
@@ -26,10 +26,12 @@ REYNOLDS_NUMBER = 1000.0
 DENSITY = 1.0  # kg/m^3
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY[0] * CUBE_SIDE / REYNOLDS_NUMBER  # m^2/s
 
-# Startup: a transverse freestream that decays smoothly breaks the wake symmetry
-STARTUP_VELOCITY = (1.0, 0.1, 0.05)  # m/s
-TAPER_START = 1.0  # s, the transverse components then decay smoothly ...
-TAPER_END = 2.0  # s, ... to the freestream
+# Startup: a vortex behind the cube, on an axis tilted from z towards -y, breaks both
+# mirror symmetries of the wake
+DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, vector-potential peak
+DISTURBANCE_RADIUS = 0.5  # m
+DISTURBANCE_CENTRE = (1.0, 0.0, 0.0)  # m, half a side behind the rear face
+DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 
 # FVM: uniform body-fitted cells, also the particle spacing
 CELL_SIZE = 0.045  # m
@@ -70,6 +72,15 @@ INSET = TRANSFER_INSET * CELL_SIZE
 TRANSFER_REGION = tuple(bound + INSET * side for bound, side in zip(FVM_BOX, (1, -1) * 3))
 CUBE_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 EXCHANGE_TIME_STEP = FVM_SUBSTEPS * FVM_TIME_STEP
+
+
+def initial_velocity(position):
+    """Freestream plus the curl of A (1 - r^2/R^2)^4 along the disturbance axis."""
+    offset = position - np.asarray(DISTURBANCE_CENTRE)
+    support = np.maximum(1.0 - np.sum(offset**2, axis=1) / DISTURBANCE_RADIUS**2, 0.0)
+    swirl = 8.0 * DISTURBANCE_AMPLITUDE / DISTURBANCE_RADIUS**2 * support**3
+    axis = np.asarray(DISTURBANCE_AXIS) / np.linalg.norm(DISTURBANCE_AXIS)
+    return np.asarray(FREESTREAM_VELOCITY) + swirl[:, None] * np.cross(axis, offset)
 
 
 def on_exchanges(interval):
@@ -126,12 +137,12 @@ FVM_SETUP = fvm.FVMSetup(
         # Particles supply the normal velocity and the normal derivative of tangential velocity
         fvm.BoundaryConfig(
             name="numericalBoundary",
-            velocity_value=list(STARTUP_VELOCITY),
+            velocity_value=list(FREESTREAM_VELOCITY),
             pressure_type="fixedFluxPressure",
         ),
         fvm.BoundaryConfig.wall("cube"),
     ],
-    initial_velocity=list(STARTUP_VELOCITY),
+    initial_velocity=list(FREESTREAM_VELOCITY),
     samplers=(
         # Force and moment coefficients on the frontal area
         fvm.ForceSampler(
@@ -169,7 +180,7 @@ VPM_CASE = vpm.VPMCase(
     directory=CASE_DIR,
     numerics=vpm.Numerics(
         time_step_size=EXCHANGE_TIME_STEP,
-        freestream_velocity=STARTUP_VELOCITY,
+        freestream_velocity=FREESTREAM_VELOCITY,
         integrator=vpm.RK2(),
         induction=vpm.FMMInduction(),
         viscous=vpm.ViscousConfig.gbd(
@@ -225,13 +236,7 @@ VPM_CASE = vpm.VPMCase(
 )
 
 COUPLER_SETUP = coupling.CouplerSetup(
-    freestream_velocity=list(STARTUP_VELOCITY),
-    freestream=coupling.VelocityRamp(
-        initial=STARTUP_VELOCITY,
-        final=FREESTREAM_VELOCITY,
-        start_time=TAPER_START,
-        end_time=TAPER_END,
-    ),
+    freestream_velocity=list(FREESTREAM_VELOCITY),
     transfer_region_bounds=TRANSFER_REGION,
     eta_blend_width=BLEND_WIDTH * CELL_SIZE,
     vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,
@@ -245,4 +250,4 @@ COUPLER_SETUP = coupling.CouplerSetup(
 
 if __name__ == "__main__":
     with coupling.create_coupler(FVM_SETUP, VPM_CASE, COUPLER_SETUP, mesh=FVM_MESH) as solver:
-        solver.run(start_from="latest")
+        solver.run(start_from="latest", initial_velocity=initial_velocity)
