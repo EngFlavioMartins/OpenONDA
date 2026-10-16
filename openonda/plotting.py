@@ -12,6 +12,10 @@ from matplotlib.text import Text
 from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 import numpy as np
 
+# Figures are written to files. The non-interactive backend keeps a long series of
+# figures from accumulating window-system memory after each figure is closed.
+plt.switch_backend("Agg")
+
 # Plot style.
 # All plot presentation lives here: palette, font sizes, figure sizes,
 # markers, line widths, reference styles, and export defaults.

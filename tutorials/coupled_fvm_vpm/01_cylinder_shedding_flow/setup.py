@@ -55,7 +55,8 @@ END_TIME = 100.0  # s
 # Observations
 FORCE_INTERVAL = 0.04  # s
 PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
-VOLUME_INTERVAL = 4.0  # s, FVM fields
+FIELD_INTERVAL = 0.2  # s, FVM and particle fields over developed shedding ...
+FIELD_START = 40.0  # s, ... from this time on
 BACKUP_INTERVAL = 1.0  # s, coupled restart states and matching particle fields
 RENEWAL_CHECK_INTERVAL = 2.4  # s, costly checks of how well particles represent FVM vorticity
 
@@ -162,7 +163,7 @@ def build_case(
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=end_time),
         output=fvm.Output(
-            schedule=fvm.EveryTime(on_exchanges(VOLUME_INTERVAL)),
+            schedule=fvm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START),
             compression="lz4",
             ghost_layers=0,
         ),
@@ -210,6 +211,9 @@ def build_case(
             max_n_particles=PARTICLE_LIMIT,
         ),
         run=vpm.RunPlan(end_time=end_time),
+        output=vpm.Output(
+            schedule=vpm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START)
+        ),
         samplers=vpm.Samplers(
             tuple(
                 vpm.LineSampler(

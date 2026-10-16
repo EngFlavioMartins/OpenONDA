@@ -39,7 +39,9 @@ A vortex behind the cylinder breaks the symmetry; the freestream is steady from 
 | --- | --- |
 | `figures/forces` | $C_D$ and $C_L$ against the reference; the mean drag, lift amplitude and Strouhal number of developed shedding are printed |
 | `figures/velocity_profiles` | Mean streamwise velocity and transverse velocity fluctuation at $x/D=2$ and $4$ |
-| `figures/coupling_cost` | Wall time of each exchange and the particle count |
+| `figures/velocity_profiles/t*` | Streamwise and transverse velocity at $x/D=2$ and $4$ at every sample time shared by both runs, every 0.2 s |
+| `figures/velocity_fields/t*`, `figures/vorticity_fields/t*` | Streamwise velocity and spanwise vorticity of the reference, of the coupled flow (the FVM inside its box, dashed, and the particles outside it) and their difference at every time both runs saved fields, every 4 s; instantaneous, so the shed vortices' phases differ once shedding develops. `figures/auxiliary/field_differences.csv` lists the rms and maximum differences |
+| `figures/coupling_cost` | Wall time per second of flow time of each exchange by solver part, with the mean of the coupled run and of the reference FVM; the particle count |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; every particle frame, written with each coupled backup, has an FVM frame of the same time. `assets/paraview_state.py` loads both in ParaView |
 
 ## Sensitivity study

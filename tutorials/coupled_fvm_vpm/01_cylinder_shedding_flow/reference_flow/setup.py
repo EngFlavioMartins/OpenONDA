@@ -44,7 +44,8 @@ END_TIME = 100.0  # s
 # Observations, matching the coupled case
 FORCE_INTERVAL = 0.04  # s
 PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
-VOLUME_INTERVAL = 4.0  # s
+FIELD_INTERVAL = 0.2  # s, flow fields over developed shedding ...
+FIELD_START = 40.0  # s, ... from this time on
 BACKUP_INTERVAL = 1.0  # s
 
 
@@ -140,9 +141,10 @@ def build_case() -> fvm.FVMCase:
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=END_TIME),
-        output=fvm.Output(schedule=fvm.EveryTime(VOLUME_INTERVAL)),
+        output=fvm.Output(schedule=fvm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
         samplers=fvm.Samplers(samplers),
         backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
+        logging=fvm.LoggingConfig(detailed_timing=True),  # wall time per step
         mesh=mesh,
         boundaries=(
             fvm.BoundaryConfig.inlet("inlet", FREESTREAM_VELOCITY),
