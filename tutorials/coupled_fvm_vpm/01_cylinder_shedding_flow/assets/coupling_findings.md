@@ -186,7 +186,7 @@ The inset is the number of cells between the FVM box faces and the transfer-regi
   - The lift amplitude is still growing slowly there: the reference peaks rise from 0.4992 to 0.5000 within the window and average 0.5025 over $55\le t\le100$ s. Absolute amplitudes are therefore not fully converged at 55 s. Every run is measured over the same window, so the comparison is consistent.
   - Runs with physically equivalent settings (box margins 1.8, 2.2, 2.4) agree to about 0.1 percentage points in lift. Differences of 0.3 points or more between runs are resolved.
   - GPU summation order is not deterministic, so repeated runs differ at round-off level. Repeat runs were not made.
-- **Reproduce:** run `assets/run_sensitivity_study.sh`, then `assets/plot_sensitivity_study.sh`, which writes `figures/sensitivity` and prints the error table.
+- **Reproduce:** run `assets/run_sensitivity_study.sh`, then `./allplot.sh`, which writes `figures/sensitivity` and prints the error table.
 
 ## 5. Guidelines for the coupled solver
 

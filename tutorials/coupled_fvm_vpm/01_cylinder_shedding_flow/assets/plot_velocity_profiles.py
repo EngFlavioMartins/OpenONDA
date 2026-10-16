@@ -11,7 +11,7 @@ from openonda.plotting import COLORS, LINE_WIDTH, REFERENCE_STYLE, figure_size, 
 from openonda.plotting import centered_subplots_adjust, set_thesis_style
 from openonda.saved_times import match_saved_times
 
-from assets.shedding_phase import N_PHASES, phase_bin, shedding_phase
+from assets.shedding_phase import N_PHASES, phase_averaged_velocity, shedding_phase
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 DEVELOPED_SHEDDING = 40.0  # s, start of the averaging window
@@ -106,41 +106,32 @@ def phase_averaged_profiles(samples, limits):
         shedding_phase(REFERENCE_FORCES),
         shedding_phase(COUPLED_FORCES),
     )
-    averages = {}
-    for (station, label), table in samples.items():
-        phase = reference_phase if label == "Reference FVM" else coupled_phase
-        developed = table["time"] >= DEVELOPED_SHEDDING
-        positions, point = np.unique(table["position_y"][developed].round(6), return_inverse=True)
-        bins = phase_bin(phase(table["time"][developed]))
-        for k in range(N_PHASES):
-            chosen = bins == k
-            count = np.bincount(point[chosen], minlength=len(positions))
-            averages[station, label, k] = (
-                positions,
-                *(
-                    np.bincount(point[chosen], table[name][developed][chosen], len(positions))
-                    / count
-                    for name in ("velocity_x", "velocity_y")
-                ),
-            )
+    averages = {
+        (station, label): phase_averaged_velocity(
+            table,
+            reference_phase if label == "Reference FVM" else coupled_phase,
+            DEVELOPED_SHEDDING,
+        )
+        for (station, label), table in samples.items()
+    }
 
     rows = []
     for k in range(N_PHASES):
         curves = {station: [] for station in SOURCES}
         for station, files in SOURCES.items():
-            reference = averages[station, "Reference FVM", k]
             for label in files:
-                positions, u, v = averages[station, label, k]
+                positions, u, v = averages[station, label]
                 curves[station].append(
-                    (label, positions / DIAMETER, u / FREESTREAM_SPEED, v / FREESTREAM_SPEED)
+                    (label, positions / DIAMETER, u[k] / FREESTREAM_SPEED, v[k] / FREESTREAM_SPEED)
                 )
                 if label == "Reference FVM":
                     continue
+                reference = averages[station, "Reference FVM"]
                 difference = (
                     100.0
                     * np.hypot(
-                        u - np.interp(positions, reference[0], reference[1]),
-                        v - np.interp(positions, reference[0], reference[2]),
+                        u[k] - np.interp(positions, reference[0], reference[1][k]),
+                        v[k] - np.interp(positions, reference[0], reference[2][k]),
                     )
                     / FREESTREAM_SPEED
                 )
