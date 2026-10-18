@@ -34,4 +34,14 @@ The motion breaks the symmetry, so no startup disturbance is added. The wake loc
 
 ## Results
 
-`figures/forces` compares $C_D$ and $C_L$ with the reference; `./allplot.sh` prints the mean drag, the lift amplitude, the lift frequency relative to the heave frequency and the phase of the lift to the motion over the locked-in wake.
+The heave fixes the shedding phase: over $t\geq25$ s the lift of both runs oscillates at the heave frequency (ratio 1.00 and 1.01) with a constant phase lag to the motion. Each run is therefore averaged over states of equal heave phase, $2\pi ft$, in 12 bins of 30° centred on $0°, 30°, \dots$, where $0°$ is the mean position moving up. Fields and profiles are compared in the inertial frame, about the mean cylinder position. The particles and their probes are written in the frame of the box, relative to its position at $t=0$, with the velocity relative to the box; the plot scripts add the heave displacement $A\sin(2\pi ft)$ and velocity back.
+
+| File | Content |
+| --- | --- |
+| `figures/forces` | $C_D$ and $C_L$ against the reference; the mean drag, the lift amplitude, the lift frequency relative to the heave frequency and the phase of the lift to the motion over the locked-in wake are printed |
+| `figures/velocity_profiles` | Mean streamwise velocity and rms transverse velocity at $x/D=2$ and $4$ over $t\geq25$ s |
+| `figures/velocity_profiles/t*` | Streamwise and transverse velocity at $x/D=2$ and $4$ at every sample time shared by both runs, every 0.2 s |
+| `figures/phase_averaged_profiles/phase*` | The same profiles averaged over each heave-phase bin; `figures/auxiliary/profile_differences.csv` lists the rms and maximum velocity differences from the reference |
+| `figures/velocity_fields/phase*`, `figures/vorticity_fields/phase*` | Streamwise velocity and spanwise vorticity of the reference, of the coupled flow (the FVM inside its box, dashed, and the particles outside it) and their difference, averaged over each heave-phase bin from fields saved every 0.2 s over $t\geq25$ s; the cylinder and box are drawn at the bin-centre phase, and points the cylinder covers in any state of the bin are blank. `figures/auxiliary/field_differences.csv` lists the rms and maximum differences per bin, which are also printed |
+| `figures/coupling_cost` | Wall time per second of flow time of each exchange by solver part, with the mean of the coupled run and of the reference FVM; the particle count |
+| `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields at the moving mesh position and particles in the frame of the box, every 0.2 s from 25 s, about 0.5 GB; the reference writes about 0.35 GB |

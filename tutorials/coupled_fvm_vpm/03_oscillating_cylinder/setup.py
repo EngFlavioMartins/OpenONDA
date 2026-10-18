@@ -50,7 +50,9 @@ END_TIME = 50.0  # s
 
 # Observations
 FORCE_INTERVAL = 0.04  # s
-VOLUME_INTERVAL = 5.0  # s, FVM fields
+PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
+FIELD_INTERVAL = 0.2  # s, FVM and particle fields, 28 per heave period, over the locked-in wake ...
+FIELD_START = 25.0  # s, ... from this time on
 BACKUP_INTERVAL = 1.0  # s, coupled restart states and matching particle fields
 RENEWAL_CHECK_INTERVAL = 2.4  # s, costly checks of how well particles represent FVM vorticity
 
@@ -120,7 +122,7 @@ def build_case():
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=END_TIME),
         output=fvm.Output(
-            schedule=fvm.EveryTime(on_exchanges(VOLUME_INTERVAL)),
+            schedule=fvm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START),
             compression="lz4",
             ghost_layers=0,
         ),
@@ -133,6 +135,16 @@ def build_case():
                     reference_area=DIAMETER * span,
                     reference_length=DIAMETER,
                     schedule=fvm.EveryTime(on_exchanges(FORCE_INTERVAL)),
+                ),
+                # Near-wake profile inside the box, at a fixed inertial position
+                fvm.LineSampler(
+                    (2.0, -1.5, 0.0),
+                    (2.0, 1.5, 0.0),
+                    n_points=31,
+                    n_neighbours=12,
+                    reconstruction="affine",
+                    file_name="fvm_transverse_x2",
+                    schedule=fvm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
                 ),
             )
         ),
@@ -183,6 +195,24 @@ def build_case():
             max_n_particles=PARTICLE_LIMIT,
         ),
         run=vpm.RunPlan(end_time=END_TIME),
+        output=vpm.Output(
+            schedule=vpm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START)
+        ),
+        # Transverse wake profiles in the frame of the box; 0.4 m longer on each side,
+        # so they cover y = -2 to 2 m about the mean cylinder position at any heave
+        samplers=vpm.Samplers(
+            tuple(
+                vpm.LineSampler(
+                    (x, -2.4, 0.0),
+                    (x, 2.4, 0.0),
+                    spacing=0.1,
+                    include_derivatives=False,
+                    file_name=f"vpm_transverse_x{x:g}",
+                    schedule=vpm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+                )
+                for x in (2.0, 4.0)
+            )
+        ),
         logging=vpm.LoggingConfig(console=False),
     )
 

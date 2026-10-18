@@ -41,7 +41,9 @@ END_TIME = 50.0  # s
 
 # Observations, matching the coupled case
 FORCE_INTERVAL = 0.04  # s
-VOLUME_INTERVAL = 5.0  # s
+PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
+FIELD_INTERVAL = 0.2  # s, flow fields, 28 per heave period, over the locked-in wake ...
+FIELD_START = 25.0  # s, ... from this time on
 BACKUP_INTERVAL = 1.0  # s
 
 
@@ -83,6 +85,19 @@ def build_case() -> fvm.FVMCase:
             reference_length=DIAMETER,
             schedule=fvm.EveryTime(FORCE_INTERVAL),
         ),
+        # Transverse wake profiles at fixed inertial positions about the mean cylinder position
+        *(
+            fvm.LineSampler(
+                (x, -2.0, 0.0),
+                (x, 2.0, 0.0),
+                n_points=41,
+                n_neighbours=12,
+                reconstruction="affine",
+                file_name=f"transverse_x{x:g}",
+                schedule=fvm.EveryTime(PROFILE_INTERVAL),
+            )
+            for x in (2.0, 4.0)
+        ),
     )
     numerics = fvm.Numerics(
         time_step_size=TIME_STEP,
@@ -100,9 +115,10 @@ def build_case() -> fvm.FVMCase:
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=END_TIME),
-        output=fvm.Output(schedule=fvm.EveryTime(VOLUME_INTERVAL)),
+        output=fvm.Output(schedule=fvm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
         samplers=fvm.Samplers(samplers),
         backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
+        logging=fvm.LoggingConfig(detailed_timing=True),  # wall time per step
         mesh=mesh,
         boundaries=(
             fvm.BoundaryConfig.inlet("inlet", FREESTREAM_VELOCITY),

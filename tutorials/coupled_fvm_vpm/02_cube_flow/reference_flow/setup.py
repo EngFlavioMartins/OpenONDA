@@ -45,6 +45,9 @@ BACKUP_INTERVAL = 1.0  # s
 FORCE_SAMPLE_INTERVAL = 0.05
 PROFILE_SAMPLE_INTERVAL = 0.25
 PROFILE_SPACING = 0.06
+SLICE_INTERVAL = 1.0  # s, mid-plane slices, at the times of the coupled slices
+SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, x and y bounds, as the coupled particle slice
+SLICE_SPACING = 0.09  # m, as the coupled slices
 
 CASE_DIR = Path(__file__).resolve().parent
 VELOCITY = (FREESTREAM_VELOCITY, 0.0, 0.0)
@@ -108,6 +111,17 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
             file_name="offaxis_y075",
             schedule=sample_profiles,
         ),
+        fvm.SurfaceSampler(
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0),
+            SLICE_WINDOW,
+            SLICE_SPACING,
+            n_neighbours=12,
+            reconstruction="affine",
+            body_bounds=(-0.5 * CUBE_SIDE, 0.5 * CUBE_SIDE) * 3,
+            file_name="slice_z0",
+            schedule=fvm.EveryTime(SLICE_INTERVAL),
+        ),
     )
     numerics = fvm.Numerics(
         time_step_size=TIME_STEP_SIZE,
@@ -142,6 +156,7 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         output=fvm.Output(schedule=fvm.EveryTime(OUTPUT_INTERVAL)),
         samplers=fvm.Samplers(samplers),
         backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
+        logging=fvm.LoggingConfig(detailed_timing=True),  # wall time per step
         mesh=mesh,
         boundaries=(
             fvm.BoundaryConfig.inlet("inlet", VELOCITY),

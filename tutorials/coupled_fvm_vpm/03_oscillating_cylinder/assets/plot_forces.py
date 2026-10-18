@@ -8,9 +8,10 @@ import numpy as np
 from openonda.plotting import COLORS, LINE_WIDTH, REFERENCE_STYLE
 from openonda.plotting import save_validation_figure, validation_legend, validation_subplots
 
+from assets.heave_phase import FREQUENCY
+
 CASE_DIR = Path(__file__).resolve().parents[1]
 LOCKED_IN = 25.0  # s, start of the statistics window
-FREQUENCY = 0.18  # Hz, heave frequency
 
 
 def read_forces(path):

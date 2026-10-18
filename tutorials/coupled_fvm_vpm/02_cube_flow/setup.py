@@ -59,7 +59,8 @@ END_TIME = 100.0  # s
 # Observations
 FORCE_INTERVAL = 0.05  # s
 PROFILE_INTERVAL = 0.25  # s, centreline and off-axis lines
-SLICE_INTERVAL = 1.0  # s, mid-plane slices
+SLICE_INTERVAL = 1.0  # s, mid-plane slices, at the times of the reference slices
+SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, x and y bounds of the particle slice
 VOLUME_INTERVAL = 2.0  # s, FVM fields
 BACKUP_INTERVAL = 1.0  # s, coupled restart states
 RENEWAL_CHECK_INTERVAL = 2.5  # s, costly checks of how well particles represent FVM vorticity
@@ -221,22 +222,14 @@ VPM_CASE = vpm.VPMCase(
                 )
                 for name, y in (("centreline", 0.0), ("offaxis_y075", OFFAXIS_Y))
             ),
+            # The particle flow over the whole compared wake, on the reference slice lattice
             vpm.SurfaceSampler(
                 (0.0, 0.0, 0.0),
                 (0.0, 0.0, 1.0),
-                FVM_BOX[:4],
+                SLICE_WINDOW,
                 PROFILE_SPACING,
                 include_derivatives=False,
                 file_name="vpm_slice_z0",
-                schedule=vpm.EveryTime(on_exchanges(SLICE_INTERVAL)),
-            ),
-            vpm.SurfaceSampler(
-                (0.0, 0.0, 0.0),
-                (0.0, 0.0, 1.0),
-                (0.0, 12.0, -2.0, 2.0),
-                PROFILE_SPACING,
-                include_derivatives=False,
-                file_name="vpm_wake_slice_z0",
                 schedule=vpm.EveryTime(on_exchanges(SLICE_INTERVAL)),
             ),
         )

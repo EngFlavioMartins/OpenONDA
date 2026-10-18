@@ -19,4 +19,4 @@ The whole mesh heaves, so the inlet, outlet and sides move with the cylinder. Th
 ./allplot.sh
 ```
 
-`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest backup. The mesh is kept as `assets/reference_oscillating_cylinder_mesh.npz`. `figures/forces` shows $C_D$ and $C_L$; `../allplot.sh` compares them with the coupled case.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest backup. The mesh is kept as `assets/reference_oscillating_cylinder_mesh.npz`. `figures/forces` shows $C_D$ and $C_L$. The case also writes transverse velocity profiles at $x=2$ and $4$ m, fixed in the inertial frame, and fields every 0.2 s from 25 s, with the wall time of each step in `solution/performance.jsonl`; `../allplot.sh` compares them with the coupled case.
