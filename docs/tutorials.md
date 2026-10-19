@@ -54,8 +54,8 @@ When checking convergence, refine the spacing and the time step together. Result
 | --- | --- | --- |
 | [Cylinder wake](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$ | Coupling setup, planar flow with one particle layer, outflow fringes, a sensitivity study |
 | [Cube wake](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated flow at $Re=1000$ | Three-dimensional coupling, LES in both solvers |
-| [Oscillating cylinder](../tutorials/coupled_fvm_vpm/03_oscillating_cylinder/README.md) | Cylinder heaving across the stream at $Re=150$ | A moving FVM box, particles in the moving frame |
-| [NACA 4412 wing](../tutorials/coupled_fvm_vpm/04_naca4412_flow/README.md) | Finite cambered wing at $10^\circ$ and $Re=1000$ | An analytical STL body, incidence from the freestream direction, trailing vortices through an outflow fringe, wind-axis forces |
+| [NACA 4412 wing](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | Finite cambered wing at $10^\circ$ and $Re=1000$ | An analytical STL body, incidence from the freestream direction, trailing vortices through an outflow fringe, wind-axis forces |
+| [Oscillating cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) | Cylinder heaving across the stream at $Re=150$ | A moving FVM box, particles in the moving frame |
 
 Each coupled case has a `reference_flow/` subdirectory that solves the same flow with the FVM alone on a large domain; the cube reference also shows a grid-convergence study and MPI parallel runs.
 

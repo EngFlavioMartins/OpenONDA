@@ -8,7 +8,7 @@ partitioned = serial, bit-exact FVM restart, coupled restart.
 
 ## 1. Coupled heaving cylinder not yet validated to the end
 
-`tutorials/coupled_fvm_vpm/03_oscillating_cylinder` was compared with its
+`tutorials/coupled_fvm_vpm/04_oscillating_cylinder` was compared with its
 `reference_flow` only up to t ≈ 18 s: mean Cd within 0.1–0.9 %, Cl range within
 0.8–2.3 %. Statistics are meant to be taken from 25 s (locked-in wake).
 
@@ -82,7 +82,7 @@ a fixed dt to avoid it.
 
 ## 9. Mesher cost for the coupled heaving case
 
-Meshing `03_oscillating_cylinder` took > 30 min in mesh optimisation versus
+Meshing `04_oscillating_cylinder` took > 30 min in mesh optimisation versus
 ~145 s for the same box in `01_cylinder_shedding_flow`. Investigate (same STL
 and box; possibly the slab bounds or the cached-mesh hash). The reference case
 also reported a cached-mesh hash mismatch on rerun — check that the moving-mesh

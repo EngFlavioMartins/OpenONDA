@@ -6,7 +6,8 @@ The coupled solver splits the flow where each method is strongest. The finite-vo
 | --- | --- |
 | [Cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar planar shedding at $Re=150$; one FVM cell and one particle layer across the span. Includes a parameter sensitivity study. |
 | [Cube](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated three-dimensional flow at $Re=1000$ with LES in both solvers. |
-| [Oscillating cylinder](../tutorials/coupled_fvm_vpm/03_oscillating_cylinder/README.md) | The cylinder heaving across the stream at $Re=150$; the FVM box moves with it. |
+| [NACA 4412 wing](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | A finite cambered wing with capped tips at $10^\circ$ and $Re=1000$, meshed body-fitted from an analytical STL, with LES in both solvers. |
+| [Oscillating cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) | The cylinder heaving across the stream at $Re=150$; the FVM box moves with it. |
 
 Each case has an FVM-only `reference_flow` that solves the same problem on a large domain. Read the [FVM](fvm.md) and [VPM](vpm.md) guides first.
 
