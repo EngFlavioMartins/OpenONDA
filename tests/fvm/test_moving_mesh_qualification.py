@@ -49,6 +49,9 @@ def _force_coefficients(tmp_path, steps_per_period: int) -> tuple[float, float]:
             time_step_size=PERIOD / steps_per_period,
             transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=viscosity),
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
+            # The wall cells are thin (nu dt / dy^2 > 1), where one PISO pass
+            # carries a splitting error; three outer passes converge the step.
+            pimple=fvm.PimpleConfig(n_outer_correctors=3),
         ),
         # The far field moves with the cylinder through still fluid. A fixed
         # zero velocity there keeps one boundary condition through each flow
@@ -115,6 +118,7 @@ def test_oscillating_cylinder_reproduces_stokes_layer_forces(tmp_path, record_pr
     The whole O-grid oscillates with the cylinder. At beta = 300 and KC = 0.5
     the Fourier-averaged inertia and drag coefficients reproduce Wang's
     asymptotic theory, and the inertia error falls as the time step halves.
+    The far field at 15 D adds about 0.2 % to the added mass.
     """
     wang_added_mass, wang_drag = _wang_coefficients()
     coarse = _force_coefficients(tmp_path, 100)
@@ -127,6 +131,6 @@ def test_oscillating_cylinder_reproduces_stokes_layer_forces(tmp_path, record_pr
     record_property("added_mass_t200", fine[0])
     record_property("drag_t100", coarse[1])
     record_property("drag_t200", fine[1])
-    assert added_mass_errors[1] < added_mass_errors[0] < 0.015
-    assert added_mass_errors[1] < 0.01
-    assert max(drag_errors) < 0.03
+    assert added_mass_errors[1] < added_mass_errors[0] < 0.005
+    assert added_mass_errors[1] < 0.003
+    assert max(drag_errors) < 0.025

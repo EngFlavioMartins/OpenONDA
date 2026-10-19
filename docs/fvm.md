@@ -179,7 +179,17 @@ with the mesh velocity $\mathbf{U}_\mathrm{m}=\mathbf{V}+\boldsymbol{\Omega}\tim
 
 Volume output writes the moved mesh, and a `ForceSampler` moment centre moves with the mesh. Restarts restore the mesh position. The [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md) shows a complete case.
 
-A far-field `freestream` boundary keeps its pressure split fixed while the stream relative to its faces keeps its direction, so wake vortices crossing a static far field do not switch it. When the far field moves with an oscillating body the relative stream turns with the motion; in still fluid it is the mesh motion itself, and the whole far field switches between inflow and outflow conditions every half period. The switching disturbs the forces. For a moving far field, prefer a fixed `inlet` upstream and a fixed-pressure outlet downstream, as in the [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md), or a fixed zero velocity on a distant boundary around a body oscillating in still fluid. Without outer correctors, PISO convects with the flux of the previous step; add `n_outer_correctors` when the flow relative to the mesh changes quickly within a step. The FVM–VPM coupler follows translating meshes; see [moving bodies](coupling.md#moving-bodies).
+A far-field `freestream` boundary keeps its pressure split fixed while the stream relative to its faces keeps its direction, so wake vortices crossing a static far field do not switch it. When the far field moves with an oscillating body the relative stream turns with the motion; in still fluid it is the mesh motion itself, and the whole far field switches between inflow and outflow conditions every half period. The switching disturbs the forces. For a moving far field, prefer a fixed `inlet` upstream and a fixed-pressure outlet downstream, as in the [oscillating cylinder](../tutorials/fvm/oscillating_cylinder/README.md), or a fixed zero velocity on a distant boundary around a body oscillating in still fluid.
+
+Converge each step with outer correctors around an accelerating body. With one pass, PISO neglects the neighbour-velocity corrections, which are not small where the wall cells are thin, $\nu\Delta t/\Delta y^2>1$; on a moving mesh the pass also lags the motion of the faces. For a cylinder oscillating in still fluid (Wang 1968, $\beta=300$, $KC=0.5$, 128×60 O-grid):
+
+| Steps per period | Moving mesh, 1 pass | Fixed mesh in an oscillating stream, 1 pass | Either, 3 passes |
+| --- | --- | --- | --- |
+| 50 | 1.113 | 1.133 | 1.138 |
+| 100 | 1.122 | 1.128 | 1.133 |
+| 200 | 1.127 | 1.127 | 1.132 |
+
+The table gives the added-mass coefficient; theory with the 15 D far field gives 1.133. Three outer passes converge the step (six give the same value to 0.02 %), and the converged added mass is second order in time and equal in both frames. A moving wall keeps `zero_gradient` pressure: its face flux is fixed by the wall velocity, and `fixed_flux_pressure` changes the added mass by less than 0.01 %. The FVM–VPM coupler follows translating and rotating meshes; see [moving bodies](coupling.md#moving-bodies).
 
 ## Turbulence and LES
 
