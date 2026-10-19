@@ -31,6 +31,6 @@ On the moving mesh the `cylinder` wall is a no-slip wall moving with the mesh. T
 
 `figures/oscillating_cylinder_forces.png` shows drag, lift with the normalized cylinder position, and the lift spectrum. Forcing near the natural shedding frequency locks the wake onto the motion: lift oscillates at the forcing frequency with a fixed phase to the motion, and drag at twice that frequency. `figures/oscillating_cylinder_vorticity.png` shows the vortex street of the final frame around the displaced cylinder.
 
-`./allplot.sh` prints the mean drag, the r.m.s. lift and the lift frequency over the second half of the run. A lift-to-forcing frequency ratio of one indicates lock-in; the default run gives a ratio of 1.000, mean $C_D=1.55$ and r.m.s. $C_L=0.29$. Change `FREQUENCY_RATIO` to move the forcing away from $f_0$ and find where the wake stops following the cylinder.
+`./allplot.sh` prints the mean drag, the r.m.s. lift and the lift frequency over the second half of the run. A lift-to-forcing frequency ratio of one indicates lock-in; the default run gives a ratio of 1.000, mean $C_D=1.54$ and r.m.s. $C_L=0.28$. Change `FREQUENCY_RATIO` to move the forcing away from $f_0$ and find where the wake stops following the cylinder.
 
 The force coefficients use the frontal area $D\times$ `DEPTH`. They include the inertial force of the fluid accelerated by the cylinder. Refine the grid and the time step together before quoting the coefficients.

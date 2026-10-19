@@ -65,6 +65,8 @@ def create_fvm_case() -> fvm.FVMCase:
             time_step_size=TIME_STEP_SIZE,
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
+            # The wall cells are thin (nu dt / dy^2 = 4); three outer passes converge each step
+            pimple=fvm.PimpleConfig(n_outer_correctors=3),
             execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
         initial_conditions=fvm.InitialFields(velocity=(FREESTREAM_VELOCITY, 0.0, 0.0)),
