@@ -1,18 +1,23 @@
-"""FVM-VPM coupling on a translating FVM mesh: frame invariance and restart."""
+"""FVM-VPM coupling on a moving FVM mesh: frame invariance, rotation and restart."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from importlib.util import find_spec
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy.spatial import cKDTree
 
 from openonda import coupler, fvm, vpm
+from openonda.core.kinematics import RigidPose, axis_rotation_matrix
+from openonda.coupler.frame import MeshFrame
 from openonda.fvm.diagnostics.fields import compute_surface_forces
 from openonda.fvm.mesh.rectilinear import coupling_box_mesh
 
@@ -174,9 +179,143 @@ def _coupled_state(solver):
     }
 
 
-def test_heaving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path):
+def _body_force(flow):
+    return compute_surface_forces(
+        flow.velocity,
+        flow.kinematic_pressure,
+        VISCOSITY,
+        1.0,
+        flow.mesh_data,
+        flow.geo_data,
+        flow.boundaries,
+        patch_names=["body"],
+    )["body"]["total_force"]
+
+
+def test_rotated_mesh_couples_like_the_unrotated_mesh(tmp_path):
+    """Claim: turning the FVM mesh and the stream by 90 degrees turns the coupled flow.
+
+    The particles keep the inertial axes while the transfer lattice, donor
+    cells and walls stay in body coordinates. A quarter turn of this
+    symmetric box maps its lattice onto the particle grid, so the forces,
+    cell velocities and particle invariants of the turned case are the
+    turned values of the original case. The single-precision GBD grid and
+    its regeneration threshold leave differences near 1e-5 relative.
+    """
+    rotation = axis_rotation_matrix((0.0, 0.0, 1.0), 0.5 * np.pi)
+    end_time = 2 * COUPLING_INTERVAL
+    results = {}
+    for turned in (False, True):
+        stream = rotation @ STREAM if turned else STREAM
+        motion = (
+            fvm.MeshMotion(fvm.StaticMotion(), rotation_degrees=(0.0, 0.0, 90.0))
+            if turned
+            else None
+        )
+        with _coupled_solver(
+            tmp_path / f"turned_{turned}", stream, motion, end_time=end_time
+        ) as solver:
+            solver.start_from("initial")
+            forces = []
+            while solver.time < end_time - 1e-12:
+                solver.advance()
+                forces.append(_body_force(solver.fvm_solver))
+            state = _coupled_state(solver)
+            state["force"] = np.array(forces)
+            results[turned] = state
+
+    original, turned = results[False], results[True]
+    scale = np.abs(original["force"]).max()
+    np.testing.assert_allclose(
+        turned["force"], original["force"] @ rotation.T, rtol=0.0, atol=1e-4 * scale
+    )
+    np.testing.assert_allclose(
+        turned["cell_centre"], original["cell_centre"] @ rotation.T, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        turned["velocity"], original["velocity"] @ rotation.T, rtol=0.0, atol=1e-4
+    )
+    # Net vortex strength and impulse, against the total strength magnitude
+    invariants = {}
+    for key, state in results.items():
+        position = state["position"].astype(np.float64)
+        strength = state["vortex_strength"].astype(np.float64)
+        invariants[key] = (
+            strength.sum(axis=0),
+            np.cross(position, strength).sum(axis=0),
+            np.linalg.norm(strength, axis=1).sum(),
+        )
+    tolerance = 1e-4 * invariants[False][2]
+    for index in (0, 1):
+        np.testing.assert_allclose(
+            invariants[True][index], rotation @ invariants[False][index], rtol=0.0, atol=tolerance
+        )
+    assert len(turned["position"]) > 500
+
+
+def test_pitching_body_couples_like_a_larger_fvm_domain(tmp_path):
+    """Claim: a pitching mesh couples as an FVM domain extended by the particles.
+
+    The coupled box of +-1 m pitches with the body; the FVM-only reference
+    pitches a box of +-1.5 m with the stream fixed on its faces. Both meshes
+    share their cells inside the coupled box. Forces and cell velocities
+    agree to a few percent, the size of the reference blockage; reading the
+    rotating geometry as a translating one gives errors near 12 percent.
+    """
+    pitch = fvm.MeshMotion(fvm.PitchingMotion(10.0, 2.0, rotation_axis=(0.0, 0.0, 1.0)))
+    end_time = 10 * COUPLING_INTERVAL
+    with _coupled_solver(tmp_path / "coupled", STREAM, pitch, end_time=end_time) as solver:
+        solver.start_from("initial")
+        coupled_force = {}
+        while solver.time < end_time - 1e-12:
+            solver.advance()
+            coupled_force[round(solver.time, 9)] = _body_force(solver.fvm_solver)
+        n_cells = solver.fvm_solver.mesh_data["n_cells"]
+        coupled_centre = solver.fvm_solver.geo_data["cell_centre"][:n_cells].copy()
+        coupled_velocity = solver.fvm_solver.velocity[:n_cells].copy()
+
+    reference_case = replace(
+        _fvm_case(tmp_path / "reference", STREAM, pitch, end_time=end_time),
+        mesh=lambda: coupling_box_mesh(
+            (-1.5, 1.5) * 3, SPACING, hole_box=(-0.25, 0.25) * 3, wall_patch_name="body"
+        ),
+        boundaries=(
+            fvm.BoundaryConfig.wall("body"),
+            fvm.BoundaryConfig.inlet("numericalBoundary", tuple(STREAM)),
+        ),
+    )
+    reference_force = {}
+    with fvm.FVMSolver(reference_case) as reference:
+        reference.auto_write = False
+        while reference.time < end_time - 1e-12:
+            reference.advance()
+            reference_force[round(reference.time, 9)] = _body_force(reference)
+        n_cells = reference.mesh_data["n_cells"]
+        distance, index = cKDTree(reference.geo_data["cell_centre"][:n_cells]).query(coupled_centre)
+        reference_velocity = reference.velocity[:n_cells][index]
+
+    assert distance.max() < 1e-12
+    times = sorted(coupled_force)
+    assert len(times) >= 5 and set(times) <= set(reference_force)
+    coupled_force = np.array([coupled_force[time] for time in times])
+    reference_force = np.array([reference_force[time] for time in times])
+    force_error = np.abs(coupled_force - reference_force).max(axis=1)
+    assert force_error.mean() < 0.06 * np.abs(reference_force).max()
+    velocity_error = np.linalg.norm(coupled_velocity - reference_velocity, axis=1)
+    assert velocity_error.mean() < 0.05 * np.linalg.norm(STREAM)
+
+
+@pytest.mark.parametrize(
+    "motion",
+    [
+        fvm.HeavingMotion(0.1, 2.0, direction=(0.0, 1.0, 0.0)),
+        fvm.PitchingMotion(10.0, 2.0, rotation_axis=(0.0, 0.0, 1.0)),
+    ],
+    ids=["heave", "pitch"],
+)
+def test_moving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path, motion):
     """A coupled restart restores the mesh, the frame and the particle cloud."""
-    heave = fvm.MeshMotion(fvm.HeavingMotion(0.1, 2.0, direction=(0.0, 1.0, 0.0)))
+    heave = fvm.MeshMotion(motion)
     end_time = 3 * COUPLING_INTERVAL
     backup = coupler.Backup(schedule=coupler.EverySteps(1))
     with _coupled_solver(
@@ -210,11 +349,38 @@ def test_heaving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path):
     np.testing.assert_allclose(actual["vortex_strength"], expected["vortex_strength"], atol=1e-7)
 
 
-def test_rotating_mesh_is_rejected_by_the_coupling(tmp_path):
-    """The VPM has no rotating frame, so a rotating FVM mesh cannot be coupled."""
-    pitch = fvm.MeshMotion(fvm.PitchingMotion(5.0, 1.0, rotation_axis=(0, 0, 1)))
-    with pytest.raises(NotImplementedError, match="translating meshes"):
-        _coupled_solver(tmp_path, STREAM, pitch)
+def test_mesh_frame_maps_between_frame_and_body_coordinates():
+    """Body maps invert, the swept box holds every pose, and a planar flow
+    accepts only rotations about the span axis."""
+
+    def frame_of(kinematics):
+        motion = SimpleNamespace(
+            kinematics=kinematics,
+            accepted_pose=RigidPose(),
+            accepted_time=0.0,
+            pose=RigidPose(axis_rotation_matrix((0.0, 0.0, 1.0), 0.3), np.zeros(3)),
+        )
+        return MeshFrame(SimpleNamespace(mesh_motion=motion))
+
+    pitch = fvm.PitchingMotion(
+        30.0, 1.0, rotation_axis=(0.0, 0.0, 1.0), rotation_centre=(0.5, 0, 0)
+    )
+    frame = frame_of(pitch)
+    frame.validate(0.0, 1.0, 0.01, planar=True)
+    assert frame.rotates
+    points = np.random.default_rng(1).uniform(-1.0, 1.0, (20, 3))
+    np.testing.assert_allclose(frame.from_body(frame.to_body(points)), points, atol=1e-14)
+    np.testing.assert_allclose(
+        np.linalg.norm(frame.vectors_to_body(points), axis=1), np.linalg.norm(points, axis=1)
+    )
+    box = np.array([-1.0, 2.0, -0.5, 0.5, -0.1, 0.1])
+    swept = frame.swept_bounds(box, 0.0, 1.0, 0.01)
+    assert np.all(swept[::2] <= box[::2]) and np.all(swept[1::2] >= box[1::2])
+    np.testing.assert_allclose(swept[4:], box[4:])
+
+    roll = fvm.PitchingMotion(5.0, 1.0, rotation_axis=(1.0, 0.0, 0.0))
+    with pytest.raises(ValueError, match="only rotate about z"):
+        frame_of(roll).validate(0.0, 1.0, 0.01, planar=True)
 
 
 _PARTITIONED_CASE = """

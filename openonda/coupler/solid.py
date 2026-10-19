@@ -1,6 +1,57 @@
-"""Wall projection of particles that cross a static FVM wall."""
+"""Wall projection of particles that cross an FVM wall."""
 
 import numpy as np
+
+
+class PlacedSolidBoundary:
+    """A body-coordinate solid boundary seen from the VPM frame at one mesh pose.
+
+    Queries map frame points to body coordinates; corrected positions and
+    displacements map back. Particles that need no correction keep their
+    stored positions exactly.
+
+    Parameters
+    ----------
+    boundary : SolidBoundary
+        Walls in body coordinates.
+    frame : MeshFrame
+        Frame of the rotating mesh.
+    pose : RigidPose
+        Mesh pose the walls take.
+    time : float
+        Time in s of ``pose``; it labels the geometry revision.
+    """
+
+    def __init__(self, boundary, frame, pose, time):
+        self._boundary = boundary
+        self._frame = frame
+        self._pose = pose
+        self.revision = (boundary.revision, float(time))
+        corners = np.array(np.meshgrid(*boundary.bounds.reshape(3, 2), indexing="ij"))
+        points = frame.from_body(corners.reshape(3, -1).T, pose)
+        self.bounds = np.ravel(np.column_stack((points.min(axis=0), points.max(axis=0))))
+
+    def _to_body(self, points):
+        return self._frame.to_body(np.asarray(points, dtype=np.float64).reshape(-1, 3), self._pose)
+
+    def contains(self, points, *, include_boundary=False):
+        return self._boundary.contains(self._to_body(points), include_boundary=include_boundary)
+
+    def segments_cross_wall(self, starts, ends):
+        return self._boundary.segments_cross_wall(self._to_body(starts), self._to_body(ends))
+
+    def constrain_motion(self, positions, spacing, *, starts=None):
+        """Project wall crossings in body coordinates, at the storage precision."""
+        original = np.asarray(positions)
+        body = self._to_body(original).astype(original.dtype)
+        body_starts = None if starts is None else self._to_body(starts)
+        corrected, changed, _, maximum = self._boundary.constrain_motion(
+            body, spacing, starts=body_starts
+        )
+        result = original.copy()
+        result[changed] = self._frame.from_body(corrected[changed], self._pose)
+        displacement = result[changed].astype(np.float64) - original[changed]
+        return result, changed, displacement, maximum
 
 
 class WallProjection:

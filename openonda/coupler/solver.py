@@ -218,8 +218,10 @@ class CoupledSolver:
     Particle velocity and its normal gradient on the outer FVM boundary drive
     the FVM substeps; FVM vorticity then replaces particle vorticity in the
     transfer region.
-    On a translating FVM mesh the VPM runs in the frame of the mesh, with the
-    freestream relative to the mesh (:class:`~openonda.coupler.frame.MeshFrame`).
+    On a moving FVM mesh the VPM runs in the frame translating with the
+    rotation centre of the mesh, with the freestream relative to it, and the
+    coupling geometry stays in body coordinates
+    (:class:`~openonda.coupler.frame.MeshFrame`).
 
     Parameters
     ----------
@@ -306,8 +308,8 @@ class CoupledSolver:
                 FVMSolver(replace(fvm_case, backup=FVMBackup(write_at_end=False)))
             )
             self._comm = self.fvm_solver.parallel.comm
-            # The VPM runs in the frame translating with the FVM mesh; all
-            # coupling geometry is read in that frame.
+            # The VPM runs in the frame translating with the rotation centre
+            # of the FVM mesh; the coupling geometry stays in body coordinates.
             self.frame = MeshFrame(self.fvm_solver)
             self._is_root = bool(self.fvm_solver.parallel.is_root)
             if self._is_root:
@@ -369,7 +371,12 @@ class CoupledSolver:
         self.vpm_diffusion_grid_spacing = float(
             self.vpm_particle_spacing if grid_spacing is None else grid_spacing
         )
-        self.frame.validate(fvm.time, self.end_time, self.fvm_time_step_size)
+        self.frame.validate(
+            fvm.time,
+            self.end_time,
+            self.fvm_time_step_size,
+            planar=getattr(numerics.induction, "method", None) == "slip_slab",
+        )
         self.freestream_velocity = self.config.freestream_velocity_vector
         self.absolute_freestream_velocity = self.freestream_velocity.copy()
         self._velocity_boundary_condition_old: np.ndarray | None = None
@@ -402,7 +409,14 @@ class CoupledSolver:
             self.vpm_particle_spacing,
             getattr(self.vpm_case.numerics.induction, "method", None) == "slip_slab",
         )
-        _validate_vpm_domain(self.vpm_case, self.config, self.fvm_domain_bounds)
+        # A rotating FVM domain sweeps a larger region of the particle domain.
+        _validate_vpm_domain(
+            self.vpm_case,
+            self.config,
+            self.frame.swept_bounds(
+                self.fvm_domain_bounds, fvm.time, self.end_time, self.fvm_time_step_size
+            ),
+        )
         if self._is_root:
             backup = self.config.backup.schedule
             logger.info(
@@ -431,6 +445,7 @@ class CoupledSolver:
                 fvm.time,
                 self.end_time,
                 self.maximum_coupling_time_step_size,
+                self.fvm_domain_bounds,
             )
             self.vorticity_transfer.remeshing_extension_length = remeshing_extension_length(
                 [relative_speed, 0.0, 0.0],
@@ -443,7 +458,7 @@ class CoupledSolver:
                 self._configure_vpm_geometry()
 
     def _gather_fvm_domain_bounds(self) -> np.ndarray:
-        """Return the outer FVM bounds from its non-wall patches (collective)."""
+        """Return the outer FVM bounds in body coordinates from its non-wall patches (collective)."""
         fvm = self.fvm_solver
         patch = self.config.outer_boundary_patch
         names = [patch] + [
@@ -452,8 +467,10 @@ class CoupledSolver:
             if boundary.name != patch and boundary.mesh_type != "wall"
         ]
         faces = [
-            self.frame.to_frame(
-                np.asarray(fvm.gather_boundary_face_centre_coordinates(name)).reshape(-1, 3)
+            self.frame.to_body(
+                self.frame.to_frame(
+                    np.asarray(fvm.gather_boundary_face_centre_coordinates(name)).reshape(-1, 3)
+                )
             )
             for name in names
         ]
@@ -473,7 +490,9 @@ class CoupledSolver:
         vpm = self.vpm_solver
         transfer = self.vorticity_transfer
         boundary = transfer.solid_boundary
-        if boundary is not None:
+        if boundary is not None and self.frame.rotates:
+            self._place_vpm_walls(self.frame.pose_after(np.array([])), self.fvm_solver.time)
+        elif boundary is not None:
             from .solid import WallProjection
 
             vpm.physics.configure_body_classifier(
@@ -486,6 +505,7 @@ class CoupledSolver:
             projection = WallProjection(boundary, vpm.physics, self.vpm_particle_spacing, logger)
             vpm.stage_rhs.position_guard = projection.stage
             vpm.stage_rhs.accepted_position_projector = projection.accepted
+        if boundary is not None:
             logger.info(
                 format_coupler_log(
                     "vpm diffusion grid",
@@ -504,6 +524,24 @@ class CoupledSolver:
                     ("spacing", f"{self.vpm_diffusion_grid_spacing:.6g}", "m"),
                 )
             )
+
+    def _place_vpm_walls(self, pose, time: float) -> None:
+        """Give the VPM the walls of the rotating mesh at ``pose``, the pose at ``time``."""
+        from .solid import PlacedSolidBoundary, WallProjection
+
+        vpm = self.vpm_solver
+        boundary = PlacedSolidBoundary(
+            self.vorticity_transfer.solid_boundary, self.frame, pose, time
+        )
+        vpm.physics.configure_body_classifier(
+            boundary.contains,
+            revision=boundary.revision,
+            query_bounds=boundary.bounds,
+            segments_cross_wall=boundary.segments_cross_wall,
+        )
+        projection = WallProjection(boundary, vpm.physics, self.vpm_particle_spacing, logger)
+        vpm.stage_rhs.position_guard = projection.stage
+        vpm.stage_rhs.accepted_position_projector = projection.accepted
 
     # Clock
 
@@ -647,10 +685,14 @@ class CoupledSolver:
             raise RuntimeError("The coupled run has reached its end time")
         if not self._run_started:
             self.run_status = RunStatus.running
-        face_geometry = self._face_geometry
         interval_started = time.perf_counter()
         self._select_coupling_interval()
         time_end = self.coupling_time(step)
+        if self.frame.rotates:
+            # The outer-boundary faces and walls seen by the particles at the interval end
+            self._interval_pose = self.frame.pose_after(np.asarray([time_end]))
+            self._face_geometry = self._face_geometry_at(self._interval_pose)
+        face_geometry = self._face_geometry
         with collective_phase(self._comm, "free stream at the interval end"):
             self._update_freestream(time_end, self._interval_frame_velocity(step))
         vpm_seconds = self._advance_vpm(step, time_end)
@@ -708,13 +750,17 @@ class CoupledSolver:
         with collective_phase(self._comm, "initial freestream"):
             self._update_freestream(fvm.time, self.frame.velocity(fvm.time))
         patch = self.config.outer_boundary_patch
-        self._face_geometry = (
-            self.frame.to_frame(
+        frame = self.frame
+        self.face_centre_body = frame.to_body(
+            frame.to_frame(
                 np.asarray(fvm.gather_boundary_face_centre_coordinates(patch)).reshape(-1, 3)
-            ),
-            np.asarray(fvm.gather_boundary_face_normal(patch)).reshape(-1, 3),
-            np.asarray(fvm.gather_boundary_face_area(patch)).ravel(),
+            )
         )
+        self._face_normal_body = frame.vectors_to_body(
+            np.asarray(fvm.gather_boundary_face_normal(patch)).reshape(-1, 3)
+        )
+        self._face_area = np.asarray(fvm.gather_boundary_face_area(patch)).ravel()
+        self._face_geometry = self._face_geometry_at(None)
         report_coupling_patch_quality(
             self,
             self._face_geometry[1],
@@ -724,6 +770,14 @@ class CoupledSolver:
             self._last_transfer_result, _ = self._transfer_vorticity_to_vpm(*self._face_geometry)
         initialize_vpm_boundary_history(self, *self._face_geometry)
         self._started = True
+
+    def _face_geometry_at(self, pose) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Frame centres, unit normals and areas of the outer-boundary faces at a mesh pose."""
+        return (
+            self.frame.from_body(self.face_centre_body, pose),
+            self.frame.vectors_from_body(self._face_normal_body, pose),
+            self._face_area,
+        )
 
     def _fvm_frame_written(self) -> bool:
         """Whether the FVM frame of the current coupling step already exists."""
@@ -1062,6 +1116,8 @@ class CoupledSolver:
                     "accepted_impulse_change": np.zeros(3),
                 }
                 vpm.set_freestream_velocity(self.freestream_velocity)
+                if self.frame.rotates and self.vorticity_transfer.solid_boundary is not None:
+                    self._place_vpm_walls(self._interval_pose, time_end)
                 begin_coupling_step(logger, step, None, time_end)
                 vpm.advance(defer_output=True, time=time_end)
                 vpm.synchronize()
@@ -1081,10 +1137,16 @@ class CoupledSolver:
         """Replace the FVM-derived part of the particle cloud."""
         started = time.perf_counter()
         velocity = self._gather_velocity_field()
-        if self.frame.moving:
-            # The particles see the flow relative to the mesh.
-            velocity = velocity - self.frame.velocity(self.fvm_solver.time)
         gradient = self._gather_velocity_gradient_field()
+        if self.frame.moving:
+            # The particles see the flow relative to the frame; the transfer
+            # reads it in body axes, G[i, j] = d(u_j)/d(x_i).
+            velocity = self.frame.vectors_to_body(
+                velocity - self.frame.velocity(self.fvm_solver.time)
+            )
+            if self.frame.rotates:
+                rotation = self.frame.rotation()
+                gradient = rotation.T @ gradient @ rotation
         gather_seconds = time.perf_counter() - started
         transfer_result = None
         with collective_phase(self._comm, "vorticity transfer"):

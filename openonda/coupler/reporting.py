@@ -327,8 +327,8 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         "transfer_surface_normal_vorticity": surface_vorticity,
         "gbd_moment_correction": gbd_moment_correction,
         "n_transfer_particles": int(particle_count),
-        # VPM positions are relative to the FVM mesh; add this to obtain
-        # inertial-frame positions.
+        # VPM positions are relative to the frame of the mesh rotation
+        # centre; add this to obtain inertial-frame positions.
         "mesh_translation": coupler.frame.translation().tolist(),
     }
     if vpm_solver is not None:

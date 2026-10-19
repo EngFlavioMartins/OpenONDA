@@ -309,12 +309,15 @@ def transfer_vorticity_to_particles(
     compute_diagnostics: bool,
     max_moment_correction_fraction: float | None = None,
     surface_strength_threshold: float | None = None,
+    frame: MeshFrame | None = None,
 ) -> TransferResult:
     """Transfer the FVM vorticity to the particles of a GBD particle set in one step.
 
     :func:`transfer_on_lattice` builds the new particle state; it is checked for
     capacity and for conservation of the total strength and linear impulse in
-    storage precision before it replaces the VPM particles.
+    storage precision before it replaces the VPM particles. ``frame`` of a
+    rotating mesh transfers in body coordinates, where the lattice and the walls
+    are fixed; ``None`` transfers in the VPM coordinates.
     """
     if vpm.viscous_scheme != "gbd":
         raise ValueError("the vorticity transfer requires the GBD viscous scheme")
@@ -337,6 +340,9 @@ def transfer_vorticity_to_particles(
         raise RuntimeError("VPM particle arrays do not match the active particle count")
     if not np.all(np.isfinite(existing_position)) or not np.all(np.isfinite(existing_strength)):
         raise RuntimeError("VPM particle state contains non-finite values")
+    if frame is not None:
+        existing_position = frame.to_body(existing_position)
+        existing_strength = frame.vectors_to_body(existing_strength)
 
     result = transfer_on_lattice(
         existing_position,
@@ -464,6 +470,11 @@ def transfer_vorticity_to_particles(
     replaced_strength = existing_strength[removed_mask]
     input_net = existing_strength.sum(axis=0, dtype=np.float64)
 
+    if frame is not None:
+        applied_position = np.ascontiguousarray(frame.from_body(applied_position), dtype=dtype)
+        applied_strength = np.ascontiguousarray(
+            frame.vectors_from_body(applied_strength), dtype=dtype
+        )
     vpm.replace_vortex_particles(
         position=applied_position,
         velocity=np.zeros((n_after, 3), dtype=dtype),
@@ -763,6 +774,7 @@ class VorticityTransfer:
         if coupler.kinematic_viscosity is None or coupler.fvm_domain_bounds is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
         self.config = cfg
+        self._frame: MeshFrame | None = getattr(coupler, "frame", None)
         numerics = coupler.vpm_case.numerics
         viscous = numerics.viscous
         # Fluid-side M4' remeshing of off-lattice particles, from the VPM GBD grid.
@@ -982,13 +994,15 @@ class VorticityTransfer:
         fields, VPM particles, or either accepted clock.
         """
         self._target_stencils = None
-        # FVM cells and walls are read in the frame of a translating mesh.
-        frame = MeshFrame(fvm)
+        # FVM cells and walls are kept in body coordinates, fixed in the mesh.
+        frame = MeshFrame(fvm) if self._frame is None else self._frame
         self._transfer_region_bounds = self.config.transfer_region(
             self._fvm_domain_bounds, self.particle_spacing, self._slip_slab
         )
-        self._cell_centre = frame.to_frame(
-            np.asarray(fvm.gather_cell_centre_coordinates(), dtype=np.float64).reshape(-1, 3)
+        self._cell_centre = frame.to_body(
+            frame.to_frame(
+                np.asarray(fvm.gather_cell_centre_coordinates(), dtype=np.float64).reshape(-1, 3)
+            )
         )
         self._cell_volume = np.asarray(fvm.gather_cell_volume(), dtype=np.float64).reshape(-1)
 
@@ -1001,7 +1015,7 @@ class VorticityTransfer:
         ]
         wall_triangles = fvm.gather_wall_surface_triangles()
         if wall_triangles is not None:
-            wall_triangles = frame.to_frame(wall_triangles)
+            wall_triangles = frame.to_body(frame.to_frame(wall_triangles))
 
         from openonda.core.simulation.parallel import collective_phase
 
@@ -1309,6 +1323,7 @@ class VorticityTransfer:
             time_step_size=self.coupling_time_step_size,
             compute_diagnostics=(self.step == 1 or self.step % self.diagnostic_interval == 0),
             max_moment_correction_fraction=self.max_moment_correction_fraction,
+            frame=self._frame if self._frame is not None and self._frame.rotates else None,
         )
 
     def transfer(

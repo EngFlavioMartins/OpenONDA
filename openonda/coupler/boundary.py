@@ -205,13 +205,16 @@ def evaluate_vpm_velocity(
     fvm_domain_bounds: np.ndarray,
     particle_spacing: float,
     evaluated_velocity: np.ndarray | None = None,
+    bounds_face_centre: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, float]]:
     """Evaluate the particle velocity on the outer FVM boundary and correct its net flux.
 
     Only a net volume flux within the tolerance of :func:`boundary_flux_tolerance`
     is corrected, by a uniform normal velocity. Face coordinates are in metres,
     velocities in m/s, normals are unit vectors and areas are in m². The returned
-    face velocity has shape ``(N, 3)``.
+    face velocity has shape ``(N, 3)``. ``bounds_face_centre`` locates the faces
+    on ``fvm_domain_bounds`` in their body coordinates; it defaults to
+    ``face_centre``.
     """
     normal = np.asarray(face_normal, dtype=np.float64).reshape(-1, 3)
     areas = np.asarray(face_area, dtype=np.float64).reshape(-1)
@@ -268,7 +271,7 @@ def evaluate_vpm_velocity(
         )
 
     _log_outflow_velocity(
-        face_centre,
+        face_centre if bounds_face_centre is None else bounds_face_centre,
         velocity,
         freestream_velocity=np.asarray(freestream_velocity, dtype=np.float64),
         fvm_domain_bounds=np.asarray(fvm_domain_bounds, dtype=np.float64),
@@ -344,6 +347,7 @@ def evaluate_vpm_boundary(
                     fvm_domain_bounds=coupler.fvm_domain_bounds,
                     particle_spacing=coupler.vpm_particle_spacing,
                     evaluated_velocity=vpm_boundary_condition_velocity,
+                    bounds_face_centre=getattr(coupler, "face_centre_body", None),
                 )
             )
             # The FVM takes inertial-frame velocities on its moving mesh.
@@ -442,6 +446,17 @@ def advance_fvm(
     interval_end_time = coupler.coupling_time(coupler.step + 1)
     interval_duration = interval_end_time - interval_start_time
     end_tolerance = max(1.0e-14, abs(interval_end_time) * 1.0e-12)
+    frame = getattr(coupler, "frame", None)
+    rotating = frame is not None and frame.rotates
+    if rotating:
+        # The normal gradients turn with their faces: interpolate them in body
+        # axes and turn them with the faces of each FVM step.
+        previous_normal_gradient = previous_normal_gradient @ frame.rotation(
+            frame.pose_after(np.array([]))
+        )
+        next_normal_gradient_body = next_normal_gradient @ frame.rotation(
+            frame.pose_after(np.asarray([interval_end_time]))
+        )
     substeps = 0
     while interval_end_time - fvm.time > end_tolerance:
         proposed_step = fvm.select_next_time_step_size(
@@ -462,9 +477,14 @@ def advance_fvm(
         coupler._normal_velocity_boundary_condition = (
             1.0 - fraction
         ) * previous_normal_velocity + fraction * next_normal_velocity
-        coupler._normal_gradient_boundary_condition = (
-            1.0 - fraction
-        ) * previous_normal_gradient + fraction * next_normal_gradient
+        if rotating:
+            coupler._normal_gradient_boundary_condition = (
+                (1.0 - fraction) * previous_normal_gradient + fraction * next_normal_gradient_body
+            ) @ frame.rotation(frame.pose_after(np.asarray([accepted_time]))).T
+        else:
+            coupler._normal_gradient_boundary_condition = (
+                1.0 - fraction
+            ) * previous_normal_gradient + fraction * next_normal_gradient
         advance_fvm_step(
             coupler,
             coupler.config.outer_boundary_patch,
@@ -538,6 +558,7 @@ def update_boundary_history_after_replacement(
                 fvm_domain_bounds=coupler.fvm_domain_bounds,
                 particle_spacing=coupler.vpm_particle_spacing,
                 evaluated_velocity=corrected_boundary,
+                bounds_face_centre=getattr(coupler, "face_centre_body", None),
             )
         )
         corrected_boundary = coupler.inertial_boundary_velocity(corrected_boundary)
@@ -667,6 +688,7 @@ def _record_root_boundary_data(
     axis, sign = outflow_axis_sign(coupler.freestream_velocity)
     assert coupler.fvm_domain_bounds is not None
     boundary_coordinate = coupler.fvm_domain_bounds[2 * axis + (1 if sign >= 0.0 else 0)]
+    face_centre = getattr(coupler, "face_centre_body", face_centre)
     if sign >= 0.0:
         outflow = face_centre[:, axis] >= boundary_coordinate - 1.0e-6
     else:
