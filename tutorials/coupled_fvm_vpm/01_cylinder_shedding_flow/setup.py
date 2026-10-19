@@ -100,7 +100,7 @@ def build_case(
     transfer_region = (-inner, inner + 2.0 * DIAMETER, -inner, inner)
     exchange_time_step = fvm_substeps * fvm_time_step
 
-    # Observations fall on exchanges, where both solvers hold the same time
+    # Observations and the end fall on exchanges, where both solvers hold the same time
     def on_exchanges(interval):
         return max(1, round(interval / exchange_time_step)) * exchange_time_step
 
@@ -169,7 +169,7 @@ def build_case(
             execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
-        run=fvm.RunPlan(end_time=end_time),
+        run=fvm.RunPlan(end_time=on_exchanges(end_time)),
         output=fvm.Output(
             schedule=fvm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START),
             compression="lz4",
@@ -218,7 +218,7 @@ def build_case(
             domain_bounds=(*VPM_DOMAIN, -half_span, half_span),
             max_n_particles=PARTICLE_LIMIT,
         ),
-        run=vpm.RunPlan(end_time=end_time),
+        run=vpm.RunPlan(end_time=on_exchanges(end_time)),
         output=vpm.Output(
             schedule=vpm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START)
         ),
