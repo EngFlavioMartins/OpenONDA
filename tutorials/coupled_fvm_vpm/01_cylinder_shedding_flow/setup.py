@@ -4,7 +4,8 @@
 The flow is planar. The FVM resolves the no-slip wall and the near wake with
 one periodic cell across the span. A single layer of three-dimensional vortex
 particles carries the outer wake between free-slip planes one particle spacing
-apart; with all its images in those planes it induces the planar flow.
+apart; with all its images in those planes it induces the planar flow. The span
+follows the particle spacing, so the FVM cell and the particle layer share it.
 """
 
 import argparse
@@ -25,7 +26,6 @@ DIAMETER = 1.0  # m
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)  # m/s
 REYNOLDS_NUMBER = 150.0
 DENSITY = 1.0  # kg/m^3
-KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY[0] * DIAMETER / REYNOLDS_NUMBER  # m^2/s
 
 # Startup: a near-wake vortex breaks the symmetry and triggers shedding
 DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, streamfunction peak
@@ -33,7 +33,7 @@ DISTURBANCE_RADIUS = 0.5  # m
 DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
 # FVM: uniform body-fitted cells near the wall
-CELL_SIZE = 0.04  # m, also the particle spacing
+CELL_SIZE = 0.04  # m, also the baseline particle spacing
 BOX_MARGIN = 2.4  # D upstream and sideways, 2 D more downstream: holds the vortex-formation region
 FVM_TIME_STEP = 0.008  # s
 
@@ -79,18 +79,26 @@ def build_case(
     fvm_substeps=FVM_SUBSTEPS,
     transfer_inset=TRANSFER_INSET,
     end_time=END_TIME,
+    fvm_time_step=FVM_TIME_STEP,
+    particle_spacing=CELL_SIZE,
+    interface_iterations=INTERFACE_ITERATIONS,
+    interface_tolerance=INTERFACE_TOLERANCE,
+    reynolds_number=REYNOLDS_NUMBER,
+    cell_size=CELL_SIZE,
 ):
     """Return the FVM case, the particle case and the coupling settings."""
+    kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
+
     # One FVM cell and one particle layer across the span make the flow planar
-    span = CELL_SIZE
+    span = particle_spacing
     half_span = 0.5 * span
 
     # FVM box, transfer region inset from its faces, and the exchange step
     margin = box_margin * DIAMETER
     fvm_box = (-margin, margin + 2.0 * DIAMETER, -margin, margin)
-    inner = margin - transfer_inset * CELL_SIZE
+    inner = margin - transfer_inset * cell_size
     transfer_region = (-inner, inner + 2.0 * DIAMETER, -inner, inner)
-    exchange_time_step = fvm_substeps * FVM_TIME_STEP
+    exchange_time_step = fvm_substeps * fvm_time_step
 
     # Observations fall on exchanges, where both solvers hold the same time
     def on_exchanges(interval):
@@ -98,7 +106,7 @@ def build_case(
 
     # Explicit GBD diffusion keeps 12 x Fourier number below one per stage; each
     # stage reaches one more grid cell beyond the span planes
-    fourier_number = KINEMATIC_VISCOSITY * exchange_time_step / CELL_SIZE**2
+    fourier_number = kinematic_viscosity * exchange_time_step / particle_spacing**2
     diffusion_stages = math.floor(12.0 * fourier_number) + 1
 
     # Mesh a slab around the long cylinder, then keep one periodic cell across the span
@@ -111,11 +119,11 @@ def build_case(
         zmax="zmax",
     )
     slab = msh.CartesianMesher(
-        domain=msh.BoxDomain(bounds=(*fvm_box, -16 * CELL_SIZE, 16 * CELL_SIZE), patches=patches),
+        domain=msh.BoxDomain(bounds=(*fvm_box, -16 * cell_size, 16 * cell_size), patches=patches),
         surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
-        max_cell_size=CELL_SIZE,
-        cell_size_anchor=CELL_SIZE,
-        patch_refinements=(msh.PatchRefinement("cylinder", CELL_SIZE),),
+        max_cell_size=cell_size,
+        cell_size_anchor=cell_size,
+        patch_refinements=(msh.PatchRefinement("cylinder", cell_size),),
         surface_may_cross_domain_boundary=True,
     )
     mesh = msh.ExtrudedCartesianMesher(
@@ -149,8 +157,8 @@ def build_case(
         name="coupled_cylinder_flow",
         directory=CASE_DIR,
         numerics=fvm.Numerics(
-            time_step_size=FVM_TIME_STEP,
-            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
+            time_step_size=fvm_time_step,
+            transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
             linear=fvm.LinearSolverConfig(
                 pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005
@@ -195,11 +203,11 @@ def build_case(
             induction=vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=-half_span, z_max=half_span),
             # Laminar grid-based diffusion on the particle lattice
             viscous=vpm.ViscousConfig.gbd(
-                particle_spacing=CELL_SIZE,
+                particle_spacing=particle_spacing,
                 padding=max(5.0, diffusion_stages + 1.0),
-                kinematic_viscosity=KINEMATIC_VISCOSITY,
+                kinematic_viscosity=kinematic_viscosity,
                 threshold_mode="absolute",
-                threshold=VORTICITY_FLOOR * CELL_SIZE**3,
+                threshold=VORTICITY_FLOOR * particle_spacing**3,
                 core_radius_ratio=1.0,
             ),
             turbulence=vpm.TurbulenceConfig.inviscid(),
@@ -234,11 +242,11 @@ def build_case(
     coupling = coupler.CouplerConfig(
         freestream_velocity=FREESTREAM_VELOCITY,
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
-        eta_blend_width=BLEND_WIDTH * CELL_SIZE,
-        vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,
-        interface_iterations=INTERFACE_ITERATIONS,
-        interface_normal_tolerance=INTERFACE_TOLERANCE,
-        interface_gradient_tolerance=INTERFACE_TOLERANCE,
+        eta_blend_width=BLEND_WIDTH * cell_size,
+        vpm_only_width=VPM_ONLY_WIDTH * cell_size,
+        interface_iterations=interface_iterations,
+        interface_normal_tolerance=interface_tolerance,
+        interface_gradient_tolerance=interface_tolerance,
         transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / exchange_time_step),
         backup=coupler.Backup(schedule=coupler.EveryTime(on_exchanges(BACKUP_INTERVAL))),
     )
@@ -256,10 +264,52 @@ if __name__ == "__main__":
         "--transfer-inset", type=float, default=TRANSFER_INSET, help="transfer-region inset [cells]"
     )
     parser.add_argument("--end-time", type=float, default=END_TIME, help="end time [s]")
+    parser.add_argument(
+        "--cell-size", type=float, default=CELL_SIZE, help="FVM cell size near the wall [m]"
+    )
+    parser.add_argument(
+        "--fvm-time-step",
+        type=float,
+        help="FVM time step [s]; scales with the cell size by default",
+    )
+    parser.add_argument(
+        "--particle-spacing",
+        type=float,
+        help="particle spacing and span [m]; the cell size by default",
+    )
+    parser.add_argument(
+        "--interface-iterations",
+        type=int,
+        default=INTERFACE_ITERATIONS,
+        help="maximum FVM solves per exchange",
+    )
+    parser.add_argument(
+        "--interface-tolerance",
+        type=float,
+        default=INTERFACE_TOLERANCE,
+        help="boundary-trace tolerance [m/s, 1/s]; 1e-30 forces every solve",
+    )
+    parser.add_argument(
+        "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
+    )
     arguments = parser.parse_args()
 
+    # Refining the cells refines the steps at constant Courant number, and the particles with them
+    refinement = arguments.cell_size / CELL_SIZE
+    fvm_time_step = arguments.fvm_time_step or refinement * FVM_TIME_STEP
+    particle_spacing = arguments.particle_spacing or arguments.cell_size
+
     flow, particles, coupling = build_case(
-        arguments.box_margin, arguments.fvm_substeps, arguments.transfer_inset, arguments.end_time
+        arguments.box_margin,
+        arguments.fvm_substeps,
+        arguments.transfer_inset,
+        arguments.end_time,
+        fvm_time_step,
+        particle_spacing,
+        arguments.interface_iterations,
+        arguments.interface_tolerance,
+        arguments.reynolds_number,
+        arguments.cell_size,
     )
     with coupler.CoupledSolver(flow, particles, coupling) as solver:
         # The startup vortex behind the cylinder; a restart replaces it with the backup

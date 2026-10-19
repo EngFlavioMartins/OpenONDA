@@ -3,14 +3,16 @@
 Plan agreed with the supervisor on 2026-10-19. The coupled cylinder (case 01)
 reproduces the fully meshed FVM reference to about 1% in velocity at equal
 shedding phase and within the 2% force target at the baseline. The studies
-below attribute the remaining error, and its convergence, to one of four
-sources, and turn the cylinder sensitivity study into rules that do not depend
-on the flow.
+below give the overall order of the coupled method and attribute the remaining
+error to one of four sources, and turn the cylinder sensitivity study into
+rules that do not depend on the flow. Every study is a set of runs of case 01
+(its sensitivity study), so the convergence and the sensitivity analyses form
+one study, plotted by the case's `allplot.sh`.
 
 | Source | What it is | Studied in |
 | --- | --- | --- |
-| FVM discretization | cell size $h_f$, step $\Delta t_f$, convection and time schemes | S5 |
-| VPM discretization | particle spacing $h_p$, core radius, step $\Delta t_p$, diffusion | S2, S5 |
+| FVM discretization | cell size $h_f$, step $\Delta t_f$, convection and time schemes | S5 (reference levels), S1b |
+| VPM discretization | particle spacing $h_p$, core radius, step $\Delta t_p$, diffusion | S1a, S2 |
 | Coupling interface | exchange ratio $n=\Delta t_p/\Delta t_f$, interface sweeps, transfer inset and blend, $h_p/h_f$ | S1, S2, S4 |
 | Domain and models | FVM box size, outflow fringe, LES | done (box, inset, fringe); S3 checks transfer to other flows |
 
@@ -80,28 +82,42 @@ records its wall time per second of flow time.
 - **Question:** how fast do forces and wake velocity converge with $K$, and
   is the cost of $K$ sweeps worth it against a smaller $n$?
 
-### S5. Convergence order: FVM alone, VPM alone, coupled
+### S5. Convergence order of the coupled method (case 01)
 
-- **Problem:** a Lamb–Oseen vortex carried by a uniform stream, planar. Its
-  viscous solution is exact, so errors are measured against it rather than
-  against a finer run. For the coupled case the vortex passes through the FVM
-  box, so the interface is crossed. A vortex ring, as discussed, has no exact
-  solution and would need Richardson extrapolation from a finer grid; it can
-  follow as a three-dimensional check (see decision 1).
-- **Runs**, each at four levels $h=h_0/2^k$, $k=0..3$:
-  1. FVM alone, VPM alone and coupled at constant Courant number
-     ($\Delta t\propto h$), with $h_p=h_f$ and fixed $n$, so each gives one
-     combined order curve;
-  2. FVM and VPM separately with a tiny time step (spatial order) and on the
-     finest mesh with decreasing step (temporal order).
-- **Errors:** $L_2$ and $L_\infty$ norms of velocity and vorticity, peak
-  vorticity, and vortex-centre position, at fixed times.
-- **Expected:** FVM second order in time (backward); in space between first
-  and second order, because the limited linear convection scheme reverts to
-  first order at extrema such as the vortex peak. VPM second order in time
-  (RK2) and second order in the core regularization. The coupled order should
-  equal the lower of the two; a lower coupled order, or a larger constant,
-  isolates the interface error.
+- **Refinement:** the cells, the steps and the particles are refined together
+  by $\sqrt2$ at constant Courant number: $h_f=h_p=0.08$, $0.0566$, $0.04$
+  (baseline cells) and $0.0283$ m, with $\Delta t_f\propto h_f$ and
+  $n=2$ FVM steps per exchange at every level. The baseline $n=5$ is not used
+  here: at constant Courant number the particle step of the two coarse levels
+  would exceed the stability limit ($\Lambda=1.10$ and $1.55$); with $n=2$,
+  $\Lambda\le0.62$ at every level. The interface widths (inset, blend,
+  particle-only band) stay fixed in cells, so they shrink with $h$, as the
+  rules of S3 would set them; the box and the particle domain stay fixed.
+- **Reference at every level:** the fully meshed FVM reference on the same
+  near-wall cells and step (`--cell-size`), refined as a whole.
+- **Error-free values:** the mean drag, lift amplitude and Strouhal number of
+  the reference extrapolated to zero cell size (Richardson extrapolation from
+  its three finest levels, with its observed order). The wake velocity has no
+  scalar to extrapolate; it is measured at equal shedding phase against the
+  finest reference, which overstates the observed order of the reference
+  itself.
+- **Split of the coupled error:** coupled error = FVM discretization error
+  (reference on the same cells against the extrapolated value) + coupling
+  error (coupled against the reference on the same cells). The observed order
+  of each is the slope of its error against $h$. The coupling part contains
+  the interface, the particle discretization and the coarser outer reference
+  mesh (the reference coarsens to $2h$ beyond 1.5 D, the coupled box does
+  not). S1a ($\Delta t_p$), S2 ($h_p$) and S4 (sweeps) then attribute the
+  coupling part at the baseline cells, and S3 checks that the split, written
+  in the dimensionless groups, holds at other Reynolds numbers.
+- **Expected:** the reference between first and second order (backward in
+  time; limited linear convection, first order at extrema). A coupled order
+  equal to the reference's means the FVM discretization dominates; a lower
+  one, with a coupling part of lower order, isolates the interface or the
+  particles.
+- A separate FVM-alone or VPM-alone problem is not needed: the reference is
+  the FVM alone on the same flow, and the particles cannot carry the cylinder
+  alone; their discretization is varied in S1a and S2 at fixed FVM cells.
 
 ## Order of execution and cost
 
@@ -110,26 +126,30 @@ study run alongside it, three once it ends.
 
 | Phase | Work | Runs | Wall time, alone |
 | --- | --- | --- | --- |
-| 0 | Case flags (`--fvm-time-step`, `--particle-spacing`, `--interface-sweeps`, `--reynolds-number`), S5 case, S2 pilot | — | 1 day of setup |
-| 1 | S5 convergence | about 30 short | about 15 h |
+| 0 | Case flags (`--cell-size`, `--fvm-time-step`, `--particle-spacing`, `--interface-iterations`, `--reynolds-number`), launcher sections, figures (done); S2 pilot (pending) | — | — |
+| 1 | S5 convergence: 4 coupled, 3 references (the baseline reference exists) | 7 | about 25 h |
 | 2 | S4 sweeps | 5 | about 20 h |
 | 3 | S1b ratio, plus 2 references | 3 + 2 | about 45 h |
 | 4 | S2 particle resolution | 4 at $r=1/2$ | about 60 h |
 | 5 | S3 rules and their check | 4 | about 16 h |
 
-About 160 run-hours in total, so roughly five to six days elapsed.
+About 170 run-hours in total. Coupled runs use the GPU, which the cube run
+needs alone (a second GPU user ran it out of memory), so only the FVM
+references run beside the cube; the finest reference ($h=0.0283$ m) needs
+more than 4.5 GB to mesh and also waits for the cube.
 
 ## Decisions (2026-10-19)
 
-1. Convergence problem: the convected Lamb–Oseen vortex. The vortex ring is not
-   part of this plan.
+1. Convergence problem: case 01 itself, refined at constant Courant number
+   (user decision, 2026-10-19, replacing the convected Lamb–Oseen vortex). The
+   vortex ring is not part of this plan.
 2. Generality check: the cylinder at $Re=100$ and $250$, each against its own
    reference.
 3. The studies run before the NACA wing; one study run at a time alongside the
    cube run, more once it ends.
-4. The convergence study is a new coupled tutorial case
-   (`05_vortex_convergence`); the cylinder studies are further runs of case
-   01's sensitivity study, plotted by its `allplot.sh`.
+4. No new tutorial case: the convergence and every cylinder study are runs
+   of case 01's sensitivity study (`assets/run_sensitivity_study.sh`
+   sections), plotted by its `allplot.sh`.
 
 ## Results
 

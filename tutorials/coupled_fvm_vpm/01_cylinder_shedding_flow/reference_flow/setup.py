@@ -5,6 +5,7 @@ One periodic cell spans the cylinder. Distant slip walls and inlet approximate
 the unbounded stream that the coupled case models.
 """
 
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +21,6 @@ SPAN = 1.0  # m
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)  # m/s
 REYNOLDS_NUMBER = 150.0
 DENSITY = 1.0  # kg/m^3
-KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY[0] * DIAMETER / REYNOLDS_NUMBER  # m^2/s
 
 # Startup: the same near-wake vortex as the coupled case
 DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, streamfunction peak
@@ -62,12 +62,15 @@ def initial_velocity(position):
     return velocity
 
 
-def build_case() -> fvm.FVMCase:
+def build_case(
+    time_step=TIME_STEP, reynolds_number=REYNOLDS_NUMBER, end_time=END_TIME, cell_size=CELL_SIZE
+) -> fvm.FVMCase:
     """Return the FVM case of the cylinder flow."""
+    kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     half_span = 0.5 * SPAN
 
     # Requested sizes sit between octree levels, which then select 1, 2 and 4 CELL_SIZE
-    request = 4.0 * CELL_SIZE / 3.0
+    request = 4.0 * cell_size / 3.0
     slab = 16 * request
 
     # Mesh a slab around the long cylinder, then keep one periodic cell across the span
@@ -78,7 +81,7 @@ def build_case() -> fvm.FVMCase:
         source=msh.CartesianMesher(
             domain=msh.BoxDomain(bounds=(*DOMAIN, -slab, slab), patches=patches),
             surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
-            max_cell_size=BACKGROUND * CELL_SIZE,
+            max_cell_size=BACKGROUND * cell_size,
             refinements=(
                 msh.BoxRefinement("nearBody", (*NEAR_BODY, -slab, slab), request),
                 msh.BoxRefinement("nearWake", (*NEAR_WAKE, -slab, slab), 2 * request),
@@ -126,8 +129,8 @@ def build_case() -> fvm.FVMCase:
         ),
     )
     numerics = fvm.Numerics(
-        time_step_size=TIME_STEP,
-        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
+        time_step_size=time_step,
+        transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         linear=fvm.LinearSolverConfig(pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005),
         pimple=fvm.PimpleConfig(
@@ -140,7 +143,7 @@ def build_case() -> fvm.FVMCase:
         directory=CASE_DIR,
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
-        run=fvm.RunPlan(end_time=END_TIME),
+        run=fvm.RunPlan(end_time=end_time),
         output=fvm.Output(schedule=fvm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
         samplers=fvm.Samplers(samplers),
         backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
@@ -159,7 +162,24 @@ def build_case() -> fvm.FVMCase:
 
 
 if __name__ == "__main__":
-    with fvm.FVMSolver(build_case()) as solver:
+    # Reference variants of the sensitivity study; the defaults are the baseline reference
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--cell-size", type=float, default=CELL_SIZE, help="cell size near the body [m]"
+    )
+    parser.add_argument(
+        "--time-step", type=float, help="time step [s]; scales with the cell size by default"
+    )
+    parser.add_argument(
+        "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
+    )
+    parser.add_argument("--end-time", type=float, default=END_TIME, help="end time [s]")
+    arguments = parser.parse_args()
+
+    # Refining the cells refines the step at constant Courant number
+    time_step = arguments.time_step or arguments.cell_size / CELL_SIZE * TIME_STEP
+    case = build_case(time_step, arguments.reynolds_number, arguments.end_time, arguments.cell_size)
+    with fvm.FVMSolver(case) as solver:
         cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
         solver.set_initial_velocity(initial_velocity(cell_centres))
         solver.run(start_from="latest")

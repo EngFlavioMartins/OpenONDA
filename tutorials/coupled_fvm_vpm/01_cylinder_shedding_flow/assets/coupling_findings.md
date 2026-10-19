@@ -214,3 +214,7 @@ The same comparison exposed a second requirement: **break the symmetry of the st
 - Its drag was still drifting, from 1.05 to 0.93, between $10$–$20$ s and $20$–$30$ s.
 - The Strouhal number reported by its grid study, 0.066 on all three grids, was therefore a sampling artefact, not shedding.
 - The cylinder and the cube avoid this with a vortex placed behind the body in the initial field, the same in the coupled case and its reference. A transverse start-up flow is not used: the zero-pressure outlet of the reference resists a uniform transverse acceleration, so the two cases received different start-up impulses and shed with a permanent phase offset. Both run to 100 s, with statistics taken over $t\ge40$ s.
+
+## 7. Planned studies
+
+The studies that attribute the remaining coupled-solution error to its sources (exchange ratio at a fixed particle step, particle resolution, interface sweeps, other Reynolds numbers) are planned in [the coupling-error plan](../../../../docs/plans/2026-10-19-coupling-error-sources.md) and run as sections of `assets/run_sensitivity_study.sh`.
