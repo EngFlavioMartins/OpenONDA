@@ -171,7 +171,9 @@ def build_case(
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=on_exchanges(end_time)),
         output=fvm.Output(
-            schedule=fvm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START),
+            schedule=fvm.EveryTime(
+                on_exchanges(FIELD_INTERVAL), start_time=on_exchanges(FIELD_START)
+            ),
             compression="lz4",
             ghost_layers=0,
         ),
@@ -220,7 +222,9 @@ def build_case(
         ),
         run=vpm.RunPlan(end_time=on_exchanges(end_time)),
         output=vpm.Output(
-            schedule=vpm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START)
+            schedule=vpm.EveryTime(
+                on_exchanges(FIELD_INTERVAL), start_time=on_exchanges(FIELD_START)
+            )
         ),
         samplers=vpm.Samplers(
             tuple(
