@@ -1415,7 +1415,13 @@ class FMMInduction:
             current.destroy()
 
     def _grow_interaction_lists(self, error: _InteractionListCapacityError) -> None:
-        """Grow from observed demand, without changing FMM accuracy or particle capacity."""
+        """Grow from observed demand, without changing FMM accuracy or particle capacity.
+
+        Every list grows together: the traversal stops at the first overflow,
+        so the counts of the other lists are incomplete. Growing them one at a
+        time replaces the workspace once per list, and the GPU memory pool
+        keeps each discarded workspace.
+        """
         current = self.workspace
         assert current is not None
         proposed = _ListCapacities(
@@ -1425,8 +1431,6 @@ class FMMInduction:
                     math.ceil(1.5 * capacity),
                     math.ceil(1.25 * required),
                 )
-                if required > capacity
-                else capacity
                 for capacity, required in zip(current.list_capacities, error.counts, strict=True)
             )
         )
