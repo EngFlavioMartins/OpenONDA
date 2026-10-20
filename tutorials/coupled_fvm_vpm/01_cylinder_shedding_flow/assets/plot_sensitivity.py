@@ -3,10 +3,9 @@
 
 Force errors, the wake velocity difference at equal shedding phase and the wall time per second
 of flow time, as each coupling parameter is varied about its baseline. Each run is compared with
-the reference of its own Reynolds number, cells and FVM step. The convergence runs refine the
-cells, the steps and the particles together; their observed orders and the split of the coupled
-error into the FVM discretization and the coupling are measured against the reference
-extrapolated to zero cell size. The studies of the coupling-error plan
+the reference of its own Reynolds number, cells and FVM step; the orders, the uncertainties and
+the split of the coupled error into the FVM discretization and the coupling are the subject of
+plot_error_analysis.py. The studies of the coupling-error plan
 (docs/plans/2026-10-19-coupling-error-sources.md) are drawn in their own figures, and the
 exchange-ratio and particle-resolution runs again against the dimensionless groups
 C_f = U dt_f / h_f, C_p = U dt_p / h_p and Lambda = max|S| dt_p.
@@ -17,7 +16,7 @@ from pathlib import Path
 import re
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter, MaxNLocator, NullFormatter
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 
 from openonda.plotting import BACKGROUND_STRONG, CM, COLORS, LINE_WIDTH, MARKER_SIZE
@@ -34,7 +33,6 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 ERROR_BAND = 2.0  # %, accuracy targeted for the coupled forces
 STATISTICS_LENGTH = 10.0  # s, about two shedding periods of developed shedding at least
 WALL_STRAIN_RATE = 19.4  # 1/s, max|S| at the wall, Re = 150, h_p = h_f (8-step stability check)
-CONVERGENCE_SUBSTEPS = 2  # FVM steps per exchange of the convergence runs
 
 # Study parameters with their baselines, and the force statistics compared
 PARAMETERS = {
@@ -44,6 +42,7 @@ PARAMETERS = {
 }
 BASELINE = {
     **{name: value for name, (_, value) in PARAMETERS.items()},
+    "box_downstream": BOX_MARGIN + 2.0,  # D, downstream FVM box face from the cylinder axis
     "cell_size": CELL_SIZE,
     "fvm_time_step": FVM_TIME_STEP,
     "particle_spacing": CELL_SIZE,
@@ -62,6 +61,7 @@ ROWS = {**ERRORS, "cost": "Wall time per\nflow time [s/s]"}
 # Run names: box{margin}_sub{n}_inset{cells}, with a suffix for each other parameter changed
 RUN_NAME = re.compile(
     r"box(?P<box_margin>[^_]+)_sub(?P<fvm_substeps>\d+)_inset(?P<transfer_inset>[^_]+)"
+    r"(?:_xd(?P<box_downstream>[^_]+))?"
     r"(?:_h(?P<cell_size>[\d.]+))?(?:_dtf(?P<fvm_time_step>[^_]+))?"
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
     r"(?:_k(?P<interface_sweeps>\d+))?(?:_re(?P<reynolds_number>[^_]+))?"
@@ -189,6 +189,8 @@ def read_runs(references):
             parameters["fvm_time_step"] = refinement * FVM_TIME_STEP
         if not given["particle_spacing"]:
             parameters["particle_spacing"] = parameters["cell_size"]
+        if not given["box_downstream"]:
+            parameters["box_downstream"] = parameters["box_margin"] + 2.0  # setup.py default
         particle_time_step = parameters["fvm_substeps"] * parameters["fvm_time_step"]
         reference = references.get(
             (parameters["reynolds_number"], parameters["cell_size"], parameters["fvm_time_step"])
@@ -433,182 +435,12 @@ def parameter_figure(runs, reference_cost):
     save_validation_figure(figure, CASE_DIR / "figures/sensitivity")
 
 
-def richardson(cell_sizes, values):
-    """Observed order and zero-cell-size value from the three finest levels of a constant ratio."""
-    (h1, h2, _), (f1, f2, f3) = cell_sizes[:3], values[:3]
-    ratio = h2 / h1
-    order = np.log(abs((f3 - f2) / (f2 - f1))) / np.log(ratio)
-    return order, f1 + (f1 - f2) / (ratio**order - 1.0)
-
-
-def observed_order(cell_sizes, errors):
-    """Least-squares slope of log error against log cell size."""
-    return np.polyfit(np.log(cell_sizes), np.log(np.abs(errors)), 1)[0]
-
-
-def convergence(runs, references):
-    """Observed orders of the reference and the coupled solution, and the split of the coupled error.
-
-    Cells, steps and particles are refined together at constant Courant number. The error-free
-    statistics are the reference ones extrapolated to zero cell size from its three finest
-    levels; the wake velocity, which has no scalar to extrapolate, is measured against the
-    finest reference. The coupled error then splits into the FVM discretization error of the
-    reference on the same cells and the coupling error, the difference between the two runs.
-    """
-    levels = sorted(
-        (reference for (re, h, dt), reference in references.items() if re == REYNOLDS_NUMBER),
-        key=lambda reference: reference["cell_size"],
-    )
-    levels = [
-        reference
-        for reference in levels
-        if np.isclose(reference["time_step"], reference["cell_size"] / CELL_SIZE * FVM_TIME_STEP)
-    ]
-    coupled = {
-        run["cell_size"]: run
-        for run in varied(runs, "cell_size", "fvm_time_step", "fvm_substeps", "particle_spacing")
-        if run["fvm_substeps"] == CONVERGENCE_SUBSTEPS
-        and np.isclose(run["fvm_time_step"], run["cell_size"] / CELL_SIZE * FVM_TIME_STEP)
-        and np.isclose(run["particle_spacing"], run["cell_size"])
-    }
-    if len(levels) < 3 or len(coupled) < 2:
-        return  # the extrapolation needs three reference levels, an order two coupled ones
-    cell_sizes = np.array([reference["cell_size"] for reference in levels])
-    finest = levels[0]
-
-    def on_levels(value_of):
-        """A coupled quantity at every reference level, NaN where no coupled run exists."""
-        return np.array([value_of(coupled[h]) if h in coupled else np.nan for h in cell_sizes])
-
-    # Error-free statistics from the reference, and each run's statistics on its cells
-    reference_statistics = [shedding_statistics(reference["forces"]) for reference in levels]
-    coupled_statistics = {h: shedding_statistics(run["forces"]) for h, run in coupled.items()}
-    rows = []
-    print(f"Convergence at constant Courant number, {CONVERGENCE_SUBSTEPS} FVM steps per exchange")
-    for name in STATISTICS:
-        reference_values = [statistics[name] for statistics in reference_statistics]
-        order, exact = richardson(cell_sizes, reference_values)
-        coupled_values = on_levels(lambda run: coupled_statistics[run["cell_size"]][name])
-        reference_values = np.array(reference_values)
-        rows.append(
-            (
-                name,
-                100.0 * (reference_values - exact) / exact,
-                100.0 * (coupled_values - exact) / exact,
-                100.0 * (coupled_values - reference_values) / exact,
-            )
-        )
-        print(f"  {name}: reference order {order:.2f}, zero-cell-size value {exact:.4f}")
-
-    # Wake velocity against the finest reference, at equal shedding phase
-    reference_wake = [
-        errors_against(reference["forces"], reference["phase"], reference["wake"], finest)
-        for reference in levels
-    ]
-    same_cells = dict(zip(cell_sizes, levels))
-    rows.append(
-        (
-            "wake velocity",
-            np.array([errors["wake velocity"] for errors in reference_wake]),
-            on_levels(
-                lambda run: errors_against(run["forces"], run["phase"], run["wake"], finest)[
-                    "wake velocity"
-                ]
-            ),
-            on_levels(
-                lambda run: errors_against(
-                    run["forces"], run["phase"], run["wake"], same_cells[run["cell_size"]]
-                )["wake velocity"]
-            ),
-        )
-    )
-
-    # Error against cell size: total coupled, FVM discretization and coupling
-    set_thesis_style()
-    figure, axes = plt.subplots(
-        len(rows) + 1, 1, sharex=True, figsize=(MAX_FIGURE_WIDTH_CM * CM, 22.0 * CM)
-    )
-    centered_subplots_adjust(figure, outer=0.14, bottom=0.12, top=0.99, hspace=0.12)
-    series = (
-        ("Coupled", COLORS["hybrid"], "o"),
-        ("Reference FVM", COLORS["reference"], "s"),
-        ("Coupled $-$ reference", COLORS["vpm"], "^"),
-    )
-    table = ["quantity,series,observed_order," + ",".join(f"h={h:g}" for h in cell_sizes)]
-    for axis, (name, *errors) in zip(axes, rows):
-        reference_errors, coupled_errors, coupling_errors = errors
-        for (label, color, marker), values in zip(
-            series, (coupled_errors, reference_errors, coupling_errors)
-        ):
-            # The finest reference has no wake error against itself; coupled levels may be missing
-            shown = np.isfinite(values) & (np.abs(values) > 0.0)
-            order = observed_order(cell_sizes[shown], values[shown])
-            axis.loglog(
-                cell_sizes[shown],
-                np.abs(values[shown]),
-                color=color,
-                marker=marker,
-                markersize=MARKER_SIZE,
-                linewidth=LINE_WIDTH,
-                label=label,
-            )
-            table.append(
-                f"{name},{label.replace('$-$', '-')},{order:.4g},"
-                + ",".join(f"{value:.6g}" for value in values)
-            )
-            print(f"  {name}, {label.replace('$-$', '-')}: observed order {order:.2f}")
-        # First- and second-order slopes through the coarsest error
-        anchor = np.nanmax(np.abs(coupled_errors))
-        for order, style in ((1, ":"), (2, "--")):
-            axis.loglog(
-                cell_sizes,
-                anchor * (cell_sizes / cell_sizes[-1]) ** order,
-                color=BACKGROUND_STRONG,
-                linewidth=LINE_WIDTH,
-                linestyle=style,
-                label=f"Order {order}",
-            )
-        axis.set_ylabel(ERRORS[name])
-
-    # Wall time per flow time of both methods
-    axes[-1].loglog(
-        cell_sizes,
-        on_levels(lambda run: run["cost"]),
-        color=COLORS["hybrid"],
-        marker="o",
-        markersize=MARKER_SIZE,
-        linewidth=LINE_WIDTH,
-    )
-    axes[-1].loglog(
-        cell_sizes,
-        [reference["cost"] for reference in levels],
-        color=COLORS["reference"],
-        marker="s",
-        markersize=MARKER_SIZE,
-        linewidth=LINE_WIDTH,
-    )
-    axes[-1].set_ylabel(ROWS["cost"])
-    axes[-1].set_xlabel("Cell size near the wall $h_f=h_p$ [m]")
-
-    handles, labels = axes[0].get_legend_handles_labels()
-    figure.legend(handles, labels, loc="lower center", ncol=3, frameon=False, handlelength=1.5)
-
-    # Decades only on the error axes, and the refinement levels on the cell-size axis
-    for axis in axes:
-        axis.yaxis.set_minor_formatter(NullFormatter())
-    axes[-1].xaxis.set_minor_formatter(NullFormatter())
-    axes[-1].set_xticks(cell_sizes, [f"{h:.3g}" for h in cell_sizes])
-    save_validation_figure(figure, CASE_DIR / "figures/sensitivity_convergence")
-    (CASE_DIR / "figures/auxiliary/convergence.csv").write_text("\n".join(table) + "\n")
-
-
 def main():
     references = read_references()
     runs = read_runs(references)
     print_runs(runs, references)
     write_tables(runs, references)
     parameter_figure(runs, references[REYNOLDS_NUMBER, CELL_SIZE, FVM_TIME_STEP]["cost"])
-    convergence(runs, references)
     figures = CASE_DIR / "figures"
     hybrid, teal, gray = COLORS["hybrid"], COLORS["fvm"], COLORS["reference"]
 
@@ -703,7 +535,7 @@ def main():
 
     # S1a, S1b and S2 against the dimensionless groups of the time steps and spacings
     s1a = varied(runs, "fvm_substeps")
-    if not s1a:
+    if len(s1a) < 2:
         return
     study_figure(
         figures / "sensitivity_dimensionless",

@@ -7,3 +7,4 @@ python -m assets.plot_fields "$@"
 python -m assets.plot_coupling_cost "$@"
 python -m assets.plot_sensitivity "$@"
 python -m assets.flow_scales
+python -m assets.plot_error_analysis
