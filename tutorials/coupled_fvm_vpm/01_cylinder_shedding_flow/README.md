@@ -88,6 +88,7 @@ A run name is `box{margin}_sub{n}_inset{cells}`, with a suffix only for each oth
 | `figures/sensitivity_particle_spacing` | `s2` and `s1a` against $n$ and $C_p=U_\infty\Delta t_p/h_p$, for both particle spacings |
 | `figures/sensitivity_interface_sweeps` | `s4` errors, last-sweep change of the boundary trace and cost against $K$; the tolerance-driven baseline at its mean sweep count |
 | `figures/sensitivity_reynolds_number` | `s3` errors at $Re=100$, 150 and 250 |
+| `figures/flow_scales` | Wake flow scales of the FVM references (`assets/flow_scales.py`): time-mean and rms streamwise velocity on the centreline at $Re=100$, 150 and 250, with the end of the recirculation region $D/2+L_r$ and the formation point $L_f$ (the $u_\mathrm{rms}$ peak) marked. `figures/auxiliary/flow_scales.csv` also lists, for every reference, the shear-layer vorticity thickness at $x=D/2$, the largest wall strain rate $\lvert\omega_z\rvert/2$, the Strouhal number and the wake half-width at $x/D=2$ and 4 |
 | `figures/sensitivity_dimensionless` | `s1a`, `s1b` and `s2` errors against $C_f$, $C_p$ and $\Lambda=\max\lvert S\rvert\,\Delta t_p$, with $\max\lvert S\rvert=19.4$ s$^{-1}$ measured at the wall at $Re=150$ and $h_p=h_f$ |
 
 The numbers are printed and written to `figures/auxiliary/sensitivity_runs.csv` and `figures/auxiliary/sensitivity_references.csv`. `./allclean.sh` keeps `sensitivity/`; delete it by hand to start the study again. The results of the study, and the coupling rules drawn from them, are recorded in [coupling_findings.md](assets/coupling_findings.md).

@@ -6,3 +6,4 @@ python -m assets.plot_velocity_profiles "$@"
 python -m assets.plot_fields "$@"
 python -m assets.plot_coupling_cost "$@"
 python -m assets.plot_sensitivity "$@"
+python -m assets.flow_scales
