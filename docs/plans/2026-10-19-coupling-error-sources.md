@@ -1,156 +1,115 @@
 # Where do the coupled-solution errors come from?
 
-Plan agreed with the supervisor on 2026-10-19. The coupled cylinder (case 01)
-reproduces the fully meshed FVM reference to about 1% in velocity at equal
-shedding phase and within the 2% force target at the baseline. The studies
-below give the overall order of the coupled method and attribute the remaining
-error to one of four sources, and turn the cylinder sensitivity study into
-rules that do not depend on the flow. Every study is a set of runs of case 01
-(its sensitivity study), so the convergence and the sensitivity analyses form
-one study, plotted by the case's `allplot.sh`.
+Plan agreed with the supervisor on 2026-10-19 and revised on 2026-10-20. All
+studies are runs of case 01, the planar cylinder (its sensitivity study), and
+are plotted by the case's `allplot.sh`. Results and the report are due by
+2026-10-23.
 
-| Source | What it is | Studied in |
-| --- | --- | --- |
-| FVM discretization | cell size $h_f$, step $\Delta t_f$, convection and time schemes | S5 (reference levels), S1b |
-| VPM discretization | particle spacing $h_p$, core radius, step $\Delta t_p$, diffusion | S1a, S2 |
-| Coupling interface | exchange ratio $n=\Delta t_p/\Delta t_f$, interface sweeps, transfer inset and blend, $h_p/h_f$ | S1, S2, S4 |
-| Domain and models | FVM box size, outflow fringe, LES | done (box, inset, fringe); S3 checks transfer to other flows |
+## Objectives
 
-## Dimensionless parameters
+1. Give users an objective way to measure the spatial and temporal order of
+   their own problem with the coupled method, and the uncertainty of a result.
+2. Find each source of the coupled error and isolate it, with every parameter
+   expressed in flow scales, so that a recommendation does not hold only
+   because two errors happen to cancel at one setup.
 
-Every parameter is reported as a dimensionless group, so a rule found for the
-cylinder can be applied to another flow:
+## Why the first approach was not enough
 
-- FVM Courant number $C_f=U_\infty\Delta t_f/h_f$ and particle Courant number
-  $C_p=U_\infty\Delta t_p/h_p$;
-- particle stability number $\Lambda=\max|S|\,\Delta t_p$, which must stay
-  below 1 (the 8-step cylinder run failed at $\Lambda=1.24$);
-- exchange ratio $n=\Delta t_p/\Delta t_f$ and resolution ratio $r=h_p/h_f$;
-- interface widths (inset, blend, particle-only band) in particle core radii
-  $\sigma$;
-- box margin relative to the vortex-formation length and the body size.
+- **Biased yardstick.** The earlier sensitivity runs were compared with the
+  reference on the same cells. That removes the shared FVM error but hides
+  that the reference itself is 4% low in lift amplitude at the baseline cells
+  ($h=0.04$): the 2% target was met against an unconverged value.
+- **Cancelling errors.** At constant Courant number and $n=2$ the coupling
+  error in lift amplitude changes sign under refinement (+1.9%, -1.2%,
+  -3.0% at $h=0.08$, $0.0566$, $0.04$): at least two contributions of opposite
+  sign. An order fitted to such data means nothing.
+- **One parameter at a time.** The box, inset and exchange-ratio runs varied
+  one parameter about one baseline, so interactions were invisible, and the
+  box margin was in diameters and the interface widths in cells, neither of
+  which is a scale of the flow.
 
-## Studies
+## Method
 
-All cylinder runs end at 55 s and are compared with the reference over
-$40\le t\le55$ s: mean drag, lift amplitude, Strouhal number, and the
-phase-averaged wake-velocity difference at $x/D=2$ and $4$. Every run also
-records its wall time per second of flow time.
+### Error measures
 
-### S1. Exchange ratio, both directions (case 01)
+Each statistic $\phi$ (mean drag, lift amplitude, Strouhal number over
+$t\ge40$ s, and the phase-averaged wake velocity at $x/D=2$ and $4$) is
+compared with $\phi_0$, the reference extrapolated to zero cell size and step.
+For a coupled run on cells $h$ with FVM step $\Delta t_f$:
 
-- **S1a, fixed $\Delta t_f=0.008$ s, larger $\Delta t_p$.** Done for
-  $n=2,4,5,6$. Larger ratios are not reachable this way: $\Delta t_p$ is
-  capped by the stability limit $\Lambda<1$ at the wall
-  ($\Delta t_p\le0.052$ s). The study is complete; it is re-plotted against
-  $C_p$ and $\Lambda$.
-- **S1b, fixed $\Delta t_p=0.04$ s, smaller $\Delta t_f$.** $n=5$ (baseline),
-  10, 20, 40, so $C_f$ falls from 0.2 to 0.025. This gives the larger ratios.
-  Because the reference has its own temporal error at $\Delta t_f=0.008$ s,
-  the reference is also run at 0.004 and 0.002 s; each coupled run is compared
-  with the reference at the same $\Delta t_f$, and with the finest one.
-- **Question:** does the coupled error depend on $n$ itself (interface), or
-  only on $\Delta t_f$ and $\Delta t_p$ separately (discretization)?
+- total error $e=\phi_c-\phi_0$;
+- FVM error $e_f=\phi_r(h,\Delta t_f)-\phi_0$, the reference on the same cells
+  and step;
+- coupling error $e_c=\phi_c-\phi_r(h,\Delta t_f)=e-e_f$.
 
-### S2. Particle resolution (case 01)
+### Order and uncertainty
 
-- $r=h_p/h_f=1$ (baseline) and $1/2$, each at $n=2,4,5,6$ with
-  $\Delta t_f=0.008$ s fixed, so $\Delta t_p$ grows with $n$.
-- **Pilot first:** the planar cylinder uses one particle layer between slip
-  planes one FVM cell apart. A finer particle spacing needs the slip-plane
-  spacing to follow $h_p$; one short run checks that the coupler accepts
-  $h_p<h_f$ and that the transfer lattice and slip planes stay consistent.
-- **Question:** does a finer particle field change the error trends with $n$,
-  or only shift them? Does the stability limit move?
+Least-squares fits after Eça and Hoekstra (2014): $\phi_i=\phi_0+\alpha x_i^p$
+with $p$ free, and the fixed-order alternatives, chosen by the standard
+deviation of the fit; uncertainty $U$ with safety factor 1.25 for well-behaved
+data and 3 otherwise. Each family is classed as monotone, oscillatory or
+anomalous, and an order is reported only for monotone data. For the
+references, $\phi=\phi_0+a h^p+b\,\Delta t^q$ over all levels gives the
+spatial and temporal orders separately. This procedure is the tool users apply
+to their own runs.
 
-### S3. Flow-independent rules
+### Normalization
 
-- Express S1, S2, S4 and the earlier box, inset and fringe results in the
-  dimensionless groups above, and fit the admissible ranges (for example
-  $\Lambda\le0.9$, inset $\ge k\sigma$, pure-FVM core beyond the formation
-  length).
-- **Check on other flows:** apply the rules, without tuning, to the cylinder
-  at $Re=100$ and $250$, each against its own reference. The rules
-  generalize if both meet the 2% target without retuning.
+| Parameter | Flow-scaled form |
+| --- | --- |
+| Cells, particle spacing | $h/\delta$, with $\delta$ the separated shear-layer thickness; $h_p/h_f$ |
+| FVM and particle steps | $C_f=U\Delta t_f/h_f$, $C_p=U\Delta t_p/h_p$, $U\Delta t_p/D$ |
+| Particle stability | $\Lambda=\max\lvert S\rvert\,\Delta t_p$, with $\max\lvert S\rvert$ measured at each $Re$ |
+| Exchange frequency | exchanges per convective time $D/(U\Delta t_p)$ |
+| Interface widths | inset, blend and particle-only band in particle core radii $\sigma$ |
+| FVM box | distance from the formation point to the transfer region, in vortex-formation lengths $L_f$ (measured at each $Re$) |
 
-### S4. Interface sweeps per exchange (case 01)
+### In-run indicator
 
-- The predictor-corrector repeats the FVM solve over each exchange until the
-  boundary trace converges (at most 6 sweeps, tolerance $10^{-5}$). Fixed
-  sweep counts $K=1,2,3,4,6$ (tolerance zero, so exactly $K$), plus the
-  tolerance-driven baseline.
-- **Question:** how fast do forces and wake velocity converge with $K$, and
-  is the cost of $K$ sweeps worth it against a smaller $n$?
+The coupler logs the mismatch of the FVM boundary trace and the interface
+residuals at every exchange. Their developed-flow means are correlated with
+$|e_c|$; a good correlation gives users an a-posteriori check of the coupling
+error that needs no reference.
 
-### S5. Convergence order of the coupled method (case 01)
+## Run families (case 01)
 
-- **Refinement:** the cells, the steps and the particles are refined together
-  by $\sqrt2$ at constant Courant number: $h_f=h_p=0.08$, $0.0566$, $0.04$
-  (baseline cells) and $0.0283$ m, with $\Delta t_f\propto h_f$ and
-  $n=2$ FVM steps per exchange at every level. The baseline $n=5$ is not used
-  here: at constant Courant number the particle step of the two coarse levels
-  would exceed the stability limit ($\Lambda=1.10$ and $1.55$); with $n=2$,
-  $\Lambda\le0.62$ at every level. The interface widths (inset, blend,
-  particle-only band) stay fixed in cells, so they shrink with $h$, as the
-  rules of S3 would set them; the box and the particle domain stay fixed.
-- **Reference at every level:** the fully meshed FVM reference on the same
-  near-wall cells and step (`--cell-size`), refined as a whole.
-- **Error-free values:** the mean drag, lift amplitude and Strouhal number of
-  the reference extrapolated to zero cell size (Richardson extrapolation from
-  its three finest levels, with its observed order). The wake velocity has no
-  scalar to extrapolate; it is measured at equal shedding phase against the
-  finest reference, which overstates the observed order of the reference
-  itself.
-- **Split of the coupled error:** coupled error = FVM discretization error
-  (reference on the same cells against the extrapolated value) + coupling
-  error (coupled against the reference on the same cells). The observed order
-  of each is the slope of its error against $h$. The coupling part contains
-  the interface, the particle discretization and the coarser outer reference
-  mesh (the reference coarsens to $2h$ beyond 1.5 D, the coupled box does
-  not). S1a ($\Delta t_p$), S2 ($h_p$) and S4 (sweeps) then attribute the
-  coupling part at the baseline cells, and S3 checks that the split, written
-  in the dimensionless groups, holds at other Reynolds numbers.
-- **Expected:** the reference between first and second order (backward in
-  time; limited linear convection, first order at extrema). A coupled order
-  equal to the reference's means the FVM discretization dominates; a lower
-  one, with a coupling part of lower order, isolates the interface or the
-  particles.
-- A separate FVM-alone or VPM-alone problem is not needed: the reference is
-  the FVM alone on the same flow, and the particles cannot carry the cylinder
-  alone; their discretization is varied in S1a and S2 at fixed FVM cells.
-
-## Order of execution and cost
-
-Runs share one laptop with the 3D cube run (about 2.5 more days); at most one
-study run alongside it, three once it ends.
-
-| Phase | Work | Runs | Wall time, alone |
+| Family | Fixed | Varied | Isolates |
 | --- | --- | --- | --- |
-| 0 | Case flags (`--cell-size`, `--fvm-time-step`, `--particle-spacing`, `--interface-iterations`, `--reynolds-number`), launcher sections, figures (done); S2 pilot (pending) | — | — |
-| 1 | S5 convergence: 4 coupled, 3 references (the baseline reference exists) | 7 | about 25 h |
-| 2 | S4 sweeps | 5 | about 20 h |
-| 3 | S1b ratio, plus 2 references | 3 + 2 | about 45 h |
-| 4 | S2 particle resolution | 4 at $r=1/2$ | about 60 h |
-| 5 | S3 rules and their check | 4 | about 16 h |
+| C, combined | $C_f=0.2$, $n=2$ | $h=0.08$, $0.0566$, $0.04$, $0.0283$ | overall order of the method |
+| X, space | $\Delta t_f=0.004$, $n=4$ | $h=0.08$, $0.0566$, $0.04$ | spatial order |
+| T2, time at fixed $n$ | $h=0.04$, $n=2$ | $\Delta t_f=0.016$, $0.008$, $0.004$ | temporal order with the exchange frequency rising |
+| P, time at fixed $\Delta t_p$ | $h=0.04$, $\Delta t_p=0.04$ | $n=5$, $10$, $20$ | FVM step alone, exchange frequency fixed |
+| E, exchange ratio | $h=0.04$, $\Delta t_f=0.008$ | $n=2$, $4$, $5$, $6$ | particle step and exchange frequency together |
+| K, interface sweeps | baseline | $K=1$, $2$, $3$, $4$, $6$ | interface iteration |
+| B, box | $n=5$, inset $8.75\sigma$ | four box sizes in $L_f$, at $Re=150$ and $250$ | box error, flow-scaled |
+| F, factorial | $h=0.04$ | box $\times$ inset $\times$ $n$ at two levels | interactions; additivity of the errors |
+| R, Reynolds number | baseline rules | $Re=100$, $250$ | transfer of the rules to other flows |
+| S, particle spacing | $\Delta t_f=0.008$ | $h_p=h_f/2$ at $n=2$, $5$ | particle discretization |
 
-About 170 run-hours in total. Coupled runs use the GPU, which the cube run
-needs alone (a second GPU user ran it out of memory), so only the FVM
-references run beside the cube; the finest reference ($h=0.0283$ m) needs
-more than 4.5 GB to mesh and also waits for the cube.
+T2, P and E vary the particle step and the exchange frequency independently,
+which separates a temporal particle error from an error added at each
+transfer.
 
-## Decisions (2026-10-19)
+## Schedule
 
-1. Convergence problem: case 01 itself, refined at constant Courant number
-   (user decision, 2026-10-19, replacing the convected Lamb–Oseen vortex). The
-   vortex ring is not part of this plan.
-2. Generality check: the cylinder at $Re=100$ and $250$, each against its own
-   reference.
-3. The studies run before the NACA wing; one study run at a time alongside the
-   cube run, more once it ends.
-4. No new tutorial case: the convergence and every cylinder study are runs
-   of case 01's sensitivity study (`assets/run_sensitivity_study.sh`
-   sections), plotted by its `allplot.sh`.
+Three coupled runs share the GPU and one reference runs on the CPU; the cube
+run waits until the study ends. Wall-time costs of runs made in parallel are
+inflated, so cost conclusions use runs made alone.
+
+| Day | Work |
+| --- | --- |
+| Tue 20 | K, T2, X, finest C; flow scales; analysis toolkit |
+| Wed 21 | R, B (flow-scaled box); analysis of C, X, T2, K |
+| Thu 22 | F, P, S; additivity and indicator analysis |
+| Fri 23 | Report: orders and uncertainties, error sources, flow-scaled rules, user procedure |
+
+## Decisions
+
+1. Convergence problem: case 01 itself (2026-10-19); no new tutorial case.
+2. Generality: the cylinder at $Re=100$ and $250$; no second geometry this
+   week (2026-10-20).
+3. The studies run before the cube and the NACA wing (2026-10-20).
 
 ## Results
 
-To be filled in as the phases complete.
+To be filled in as the families complete.
