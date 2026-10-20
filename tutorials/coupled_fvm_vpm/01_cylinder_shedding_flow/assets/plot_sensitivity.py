@@ -471,21 +471,24 @@ def convergence(runs, references):
         and np.isclose(run["fvm_time_step"], run["cell_size"] / CELL_SIZE * FVM_TIME_STEP)
         and np.isclose(run["particle_spacing"], run["cell_size"])
     }
-    levels = [reference for reference in levels if reference["cell_size"] in coupled]
-    if len(levels) < 3:
-        return  # the extrapolation needs three levels with both runs
+    if len(levels) < 3 or len(coupled) < 2:
+        return  # the extrapolation needs three reference levels, an order two coupled ones
     cell_sizes = np.array([reference["cell_size"] for reference in levels])
     finest = levels[0]
 
+    def on_levels(value_of):
+        """A coupled quantity at every reference level, NaN where no coupled run exists."""
+        return np.array([value_of(coupled[h]) if h in coupled else np.nan for h in cell_sizes])
+
     # Error-free statistics from the reference, and each run's statistics on its cells
     reference_statistics = [shedding_statistics(reference["forces"]) for reference in levels]
-    coupled_statistics = [shedding_statistics(coupled[h]["forces"]) for h in cell_sizes]
+    coupled_statistics = {h: shedding_statistics(run["forces"]) for h, run in coupled.items()}
     rows = []
     print(f"Convergence at constant Courant number, {CONVERGENCE_SUBSTEPS} FVM steps per exchange")
     for name in STATISTICS:
         reference_values = [statistics[name] for statistics in reference_statistics]
         order, exact = richardson(cell_sizes, reference_values)
-        coupled_values = np.array([statistics[name] for statistics in coupled_statistics])
+        coupled_values = on_levels(lambda run: coupled_statistics[run["cell_size"]][name])
         reference_values = np.array(reference_values)
         rows.append(
             (
@@ -502,20 +505,21 @@ def convergence(runs, references):
         errors_against(reference["forces"], reference["phase"], reference["wake"], finest)
         for reference in levels
     ]
-    coupled_wake = [
-        errors_against(coupled[h]["forces"], coupled[h]["phase"], coupled[h]["wake"], finest)
-        for h in cell_sizes
-    ]
-    same_cells_wake = [
-        errors_against(coupled[h]["forces"], coupled[h]["phase"], coupled[h]["wake"], reference)
-        for h, reference in zip(cell_sizes, levels)
-    ]
+    same_cells = dict(zip(cell_sizes, levels))
     rows.append(
         (
             "wake velocity",
             np.array([errors["wake velocity"] for errors in reference_wake]),
-            np.array([errors["wake velocity"] for errors in coupled_wake]),
-            np.array([errors["wake velocity"] for errors in same_cells_wake]),
+            on_levels(
+                lambda run: errors_against(run["forces"], run["phase"], run["wake"], finest)[
+                    "wake velocity"
+                ]
+            ),
+            on_levels(
+                lambda run: errors_against(
+                    run["forces"], run["phase"], run["wake"], same_cells[run["cell_size"]]
+                )["wake velocity"]
+            ),
         )
     )
 
@@ -536,7 +540,8 @@ def convergence(runs, references):
         for (label, color, marker), values in zip(
             series, (coupled_errors, reference_errors, coupling_errors)
         ):
-            shown = np.abs(values) > 0.0  # the finest reference has no wake error against itself
+            # The finest reference has no wake error against itself; coupled levels may be missing
+            shown = np.isfinite(values) & (np.abs(values) > 0.0)
             order = observed_order(cell_sizes[shown], values[shown])
             axis.loglog(
                 cell_sizes[shown],
@@ -552,8 +557,8 @@ def convergence(runs, references):
                 + ",".join(f"{value:.6g}" for value in values)
             )
             print(f"  {name}, {label.replace('$-$', '-')}: observed order {order:.2f}")
-        # First- and second-order slopes through the coarsest coupled error
-        anchor = np.abs(coupled_errors[-1])
+        # First- and second-order slopes through the coarsest error
+        anchor = np.nanmax(np.abs(coupled_errors))
         for order, style in ((1, ":"), (2, "--")):
             axis.loglog(
                 cell_sizes,
@@ -568,7 +573,7 @@ def convergence(runs, references):
     # Wall time per flow time of both methods
     axes[-1].loglog(
         cell_sizes,
-        [coupled[h]["cost"] for h in cell_sizes],
+        on_levels(lambda run: run["cost"]),
         color=COLORS["hybrid"],
         marker="o",
         markersize=MARKER_SIZE,
