@@ -426,13 +426,15 @@ def drivers(run):
 def wake_scales():
     """Formation lengths and shear-layer thickness [D] of the references on the baseline cells.
 
-    Keyed by Reynolds number, from the flow-scale table of flow_scales.py; empty until it exists.
+    Keyed by Reynolds number, from the flow-scale table that flow_scales.py writes first in
+    allplot.sh.
     L_f is the centreline peak of u_rms, L_f,v that of v_rms, delta_w the vorticity thickness.
     """
-    path = CASE_DIR / "figures/auxiliary/flow_scales.csv"
-    if not path.exists():
-        return {}
-    table = np.atleast_1d(np.genfromtxt(path, delimiter=",", names=True, dtype=None))
+    table = np.atleast_1d(
+        np.genfromtxt(
+            CASE_DIR / "figures/auxiliary/flow_scales.csv", delimiter=",", names=True, dtype=None
+        )
+    )
     return {
         row["reynolds_number"]: {
             "L_f": row["formation_length"],
