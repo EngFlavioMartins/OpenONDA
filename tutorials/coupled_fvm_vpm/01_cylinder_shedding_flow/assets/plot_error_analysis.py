@@ -54,9 +54,20 @@ PLOTTED_INDICATORS = {
     "first-sweep gradient residual": r"First-sweep $\partial u_t/\partial n$" + "\nchange $D/U$",
 }
 SERIES = {
-    "total": ("$e$, coupled", COLORS["hybrid"], "o"),
-    "FVM": ("$e_f$, reference", COLORS["reference"], "s"),
-    "coupling": ("$e_c$, coupling", COLORS["vpm"], "^"),
+    "total": ("Coupled solver, total", COLORS["hybrid"], "o"),
+    "FVM": ("FVM discretization", COLORS["reference"], "s"),
+    "coupling": ("Coupling", COLORS["vpm"], "^"),
+}
+# Panel titles and legend names of the study families
+FAMILY_NAMES = {
+    "C": "Space and time",
+    "X": "Space",
+    "T": "Time",
+    "T2": "Time",
+    "P": "FVM step",
+    "E": "Particle step",
+    "K": "Interface sweeps",
+    "S": "Particle spacing",
 }
 # Each run is drawn once, in the first of these families it belongs to
 FAMILY_STYLE = {
@@ -114,7 +125,7 @@ def bottom_legend(figure, axes):
         entries.values(),
         entries.keys(),
         loc="lower center",
-        ncol=min(len(entries), 3),
+        ncol=min(len(entries), 2),
         frameon=False,
         handlelength=1.5,
         columnspacing=1.0,
@@ -247,13 +258,11 @@ def reference_figure(fits, exact):
             axis, fit = axes[row, column], fits[family, quantity]
             phi0 = exact[quantity][0]
             curve = np.linspace(0.0, 1.05 * fit["x"].max(), 100)
-            axis.axhline(0.0, color=BACKGROUND_STRONG, linewidth=LINE_WIDTH, linestyle=":")
             axis.plot(
                 curve,
                 100.0 * (fit["curve"](curve) - phi0) / phi0,
-                color=COLORS["fvm"],
+                color=COLORS["reference"],
                 linewidth=LINE_WIDTH,
-                label=f"Fit, {fit['fit']}",
             )
             axis.errorbar(
                 fit["x"],
@@ -265,11 +274,11 @@ def reference_figure(fits, exact):
                 linestyle="none",
                 elinewidth=LINE_WIDTH,
                 capsize=2.0,
-                label="Reference, $\\pm U$",
+                label="Reference FVM",
             )
             if column == 0:
                 axis.set_ylabel(STATISTICS[quantity])
-        axes[0, column].set_title(f"Family {family}")
+        axes[0, column].set_title(FAMILY_NAMES[family])
         axes[-1, column].set_xlabel(VARIABLES[fits[family, "mean drag"]["variable"]][0])
         axes[-1, column].set_xlim(left=0.0)
     bottom_legend(figure, axes)
@@ -289,7 +298,6 @@ def decomposition_figure(families, decomposition, fits, exact):
         curve = np.linspace(0.0, 1.05 * x.max(), 100)
         for row, quantity in enumerate(ERRORS):
             axis = axes[row, column]
-            axis.axhline(0.0, color=BACKGROUND_STRONG, linewidth=LINE_WIDTH, linestyle=":")
             for kind, (label, color, marker) in SERIES.items():
                 axis.plot(
                     x,
@@ -310,12 +318,11 @@ def decomposition_figure(families, decomposition, fits, exact):
                     100.0 * (total - phi0) / phi0,
                     color=COLORS["hybrid"],
                     linewidth=LINE_WIDTH,
-                    label="Fits",
                 )
                 axis.plot(curve, coupling, color=COLORS["vpm"], linewidth=LINE_WIDTH)
             if column == 0:
                 axis.set_ylabel(ERRORS[quantity])
-        axes[0, column].set_title(f"Family {family}")
+        axes[0, column].set_title(FAMILY_NAMES[family])
         axes[-1, column].set_xlabel(VARIABLES[variable][0])
         axes[-1, column].set_xlim(left=0.0)
     bottom_legend(figure, axes)
@@ -400,7 +407,6 @@ def driver_figure(families, decomposition, fits):
     for column, (driver, label) in enumerate(PLOTTED_DRIVERS.items()):
         for row, quantity in enumerate(ERRORS):
             axis = axes[row, column]
-            axis.axhline(0.0, color=BACKGROUND_STRONG, linewidth=LINE_WIDTH, linestyle=":")
             for family, (color, marker) in FAMILY_STYLE.items():
                 members = [run for run in runs if drawn_family(run) == family]
                 if not members:
@@ -413,7 +419,7 @@ def driver_figure(families, decomposition, fits):
                     markersize=MARKER_SIZE,
                     linestyle="none",
                     markerfacecolor="none" if family not in DRIVER_FAMILIES else color,
-                    label=family,
+                    label=FAMILY_NAMES[family],
                 )
             fit = fits.get((quantity, driver))
             if fit:
@@ -425,7 +431,6 @@ def driver_figure(families, decomposition, fits):
                     fit["c0"] + fit["a"] * curve ** fit["q"],
                     color=COLORS["text"],
                     linewidth=LINE_WIDTH,
-                    label=f"Fit over {', '.join(DRIVER_FAMILIES)}",
                 )
             if column == 0:
                 axis.set_ylabel("$e_c$ " + ERRORS[quantity])
@@ -492,7 +497,7 @@ def indicator_figure(rows, correlations):
                     marker=marker,
                     markersize=MARKER_SIZE,
                     linestyle="none",
-                    label=family if members else None,
+                    label=FAMILY_NAMES[family] if members else None,
                 )
             if (name, quantity) in correlations:
                 axis.text(
@@ -588,7 +593,6 @@ def box_figure(families, decomposition):
     for column, (scale, (label, held)) in enumerate(columns.items()):
         for row, quantity in enumerate(ERRORS):
             axis = axes[row, column]
-            axis.axhline(0.0, color=BACKGROUND_STRONG, linewidth=LINE_WIDTH, linestyle=":")
             for reynolds_number, color in colors.items():
                 baseline = (
                     BASELINE["box_margin"] if held == "box margin" else BASELINE["box_downstream"]
