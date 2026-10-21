@@ -27,6 +27,7 @@ import numpy as np
 import pyvista as pv
 from scipy.spatial import Delaunay
 
+from openonda.plotting import fit_thesis_y_label_margins
 from openonda.plotting import COLORS, LINE_WIDTH, MARKER_SIZE
 from openonda.plotting import save_validation_figure, validation_subplots
 
@@ -222,6 +223,7 @@ def centreline_figure(profiles, measured):
         handlelength=1.2,
         columnspacing=0.8,
     )
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, CASE_DIR / "figures/flow_scales")
 
 

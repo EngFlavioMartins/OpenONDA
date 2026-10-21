@@ -7,6 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from openonda.plotting import fit_thesis_y_label_margins
 from openonda.plotting import COLORS, LINE_WIDTH, REFERENCE_STYLE, figure_size, save_fig
 from openonda.plotting import centered_subplots_adjust, set_thesis_style
 from openonda.saved_times import match_saved_times
@@ -20,20 +21,20 @@ FREESTREAM_SPEED = 1.0  # m/s
 REFERENCE_FORCES = CASE_DIR / "reference_flow/samples/forces_history.csv"
 COUPLED_FORCES = CASE_DIR / "samples/forces_history.csv"
 
-# Reference FVM, coupled FVM (inside its box at x = 2 m) and the coupled particles
+# FVM only, coupled FVM (inside its box at x = 2 m) and the coupled particles
 SOURCES = {
     2: {
-        "Reference FVM": "reference_flow/samples/transverse_x2.csv",
+        "FVM only": "reference_flow/samples/transverse_x2.csv",
         "Coupled FVM": "samples/fvm_transverse_x2.csv",
         "Coupled VPM": "samples/vpm_transverse_x2.csv",
     },
     4: {
-        "Reference FVM": "reference_flow/samples/transverse_x4.csv",
+        "FVM only": "reference_flow/samples/transverse_x4.csv",
         "Coupled VPM": "samples/vpm_transverse_x4.csv",
     },
 }
 STYLES = {
-    "Reference FVM": REFERENCE_STYLE,
+    "FVM only": REFERENCE_STYLE,
     "Coupled FVM": {"color": COLORS["fvm"], "linewidth": LINE_WIDTH},
     "Coupled VPM": {"color": COLORS["vpm"], "linewidth": LINE_WIDTH},
 }
@@ -97,6 +98,7 @@ def save_velocity_figure(curves, limits, name):
     for row, (low, high) in enumerate(limits):
         margin = 0.05 * (high - low)
         axes[row, 0].set_ylim((low - margin) / FREESTREAM_SPEED, (high + margin) / FREESTREAM_SPEED)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_fig(figure, CASE_DIR / "figures" / name)
 
 
@@ -109,7 +111,7 @@ def phase_averaged_profiles(samples, limits):
     averages = {
         (station, label): phase_averaged_velocity(
             table,
-            reference_phase if label == "Reference FVM" else coupled_phase,
+            reference_phase if label == "FVM only" else coupled_phase,
             DEVELOPED_SHEDDING,
         )
         for (station, label), table in samples.items()
@@ -124,9 +126,9 @@ def phase_averaged_profiles(samples, limits):
                 curves[station].append(
                     (label, positions / DIAMETER, u[k] / FREESTREAM_SPEED, v[k] / FREESTREAM_SPEED)
                 )
-                if label == "Reference FVM":
+                if label == "FVM only":
                     continue
-                reference = averages[station, "Reference FVM"]
+                reference = averages[station, "FVM only"]
                 difference = (
                     100.0
                     * np.hypot(
@@ -168,6 +170,7 @@ def main():
         for station, files in SOURCES.items()
     }
     figure, _ = profile_figure(curves, (r"$\overline{u}/U_\infty$", r"$v_\mathrm{rms}/U_\infty$"))
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_fig(figure, CASE_DIR / "figures/velocity_profiles")
 
     samples = {

@@ -16,6 +16,7 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
 
+from openonda.plotting import fit_thesis_y_label_margins
 from openonda.plotting import BACKGROUND_STRONG, CM, COLORS, LINE_WIDTH, MARKER_SIZE
 from openonda.plotting import MAX_FIGURE_WIDTH_CM, centered_subplots_adjust
 from openonda.plotting import save_validation_figure, set_thesis_style
@@ -274,7 +275,7 @@ def reference_figure(fits, exact):
                 linestyle="none",
                 elinewidth=LINE_WIDTH,
                 capsize=2.0,
-                label="Reference FVM",
+                label="FVM only",
             )
             if column == 0:
                 axis.set_ylabel(STATISTICS[quantity])
@@ -282,6 +283,7 @@ def reference_figure(fits, exact):
         axes[-1, column].set_xlabel(VARIABLES[fits[family, "mean drag"]["variable"]][0])
         axes[-1, column].set_xlim(left=0.0)
     bottom_legend(figure, axes)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, FIGURES / "error_references_C_X_T")
 
 
@@ -326,6 +328,7 @@ def decomposition_figure(families, decomposition, fits, exact):
         axes[-1, column].set_xlabel(VARIABLES[variable][0])
         axes[-1, column].set_xlim(left=0.0)
     bottom_legend(figure, axes)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, FIGURES / "error_decomposition_C_X_T2")
 
 
@@ -438,6 +441,7 @@ def driver_figure(families, decomposition, fits):
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3, integer=driver.startswith("FVM")))
     bottom_legend(figure, axes)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, FIGURES / "error_drivers_T2_P_E")
 
 
@@ -512,6 +516,7 @@ def indicator_figure(rows, correlations):
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
     bottom_legend(figure, axes)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, FIGURES / "error_indicator")
 
 
@@ -622,6 +627,7 @@ def box_figure(families, decomposition):
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
     bottom_legend(figure, axes)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, FIGURES / "error_box_B")
 
 

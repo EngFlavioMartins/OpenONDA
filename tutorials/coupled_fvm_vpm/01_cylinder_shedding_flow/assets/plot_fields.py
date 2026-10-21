@@ -25,7 +25,7 @@ WINDOW = (-1.5, 9.5, -1.5, 1.5)  # m
 SPACING = 0.02  # m, comparison lattice
 DEVELOPED_SHEDDING = 40.0  # s, start of the phase averages
 
-# Reference FVM, coupled FVM inside its box and the coupled particles outside it
+# FVM only, coupled FVM inside its box and the coupled particles outside it
 REFERENCE = CASE_DIR / "reference_flow/solution/fvm.pvd"
 COUPLED_FVM = CASE_DIR / "solution/fvm.pvd"
 COUPLED_VPM = CASE_DIR / "solution/vpm.pvd"
@@ -108,7 +108,7 @@ def comparison_figure(name, quantity, reference, coupled, difference):
         low = -high
     largest = max(np.nanmax(difference), 1e-6)
     panels = (
-        ("(a) Reference FVM", reference, np.linspace(low, high, 41), cmap),
+        ("(a) FVM only", reference, np.linspace(low, high, 41), cmap),
         ("(b) Coupled FVM and VPM", coupled, np.linspace(low, high, 41), cmap),
         ("(c) Difference", difference, np.linspace(0.0, largest, 41), DIFFERENCE_COLOURS),
     )

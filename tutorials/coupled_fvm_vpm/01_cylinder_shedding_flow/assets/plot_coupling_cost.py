@@ -7,6 +7,7 @@ from pathlib import Path
 from matplotlib.patheffects import withStroke
 import numpy as np
 
+from openonda.plotting import fit_thesis_y_label_margins
 from openonda.plotting import COLORS, LINE_WIDTH, save_validation_figure, validation_legend
 from openonda.plotting import validation_subplots
 
@@ -37,7 +38,7 @@ def main():
     ]
     coupled_mean = np.sum(cost, axis=0).mean()
 
-    # Reference FVM wall time per step over its own time step
+    # FVM-only wall time per step over its own time step
     steps = [json.loads(line) for line in (REFERENCE_DIR / "solution/performance.jsonl").open()]
     reference_mean = (
         np.mean([step["step_seconds"]["max"] for step in steps]) / steps[0]["time_step_size"]
@@ -53,7 +54,7 @@ def main():
     axes[0].set_ylim(0.0, 1.6 * np.percentile(np.sum(cost, axis=0), 99.9))
     for mean, style, label in (
         (coupled_mean, "-", "Coupled"),
-        (reference_mean, "--", "Reference FVM"),
+        (reference_mean, "--", "FVM only"),
     ):
         axes[0].axhline(
             mean,
@@ -76,6 +77,7 @@ def main():
     axes[1].set_ylabel("Particles [$10^6$]")
     axes[1].set_xlabel("$t$ [s]")
     validation_legend(figure, axes[0])
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, CASE_DIR / "figures/coupling_cost")
 
 

@@ -3,8 +3,10 @@
 
 from pathlib import Path
 
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 
+from openonda.plotting import fit_thesis_y_label_margins
 from openonda.plotting import COLORS, LINE_WIDTH, REFERENCE_STYLE
 from openonda.plotting import save_validation_figure, validation_legend, validation_subplots
 
@@ -56,7 +58,7 @@ def main():
     for axis, name, label in zip(
         axes, ("drag_coefficient", "lift_coefficient"), ("$C_D$", "$C_L$")
     ):
-        axis.plot(reference["time"], reference[name], **REFERENCE_STYLE, label="Reference FVM")
+        axis.plot(reference["time"], reference[name], **REFERENCE_STYLE, label="FVM only")
         axis.plot(
             coupled["time"],
             coupled[name],
@@ -67,7 +69,9 @@ def main():
         axis.set_ylabel(label)
     axes[0].set_ylim(1.0, 1.6)  # hides the impulsive-start peak
     axes[1].set_xlabel("$t$ [s]")
+    axes[1].xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))  # plain seconds
     validation_legend(figure, axes[0])
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, CASE_DIR / "figures/forces")
 
 

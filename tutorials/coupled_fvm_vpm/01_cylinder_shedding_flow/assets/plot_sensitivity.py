@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 
+from openonda.plotting import fit_thesis_y_label_margins
 from openonda.plotting import BACKGROUND_STRONG, CM, COLORS, LINE_WIDTH, MARKER_SIZE
 from openonda.plotting import MAX_FIGURE_WIDTH_CM, REFERENCE_STYLE
 from openonda.plotting import centered_subplots_adjust, save_validation_figure, set_thesis_style
@@ -305,6 +306,7 @@ def study_figure(path, columns, rows, series, log_rows=(), lines=True):
             axes[row, 0].set_ylim(0.0, 1.15 * largest)
             axes[row, 0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     validation_legend(figure, axes[0, -1], ncol=1)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, path)
 
 
@@ -436,6 +438,7 @@ def parameter_figure(runs, reference_cost):
         floor = reference_cost if quantity == "cost" else ERROR_BAND
         largest = max([floor, *(abs(run[quantity]) for run in plotted)])
         axes[row, 0].set_ylim(0.0, 1.15 * largest)
+    fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, CASE_DIR / "figures/sensitivity")
 
 
@@ -469,13 +472,13 @@ def main():
             ROWS,
             [
                 (
-                    "Equal-step reference",
+                    "FVM only, equal step",
                     [run for run in s1b if run["reference"] != "none"],
                     hybrid,
                     "o",
                 ),
-                ("Finest reference", [{**run, **run["finest"]} for run in s1b], teal, "s"),
-                ("Reference vs finest", changes, gray, "^"),
+                ("FVM only, finest step", [{**run, **run["finest"]} for run in s1b], teal, "s"),
+                ("FVM only vs finest step", changes, gray, "^"),
             ],
         )
 
