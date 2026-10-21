@@ -330,23 +330,29 @@ def statistics_of(forces):
 
 
 def exact_values(references):
-    """phi_0 of each statistic: the space-time fit when it has residual freedom, else family C."""
+    """phi_0 of each statistic: the space-time fit when it determines phi_0 more tightly than the
+    family-C uncertainty, else family C.
+
+    A statistic that barely changes with the cells or the step, such as the mean drag, leaves the
+    orders of the space-time fit undetermined and its phi_0 meaningless.
+    """
     levels = [ref for (re, h, dt), ref in references.items() if re == REYNOLDS_NUMBER]
+    family = reference_families(references)["C"][1]
     exact = {}
     for quantity in STATISTICS:
-        phi = [statistics_of(ref["forces"])[quantity] for ref in levels]
-        if len(levels) > 5:
-            fit = space_time_fit(
-                [ref["cell_size"] for ref in levels], [ref["time_step"] for ref in levels], phi
-            )
-            exact[quantity] = (fit["phi0"], "space-time fit")
-            continue
-        family = reference_families(references)["C"][1]
         fit = discretization_uncertainty(
             [ref["cell_size"] / DIAMETER for ref in family],
             [statistics_of(ref["forces"])[quantity] for ref in family],
         )
         exact[quantity] = (fit["phi0"], "family C")
+        if len(levels) > 5:
+            combined = space_time_fit(
+                [ref["cell_size"] for ref in levels],
+                [ref["time_step"] for ref in levels],
+                [statistics_of(ref["forces"])[quantity] for ref in levels],
+            )
+            if combined["standard errors"]["phi0"] < np.min(fit["uncertainty"]):
+                exact[quantity] = (combined["phi0"], "space-time fit")
     return exact
 
 

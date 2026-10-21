@@ -78,13 +78,13 @@ def drawn_family(entry):
     return next(f for f in [*FAMILY_STYLE, "-"] if f in [*entry["families"].split(), "-"])
 
 
-def panel_grid(n_rows, n_columns, top_cm=0.9):
+def panel_grid(n_rows, n_columns, top_cm=1.2):
     """Rows of quantities and columns of families or drivers at the thesis width.
 
     The legend goes below the panels, clear of the data.
     """
     set_thesis_style()
-    height = 2.6 + top_cm + 3.0 * n_rows
+    height = 3.2 + top_cm + 3.0 * n_rows
     figure, axes = plt.subplots(
         n_rows,
         n_columns,
@@ -96,7 +96,7 @@ def panel_grid(n_rows, n_columns, top_cm=0.9):
     centered_subplots_adjust(
         figure,
         outer=0.15 if n_columns > 1 else 0.25,
-        bottom=2.6 / height,
+        bottom=3.2 / height,
         top=1.0 - top_cm / height,
         wspace=0.12,
         hspace=0.12,
@@ -114,7 +114,7 @@ def bottom_legend(figure, axes):
         entries.values(),
         entries.keys(),
         loc="lower center",
-        ncol=min(len(entries), 4),
+        ncol=min(len(entries), 3),
         frameon=False,
         handlelength=1.5,
         columnspacing=1.0,
