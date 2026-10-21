@@ -86,9 +86,30 @@ error that needs no reference.
 | R, Reynolds number | baseline rules | $Re=100$, $250$ | transfer of the rules to other flows |
 | S, particle spacing | $\Delta t_f=0.008$ | $h_p=h_f/2$ at $n=2$, $5$ | particle discretization |
 
-T2, P and E vary the particle step and the exchange frequency independently,
-which separates a temporal particle error from an error added at each
-transfer.
+### What each family holds fixed
+
+Each family varies one group and holds the others, so its error trend has a
+single cause. $h_f=h_p=h$, interface widths $w$ (inset, blend, particle-only
+band), exchanges per convective time $N_x=D/(U\Delta t_p)$.
+
+| Family | $h/\delta_\omega$ | $C_f$ | $U\Delta t_f/D$ | $U\Delta t_p/D$, $N_x$ | $\Lambda$ | $w/D$ | Box ($R$, $c$) | $Re$ | Isolates |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| X | varied | varies with $h$ | fixed | fixed | fixed | **fixed** (widths in 0.04 m cells) | fixed | fixed | spatial error of the coupled solver |
+| T2 | fixed | varied | varied | varied ($n=2$) | varied | fixed | fixed | fixed | temporal error of the coupled solver |
+| P | fixed | varied | varied | **fixed** | fixed | fixed | fixed | fixed | FVM temporal error inside the coupling |
+| E | fixed | fixed | fixed | varied | varied | fixed | fixed | fixed | particle step and transfer count together |
+| K | fixed | fixed | fixed | fixed | fixed | fixed | fixed | fixed | interface iteration only |
+| B | fixed | fixed | fixed | fixed | per $Re$ | fixed | varied in $L_f$ and $\delta_\omega$ | 150, 250 | box error, flow-scaled |
+| R | fixed in $D$ | fixed | fixed | fixed | matched ($n=4$ at 250) or not ($n=5$) | fixed | per $Re$ | varied | transfer of the rules to another flow |
+| C | varied | fixed | varied | varied ($n=2$) | varied | varies (in cells) | fixed | fixed | what a user sees refining everything together |
+
+The particle step and the number of transfers are tied (one particle step per
+exchange), so E cannot separate them by design; their functional forms differ
+(a temporal error grows with $\Delta t_p$, an error added at each transfer
+grows with $N_x$), so a fit $e_c=c_0+a\,U\Delta t_p/D+b\,N_x$ over E, P and T2
+attributes the coupling error to one or the other. Family C mixes everything
+and is reported only as the user-level check; the spatial and temporal orders
+of the coupled solver come from X and T2.
 
 ## Schedule
 
