@@ -46,6 +46,7 @@ BASELINE = {
     "cell_size": CELL_SIZE,
     "fvm_time_step": FVM_TIME_STEP,
     "particle_spacing": CELL_SIZE,
+    "interface_cell_size": CELL_SIZE,  # m, counts the inset, blend and particle-only widths
     "interface_sweeps": 0,  # 0: sweeps until the boundary trace converges
     "reynolds_number": REYNOLDS_NUMBER,
 }
@@ -63,6 +64,7 @@ RUN_NAME = re.compile(
     r"box(?P<box_margin>[^_]+)_sub(?P<fvm_substeps>\d+)_inset(?P<transfer_inset>[^_]+)"
     r"(?:_xd(?P<box_downstream>[^_]+))?"
     r"(?:_h(?P<cell_size>[\d.]+))?(?:_dtf(?P<fvm_time_step>[^_]+))?"
+    r"(?:_ic(?P<interface_cell_size>[^_]+))?"
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
     r"(?:_k(?P<interface_sweeps>\d+))?(?:_re(?P<reynolds_number>[^_]+))?"
 )
@@ -189,6 +191,8 @@ def read_runs(references):
             parameters["fvm_time_step"] = refinement * FVM_TIME_STEP
         if not given["particle_spacing"]:
             parameters["particle_spacing"] = parameters["cell_size"]
+        if not given["interface_cell_size"]:
+            parameters["interface_cell_size"] = parameters["cell_size"]
         if not given["box_downstream"]:
             parameters["box_downstream"] = parameters["box_margin"] + 2.0  # setup.py default
         particle_time_step = parameters["fvm_substeps"] * parameters["fvm_time_step"]

@@ -242,7 +242,12 @@ def at_baseline(run, *varied):
 
 
 def coupled_families(runs):
-    """Coupled runs of each family of the plan, and the variable each refines or varies."""
+    """Coupled runs of each family of the plan, and the variable each refines or varies.
+
+    Family C counts the interface widths in its own cells, as a user refining the whole method
+    would; family X keeps the interface in place (widths in 0.04 m cells) so that only the
+    discretization is refined.
+    """
     spatial = ("cell_size", "fvm_time_step", "fvm_substeps", "particle_spacing")
     return {
         "C": (
@@ -250,7 +255,8 @@ def coupled_families(runs):
             [
                 run
                 for run in runs
-                if at_baseline(run, *spatial)
+                if at_baseline(run, *spatial, "interface_cell_size")
+                and np.isclose(run["interface_cell_size"], run["cell_size"])
                 and run["fvm_substeps"] == 2
                 and np.isclose(run["fvm_time_step"], constant_courant_step(run["cell_size"]))
                 and np.isclose(run["particle_spacing"], run["cell_size"])
@@ -445,8 +451,9 @@ def box_scales(run, scales):
     the clearance of the shear layer from the inner edge w of the interface bands on the sides.
     """
     scale = scales[run["reynolds_number"]]
-    transfer_face = run["box_downstream"] - run["transfer_inset"] * run["cell_size"] / DIAMETER
-    bands = (run["transfer_inset"] + BLEND_WIDTH + VPM_ONLY_WIDTH) * run["cell_size"] / DIAMETER
+    interface_cell = run["interface_cell_size"] / DIAMETER
+    transfer_face = run["box_downstream"] - run["transfer_inset"] * interface_cell
+    bands = (run["transfer_inset"] + BLEND_WIDTH + VPM_ONLY_WIDTH) * interface_cell
     return {
         "reach": (transfer_face - scale["L_f"]) / scale["L_f"],
         "reach, v_rms": (transfer_face - scale["L_f,v"]) / scale["L_f,v"],

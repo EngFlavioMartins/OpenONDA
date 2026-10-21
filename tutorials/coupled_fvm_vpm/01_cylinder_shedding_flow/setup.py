@@ -86,6 +86,7 @@ def build_case(
     reynolds_number=REYNOLDS_NUMBER,
     cell_size=CELL_SIZE,
     box_downstream=BOX_MARGIN + 2.0,
+    interface_cell_size=CELL_SIZE,
 ):
     """Return the FVM case, the particle case and the coupling settings."""
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
@@ -98,7 +99,7 @@ def build_case(
     margin = box_margin * DIAMETER
     downstream = box_downstream * DIAMETER
     fvm_box = (-margin, downstream, -margin, margin)
-    inset = transfer_inset * cell_size
+    inset = transfer_inset * interface_cell_size
     transfer_region = (-margin + inset, downstream - inset, -margin + inset, margin - inset)
     exchange_time_step = fvm_substeps * fvm_time_step
 
@@ -248,8 +249,8 @@ def build_case(
     coupling = coupler.CouplerConfig(
         freestream_velocity=FREESTREAM_VELOCITY,
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
-        eta_blend_width=BLEND_WIDTH * cell_size,
-        vpm_only_width=VPM_ONLY_WIDTH * cell_size,
+        eta_blend_width=BLEND_WIDTH * interface_cell_size,
+        vpm_only_width=VPM_ONLY_WIDTH * interface_cell_size,
         interface_iterations=interface_iterations,
         interface_normal_tolerance=interface_tolerance,
         interface_gradient_tolerance=interface_tolerance,
@@ -284,6 +285,12 @@ if __name__ == "__main__":
         "--cell-size", type=float, default=CELL_SIZE, help="FVM cell size near the wall [m]"
     )
     parser.add_argument(
+        "--interface-cell-size",
+        type=float,
+        help="cell size counting the inset, blend and particle-only widths [m]; the cell size by"
+        " default, a fixed value keeps the interface in place while the cells are refined",
+    )
+    parser.add_argument(
         "--fvm-time-step",
         type=float,
         help="FVM time step [s]; scales with the cell size by default",
@@ -315,6 +322,7 @@ if __name__ == "__main__":
     fvm_time_step = arguments.fvm_time_step or refinement * FVM_TIME_STEP
     particle_spacing = arguments.particle_spacing or arguments.cell_size
     box_downstream = arguments.box_downstream or arguments.box_margin + 2.0
+    interface_cell_size = arguments.interface_cell_size or arguments.cell_size
 
     flow, particles, coupling = build_case(
         arguments.box_margin,
@@ -328,6 +336,7 @@ if __name__ == "__main__":
         arguments.reynolds_number,
         arguments.cell_size,
         box_downstream,
+        interface_cell_size,
     )
     with coupler.CoupledSolver(flow, particles, coupling) as solver:
         # The startup vortex behind the cylinder; a restart replaces it with the backup
