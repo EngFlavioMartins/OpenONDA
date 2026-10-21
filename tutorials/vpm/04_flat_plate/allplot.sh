@@ -9,3 +9,4 @@ python -m assets.plot_plate_staticvsmoving --format "${1:-both}"
 python -m assets.plot_plate_spanwise --format "${1:-both}"
 python -m assets.plot_plate_velocity --format "${1:-both}"
 python -m assets.render_flat_plate --format "${1:-both}"
+python -m assets.render_flat_plate_animation

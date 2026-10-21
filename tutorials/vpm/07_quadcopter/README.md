@@ -34,6 +34,6 @@ $$
 
 Positive $P$ is shaft input, the negative of fluid-on-blade rotational power. The reference is isolated-rotor BEM with a thin-plate lift polar and hub/tip losses. It omits rotor interference, transition, profile drag and stall; the power excludes motor electrical losses.
 
-Force/loading records and planes at $z=-0.35$ and −0.70 m are in `samples/quadcopter/`. Open `solution/quadcopter/vpm.pvd` and `vlm.pvd` for the coupled geometry. Wake figures average the final six revolutions.
+Force/loading records and planes at $z=-0.35$ and −0.70 m are in `samples/quadcopter/`. Open `solution/quadcopter/vpm.pvd` and `vlm.pvd` for the coupled geometry. Wake figures average the final six revolutions. `figures/quadcopter_flow.gif` animates the four particle wakes with the thrust and power coefficients averaged over the rotors.
 
 The impulse check requires the wake to remain inside the retained domain. A complete run still needs panel, time-step and particle-core convergence. This case demonstrates interacting attached-flow rotor wakes; VLM does not resolve low-Reynolds-number blade boundary layers or stall.

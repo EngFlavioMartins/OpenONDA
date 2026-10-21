@@ -152,16 +152,16 @@ Inputs are in SI units. Open `vpm-example/solution/vpm.pvd` or
 
 <table>
   <tr>
-    <td width="50%"><a href="tutorials/vpm/02_vortex_ring/README.md"><img src="tutorials/vpm/02_vortex_ring/assets/vortex_ring.gif" alt="Vortex-ring particles developing the azimuthal instability"></a><br><sub><b>Vortex ring</b>: a vortex-ring flow.</sub></td>
-    <td width="50%"><a href="tutorials/vpm/04_flat_plate/README.md"><img src="tutorials/vpm/04_flat_plate/assets/flat_plate_wake.gif" alt="Camera sweep around the particle wake of a moving flat plate"></a><br><sub><b>Flat plate</b>: a lifting, flat-plate surface sheds its tip vortices.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/02_vortex_ring/README.md"><img src="tutorials/vpm/02_vortex_ring/assets/vortex_ring.gif" alt="Vortex-ring particles developing the azimuthal instability"></a><br><sub><b>Vortex ring</b>: a vortex ring travels on its own induced velocity until the azimuthal instability grows and breaks it up.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/04_flat_plate/README.md"><img src="tutorials/vpm/04_flat_plate/assets/flat_plate_wake.gif" alt="Animation of the particle wake shed by a flat plate starting from rest, with its lift and drag coefficients over the distance travelled"></a><br><sub><b>Flat plate</b>: a lifting flat plate starts from rest and sheds its starting and tip vortices while its lift settles.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="tutorials/vpm/01_lamb_oseen_vortex/README.md"><img src="tutorials/vpm/01_lamb_oseen_vortex/assets/vortex_merging.gif" alt="Animation of two co-rotating vortices merging, axial vorticity shown as a relief"></a><br><sub><b>Vortex merging</b>: two co-rotating vortices become one.</sub></td>
-    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube_flow.gif" alt="Animation of coupled FVM and VPM flow past a cube: FVM mid-plane speed, VPM particle vorticity and the drag coefficient over time"></a><br><sub><b>Flow past a cube</b>: FVM near the body, particles in the wake.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/01_lamb_oseen_vortex/README.md"><img src="tutorials/vpm/01_lamb_oseen_vortex/assets/vortex_merging.gif" alt="Animation of two co-rotating vortices merging, axial vorticity shown as a relief"></a><br><sub><b>Vortex merging</b>: two co-rotating Lamb–Oseen vortices orbit each other, diffuse and merge into a single vortex.</sub></td>
+    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube_flow.gif" alt="Animation of coupled FVM and VPM flow past a cube: FVM mid-plane speed, VPM particle vorticity and the drag coefficient over time"></a><br><sub><b>Flow past a cube</b>: the FVM resolves the flow near the cube, vortex particles carry its wake downstream, and drag settles.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="tutorials/vpm/06_rotor_flow/README.md"><img src="tutorials/vpm/06_rotor_flow/assets/rotor_flow.gif" alt="Animation of a three-bladed rotor and its vortex-particle wake, with thrust and power coefficients over the revolutions"></a><br><sub><b>Rotor</b>: VLM blades shed a helical particle wake while thrust and power settle.</sub></td>
-    <td width="50%"></td>
+    <td width="50%"><a href="tutorials/vpm/06_rotor_flow/README.md"><img src="tutorials/vpm/06_rotor_flow/assets/rotor_flow.gif" alt="Animation of a three-bladed rotor and its vortex-particle wake, with thrust and power coefficients over the revolutions"></a><br><sub><b>Rotor</b>: VLM blades shed a helical particle wake behind a three-bladed rotor while thrust and power settle.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/07_quadcopter/README.md"><img src="tutorials/vpm/07_quadcopter/assets/quadcopter_flow.gif" alt="Animation of the four rotors of a quadcopter and their interacting vortex-particle wakes, with thrust and power coefficients over the revolutions"></a><br><sub><b>Quadcopter</b>: four two-bladed rotors of a climbing quadcopter shed tip-vortex wakes that interact with each other.</sub></td>
   </tr>
 </table>
 

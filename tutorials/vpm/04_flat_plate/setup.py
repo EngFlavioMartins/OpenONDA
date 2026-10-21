@@ -53,6 +53,8 @@ SMAGORINSKY_COEFFICIENT = 0.30
 PARTICLE_CORE_FACTOR = 2.5
 SAMPLE_INTERVAL_TIME = 0.0625  # write a snapshot every this many seconds
 BACKUP_INTERVAL_TIME = 0.5  # checkpoints every five chord lengths
+ANIMATED_CASE = "exp_moving_aoa12"  # its wake is animated in the README
+FRAME_INTERVAL_TIME = 0.025  # [s] particle frames of the animated case, every quarter chord
 
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
@@ -111,6 +113,8 @@ def run(mode: str, angle_of_attack: float) -> None:
         wake_core_overlap=PARTICLE_CORE_FACTOR,
     )
     backup_steps = round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE)
+    frame_interval = FRAME_INTERVAL_TIME if name == ANIMATED_CASE else BACKUP_INTERVAL_TIME
+    frame_steps = round(frame_interval / TIME_STEP_SIZE)
     case = vpm.VPMCase(
         name=name,
         directory=TUTORIAL_DIR,
@@ -130,7 +134,7 @@ def run(mode: str, angle_of_attack: float) -> None:
             max_n_particles=120_000,
         ),
         run=vpm.RunPlan(end_time=n_steps * TIME_STEP_SIZE),
-        output=vpm.Output(schedule=vpm.EverySteps(backup_steps)),
+        output=vpm.Output(schedule=vpm.EverySteps(frame_steps)),
         samplers=vpm.Samplers(
             samples=(vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),),
         ),
