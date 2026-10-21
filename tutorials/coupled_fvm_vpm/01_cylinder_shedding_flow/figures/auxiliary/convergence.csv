@@ -1,0 +1,13 @@
+quantity,series,observed_order,h=0.028284,h=0.04,h=0.056569,h=0.08
+mean drag,Coupled,1.004,nan,-0.705793,-0.323392,1.41579
+mean drag,Reference FVM,0.9927,0.0745201,0.0990393,0.0664526,-0.267977
+mean drag,Coupled - reference,1.065,nan,-0.804832,-0.389845,1.68376
+lift amplitude,Coupled,0.6499,nan,-6.94271,-7.92327,-10.8934
+lift amplitude,Reference FVM,1.622,-2.3421,-3.95411,-6.67565,-12.8041
+lift amplitude,Coupled - reference,-0.6454,nan,-2.98859,-1.24762,1.91071
+Strouhal number,Coupled,-0.8092,nan,-1.73991,-1.55332,-0.992933
+Strouhal number,Reference FVM,1.62,-0.756818,-1.31226,-2.27534,-4.09263
+Strouhal number,Coupled - reference,2.858,nan,-0.427651,0.722016,3.0997
+wake velocity,Coupled,0.1272,nan,2.50142,3.42298,2.73199
+wake velocity,Reference FVM,1.124,0,2.55074,3.72661,5.5584
+wake velocity,Coupled - reference,0.6149,nan,3.05699,2.44476,4.68158
