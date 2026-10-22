@@ -12,7 +12,7 @@ needs no reference. Families with too few finished runs are left out until their
 from itertools import combinations
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
 
@@ -48,11 +48,10 @@ DRIVER_FAMILIES = ("T2", "P", "E")  # all on the baseline cells: dt_p, n and dt_
 PLOTTED_DRIVERS = {
     "particle step": r"$U\Delta t_p/D$",
     "exchanges per convective time": r"$D/(U\Delta t_p)$",
-    "FVM steps per exchange": "$n$",
 }
 PLOTTED_INDICATORS = {
-    "trace velocity mismatch, mean": r"Trace mismatch $/U$",
-    "first-sweep gradient residual": r"First-sweep $\partial u_t/\partial n$" + "\nchange $D/U$",
+    "trace velocity mismatch, mean": r"$\Delta u_\mathrm{trace}/U$",
+    "first-sweep gradient residual": r"$\Delta(\partial u_t/\partial n)\,D/U$",
 }
 SERIES = {
     "total": ("Coupled solver, total", COLORS["hybrid"], "o"),
@@ -388,7 +387,8 @@ def driver_analysis(families, decomposition):
 
 def driver_figure(families, decomposition, fits):
     """e_c against the particle step, the exchanges per convective time and n, by family."""
-    runs = list({run["name"]: run for f in FAMILY_STYLE for run in families[f][1]}.values())
+    # Only the runs on the baseline cells with converged sweeps, so the particle step is the cause
+    runs = list({run["name"]: run for f in DRIVER_FAMILIES for run in families[f][1]}.values())
     if len(runs) < 3:
         return
     figure, axes = panel_grid(len(ERRORS), len(PLOTTED_DRIVERS), top_cm=2.0)
@@ -410,7 +410,8 @@ def driver_figure(families, decomposition, fits):
     for column, (driver, label) in enumerate(PLOTTED_DRIVERS.items()):
         for row, quantity in enumerate(ERRORS):
             axis = axes[row, column]
-            for family, (color, marker) in FAMILY_STYLE.items():
+            for family in DRIVER_FAMILIES:
+                color, marker = FAMILY_STYLE[family]
                 members = [run for run in runs if drawn_family(run) == family]
                 if not members:
                     continue
@@ -421,7 +422,6 @@ def driver_figure(families, decomposition, fits):
                     marker=marker,
                     markersize=MARKER_SIZE,
                     linestyle="none",
-                    markerfacecolor="none" if family not in DRIVER_FAMILIES else color,
                     label=FAMILY_NAMES[family],
                 )
             fit = fits.get((quantity, driver))
@@ -439,7 +439,8 @@ def driver_figure(families, decomposition, fits):
                 axis.set_ylabel("$e_c$ " + ERRORS[quantity])
         axes[-1, column].set_xlabel(label)
         axes[-1, column].margins(x=0.12)
-        axes[-1, column].xaxis.set_major_locator(MaxNLocator(3, integer=driver.startswith("FVM")))
+        axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
+        axes[-1, column].xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     bottom_legend(figure, axes)
     fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, FIGURES / "error_drivers_T2_P_E")
