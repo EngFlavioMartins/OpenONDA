@@ -39,15 +39,15 @@ TABLES = CASE_DIR / "figures/auxiliary"
 VARIABLES = {
     "cell_size": ("$h/D$", 1.0 / DIAMETER),
     "time_step": (r"$U\Delta t/D$", SPEED / DIAMETER),
-    "fvm_time_step": (r"$U\Delta t_f/D$", SPEED / DIAMETER),
-    "particle_time_step": (r"$U\Delta t_p/D$", SPEED / DIAMETER),
+    "fvm_time_step": (r"$U\Delta t_{\rm F}/D$", SPEED / DIAMETER),
+    "particle_time_step": (r"$U\Delta t_{\rm P}/D$", SPEED / DIAMETER),
 }
 CONVERGENCE_FAMILIES = {"C": "cell_size", "X": "cell_size", "T2": "fvm_time_step"}
 REFINEMENT_FAMILIES = {**CONVERGENCE_FAMILIES, "P": "fvm_time_step", "E": "particle_time_step"}
 DRIVER_FAMILIES = ("T2", "P", "E")  # all on the baseline cells: dt_p, n and dt_f vary apart
 PLOTTED_DRIVERS = {
-    "particle step": r"$U\Delta t_p/D$",
-    "exchanges per convective time": r"$D/(U\Delta t_p)$",
+    "particle step": r"$U\Delta t_{\rm P}/D$",
+    "exchanges per convective time": r"$D/(U\Delta t_{\rm P})$",
 }
 PLOTTED_INDICATORS = {
     "trace velocity mismatch, mean": r"$\Delta u_\mathrm{trace}/U$",
@@ -408,7 +408,7 @@ def driver_figure(families, decomposition, fits):
     figure.text(
         0.5,
         0.99,
-        rf"$\Lambda=\max|S|\,\Delta t_p$, particle-field $\max|S|={PARTICLE_STRAIN_RATE:g}$ s$^{{-1}}$",
+        rf"$\Lambda=|S|\,\Delta t_{{\rm P}}$, particle-field $|S|={PARTICLE_STRAIN_RATE:g}$ s$^{{-1}}$",
         ha="center",
         va="top",
     )
@@ -441,7 +441,7 @@ def driver_figure(families, decomposition, fits):
                     linewidth=LINE_WIDTH,
                 )
             if column == 0:
-                axis.set_ylabel("$e_c$ " + ERRORS[quantity])
+                axis.set_ylabel(r"$e_{\rm C}$ " + ERRORS[quantity])
         axes[-1, column].set_xlabel(label)
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
@@ -517,7 +517,7 @@ def indicator_figure(rows, correlations):
                     transform=axis.transAxes,
                 )
             if column == 0:
-                axis.set_ylabel(r"$|e_c|$ " + ERRORS[quantity])
+                axis.set_ylabel(r"$|e_{\rm C}|$ " + ERRORS[quantity])
         axes[-1, column].set_xlabel(f"{label} [$10^{{{exponent}}}$]")
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
@@ -627,7 +627,7 @@ def box_figure(families, decomposition):
                     label=f"$Re={reynolds_number:g}$",
                 )
             if column == 0:
-                axis.set_ylabel("$e_c$ " + ERRORS[quantity])
+                axis.set_ylabel(r"$e_{\rm C}$ " + ERRORS[quantity])
         axes[-1, column].set_xlabel(label)
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
