@@ -13,7 +13,7 @@ The coupled error of the planar cylinder splits into the error of the FVM discre
 - **Spatially, the coupled solution converges with the FVM towards a value offset by the transfer error.** At fixed steps and a fixed interface, the total lift-amplitude error is −9.6%, −8.0%, −6.5% at $h/D=0.08$, 0.0566, 0.04 and extrapolates to −4.5% ($\pm$9%); the FVM part converges with order 1.5 and the coupling part changes sign. Three levels do not give a reliable order for the coupled solver; the data are consistent with the FVM spatial order plus a coupling offset set by $N_x$.
 - **FVM only:** spatial order 1.5–2.0 (lift amplitude) and 1.7 (Strouhal number), temporal order 0.9 (lift amplitude) and 1.7 (Strouhal number), mean drag converged within 0.2–0.6%. For the lift amplitude the spatial error is negative and the temporal error positive, so refining both together hides part of each.
 - **Error budget at the baseline** ($h/\delta_\omega=0.15$, $C_f=0.2$, $n=5$, $\Lambda=0.78$, $N_x=25$): total $e$ = −0.22% (drag), −4.53% (lift amplitude), −0.90% (Strouhal number), of which the FVM part is −0.14%, −3.11%, −1.22% and the coupling part −0.09%, −1.42%, +0.33%. The coupling part is $c_0$ (−1.0% in lift amplitude, not removed by fewer transfers) plus the transfer part (−0.4% at $N_x=25$).
-- **FVM box:** the side clearance, in shear-layer thicknesses $\delta_\omega$, is the box parameter that matters and that carries over between Reynolds numbers: at $c\approx0.9\,\delta_\omega$ the lift-amplitude coupling error grows by 4.0 points at $Re=150$ and 4.4 points at $Re=250$. The downstream reach in formation lengths changes the error by at most about 2 points for $R\ge0.35$, without a common trend at the two Reynolds numbers. A too-short downstream box looks more accurate at $Re=150$ (+0.7% against −1.4%) because its error cancels the transfer error.
+- **FVM box:** the side clearance, in shear-layer thicknesses $\delta_\omega$, is the box parameter that matters and that carries over between Reynolds numbers: at $c\approx1.2\,\delta_\omega$ the lift-amplitude coupling error grows by 4.0 points at $Re=150$ and 4.4 points at $Re=250$. The downstream reach in formation lengths changes the error by at most about 2 points for $R\ge0.35$, without a common trend at the two Reynolds numbers. A too-short downstream box looks more accurate at $Re=150$ (+0.7% against −1.4%) because its error cancels the transfer error.
 - **Interface iteration:** two sweeps per exchange, or a boundary-trace tolerance of $10^{-5}$ (1.8 sweeps on average), keep the iteration error below 0.15 points; one sweep costs +3.0% in drag and +2.1% in lift amplitude.
 - **In-run indicator:** the developed mean of the boundary-trace velocity mismatch correlates with the lift-amplitude coupling error ($r=0.84$ over 23 runs); every run with a mismatch below $3.5\times10^{-3}U$ has $\lvert e_c\rvert\le2.1\%$ in lift amplitude. It is a weaker indicator for drag and Strouhal number ($r\approx0.4$).
 - **Another Reynolds number:** at $Re=250$ with the same rules the coupling error is −0.14% (drag), −1.93% (lift amplitude), +0.53% (Strouhal number) at $n=5$ ($\Lambda=1.0$, stable) and −0.19%, −2.01%, +0.50% at $n=4$ ($\Lambda=0.8$). Matching $\Lambda$ does not match the error of $Re=150$; matching $N_x$ comes closer, with an offset of about −0.5 points in lift amplitude.
@@ -101,7 +101,7 @@ Every parameter is expressed in a scale of the flow, measured on the FVM-only ru
 | Exchange frequency | exchanges per convective time $N_x=D/(U\Delta t_p)$ | $25$ |
 | Interface widths | transfer inset, blend width, particle-only band, in particle core radii $\sigma$ and in $D$ | 8.75, 6 and 2 cells; $0.67D$ together |
 | FVM box, downstream | reach $R=(x_t-L_f)/L_f$, with $x_t$ the downstream transfer face | $x_t=4.05D$, $R\approx1.09$ |
-| FVM box, sides | clearance $c=(m-w-D/2)/\delta_\omega$, with $m$ the side margin and $w$ the three interface widths | $c\approx4.7$ |
+| FVM box, sides | clearance $c=(m-w-D/2)/\delta_\omega$, with $m$ the side margin and $w=L_T+\delta_{\rm buf}$ the inset plus the blend width (the particle-only band lies inside the blend) | $c\approx5.0$ |
 | Interface iteration | FVM solves per exchange $K$, or boundary-trace tolerance | up to 6, $10^{-5}$ |
 
 The box is set by two distances, the downstream reach $R$ and the side clearance $c$. Between $Re=100$ and $250$ the formation length falls from $3.0D$ to $1.22D$, while $\delta_\omega$ falls as $Re^{-1/2}$, so one margin in diameters cannot hold both fixed across Reynolds numbers. The case therefore takes the downstream box face separately (`--box-downstream`) from the side margin (`--box-margin`).
@@ -118,7 +118,7 @@ All families are runs of case 01 (`assets/run_sensitivity_study.sh`), each up to
 | P, FVM step | $h=0.04$ m, $\Delta t_p=0.04$ s | $n=5$, $10$ | FVM temporal error inside the coupling, exchange frequency fixed | 2 |
 | E, exchange ratio | $h=0.04$ m, $\Delta t_f=0.008$ s | $n=2$, $4$, $5$ | particle step and exchange frequency together | 3 |
 | K, interface sweeps | baseline | $K=1$, $2$, $4$, tolerance-driven | interface iteration | 4 |
-| B, box | $n=5$, inset 8.75 cells | downstream reach $R=0.35$–$2.3$ and side clearance $c=0.9$–$5.7$, at $Re=150$ and $250$ | box error, flow-scaled | 9 |
+| B, box | $n=5$, inset 8.75 cells | downstream reach $R=0.35$–$2.3$ and side clearance $c=1.2$–$6.1$, at $Re=150$ and $250$ | box error, flow-scaled | 9 |
 | F, factorial | $h=0.04$ m, inset 8.75 cells | downstream face $3.36D$ / $4.4D$ $\times$ $n=2$ / $5$ | additivity of the box and transfer errors | 4 |
 | R, Reynolds number | baseline rules | $Re=250$ at $n=5$ and at $n=4$ ($\Lambda$ matched) | transfer of the rules to another flow | 2 |
 
@@ -153,7 +153,7 @@ At every exchange the coupler logs the mismatch between the FVM boundary trace a
 
 1. **Measure the flow scales.** Run the FVM only on a moderate domain, or a coarse coupled case, to developed flow. Measure the shear-layer vorticity thickness $\delta_\omega$ at separation, the formation length $L_f$ (centreline peak of $u_\mathrm{rms}$; the $v_\mathrm{rms}$ peak is less sensitive to the cells), and the largest strain rate of the particle field, $\max\lvert S\rvert$ (reported by the particle solver's stability check). Do not use the strain rate of the FVM wall cells, which is lower.
 2. **Set the interface** (section 6):
-   - side clearance $c\ge4.7$ shear-layer thicknesses between the separated shear layer and the inner edge of the interface bands;
+   - side clearance $c\ge5$ shear-layer thicknesses between the separated shear layer and the inner edge of the interface bands;
    - downstream transfer face at $x_t\ge L_f(1+R)$ with $R\ge1$;
    - transfer inset, blend width and particle-only band of about 9, 6 and 2 particle core radii;
    - the largest stable particle step, $\Lambda=\max\lvert S\rvert\,\Delta t_p\approx0.8$ (stable up to 1.0 here), which keeps the exchanges per convective time $N_x=D/(U\Delta t_p)$ low; the FVM step then follows from its own Courant number, $C_f\le0.2$;
@@ -253,17 +253,17 @@ Figure: `figures/error_box_B`, the coupling error against the reach $R$ (with $L
 
 | $Re$ | Downstream face $[D]$ | Side margin $[D]$ | $R$ | $c$ | $e_c$: $\bar C_D$ / $\hat C_L$ / $St$ [%] |
 | --- | --- | --- | --- | --- | --- |
-| 150 | 2.97 | 2.4 | 0.35 | 4.67 | +0.49 / +0.69 / +0.66 |
-| 150 | 3.36 | 2.4 | 0.55 | 4.67 | +0.20 / +0.68 / +0.62 |
-| 150 | 4.4 | 2.4 | 1.08 | 4.67 | −0.09 / −1.42 / +0.33 |
-| 150 | 4.4 | 1.4 | 1.08 | 0.87 | −0.44 / −5.37 / +0.71 |
-| 250 | 1.99 | 2.4 | 0.35 | 5.74 | +0.19 / −2.14 / +0.83 |
-| 250 | 2.24 | 2.4 | 0.55 | 5.74 | +0.23 / −1.60 / +0.85 |
-| 250 | 2.9 | 2.4 | 1.10 | 5.74 | +0.57 / −0.64 / +0.81 |
-| 250 | 4.4 | 2.4 | 2.33 | 5.74 | −0.14 / −1.93 / +0.53 |
-| 250 | 4.4 | 1.36 | 2.33 | 0.89 | −1.50 / −6.34 / +0.74 |
+| 150 | 2.97 | 2.4 | 0.35 | 4.97 | +0.49 / +0.69 / +0.66 |
+| 150 | 3.36 | 2.4 | 0.55 | 4.97 | +0.20 / +0.68 / +0.62 |
+| 150 | 4.4 | 2.4 | 1.08 | 4.97 | −0.09 / −1.42 / +0.33 |
+| 150 | 4.4 | 1.4 | 1.08 | 1.18 | −0.44 / −5.37 / +0.71 |
+| 250 | 1.99 | 2.4 | 0.35 | 6.11 | +0.19 / −2.14 / +0.83 |
+| 250 | 2.24 | 2.4 | 0.55 | 6.11 | +0.23 / −1.60 / +0.85 |
+| 250 | 2.9 | 2.4 | 1.10 | 6.11 | +0.57 / −0.64 / +0.81 |
+| 250 | 4.4 | 2.4 | 2.33 | 6.11 | −0.14 / −1.93 / +0.53 |
+| 250 | 4.4 | 1.36 | 2.33 | 1.26 | −1.50 / −6.34 / +0.74 |
 
-**Side clearance.** Bringing the interface bands to within $0.9\,\delta_\omega$ of the separated shear layer changes the lift-amplitude coupling error by −3.95 points at $Re=150$ and −4.41 points at $Re=250$, and the drag error by −0.35 and −1.36 points. The clearance in shear-layer thicknesses collapses the lift-amplitude effect at the two Reynolds numbers; it is the box parameter that sets the largest error and the one that carries over. With only two clearances per Reynolds number, the threshold lies between $0.9$ and $4.7\,\delta_\omega$; $c\ge4.7\,\delta_\omega$ is what was shown to be sufficient.
+**Side clearance.** Bringing the interface bands to within $1.2\,\delta_\omega$ of the separated shear layer changes the lift-amplitude coupling error by −3.95 points at $Re=150$ and −4.41 points at $Re=250$, and the drag error by −0.35 and −1.36 points. The clearance in shear-layer thicknesses collapses the lift-amplitude effect at the two Reynolds numbers; it is the box parameter that sets the largest error and the one that carries over. With only two clearances per Reynolds number, the threshold lies between $1.2$ and $5.0\,\delta_\omega$; $c\ge5.0\,\delta_\omega$ is what was shown to be sufficient.
 
 **Downstream reach.** For $R\ge0.35$ the reach changes the lift-amplitude coupling error by at most about 2 points, and not in the same way at the two Reynolds numbers: at $Re=150$ shortening the box moves the error from −1.42% to +0.7%, at $Re=250$ the error varies between −2.1% and −0.6% without a monotone trend. Neither choice of formation length collapses the two. At $Re=150$ the short box looks better only because its positive error cancels the negative transfer error: a box judged by its total error alone would be chosen too small. $R\ge1$ keeps the effect of the downstream face within the scatter of the other runs at both Reynolds numbers.
 
@@ -273,9 +273,9 @@ Figure: `figures/error_box_B`, the coupling error against the reach $R$ (with $L
 
 | $Re$ | $n$ | $\Lambda$ | $N_x$ | $R$ | $c$ | $e_c$: $\bar C_D$ / $\hat C_L$ / $St$ [%] |
 | --- | --- | --- | --- | --- | --- | --- |
-| 150 | 5 | 0.78 | 25 | 1.08 | 4.67 | −0.09 / −1.42 / +0.33 |
-| 250 | 5 | 1.00 | 25 | 2.33 | 5.74 | −0.14 / −1.93 / +0.53 |
-| 250 | 4 | 0.80 | 31 | 2.33 | 5.74 | −0.19 / −2.01 / +0.50 |
+| 150 | 5 | 0.78 | 25 | 1.08 | 4.97 | −0.09 / −1.42 / +0.33 |
+| 250 | 5 | 1.00 | 25 | 2.33 | 6.11 | −0.14 / −1.93 / +0.53 |
+| 250 | 4 | 0.80 | 31 | 2.33 | 6.11 | −0.19 / −2.01 / +0.50 |
 
 At $Re=250$ no extrapolated value is available, so these are coupling errors against the FVM-only run of the same Reynolds number, cells and step. The particle step at $\Lambda=1.0$ is still stable. Matching $\Lambda$ ($n=4$) does not reproduce the error of $Re=150$; matching $N_x$ ($n=5$) comes slightly closer, and the change from $n=5$ to $n=4$ at $Re=250$ (−0.08 points in lift amplitude) is close to the $N_x$ trend fitted at $Re=150$ (−0.17 points). The remaining offset of about −0.5 points in lift amplitude is not explained by $\Lambda$, $N_x$, the reach or the clearance; at $Re=250$ the box is larger in flow scales than at $Re=150$. All $Re=250$ errors stay within the 2% target in drag and Strouhal number, and at the limit of it in lift amplitude.
 
@@ -292,7 +292,7 @@ Figure: `figures/error_indicator`, $\lvert e_c\rvert$ against the developed mean
 | First-sweep gradient residual | −0.20 / −0.11 / −0.20 / −0.20 |
 | Last-sweep gradient residual | 0.14 / −0.01 / −0.03 / −0.11 |
 
-The boundary-trace mismatch follows the lift-amplitude coupling error over every family: below $3.5\times10^{-3}U$ all runs have $\lvert e_c\rvert\le2.1\%$, between 3.5 and $5\times10^{-3}U$ they have 1.2–3.0%, and the three runs above $5.5\times10^{-3}U$ (side clearance $0.9\,\delta_\omega$ at both Reynolds numbers, and $N_x=125$) have 5.4–7.1%. The interface-sweep residuals do not indicate the coupling error.
+The boundary-trace mismatch follows the lift-amplitude coupling error over every family: below $3.5\times10^{-3}U$ all runs have $\lvert e_c\rvert\le2.1\%$, between 3.5 and $5\times10^{-3}U$ they have 1.2–3.0%, and the three runs above $5.5\times10^{-3}U$ (side clearance $1.2$–$1.3\,\delta_\omega$ at both Reynolds numbers, and $N_x=125$) have 5.4–7.1%. The interface-sweep residuals do not indicate the coupling error.
 
 ## 6. Recommendations
 
@@ -300,7 +300,7 @@ Values in flow scales, for a bluff body shedding a laminar wake, together with t
 
 | Parameter | Flow-scaled form | Recommended value | Evidence |
 | --- | --- | --- | --- |
-| Side margin | clearance $c=(m-w-D/2)/\delta_\omega$ | $c\ge4.7$; $c\approx0.9$ costs about 4 points of lift amplitude at both $Re$ | B |
+| Side margin | clearance $c=(m-w-D/2)/\delta_\omega$ | $c\ge5$; $c\approx1.2$ costs about 4 points of lift amplitude at both $Re$ | B |
 | Downstream transfer face | reach $R=(x_t-L_f)/L_f$ | $R\ge1$; $0.35\le R<1$ changes the error by up to 2 points | B, F |
 | Transfer inset, blend width, particle-only band | in particle core radii $\sigma=h_p$ | about 9, 6 and 2; the inset changed the error by less than 0.7 points between 4 and 20 in the earlier study | earlier study |
 | Particle step | $\Lambda=\max\lvert S\rvert\,\Delta t_p$, with the particle-field strain | the largest stable value, $\Lambda\approx0.8$ (1.0 still stable, 1.24 unstable) | E, T2, P, R |
@@ -325,7 +325,7 @@ The coupled solver inherits the spatial order of the FVM and, at a fixed particl
 - **Three levels per coupled family.** Families X and T2 have three levels each. The free-order fit then has no residual freedom, the combined first- and second-order fit cannot be made, and the uncertainty rests on the safety factor alone. The offsets of family X carry uncertainties of 2–9%.
 - **One body.** Only the circular cylinder was studied. The rules are expressed in flow scales so that they can carry over, but their transfer to other shapes is not shown.
 - **Two Reynolds numbers.** The box and transfer studies cover $Re=150$ and $250$ in laminar planar shedding; $Re=100$ has flow scales but no coupled run.
-- **Side clearance at two values.** The clearance threshold lies between $0.9$ and $4.7\,\delta_\omega$; only the upper value is shown to be sufficient.
+- **Side clearance at two values.** The clearance threshold lies between $1.2$ and $5.0\,\delta_\omega$; only the upper value is shown to be sufficient.
 - **Not run.** The particle-spacing family ($h_p=h_f/2$), $K=3$ and 6, $n=6$, 20 and 40, the inset factor of the factorial and the finest constant-Courant level were dropped to finish within the week; the interface widths rest on the one-at-a-time study of 5–12 October on an older code version and a same-cell comparison.
 - **Wake velocity against the finest FVM-only run.** The wake-velocity errors are distances to the finest FVM-only run, not to an extrapolated value.
 - **Limits of the uncertainty estimate.** The least-squares estimate degrades for shallow orders and noisy data: in a synthetic check with $p=1$ and 0.1% noise, $\pm U$ covered the true error in 67–84% of cases. The statistics are averaged over $40\le t\le55$ s, about 2.7 shedding periods.
