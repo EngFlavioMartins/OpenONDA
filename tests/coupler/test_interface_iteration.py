@@ -30,6 +30,8 @@ def rig(monkeypatch):
     transfer = SimpleNamespace(step=4)
     c = SimpleNamespace(
         config=CouplerConfig(
+            transfer_inset_spacings=0.0,
+            eta_blend_width=0.0,
             interface_iterations=6,
             interface_normal_tolerance=1e-5,
             interface_gradient_tolerance=1e-5,

@@ -27,6 +27,8 @@ def _solver(directory):
         max_n_particles=50_000,
     )
     config = coupler.CouplerConfig(
+        transfer_inset_spacings=0.0,
+        eta_blend_width=0.0,
         freestream_velocity=FREESTREAM_VELOCITY,
         backup=coupler.Backup(schedule=coupler.EverySteps(2)),
     )
@@ -102,7 +104,9 @@ def test_cases_must_share_their_directory(tmp_path):
         tmp_path / "b", fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
     )
     with pytest.raises(ValueError, match="directory and variant"):
-        coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
+        coupler.CoupledSolver(
+            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
+        )
 
 
 def test_exchange_must_hold_whole_fvm_steps(tmp_path):
@@ -110,13 +114,19 @@ def test_exchange_must_hold_whole_fvm_steps(tmp_path):
         tmp_path, fvm_time_step_size=0.04, exchange_time_step_size=0.15, end_time=0.3
     )
     with pytest.raises(ValueError, match="whole multiple"):
-        coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
+        coupler.CoupledSolver(
+            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
+        )
 
 
 def test_backup_times_must_fall_on_exchanges(tmp_path):
     flow, particles = uniform_stream_cases(
         tmp_path, fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
     )
-    config = coupler.CouplerConfig(backup=coupler.Backup(schedule=coupler.EveryTime(0.2)))
+    config = coupler.CouplerConfig(
+        transfer_inset_spacings=0.0,
+        eta_blend_width=0.0,
+        backup=coupler.Backup(schedule=coupler.EveryTime(0.2)),
+    )
     with pytest.raises(ValueError, match="whole number of exchange time steps"):
         coupler.CoupledSolver(flow, particles, config)

@@ -13,6 +13,8 @@ def _solver(directory):
         directory, fvm_time_step_size=0.01, exchange_time_step_size=0.02, end_time=0.08
     )
     config = coupler.CouplerConfig(
+        transfer_inset_spacings=0.0,
+        eta_blend_width=0.0,
         freestream_velocity=FREESTREAM_VELOCITY,
         backup=coupler.Backup(schedule=coupler.EverySteps(2)),
     )

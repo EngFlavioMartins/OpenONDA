@@ -99,6 +99,10 @@ def make_coupler(directory, kind, *, les=False, error_limit=1.0):
         run=vpm.RunPlan(end_time=0.02),
     )
     config = coupler.CouplerConfig(
+        # One sweep, so the restart must reproduce the run exactly
+        interface_iterations=1,
+        transfer_inset_spacings=0.0,
+        eta_blend_width=0.0,
         freestream_velocity=velocity,
         transfer_discretization_error_limit=error_limit,
     )

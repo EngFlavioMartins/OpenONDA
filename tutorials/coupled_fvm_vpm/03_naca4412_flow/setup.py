@@ -38,9 +38,12 @@ FREESTREAM_VELOCITY = (FREESTREAM_SPEED * math.cos(ALPHA), FREESTREAM_SPEED * ma
 
 # FVM: uniform body-fitted cells, also the particle spacing
 CELL_SIZE = 0.04  # m, 25 cells per chord
-FVM_BOX = (-1.6, 2.72, -1.04, 1.36, -3.6, 3.6)  # m: the pure-FVM core holds the wing,
-# its tips and 1.5 c of near wake (see README)
-FVM_TIME_STEP = 0.01  # s
+# Box in wake scales (cylinder error study, docs/reports/2026-10-23-coupling-error-sources.md):
+# the core with full FVM weight starts the transfer inset plus the blend width (14.75 cells,
+# 0.59 m) inside the box faces and keeps at least five shear-layer thicknesses (about 0.1 c at
+# Re = 1000) from the wing below, from the rising wake above, and from the tips
+FVM_BOX = (-1.6, 2.72, -1.15, 1.45, -3.6, 3.6)  # m
+FVM_TIME_STEP = 0.008  # s, Courant number 0.2
 FVM_CORES = 4
 
 # VPM: particles in the outer wake, which rises along the 10-degree freestream
@@ -51,12 +54,10 @@ CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000
 
 # Coupling: FVM vorticity replaces the particles inside the transfer region
-TRANSFER_INSET = 8.75  # cells from the FVM box faces in to the transfer-region faces
-BLEND_WIDTH = 6  # cells over which the FVM weight rises from zero to one
-VPM_ONLY_WIDTH = 2  # cells inside the transfer faces that only the particles own
-FVM_SUBSTEPS = 4  # FVM steps per exchange; one particle step per exchange
-INTERFACE_ITERATIONS = 6  # FVM solves per exchange until the boundary trace converges
-INTERFACE_TOLERANCE = 1.0e-5  # m/s for normal velocity, 1/s for its tangential gradient
+# Coupling: the coupler's recommended interface (transfer inset 8.75, blend 6 and particle-only
+# band 2 particle spacings; sweeps until the boundary trace changes by less than 1e-5)
+FVM_SUBSTEPS = 5  # FVM steps per exchange: particle step 0.04 s, Lagrangian step number about
+# 0.75 for a particle-field strain near the cube's 18 1/s; fewer exchanges, smaller error
 
 # Time: the starting vortex is 12 chords downstream before the statistics begin
 STATISTICS_START = 12.0  # s
@@ -73,8 +74,6 @@ WAKE_STATIONS = (2.0, 5.0)  # m, inside the pure-FVM core and in the particle wa
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
 
 # Geometry derived from the inputs above
-INSET = TRANSFER_INSET * CELL_SIZE
-TRANSFER_REGION = tuple(bound + INSET * side for bound, side in zip(FVM_BOX, (1, -1) * 3))
 EXCHANGE_TIME_STEP = FVM_SUBSTEPS * FVM_TIME_STEP
 TRAILING_EDGE = 0.5 * CHORD  # m
 VPM_SLICE_Z0 = (-1.6, 8.0, -1.6, 3.2)  # m, x and y bounds of the mid-span plane
@@ -297,12 +296,6 @@ VPM_CASE = vpm.VPMCase(
 
 COUPLER_CONFIG = coupling.CouplerConfig(
     freestream_velocity=FREESTREAM_VELOCITY,
-    transfer_region_bounds=TRANSFER_REGION,
-    eta_blend_width=BLEND_WIDTH * CELL_SIZE,
-    vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,
-    interface_iterations=INTERFACE_ITERATIONS,
-    interface_normal_tolerance=INTERFACE_TOLERANCE,
-    interface_gradient_tolerance=INTERFACE_TOLERANCE,
     transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / EXCHANGE_TIME_STEP),
     backup=coupling.Backup(schedule=coupling.EveryTime(on_exchanges(BACKUP_INTERVAL))),
 )

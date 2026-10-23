@@ -42,7 +42,7 @@ WAKE = (-2.4, 14.0, -2.4, 4.0, -4.8, 4.8)  # m, cells of 4 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
 # Time, as in the coupled case
-TIME_STEP = 0.01  # s
+TIME_STEP = 0.008  # s, the coupled FVM step
 STATISTICS_START = 12.0  # s
 END_TIME = 24.0  # s
 CORES = 4

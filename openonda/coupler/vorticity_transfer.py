@@ -762,8 +762,7 @@ class VorticityTransfer:
         induction = numerics.induction
         self._slip_slab = getattr(induction, "method", None) == "slip_slab"
         self._slip_z = (float(induction.z_min), float(induction.z_max)) if self._slip_slab else None
-        self.eta_blend_width = float(cfg.eta_blend_width)
-        self.vpm_only_width = float(cfg.vpm_only_width)
+        self.eta_blend_width, self.vpm_only_width = cfg.blend_widths(self.particle_spacing)
         self.transfer_prune_threshold_abs = (
             float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
         )
@@ -962,8 +961,8 @@ class VorticityTransfer:
         self._buffered_trace_stencils = None
         # Donor cells and walls are read in the frame of a translating mesh.
         frame = MeshFrame(fvm)
-        self._box = np.asarray(
-            self.config.transfer_region_bounds or self._fvm_box, dtype=np.float64
+        self._box = self.config.transfer_region(
+            self._fvm_box, self.particle_spacing, self._slip_slab
         )
         self._cell_centre = frame.to_frame(
             np.asarray(fvm.gather_cell_centre_coordinates(), dtype=np.float64).reshape(-1, 3)

@@ -35,9 +35,14 @@ DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 
 # FVM: uniform body-fitted cells, also the particle spacing
 CELL_SIZE = 0.045  # m
-BOX_MARGIN = 1.8  # m upstream and sideways of the cube centre: keeps the near field inside
-BOX_DOWNSTREAM = 4.3  # m: the pure-FVM core extends past the vortex-formation region
-FVM_TIME_STEP = 0.01  # s
+# Box in wake scales (cylinder error study, docs/reports/2026-10-23-coupling-error-sources.md),
+# measured on the FVM-only cube: shear-layer vorticity thickness 0.078 m at the rear-face plane,
+# formation length 3.1 m from the cube centre. The core with full FVM weight starts the transfer
+# inset plus the blend width (14.75 cells) inside the box faces.
+BOX_MARGIN = 1.8  # m: side clearance 8.2 shear-layer thicknesses from the faces (3.2 from the
+# separated layers, which lie at |y| = 0.89 m behind the cube)
+BOX_DOWNSTREAM = 5.05  # m: transfer face at 1.5 formation lengths (reach R = 0.5)
+FVM_TIME_STEP = 0.01  # s, Courant number 0.22
 FVM_CORES = 4
 
 # VPM: particles in the outer wake
@@ -48,12 +53,10 @@ CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000
 
 # Coupling: FVM vorticity replaces the particles inside the transfer region
-TRANSFER_INSET = 8.75  # cells from the FVM box faces in to the transfer-region faces
-BLEND_WIDTH = 6  # cells over which the FVM weight rises from zero to one
-VPM_ONLY_WIDTH = 2  # cells inside the transfer faces that only the particles own
-FVM_SUBSTEPS = 5  # FVM steps per exchange; one particle step per exchange
-INTERFACE_ITERATIONS = 6  # FVM solves per exchange until the boundary trace converges
-INTERFACE_TOLERANCE = 1.0e-5  # m/s for normal velocity, 1/s for its tangential gradient
+# Coupling: the coupler's recommended interface (transfer inset 8.75, blend 6 and particle-only
+# band 2 particle spacings; sweeps until the boundary trace changes by less than 1e-5)
+FVM_SUBSTEPS = 5  # FVM steps per exchange: the longest stable particle step, 0.05 s, with the
+# particle-field strain of 18.4 1/s (Lagrangian step number 0.92); fewer exchanges, smaller error
 END_TIME = 100.0  # s
 
 # Observations
@@ -69,8 +72,6 @@ PROFILE_SPACING = 2.0 * CELL_SIZE  # m
 
 # Geometry derived from the inputs above
 FVM_BOX = (-BOX_MARGIN, BOX_DOWNSTREAM, -BOX_MARGIN, BOX_MARGIN, -BOX_MARGIN, BOX_MARGIN)
-INSET = TRANSFER_INSET * CELL_SIZE
-TRANSFER_REGION = tuple(bound + INSET * side for bound, side in zip(FVM_BOX, (1, -1) * 3))
 CUBE_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 EXCHANGE_TIME_STEP = FVM_SUBSTEPS * FVM_TIME_STEP
 
@@ -239,12 +240,6 @@ VPM_CASE = vpm.VPMCase(
 
 COUPLER_CONFIG = coupling.CouplerConfig(
     freestream_velocity=FREESTREAM_VELOCITY,
-    transfer_region_bounds=TRANSFER_REGION,
-    eta_blend_width=BLEND_WIDTH * CELL_SIZE,
-    vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,
-    interface_iterations=INTERFACE_ITERATIONS,
-    interface_normal_tolerance=INTERFACE_TOLERANCE,
-    interface_gradient_tolerance=INTERFACE_TOLERANCE,
     transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / EXCHANGE_TIME_STEP),
     backup=coupling.Backup(schedule=coupling.EveryTime(on_exchanges(BACKUP_INTERVAL))),
 )

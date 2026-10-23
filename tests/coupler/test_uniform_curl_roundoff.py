@@ -18,7 +18,7 @@ def test_cached_buffered_transfer_preserves_uniform_flow_and_resolved_weak_curl(
     donors = coordinates.reshape(3, -1).T
     viscous = SimpleNamespace(scheme="gbd", gbd_threshold_mode="absolute", gbd_threshold=0.0)
     driver = SimpleNamespace(
-        config=CouplerConfig(),
+        config=CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0),
         kinematic_viscosity=0.01,
         fvm_box=np.array([-1.0, 1.0] * 3),
         vpm_core_radius_ratio=1.0,

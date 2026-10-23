@@ -7,11 +7,11 @@ A finite wing with a NACA 4412 section (4% camber at 40% chord, 12% thickness) a
 | Chord $c$; span $b$ | 1 m along $x$, centred on the origin; 5 m, tips at $z=\pm2.5$ m |
 | Freestream $\mathbf{U}_\infty$ | $(\cos10^\circ,\sin10^\circ,0)$ m/s |
 | Density $\rho$; viscosity $\nu=U_\infty c/Re$ | 1 kg/m³; 0.001 m²/s |
-| FVM box | $[-1.6,2.72]\times[-1.04,1.36]\times[-3.6,3.6]$ m, about 1.2 million cells |
-| Transfer region | 8.75 cells inside the box faces |
+| FVM box | $[-1.6,2.72]\times[-1.15,1.45]\times[-3.6,3.6]$ m, about 1.3 million cells |
+| Transfer region | 8.75 particle spacings inside the box faces (the coupler default) |
 | VPM domain; outflow fringe | $[-3.2,24]\times[-2.4,6.4]\times[-4.8,4.8]$ m; $x\in[12,24]$ m |
 | Cell and particle spacing | 0.04 m, $c/25$ |
-| FVM step; exchange step | 0.01 s; 0.04 s |
+| FVM step; exchange step | 0.008 s; 0.04 s |
 | End time; statistics | 24 s; $t\ge12$ s |
 
 ## Physics and numerics
@@ -20,8 +20,8 @@ A finite wing with a NACA 4412 section (4% camber at 40% chord, 12% thickness) a
 
 The layout follows the coupling rules found with the [cylinder](../01_cylinder_shedding_flow/assets/coupling_findings.md):
 
-- **Box.** The region where FVM vorticity is used unblended lies 16.75 cells (0.67 m) inside the box faces. It reaches $0.43c$ ahead of the leading edge, $0.43c$ beyond each tip, $0.5c$ below and $0.7c$ above the wing, and $1.55c$ behind the trailing edge. It therefore holds the whole wall, the roll-up of the tip vortices and the separating suction-side shear layer, and the coupling boundary stays out of the wing's near field. Behind the trailing edge the wake rises along the freestream, about $0.27c$ at the box end.
-- **Exchange step.** Four FVM steps per exchange (0.04 s). The particle step must stay below $1/\max|S|$ at the wall; the solver stops with the measured ceiling if it does not.
+- **Box.** The box follows the rules of the [cylinder error study](../../../docs/reports/2026-10-23-coupling-error-sources.md). The region where FVM vorticity is used unblended starts the transfer inset plus the blend width (14.75 cells, 0.59 m) inside the box faces. With a shear-layer thickness of about $0.1c$ at $Re=1000$ (the $3.2c/\sqrt{Re}$ scaling the study confirmed on the cylinder and measured as $0.078$ m on the cube), it keeps at least five thicknesses below the wing, above the wake where it leaves the core (rising along the freestream to $0.33c$), and beyond each tip. It reaches $0.51c$ ahead of the leading edge and holds $1.6c$ of wake behind the trailing edge, which contains the roll-up of the tip vortices.
+- **Exchange step.** The coupling error grows with the number of exchanges per convective time, so the particle step is long. Five FVM steps of 0.008 s (Courant number 0.2) give 0.04 s, a Lagrangian step number of about 0.75 if the wing's particle-field strain is near the cube's 18 s⁻¹; the solver stops with the measured ceiling if the step is too long. Interface sweeps continue until the boundary trace changes by less than $10^{-5}$ (the coupler default).
 - **Outflow.** The trailing vortices are steady and reach the downstream face. They fade through a 12 m [outflow fringe](../../../docs/vpm.md#stabilization) instead of being cut, so the downwash they induce at the wing stays close to that of semi-infinite vortices, as in the reference. The VPM domain rises with the freestream, $\tan10^\circ\approx0.18$ m per metre downstream.
 - **Statistics.** The impulsive start sheds a starting vortex. After 12 s it is 12 chords, about 2.4 spans, downstream; its induced downwash at the wing is then below 1% of the trailing-vortex downwash, and the wake behind the box has been swept through the fringe. Forces, profiles and fields are averaged over $12\le t\le24$ s.
 

@@ -37,7 +37,7 @@ def solver(case_dir):
         case_dir, fvm_time_step_size=.01, exchange_time_step_size=.01, end_time=.02,
         cores=2, max_n_particles=1000,
     )
-    return coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
+    return coupler.CoupledSolver(flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0))
 
 
 with solver(directory / "first") as first:
@@ -104,7 +104,7 @@ if mode == "construction_failure":
     vpm_api.VPMSolver = fail
 solver = None
 try:
-    solver = coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
+    solver = coupler.CoupledSolver(flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0))
     with solver:
         native = solver.fvm_solver
         assert native.parallel.size == 2

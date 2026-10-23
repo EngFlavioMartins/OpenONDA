@@ -76,6 +76,9 @@ def _coupled_solver(directory, stream, motion, *, end_time=4 * EXCHANGE_STEP, ba
         run=vpm.RunPlan(end_time=end_time),
     )
     config = coupler.CouplerConfig(
+        # One sweep, so a restart must reproduce the run exactly
+        interface_iterations=1,
+        transfer_inset_spacings=0.0,
         freestream_velocity=tuple(stream),
         eta_blend_width=0.0,
         backup=backup or coupler.Backup(),
@@ -250,7 +253,7 @@ particles = vpm.VPMCase(
     ),
     run=vpm.RunPlan(end_time=0.06),
 )
-config = coupler.CouplerConfig(
+config = coupler.CouplerConfig(transfer_inset_spacings=0.0,
     freestream_velocity=stream, eta_blend_width=0.0, backup=coupler.Backup(write_at_end=False)
 )
 with coupler.CoupledSolver(flow, particles, config) as solver:

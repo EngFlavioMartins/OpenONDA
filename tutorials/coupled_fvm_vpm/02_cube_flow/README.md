@@ -6,8 +6,8 @@ The FVM resolves separation from the no-slip faces of a unit cube and its near w
 | --- | --- |
 | Cube $D$; freestream $U_\infty$ | $[-0.5,0.5]^3$ m; 1 m/s in $+x$ |
 | Density $\rho$; viscosity $\nu=U_\infty D/Re$ | 1 kg/m³; 0.001 m²/s |
-| FVM box | $[-1.8,4.3]\times[-1.8,1.8]^2$ m, about 860k cells |
-| Transfer region | 8.75 cells inside the box faces |
+| FVM box | $[-1.8,5.05]\times[-1.8,1.8]^2$ m, about 970k cells |
+| Transfer region | 8.75 particle spacings inside the box faces (the coupler default) |
 | VPM domain; outflow fringe | $[-4.5,24]\times[-3,3]^2$ m; $x\in[12,24]$ m |
 | Cell and particle spacing | 0.045 m |
 | FVM step; exchange step | 0.01 s; 0.05 s |
@@ -19,8 +19,8 @@ The [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup) is generated f
 
 The layout follows the coupling rules found with the [cylinder](../01_cylinder_shedding_flow/assets/coupling_findings.md):
 
-- **Box.** The coupling boundary stays out of the body's near field, and the region where FVM vorticity is used unblended reaches about $1.05D$ from the centre sideways and $3.5D$ downstream, past the separated shear layers' roll-up. A box ending about $0.5D$ from the faces raised the cube drag by about 8%, as it raised the cylinder drag.
-- **Exchange step.** Fewer exchanges are more accurate, up to the particle stability limit $\Delta t_\mathrm{VPM}<1/\max|S|$. At the cube edges the start-up strain rate reaches about 15 s⁻¹, a ceiling of 0.067 s. Five FVM steps per exchange (0.05 s) leave a 25% margin for the fluctuating strain of the turbulent wake.
+- **Box.** The box follows the rules of the [cylinder error study](../../../docs/reports/2026-10-23-coupling-error-sources.md), in scales measured on the FVM-only cube over $50\le t\le100$ s: the separated shear layers have a vorticity thickness $\delta_\omega=0.078$ m at the rear-face plane, where they lie at $|y|=0.89$ m, and the formation length (centreline peak of $u_\mathrm{rms}$) is 3.1 m from the cube centre. The region where FVM vorticity is used unblended starts the transfer inset plus the blend width (14.75 cells, 0.66 m) inside the box faces. Sideways it lies 8.2 $\delta_\omega$ from the cube faces and 3.2 $\delta_\omega$ from the displaced shear layers; downstream the transfer face lies 1.5 formation lengths behind the centre (reach $R=0.5$). The study found a side clearance of 1.2 $\delta_\omega$ too small (lift amplitude −4 points) and 5 sufficient; a reach $R\ge1$ would need a box 1.6 m longer, beyond the memory of the laptop this case was set up on, and the reach changed the cylinder error by at most 2 points for $R\ge0.35$.
+- **Exchange step.** The coupling error grows with the number of exchanges per convective time, so the particle step is the longest the particle stability allows. The particle-field strain rate of the developed wake, estimated from its peak vorticity, is about 18.4 s⁻¹; five FVM steps per exchange (0.05 s) give a Lagrangian step number of 0.92. The FVM step, 0.01 s, is a Courant number of 0.22. Interface sweeps continue until the boundary trace changes by less than $10^{-5}$ (the coupler default), which the cylinder needed 1.8 times per exchange.
 - **Outflow.** Shed vortices fade through an [outflow fringe](../../../docs/vpm.md#stabilization) instead of being deleted at the domain face.
 - **Startup.** An impulsively started cube keeps a symmetric wake for a long time. A vortex of radius 0.5 m, half a side behind the rear face, swirls about an axis tilted from $z$ towards $-y$ and breaks both mirror symmetries so that the wake sheds; the reference starts from the same field. The freestream is steady from the start: the zero-pressure outlet of the reference resists a uniform transverse acceleration, so a transverse startup flow would give the two cases different startup impulses.
 

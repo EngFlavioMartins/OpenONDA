@@ -9,6 +9,13 @@ from openonda.core.simulation.forcing import VelocityRamp
 
 __all__ = ["Backup", "CouplerConfig"]
 
+# Interface widths in particle spacings, recommended by the cylinder error study
+# (docs/reports/2026-10-23-coupling-error-sources.md): the inset of the transfer region from
+# the FVM box faces, the blending ramp inside it and the particle-only band inside the ramp.
+TRANSFER_INSET_SPACINGS = 8.75
+BLEND_WIDTH_SPACINGS = 6.0
+PARTICLE_ONLY_WIDTH_SPACINGS = 2.0
+
 
 @dataclass(frozen=True, slots=True)
 class Backup:
@@ -54,11 +61,27 @@ class CouplerConfig:
     freestream: VelocityRamp | None = None
     """Optional background velocity history; part of the restart configuration."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
-    """FVM-derived bounds (xmin, xmax, ymin, ymax, zmin, zmax), in m."""
-    eta_blend_width: float = 0.0
-    """Width of the smooth blending ramp inside the transfer faces, in m."""
-    vpm_only_width: float = 0.0
-    """VPM-owned band inside transfer faces, in m; smaller than the ramp."""
+    """Transfer-region bounds (xmin, xmax, ymin, ymax, zmin, zmax), in m.
+
+    ``None`` insets the FVM box by ``transfer_inset_spacings`` on every face (not on slip planes).
+    """
+    transfer_inset_spacings: float = TRANSFER_INSET_SPACINGS
+    """Inset of the transfer region from the FVM box faces, in particle spacings.
+
+    Used when ``transfer_region_bounds`` is ``None``; the default is the inset recommended by the
+    cylinder error study.
+    """
+    eta_blend_width: float | None = None
+    """Width of the smooth blending ramp inside the transfer faces, in m.
+
+    ``None`` uses ``BLEND_WIDTH_SPACINGS`` particle spacings, with ``PARTICLE_ONLY_WIDTH_SPACINGS``
+    for an unset particle-only band; zero disables blending.
+    """
+    vpm_only_width: float | None = None
+    """VPM-owned band inside transfer faces, in m; smaller than the ramp.
+
+    ``None`` with a given ramp width means no band.
+    """
     transfer_vorticity_cutoff: float = 0.05
     """Interior soft-pruning threshold in 1/s, at least the VPM GBD floor."""
     transfer_amplification_cap: float = 1.8
@@ -72,11 +95,15 @@ class CouplerConfig:
     """Maximum relative closure-correction fraction, in (0, 1]."""
     coupling_patch: str = "numericalBoundary"
     """Outer FVM patch receiving normal velocity and tangential gradient."""
-    interface_iterations: int = 1
-    """Maximum fixed-predictor sweeps; FVM output must fall on exchanges when above one."""
-    interface_normal_tolerance: float = 1.0e-6
+    interface_iterations: int = 6
+    """Maximum fixed-predictor sweeps; FVM output must fall on exchanges when above one.
+
+    With the tolerances below the cylinder study converged in 1.8 sweeps on average; one
+    sweep changed the drag by 3%.
+    """
+    interface_normal_tolerance: float = 1.0e-5
     """Area-weighted RMS normal-velocity residual tolerance, in m/s."""
-    interface_gradient_tolerance: float = 1.0e-6
+    interface_gradient_tolerance: float = 1.0e-5
     """Area-weighted RMS tangential-gradient residual tolerance, in 1/s."""
     backup: Backup = field(default_factory=Backup)
     """Coupled restart backups."""
@@ -107,12 +134,17 @@ class CouplerConfig:
                 raise ValueError("Interface tolerances must be finite and positive")
         for name in ("eta_blend_width", "vpm_only_width", "transfer_vorticity_cutoff"):
             value = getattr(self, name)
-            if not np.isfinite(value) or value < 0.0:
+            if value is not None and (not np.isfinite(value) or value < 0.0):
                 raise ValueError(f"{name} must be finite and non-negative")
-        if self.eta_blend_width == 0.0 and self.vpm_only_width != 0.0:
-            raise ValueError("vpm_only_width requires a positive eta_blend_width")
-        if self.eta_blend_width > 0.0 and self.vpm_only_width >= self.eta_blend_width:
-            raise ValueError("vpm_only_width must be smaller than eta_blend_width")
+        if self.eta_blend_width is None and self.vpm_only_width is not None:
+            raise ValueError("vpm_only_width requires an eta_blend_width")
+        if self.eta_blend_width is not None and self.vpm_only_width is not None:
+            if self.eta_blend_width == 0.0 and self.vpm_only_width != 0.0:
+                raise ValueError("vpm_only_width requires a positive eta_blend_width")
+            if self.eta_blend_width > 0.0 and self.vpm_only_width >= self.eta_blend_width:
+                raise ValueError("vpm_only_width must be smaller than eta_blend_width")
+        if not np.isfinite(self.transfer_inset_spacings) or self.transfer_inset_spacings < 0.0:
+            raise ValueError("transfer_inset_spacings must be finite and non-negative")
         if (
             not np.isfinite(self.transfer_amplification_cap)
             or self.transfer_amplification_cap < 1.0
@@ -130,16 +162,38 @@ class CouplerConfig:
         """Return the Cartesian freestream vector in m/s."""
         return np.asarray(self.freestream_velocity, dtype=np.float64)
 
-    def validate_transfer_region_box(self, fvm_box: tuple | np.ndarray) -> None:
+    def transfer_region(
+        self, fvm_box: tuple | np.ndarray, particle_spacing: float, slip_planes: bool
+    ) -> np.ndarray:
+        """Transfer-region bounds in m, inset from the FVM box when none are given.
+
+        Slip planes bound a planar flow in z, so the default inset leaves them in place.
+        """
+        if self.transfer_region_bounds is not None:
+            return np.asarray(self.transfer_region_bounds, dtype=np.float64)
+        inset = self.transfer_inset_spacings * float(particle_spacing)
+        offsets = np.array([inset, -inset] * 3)
+        if slip_planes:
+            offsets[4:6] = 0.0
+        return np.asarray(fvm_box, dtype=np.float64) + offsets
+
+    def blend_widths(self, particle_spacing: float) -> tuple[float, float]:
+        """Blending-ramp and particle-only widths in m, from the particle spacing when unset."""
+        if self.eta_blend_width is None:
+            spacing = float(particle_spacing)
+            return BLEND_WIDTH_SPACINGS * spacing, PARTICLE_ONLY_WIDTH_SPACINGS * spacing
+        return float(self.eta_blend_width), float(self.vpm_only_width or 0.0)
+
+    def validate_transfer_region_box(
+        self, fvm_box: tuple | np.ndarray, particle_spacing: float, slip_planes: bool
+    ) -> None:
         """Require the transfer region to lie inside the FVM domain."""
         outer = np.asarray(fvm_box, dtype=np.float64)
-        inner = (
-            outer
-            if self.transfer_region_bounds is None
-            else np.asarray(self.transfer_region_bounds, dtype=np.float64)
-        )
+        inner = self.transfer_region(outer, particle_spacing, slip_planes)
         if np.any(inner[::2] < outer[::2]) or np.any(inner[1::2] > outer[1::2]):
             raise ValueError("transfer_region_bounds must be contained within the FVM domain")
+        if np.any(inner[1::2] <= inner[::2]):
+            raise ValueError("the transfer-region inset leaves no transfer region in the FVM box")
 
     def to_dict(self) -> dict[str, object]:
         """Return the settings that change the solution, for restart validation.

@@ -185,7 +185,7 @@ def _validate_vpm_domain(vpm_case: VPMCase, config: CouplerConfig, box: np.ndarr
         # The FVM extrusion, transfer region and VPM slab share one span.
         planes = np.array([induction.z_min, induction.z_max], dtype=np.float64)
         tolerance = 1.0e-9 * max(1.0, float(np.max(np.abs(planes))))
-        transfer = box if config.transfer_region_bounds is None else config.transfer_region_bounds
+        transfer = config.transfer_region(box, numerics.viscous.particle_spacing, slip_planes=True)
         for name, bounds in (("FVM box", box), ("transfer_region_bounds", transfer)):
             z_bounds = np.asarray(bounds, dtype=np.float64)[4:6]
             if np.any(np.abs(z_bounds - planes) > tolerance):
@@ -388,7 +388,11 @@ class CoupledSolver:
         self._step_transfer_stats: dict[str, float | int] | None = None
 
         self.fvm_box = self._gather_fvm_box()
-        self.config.validate_transfer_region_box(self.fvm_box)
+        self.config.validate_transfer_region_box(
+            self.fvm_box,
+            self.vpm_particle_spacing,
+            getattr(self.vpm_case.numerics.induction, "method", None) == "slip_slab",
+        )
         _validate_vpm_domain(self.vpm_case, self.config, self.fvm_box)
         if self._is_root:
             backup = self.config.backup.schedule

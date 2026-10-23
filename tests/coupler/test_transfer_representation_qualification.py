@@ -140,7 +140,7 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         ),
     )
     with fvm.FVMSolver(case) as solver:
-        config = CouplerConfig()
+        config = CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
         coupler = SimpleNamespace(
             fvm_solver=solver,
             config=config,
@@ -224,7 +224,11 @@ def test_anisotropic_donors_preserve_constant_vorticity_target(cell_spacing, rec
     axes = [np.arange(-1.0 + d / 2, 1.0, d) for d in cell_spacing]
     position = np.array(np.meshgrid(*axes, indexing="ij")).reshape(3, -1).T
     coupler = _transfer_owner(
-        CouplerConfig(transfer_region_bounds=tuple(box), transfer_vorticity_cutoff=0.0), box, h
+        CouplerConfig(
+            transfer_region_bounds=tuple(box), transfer_vorticity_cutoff=0.0, eta_blend_width=0.0
+        ),
+        box,
+        h,
     )
     donors = _donor_cells(position, np.prod(cell_spacing))
     transfer = VorticityTransfer(coupler)
@@ -329,7 +333,9 @@ def test_curved_wall_uses_actual_triangles_without_a_shape_substitution(capped):
     donors = np.array(np.meshgrid(axis, axis, axis, indexing="ij")).reshape(3, -1).T
     donors = donors[np.linalg.norm(donors[:, :2], axis=1) > 0.5]
     coupler = _transfer_owner(
-        CouplerConfig(transfer_region_bounds=(-0.9, 0.9) * 3), np.array([-1.0, 1.0] * 3), 0.125
+        CouplerConfig(transfer_region_bounds=(-0.9, 0.9) * 3, eta_blend_width=0.0),
+        np.array([-1.0, 1.0] * 3),
+        0.125,
     )
     fvm_cells = _donor_cells(donors, 0.25**3, triangles, wall="cylinder")
     transfer = VorticityTransfer(coupler)

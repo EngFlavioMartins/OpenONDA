@@ -18,17 +18,18 @@ Both solvers advance in steps of the exchange interval $\Delta t_\mathrm{VPM}=n\
 1. The particles advance one step.
 2. The particles' velocity and its normal derivative at the FVM box faces become the FVM boundary condition, and the FVM advances $n$ steps.
 3. In the transfer region inside the box, the FVM vorticity replaces the particle representation; outside it the particle wake is kept.
-4. Steps 2–3 repeat until the boundary trace converges (`interface_iterations`, tolerances `interface_normal_tolerance` in m/s and `interface_gradient_tolerance` in 1/s). Usually one pass suffices.
+4. Steps 2–3 repeat until the boundary trace converges (at most `interface_iterations`, default 6, until the trace changes by less than `interface_normal_tolerance` in m/s and `interface_gradient_tolerance` in 1/s, default $10^{-5}$). The cylinder needed 1.8 passes per exchange on average; a single pass changed its drag by 3%.
 
 Match the freestream, viscosity and turbulence model in both solvers, and define $Re=U_\infty L/\nu$ with the same body length.
 
 ## Geometry and mesh
 
-1. **FVM box.** Mesh a box around the body with a no-slip wall and an outer patch named `numericalBoundary`. Two bounds matter, measured on the region where FVM vorticity is used unblended, which ends inside the box faces by the transfer inset, the particle-only band and the blend width:
+1. **FVM box.** Mesh a box around the body with a no-slip wall and an outer patch named `numericalBoundary`. Measure two wake scales on an FVM-only or a coarse coupled solution: the vorticity thickness $\delta_\omega$ of the separated shear layers (about $3.2L/\sqrt{Re}$ for laminar separation) and the formation length $L_f$, from the body centre to the centreline peak of the streamwise velocity fluctuation. The bounds apply to the region where FVM vorticity is used unblended, which starts the transfer inset plus the blend width inside the box faces (the particle-only band lies inside the blend). They come from the [cylinder error study](reports/2026-10-23-coupling-error-sources.md):
    - Keep the coupling boundary out of the body's near field. With the box faces half a body length from the wall, the drag and shedding frequency rise by 8–10% for both the cylinder and the cube.
-   - Extend the unblended region downstream past the vortex-formation length, where the separated shear layers roll up and the centreline velocity fluctuation peaks. The end of the mean reverse flow is not enough. In the [cylinder case](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/coupling_findings.md), a region ending inside the formation zone lowered the lift amplitude by 5%; beyond it the error levels off near 1%.
-2. **Transfer region.** `transfer_region_bounds` sets a box in metres inside the FVM box where the FVM owns the vorticity. Keep the wall-generated vorticity resolved inside it.
-3. **Resolution and exchange step.** Use equal FVM cell size and particle spacing, as both tutorials do, and refine them together. Exchange as rarely as the particle stability limit allows: the particle step must stay below $1/\max|S|$, the inverse of the largest strain rate at the wall, and the solver stops with the measured ceiling if it does not. Frequent exchanges smooth the shed vortices and lower the lift.
+   - Keep the unblended region at least $5\,\delta_\omega$ from the body sideways. At $1.2\,\delta_\omega$ the cylinder lift amplitude fell by 4 points at both $Re=150$ and $250$.
+   - Place the downstream transfer face at least one formation length beyond $L_f$, at $x\geq2L_f$. Shorter boxes changed the cylinder error by up to 2 points and can hide another error of opposite sign.
+2. **Transfer region.** By default the transfer region lies `transfer_inset_spacings` (8.75) particle spacings inside every FVM box face, except slip planes. `transfer_region_bounds` sets it explicitly, in metres. Keep the wall-generated vorticity resolved inside it.
+3. **Resolution and exchange step.** Use equal FVM cell size and particle spacing, and refine them together. Each exchange adds a small error: on the cylinder the coupling error grew with the number of exchanges per convective time, $N_x=L/(U_\infty\Delta t_\mathrm{VPM})$, as $N_x^{1.7}$, and did not depend on the FVM step. Exchange as rarely as the particle stability allows: the particle step must stay below $1/\max|S|$, the inverse of the largest strain rate of the particle field (higher than the FVM wall strain), and the solver stops with the measured ceiling if it does not. A Lagrangian step number $\max|S|\,\Delta t_\mathrm{VPM}\approx0.8$ was stable and accurate. Refine time by refining the FVM step within a fixed exchange step; refining both at a fixed $n$ does not converge the coupled solution.
 4. **Particle domain.** Give the particles room for the wake you want to observe, and fade the wake out through an [outflow fringe](vpm.md#stabilization) at least two wake wavelengths deep. Removing particles abruptly at a face changes the circulation left in the domain once per shedding half-cycle, which shakes the flow at the body.
 5. **Reference.** Compare against a flow with the same boundary conditions. Free-space particles describe an unbounded flow; walls or an inlet a few diameters from the body add blockage (at the cylinder, walls at $\pm10D$ raise the drag by about 3%).
 
@@ -52,9 +53,9 @@ The tangential velocity itself stays free, so the FVM can carry its own boundary
 
 The particles near the body are renewed from the FVM vorticity at every exchange on a uniform lattice, with grid-based diffusion and M4′ remeshing in the particle solver.
 
-- `transfer_region_bounds` (m): the transfer faces lie inside the FVM box faces by the inset. Particles in this band are never renewed and supply the boundary condition; a deeper inset, 15–20 cells for the cylinder, is more accurate, provided the box still satisfies the rules above.
-- `eta_blend_width` (m): over this inward width the FVM weight rises from zero to one; the tutorials use $6h$.
-- `vpm_only_width` (m): a band just inside the transfer faces that stays purely particle-owned; the tutorials use $2h$.
+- `transfer_inset_spacings` (default 8.75), or `transfer_region_bounds` (m): the transfer faces lie inside the FVM box faces by the inset. Particles in this band are never renewed and supply the boundary condition; a deeper inset, 15–20 spacings for the cylinder, is more accurate, provided the box still satisfies the rules above.
+- `eta_blend_width` (m; default six particle spacings): over this inward width the FVM weight rises from zero to one.
+- `vpm_only_width` (m; default two particle spacings with the default ramp, none with a given ramp): a band just inside the transfer faces that stays purely particle-owned.
 - `transfer_vorticity_cutoff` (1/s): the smallest vorticity renewed inside the region.
 - `transfer_amplification_cap`: limits how strongly a particle strength may be corrected when the particles cannot represent a sharp near-wall target.
 
@@ -70,18 +71,13 @@ The FVM keeps inertial-frame velocities on its moving mesh; the boundary trace i
 
 ## Configuration
 
-An `fvm.FVMCase` (mesh, boundaries, inner-flow output) and a `vpm.VPMCase` (particle wake and its output) in the same directory define the flow; `coupler.CouplerConfig` defines the overlap, the interface iteration and the coupled backups. `CouplerConfig.freestream` may ramp the background velocity with a `coupler.VelocityRamp`. The cube case uses:
+An `fvm.FVMCase` (mesh, boundaries, inner-flow output) and a `vpm.VPMCase` (particle wake and its output) in the same directory define the flow; `coupler.CouplerConfig` defines the overlap, the interface iteration and the coupled backups. `CouplerConfig.freestream` may ramp the background velocity with a `coupler.VelocityRamp`. With the recommended interface defaults, the cube case uses:
 
 ```python
 from openonda import coupler
 
 config = coupler.CouplerConfig(
     freestream_velocity=(1.0, 0.0, 0.0),
-    coupling_patch="numericalBoundary",
-    transfer_region_bounds=(-1.45, 1.45, -1.45, 1.45, -1.45, 1.45),
-    eta_blend_width=6 * 0.045,
-    vpm_only_width=2 * 0.045,
-    interface_iterations=3,
     backup=coupler.Backup(schedule=coupler.EveryTime(1.0)),
 )
 with coupler.CoupledSolver(FVM_CASE, VPM_CASE, config) as solver:

@@ -30,7 +30,9 @@ def test_vpm_construction_failure_closes_the_fvm_solver(tmp_path, monkeypatch):
         tmp_path, fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
     )
     with pytest.raises(ValueError, match="bad particle configuration"):
-        coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
+        coupler.CoupledSolver(
+            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
+        )
     assert len(closed) == 1 and isinstance(closed[0], ValueError)
 
 
@@ -40,7 +42,9 @@ def test_solver_backups_belong_to_the_coupled_case(tmp_path):
     )
     particles = replace(particles, backup=vpm_api.Backup(schedule=vpm_api.EverySteps(1)))
     with pytest.raises(ValueError, match="CouplerConfig.backup"):
-        coupler.CoupledSolver(flow, particles, coupler.CouplerConfig())
+        coupler.CoupledSolver(
+            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
+        )
 
 
 def test_worker_receives_local_phase_failure():
