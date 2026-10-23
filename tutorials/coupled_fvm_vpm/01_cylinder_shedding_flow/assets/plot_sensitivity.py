@@ -49,6 +49,7 @@ BASELINE = {
     "particle_spacing": CELL_SIZE,
     "interface_cell_size": CELL_SIZE,  # m, counts the inset, blend and particle-only widths
     "interface_sweeps": 0,  # 0: sweeps until the boundary trace converges
+    "repeat": 0,  # an identical run made again, to measure run-to-run scatter
     "reynolds_number": REYNOLDS_NUMBER,
 }
 STATISTICS = {
@@ -68,6 +69,7 @@ RUN_NAME = re.compile(
     r"(?:_ic(?P<interface_cell_size>[^_]+))?"
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
     r"(?:_k(?P<interface_sweeps>\d+))?(?:_re(?P<reynolds_number>[^_]+))?"
+    r"(?:_rep(?P<repeat>\d+))?"
 )
 REFERENCE_NAME = re.compile(
     r"reference(?:_h(?P<cell_size>[^_]+))?(?:_dt(?P<time_step>[^_]+))?"
