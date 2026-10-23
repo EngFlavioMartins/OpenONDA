@@ -51,7 +51,6 @@ PLOTTED_DRIVERS = {
 }
 PLOTTED_INDICATORS = {
     "trace velocity mismatch, mean": r"$\Delta u_\mathrm{trace}/U$",
-    "first-sweep gradient residual": r"$\Delta(\partial u_t/\partial n)\,D/U$",
 }
 SERIES = {
     "total": ("Coupled solver, total", COLORS["hybrid"], "o"),
@@ -67,6 +66,8 @@ FAMILY_NAMES = {
     "P": "FVM step",
     "E": "Particle step",
     "K": "Interface sweeps",
+    "B": "Box",
+    "R": "Reynolds number",
     "S": "Particle spacing",
 }
 # Each run is drawn once, in the first of these families it belongs to
@@ -76,7 +77,10 @@ FAMILY_STYLE = {
     "E": (COLORS["red"], "D"),
     "C": (COLORS["hybrid"], "o"),
     "K": (COLORS["green"], "v"),
-    "S": (COLORS["dark"], "P"),
+    "X": (COLORS["dark"], "P"),
+    "B": (COLORS["gray"], "X"),
+    "R": (COLORS["amber"], "*"),
+    "S": (COLORS["teal"], "h"),
 }
 
 
@@ -89,13 +93,13 @@ def drawn_family(entry):
     return next(f for f in [*FAMILY_STYLE, "-"] if f in [*entry["families"].split(), "-"])
 
 
-def panel_grid(n_rows, n_columns, top_cm=1.2):
+def panel_grid(n_rows, n_columns, top_cm=1.2, bottom_cm=3.2):
     """Rows of quantities and columns of families or drivers at the thesis width.
 
     The legend goes below the panels, clear of the data.
     """
     set_thesis_style()
-    height = 3.2 + top_cm + 3.0 * n_rows
+    height = bottom_cm + top_cm + 3.0 * n_rows
     figure, axes = plt.subplots(
         n_rows,
         n_columns,
@@ -107,7 +111,7 @@ def panel_grid(n_rows, n_columns, top_cm=1.2):
     centered_subplots_adjust(
         figure,
         outer=0.15 if n_columns > 1 else 0.25,
-        bottom=3.2 / height,
+        bottom=bottom_cm / height,
         top=1.0 - top_cm / height,
         wspace=0.12,
         hspace=0.12,
@@ -487,7 +491,7 @@ def indicator_figure(rows, correlations):
     """|e_c| of every run against the developed mean of each plotted indicator."""
     if not any(key[0] in PLOTTED_INDICATORS for key in correlations):
         return
-    figure, axes = panel_grid(len(ERRORS), len(PLOTTED_INDICATORS))
+    figure, axes = panel_grid(len(ERRORS), len(PLOTTED_INDICATORS), bottom_cm=5.2)
     for column, (name, label) in enumerate(PLOTTED_INDICATORS.items()):
         # The decade of the indicator goes in the label, clear of the axis
         exponent = int(np.floor(np.log10(np.nanmax([entry[name] for entry in rows]))))
@@ -522,7 +526,7 @@ def indicator_figure(rows, correlations):
 
 
 def factorial_summary(runs, decomposition):
-    """Main effects and interactions of the F family once all eight corners have run."""
+    """Main effects and interactions of the F family once all its corners have run."""
     factors = list(FACTORIAL_LEVELS)
     corners = [run for run in runs if "F" in run["families"].split()]
     for quantity in ERRORS:
@@ -537,13 +541,12 @@ def factorial_summary(runs, decomposition):
             + ", ".join(f"{k} {v:+.3f}" for k, v in effects.items())
         )
 
-        # Additivity of each pair of changes, the third factor at its first level
+        # Additivity of each pair of changes, any other factor at its first level
         def error_at(levels):
             corner = next(run for run in corners if all(run[n] == v for n, v in levels.items()))
             return decomposition[corner["name"]][quantity]["coupling"]
 
         for first, second in combinations(factors, 2):
-            (third,) = set(factors) - {first, second}
             low = {name: FACTORIAL_LEVELS[name][0] for name in factors}
             defect = additivity_defect(
                 error_at(low),
@@ -553,7 +556,7 @@ def factorial_summary(runs, decomposition):
                     {**low, first: FACTORIAL_LEVELS[first][1], second: FACTORIAL_LEVELS[second][1]}
                 ),
             )
-            print(f"  {first} with {second} ({third} low): additivity defect {defect:+.3f}%")
+            print(f"  {first} with {second}: additivity defect {defect:+.3f}%")
 
 
 def box_figure(families, decomposition):

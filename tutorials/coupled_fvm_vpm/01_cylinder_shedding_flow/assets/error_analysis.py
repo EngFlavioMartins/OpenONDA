@@ -31,9 +31,9 @@ ORDER_RANGE = (0.05, 8.0)  # search range of the observed order
 PARTICLE_STRAIN_RATE = 19.4  # 1/s
 
 # Family F: the 2^3 design at Re = 150, downstream box face [D], inset [cells] and n
+# Downstream box face [D] and FVM steps per exchange, at the baseline inset
 FACTORIAL_LEVELS = {
     "box_downstream": (3.36, 4.4),
-    "transfer_inset": (4.0, 14.0),
     "fvm_substeps": (2, 5),
 }
 
