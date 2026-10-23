@@ -163,7 +163,8 @@ def fit_row(kind, family, variable, quantity, fit):
 def write_table(path, rows):
     """Rows of dictionaries with the same keys, as CSV."""
     names = list(rows[0])
-    lines = [",".join(names)]
+    # Column names keep their words; a comma inside a name would split the column
+    lines = [",".join(name.replace(", ", " ") for name in names)]
     for row in rows:
         lines.append(
             ",".join(f"{row[n]:.6g}" if isinstance(row[n], float) else f"{row[n]}" for n in names)
