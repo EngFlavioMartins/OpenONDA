@@ -455,7 +455,9 @@ def box_scales(run, scales):
     scale = scales[run["reynolds_number"]]
     interface_cell = run["interface_cell_size"] / DIAMETER
     transfer_face = run["box_downstream"] - run["transfer_inset"] * interface_cell
-    bands = (run["transfer_inset"] + BLEND_WIDTH + VPM_ONLY_WIDTH) * interface_cell
+    # The particle-only band lies inside the blend width, so the FVM-weighted core starts
+    # the inset plus the blend width inside the box faces
+    bands = (run["transfer_inset"] + BLEND_WIDTH) * interface_cell
     return {
         "reach": (transfer_face - scale["L_f"]) / scale["L_f"],
         "reach, v_rms": (transfer_face - scale["L_f,v"]) / scale["L_f,v"],
