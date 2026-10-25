@@ -1,8 +1,8 @@
 # Sources of error in the coupled FVM–VPM solver: the planar cylinder at $Re=150$
 
-Technical report, 2026-10-23. Study plan: [2026-10-19-coupling-error-sources](../plans/2026-10-19-coupling-error-sources.md). Case: [tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow](../../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md), whose `./allplot.sh` draws every figure and writes every table cited here (figures in `figures/`, tables in `figures/auxiliary/`). Earlier findings: [coupling_findings.md](../../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/coupling_findings.md).
+Technical report, 2026-10-23, completed 2026-10-25 with every run of the study. Study plan: [2026-10-19-coupling-error-sources](../plans/2026-10-19-coupling-error-sources.md). Case: [tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow](../../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md), whose `./allplot.sh` draws every figure and writes every table cited here (figures in `figures/`, tables in `figures/auxiliary/`). Earlier findings: [coupling_findings.md](../../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/coupling_findings.md).
 
-Placeholders for results that are still being computed are marked **[RESULT: ...]**.
+All 36 coupled and 12 FVM-only runs were made with the same solver, development commits `3b4c0f23` to `97d65b09`; the later commit only changed default values that the case sets explicitly.
 
 ## 1. Summary
 
@@ -10,13 +10,16 @@ The coupled error of the planar cylinder splits into the error of the FVM discre
 
 - **The coupling error is an error added at each transfer.** On the baseline cells it follows the number of exchanges per convective time, $N_x=D/(U\Delta t_p)$, as $e_c=c_0-a\,N_x^{1.7\text{–}1.75}$ with $R^2=1.000$ over six runs that vary the particle step and the FVM step independently. Halving the FVM step at a fixed particle step leaves it unchanged (lift amplitude −1.42% at $n=5$, −1.35% at $n=10$).
 - **The coupled solver therefore has no temporal order at a fixed exchange ratio.** Refining both steps together ($n=2$) makes the coupling error grow: −1.5%, −2.8%, −7.1% in lift amplitude at $N_x=31$, 63, 125. The coupled solver converges in time only with the particle step held at its largest stable value and the FVM step refined under it; it then inherits the FVM temporal order.
-- **Spatially, the coupled solution converges with the FVM towards a value offset by the transfer error.** At fixed steps and a fixed interface, the total lift-amplitude error is −9.6%, −8.0%, −6.5% at $h/D=0.08$, 0.0566, 0.04 and extrapolates to −4.5% ($\pm$9%); the FVM part converges with order 1.5 and the coupling part changes sign. Three levels do not give a reliable order for the coupled solver; the data are consistent with the FVM spatial order plus a coupling offset set by $N_x$.
+- **Spatially, the coupled solution converges with the FVM towards a value offset by the transfer error.** At a fixed particle step ($\Delta t_p=0.04$ s, $N_x=25$) and a fixed interface, the total lift-amplitude error is −10.4%, −7.7%, −5.2% at $h/D=0.08$, 0.0566, 0.04; the FVM part converges with order 1.5, and the coupling part (+2.2%, −0.9%, −1.35%) changes sign and approaches the −1.4% that $N_x=25$ sets on the baseline cells. The Strouhal-number coupling error falls monotonically (+3.1%, +1.0%, +0.35%). Three levels do not give an order for the coupled solver. A fourth level, $h/D=0.0283$, was inadmissible at the same particle step: the particle-field strain rate rose from 19.4 to 25.8 s⁻¹, $\Lambda=1.03$. The largest stable particle step therefore shrinks under refinement and must be chosen for the finest cells.
 - **FVM only:** spatial order 1.5–2.0 (lift amplitude) and 1.7 (Strouhal number), temporal order 0.9 (lift amplitude) and 1.7 (Strouhal number), mean drag converged within 0.2–0.6%. For the lift amplitude the spatial error is negative and the temporal error positive, so refining both together hides part of each.
 - **Error budget at the baseline** ($h/\delta_\omega=0.15$, $C_f=0.2$, $n=5$, $\Lambda=0.78$, $N_x=25$): total $e$ = −0.22% (drag), −4.53% (lift amplitude), −0.90% (Strouhal number), of which the FVM part is −0.14%, −3.11%, −1.22% and the coupling part −0.09%, −1.42%, +0.33%. The coupling part is $c_0$ (−1.0% in lift amplitude, not removed by fewer transfers) plus the transfer part (−0.4% at $N_x=25$).
-- **FVM box:** the side clearance, in shear-layer thicknesses $\delta_\omega$, is the box parameter that matters and that carries over between Reynolds numbers: at $c\approx1.2\,\delta_\omega$ the lift-amplitude coupling error grows by 4.0 points at $Re=150$ and 4.4 points at $Re=250$. The downstream reach in formation lengths changes the error by at most about 2 points for $R\ge0.35$, without a common trend at the two Reynolds numbers. A too-short downstream box looks more accurate at $Re=150$ (+0.7% against −1.4%) because its error cancels the transfer error.
+- **FVM box:** the side clearance, in shear-layer thicknesses $\delta_\omega$, is the box parameter that matters and that carries over between Reynolds numbers. Relative to the widest box, the lift-amplitude coupling error grows by 4.0 / 2.2 / 0.6 points at $c\approx1.2$ / 1.9 / 2.7 at $Re=150$, and by 4.4 / 2.4 / 1.3 points at $c\approx1.3$ / 2.0 / 2.75 at $Re=250$; $c\approx5$ makes it small at both. The downstream reach in formation lengths changes the error by at most about 2 points for $R\ge0.35$, without a common trend at the two Reynolds numbers. A too-short downstream box looks more accurate at $Re=150$ (+0.7% against −1.4%) because its error cancels the transfer error.
+- **Box and exchange errors do not add** (2×2 factorial, downstream face 3.36/4.4 D × $n$=2/5): more exchanges move the lift-amplitude coupling error from −1.42% to −2.82% in the long box but from +0.68% to +2.02% in the short one (additivity defect 2.75 points). More exchanges increase the magnitude in both and lower the Strouhal number in both. Size the box first.
+- **Transfer inset:** 4, 8.75 and 14 spacings give −1.67%, −1.42%, −1.29% in lift amplitude (drag −0.15%, −0.09%, −0.04%). A smaller rewritten volume reduces the error, so the vorticity transfer contributes to the per-exchange error; the effect over this range is a quarter of the $N_x$ effect between 25 and 63.
+- **Repeatability:** a repeat of the baseline reproduces its coupling errors within 0.01 points, so GPU summation order does not limit any comparison in this report.
 - **Interface iteration:** two sweeps per exchange, or a boundary-trace tolerance of $10^{-5}$ (1.8 sweeps on average), keep the iteration error below 0.15 points; one sweep costs +3.0% in drag and +2.1% in lift amplitude.
-- **In-run indicator:** the developed mean of the boundary-trace velocity mismatch correlates with the lift-amplitude coupling error ($r=0.84$ over 23 runs); every run with a mismatch below $3.5\times10^{-3}U$ has $\lvert e_c\rvert\le2.1\%$ in lift amplitude. It is a weaker indicator for drag and Strouhal number ($r\approx0.4$).
-- **Another Reynolds number:** at $Re=250$ with the same rules the coupling error is −0.14% (drag), −1.93% (lift amplitude), +0.53% (Strouhal number) at $n=5$ ($\Lambda=1.0$, stable) and −0.19%, −2.01%, +0.50% at $n=4$ ($\Lambda=0.8$). Matching $\Lambda$ does not match the error of $Re=150$; matching $N_x$ comes closer, with an offset of about −0.5 points in lift amplitude.
+- **In-run indicator:** the developed mean of the boundary-trace velocity mismatch correlates with the lift-amplitude coupling error ($r=0.82$ over 36 runs); every run with a mismatch below $3.5\times10^{-3}U$ has $\lvert e_c\rvert\le2.1\%$ in lift amplitude. It is a weaker indicator for drag and Strouhal number ($r\approx0.4$).
+- **Another Reynolds number:** at $Re=250$ with the same rules the coupling error is −0.14% (drag), −1.93% (lift amplitude), +0.53% (Strouhal number) at $n=5$ ($\Lambda=1.0$, stable) and −0.19%, −2.01%, +0.50% at $n=4$ ($\Lambda=0.8$). Matching $\Lambda$ does not match the error of $Re=150$. From $n=5$ to $n=2$ the drag and Strouhal number fall at $Re=100$, 150 and 250 alike (0.3–1.0 points), but the lift amplitude falls by 1.40 points at 150, 0.71 at 250 and not at all at 100 (+0.04): the direction of the $N_x$ trend carries over, its size does not.
 
 ## 2. The question, and why naive refinement misleads
 
@@ -220,6 +223,17 @@ Figure: `figures/error_decomposition_C_X_T2`.
 
 **Space and time together (C).** The coupling error changes sign under refinement (+1.9%, −1.3%, −2.8% in lift amplitude), and the total error decreases only because the FVM part, which dominates on coarse cells, falls faster than the coupling part grows. A user refining this way would see apparent convergence.
 
+**Space at a fixed particle step (XP).** Family X keeps $n$ fixed, so its particle step and $N_x$ are those of $n=4$ at $\Delta t_f=0.004$ s ($N_x=63$), where the transfer error is large. Family XP holds $\Delta t_p=0.04$ s ($N_x=25$, $n=10$, $\Delta t_f=0.004$ s) and the interface widths in metres:
+
+| $h/D$ | $h/\delta_\omega$ | $e$: $\bar C_D$ / $\hat C_L$ / $St$ [%] | $e_f$ | $e_c$ |
+| --- | --- | --- | --- | --- |
+| 0.08 | 0.30 | +1.11 / −10.36 / −0.63 | −0.47 / −12.53 / −3.70 | +1.58 / +2.17 / +3.07 |
+| 0.0566 | 0.22 | −0.50 / −7.67 / −1.07 | −0.24 / −6.77 / −2.07 | −0.26 / −0.90 / +1.00 |
+| 0.04 | 0.15 | −0.34 / −5.18 / −0.83 | −0.28 / −3.83 / −1.18 | −0.06 / −1.35 / +0.35 |
+| 0.0283 | 0.11 | inadmissible: $\Lambda=1.03$ at $\Delta t_p=0.04$ s | | |
+
+The total lift-amplitude error falls monotonically and stays dominated by the FVM part. The coupling error of the Strouhal number falls monotonically; that of the lift amplitude changes sign and reaches the value set by $N_x=25$ on the baseline cells. The finest level stopped at its first particle step: on $h=0.0283$ m the largest particle-field strain rate is 25.8 s⁻¹ (19.4 s⁻¹ on $h=0.04$ m), so the fixed particle step exceeded the stability limit. A spatial study at a fixed exchange step must therefore choose that step for its finest level.
+
 ### 5.4 Drivers of the coupling error (families T2, P, E)
 
 Figure: `figures/error_drivers_T2_P_E`, the coupling error against $U\Delta t_p/D$ (with $\Lambda$) and against $N_x$, for the six runs on the baseline cells.
@@ -256,18 +270,29 @@ Figure: `figures/error_box_B`, the coupling error against the reach $R$ (with $L
 | 150 | 2.97 | 2.4 | 0.35 | 4.97 | +0.49 / +0.69 / +0.66 |
 | 150 | 3.36 | 2.4 | 0.55 | 4.97 | +0.20 / +0.68 / +0.62 |
 | 150 | 4.4 | 2.4 | 1.08 | 4.97 | −0.09 / −1.42 / +0.33 |
+| 150 | 4.4 | 1.8 | 1.08 | 2.70 | −0.09 / −2.00 / +0.37 |
+| 150 | 4.4 | 1.6 | 1.08 | 1.94 | −0.48 / −3.57 / +0.51 |
 | 150 | 4.4 | 1.4 | 1.08 | 1.18 | −0.44 / −5.37 / +0.71 |
 | 250 | 1.99 | 2.4 | 0.35 | 6.11 | +0.19 / −2.14 / +0.83 |
 | 250 | 2.24 | 2.4 | 0.55 | 6.11 | +0.23 / −1.60 / +0.85 |
 | 250 | 2.9 | 2.4 | 1.10 | 6.11 | +0.57 / −0.64 / +0.81 |
 | 250 | 4.4 | 2.4 | 2.33 | 6.11 | −0.14 / −1.93 / +0.53 |
+| 250 | 4.4 | 1.68 | 2.33 | 2.75 | −0.57 / −3.25 / +0.66 |
+| 250 | 4.4 | 1.52 | 2.33 | 2.01 | −0.81 / −4.36 / +0.73 |
 | 250 | 4.4 | 1.36 | 2.33 | 1.26 | −1.50 / −6.34 / +0.74 |
 
-**Side clearance.** Bringing the interface bands to within $1.2\,\delta_\omega$ of the separated shear layer changes the lift-amplitude coupling error by −3.95 points at $Re=150$ and −4.41 points at $Re=250$, and the drag error by −0.35 and −1.36 points. The clearance in shear-layer thicknesses collapses the lift-amplitude effect at the two Reynolds numbers; it is the box parameter that sets the largest error and the one that carries over. With only two clearances per Reynolds number, the threshold lies between $1.2$ and $5.0\,\delta_\omega$; $c\ge5.0\,\delta_\omega$ is what was shown to be sufficient.
+**Side clearance.** Bringing the interface bands to within $1.2\,\delta_\omega$ of the separated shear layer changes the lift-amplitude coupling error by −3.95 points at $Re=150$ and −4.41 points at $Re=250$, and the drag error by −0.35 and −1.36 points. The clearance in shear-layer thicknesses collapses the lift-amplitude effect at the two Reynolds numbers; it is the box parameter that sets the largest error and the one that carries over. With four clearances per Reynolds number the excess over the widest box decays as 4.0 / 2.2 / 0.6 points ($Re=150$, $c=1.2$ / 1.9 / 2.7) and 4.4 / 2.4 / 1.3 points ($Re=250$, $c=1.3$ / 2.0 / 2.75). A clearance of $c\approx5$ makes the lateral error small; $c\approx2.7$ costs 0.6–1.3 points.
 
-**Downstream reach.** For $R\ge0.35$ the reach changes the lift-amplitude coupling error by at most about 2 points, and not in the same way at the two Reynolds numbers: at $Re=150$ shortening the box moves the error from −1.42% to +0.7%, at $Re=250$ the error varies between −2.1% and −0.6% without a monotone trend. Neither choice of formation length collapses the two. At $Re=150$ the short box looks better only because its positive error cancels the negative transfer error: a box judged by its total error alone would be chosen too small. $R\ge1$ keeps the effect of the downstream face within the scatter of the other runs at both Reynolds numbers.
+**Downstream reach.** For $R\ge0.35$ the reach changes the lift-amplitude coupling error by at most about 2 points, and not in the same way at the two Reynolds numbers: at $Re=150$ shortening the box moves the error from −1.42% to +0.7%, at $Re=250$ the error varies between −2.1% and −0.6% without a monotone trend. Neither choice of formation length collapses the two. At $Re=150$ the short box looks better only because its positive error cancels the negative transfer error: a box judged by its total error alone would be chosen too small. No minimum reach was found within $0.35\le R\le2.33$; the downstream face should lie beyond the formation point, and the reach should not be chosen by the size of the total error.
 
-**Factorial.** **[RESULT: the 2×2 design of downstream face (3.36D, 4.4D) and n (2, 5); the corner at 3.36D and n = 2 is running.]**
+**Factorial.** Coupling error $e_c$ in lift amplitude (drag, Strouhal number in brackets), in per cent:
+
+| | $n=5$ ($N_x=25$) | $n=2$ ($N_x=63$) |
+| --- | --- | --- |
+| Downstream face 4.4 D | −1.42 (−0.09, +0.33) | −2.82 (−0.68, −0.42) |
+| Downstream face 3.36 D | +0.68 (+0.20, +0.62) | +2.02 (+0.05, +0.30) |
+
+The additivity defects are 2.75 points in lift amplitude and 0.44 and 0.43 points in drag and Strouhal number. In the short box more exchanges push the lift-amplitude error further positive, in the long box further negative: the exchanges amplify the error that the box sets instead of adding their own. In both boxes they lower the Strouhal number. The box must therefore be sized before the exchange step is chosen.
 
 ### 5.7 Transfer to another Reynolds number (family R)
 
@@ -276,23 +301,38 @@ Figure: `figures/error_box_B`, the coupling error against the reach $R$ (with $L
 | 150 | 5 | 0.78 | 25 | 1.08 | 4.97 | −0.09 / −1.42 / +0.33 |
 | 250 | 5 | 1.00 | 25 | 2.33 | 6.11 | −0.14 / −1.93 / +0.53 |
 | 250 | 4 | 0.80 | 31 | 2.33 | 6.11 | −0.19 / −2.01 / +0.50 |
+| 250 | 2 | 0.40 | 63 | 2.33 | 6.11 | −0.49 / −2.64 / +0.24 |
+| 150 | 2 | 0.31 | 63 | 1.08 | 4.97 | −0.68 / −2.82 / −0.42 |
+| 100 | 5 | 0.63 | 25 | 0.35 | 4.14 | +0.06 / +0.34 / +0.18 |
+| 100 | 2 | 0.25 | 63 | 0.35 | 4.14 | −0.55 / +0.38 / −0.84 |
 
-At $Re=250$ no extrapolated value is available, so these are coupling errors against the FVM-only run of the same Reynolds number, cells and step. The particle step at $\Lambda=1.0$ is still stable. Matching $\Lambda$ ($n=4$) does not reproduce the error of $Re=150$; matching $N_x$ ($n=5$) comes slightly closer, and the change from $n=5$ to $n=4$ at $Re=250$ (−0.08 points in lift amplitude) is close to the $N_x$ trend fitted at $Re=150$ (−0.17 points). The remaining offset of about −0.5 points in lift amplitude is not explained by $\Lambda$, $N_x$, the reach or the clearance; at $Re=250$ the box is larger in flow scales than at $Re=150$. All $Re=250$ errors stay within the 2% target in drag and Strouhal number, and at the limit of it in lift amplitude.
+At $Re=250$ no extrapolated value is available, so these are coupling errors against the FVM-only run of the same Reynolds number, cells and step. The particle step at $\Lambda=1.0$ is still stable. Matching $\Lambda$ ($n=4$) does not reproduce the error of $Re=150$; matching $N_x$ ($n=5$) comes slightly closer, and the change from $n=5$ to $n=4$ at $Re=250$ (−0.08 points in lift amplitude) is close to the $N_x$ trend fitted at $Re=150$ (−0.17 points). The remaining offset of about −0.5 points in lift amplitude is not explained by $\Lambda$, $N_x$, the reach or the clearance; at $Re=250$ the box is larger in flow scales than at $Re=150$. All $Re=250$ errors stay within the 2% target in drag and Strouhal number, and at the limit of it in lift amplitude. From $n=5$ to $n=2$ the drag falls by 0.62, 0.59 and 0.35 points and the Strouhal number by 1.01, 0.75 and 0.29 points at $Re=100$, 150 and 250; the lift amplitude changes by +0.04, −1.40 and −0.71 points. The fitted exponent of section 5.4 holds at $Re=150$ only; the direction of the trend holds at all three.
 
-### 5.8 In-run indicator
+### 5.8 Transfer inset and repeatability
 
-Figure: `figures/error_indicator`, $\lvert e_c\rvert$ against the developed mean of the boundary-trace velocity mismatch for all 23 coupled runs.
+| Run | $e_c$: $\bar C_D$ / $\hat C_L$ / $St$ [%] |
+| --- | --- |
+| Inset 4 spacings | −0.15 / −1.67 / +0.28 |
+| Inset 8.75 spacings (baseline) | −0.09 / −1.42 / +0.33 |
+| Inset 14 spacings | −0.04 / −1.29 / +0.36 |
+| Baseline repeated | −0.09 / −1.41 / +0.32 |
+
+A deeper inset rewrites a smaller volume at each exchange at an unchanged number of remeshings, and it reduces the drag and lift-amplitude errors monotonically. Vorticity transfer therefore contributes to the error added per exchange; the GBD remeshing contribution is not measured separately. Over the range tested the inset changes the lift-amplitude error by 0.38 points, a quarter of the change from $N_x=25$ to 63. The default of 8.75 spacings stays; 14 gains 0.13 points at the cost of a smaller unblended core. The repeat agrees with the baseline within 0.01 points in all three statistics, so the run-to-run scatter from the GPU summation order is far below every difference reported here.
+
+### 5.9 In-run indicator
+
+Figure: `figures/error_indicator`, $\lvert e_c\rvert$ against the developed mean of the boundary-trace velocity mismatch for all 36 coupled runs.
 
 | Indicator (mean over $t\ge40$ s) | Correlation with $\lvert e_c\rvert$: $\bar C_D$ / $\hat C_L$ / $St$ / wake |
 | --- | --- |
-| Trace velocity mismatch, mean | 0.39 / **0.84** / 0.40 / 0.45 |
-| Trace velocity mismatch, maximum | 0.49 / **0.86** / 0.35 / 0.38 |
-| Outflow mismatch, mean | 0.46 / 0.59 / 0.41 / 0.38 |
-| First-sweep normal residual | −0.20 / −0.13 / −0.20 / −0.20 |
-| First-sweep gradient residual | −0.20 / −0.11 / −0.20 / −0.20 |
-| Last-sweep gradient residual | 0.14 / −0.01 / −0.03 / −0.11 |
+| Trace velocity mismatch, mean | 0.40 / **0.82** / 0.36 / 0.46 |
+| Trace velocity mismatch, maximum | 0.45 / 0.72 / 0.28 / 0.29 |
+| Outflow mismatch, mean | 0.37 / 0.38 / 0.29 / 0.21 |
+| First-sweep normal residual | −0.14 / −0.09 / −0.13 / −0.13 |
+| First-sweep gradient residual | −0.14 / −0.07 / −0.14 / −0.13 |
+| Last-sweep gradient residual | 0.07 / −0.03 / −0.09 / −0.12 |
 
-The boundary-trace mismatch follows the lift-amplitude coupling error over every family: below $3.5\times10^{-3}U$ all runs have $\lvert e_c\rvert\le2.1\%$, between 3.5 and $5\times10^{-3}U$ they have 1.2–3.0%, and the three runs above $5.5\times10^{-3}U$ (side clearance $1.2$–$1.3\,\delta_\omega$ at both Reynolds numbers, and $N_x=125$) have 5.4–7.1%. The interface-sweep residuals do not indicate the coupling error.
+The boundary-trace mismatch follows the lift-amplitude coupling error over every family: below $3.5\times10^{-3}U$ all 16 runs have $\lvert e_c\rvert\le2.1\%$, and the five runs above $5\times10^{-3}U$ (side clearances of $1.2$–$2.75\,\delta_\omega$ and $N_x=125$) have 3.2–7.1%. The interface-sweep residuals do not indicate the coupling error.
 
 ## 6. Recommendations
 
@@ -300,10 +340,10 @@ Values in flow scales, for a bluff body shedding a laminar wake, together with t
 
 | Parameter | Flow-scaled form | Recommended value | Evidence |
 | --- | --- | --- | --- |
-| Side margin | clearance $c=(m-w-D/2)/\delta_\omega$ | $c\ge5$; $c\approx1.2$ costs about 4 points of lift amplitude at both $Re$ | B |
-| Downstream transfer face | reach $R=(x_t-L_f)/L_f$ | $R\ge1$; $0.35\le R<1$ changes the error by up to 2 points | B, F |
-| Transfer inset, blend width, particle-only band | in particle core radii $\sigma=h_p$ | about 9, 6 and 2; the inset changed the error by less than 0.7 points between 4 and 20 in the earlier study | earlier study |
-| Particle step | $\Lambda=\max\lvert S\rvert\,\Delta t_p$, with the particle-field strain | the largest stable value, $\Lambda\approx0.8$ (1.0 still stable, 1.24 unstable) | E, T2, P, R |
+| Side margin | clearance $c=(m-w-D/2)/\delta_\omega$ | $c\ge5$; $c\approx2.7$ costs 0.6–1.3 points, $c\approx2$ about 2.3 and $c\approx1.2$ about 4 points of lift amplitude at both $Re$ | B |
+| Downstream transfer face | reach $R=(x_t-L_f)/L_f$ | beyond the formation point; $0.35\le R\le2.3$ changed the error by up to 2 points without a trend; never choose it by the total error | B, F |
+| Transfer inset, blend width, particle-only band | in particle core radii $\sigma=h_p$ | 8.75, 6 and 2 (the defaults); the inset changed the lift-amplitude error by 0.38 points between 4 and 14 | inset runs |
+| Particle step | $\Lambda=\max\lvert S\rvert\,\Delta t_p$, with the particle-field strain | the largest stable value on the finest cells, $\Lambda\approx0.8$ (1.0 still stable, 1.03 stopped); $\max\lvert S\rvert$ grows by a third per refinement by $\sqrt2$ | E, T2, P, R, XP |
 | Exchanges per convective time | $N_x=D/(U\Delta t_p)$ | as low as $\Lambda$ allows; the transfer part of $e_c$ grows as $N_x^{1.7}$ (−0.4% at $N_x=25$, −1.8% at 63, −6.1% at 125 in lift amplitude) | E, T2, P |
 | FVM step | Courant number $C_f$ | $C_f\le0.2$; under a fixed particle step it does not change $e_c$ | P |
 | Cell size | $h/\delta_\omega$ | 0.15 gives an FVM error of 3% in lift amplitude and 1.2% in Strouhal number; the coupling error does not fall with $h$ | X, C |
@@ -314,9 +354,9 @@ Overall behaviour of the coupled solver:
 
 | Statistic | Space (X): FVM part / coupled total | Time | $e$ at baseline [%] | $U$ of $\phi_0$ [%] |
 | --- | --- | --- | --- | --- |
-| $\bar C_D$ | converged within 0.6% / converges to −1.9% offset | no order at fixed $n$; FVM part order 0.3 | −0.22 | 0.21 |
-| $\hat C_L$ | order 1.5 / converges to −4.5% offset | no order at fixed $n$; FVM part order 0.9 | −4.53 | 2.05 |
-| $St$ | order 1.7 / converges to −2.1% offset | no order at fixed $n$; FVM part order 1.7 | −0.90 | 0.82 |
+| $\bar C_D$ | converged within 0.6% / XP: −0.34% at $h=0.04$, coupling part −0.06% | no order at fixed $n$; FVM part order 0.3 | −0.22 | 0.21 |
+| $\hat C_L$ | order 1.5 / XP: monotone, −5.2% at $h=0.04$, coupling part → −1.4% | no order at fixed $n$; FVM part order 0.9 | −4.53 | 2.05 |
+| $St$ | order 1.7 / XP: coupling part falls monotonically to +0.35% | no order at fixed $n$; FVM part order 1.7 | −0.90 | 0.82 |
 
 The coupled solver inherits the spatial order of the FVM and, at a fixed particle step, its temporal order; it adds a coupling error that does not fall with the cells and that grows with the number of exchanges. Its order as a whole is that of the FVM up to this coupling floor, which at the recommended settings is about 1% in lift amplitude ($c_0$) plus 0.4% for the exchanges.
 
@@ -324,11 +364,10 @@ The coupled solver inherits the spatial order of the FVM and, at a fixed particl
 
 - **Three levels per coupled family.** Families X and T2 have three levels each. The free-order fit then has no residual freedom, the combined first- and second-order fit cannot be made, and the uncertainty rests on the safety factor alone. The offsets of family X carry uncertainties of 2–9%.
 - **One body.** Only the circular cylinder was studied. The rules are expressed in flow scales so that they can carry over, but their transfer to other shapes is not shown.
-- **Two Reynolds numbers.** The box and transfer studies cover $Re=150$ and $250$ in laminar planar shedding; $Re=100$ has flow scales but no coupled run.
-- **Side clearance at two values.** The clearance threshold lies between $1.2$ and $5.0\,\delta_\omega$; only the upper value is shown to be sufficient.
-- **Not run.** The particle-spacing family ($h_p=h_f/2$), $K=3$ and 6, $n=6$, 20 and 40, the inset factor of the factorial and the finest constant-Courant level were dropped to finish within the week; the interface widths rest on the one-at-a-time study of 5–12 October on an older code version and a same-cell comparison.
+- **Three Reynolds numbers.** The box study covers $Re=150$ and $250$ and the exchange study $Re=100$, 150 and 250, all in laminar planar shedding. The $N_x$ exponent was fitted at $Re=150$ only.
+- **Not run.** The particle-spacing family ($h_p=h_f/2$), $K=3$ and 6, $n=6$, 20 and 40 and the inset factor of the factorial were dropped to finish within the week. The finest XP level was inadmissible at its particle step, and a second repeat stopped on a GPU memory shortage. The blend width and particle-only band were not varied.
 - **Wake velocity against the finest FVM-only run.** The wake-velocity errors are distances to the finest FVM-only run, not to an extrapolated value.
 - **Limits of the uncertainty estimate.** The least-squares estimate degrades for shallow orders and noisy data: in a synthetic check with $p=1$ and 0.1% noise, $\pm U$ covered the true error in 67–84% of cases. The statistics are averaged over $40\le t\le55$ s, about 2.7 shedding periods.
 - **Particle step and transfer count tied.** The coupler takes one particle step per exchange, so the temporal and the per-transfer parts of the coupling error are separated only by their trends, not by independent variation.
 - **Cost.** Most runs shared the GPU with another run, so their wall times are not comparable and no cost conclusion is drawn.
-- **Repeatability.** GPU summation order is not deterministic and no repeat runs were made; differences below about 0.1 percentage points are not resolved.
+- **Repeatability.** One repeat of the baseline agreed within 0.01 points; scatter of other configurations was not measured.
