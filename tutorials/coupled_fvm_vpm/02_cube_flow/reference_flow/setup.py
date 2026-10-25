@@ -62,7 +62,7 @@ def initial_velocity(position):
     return np.asarray(VELOCITY) + swirl[:, None] * np.cross(axis, offset)
 
 
-def create_solver(name: str, h: float) -> fvm.FVMSolver:
+def create_solver(name: str, h: float, time_step: float | None = None) -> fvm.FVMSolver:
     mesh = msh.CartesianMesher(
         domain=msh.BoxDomain(
             bounds=DOMAIN,
@@ -124,8 +124,11 @@ def create_solver(name: str, h: float) -> fvm.FVMSolver:
         ),
     )
     numerics = fvm.Numerics(
-        time_step_size=TIME_STEP_SIZE,
-        time_step_control=fvm.MaximumCourantTimeStep(
+        # A fixed step matches the coupled FVM step; otherwise the Courant number sets it
+        time_step_size=time_step or TIME_STEP_SIZE,
+        time_step_control=None
+        if time_step
+        else fvm.MaximumCourantTimeStep(
             maximum=MAX_COURANT_NUMBER, maximum_time_step_size=TIME_STEP_SIZE
         ),
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
@@ -176,13 +179,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--name", default="grid_h0045")
     parser.add_argument("-h", type=float, default=0.045)
+    parser.add_argument("--time-step", type=float)
     arguments = parser.parse_args()
 
-    with create_solver(arguments.name, arguments.h) as solver:
+    with create_solver(arguments.name, arguments.h, arguments.time_step) as solver:
         # The startup vortex behind the cube; a restart replaces it with the backup
         cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
         solver.set_initial_velocity(initial_velocity(cell_centres))
         solver.run(start_from=START_FROM)
+        if arguments.time_step:
+            return
         fvm.update_grid_study(
             solver,
             arguments.h,

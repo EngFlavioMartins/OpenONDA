@@ -19,6 +19,6 @@ The launcher runs these grids in sequence:
 | `grid_h00675` | 0.0675 |
 | `grid_h0045` | 0.045 |
 
-Run one grid with `python setup.py --name grid_h0045 -h 0.045`. `./allrun.sh` deletes previous results and runs the three grids from $t=0$; `./allcontinue.sh` resumes them from their latest backups. Each grid's mesh is kept as `assets/<case>_mesh.npz`.
+Run one grid with `python setup.py --name grid_h0045 -h 0.045`. `python setup.py --name grid_h0045_dt001 -h 0.045 --time-step 0.01` runs the finest grid at the fixed FVM step of the coupled case, which the coupling error needs; it is not part of the grid study. `./allrun.sh` deletes previous results and runs the three grids from $t=0$; `./allcontinue.sh` resumes them from their latest backups. Each grid's mesh is kept as `assets/<case>_mesh.npz`.
 
 Forces are sampled every 0.05 s, profiles every 0.25 s and the mid-plane $z=0$ every 1 s, on the lattice of the coupled particle slice; fields are saved every 2 s and backups every 1 s. The wall time of each step is written to `solution/<case>/performance.jsonl` for the coupled cost comparison. Outputs are under `samples/<case>/` and `solution/<case>/`. The plots under `figures/` compare mean drag, force RMS and Strouhal number; use enough developed shedding cycles before interpreting grid-convergence estimates. Run `../allplot.sh` for the coupled comparison.
