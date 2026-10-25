@@ -68,12 +68,12 @@ RUN_NAME = re.compile(
     r"(?:_h(?P<cell_size>[\d.]+))?(?:_dtf(?P<fvm_time_step>[^_]+))?"
     r"(?:_ic(?P<interface_cell_size>[^_]+))?"
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
-    r"(?:_k(?P<interface_sweeps>\d+))?(?:_re(?P<reynolds_number>[^_]+))?"
+    r"(?:_k(?P<interface_sweeps>\d+))?(?:_re(?P<reynolds_number>[\d.]+))?"
     r"(?:_rep(?P<repeat>\d+))?"
 )
 REFERENCE_NAME = re.compile(
     r"reference(?:_h(?P<cell_size>[^_]+))?(?:_dt(?P<time_step>[^_]+))?"
-    r"(?:_re(?P<reynolds_number>[^_]+))?"
+    r"(?:_re(?P<reynolds_number>[\d.]+))?"
 )
 
 

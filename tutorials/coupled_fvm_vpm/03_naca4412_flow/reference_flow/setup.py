@@ -36,7 +36,7 @@ DOMAIN = (-10.24, 30.72, -10.24, 15.36, -12.8, 12.8)  # m
 
 # Mesh: octree cells of 0.04 m over the coupled FVM box, coarsening by two in each wake box
 CELL_SIZE = 0.04  # m
-NEAR_BODY = (-1.6, 2.72, -1.04, 1.36, -3.6, 3.6)  # m, the coupled FVM box, cells of CELL_SIZE
+NEAR_BODY = (-1.6, 2.72, -1.15, 1.45, -3.6, 3.6)  # m, the coupled FVM box, cells of CELL_SIZE
 NEAR_WAKE = (-2.0, 6.0, -1.44, 2.24, -4.0, 4.0)  # m, cells of 2 CELL_SIZE
 WAKE = (-2.4, 14.0, -2.4, 4.0, -4.8, 4.8)  # m, cells of 4 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
