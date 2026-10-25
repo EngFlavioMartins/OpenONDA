@@ -20,7 +20,8 @@ CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 FVM_BOX = (-1.8, 4.3, -1.8, 1.8)  # m, x and y bounds in the mid-plane
 WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, bounds of the reference and particle slices
-DEVELOPED_FLOW = 40.0  # s, start of the time averages
+DEVELOPED_FLOW = 30.0  # s, start of the time averages
+STATISTICS_END = 60.0  # s, end of the coupled run; the reference is cut to the same window
 
 # Mid-plane slices: the reference FVM, the coupled FVM inside its box, the particles everywhere
 REFERENCE = CASE_DIR / "reference_flow/samples/grid_h0045/slice_z0.pvd"
@@ -244,7 +245,7 @@ def main():
     # The turbulent wake decorrelates between the runs, so the developed flow is compared
     # by its time mean; each run is averaged over all its own states
     def time_mean(times, paths, fields_of):
-        states = [fields_of(path) for time, path in zip(times, paths) if time >= DEVELOPED_FLOW]
+        states = [fields_of(path) for time, path in zip(times, paths) if DEVELOPED_FLOW <= time <= STATISTICS_END]
         return [np.mean([state[k] for state in states], axis=0) for k in range(2)], len(states)
 
     reference, n_reference = time_mean(reference_times, reference_paths, reference_fields)
@@ -278,8 +279,9 @@ def main():
         "vorticity_rms,vorticity_max",
     )
 
-    instantaneous = np.array(rows)[np.array(common.times) >= DEVELOPED_FLOW, 1:]
-    print(f"Mid-plane differences from the reference over t >= {DEVELOPED_FLOW:g} s:")
+    times = np.array(common.times)
+    instantaneous = np.array(rows)[(times >= DEVELOPED_FLOW) & (times <= STATISTICS_END), 1:]
+    print(f"Mid-plane differences from the reference over {DEVELOPED_FLOW:g} <= t <= {STATISTICS_END:g} s:")
     print(
         f"  time-mean fields ({n_reference} and {n_coupled} frames): velocity rms "
         f"{mean_row[2]:.2g}%, max {mean_row[3]:.2g}%; vorticity rms {mean_row[4]:.2g}, "

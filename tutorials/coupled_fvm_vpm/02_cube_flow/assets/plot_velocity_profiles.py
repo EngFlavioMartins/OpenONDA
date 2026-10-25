@@ -12,7 +12,8 @@ from openonda.plotting import centered_subplots_adjust, set_thesis_style
 from openonda.saved_times import match_saved_times
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-DEVELOPED_SHEDDING = 40.0  # s, start of the averaging window
+DEVELOPED_SHEDDING = 30.0  # s, start of the averaging window
+STATISTICS_END = 60.0  # s, end of the coupled run; the reference is cut to the same window
 CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 X_RANGE = (-3.0, 12.0)  # m, compared stretch of the lines
@@ -39,7 +40,7 @@ def inside_cube(x, y):
 def wake_profile(path):
     """Time-mean streamwise velocity and rms transverse velocity at each sampled x."""
     samples = np.genfromtxt(path, delimiter=",", names=True)
-    window = samples["time"] >= DEVELOPED_SHEDDING
+    window = (samples["time"] >= DEVELOPED_SHEDDING) & (samples["time"] <= STATISTICS_END)
     x, point = np.unique(samples["position_x"][window].round(6), return_inverse=True)
     count = np.bincount(point)
 

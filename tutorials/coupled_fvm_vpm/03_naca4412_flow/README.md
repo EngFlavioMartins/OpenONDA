@@ -35,7 +35,7 @@ The wing breaks the symmetry in $y$; the flow stays symmetric about mid-span, wh
 ./allplot.sh
 ```
 
-`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest coupled backup in `solution/coupled/`. The mesh is generated once and kept as `assets/coupled_naca4412_flow_mesh.npz`. The FVM runs on four MPI processes and the particles on the GPU; run the reference and the coupled case one after the other.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest coupled backup in `solution/coupled/`. The mesh is generated once and kept as `assets/coupled_naca4412_flow_mesh.npz`. The FVM runs on eight MPI processes and the particles on the GPU; run the reference after the coupled case, because together they exceed the memory of a 16 GB laptop.
 
 ## Results
 

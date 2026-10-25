@@ -44,7 +44,7 @@ CELL_SIZE = 0.04  # m, 25 cells per chord
 # Re = 1000) from the wing below, from the rising wake above, and from the tips
 FVM_BOX = (-1.6, 2.72, -1.15, 1.45, -3.6, 3.6)  # m
 FVM_TIME_STEP = 0.008  # s, Courant number 0.2
-FVM_CORES = 4
+FVM_CORES = 8
 
 # VPM: particles in the outer wake, which rises along the 10-degree freestream
 VPM_DOMAIN = (-3.2, 24.0, -2.4, 6.4, -4.8, 4.8)  # m

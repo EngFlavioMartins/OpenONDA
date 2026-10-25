@@ -11,7 +11,7 @@ The FVM resolves separation from the no-slip faces of a unit cube and its near w
 | VPM domain; outflow fringe | $[-4.5,24]\times[-3,3]^2$ m; $x\in[12,24]$ m |
 | Cell and particle spacing | 0.045 m |
 | FVM step; exchange step | 0.01 s; 0.05 s |
-| End time; statistics | 100 s; $t\ge40$ s |
+| End time; statistics | 60 s; $30\le t\le60$ s |
 
 ## Physics and numerics
 
@@ -32,18 +32,18 @@ The layout follows the coupling rules found with the [cylinder](../01_cylinder_s
 ./allplot.sh
 ```
 
-`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest coupled backup in `solution/coupled/`. The mesh is generated once and kept as `assets/coupled_cube_flow_mesh.npz`. The FVM runs on four MPI processes and the particles on the GPU. Expect several days for 100 s of flow on a laptop GPU, mostly in the FVM; `./allplot.sh` works on any completed portion once $t>40$ s.
+`./allrun.sh` deletes `solution/`, `samples/` and `figures/` and starts at $t=0$; `./allcontinue.sh` resumes from the latest coupled backup in `solution/coupled/`. The mesh is generated once and kept as `assets/coupled_cube_flow_mesh.npz`. The FVM runs on eight MPI processes and the particles on the GPU. Expect about a day for 60 s of flow on a laptop, mostly in the FVM; `./allplot.sh` works on any completed portion once $t>30$ s.
 
 ## Results
 
 | File | Content |
 | --- | --- |
-| `figures/forces` | $C_D$, $C_S$ and $C_L$ against the reference; the mean drag, side-force and lift rms and the Strouhal number over $t\ge40$ s are printed |
-| `figures/velocity_profiles` | Time-mean streamwise velocity and transverse velocity fluctuation along the centreline and along $y=0.75D$, $t\ge40$ s |
+| `figures/forces` | $C_D$, $C_S$ and $C_L$ against the reference; the mean drag, side-force and lift rms and the Strouhal number over $30\le t\le60$ s are printed |
+| `figures/velocity_profiles` | Time-mean streamwise velocity and transverse velocity fluctuation along the centreline and along $y=0.75D$, $30\le t\le60$ s |
 | `figures/velocity_profiles/t*` | Streamwise and transverse velocity along both lines at every sample time shared by both runs, every 0.25 s |
 | `figures/velocity_fields/t*`, `figures/vorticity_fields/t*` | Streamwise velocity and vorticity $\omega_z$ in the mid-plane $z=0$: the reference, the coupled flow (the FVM inside its box, dashed, and the particles outside it) and their difference, at every time both runs saved slices, every 1 s. The turbulent wakes decorrelate, so once the wake is developed these differences measure phase rather than accuracy. `figures/auxiliary/field_differences.csv` lists the rms and maximum differences |
-| `figures/mean_velocity_field`, `figures/mean_vorticity_field` | The same comparison for the time-mean fields over $t\ge40$ s, each run averaged over its own slices; the measure of accuracy for the developed wake. The rms and maximum differences are printed and listed in `figures/auxiliary/mean_field_differences.csv` |
+| `figures/mean_velocity_field`, `figures/mean_vorticity_field` | The same comparison for the time-mean fields over $30\le t\le60$ s, each run averaged over its own slices; the measure of accuracy for the developed wake. The rms and maximum differences are printed and listed in `figures/auxiliary/mean_field_differences.csv` |
 | `figures/coupling_cost` | Wall time per second of flow time of each exchange by solver part, with the mean of the coupled run and of the reference FVM; the particle count |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; every particle frame, written with each coupled backup, has an FVM frame of the same time. `assets/paraview_state.py` loads both in ParaView |
 
-The field figures compare mid-plane slices that both runs sample on one lattice, so they need the reference run with its `slice_z0` sampler. The transverse forces show no single clean shedding frequency over $t\ge40$ s, so the wakes are compared by their time means, not at equal shedding phase. Compare force statistics and mean profiles while refining the cell and particle spacing and the exchange step.
+The field figures compare mid-plane slices that both runs sample on one lattice, so they need the reference run with its `slice_z0` sampler. The transverse forces show no single clean shedding frequency over $30\le t\le60$ s, so the wakes are compared by their time means, not at equal shedding phase. Compare force statistics and mean profiles while refining the cell and particle spacing and the exchange step.

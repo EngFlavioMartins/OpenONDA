@@ -10,7 +10,8 @@ from openonda.plotting import save_validation_figure, validation_legend, validat
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 REFERENCE = CASE_DIR / "reference_flow/samples/grid_h0045/forces_history.csv"
-DEVELOPED_SHEDDING = 40.0  # s, start of the statistics window
+DEVELOPED_SHEDDING = 30.0  # s, start of the statistics window
+STATISTICS_END = 60.0  # s, end of the coupled run; the reference is cut to the same window
 CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 COEFFICIENTS = {
@@ -27,7 +28,7 @@ def read_forces(path):
 
 def shedding_statistics(forces):
     """Mean drag, transverse force fluctuations and Strouhal number over developed shedding."""
-    window = forces["time"] >= DEVELOPED_SHEDDING
+    window = (forces["time"] >= DEVELOPED_SHEDDING) & (forces["time"] <= STATISTICS_END)
     time = forces["time"][window]
     side = forces["side_force_coefficient"][window]
     lift = forces["lift_coefficient"][window]
@@ -51,7 +52,7 @@ def main():
 
     # Developed-shedding statistics and the coupled deviation from the reference
     expected, measured = shedding_statistics(reference), shedding_statistics(coupled)
-    print(f"Developed shedding, t >= {DEVELOPED_SHEDDING:g} s")
+    print(f"Developed shedding, {DEVELOPED_SHEDDING:g} <= t <= {STATISTICS_END:g} s")
     for name in expected:
         deviation = 100.0 * (measured[name] / expected[name] - 1.0)
         print(

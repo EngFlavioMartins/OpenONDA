@@ -43,7 +43,7 @@ BOX_MARGIN = 1.8  # m: side clearance 8.2 shear-layer thicknesses from the faces
 # separated layers, which lie at |y| = 0.89 m behind the cube)
 BOX_DOWNSTREAM = 5.05  # m: transfer face at 1.5 formation lengths (reach R = 0.5)
 FVM_TIME_STEP = 0.01  # s, Courant number 0.22
-FVM_CORES = 4
+FVM_CORES = 8
 
 # VPM: particles in the outer wake
 VPM_DOMAIN = (-4.5, 24.0, -3.0, 3.0, -3.0, 3.0)  # m
@@ -57,7 +57,7 @@ PARTICLE_LIMIT = 2_000_000
 # band 2 particle spacings; sweeps until the boundary trace changes by less than 1e-5)
 FVM_SUBSTEPS = 5  # FVM steps per exchange: the longest stable particle step, 0.05 s, with the
 # particle-field strain of 18.4 1/s (Lagrangian step number 0.92); fewer exchanges, smaller error
-END_TIME = 100.0  # s
+END_TIME = 60.0  # s, statistics over 30 <= t <= 60 s
 
 # Observations
 FORCE_INTERVAL = 0.05  # s
