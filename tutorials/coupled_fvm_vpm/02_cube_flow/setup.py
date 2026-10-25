@@ -55,8 +55,9 @@ PARTICLE_LIMIT = 2_000_000
 # Coupling: FVM vorticity replaces the particles inside the transfer region
 # Coupling: the coupler's recommended interface (transfer inset 8.75, blend 6 and particle-only
 # band 2 particle spacings; sweeps until the boundary trace changes by less than 1e-5)
-FVM_SUBSTEPS = 5  # FVM steps per exchange: the longest stable particle step, 0.05 s, with the
-# particle-field strain of 18.4 1/s (Lagrangian step number 0.92); fewer exchanges, smaller error
+FVM_SUBSTEPS = 4  # FVM steps per exchange: particle step 0.04 s, Lagrangian step number about
+# 0.8 for a particle-field strain up to 20 1/s (max vorticity 21 1/s at t = 4 s); a margin below 1,
+# because the wing's strain grew to 25 1/s in its developing wake
 END_TIME = 60.0  # s, statistics over 30 <= t <= 60 s
 
 # Observations

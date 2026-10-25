@@ -56,8 +56,8 @@ PARTICLE_LIMIT = 2_000_000
 # Coupling: FVM vorticity replaces the particles inside the transfer region
 # Coupling: the coupler's recommended interface (transfer inset 8.75, blend 6 and particle-only
 # band 2 particle spacings; sweeps until the boundary trace changes by less than 1e-5)
-FVM_SUBSTEPS = 5  # FVM steps per exchange: particle step 0.04 s, Lagrangian step number about
-# 0.75 for a particle-field strain near the cube's 18 1/s; fewer exchanges, smaller error
+FVM_SUBSTEPS = 4  # FVM steps per exchange: particle step 0.032 s, Lagrangian step number 0.8
+# for the particle-field strain of 25 1/s measured at t = 5.5 s; 0.04 s stopped there at 1.005
 
 # Time: the starting vortex is 12 chords downstream before the statistics begin
 STATISTICS_START = 12.0  # s

@@ -11,7 +11,7 @@ A finite wing with a NACA 4412 section (4% camber at 40% chord, 12% thickness) a
 | Transfer region | 8.75 particle spacings inside the box faces (the coupler default) |
 | VPM domain; outflow fringe | $[-3.2,24]\times[-2.4,6.4]\times[-4.8,4.8]$ m; $x\in[12,24]$ m |
 | Cell and particle spacing | 0.04 m, $c/25$ |
-| FVM step; exchange step | 0.008 s; 0.04 s |
+| FVM step; exchange step | 0.008 s; 0.032 s |
 | End time; statistics | 24 s; $t\ge12$ s |
 
 ## Physics and numerics
@@ -21,7 +21,7 @@ A finite wing with a NACA 4412 section (4% camber at 40% chord, 12% thickness) a
 The layout follows the coupling rules found with the [cylinder](../01_cylinder_shedding_flow/assets/coupling_findings.md):
 
 - **Box.** The box follows the rules of the [cylinder error study](../../../docs/reports/2026-10-23-coupling-error-sources.md). The region where FVM vorticity is used unblended starts the transfer inset plus the blend width (14.75 cells, 0.59 m) inside the box faces. With a shear-layer thickness of about $0.1c$ at $Re=1000$ (the $3.2c/\sqrt{Re}$ scaling the study confirmed on the cylinder and measured as $0.078$ m on the cube), it keeps at least five thicknesses below the wing, above the wake where it leaves the core (rising along the freestream to $0.33c$), and beyond each tip. It reaches $0.51c$ ahead of the leading edge and holds $1.6c$ of wake behind the trailing edge, which contains the roll-up of the tip vortices.
-- **Exchange step.** The coupling error grows with the number of exchanges per convective time, so the particle step is long. Five FVM steps of 0.008 s (Courant number 0.2) give 0.04 s, a Lagrangian step number of about 0.75 if the wing's particle-field strain is near the cube's 18 s⁻¹; the solver stops with the measured ceiling if the step is too long. Interface sweeps continue until the boundary trace changes by less than $10^{-5}$ (the coupler default).
+- **Exchange step.** The coupling error grows with the number of exchanges per convective time, so the particle step is long. Four FVM steps of 0.008 s (Courant number 0.2) give 0.032 s, a Lagrangian step number of 0.8 for the particle-field strain of 25 s⁻¹ measured near the leading edge at $t=5.5$ s. A step of 0.04 s stopped there with a Lagrangian step number of 1.005. Interface sweeps continue until the boundary trace changes by less than $10^{-5}$ (the coupler default).
 - **Outflow.** The trailing vortices are steady and reach the downstream face. They fade through a 12 m [outflow fringe](../../../docs/vpm.md#stabilization) instead of being cut, so the downwash they induce at the wing stays close to that of semi-infinite vortices, as in the reference. The VPM domain rises with the freestream, $\tan10^\circ\approx0.18$ m per metre downstream.
 - **Statistics.** The impulsive start sheds a starting vortex. After 12 s it is 12 chords, about 2.4 spans, downstream; its induced downwash at the wing is then below 1% of the trailing-vortex downwash, and the wake behind the box has been swept through the fringe. Forces, profiles and fields are averaged over $12\le t\le24$ s.
 
