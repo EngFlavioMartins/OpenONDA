@@ -1,4 +1,4 @@
-"""Absolute FVM-state replacement inside the FVM--VPM overlap."""
+"""Vorticity transfer: FVM vorticity replaces the particle vorticity inside the transfer region."""
 
 from __future__ import annotations
 
@@ -15,12 +15,12 @@ from openonda.coupler.frame import MeshFrame
 from openonda.coupler.geometry import SolidBoundary, TriangulatedWall
 from openonda.coupler.interpolation import FVMVelocityInterpolator
 from openonda.coupler.reporting import format_coupler_log
-from openonda.coupler.stable_renewal import (
-    StableRenewalLattice,
-    VortexInvariants,
-    build_stable_renewal_lattice,
-    renew_stable_overlap,
-    vortex_invariant_residual,
+from openonda.coupler.transfer_lattice import (
+    TransferLattice,
+    VortexMoments,
+    build_transfer_lattice,
+    transfer_on_lattice,
+    vortex_moment_residual,
 )
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ _PARTICLE_REDUCTION_CHUNK_SIZE = 65_536
 
 
 def _smoothstep(values: np.ndarray | float, lower: float, upper: float) -> np.ndarray:
-    """C1 Hermite ramp for the solid and mesh confidence tapers."""
+    """C1 Hermite ramp of the fluid weight next to the wall."""
     span = float(upper) - float(lower)
     if abs(span) < np.finfo(np.float64).tiny:
         return np.where(np.asarray(values, dtype=np.float64) >= upper, 1.0, 0.0)
@@ -42,14 +42,18 @@ def _smoothstep(values: np.ndarray | float, lower: float, upper: float) -> np.nd
     return phase * phase * (3.0 - 2.0 * phase)
 
 
-def required_renewal_buffer_length(
+def remeshing_extension_length(
     freestream_velocity: np.ndarray | list[float] | tuple[float, ...],
-    coupling_time_step: float,
+    coupling_time_step_size: float,
     particle_spacing: float,
 ) -> float:
-    """Return the release travel plus complete M4' support required by renewal."""
+    """Return the outward extension ``L_remesh`` of the remeshing region, in m.
+
+    It holds the distance a particle travels in one coupling interval, with a
+    safety factor of 1.5, plus the two-spacing M4' support.
+    """
     velocity = np.asarray(freestream_velocity, dtype=np.float64).reshape(3)
-    dt = float(coupling_time_step)
+    dt = float(coupling_time_step_size)
     spacing = float(particle_spacing)
     if (
         not np.all(np.isfinite(velocity))
@@ -58,18 +62,23 @@ def required_renewal_buffer_length(
         or not np.isfinite(spacing)
         or spacing <= 0.0
     ):
-        raise ValueError("renewal buffer inputs must be finite and physically valid")
-    # Advection travel carries a 1.5 safety factor.
+        raise ValueError(
+            "the free-stream velocity, coupling time step and particle spacing must be finite, "
+            "with a non-negative time step and a positive spacing"
+        )
     return 1.5 * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
 
 
 @dataclass(frozen=True)
 class TransferResult:
-    """Particle population, represented-state and conservation budgets for renewal.
+    """Particle counts, representation residuals and conservation of one vorticity transfer.
 
-    Strengths are in m³/s, first moments in m⁴/s, and relative errors are
-    dimensionless. Raw mismatch and applied correction are recorded separately
-    from the final circulation/impulse residual.
+    Strengths are in m³/s, linear impulse in m⁴/s, angular impulse in m⁵/s and
+    relative errors are dimensionless. The ``transfer_*`` fields describe the
+    transfer-lattice particles: the raw mismatch before the moment correction,
+    the applied correction and the remaining error of the total strength and
+    impulse. The ``particle_set_*`` fields describe the removal of the weakest
+    particles when the particle capacity is reached.
     """
 
     n_particles_before: int
@@ -89,8 +98,7 @@ class TransferResult:
     state_change_vortex_strength_net: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
-    eta_blending_enabled: bool = False
-    transfer_method: str = "buffered_m4_renewal"
+    blending_enabled: bool = False
     mapped_target_nodes: int = 0
     excluded_solid_target_nodes: int = 0
     excluded_solid_vortex_strength_l1: float = 0.0
@@ -99,39 +107,39 @@ class TransferResult:
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
     maximum_mapped_vortex_strength: float = 0.0
-    renewed_input_particles: int = 0
-    renewed_output_particles: int = 0
+    transfer_input_particles: int = 0
+    transfer_output_particles: int = 0
     preserved_outer_particles: int = 0
     coalesced_outer_particles: int = 0
-    pruned_lattice_nodes: int = 0
-    pruned_vortex_strength_l1: float = 0.0
-    pruned_vortex_strength_fraction: float = 0.0
-    population_pruned_particles: int = 0
-    population_pruned_vortex_strength_fraction: float = 0.0
-    population_pruned_velocity_bound: float = 0.0
-    renewal_cfl: float = 0.0
-    renewal_raw_vortex_strength_error: float = 0.0
-    renewal_applied_vortex_strength_correction: float = 0.0
-    renewal_conservation_error: float = 0.0
-    renewal_vortex_strength_tolerance: float = 0.0
-    renewal_raw_linear_impulse_error: float = 0.0
-    renewal_applied_linear_impulse_correction: float = 0.0
-    renewal_linear_impulse_error: float = 0.0
-    renewal_linear_impulse_tolerance: float = 0.0
-    renewal_raw_angular_impulse_error: float = 0.0
-    renewal_applied_angular_impulse_correction: float = 0.0
-    renewal_angular_impulse_error: float = 0.0
-    renewal_applied_particle_strength_fraction: float = 0.0
-    population_renewal_raw_vortex_strength_error: float = 0.0
-    population_renewal_applied_vortex_strength_correction: float = 0.0
-    population_renewal_conservation_error: float = 0.0
-    population_renewal_raw_linear_impulse_error: float = 0.0
-    population_renewal_applied_linear_impulse_correction: float = 0.0
-    population_renewal_linear_impulse_error: float = 0.0
-    population_renewal_applied_particle_strength_fraction: float = 0.0
-    representation_residual_before_prune: float | None = None
-    representation_residual_after_prune: float | None = None
-    maximum_transfer_amplification: float = 0.0
+    removed_lattice_nodes: int = 0
+    removed_vortex_strength_l1: float = 0.0
+    removed_vortex_strength_fraction: float = 0.0
+    particle_set_removed_particles: int = 0
+    particle_set_removed_vortex_strength_fraction: float = 0.0
+    particle_set_removed_velocity_bound: float = 0.0
+    transfer_cfl: float = 0.0
+    transfer_raw_vortex_strength_error: float = 0.0
+    transfer_applied_vortex_strength_correction: float = 0.0
+    transfer_conservation_error: float = 0.0
+    transfer_vortex_strength_tolerance: float = 0.0
+    transfer_raw_linear_impulse_error: float = 0.0
+    transfer_applied_linear_impulse_correction: float = 0.0
+    transfer_linear_impulse_error: float = 0.0
+    transfer_linear_impulse_tolerance: float = 0.0
+    transfer_raw_angular_impulse_error: float = 0.0
+    transfer_applied_angular_impulse_correction: float = 0.0
+    transfer_angular_impulse_error: float = 0.0
+    transfer_applied_particle_strength_fraction: float = 0.0
+    particle_set_transfer_raw_vortex_strength_error: float = 0.0
+    particle_set_transfer_applied_vortex_strength_correction: float = 0.0
+    particle_set_transfer_conservation_error: float = 0.0
+    particle_set_transfer_raw_linear_impulse_error: float = 0.0
+    particle_set_transfer_applied_linear_impulse_correction: float = 0.0
+    particle_set_transfer_linear_impulse_error: float = 0.0
+    particle_set_transfer_applied_particle_strength_fraction: float = 0.0
+    representation_residual_before_removal: float | None = None
+    representation_residual_after_removal: float | None = None
+    strength_ratio: float = 0.0
 
 
 def _validate_particle_sources(
@@ -139,14 +147,14 @@ def _validate_particle_sources(
     cell_volume: np.ndarray,
     vorticity: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Normalize and validate the FVM donor arrays used by a transfer.
+    """Normalize and check the FVM cell arrays used by a vorticity transfer.
 
     Parameters
     ----------
     position : ndarray, shape (M, 3)
         FVM cell centres in metres.
     cell_volume : ndarray, shape (M,)
-        Positive donor-cell volumes in m³.
+        Positive cell volumes in m³.
     vorticity : ndarray, shape (M, 3)
         Cell-centred vorticity in 1/s.
 
@@ -162,7 +170,7 @@ def _validate_particle_sources(
         If the three leading dimensions do not match.
     RuntimeError
         If any coordinate, volume, or vorticity value is non-finite, or if a
-        donor volume is not strictly positive.
+        cell volume is not strictly positive.
     """
     source_position = np.asarray(position, dtype=np.float64).reshape(-1, 3)
     volume = np.asarray(cell_volume, dtype=np.float64).reshape(-1)
@@ -179,23 +187,23 @@ def _validate_particle_sources(
 
 
 def _particle_state_snapshot(vpm, *, slot: str = "coupler-transfer"):
-    """Capture every rollback field through VPM's typed snapshot API."""
+    """Capture every particle field needed to restore the particle state."""
     return vpm.capture_particle_snapshot(slot=slot)
 
 
 def _restore_particle_state(vpm, snapshot) -> None:
-    """Restore a transfer snapshot through VPM's typed snapshot API."""
+    """Restore a particle state captured by :func:`_particle_state_snapshot`."""
     vpm.restore_particle_snapshot(snapshot)
 
 
 @dataclass(frozen=True)
 class _AppliedParticleReductions:
-    """Bounded-memory reductions of the particle state about to be uploaded."""
+    """Moments and norms of the particle state about to be written to the VPM."""
 
-    renewed_invariants: VortexInvariants
-    renewed_vortex_strength_l1: float
+    transfer_moments: VortexMoments
+    transfer_vortex_strength_l1: float
     cast_correction_l1: float
-    renewed_position_scale: float
+    transfer_position_scale: float
     output_vortex_strength_net: np.ndarray
     maximum_output_vortex_strength: float
 
@@ -204,10 +212,10 @@ def _reduce_applied_particle_state(
     position: np.ndarray,
     vortex_strength: np.ndarray,
     *,
-    renewed_count: int,
+    transfer_count: int,
     reference_vortex_strength: np.ndarray,
 ) -> _AppliedParticleReductions:
-    """Reduce an applied storage-precision cloud without full float64 copies."""
+    """Reduce the particle state in storage precision, chunk by chunk, without float64 copies."""
     applied_position = np.asarray(position)
     applied_strength = np.asarray(vortex_strength)
     reference_strength = np.asarray(reference_vortex_strength, dtype=np.float64).reshape(-1, 3)
@@ -218,15 +226,15 @@ def _reduce_applied_particle_state(
     if reference_strength.shape != applied_strength.shape:
         raise ValueError("reference vortex strength must match the applied particle state")
     count = len(applied_position)
-    renewed = int(renewed_count)
-    if not 0 <= renewed <= count:
-        raise ValueError("renewed_count must lie inside the applied particle state")
+    n_transfer = int(transfer_count)
+    if not 0 <= n_transfer <= count:
+        raise ValueError("transfer_count must lie inside the applied particle state")
 
     total = np.zeros(3, dtype=np.float64)
     linear_impulse = np.zeros(3, dtype=np.float64)
     angular_impulse = np.zeros(3, dtype=np.float64)
     output_net = np.zeros(3, dtype=np.float64)
-    renewed_l1 = 0.0
+    transfer_l1 = 0.0
     cast_correction_l1 = 0.0
     position_scale = 0.0
     maximum_strength = 0.0
@@ -234,86 +242,95 @@ def _reduce_applied_particle_state(
         stop = min(start + _PARTICLE_REDUCTION_CHUNK_SIZE, count)
         position_storage_chunk = applied_position[start:stop]
         if not np.all(np.isfinite(position_storage_chunk)):
-            raise RuntimeError("buffered M4' renewal overflows VPM position storage precision")
+            raise RuntimeError(
+                "the vorticity transfer overflows the VPM position storage precision"
+            )
         strength_chunk = applied_strength[start:stop].astype(np.float64, copy=False)
         if not np.all(np.isfinite(strength_chunk)):
-            raise RuntimeError("buffered M4' renewal overflows VPM storage precision")
+            raise RuntimeError(
+                "the vorticity transfer overflows the VPM strength storage precision"
+            )
         magnitude = np.linalg.norm(strength_chunk, axis=1)
         output_net += strength_chunk.sum(axis=0, dtype=np.float64)
         maximum_strength = max(maximum_strength, float(magnitude.max(initial=0.0)))
 
-        renewed_stop = min(stop, renewed)
-        if renewed_stop <= start:
+        transfer_stop = min(stop, n_transfer)
+        if transfer_stop <= start:
             continue
-        local_count = renewed_stop - start
-        renewed_strength = strength_chunk[:local_count]
-        renewed_position = position_storage_chunk[:local_count].astype(np.float64, copy=False)
-        position_cross_strength = np.cross(renewed_position, renewed_strength)
-        total += renewed_strength.sum(axis=0, dtype=np.float64)
+        local_count = transfer_stop - start
+        transfer_strength = strength_chunk[:local_count]
+        transfer_position = position_storage_chunk[:local_count].astype(np.float64, copy=False)
+        position_cross_strength = np.cross(transfer_position, transfer_strength)
+        total += transfer_strength.sum(axis=0, dtype=np.float64)
         linear_impulse += 0.5 * position_cross_strength.sum(axis=0, dtype=np.float64)
         angular_impulse += (1.0 / 3.0) * np.cross(
-            renewed_position,
+            transfer_position,
             position_cross_strength,
         ).sum(axis=0, dtype=np.float64)
-        renewed_l1 += float(magnitude[:local_count].sum(dtype=np.float64))
+        transfer_l1 += float(magnitude[:local_count].sum(dtype=np.float64))
         cast_correction_l1 += float(
             np.linalg.norm(
-                renewed_strength - reference_strength[start:renewed_stop],
+                transfer_strength - reference_strength[start:transfer_stop],
                 axis=1,
             ).sum(dtype=np.float64)
         )
         position_scale = max(
             position_scale,
-            float(np.linalg.norm(renewed_position, axis=1).max(initial=0.0)),
+            float(np.linalg.norm(transfer_position, axis=1).max(initial=0.0)),
         )
 
     return _AppliedParticleReductions(
-        renewed_invariants=VortexInvariants(
+        transfer_moments=VortexMoments(
             total_vortex_strength=total,
             linear_impulse=linear_impulse,
             angular_impulse=angular_impulse,
         ),
-        renewed_vortex_strength_l1=renewed_l1,
+        transfer_vortex_strength_l1=transfer_l1,
         cast_correction_l1=cast_correction_l1,
-        renewed_position_scale=position_scale,
+        transfer_position_scale=position_scale,
         output_vortex_strength_net=output_net,
         maximum_output_vortex_strength=maximum_strength,
     )
 
 
-def replace_particles_from_buffered_m4_renewal(
+def transfer_vorticity_to_particles(
     vpm,
     *,
-    lattice: StableRenewalLattice,
-    fvm_vortex_strength_at_node: Callable[[np.ndarray], np.ndarray],
+    lattice: TransferLattice,
+    fvm_target_strength_at_node: Callable[[np.ndarray], np.ndarray],
     particle_fluid_weight: Callable[[np.ndarray], np.ndarray] | None,
     particle_in_solid: Callable[[np.ndarray], np.ndarray] | None,
-    prune_threshold: float,
+    strength_threshold: float,
     core_radius_ratio: float,
-    amplification_cap: float,
+    max_strength_ratio: float,
     kinematic_viscosity: float,
     freestream_speed: float,
     time_step_size: float,
     compute_diagnostics: bool,
-    maximum_closure_correction_fraction: float | None = None,
-    release_prune_threshold: float | None = None,
+    max_moment_correction_fraction: float | None = None,
+    surface_strength_threshold: float | None = None,
 ) -> TransferResult:
-    """Atomically apply the recovered whole-belt M4' renewal to a GBD cloud."""
+    """Transfer the FVM vorticity to the particles of a GBD particle set in one step.
+
+    :func:`transfer_on_lattice` builds the new particle state; it is checked for
+    capacity and for conservation of the total strength and linear impulse in
+    storage precision before it replaces the VPM particles.
+    """
     if vpm.viscous_scheme != "gbd":
-        raise ValueError("buffered_m4_renewal requires the GBD viscous scheme")
+        raise ValueError("the vorticity transfer requires the GBD viscous scheme")
     viscosity = float(kinematic_viscosity)
     if not np.isfinite(viscosity) or viscosity < 0.0:
         raise ValueError("kinematic_viscosity must be finite and non-negative")
-    if maximum_closure_correction_fraction is not None and (
-        not np.isfinite(maximum_closure_correction_fraction)
-        or not 0.0 < maximum_closure_correction_fraction <= 1.0
+    if max_moment_correction_fraction is not None and (
+        not np.isfinite(max_moment_correction_fraction)
+        or not 0.0 < max_moment_correction_fraction <= 1.0
     ):
-        raise ValueError("maximum_closure_correction_fraction must lie in (0, 1]")
+        raise ValueError("max_moment_correction_fraction must lie in (0, 1]")
 
     particles = vpm.particles
     n_before = int(particles.n_particles_total)
-    # Renewal needs the actual storage precision to distinguish node roundoff
-    # from genuinely off-lattice particles before using visible M4 support.
+    # The storage precision distinguishes node roundoff from particles that are
+    # off the lattice and need the fluid-side M4' stencil.
     existing_position = np.asarray(particles.position_cpu()).reshape(-1, 3)
     existing_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
     if len(existing_position) != n_before or len(existing_strength) != n_before:
@@ -321,32 +338,32 @@ def replace_particles_from_buffered_m4_renewal(
     if not np.all(np.isfinite(existing_position)) or not np.all(np.isfinite(existing_strength)):
         raise RuntimeError("VPM particle state contains non-finite values")
 
-    result = renew_stable_overlap(
+    result = transfer_on_lattice(
         existing_position,
         existing_strength,
         lattice,
-        fvm_vortex_strength_at_node=fvm_vortex_strength_at_node,
+        fvm_target_strength_at_node=fvm_target_strength_at_node,
         particle_fluid_weight=particle_fluid_weight,
         particle_in_solid=particle_in_solid,
-        prune_threshold=prune_threshold,
-        release_prune_threshold=release_prune_threshold,
+        strength_threshold=strength_threshold,
+        surface_strength_threshold=surface_strength_threshold,
         core_radius_ratio=core_radius_ratio,
-        amplification_cap=amplification_cap,
+        max_strength_ratio=max_strength_ratio,
         maximum_particle_count=int(particles.capacity),
         freestream_speed=freestream_speed,
         time_step_size=time_step_size,
         compute_diagnostics=compute_diagnostics,
     )
-    if result.population_pruned_count:
+    if result.particle_set_removed_count:
         raise RuntimeError(
-            "buffered M4' renewal reached the VPM particle capacity and would "
-            f"discard {result.population_pruned_count:,} particles; increase capacity "
-            "or reduce the physical particle population"
+            "the vorticity transfer reached the VPM particle capacity and would "
+            f"remove {result.particle_set_removed_count:,} particles; increase the capacity "
+            "or reduce the number of particles"
         )
     n_after = result.particle_count
     if n_after > int(particles.capacity):
         raise RuntimeError(
-            f"buffered M4' renewal produced {n_after:,} particles, exceeding "
+            f"the vorticity transfer produced {n_after:,} particles, exceeding "
             f"the VPM capacity {int(particles.capacity):,}"
         )
 
@@ -355,67 +372,67 @@ def replace_particles_from_buffered_m4_renewal(
     applied_strength = np.ascontiguousarray(result.vortex_strength, dtype=dtype)
     applied_core_radius = np.ascontiguousarray(result.core_radius, dtype=dtype)
     applied_particle_volume = np.ascontiguousarray(result.particle_volume, dtype=dtype)
-    renewed_output_count = min(int(result.renewed_output_count), n_after)
-    target_invariants = result.conservation_target_invariants
-    raw_invariants = result.conservation_raw_invariants
-    if target_invariants is None or raw_invariants is None:
-        raise RuntimeError("buffered M4' renewal omitted its conservation reference state")
+    transfer_output_count = min(int(result.transfer_output_count), n_after)
+    target_moments = result.conservation_target_moments
+    raw_moments = result.conservation_raw_moments
+    if target_moments is None or raw_moments is None:
+        raise RuntimeError("the vorticity transfer returned no reference moments")
     reductions = _reduce_applied_particle_state(
         applied_position,
         applied_strength,
-        renewed_count=renewed_output_count,
+        transfer_count=transfer_output_count,
         reference_vortex_strength=result.vortex_strength,
     )
-    applied_invariants = reductions.renewed_invariants
-    raw_conservation = vortex_invariant_residual(target_invariants, raw_invariants)
-    applied_conservation = vortex_invariant_residual(raw_invariants, applied_invariants)
-    conservation = vortex_invariant_residual(target_invariants, applied_invariants)
-    closure_correction_fraction = float(
+    applied_moments = reductions.transfer_moments
+    raw_conservation = vortex_moment_residual(target_moments, raw_moments)
+    applied_conservation = vortex_moment_residual(raw_moments, applied_moments)
+    conservation = vortex_moment_residual(target_moments, applied_moments)
+    moment_correction_fraction = float(
         result.conservation_applied_particle_strength_fraction
         + reductions.cast_correction_l1 / (result.conservation_reference_strength_l1 + 1.0e-30)
     )
-    if not np.isfinite(closure_correction_fraction):
-        raise RuntimeError("buffered M4' renewal produced a non-finite closure correction")
+    if not np.isfinite(moment_correction_fraction):
+        raise RuntimeError("the vorticity transfer produced a non-finite moment correction")
     if (
-        maximum_closure_correction_fraction is not None
-        and closure_correction_fraction > maximum_closure_correction_fraction
+        max_moment_correction_fraction is not None
+        and moment_correction_fraction > max_moment_correction_fraction
     ):
         raise RuntimeError(
-            "buffered M4' renewal closure correction is excessive: "
-            f"fraction={closure_correction_fraction:.6e}, "
-            f"limit={maximum_closure_correction_fraction:.6e}"
+            "the moment correction of the vorticity transfer exceeds its limit: "
+            f"fraction={moment_correction_fraction:.6e}, "
+            f"limit={max_moment_correction_fraction:.6e}"
         )
     storage_epsilon = float(np.finfo(dtype).eps)
-    # Strengths below the prune threshold are unresolved; the floor keeps a
-    # round-off field, such as a uniform freestream, from tightening the check
+    # Strengths below the strength threshold are unresolved; this floor keeps a
+    # round-off field, such as a uniform free stream, from tightening the check.
     reference_strength_l1 = max(
-        float(result.conservation_reference_strength_l1), float(prune_threshold)
+        float(result.conservation_reference_strength_l1), float(strength_threshold)
     )
     position_scale = max(
-        reductions.renewed_position_scale,
+        reductions.transfer_position_scale,
         float(lattice.particle_spacing),
     )
-    renewal_vortex_strength_tolerance = 32.0 * storage_epsilon * reference_strength_l1
-    renewal_linear_impulse_tolerance = (
+    transfer_vortex_strength_tolerance = 32.0 * storage_epsilon * reference_strength_l1
+    transfer_linear_impulse_tolerance = (
         32.0 * storage_epsilon * reference_strength_l1 * position_scale
     )
     strength_error = float(conservation["total_vortex_strength"])
     impulse_error = float(conservation["linear_impulse"])
-    if strength_error > renewal_vortex_strength_tolerance + np.finfo(np.float64).tiny:
+    if strength_error > transfer_vortex_strength_tolerance + np.finfo(np.float64).tiny:
         raise RuntimeError(
-            "buffered M4' renewal does not conserve vortex strength in storage precision: "
+            "the vorticity transfer does not conserve the total strength in storage precision: "
             f"error={strength_error:.6e}, "
-            f"tolerance={renewal_vortex_strength_tolerance:.6e}"
+            f"tolerance={transfer_vortex_strength_tolerance:.6e}"
         )
-    if impulse_error > renewal_linear_impulse_tolerance + np.finfo(np.float64).tiny:
+    if impulse_error > transfer_linear_impulse_tolerance + np.finfo(np.float64).tiny:
         raise RuntimeError(
-            "buffered M4' renewal does not conserve linear impulse in storage precision: "
+            "the vorticity transfer does not conserve the linear impulse in storage precision: "
             f"error={impulse_error:.6e}, "
-            f"tolerance={renewal_linear_impulse_tolerance:.6e}"
+            f"tolerance={transfer_linear_impulse_tolerance:.6e}"
         )
 
-    # Prepare and validate the complete replacement budget before mutating the
-    # VPM. A malformed renewal result must leave the prior cloud untouched.
+    # Check the complete particle count before changing the VPM, so a wrong
+    # result leaves the previous particle state untouched.
     removed_mask = np.ones(n_before, dtype=bool)
     if n_before:
         valid = np.ones(n_before, dtype=bool)
@@ -428,8 +445,8 @@ def replace_particles_from_buffered_m4_renewal(
                 raise RuntimeError("particle_in_solid must return one value per existing particle")
             valid &= ~solid_mask
         preserved = valid & ~np.all(
-            (existing_position >= lattice.renewal_bounds[::2])
-            & (existing_position <= lattice.renewal_bounds[1::2]),
+            (existing_position >= lattice.remeshing_region_bounds[::2])
+            & (existing_position <= lattice.remeshing_region_bounds[1::2]),
             axis=1,
         )
         removed_mask = ~preserved
@@ -439,11 +456,11 @@ def replace_particles_from_buffered_m4_renewal(
     ).reshape(-1)
     if len(coalesced_input):
         if np.any((coalesced_input < 0) | (coalesced_input >= n_before)):
-            raise RuntimeError("renewal returned an invalid coalesced input index")
+            raise RuntimeError("the vorticity transfer returned an invalid merged-particle index")
         removed_mask[coalesced_input] = True
     removed_count = int(np.count_nonzero(removed_mask))
-    if n_before - removed_count + renewed_output_count != n_after:
-        raise RuntimeError("renewal returned an inconsistent particle budget")
+    if n_before - removed_count + transfer_output_count != n_after:
+        raise RuntimeError("the vorticity transfer returned an inconsistent particle count")
     replaced_strength = existing_strength[removed_mask]
     input_net = existing_strength.sum(axis=0, dtype=np.float64)
 
@@ -461,105 +478,106 @@ def replace_particles_from_buffered_m4_renewal(
     )
     if int(particles.n_particles_total) != n_after:
         raise RuntimeError(
-            f"VPM particle count after buffered renewal is "
+            f"VPM particle count after the vorticity transfer is "
             f"{int(particles.n_particles_total)}, expected {n_after}"
         )
 
-    injected_net = reductions.renewed_invariants.total_vortex_strength
+    injected_net = reductions.transfer_moments.total_vortex_strength
     output_net = reductions.output_vortex_strength_net
-    population_raw_conservation = result.population_conservation_raw_mismatch
-    population_applied_conservation = result.population_conservation_applied_correction
-    population_conservation = result.population_conservation_residual
+    particle_set_raw_conservation = result.particle_set_conservation_raw_mismatch
+    particle_set_applied_conservation = result.particle_set_conservation_applied_correction
+    particle_set_conservation = result.particle_set_conservation_residual
     maximum_strength = reductions.maximum_output_vortex_strength
     return TransferResult(
         n_particles_before=n_before,
         n_particles_retained=int(result.preserved_outer_count),
         n_particles_removed=removed_count,
-        n_particles_blended=int(result.renewed_input_count),
-        n_particles_injected=renewed_output_count,
+        n_particles_blended=int(result.transfer_input_count),
+        n_particles_injected=transfer_output_count,
         n_particles_after=n_after,
-        injected_vortex_strength_l1=reductions.renewed_vortex_strength_l1,
+        injected_vortex_strength_l1=reductions.transfer_vortex_strength_l1,
         injected_vortex_strength_net=injected_net,
         replaced_vortex_strength_l1=float(
             np.linalg.norm(replaced_strength, axis=1).sum(dtype=np.float64)
         ),
         replaced_vortex_strength_net=replaced_strength.sum(axis=0, dtype=np.float64),
         state_change_vortex_strength_net=output_net - input_net,
-        eta_blending_enabled=bool(
-            np.any((lattice.fvm_blend_weight > 0.0) & (lattice.fvm_blend_weight < 1.0))
+        blending_enabled=bool(
+            np.any((lattice.blending_weight > 0.0) & (lattice.blending_weight < 1.0))
         ),
-        transfer_method="buffered_m4_renewal",
-        mapped_target_nodes=renewed_output_count,
+        mapped_target_nodes=transfer_output_count,
         excluded_solid_target_nodes=int(np.count_nonzero(lattice.solid_interior)),
         excluded_solid_vortex_strength_l1=float(result.excluded_target_vortex_strength_l1),
-        mapped_target_vortex_strength_l1=reductions.renewed_vortex_strength_l1,
+        mapped_target_vortex_strength_l1=reductions.transfer_vortex_strength_l1,
         mapped_target_vortex_strength_net=injected_net,
         maximum_mapped_vortex_strength=maximum_strength,
-        renewed_input_particles=int(result.renewed_input_count),
-        renewed_output_particles=renewed_output_count,
+        transfer_input_particles=int(result.transfer_input_count),
+        transfer_output_particles=transfer_output_count,
         preserved_outer_particles=int(result.preserved_outer_count),
         coalesced_outer_particles=int(result.coalesced_outer_count),
-        pruned_lattice_nodes=int(result.pruned_node_count),
-        pruned_vortex_strength_l1=float(result.pruned_vortex_strength_l1),
-        pruned_vortex_strength_fraction=float(result.pruned_vortex_strength_fraction),
-        population_pruned_particles=int(result.population_pruned_count),
-        population_pruned_vortex_strength_fraction=float(
-            result.population_pruned_vortex_strength_fraction
+        removed_lattice_nodes=int(result.removed_node_count),
+        removed_vortex_strength_l1=float(result.removed_vortex_strength_l1),
+        removed_vortex_strength_fraction=float(result.removed_vortex_strength_fraction),
+        particle_set_removed_particles=int(result.particle_set_removed_count),
+        particle_set_removed_vortex_strength_fraction=float(
+            result.particle_set_removed_vortex_strength_fraction
         ),
-        population_pruned_velocity_bound=float(result.population_pruned_velocity_bound),
-        renewal_cfl=float(result.transfer_cfl),
-        renewal_raw_vortex_strength_error=float(raw_conservation.get("total_vortex_strength", 0.0)),
-        renewal_applied_vortex_strength_correction=float(
+        particle_set_removed_velocity_bound=float(result.particle_set_removed_velocity_bound),
+        transfer_cfl=float(result.transfer_cfl),
+        transfer_raw_vortex_strength_error=float(
+            raw_conservation.get("total_vortex_strength", 0.0)
+        ),
+        transfer_applied_vortex_strength_correction=float(
             applied_conservation.get("total_vortex_strength", 0.0)
         ),
-        renewal_conservation_error=float(conservation.get("total_vortex_strength", 0.0)),
-        renewal_vortex_strength_tolerance=renewal_vortex_strength_tolerance,
-        renewal_raw_linear_impulse_error=float(raw_conservation.get("linear_impulse", 0.0)),
-        renewal_applied_linear_impulse_correction=float(
+        transfer_conservation_error=float(conservation.get("total_vortex_strength", 0.0)),
+        transfer_vortex_strength_tolerance=transfer_vortex_strength_tolerance,
+        transfer_raw_linear_impulse_error=float(raw_conservation.get("linear_impulse", 0.0)),
+        transfer_applied_linear_impulse_correction=float(
             applied_conservation.get("linear_impulse", 0.0)
         ),
-        renewal_linear_impulse_error=float(conservation.get("linear_impulse", 0.0)),
-        renewal_linear_impulse_tolerance=renewal_linear_impulse_tolerance,
-        renewal_raw_angular_impulse_error=float(raw_conservation.get("angular_impulse", 0.0)),
-        renewal_applied_angular_impulse_correction=float(
+        transfer_linear_impulse_error=float(conservation.get("linear_impulse", 0.0)),
+        transfer_linear_impulse_tolerance=transfer_linear_impulse_tolerance,
+        transfer_raw_angular_impulse_error=float(raw_conservation.get("angular_impulse", 0.0)),
+        transfer_applied_angular_impulse_correction=float(
             applied_conservation.get("angular_impulse", 0.0)
         ),
-        renewal_angular_impulse_error=float(conservation.get("angular_impulse", 0.0)),
-        renewal_applied_particle_strength_fraction=closure_correction_fraction,
-        population_renewal_raw_vortex_strength_error=float(
-            population_raw_conservation.get("total_vortex_strength", 0.0)
+        transfer_angular_impulse_error=float(conservation.get("angular_impulse", 0.0)),
+        transfer_applied_particle_strength_fraction=moment_correction_fraction,
+        particle_set_transfer_raw_vortex_strength_error=float(
+            particle_set_raw_conservation.get("total_vortex_strength", 0.0)
         ),
-        population_renewal_applied_vortex_strength_correction=float(
-            population_applied_conservation.get("total_vortex_strength", 0.0)
+        particle_set_transfer_applied_vortex_strength_correction=float(
+            particle_set_applied_conservation.get("total_vortex_strength", 0.0)
         ),
-        population_renewal_conservation_error=float(
-            population_conservation.get("total_vortex_strength", 0.0)
+        particle_set_transfer_conservation_error=float(
+            particle_set_conservation.get("total_vortex_strength", 0.0)
         ),
-        population_renewal_raw_linear_impulse_error=float(
-            population_raw_conservation.get("linear_impulse", 0.0)
+        particle_set_transfer_raw_linear_impulse_error=float(
+            particle_set_raw_conservation.get("linear_impulse", 0.0)
         ),
-        population_renewal_applied_linear_impulse_correction=float(
-            population_applied_conservation.get("linear_impulse", 0.0)
+        particle_set_transfer_applied_linear_impulse_correction=float(
+            particle_set_applied_conservation.get("linear_impulse", 0.0)
         ),
-        population_renewal_linear_impulse_error=float(
-            population_conservation.get("linear_impulse", 0.0)
+        particle_set_transfer_linear_impulse_error=float(
+            particle_set_conservation.get("linear_impulse", 0.0)
         ),
-        population_renewal_applied_particle_strength_fraction=float(
-            result.population_conservation_applied_particle_strength_fraction
+        particle_set_transfer_applied_particle_strength_fraction=float(
+            result.particle_set_conservation_applied_particle_strength_fraction
         ),
-        representation_residual_before_prune=result.representation_residual_before_prune,
-        representation_residual_after_prune=result.representation_residual_after_prune,
-        maximum_transfer_amplification=float(result.maximum_transfer_amplification),
+        representation_residual_before_removal=result.representation_residual_before_removal,
+        representation_residual_after_removal=result.representation_residual_after_removal,
+        strength_ratio=float(result.strength_ratio),
     )
 
 
 def _transfer_log_record(step: int, result: TransferResult) -> log_style.Event:
-    """Retain the immutable transfer result until an enabled report needs rows."""
-    return log_style.Event("interface transfer", lambda: _transfer_log_rows(step, result))
+    """Keep the immutable transfer result until an enabled report needs its rows."""
+    return log_style.Event("vorticity transfer", lambda: _transfer_log_rows(step, result))
 
 
 def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row, ...]:
-    """Build host rows for one auditable particle-strength transfer.
+    """Build the log rows of one vorticity transfer.
 
     Parameters
     ----------
@@ -576,8 +594,7 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
     """
     rows: list[log_style.Row] = [
         ("coupling step", step),
-        ("method", result.transfer_method),
-        ("blend, eta", "on" if result.eta_blending_enabled else "off"),
+        ("blending", "on" if result.blending_enabled else "off"),
         ("particles, before", f"{result.n_particles_before:,}"),
         ("particles, removed", f"{result.n_particles_removed:,}"),
         ("particles, blended", f"{result.n_particles_blended:,}"),
@@ -621,70 +638,70 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
     )
     rows.extend(
         (
-            ("renewal belt, input", f"{result.renewed_input_particles:,}"),
-            ("renewal belt, output", f"{result.renewed_output_particles:,}"),
-            ("outer wake, preserved", f"{result.preserved_outer_particles:,}"),
-            ("outer wake, coalesced at support seam", f"{result.coalesced_outer_particles:,}"),
-            ("lattice nodes, pruned", f"{result.pruned_lattice_nodes:,}"),
+            ("remeshing region, particles in", f"{result.transfer_input_particles:,}"),
+            ("transfer-lattice particles", f"{result.transfer_output_particles:,}"),
+            ("outer wake, kept", f"{result.preserved_outer_particles:,}"),
+            ("outer wake, merged at lattice nodes", f"{result.coalesced_outer_particles:,}"),
+            ("lattice nodes, removed", f"{result.removed_lattice_nodes:,}"),
             (
-                "pruned strength, fraction",
-                f"{100.0 * result.pruned_vortex_strength_fraction:.3f}",
+                "removed strength, fraction",
+                f"{100.0 * result.removed_vortex_strength_fraction:.3f}",
                 "%",
             ),
-            ("renewal CFL", f"{result.renewal_cfl:.3f}"),
+            ("transfer CFL, U dt / L_remesh", f"{result.transfer_cfl:.3f}"),
             (
-                "renewal closure, raw strength mismatch",
-                f"{result.renewal_raw_vortex_strength_error:.3e}",
+                "moment correction, total strength before",
+                f"{result.transfer_raw_vortex_strength_error:.3e}",
             ),
             (
-                "renewal closure, applied strength correction",
-                f"{result.renewal_applied_vortex_strength_correction:.3e}",
+                "moment correction, total strength applied",
+                f"{result.transfer_applied_vortex_strength_correction:.3e}",
             ),
             (
-                "renewal closure, corrected strength mismatch",
-                f"{result.renewal_conservation_error:.3e}",
+                "moment correction, total strength after",
+                f"{result.transfer_conservation_error:.3e}",
             ),
             (
-                "renewal closure, strength tolerance",
-                f"{result.renewal_vortex_strength_tolerance:.3e}",
+                "moment correction, total strength tolerance",
+                f"{result.transfer_vortex_strength_tolerance:.3e}",
             ),
             (
-                "renewal closure, raw impulse mismatch",
-                f"{result.renewal_raw_linear_impulse_error:.3e}",
+                "moment correction, linear impulse before",
+                f"{result.transfer_raw_linear_impulse_error:.3e}",
             ),
             (
-                "renewal closure, applied impulse correction",
-                f"{result.renewal_applied_linear_impulse_correction:.3e}",
+                "moment correction, linear impulse applied",
+                f"{result.transfer_applied_linear_impulse_correction:.3e}",
             ),
             (
-                "renewal closure, corrected impulse mismatch",
-                f"{result.renewal_linear_impulse_error:.3e}",
+                "moment correction, linear impulse after",
+                f"{result.transfer_linear_impulse_error:.3e}",
             ),
             (
-                "renewal closure, impulse tolerance",
-                f"{result.renewal_linear_impulse_tolerance:.3e}",
+                "moment correction, linear impulse tolerance",
+                f"{result.transfer_linear_impulse_tolerance:.3e}",
             ),
             (
-                "renewal closure, particle-strength correction",
-                f"{100.0 * result.renewal_applied_particle_strength_fraction:.3f}",
+                "moment correction, strength fraction",
+                f"{100.0 * result.transfer_applied_particle_strength_fraction:.3f}",
                 "%",
             ),
             (
-                "transfer amplification, max",
-                f"{result.maximum_transfer_amplification:.3f}",
+                "strength ratio, kappa",
+                f"{result.strength_ratio:.3f}",
             ),
         )
     )
-    if result.representation_residual_after_prune is not None:
+    if result.representation_residual_after_removal is not None:
         rows.extend(
             (
                 (
-                    "representation residual, before prune",
-                    result.representation_residual_before_prune,
+                    "representation residual, before removal",
+                    result.representation_residual_before_removal,
                 ),
                 (
-                    "representation residual, after prune",
-                    f"{result.representation_residual_after_prune:.3e}",
+                    "representation residual, after removal",
+                    f"{result.representation_residual_after_removal:.3e}",
                 ),
             )
         )
@@ -692,67 +709,69 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
 
 
 class VorticityTransfer:
-    """Synchronize the inner VPM cloud with absolute cell-centred FVM state.
+    """Vorticity transfer from the accepted cell-centred FVM state to the particles.
 
-    This runtime component is constructed internally by
-    :class:`CoupledSolver` after both solver discretizations are known. It
-    derives vorticity ``omega = curl(u)`` from the accepted FVM gradient,
-    represents ``Gamma = omega * V`` on the renewal lattice,
-    and atomically replaces the FVM-derived portion of the particle
-    cloud while preserving the outer wake.
+    :class:`CoupledSolver` constructs it once both discretizations are known.
+    The FVM target strength of each lattice node is the Stokes integral of the
+    reconstructed FVM velocity over the faces of its lattice cube, ``Γ^FVM_j``.
+    Inside the transfer region the FVM vorticity replaces the particle vorticity
+    according to the blending weight; the outer wake is kept.
 
     Parameters
     ----------
     coupler : CoupledSolver
-        Initialized driver providing the transfer settings, FVM box, shared
-        viscosity in m²/s, VPM spacing/core ratio, and coupling time step in s.
+        Initialized coupled solver providing the transfer settings, the FVM domain
+        bounds, the kinematic viscosity in m²/s, the particle spacing, the core
+        radius ratio and the coupling time step in s.
 
     Attributes
     ----------
     particle_spacing : float
-        VPM lattice spacing ``h`` in m.
+        Particle and transfer-lattice spacing ``h`` in m.
     core_radius_ratio : float
-        Dimensionless ``sigma/h`` ratio used for injected particles.
-    coupling_time_step : float
-        VPM macro-step represented by each transfer, in s.
+        Dimensionless ``sigma/h`` of the transfer-lattice particles.
+    coupling_time_step_size : float
+        Coupling interval ``Δt_VPM``, in s.
     step : int
         Number of transfer calls attempted. Incremented at call entry.
-    last_interface_flow : dict[str, float]
-        Mean outward normal velocity by transfer face in m/s.
-    last_vortex_line_closure : dict[str, float]
-        Dimensionless normal-vorticity closure error by transfer face.
+    last_transfer_surface_flow : dict[str, float]
+        Mean outward normal FVM velocity on each face of the transfer surface, in m/s.
+    last_transfer_surface_vorticity : dict[str, float]
+        Mean normal FVM vorticity on each face of the transfer surface, relative to the
+        mean vorticity magnitude.
 
     Raises
     ------
     RuntimeError
-        If the coupler has not resolved the FVM box, fluid properties, VPM
-        spacing/core ratio, or coupling time step.
+        If the coupled solver has not resolved the FVM domain bounds, the fluid
+        properties, the particle spacing and core radius ratio, or the coupling
+        time step.
     ValueError
-        If buffered M4-prime renewal is selected without GBD diffusion.
+        If the VPM does not use GBD diffusion with an absolute threshold.
 
     Notes
     -----
-    Users normally interact with this object through the driver. Call
-    :meth:`setup` once for an FVM mesh, then :meth:`transfer` only at accepted
-    synchronized coupling states. Transfer mutates VPM particles and caches;
-    setup itself only builds donor/lattice metadata.
+    It is used through the coupled solver. Call :meth:`setup` once for an FVM
+    mesh, then :meth:`transfer` at accepted coupling times only. A transfer
+    changes the VPM particles and their caches; :meth:`setup` only builds the
+    transfer lattice, the interpolation stencils and the solid masks.
     """
 
     def __init__(self, coupler: CoupledSolver) -> None:
-        """Resolve transfer controls from an initialized coupling driver."""
+        """Read the transfer settings from an initialized coupled solver."""
         cfg = coupler.config
-        if coupler.kinematic_viscosity is None or coupler.fvm_box is None:
+        if coupler.kinematic_viscosity is None or coupler.fvm_domain_bounds is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
         self.config = cfg
         numerics = coupler.vpm_case.numerics
         viscous = numerics.viscous
-        # Wall-visible M4' scatter of off-lattice particles, from the VPM GBD grid.
+        # Fluid-side M4' remeshing of off-lattice particles, from the VPM GBD grid.
         vpm = getattr(coupler, "vpm_solver", None)
         self._wall_scatter_correction = (
             None if vpm is None else vpm.physics.compute_m4_wall_corrections
         )
         if viscous.scheme != "gbd":
-            raise ValueError("buffered_m4_renewal currently requires the GBD viscous scheme")
+            raise ValueError("the vorticity transfer requires the GBD viscous scheme")
         if not np.isfinite(coupler.vpm_core_radius_ratio):
             raise RuntimeError("VorticityTransfer requires the resolved VPM core-radius ratio")
         self.core_radius_ratio = float(coupler.vpm_core_radius_ratio)
@@ -762,47 +781,46 @@ class VorticityTransfer:
         induction = numerics.induction
         self._slip_slab = getattr(induction, "method", None) == "slip_slab"
         self._slip_z = (float(induction.z_min), float(induction.z_max)) if self._slip_slab else None
-        self.eta_blend_width, self.vpm_only_width = cfg.blend_widths(self.particle_spacing)
-        self.transfer_prune_threshold_abs = (
-            float(cfg.transfer_vorticity_cutoff) * self.particle_spacing**3
-        )
+        self.blend_start_depth, self.blend_end_depth = cfg.blend_depths(self.particle_spacing)
+        self.strength_threshold = float(cfg.transfer_removal_threshold) * self.particle_spacing**3
         if str(viscous.gbd_threshold_mode).lower() != "absolute":
             raise ValueError(
-                "buffered_m4_renewal requires GBD threshold_mode='absolute' so "
-                "release-belt pruning has a resolved physical floor"
+                "the vorticity transfer requires GBD threshold_mode='absolute', so the "
+                "removal threshold at the transfer surface is a resolved physical value"
             )
-        self.transfer_release_prune_threshold_abs = float(viscous.gbd_threshold)
-        if self.transfer_release_prune_threshold_abs > self.transfer_prune_threshold_abs:
+        self.surface_strength_threshold = float(viscous.gbd_threshold)
+        if self.surface_strength_threshold > self.strength_threshold:
             raise ValueError(
-                "transfer_vorticity_cutoff must be at least the VPM GBD vorticity floor"
+                "the strength threshold h³ transfer_removal_threshold must be at least the "
+                "GBD removal threshold of the VPM"
             )
-        self.transfer_amplification_cap = float(cfg.transfer_amplification_cap)
+        self.max_strength_ratio = float(cfg.max_strength_ratio)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
-        self.coupling_time_step = float(coupler.vpm_time_step_size)
-        self.renewal_buffer_length = required_renewal_buffer_length(
+        self.coupling_time_step_size = float(coupler.vpm_time_step_size)
+        self.remeshing_extension_length = remeshing_extension_length(
             cfg.freestream_velocity,
-            self.coupling_time_step,
+            self.coupling_time_step_size,
             self.particle_spacing,
         )
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
-        self.discretization_error_limit = float(cfg.transfer_discretization_error_limit)
-        self._fvm_box = np.asarray(coupler.fvm_box, dtype=np.float64)
-        self._box: np.ndarray | None = None
+        self.max_moment_correction_fraction = float(cfg.max_moment_correction_fraction)
+        self._fvm_domain_bounds = np.asarray(coupler.fvm_domain_bounds, dtype=np.float64)
+        self._transfer_region_bounds: np.ndarray | None = None
         self._cell_tree: cKDTree | None = None
         self._cell_centre: np.ndarray | None = None
         self._cell_volume: np.ndarray | None = None
-        self._velocity_trace: FVMVelocityInterpolator | None = None
-        self._buffered_trace_stencils: list | None = None
+        self._velocity_interpolator: FVMVelocityInterpolator | None = None
+        self._target_stencils: list | None = None
         self._fvm_solid_mask: np.ndarray | None = None
         self._solid_bodies: tuple = ()
         self.solid_boundary: SolidBoundary | None = None
         self._lattice_anchor: np.ndarray | None = None
-        self._stable_renewal_lattice: StableRenewalLattice | None = None
+        self._transfer_lattice: TransferLattice | None = None
         self._face_cells: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         self._fvm_transfer_cell_mask: np.ndarray | None = None
         self.step = 0
-        self.last_interface_flow: dict[str, float] = {}
-        self.last_vortex_line_closure: dict[str, float] = {}
+        self.last_transfer_surface_flow: dict[str, float] = {}
+        self.last_transfer_surface_vorticity: dict[str, float] = {}
 
     @staticmethod
     def _vorticity_from_gradient(gradient: np.ndarray) -> np.ndarray:
@@ -823,7 +841,7 @@ class VorticityTransfer:
         Parameters
         ----------
         points : array_like, shape (K, 3)
-            Candidate particle or lattice-node coordinates in metres.
+            Particle or lattice-node coordinates in metres.
         include_boundary : bool
             Include points exactly on a solid boundary when true; use a
             strict interior test when false.
@@ -847,7 +865,7 @@ class VorticityTransfer:
         return np.full(len(query), np.inf, dtype=np.float64)
 
     def _face_cell_index(self, bounds: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-        """Index donor cells lying on each face of a transfer box.
+        """Index the FVM cells that lie on each face of the transfer surface.
 
         Parameters
         ----------
@@ -859,7 +877,7 @@ class VorticityTransfer:
         dict[str, tuple[ndarray, ndarray]]
             Face-name to ``(cell_indices, outward_normal)`` mapping. Indices
             refer to the FVM cell-centre array and normals are dimensionless.
-            Faces without donor cells are omitted.
+            Faces without FVM cells are omitted.
         """
         faces: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         if self._cell_centre is None:
@@ -887,11 +905,12 @@ class VorticityTransfer:
         return faces
 
     def _build_face_cell_index(self) -> None:
-        """Refresh the cached transfer-box face-to-cell lookup."""
-        self._face_cells = {} if self._box is None else self._face_cell_index(self._box)
+        """Refresh the cached cells of each face of the transfer surface."""
+        bounds = self._transfer_region_bounds
+        self._face_cells = {} if bounds is None else self._face_cell_index(bounds)
 
-    def check_interface_flow(self, velocity: np.ndarray) -> dict[str, float]:
-        """Return mean outward velocity on each indexed transfer-box face.
+    def check_transfer_surface_flow(self, velocity: np.ndarray) -> dict[str, float]:
+        """Return the mean outward normal velocity on each face of the transfer surface.
 
         Parameters
         ----------
@@ -903,7 +922,7 @@ class VorticityTransfer:
         -------
         dict[str, float]
             Mean ``u dot n`` in m/s keyed by ``xmin`` through ``zmax`` for
-            every face with donor cells.
+            every face with FVM cells.
         """
         values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
         return {
@@ -912,8 +931,12 @@ class VorticityTransfer:
             if index.max(initial=-1) < len(values)
         }
 
-    def check_vortex_line_closure(self, velocity_gradient: np.ndarray) -> dict[str, float]:
-        """Measure normal-vorticity leakage on each transfer-box face.
+    def check_transfer_surface_vorticity(self, velocity_gradient: np.ndarray) -> dict[str, float]:
+        """Return the mean normal vorticity on each face of the transfer surface.
+
+        Vorticity crossing the transfer surface is cut by the replacement; a
+        small value means the vortex lines leave the transfer region mostly
+        through the outer wake.
 
         Parameters
         ----------
@@ -935,7 +958,7 @@ class VorticityTransfer:
         }
 
     def setup(self, fvm: FVMSolver) -> None:
-        """Build FVM donor indices, solid masks, and renewal lattices.
+        """Build the transfer lattice, the interpolation stencils and the solid masks.
 
         Parameters
         ----------
@@ -958,11 +981,11 @@ class VorticityTransfer:
         transfer metadata and interpolation caches; it does not modify FVM
         fields, VPM particles, or either accepted clock.
         """
-        self._buffered_trace_stencils = None
-        # Donor cells and walls are read in the frame of a translating mesh.
+        self._target_stencils = None
+        # FVM cells and walls are read in the frame of a translating mesh.
         frame = MeshFrame(fvm)
-        self._box = self.config.transfer_region(
-            self._fvm_box, self.particle_spacing, self._slip_slab
+        self._transfer_region_bounds = self.config.transfer_region(
+            self._fvm_domain_bounds, self.particle_spacing, self._slip_slab
         )
         self._cell_centre = frame.to_frame(
             np.asarray(fvm.gather_cell_centre_coordinates(), dtype=np.float64).reshape(-1, 3)
@@ -998,14 +1021,14 @@ class VorticityTransfer:
 
             self._solid_bodies = ()
             if wall_triangles is not None and len(wall_triangles):
-                self._solid_bodies = (TriangulatedWall(wall_triangles, self._fvm_box),)
+                self._solid_bodies = (TriangulatedWall(wall_triangles, self._fvm_domain_bounds),)
             elif wall_patches:
                 raise RuntimeError("Body-fitted transfer requires the FVM wall surface triangles")
             self.solid_boundary = SolidBoundary(self._solid_bodies) if self._solid_bodies else None
-            # One mesh-derived phase for every geometry, independent of donor
-            # ordering, wall patch names, and inferred body dimensions.
+            # One mesh-derived lattice phase for every geometry, independent of cell
+            # ordering, wall patch names and inferred body dimensions.
             self._lattice_anchor = self._cell_centre.min(axis=0)
-            self._velocity_trace = FVMVelocityInterpolator(
+            self._velocity_interpolator = FVMVelocityInterpolator(
                 self._cell_centre,
                 self._cell_tree,
                 neighbour_count=4,
@@ -1017,16 +1040,17 @@ class VorticityTransfer:
                 self._lattice_anchor[2] = self._slip_z[0] + 0.5 * self.particle_spacing
 
             if self._cell_tree is None:
-                raise RuntimeError("buffered M4' renewal requires an FVM cell tree")
+                raise RuntimeError("the vorticity transfer requires an FVM cell search tree")
 
             def mesh_weight_at_node(points: np.ndarray) -> np.ndarray:
-                # Distance to a donor centre is not a fluid-domain test:
-                # coarse/anisotropic cells legitimately span many particles.
-                # Solid exclusion uses wall geometry, independently of h.
-                roundoff = 64 * np.finfo(float).eps * np.maximum(1.0, np.abs(self._fvm_box))
+                # The distance to a cell centre is not a fluid-domain test:
+                # coarse or anisotropic cells span many particles. Solid
+                # exclusion uses the wall geometry, independently of h.
+                domain = self._fvm_domain_bounds
+                roundoff = 64 * np.finfo(float).eps * np.maximum(1.0, np.abs(domain))
                 return np.all(
-                    (points >= self._fvm_box[::2] - roundoff[::2])
-                    & (points <= self._fvm_box[1::2] + roundoff[1::2]),
+                    (points >= domain[::2] - roundoff[::2])
+                    & (points <= domain[1::2] + roundoff[1::2]),
                     axis=1,
                 ).astype(np.float64)
 
@@ -1042,12 +1066,12 @@ class VorticityTransfer:
             def interior_at_node(points: np.ndarray) -> np.ndarray:
                 return self._points_in_solid(points, include_boundary=False)
 
-            self._stable_renewal_lattice = build_stable_renewal_lattice(
-                self._box,
+            self._transfer_lattice = build_transfer_lattice(
+                self._transfer_region_bounds,
                 self.particle_spacing,
-                buffer_length=self.renewal_buffer_length,
-                blend_ramp_width=self.eta_blend_width,
-                vpm_dead_zone=self.vpm_only_width,
+                remeshing_extension_length=self.remeshing_extension_length,
+                blend_start_depth=self.blend_start_depth,
+                blend_end_depth=self.blend_end_depth,
                 lattice_anchor=self._lattice_anchor,
                 mesh_weight_at_node=mesh_weight_at_node,
                 fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
@@ -1061,45 +1085,43 @@ class VorticityTransfer:
                 include_boundary=True,
             )
             inside = np.all(
-                (self._cell_centre >= self._box[::2]) & (self._cell_centre <= self._box[1::2]),
+                (self._cell_centre >= self._transfer_region_bounds[::2])
+                & (self._cell_centre <= self._transfer_region_bounds[1::2]),
                 axis=1,
             )
             self._fvm_transfer_cell_mask = inside & ~self._fvm_solid_mask
-            donor_count = int(np.count_nonzero(self._fvm_transfer_cell_mask))
-            if donor_count == 0:
-                raise ValueError("FVM transfer region contains no fluid cell centres")
+            fluid_cell_count = int(np.count_nonzero(self._fvm_transfer_cell_mask))
+            if fluid_cell_count == 0:
+                raise ValueError("the transfer region contains no FVM fluid cell centre")
             self._build_face_cell_index()
             lattice_count = (
-                len(self._stable_renewal_lattice.positions)
-                if self._stable_renewal_lattice is not None
-                else 0
+                len(self._transfer_lattice.positions) if self._transfer_lattice is not None else 0
             )
             geometry_rows: list[log_style.Row] = []
-            if self._stable_renewal_lattice is not None:
+            if self._transfer_lattice is not None:
                 velocity = np.asarray(self.config.freestream_velocity, dtype=np.float64)
                 streamwise_axis = int(np.argmax(np.abs(velocity)))
                 downstream_is_maximum = velocity[streamwise_axis] >= 0.0
                 axis_name = "xyz"[streamwise_axis]
-                lattice = self._stable_renewal_lattice
+                lattice = self._transfer_lattice
                 planes = lattice.origin[streamwise_axis] + self.particle_spacing * np.arange(
                     lattice.shape[streamwise_axis]
                 )
-                blend_weight_grid = lattice.fvm_blend_weight.reshape(lattice.shape)
+                blend_weight_grid = lattice.blending_weight.reshape(lattice.shape)
                 plane_blend_weight = np.max(
                     np.moveaxis(blend_weight_grid, streamwise_axis, 0).reshape(len(planes), -1),
                     axis=1,
                 )
                 fvm_transfer_planes = planes[plane_blend_weight > 0.0]
-                face = self._box[2 * streamwise_axis + int(downstream_is_maximum)]
-                renewal_edge = lattice.renewal_bounds[
-                    2 * streamwise_axis + int(downstream_is_maximum)
-                ]
+                face_index = 2 * streamwise_axis + int(downstream_is_maximum)
+                face = self._transfer_region_bounds[face_index]
+                remeshing_edge = lattice.remeshing_region_bounds[face_index]
                 beyond_face = planes > face if downstream_is_maximum else planes < face
-                inside_renewal = (
-                    planes <= renewal_edge if downstream_is_maximum else planes >= renewal_edge
+                inside_remeshing = (
+                    planes <= remeshing_edge if downstream_is_maximum else planes >= remeshing_edge
                 )
-                beyond_renewal = ~inside_renewal
-                support_edge = renewal_edge + (
+                beyond_remeshing = ~inside_remeshing
+                support_edge = remeshing_edge + (
                     2.0 * self.particle_spacing
                     if downstream_is_maximum
                     else -2.0 * self.particle_spacing
@@ -1114,46 +1136,48 @@ class VorticityTransfer:
                 def upstream_extreme(values: np.ndarray) -> float:
                     return float(values.min() if downstream_is_maximum else values.max())
 
-                donor_coordinate = self._cell_centre[self._fvm_transfer_cell_mask, streamwise_axis]
+                fluid_cell_coordinate = self._cell_centre[
+                    self._fvm_transfer_cell_mask, streamwise_axis
+                ]
                 geometry_rows.extend(
                     (
                         (
-                            f"fvm last donor centre, {axis_name}",
-                            f"{downstream_extreme(donor_coordinate):.6f}",
+                            f"last FVM cell centre, {axis_name}",
+                            f"{downstream_extreme(fluid_cell_coordinate):.6f}",
                             "m",
                         ),
                         (
-                            f"FVM transfer boundary, {axis_name}",
+                            f"transfer surface, {axis_name}",
                             f"{face:.6f}",
                             "m",
                         ),
                         (
-                            f"last FVM-derived plane, {axis_name}",
+                            f"last plane with FVM vorticity, {axis_name}",
                             f"{downstream_extreme(fvm_transfer_planes):.6f}",
                             "m",
                         ),
                         (
-                            f"first vpm-only release plane, {axis_name}",
+                            f"first plane of the inset band, {axis_name}",
                             f"{upstream_extreme(planes[beyond_face]):.6f}",
                             "m",
                         ),
                         (
-                            f"last renewed input plane, {axis_name}",
-                            f"{downstream_extreme(planes[inside_renewal]):.6f}",
+                            f"last plane of the remeshing region, {axis_name}",
+                            f"{downstream_extreme(planes[inside_remeshing]):.6f}",
                             "m",
                         ),
                         (
-                            f"first persistent input plane, {axis_name}",
-                            f"{upstream_extreme(planes[beyond_renewal]):.6f}",
+                            f"first plane of the kept particles, {axis_name}",
+                            f"{upstream_extreme(planes[beyond_remeshing]):.6f}",
                             "m",
                         ),
                         (
-                            f"last m4-prime-reachable plane, {axis_name}",
+                            f"last plane of the M4' support, {axis_name}",
                             f"{downstream_extreme(planes[inside_m4_support]):.6f}",
                             "m",
                         ),
                         (
-                            f"allocated m4-prime guard endpoint, {axis_name}",
+                            f"last transfer-lattice plane, {axis_name}",
                             f"{downstream_extreme(planes):.6f}",
                             "m",
                         ),
@@ -1162,33 +1186,36 @@ class VorticityTransfer:
             logger.info(
                 format_coupler_log(
                     "replacement region",
-                    ("method", "buffered_m4_renewal"),
-                    ("fvm fluid cells", f"{donor_count:,}"),
+                    ("fvm fluid cells", f"{fluid_cell_count:,}"),
                     *(
-                        (("blend ramp width, eta", "off"),)
-                        if self.eta_blend_width == 0.0
-                        else (("blend ramp width, eta", f"{self.eta_blend_width:.4g}", "m"),)
+                        (("blending", "off"),)
+                        if self.blend_end_depth == 0.0
+                        else (
+                            ("blend start depth, delta_0", f"{self.blend_start_depth:.4g}", "m"),
+                            ("blend end depth, delta_1", f"{self.blend_end_depth:.4g}", "m"),
+                        )
                     ),
-                    ("renewal buffer", f"{self.renewal_buffer_length:.4g}", "m"),
-                    ("renewal lattice nodes", f"{lattice_count:,}"),
-                    *geometry_rows,
                     (
-                        "state",
-                        "synchronized fvm velocity trace",
+                        "remeshing extension, L_remesh",
+                        f"{self.remeshing_extension_length:.4g}",
+                        "m",
                     ),
+                    ("transfer-lattice nodes", f"{lattice_count:,}"),
+                    *geometry_rows,
+                    ("fvm target strength", "Stokes integral of the reconstructed FVM velocity"),
                 )
             )
 
-    def _transfer_buffered_m4_renewal(
+    def _transfer_on_lattice(
         self,
         vpm,
         *,
         fvm_velocity: np.ndarray,
         fvm_velocity_gradient: np.ndarray,
     ) -> TransferResult:
-        """Run the recovered synchronized velocity-trace whole-belt renewal."""
-        if self._stable_renewal_lattice is None or self._velocity_trace is None:
-            raise RuntimeError("buffered M4' renewal lattice was not initialized")
+        """Transfer the FVM vorticity of one accepted FVM state on the transfer lattice."""
+        if self._transfer_lattice is None or self._velocity_interpolator is None:
+            raise RuntimeError("the transfer lattice was not initialized")
         has_solid = self.solid_boundary is not None
 
         def fluid_weight(points: np.ndarray) -> np.ndarray:
@@ -1201,15 +1228,15 @@ class VorticityTransfer:
         def in_solid(points: np.ndarray) -> np.ndarray:
             return self._points_in_solid(points, include_boundary=False)
 
-        lattice = self._stable_renewal_lattice
-        slab_box = self._box if self._slip_slab else None
-        # Only geometry is pinned: every interface sweep supplies fresh fields.
+        lattice = self._transfer_lattice
+        slab_bounds = self._transfer_region_bounds if self._slip_slab else None
+        # Only the stencil geometry is cached: every coupling iteration supplies new fields.
         needed = (lattice.mesh_weight > 0.0) | (lattice.fluid_weight < 1.0)
-        if slab_box is not None:
-            needed &= (lattice.positions[:, 2] >= slab_box[4] - 1e-10) & (
-                lattice.positions[:, 2] <= slab_box[5] + 1e-10
+        if slab_bounds is not None:
+            needed &= (lattice.positions[:, 2] >= slab_bounds[4] - 1e-10) & (
+                lattice.positions[:, 2] <= slab_bounds[5] + 1e-10
             )
-        if self._buffered_trace_stencils is None:
+        if self._target_stencils is None:
             stencils = []
             positions = lattice.positions[needed]
             for axis in range(3):
@@ -1217,31 +1244,33 @@ class VorticityTransfer:
                     query = positions.copy()
                     query[:, axis] += sign * 0.5 * self.particle_spacing
                     reflected = np.zeros(len(query), dtype=bool)
-                    if slab_box is not None:
-                        below = query[:, 2] < slab_box[4]
-                        above = query[:, 2] > slab_box[5]
-                        query[below, 2] = 2.0 * slab_box[4] - query[below, 2]
-                        query[above, 2] = 2.0 * slab_box[5] - query[above, 2]
+                    if slab_bounds is not None:
+                        below = query[:, 2] < slab_bounds[4]
+                        above = query[:, 2] > slab_bounds[5]
+                        query[below, 2] = 2.0 * slab_bounds[4] - query[below, 2]
+                        query[above, 2] = 2.0 * slab_bounds[5] - query[above, 2]
                         reflected = below | above
-                        if np.any((query[:, 2] < slab_box[4]) | (query[:, 2] > slab_box[5])):
-                            raise RuntimeError("renewal trace needs more than one slab reflection")
+                        if np.any((query[:, 2] < slab_bounds[4]) | (query[:, 2] > slab_bounds[5])):
+                            raise RuntimeError(
+                                "the FVM target strength needs more than one slab reflection"
+                            )
                     wall_weight = (
                         _smoothstep(self._signed_solid_distance(query), 0.0, self.particle_spacing)
                         if has_solid
                         else np.ones(len(query))
                     )
                     fluid = wall_weight > 0.0
-                    stencil = self._velocity_trace.prepare(query[fluid])
+                    stencil = self._velocity_interpolator.prepare(query[fluid])
                     stencils.append((axis, sign, fluid, wall_weight[fluid], reflected, stencil))
-            self._buffered_trace_stencils = stencils
+            self._target_stencils = stencils
 
-        def target_at_node(points: np.ndarray) -> np.ndarray:
-            # Integrate n cross u on the same six midpoint faces as the
-            # uncached velocity-trace formula. In-solid velocity remains zero.
+        def fvm_target_at_node(points: np.ndarray) -> np.ndarray:
+            # Integrate n x u on the six face midpoints of each lattice cube, as
+            # transfer_lattice.fvm_target_strength does. The velocity is zero in the solid.
             strength = np.zeros((np.count_nonzero(needed), 3), dtype=np.float64)
-            for start in range(0, len(self._buffered_trace_stencils), 2):
+            for start in range(0, len(self._target_stencils), 2):
                 velocities = []
-                axis = self._buffered_trace_stencils[start][0]
+                axis = self._target_stencils[start][0]
                 for (
                     _axis,
                     _sign,
@@ -1249,7 +1278,7 @@ class VorticityTransfer:
                     weight,
                     reflected,
                     stencil,
-                ) in self._buffered_trace_stencils[start : start + 2]:
+                ) in self._target_stencils[start : start + 2]:
                     velocity = np.zeros_like(strength)
                     velocity[fluid] = (
                         stencil.sample(fvm_velocity, fvm_velocity_gradient) * weight[:, None]
@@ -1265,21 +1294,21 @@ class VorticityTransfer:
             target[needed] = strength
             return target
 
-        return replace_particles_from_buffered_m4_renewal(
+        return transfer_vorticity_to_particles(
             vpm,
-            lattice=self._stable_renewal_lattice,
-            fvm_vortex_strength_at_node=target_at_node,
+            lattice=self._transfer_lattice,
+            fvm_target_strength_at_node=fvm_target_at_node,
             particle_fluid_weight=fluid_weight if has_solid else None,
             particle_in_solid=in_solid if has_solid else None,
-            prune_threshold=self.transfer_prune_threshold_abs,
-            release_prune_threshold=self.transfer_release_prune_threshold_abs,
+            strength_threshold=self.strength_threshold,
+            surface_strength_threshold=self.surface_strength_threshold,
             core_radius_ratio=self.core_radius_ratio,
-            amplification_cap=self.transfer_amplification_cap,
+            max_strength_ratio=self.max_strength_ratio,
             kinematic_viscosity=self.kinematic_viscosity,
             freestream_speed=float(np.linalg.norm(self.config.freestream_velocity_vector)),
-            time_step_size=self.coupling_time_step,
+            time_step_size=self.coupling_time_step_size,
             compute_diagnostics=(self.step == 1 or self.step % self.diagnostic_interval == 0),
-            maximum_closure_correction_fraction=self.discretization_error_limit,
+            max_moment_correction_fraction=self.max_moment_correction_fraction,
         )
 
     def transfer(
@@ -1288,45 +1317,49 @@ class VorticityTransfer:
         velocity: np.ndarray,
         velocity_gradient: np.ndarray,
     ) -> TransferResult:
-        """Replace inner particles from one accepted FVM donor state.
+        """Transfer the vorticity of one accepted FVM state to the particles.
 
         Parameters
         ----------
         vpm : VPMSolver
-            Active rank-zero particle solver. Its particle fields and source
-            caches are mutated atomically on success.
+            Particle solver of the root rank. Its particle fields and source
+            caches are replaced in one step on success.
         velocity : ndarray, shape (M, 3)
-            Accepted cell-centred FVM velocity in m/s, ordered like the donor
-            cells captured by :meth:`setup`.
+            Accepted cell-centred FVM velocity in m/s, ordered like the FVM
+            cells read by :meth:`setup`.
         velocity_gradient : ndarray, shape (M, 3, 3)
             Accepted FVM gradient in 1/s with
-            ``G[i, j] = d(u_j)/d(x_i)``. Curl is converted to pointwise
-            vorticity and then integrated particle strength ``Gamma=omega*V``.
+            ``G[i, j] = d(u_j)/d(x_i)``; with the velocity it reconstructs the
+            FVM velocity at the faces of each lattice cube.
 
         Returns
         -------
         TransferResult
-            Immutable population, circulation, moment, divergence, projection,
-            and pruning budget for the completed replacement.
+            Particle counts, representation residuals, weak-strength removal and
+            conservation of the total strength and impulse of this transfer.
 
         Raises
         ------
         RuntimeError
-            If :meth:`setup` has not run, an invariant/quality check fails, or
-            the selected transfer cannot construct a valid replacement.
+            If :meth:`setup` has not run, or a conservation or capacity check
+            of the new particle state fails.
         ValueError
-            If velocity or gradient donor counts disagree with the FVM cells.
+            If the velocity or gradient count differs from the FVM cell count.
 
         Notes
         -----
-        The method increments :attr:`step`, updates interface diagnostics, and
-        replaces the accepted VPM particle state. Transfer implementations
-        snapshot all mutable particle fields and restore them if a later
-        quality check fails; no FVM arrays are modified.
+        The method increments :attr:`step`, updates the transfer-surface
+        diagnostics and replaces the accepted VPM particle state. The new state
+        is checked before the particles are replaced, so a failed check leaves
+        them unchanged; no FVM array is modified.
         """
         self.step += 1
-        if self._box is None or self._cell_centre is None or self._cell_volume is None:
-            raise RuntimeError("VorticityTransfer.setup() has not prepared the FVM donor cells")
+        if (
+            self._transfer_region_bounds is None
+            or self._cell_centre is None
+            or self._cell_volume is None
+        ):
+            raise RuntimeError("VorticityTransfer.setup() has not read the FVM cells")
         velocity_values = np.asarray(velocity, dtype=np.float64).reshape(-1, 3)
         gradient_values = np.asarray(velocity_gradient, dtype=np.float64).reshape(-1, 3, 3)
         if len(velocity_values) != len(self._cell_centre) or len(gradient_values) != len(
@@ -1334,11 +1367,13 @@ class VorticityTransfer:
         ):
             raise ValueError("FVM velocity, gradient, and cell-centre counts must match")
 
-        self.last_interface_flow = self.check_interface_flow(velocity_values)
-        self.last_vortex_line_closure = self.check_vortex_line_closure(gradient_values)
+        self.last_transfer_surface_flow = self.check_transfer_surface_flow(velocity_values)
+        self.last_transfer_surface_vorticity = self.check_transfer_surface_vorticity(
+            gradient_values
+        )
         if self._lattice_anchor is None:
             raise RuntimeError("VorticityTransfer.setup() did not resolve a lattice anchor")
-        result = self._transfer_buffered_m4_renewal(
+        result = self._transfer_on_lattice(
             vpm,
             fvm_velocity=velocity_values,
             fvm_velocity_gradient=gradient_values,
@@ -1351,6 +1386,6 @@ class VorticityTransfer:
 __all__ = [
     "TransferResult",
     "VorticityTransfer",
-    "replace_particles_from_buffered_m4_renewal",
-    "required_renewal_buffer_length",
+    "remeshing_extension_length",
+    "transfer_vorticity_to_particles",
 ]

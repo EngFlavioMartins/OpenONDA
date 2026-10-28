@@ -2,7 +2,7 @@
 
 The VLM and VPM operators intentionally use different target filters.  A
 bound filament is a singular geometric source and therefore needs a small
-numerical safeguard at a point/trace target, while a VPM particle is a finite
+numerical regularization length at a point/trace target, while a VPM particle is a finite
 volume target and carries its own core radius.  Keeping those scales explicit
 prevents a particle radius from silently becoming the boundary condition, or
 an almost-singular point evaluation from being used as a material transport
@@ -23,7 +23,7 @@ class BoundSurfaceFieldSettings:
     Parameters
     ----------
     numerical_epsilon : float
-        Positive singularity safeguard used by the bound line-integral
+        Positive regularization length of the singular bound line-integral
         operator. It is not a physical core radius.
     bound_source_radius : float
         Radius used for point/probe and boundary-trace evaluation of the

@@ -20,7 +20,7 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 FIGURES = CASE_DIR / "figures"
 DIAMETER = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
-FVM_BOX = (-2.4, 4.4, -2.4, 2.4)  # m
+FVM_DOMAIN_BOUNDS = (-2.4, 4.4, -2.4, 2.4)  # m
 WINDOW = (-1.5, 9.5, -1.5, 1.5)  # m
 SPACING = 0.02  # m, comparison lattice
 DEVELOPED_SHEDDING = 40.0  # s, start of the phase averages
@@ -131,7 +131,7 @@ def comparison_figure(name, quantity, reference, coupled, difference):
             plt.Circle((0, 0), DIAMETER / 2, facecolor="white", edgecolor="black", lw=0.6)
         )
         if row > 0:
-            axes.axvline(FVM_BOX[1], color="black", linestyle="--", linewidth=0.6)
+            axes.axvline(FVM_DOMAIN_BOUNDS[1], color="black", linestyle="--", linewidth=0.6)
         axes.set(
             xlim=WINDOW[:2], ylim=WINDOW[2:], aspect="equal", yticks=[-1, 0, 1], ylabel="$y/D$"
         )

@@ -73,11 +73,11 @@ def test_variable_core_reset_preserves_resolved_gaussian_field_and_second_moment
     assert len(remapped["position"]) > 10_000
     for quantity in ("total_kinetic_energy", "total_enstrophy"):
         assert abs(after[quantity] / before[quantity] - 1) < 0.005
-    pruning_bound = 1e-6 * np.linalg.norm(source["vortex_strength"], axis=1).sum()
+    removal_bound = 1e-6 * np.linalg.norm(source["vortex_strength"], axis=1).sum()
     np.testing.assert_allclose(
         remapped["vortex_strength"].sum(axis=0),
         source["vortex_strength"].sum(axis=0),
-        atol=pruning_bound,
+        atol=removal_bound,
     )
     # Gaussian second moment in one coordinate is sigma²/2. No nu*dt term.
     for axis in range(3):

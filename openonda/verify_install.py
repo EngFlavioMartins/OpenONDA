@@ -348,14 +348,19 @@ def _verify_native_coupled() -> dict[str, object]:
             run=vpm.RunPlan(end_time=0.04),
             logging=vpm.LoggingConfig(console=False),
         )
-        exchange = coupler.CouplerConfig(freestream_velocity=velocity)
-        with coupler.CoupledSolver(flow, particles, exchange) as first:
+        # The four-cell box holds no default transfer inset: transfer on the outer FVM boundary
+        coupling = coupler.CouplerConfig(
+            freestream_velocity=velocity, transfer_inset_spacings=0.0, blend_end_depth=0.0
+        )
+        with coupler.CoupledSolver(flow, particles, coupling) as first:
             first.start_from("latest")
             first.advance()
             first.save_backup()
-        with coupler.CoupledSolver(flow, particles, exchange) as resumed:
+        with coupler.CoupledSolver(flow, particles, coupling) as resumed:
             if not resumed.start_from("latest") or resumed.step != 1:
-                raise RuntimeError("Installed coupled solver did not resume its accepted exchange")
+                raise RuntimeError(
+                    "Installed coupled solver did not resume its accepted coupling step"
+                )
             resumed.run()
             fvm_step = resumed.fvm_solver.step
             vpm_step = resumed.vpm_solver.step

@@ -766,7 +766,7 @@ class PhysicsBase:
         """Return a tree built for the current particle source revision.
 
         ``Particles.state_revision`` changes only when a Biot--Savart source
-        field (position, vortex strength, radius, or population) changes.  A
+        field (position, vortex strength, radius, or particle count) changes.  A
         missing revision deliberately disables reuse so lightweight external
         particle adapters cannot accidentally observe a stale hierarchy.
         """

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.." || exit  # the case directory
 # the lift-amplitude error has reached its developed level, and resumes its latest
 # backup when launched again. A run that stops, such as one whose particle step
 # exceeds the stability limit, does not stop the study. The arguments are the FVM
-# box margin [D], the FVM steps per exchange, the transfer-region inset [cells],
+# domain margin [D], the FVM steps per coupling interval, the transfer inset [cells],
 # then a name suffix for each parameter that differs from the baseline, followed
 # by its setup.py flags.
 run() {
@@ -27,7 +27,7 @@ reference() {
 study=${1:-all}
 
 # Convergence: cells, steps and particles refined together by sqrt(2) at constant Courant
-# number and two FVM steps per exchange, each level with a reference on the same cells
+# number and two FVM steps per coupling interval, each level with a reference on the same cells
 if [[ $study == all || $study == convergence ]]; then
     reference h0.08 --cell-size 0.08
     reference h0.0566 --cell-size 0.056569
@@ -38,13 +38,13 @@ if [[ $study == all || $study == convergence ]]; then
     run 2.4 2 8.75 _h0.0283 --cell-size 0.028284
 fi
 
-# S4: interface sweeps per exchange, exactly K with an unreachable tolerance
+# S4: coupling iterations per coupling interval, exactly K with an unreachable tolerance
 if [[ $study == all || $study == s4 ]]; then
-    run 2.4 5 8.75 _k1 --interface-iterations 1
-    run 2.4 5 8.75 _k2 --interface-iterations 2 --interface-tolerance 1e-30
-    run 2.4 5 8.75 _k3 --interface-iterations 3 --interface-tolerance 1e-30
-    run 2.4 5 8.75 _k4 --interface-iterations 4 --interface-tolerance 1e-30
-    run 2.4 5 8.75 _k6 --interface-iterations 6 --interface-tolerance 1e-30
+    run 2.4 5 8.75 _k1 --coupling-iterations 1
+    run 2.4 5 8.75 _k2 --coupling-iterations 2 --coupling-tolerance 1e-30
+    run 2.4 5 8.75 _k3 --coupling-iterations 3 --coupling-tolerance 1e-30
+    run 2.4 5 8.75 _k4 --coupling-iterations 4 --coupling-tolerance 1e-30
+    run 2.4 5 8.75 _k6 --coupling-iterations 6 --coupling-tolerance 1e-30
 fi
 
 # S1b: particle step fixed at 0.04 s, smaller FVM steps, with references at the same FVM steps
@@ -72,7 +72,7 @@ if [[ $study == all || $study == s3 ]]; then
     run 2.4 5 8.75 _re250 --reynolds-number 250
 fi
 
-# Domain: FVM box margin and transfer-region inset
+# Domain: FVM domain margin and transfer inset
 if [[ $study == all || $study == domain ]]; then
     run 1.0 5 8.75
     run 1.4 5 8.75
@@ -85,7 +85,7 @@ if [[ $study == all || $study == domain ]]; then
     run 2.4 5 20
 fi
 
-# S1a: baseline and FVM steps per exchange at a fixed FVM step of 0.008 s
+# S1a: baseline and FVM steps per coupling interval at a fixed FVM step of 0.008 s
 if [[ $study == all || $study == s1a ]]; then
     run 2.4 5 8.75
     run 2.4 2 8.75

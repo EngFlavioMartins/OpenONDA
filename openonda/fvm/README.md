@@ -16,7 +16,7 @@ The implementation is organized by numerical task:
   step records.
 - `motion/`: rigid motion of the whole mesh (`MeshMotion`, `RigidMeshMotion`); the motion classes are the shared ones in `openonda.core.kinematics`.
 - `sampling/`: force, y+, line and surface samplers.
-- `coupling/`: field exchange with the FVM–VPM driver.
+- `coupling/`: field gathers and boundary-condition setters for the FVM–VPM coupler.
 
 See [tests and limitations](../../docs/validation/fvm_qualification.md)
 before choosing a numerical backend or interpreting a new case.

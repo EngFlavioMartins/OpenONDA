@@ -624,7 +624,7 @@ class Logging:
             return
         removal_fraction = particles_removed / particles_before if particles_before else 0.0
         Logging.record(
-            "weak particle pruning",
+            "weak-strength removal",
             ("threshold", percent, "%"),
             ("particles, before", particles_before),
             ("particles, removed", particles_removed),

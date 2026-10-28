@@ -1,4 +1,4 @@
-"""Compact connected components for grouped, blocked Cartesian grid links."""
+"""Compact connected components of Cartesian grid links masked at the wall."""
 
 import numpy as np
 
@@ -11,7 +11,7 @@ def connected_grid_components(magnitude, groups, links):
 
     Union-find visits the three preceding lattice neighbours once. Scratch
     storage is one int32 parent per active node in addition to the returned
-    labels, independent of the number of open links.
+    labels, independent of the number of fluid links.
     """
     nx, ny, nz = magnitude.shape
     labels = np.full(magnitude.shape, -1, dtype=np.int32)

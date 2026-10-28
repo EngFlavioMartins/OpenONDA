@@ -1,4 +1,4 @@
-"""M4-prime interpolation kernel shared by renewal and GBD diffusion."""
+"""M4' remeshing kernel shared by the vorticity transfer and GBD diffusion."""
 
 import numpy as np
 

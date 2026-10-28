@@ -5,9 +5,9 @@ import pytest
 import taichi as ti
 
 from openonda.core.slip_slab_images import add_slab_images, slab_image_lattice
-from openonda.coupler.stable_renewal import (
-    build_stable_renewal_lattice,
-    inward_cosine_blend_weight,
+from openonda.coupler.transfer_lattice import (
+    blending_weight,
+    build_transfer_lattice,
     scatter_m4_prime_to_lattice,
 )
 from openonda.vpm.config.case import Numerics
@@ -162,7 +162,7 @@ def test_nonbinary_f64_slip_planes_preserve_velocity_and_gradient_parity():
 def test_slab_blend_weight_preserves_thin_span_interior():
     box = (-1.0, 1.0, -1.0, 1.0, -0.24, 0.24)
     points = np.array([[0, 0, 0], [0, 0, -0.24], [0, 0, 0.25], [0.9, 0, 0]])
-    blend_weight = inward_cosine_blend_weight(points, box, 0.4, slip_slab=True)
+    blend_weight = blending_weight(points, box, 0.0, 0.4, slip_slab=True)
     np.testing.assert_allclose(blend_weight[:2], 1.0)
     assert blend_weight[2] == 0.0
     assert 0.0 < blend_weight[3] < 1.0
@@ -437,36 +437,36 @@ def test_fmm_slab_targets_agree_with_direct_on_3d_cloud(name):
     assert np.max(np.abs(results[1][0][[0, -1], 2])) < 2e-3
 
 
-def test_slab_renewal_ghost_nodes_have_zero_physical_weight():
-    lattice = build_stable_renewal_lattice(
+def test_slab_transfer_lattice_ghost_nodes_have_zero_physical_weight():
+    lattice = build_transfer_lattice(
         (-0.4, 0.4, -0.4, 0.4, -0.2, 0.2),
         0.1,
-        buffer_length=0.2,
-        blend_ramp_width=0.3,
+        remeshing_extension_length=0.2,
+        blend_end_depth=0.3,
         slip_slab=True,
     )
     ghost = (lattice.positions[:, 2] < -0.2 - 1e-10) | (lattice.positions[:, 2] > 0.2 + 1e-10)
     assert np.any(ghost)
     np.testing.assert_array_equal(lattice.fluid_weight[ghost], 0.0)
-    np.testing.assert_array_equal(lattice.fvm_blend_weight[ghost], 0.0)
-    assert lattice.renewal_bounds[4] == -0.2
-    assert lattice.renewal_bounds[5] == 0.2
+    np.testing.assert_array_equal(lattice.blending_weight[ghost], 0.0)
+    assert lattice.transfer_region_bounds[4] == -0.2
+    assert lattice.transfer_region_bounds[5] == 0.2
 
 
-def test_one_layer_renewal_lattice_holds_every_slab_image_of_its_donors():
+def test_one_layer_transfer_lattice_holds_every_slab_image_of_its_source_particles():
     h = 0.08
     planes = (-0.5 * h, 0.5 * h)
-    lattice = build_stable_renewal_lattice(
+    lattice = build_transfer_lattice(
         (-0.4, 0.4, -0.4, 0.4, *planes),
         h,
-        buffer_length=0.2,
-        blend_ramp_width=0.3,
+        remeshing_extension_length=0.2,
+        blend_end_depth=0.3,
         lattice_anchor=(0.0, 0.0, 0.0),
         slip_slab=True,
     )
-    donor = np.array([[0.03, -0.02, 0.013]])
+    source = np.array([[0.03, -0.02, 0.013]])
     gamma = np.array([[0.2, -0.4, 1.0]])
-    deposit = scatter_m4_prime_to_lattice(donor, gamma, lattice).reshape(*lattice.shape, 3)
+    deposit = scatter_m4_prime_to_lattice(source, gamma, lattice).reshape(*lattice.shape, 3)
     images = add_slab_images(deposit, lattice.origin[2], h, planes)
 
     # Every image's M4 deposit, explicitly: one layer repeats every 2 h in z
@@ -480,13 +480,13 @@ def test_one_layer_renewal_lattice_holds_every_slab_image_of_its_donors():
     expected = np.zeros_like(images)
     for k in range(-8, 9):
         for z, sign in (
-            (donor[0, 2] + 2 * k * h, 1.0),
-            (2 * planes[0] - donor[0, 2] + 2 * k * h, -1.0),
+            (source[0, 2] + 2 * k * h, 1.0),
+            (2 * planes[0] - source[0, 2] + 2 * k * h, -1.0),
         ):
             weight = np.einsum(
                 "i,j,k->ijk",
-                m4((axes[0] - donor[0, 0]) / h),
-                m4((axes[1] - donor[0, 1]) / h),
+                m4((axes[0] - source[0, 0]) / h),
+                m4((axes[1] - source[0, 1]) / h),
                 m4((axes[2] - z) / h),
             )
             expected += weight[..., None] * gamma[0] * np.array([sign, sign, 1.0])

@@ -64,7 +64,7 @@ _STEP_SECTION_ORDER = {
             "aerodynamic loads",
             "vlm wing/wake proximity",
             "stabilization",
-            "interface transfer",
+            "vorticity transfer",
             "timing",
         )
     )

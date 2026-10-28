@@ -14,7 +14,7 @@ from ..diagnostics.step import OuterCorrectorDiagnostics
 from ..fields import gradients
 from ..fields.boundary_reconstruction import boundary_owner_gradient, boundary_resolved_displacement
 from ..fields.mixed_velocity_boundary import (
-    update_normal_velocity_tangential_gradient_boundary,
+    update_mixed_velocity_boundary,
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..utils import cavity_utils
@@ -1750,7 +1750,7 @@ def _apply_inlet_outlet_bc(
     (zero_gradient); incoming flux (φ < 0) → impose ``value_velocity_field`` when
     present, otherwise the uniform ``value_velocity`` (the inletValue, default 0).
     The per-face path is required by the FVM--VPM characteristic VPM boundary condition:
-    pressure-correction refreshes must not replace its non-uniform VPM boundary-condition trace
+    pressure-correction refreshes must not replace its non-uniform VPM boundary data
     with the uniform freestream.
     """
     start = boundary["start_face"]
@@ -1927,12 +1927,10 @@ def _update_velocity_bcs(
             )
         elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
             _apply_fixed_value_bc(velocity, boundary, n_cells, n_interior, strategy)
-        elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
+        elif strategy is BoundaryStrategy.MIXED_VELOCITY:
             if mesh_data is None:
                 raise ValueError("Mixed velocity boundary update requires mesh_data")
-            update_normal_velocity_tangential_gradient_boundary(
-                velocity, boundary, mesh_data, geo_data
-            )
+            update_mixed_velocity_boundary(velocity, boundary, mesh_data, geo_data)
         elif strategy in (
             BoundaryStrategy.EMPTY,
             BoundaryStrategy.SLIP,

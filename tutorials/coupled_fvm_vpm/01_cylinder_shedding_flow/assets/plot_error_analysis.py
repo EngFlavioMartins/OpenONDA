@@ -2,10 +2,10 @@
 """Orders, uncertainties and sources of the coupled-solution error, from the sensitivity runs.
 
 Each family of the coupling-error plan (docs/plans/2026-10-19-coupling-error-sources.md) refines
-or varies one quantity. The references give the FVM orders in space and time and the value phi_0
+or varies one quantity. The references give the FVM orders in space and time and the value Q_ext
 at zero cell size and step; each coupled run's error splits into the FVM error of the reference
 on its cells and step and the coupling error. The coupling error is then set against its
-candidate drivers in flow scales, and against the interface mismatch the coupler logs, which
+possible drivers in flow scales, and against the boundary-data mismatch the coupler logs, which
 needs no reference. Families with too few finished runs are left out until their runs land.
 """
 
@@ -39,18 +39,18 @@ TABLES = CASE_DIR / "figures/auxiliary"
 VARIABLES = {
     "cell_size": ("$h/D$", 1.0 / DIAMETER),
     "time_step": (r"$U\Delta t/D$", SPEED / DIAMETER),
-    "fvm_time_step": (r"$U\Delta t_{\rm F}/D$", SPEED / DIAMETER),
-    "particle_time_step": (r"$U\Delta t_{\rm P}/D$", SPEED / DIAMETER),
+    "fvm_time_step": (r"$U\Delta t_{\rm FVM}/D$", SPEED / DIAMETER),
+    "particle_time_step": (r"$U\Delta t_{\rm VPM}/D$", SPEED / DIAMETER),
 }
 CONVERGENCE_FAMILIES = {"C": "cell_size", "X": "cell_size", "T2": "fvm_time_step"}
 REFINEMENT_FAMILIES = {**CONVERGENCE_FAMILIES, "P": "fvm_time_step", "E": "particle_time_step"}
-DRIVER_FAMILIES = ("T2", "P", "E")  # all on the baseline cells: dt_p, n and dt_f vary apart
+DRIVER_FAMILIES = ("T2", "P", "E")  # all on the baseline cells: dt_VPM, N and dt_FVM vary apart
 PLOTTED_DRIVERS = {
-    "particle step": r"$U\Delta t_{\rm P}/D$",
-    "exchanges per convective time": r"$D/(U\Delta t_{\rm P})$",
+    "particle step": r"$U\Delta t_{\rm VPM}/D$",
+    "coupling intervals per convective time": r"$D/(U\Delta t_{\rm VPM})$",
 }
 PLOTTED_INDICATORS = {
-    "trace velocity mismatch, mean": r"$\Delta u_\mathrm{trace}/U$",
+    "boundary velocity mismatch, mean": r"$\Delta u_{\Sigma_{\rm FVM}}/U$",
 }
 SERIES = {
     "total": ("Coupled solver, total", COLORS["hybrid"], "o"),
@@ -65,7 +65,7 @@ FAMILY_NAMES = {
     "T2": "Time",
     "P": "FVM step",
     "E": "Particle step",
-    "K": "Interface sweeps",
+    "K": "Coupling iterations",
     "B": "Box",
     "R": "Reynolds number",
     "S": "Particle spacing",
@@ -137,7 +137,7 @@ def bottom_legend(figure, axes):
 
 
 def fit_row(kind, family, variable, quantity, fit):
-    """One line of the order table, with the uncertainty of the finest level also in % of phi_0."""
+    """One line of the order table, with the uncertainty of the finest level also in % of Q_ext."""
     finest = np.argmin(fit["x"])
     return {
         "kind": kind,
@@ -148,13 +148,13 @@ def fit_row(kind, family, variable, quantity, fit):
         "class": fit["class"],
         "fit": fit["fit"],
         "order": fit["order"],
-        "phi0": fit["phi0"],
+        "Q_ext": fit["Q_ext"],
         "finest value": fit["phi"][finest],
         "uncertainty": fit["uncertainty"][finest],
-        # The coupling error is already in % of phi_0
+        # The coupling error is already in % of Q_ext
         "uncertainty [%]": fit["uncertainty"][finest]
         if kind == "coupled coupling"
-        else 100.0 * fit["uncertainty"][finest] / abs(fit["phi0"]),
+        else 100.0 * fit["uncertainty"][finest] / abs(fit["Q_ext"]),
         "safety factor": fit["safety factor"],
         "sigma": fit["sigma"],
     }
@@ -189,13 +189,13 @@ def reference_orders(references):
 
 
 def space_time_orders(references):
-    """phi = phi_0 + a h^p + b dt^q over every reference at Re = 150, once it has freedom."""
+    """Q = Q_ext + a h^p + b dt^q over every reference at Re = 150, once it has freedom."""
     levels = [ref for (re, h, dt), ref in references.items() if re == REYNOLDS_NUMBER]
     if len(levels) < 6:
         print(f"Space-time fit of the references: {len(levels)} levels, needs 6 (5 coefficients)")
         return []
     rows = []
-    print(f"Space-time fit phi = phi_0 + a (h/D)^p + b (U dt/D)^q over {len(levels)} references")
+    print(f"Space-time fit Q = Q_ext + a (h/D)^p + b (U dt/D)^q over {len(levels)} references")
     for quantity in STATISTICS:
         fit = space_time_fit(
             [flow_scaled("cell_size", ref["cell_size"]) for ref in levels],
@@ -204,15 +204,15 @@ def space_time_orders(references):
         )
         errors = fit["standard errors"]
         print(
-            f"  {quantity:16s} phi_0 {fit['phi0']:.4f} +- {errors['phi0']:.4f}, "
+            f"  {quantity:16s} Q_ext {fit['Q_ext']:.4f} +- {errors['Q_ext']:.4f}, "
             f"p {fit['p']:.2f} +- {errors['p']:.2f}, q {fit['q']:.2f} +- {errors['q']:.2f}, "
-            f"rms residual {100.0 * fit['rms residual'] / fit['phi0']:.3f}%"
+            f"rms residual {100.0 * fit['rms residual'] / fit['Q_ext']:.3f}%"
         )
         rows.append(
             {
                 "quantity": quantity,
                 "levels": len(levels),
-                **{name: fit[name] for name in ("phi0", "a", "p", "b", "q")},
+                **{name: fit[name] for name in ("Q_ext", "a", "p", "b", "q")},
                 **{f"{name} standard error": value for name, value in errors.items()},
                 "rms residual": fit["rms residual"],
             }
@@ -246,7 +246,7 @@ def print_orders(title, fits):
         finest = np.argmin(fit["x"])
         order = f"p = {fit['order']:.2f}" if np.isfinite(fit["order"]) else "no order"
         print(
-            f"  {' '.join(key):34s} {fit['class']:11s} {order:10s} phi_0 = {fit['phi0']:9.4f}  "
+            f"  {' '.join(key):34s} {fit['class']:11s} {order:10s} Q_ext = {fit['Q_ext']:9.4f}  "
             f"U = {fit['uncertainty'][finest]:.4f} at the finest level ({fit['fit']}, "
             f"F_s = {fit['safety factor']:.2f}, {len(fit['x'])} levels)"
         )
@@ -292,7 +292,7 @@ def reference_figure(fits, exact):
 
 
 def decomposition_figure(families, decomposition, fits, exact):
-    """e, e_f and e_c of the C, X and T2 families against their refinement variable."""
+    """e, e_FVM and e_coupling of the C, X and T2 families against their refinement variable."""
     columns = [f for f, variable in CONVERGENCE_FAMILIES.items() if len(families[f][1]) > 1]
     if not columns:
         return
@@ -339,11 +339,12 @@ def decomposition_figure(families, decomposition, fits, exact):
 def driver_analysis(families, decomposition):
     """Fits of the coupling error over the T2, P and E runs on each driver, and both time terms.
 
-    A coupling error added at each transfer accumulates with the exchanges per convective time
-    D/(U dt_p): it grows as the particle step falls. A temporal error of the particle step falls
-    with it. The two-term model e_c = c + a (U dt_p/D) + b D/(U dt_p) + d (U dt_f/D) weighs both
-    against an FVM-step contribution; P holds dt_p while dt_f changes, E holds dt_f while dt_p
-    changes, and T2 changes both at a fixed ratio.
+    A coupling error added at each transfer accumulates with the coupling intervals per
+    convective time D/(U dt_VPM): it grows as the particle step falls. A temporal error of the
+    particle step falls with it. The two-term model
+    e_coupling = c + a (U dt_VPM/D) + b D/(U dt_VPM) + d (U dt_FVM/D) weighs both against an FVM-step
+    contribution; P holds dt_VPM while dt_FVM changes, E holds dt_FVM while dt_VPM changes, and
+    T2 changes both at a fixed ratio.
     """
     pool = {run["name"]: run for family in DRIVER_FAMILIES for run in families[family][1]}
     pool = [
@@ -366,16 +367,16 @@ def driver_analysis(families, decomposition):
             fit = driver_fit(x, error)
             rows.append({"quantity": quantity, "driver": driver, "runs": len(pool), **fit})
             print(
-                f"  {quantity:16s} {driver:30s} e_c = {fit['c0']:+.3f} {fit['a']:+.3g} x^{fit['q']:+.2f}"
+                f"  {quantity:16s} {driver:30s} e_coupling = {fit['c0']:+.3f} {fit['a']:+.3g} x^{fit['q']:+.2f}"
                 f"  R^2 = {fit['R2']:.3f}, rms {fit['rms']:.3f}%"
             )
 
         # Temporal against accumulated, with the FVM step, as many terms as the runs allow
         particle_step = np.array([value["particle step"] for value in values])
-        terms = {"U dt_p/D": particle_step, "D/(U dt_p)": 1.0 / particle_step}
+        terms = {"U dt_VPM/D": particle_step, "D/(U dt_VPM)": 1.0 / particle_step}
         fvm_step = np.array([value["FVM step"] for value in values])
         if len(pool) > 4 and np.ptp(fvm_step / particle_step) > 0.0:
-            terms["U dt_f/D"] = fvm_step
+            terms["U dt_FVM/D"] = fvm_step
         model = term_model(terms, error)
         verdict = ", ".join(
             f"{name} {model['coefficients'][name]:+.3g} +- {model['standard errors'][name]:.2g}"
@@ -391,14 +392,14 @@ def driver_analysis(families, decomposition):
 
 
 def driver_figure(families, decomposition, fits):
-    """e_c against the particle step, the exchanges per convective time and n, by family."""
-    # Only the runs on the baseline cells with converged sweeps, so the particle step is the cause
+    """e_coupling against the particle step, the coupling intervals per convective time and N, by family."""
+    # Only the runs on the baseline cells with converged iterations, so the particle step is the cause
     runs = list({run["name"]: run for f in DRIVER_FAMILIES for run in families[f][1]}.values())
     if len(runs) < 3:
         return
     figure, axes = panel_grid(len(ERRORS), len(PLOTTED_DRIVERS), top_cm=2.0)
 
-    # Particle stability number on top of the particle-step column, from the particle-field strain
+    # Lagrangian CFL number on top of the particle-step column, from the particle-field strain
     to_stability = PARTICLE_STRAIN_RATE * DIAMETER / SPEED
     stability = axes[0, 0].secondary_xaxis(
         "top", functions=(lambda x: to_stability * x, lambda x: x / to_stability)
@@ -408,7 +409,7 @@ def driver_figure(families, decomposition, fits):
     figure.text(
         0.5,
         0.99,
-        rf"$\Lambda=|S|\,\Delta t_{{\rm P}}$, particle-field $|S|={PARTICLE_STRAIN_RATE:g}$ s$^{{-1}}$",
+        rf"$\Lambda=|S|\,\Delta t_{{\rm VPM}}$, particle-field $|S|={PARTICLE_STRAIN_RATE:g}$ s$^{{-1}}$",
         ha="center",
         va="top",
     )
@@ -441,7 +442,7 @@ def driver_figure(families, decomposition, fits):
                     linewidth=LINE_WIDTH,
                 )
             if column == 0:
-                axis.set_ylabel(r"$e_{\rm C}$ " + ERRORS[quantity])
+                axis.set_ylabel(r"$e_{\rm coupling}$" + "\n" + ERRORS[quantity])
         axes[-1, column].set_xlabel(label)
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
@@ -452,7 +453,7 @@ def driver_figure(families, decomposition, fits):
 
 
 def indicator_analysis(runs, decomposition):
-    """Developed means of the logged mismatch of every run, and their correlation with |e_c|."""
+    """Developed means of the logged mismatch of every run, and their correlation with |e_coupling|."""
     rows = []
     for run in runs:
         means = interface_indicators(
@@ -464,7 +465,8 @@ def indicator_analysis(runs, decomposition):
                 "families": run["families"] or "-",
                 **means,
                 **{
-                    f"|e_c| {q} [%]": abs(decomposition[run["name"]][q]["coupling"]) for q in ERRORS
+                    f"|e_coupling| {q} [%]": abs(decomposition[run["name"]][q]["coupling"])
+                    for q in ERRORS
                 },
             }
         )
@@ -472,7 +474,7 @@ def indicator_analysis(runs, decomposition):
     correlations = {}
     for name in INDICATORS:
         for quantity in ERRORS:
-            pairs = np.array([(row[name], row[f"|e_c| {quantity} [%]"]) for row in rows])
+            pairs = np.array([(row[name], row[f"|e_coupling| {quantity} [%]"]) for row in rows])
             pairs = pairs[np.all(np.isfinite(pairs), axis=1)]
             if len(pairs) < 3:
                 continue
@@ -483,13 +485,13 @@ def indicator_analysis(runs, decomposition):
             )
             r, rho, count = correlations[name, quantity]
             print(
-                f"  {name:31s} vs |e_c| {quantity:16s} r = {r:+.2f}, rho = {rho:+.2f} ({count} runs)"
+                f"  {name:31s} vs |e_coupling| {quantity:16s} r = {r:+.2f}, rho = {rho:+.2f} ({count} runs)"
             )
     return rows, correlations
 
 
 def indicator_figure(rows, correlations):
-    """|e_c| of every run against the developed mean of each plotted indicator."""
+    """|e_coupling| of every run against the developed mean of each plotted indicator."""
     if not any(key[0] in PLOTTED_INDICATORS for key in correlations):
         return
     figure, axes = panel_grid(len(ERRORS), len(PLOTTED_INDICATORS), bottom_cm=5.2)
@@ -502,7 +504,7 @@ def indicator_figure(rows, correlations):
                 members = [entry for entry in rows if drawn_family(entry) == family]
                 axis.plot(
                     [entry[name] / 10.0**exponent for entry in members],
-                    [entry[f"|e_c| {quantity} [%]"] for entry in members],
+                    [entry[f"|e_coupling| {quantity} [%]"] for entry in members],
                     color=color,
                     marker=marker,
                     markersize=MARKER_SIZE,
@@ -517,7 +519,7 @@ def indicator_figure(rows, correlations):
                     transform=axis.transAxes,
                 )
             if column == 0:
-                axis.set_ylabel(r"$|e_{\rm C}|$ " + ERRORS[quantity])
+                axis.set_ylabel(r"$|e_{\rm coupling}|$" + "\n" + ERRORS[quantity])
         axes[-1, column].set_xlabel(f"{label} [$10^{{{exponent}}}$]")
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
@@ -538,7 +540,7 @@ def factorial_summary(runs, decomposition):
             print(f"Factorial F: {len(corners)} of {2 ** len(factors)} corners have run")
             return
         print(
-            f"Factorial F, effects on e_c {quantity}: "
+            f"Factorial F, effects on e_coupling {quantity}: "
             + ", ".join(f"{k} {v:+.3f}" for k, v in effects.items())
         )
 
@@ -561,9 +563,9 @@ def factorial_summary(runs, decomposition):
 
 
 def box_figure(families, decomposition):
-    """Coupling error of family B against the downstream reach R and the side clearance c.
+    """Coupling error of family B against the wake reach and the lateral clearance.
 
-    R = (x_t - L_f)/L_f uses the u_rms-peak formation length, uncertain by about 0.15 D at
+    l_wake/L_f = (x_t - L_f)/L_f uses the u_rms-peak formation length, uncertain by about 0.15 D at
     Re = 150; the v_rms peak, which converges better, gives the second column. If the box scales
     with the wake, both Reynolds numbers fall on one curve.
     """
@@ -580,23 +582,31 @@ def box_figure(families, decomposition):
                 "box margin": run["box_margin"],
                 "box downstream": run["box_downstream"],
                 **box_scales(run, scales),
-                **{f"e_c {q} [%]": decomposition[run["name"]][q]["coupling"] for q in ERRORS},
+                **{
+                    f"e_coupling {q} [%]": decomposition[run["name"]][q]["coupling"] for q in ERRORS
+                },
             }
         )
     write_table(TABLES / "error_box.csv", rows)
     print("Family B: coupling error against the box in wake scales")
     for row in rows:
         print(
-            f"  {row['run']:42s} R {row['reach']:5.2f} (v_rms {row['reach, v_rms']:5.2f}) "
-            f"c {row['clearance']:5.2f}"
-            + "".join(f"  {q[:6]} {row[f'e_c {q} [%]']:+6.2f}" for q in ERRORS)
+            f"  {row['run']:42s} l_wake/L_f {row['reach']:5.2f} (v_rms {row['reach, v_rms']:5.2f}) "
+            f"l_side/delta_w {row['clearance']:5.2f}"
+            + "".join(f"  {q[:6]} {row[f'e_coupling {q} [%]']:+6.2f}" for q in ERRORS)
         )
 
-    # The downstream sweep keeps the side margin, the side sweep the downstream face
+    # The downstream series keeps the side margin, the side series the downstream boundary
     columns = {
-        "reach": ("Reach $R$, $L_f$ at\n" + r"$u_\mathrm{rms}$ peak", "box margin"),
-        "reach, v_rms": ("Reach $R$, $L_f$ at\n" + r"$v_\mathrm{rms}$ peak", "box margin"),
-        "clearance": ("Side clearance\n" + r"$c$ [$\delta_\omega$]", "box downstream"),
+        "reach": (
+            r"$\ell_{\rm wake}/L_f$, $L_f$ at" + "\n" + r"$u_\mathrm{rms}$ peak",
+            "box margin",
+        ),
+        "reach, v_rms": (
+            r"$\ell_{\rm wake}/L_f$, $L_f$ at" + "\n" + r"$v_\mathrm{rms}$ peak",
+            "box margin",
+        ),
+        "clearance": ("Lateral clearance\n" + r"$\ell_{\rm side}/\delta_\omega$", "box downstream"),
     }
     colors = {100.0: COLORS["green"], 150.0: COLORS["fvm"], 250.0: COLORS["hybrid"]}
     figure, axes = panel_grid(len(ERRORS), len(columns))
@@ -619,7 +629,7 @@ def box_figure(families, decomposition):
                     continue
                 axis.plot(
                     [entry[scale] for entry in series],
-                    [entry[f"e_c {quantity} [%]"] for entry in series],
+                    [entry[f"e_coupling {quantity} [%]"] for entry in series],
                     color=color,
                     marker="o",
                     markersize=MARKER_SIZE,
@@ -627,7 +637,7 @@ def box_figure(families, decomposition):
                     label=f"$Re={reynolds_number:g}$",
                 )
             if column == 0:
-                axis.set_ylabel(r"$e_{\rm C}$ " + ERRORS[quantity])
+                axis.set_ylabel(r"$e_{\rm coupling}$" + "\n" + ERRORS[quantity])
         axes[-1, column].set_xlabel(label)
         axes[-1, column].margins(x=0.12)
         axes[-1, column].xaxis.set_major_locator(MaxNLocator(3))
@@ -641,14 +651,14 @@ def main():
     runs = read_runs(references)
     families = coupled_families(runs)
     print(
-        f"Lambda = max|S| dt_p with the particle-field max|S| = {PARTICLE_STRAIN_RATE} 1/s at"
+        f"Lambda = max|S| dt_VPM with the particle-field max|S| = {PARTICLE_STRAIN_RATE} 1/s at"
         " Re = 150, scaled with sqrt(Re)"
     )
 
     # Orders and uncertainties of the references, and the zero-cell-size, zero-step values
     exact = exact_values(references)
     for quantity, (value, origin) in exact.items():
-        print(f"phi_0 of the {quantity}: {value:.5f} ({origin})")
+        print(f"Q_ext of the {quantity}: {value:.5f} ({origin})")
     reference_fits = reference_orders(references)
     print_orders("Reference families (Eça–Hoekstra least squares)", reference_fits)
     space_time_rows = space_time_orders(references)
@@ -664,7 +674,7 @@ def main():
     coupled_fits = coupled_orders(families, decomposition)
     print_orders("Coupled families: statistic (total) and coupling error", coupled_fits)
 
-    print(f"Error decomposition [% of phi_0]; wake against {finest['name']}")
+    print(f"Error decomposition [% of Q_ext]; wake against {finest['name']}")
     decomposition_rows = []
     for run in runs:
         row = {"run": run["name"], "families": run["families"] or "-"}
@@ -677,7 +687,7 @@ def main():
         print(
             f"  {run['name']:42s} {row['families']:6s}"
             + "".join(
-                f"  {q[:6]} e {row[f'{q} total']:+6.2f} e_f {row[f'{q} FVM']:+6.2f} e_c {row[f'{q} coupling']:+6.2f}"
+                f"  {q[:6]} e {row[f'{q} total']:+6.2f} e_FVM {row[f'{q} FVM']:+6.2f} e_coupling {row[f'{q} coupling']:+6.2f}"
                 for q in ERRORS
             )
         )

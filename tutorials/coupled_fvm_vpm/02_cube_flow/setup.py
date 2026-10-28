@@ -35,29 +35,30 @@ DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 
 # FVM: uniform body-fitted cells, also the particle spacing
 CELL_SIZE = 0.045  # m
-# Box in wake scales (cylinder error study, docs/reports/2026-10-23-coupling-error-sources.md),
+# FVM domain in wake scales (cylinder error study, docs/reports/2026-10-23-coupling-error-sources.md),
 # measured on the FVM-only cube: shear-layer vorticity thickness 0.078 m at the rear-face plane,
-# formation length 3.1 m from the cube centre. The core with full FVM weight starts the transfer
-# inset plus the blend width (14.75 cells) inside the box faces.
+# formation length 3.1 m from the cube centre. The replacement region starts the transfer inset
+# plus the blend end depth (14.75 cells) inside the outer FVM boundary.
 BOX_MARGIN = 1.8  # m: side clearance 8.2 shear-layer thicknesses from the faces (3.2 from the
 # separated layers, which lie at |y| = 0.89 m behind the cube)
-BOX_DOWNSTREAM = 5.05  # m: transfer face at 1.5 formation lengths (reach R = 0.5)
+BOX_DOWNSTREAM = 5.05  # m: transfer surface at 1.5 formation lengths (wake reach R = 0.5)
 FVM_TIME_STEP = 0.01  # s, Courant number 0.22
 FVM_CORES = 8
 
 # VPM: particles in the outer wake
 VPM_DOMAIN = (-4.5, 24.0, -3.0, 3.0, -3.0, 3.0)  # m
 OUTFLOW_FRINGE = 12.0  # m, shed vortices fade before the downstream face
-VORTICITY_FLOOR = 0.003  # 1/s, weaker particles are pruned after diffusion
+VORTICITY_FLOOR = 0.003  # 1/s, GBD removal threshold: weaker particles are removed after diffusion
 CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000
 
 # Coupling: FVM vorticity replaces the particles inside the transfer region
-# Coupling: the coupler's recommended interface (transfer inset 8.75, blend 6 and particle-only
-# band 2 particle spacings; sweeps until the boundary trace changes by less than 1e-5)
-FVM_SUBSTEPS = 4  # FVM steps per exchange: particle step 0.04 s, Lagrangian step number about
-# 0.8 for a particle-field strain up to 20 1/s (max vorticity 21 1/s at t = 4 s); a margin below 1,
-# because the wing's strain grew to 25 1/s in its developing wake
+# Coupling: the coupler's recommended interface (transfer inset 8.75, blend start and end depths 2
+# and 6 particle spacings; coupling iterations until the boundary data change by less than 1e-5)
+# FVM steps per coupling interval: particle step 0.02 s, Lagrangian CFL number 0.54 for the
+# particle-field strain of 26.9 1/s reached in the developed wake at t = 40.6 s. The run to 40 s
+# used 4 (0.04 s, CFL number 0.8 at the 20 1/s of t = 4 s) and continued from its t = 40 s backup.
+FVM_SUBSTEPS = 2
 END_TIME = 60.0  # s, statistics over 30 <= t <= 60 s
 
 # Observations
@@ -67,14 +68,16 @@ SLICE_INTERVAL = 1.0  # s, mid-plane slices, at the times of the reference slice
 SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, x and y bounds of the particle slice
 VOLUME_INTERVAL = 2.0  # s, FVM fields
 BACKUP_INTERVAL = 1.0  # s, coupled restart states
-RENEWAL_CHECK_INTERVAL = 2.5  # s, costly checks of how well particles represent FVM vorticity
+TRANSFER_DIAGNOSTIC_INTERVAL = (
+    2.5  # s, full diagnostics of how well particles represent FVM vorticity
+)
 OFFAXIS_Y = 0.75 * CUBE_SIDE  # m
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
 
 # Geometry derived from the inputs above
-FVM_BOX = (-BOX_MARGIN, BOX_DOWNSTREAM, -BOX_MARGIN, BOX_MARGIN, -BOX_MARGIN, BOX_MARGIN)
+FVM_DOMAIN_BOUNDS = (-BOX_MARGIN, BOX_DOWNSTREAM, -BOX_MARGIN, BOX_MARGIN, -BOX_MARGIN, BOX_MARGIN)
 CUBE_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
-EXCHANGE_TIME_STEP = FVM_SUBSTEPS * FVM_TIME_STEP
+COUPLING_TIME_STEP = FVM_SUBSTEPS * FVM_TIME_STEP
 
 
 def initial_velocity(position):
@@ -86,14 +89,14 @@ def initial_velocity(position):
     return np.asarray(FREESTREAM_VELOCITY) + swirl[:, None] * np.cross(axis, offset)
 
 
-def on_exchanges(interval):
-    """Observations fall on exchanges, where both solvers hold the same time."""
-    return max(1, round(interval / EXCHANGE_TIME_STEP)) * EXCHANGE_TIME_STEP
+def on_coupling_times(interval):
+    """Observations fall on coupling times, where both solvers hold the same time."""
+    return max(1, round(interval / COUPLING_TIME_STEP)) * COUPLING_TIME_STEP
 
 
 FVM_MESH = msh.CartesianMesher(
     domain=msh.BoxDomain(
-        bounds=FVM_BOX,
+        bounds=FVM_DOMAIN_BOUNDS,
         patches=msh.BoxPatches(
             xmin="numericalBoundary",
             xmax="numericalBoundary",
@@ -136,7 +139,7 @@ FVM_CASE = fvm.FVMCase(
     initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
     run=fvm.RunPlan(end_time=END_TIME),
     output=fvm.Output(
-        schedule=fvm.EveryTime(on_exchanges(VOLUME_INTERVAL)),
+        schedule=fvm.EveryTime(on_coupling_times(VOLUME_INTERVAL)),
         compression="lz4",
         ghost_layers=0,
     ),
@@ -149,26 +152,26 @@ FVM_CASE = fvm.FVMCase(
                 reference_area=CUBE_SIDE**2,
                 reference_length=CUBE_SIDE,
                 moment_centre=[0.0, 0.0, 0.0],
-                schedule=fvm.EveryTime(on_exchanges(FORCE_INTERVAL)),
+                schedule=fvm.EveryTime(on_coupling_times(FORCE_INTERVAL)),
             ),
             *(
                 fvm.LineSampler(
-                    (FVM_BOX[0], y, 0.0),
-                    (FVM_BOX[1], y, 0.0),
+                    (FVM_DOMAIN_BOUNDS[0], y, 0.0),
+                    (FVM_DOMAIN_BOUNDS[1], y, 0.0),
                     spacing=PROFILE_SPACING,
                     file_name=f"fvm_{name}",
-                    schedule=fvm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+                    schedule=fvm.EveryTime(on_coupling_times(PROFILE_INTERVAL)),
                 )
                 for name, y in (("centreline", 0.0), ("offaxis_y075", OFFAXIS_Y))
             ),
             fvm.SurfaceSampler(
                 (0.0, 0.0, 0.0),
                 (0.0, 0.0, 1.0),
-                FVM_BOX[:4],
+                FVM_DOMAIN_BOUNDS[:4],
                 PROFILE_SPACING,
                 body_bounds=CUBE_BOUNDS,
                 file_name="fvm_slice_z0",
-                schedule=fvm.EveryTime(on_exchanges(SLICE_INTERVAL)),
+                schedule=fvm.EveryTime(on_coupling_times(SLICE_INTERVAL)),
             ),
         )
     ),
@@ -190,7 +193,7 @@ VPM_CASE = vpm.VPMCase(
     name=CASE_NAME,
     directory=CASE_DIR,
     numerics=vpm.Numerics(
-        time_step_size=EXCHANGE_TIME_STEP,
+        time_step_size=COUPLING_TIME_STEP,
         freestream_velocity=FREESTREAM_VELOCITY,
         integrator=vpm.RK2(),
         induction=vpm.FMMInduction(),
@@ -220,7 +223,7 @@ VPM_CASE = vpm.VPMCase(
                     spacing=PROFILE_SPACING,
                     include_derivatives=False,
                     file_name=f"vpm_{name}",
-                    schedule=vpm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+                    schedule=vpm.EveryTime(on_coupling_times(PROFILE_INTERVAL)),
                 )
                 for name, y in (("centreline", 0.0), ("offaxis_y075", OFFAXIS_Y))
             ),
@@ -232,7 +235,7 @@ VPM_CASE = vpm.VPMCase(
                 PROFILE_SPACING,
                 include_derivatives=False,
                 file_name="vpm_slice_z0",
-                schedule=vpm.EveryTime(on_exchanges(SLICE_INTERVAL)),
+                schedule=vpm.EveryTime(on_coupling_times(SLICE_INTERVAL)),
             ),
         )
     ),
@@ -241,8 +244,8 @@ VPM_CASE = vpm.VPMCase(
 
 COUPLER_CONFIG = coupling.CouplerConfig(
     freestream_velocity=FREESTREAM_VELOCITY,
-    transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / EXCHANGE_TIME_STEP),
-    backup=coupling.Backup(schedule=coupling.EveryTime(on_exchanges(BACKUP_INTERVAL))),
+    transfer_diagnostic_interval_steps=round(TRANSFER_DIAGNOSTIC_INTERVAL / COUPLING_TIME_STEP),
+    backup=coupling.Backup(schedule=coupling.EveryTime(on_coupling_times(BACKUP_INTERVAL))),
 )
 
 

@@ -20,7 +20,7 @@ SPACING = 0.125  # m, FVM cell and particle spacing
 STREAM = np.array([0.4, 0.1, 0.0])  # m/s
 VISCOSITY = 0.01  # m^2/s
 FVM_STEP = 0.01  # s
-EXCHANGE_STEP = 0.02  # s
+COUPLING_INTERVAL = 0.02  # s
 
 
 def _mesh():
@@ -29,7 +29,9 @@ def _mesh():
     )
 
 
-def _fvm_case(directory, stream, motion, *, time_step_size=FVM_STEP, end_time=4 * EXCHANGE_STEP):
+def _fvm_case(
+    directory, stream, motion, *, time_step_size=FVM_STEP, end_time=4 * COUPLING_INTERVAL
+):
     return fvm.FVMCase(
         name="moving_body",
         directory=directory,
@@ -54,12 +56,12 @@ def _fvm_case(directory, stream, motion, *, time_step_size=FVM_STEP, end_time=4 
     )
 
 
-def _coupled_solver(directory, stream, motion, *, end_time=4 * EXCHANGE_STEP, backup=None):
+def _coupled_solver(directory, stream, motion, *, end_time=4 * COUPLING_INTERVAL, backup=None):
     particles = vpm.VPMCase(
         name="moving_body",
         directory=directory,
         numerics=vpm.Numerics(
-            time_step_size=EXCHANGE_STEP,
+            time_step_size=COUPLING_INTERVAL,
             compute_device="cpu",
             max_n_particles=50_000,
             domain_bounds=(-3.0, 3.0) * 3,
@@ -76,11 +78,11 @@ def _coupled_solver(directory, stream, motion, *, end_time=4 * EXCHANGE_STEP, ba
         run=vpm.RunPlan(end_time=end_time),
     )
     config = coupler.CouplerConfig(
-        # One sweep, so a restart must reproduce the run exactly
-        interface_iterations=1,
+        # One coupling iteration, so a restart must reproduce the run exactly
+        max_coupling_iterations=1,
         transfer_inset_spacings=0.0,
         freestream_velocity=tuple(stream),
-        eta_blend_width=0.0,
+        blend_end_depth=0.0,
         backup=backup or coupler.Backup(),
     )
     return coupler.CoupledSolver(
@@ -150,7 +152,7 @@ def test_body_translating_through_still_fluid_couples_like_a_fixed_body(tmp_path
             )
 
     fixed, moving = results[False], results[True]
-    np.testing.assert_allclose(moving[4] - fixed[4], -STREAM * 4 * EXCHANGE_STEP, atol=1e-12)
+    np.testing.assert_allclose(moving[4] - fixed[4], -STREAM * 4 * COUPLING_INTERVAL, atol=1e-12)
     np.testing.assert_allclose(moving[0], fixed[0], rtol=0.0, atol=1e-6)
     np.testing.assert_array_equal(moving[1], fixed[1])
     np.testing.assert_allclose(moving[2], fixed[2], rtol=0.0, atol=1e-7)
@@ -175,7 +177,7 @@ def _coupled_state(solver):
 def test_heaving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path):
     """A coupled restart restores the mesh, the frame and the particle cloud."""
     heave = fvm.MeshMotion(fvm.HeavingMotion(0.1, 2.0, direction=(0.0, 1.0, 0.0)))
-    end_time = 3 * EXCHANGE_STEP
+    end_time = 3 * COUPLING_INTERVAL
     backup = coupler.Backup(schedule=coupler.EverySteps(1))
     with _coupled_solver(
         tmp_path / "continuous", STREAM, heave, end_time=end_time, backup=backup
@@ -254,7 +256,7 @@ particles = vpm.VPMCase(
     run=vpm.RunPlan(end_time=0.06),
 )
 config = coupler.CouplerConfig(transfer_inset_spacings=0.0,
-    freestream_velocity=stream, eta_blend_width=0.0, backup=coupler.Backup(write_at_end=False)
+    freestream_velocity=stream, blend_end_depth=0.0, backup=coupler.Backup(write_at_end=False)
 )
 with coupler.CoupledSolver(flow, particles, config) as solver:
     solver.run(start_from="initial")

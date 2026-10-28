@@ -1,4 +1,4 @@
-"""Picard sweeps restart from one accepted state and publish only the endpoint."""
+"""Coupling iterations restart from one accepted state and write only the accepted end of the interval."""
 
 import os
 from pathlib import Path
@@ -11,36 +11,36 @@ import pytest
 
 from openonda import fvm as fvm_api
 from openonda.coupler import CouplerConfig
-from openonda.coupler import interface_iteration as iteration
+from openonda.coupler import coupling_iteration as iteration
 
 NORMALS = np.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]])
 
 
-def trace(value):
-    """Uniform interface trace whose three fields all scale with ``value``."""
+def boundary_data(value):
+    """Uniform boundary data whose three fields all scale with ``value``."""
     velocity = np.tile([value, 0.0, 0.0], (2, 1))
     return velocity, np.einsum("ij,ij->i", velocity, NORMALS), np.tile([0.0, value, 0.0], (2, 1))
 
 
 @pytest.fixture
 def rig(monkeypatch):
-    """Scalar stand-ins: one sweep maps the imposed trace value v to 0.01 v."""
+    """Scalar stand-ins: one coupling iteration maps the imposed boundary-data value v to 0.01 v."""
     fvm = SimpleNamespace(step=10, time=0.5, field=7.0, parallel=SimpleNamespace(is_parallel=False))
     vpm = SimpleNamespace(strength=3.0)
     transfer = SimpleNamespace(step=4)
     c = SimpleNamespace(
         config=CouplerConfig(
             transfer_inset_spacings=0.0,
-            eta_blend_width=0.0,
-            interface_iterations=6,
-            interface_normal_tolerance=1e-5,
-            interface_gradient_tolerance=1e-5,
+            blend_end_depth=0.0,
+            max_coupling_iterations=6,
+            normal_velocity_tolerance=1e-5,
+            normal_gradient_tolerance=1e-5,
         ),
         fvm_solver=fvm,
         vpm_solver=vpm,
         vorticity_transfer=transfer,
         _is_root=True,
-        interface_trace_correction=None,
+        boundary_data_correction=None,
         map_value=lambda value: 0.01 * value,
     )
     monkeypatch.setattr(iteration, "capture_restart_state", lambda f: (f.step, f.time, f.field))
@@ -53,17 +53,17 @@ def rig(monkeypatch):
     monkeypatch.setattr(
         iteration, "_restore_particle_state", lambda v, p: setattr(v, "strength", p)
     )
-    old, raw = trace(0.3), trace(1.0)
-    iteration._write_trace(c, old, old=True)
-    iteration._write_trace(c, raw)
+    old, raw = boundary_data(0.3), boundary_data(1.0)
+    iteration._write_boundary_data(c, old, old=True)
+    iteration._write_boundary_data(c, raw)
     inputs, starts, outputs = [], [], []
     fvm.write_step_output = lambda: outputs.append((fvm.step, fvm.time, fvm.field))
 
     def advance(owner, *args):
         value = float(args[-1][0, 0])
-        assert np.array_equal(args[-2], old[0]), "the physical old endpoint changed"
-        assert np.array_equal(owner._normal_velocity_boundary_condition, trace(value)[1])
-        assert np.array_equal(owner._tangential_gradient_boundary_condition, trace(value)[2])
+        assert np.array_equal(args[-2], old[0]), "the start-of-interval data changed"
+        assert np.array_equal(owner._normal_velocity_boundary_condition, boundary_data(value)[1])
+        assert np.array_equal(owner._normal_gradient_boundary_condition, boundary_data(value)[2])
         starts.append((fvm.step, fvm.time, fvm.field, vpm.strength, transfer.step))
         inputs.append(value)
         fvm.step, fvm.time, fvm.field = fvm.step + 5, fvm.time + 0.05, value
@@ -71,15 +71,15 @@ def rig(monkeypatch):
 
     monkeypatch.setattr(iteration, "advance_fvm", advance)
 
-    def renewal(*args):
+    def vorticity_transfer(*args):
         vpm.strength += 2.0
         transfer.step += 1
         return transfer.step, 0.01
 
-    c._transfer_vorticity_to_vpm = renewal
+    c._transfer_vorticity_to_vpm = vorticity_transfer
 
     def update(owner, *args):
-        iteration._write_trace(owner, trace(owner.map_value(inputs[-1])), old=True)
+        iteration._write_boundary_data(owner, boundary_data(owner.map_value(inputs[-1])), old=True)
 
     monkeypatch.setattr(iteration, "update_boundary_history_after_replacement", update)
     geometry = np.zeros((2, 3)), NORMALS, np.ones(2)
@@ -92,7 +92,7 @@ def rig(monkeypatch):
         inputs=inputs,
         starts=starts,
         outputs=outputs,
-        run=lambda: iteration.advance_iterated_interface(c, geometry, raw[0]),
+        run=lambda: iteration.advance_coupling_iterations(c, geometry, raw[0]),
     )
 
 
@@ -102,26 +102,26 @@ def test_cold_start_iterates_from_the_vpm_predictor(rig):
     assert rig.starts == [(10, 0.5, 7.0, 3.0, 4)] * 4
     assert (rig.fvm.step, rig.transfer.step, rig.vpm.strength) == (15, 5, 5.0)
     assert rig.outputs == [(15, 0.55, pytest.approx(1e-6))]
-    diagnostics = rig.c._last_interface_iteration_diagnostics
-    assert diagnostics["converged"] and diagnostics["sweeps"] == 4
-    assert diagnostics["initial_guess"] == "vpm_trace"
-    # The stored correction maps this predictor onto the converged endpoint.
-    correction = rig.c.interface_trace_correction
-    assert np.allclose(rig.raw[0] + correction[0], trace(1e-8)[0])
+    diagnostics = rig.c._last_coupling_iteration_diagnostics
+    assert diagnostics["converged"] and diagnostics["iterations"] == 4
+    assert diagnostics["first_estimate"] == "vpm_predictor"
+    # The stored correction maps this predictor onto the accepted end-of-interval data.
+    correction = rig.c.boundary_data_correction
+    assert np.allclose(rig.raw[0] + correction[0], boundary_data(1e-8)[0])
 
 
-def test_previous_correction_converges_in_one_sweep(rig):
-    rig.c.interface_trace_correction = trace(-1.0)
+def test_previous_correction_converges_in_one_coupling_iteration(rig):
+    rig.c.boundary_data_correction = boundary_data(-1.0)
     rig.run()
     assert rig.inputs == [0.0]
     assert rig.outputs == [(15, 0.55, 0.0)]
-    diagnostics = rig.c._last_interface_iteration_diagnostics
-    assert diagnostics["sweeps"] == 1 and diagnostics["initial_guess"] == "previous_correction"
-    assert np.array_equal(rig.c.interface_trace_correction[0], trace(-1.0)[0])
+    diagnostics = rig.c._last_coupling_iteration_diagnostics
+    assert diagnostics["iterations"] == 1 and diagnostics["first_estimate"] == "previous_correction"
+    assert np.array_equal(rig.c.boundary_data_correction[0], boundary_data(-1.0)[0])
 
 
-def test_inexact_guess_continues_picard_from_its_own_sweep(rig):
-    rig.c.interface_trace_correction = trace(1.0)
+def test_inexact_first_estimate_continues_from_its_own_iteration(rig):
+    rig.c.boundary_data_correction = boundary_data(1.0)
     rig.run()
     assert rig.inputs == pytest.approx([2.0, 0.02, 2e-4, 2e-6])
     assert len(set(rig.starts)) == 1
@@ -129,12 +129,12 @@ def test_inexact_guess_continues_picard_from_its_own_sweep(rig):
 
 
 def test_nonconverged_iteration_keeps_no_correction(rig):
-    rig.c.interface_trace_correction = trace(1.0)
+    rig.c.boundary_data_correction = boundary_data(1.0)
     rig.c.map_value = lambda value: 0.5 * value
     rig.run()
-    assert len(rig.inputs) == rig.c.config.interface_iterations
-    assert not rig.c._last_interface_iteration_diagnostics["converged"]
-    assert rig.c.interface_trace_correction is None
+    assert len(rig.inputs) == rig.c.config.max_coupling_iterations
+    assert not rig.c._last_coupling_iteration_diagnostics["converged"]
+    assert rig.c.boundary_data_correction is None
     assert len(rig.outputs) == 1
 
 
@@ -143,21 +143,21 @@ def test_new_start_and_backup_load_start_cold(monkeypatch):
 
     owner = driver.CoupledSolver.__new__(driver.CoupledSolver)
     owner._started = False
-    owner.interface_trace_correction = trace(1.0)
+    owner.boundary_data_correction = boundary_data(1.0)
 
     def stop(time):
-        assert owner.interface_trace_correction is None
+        assert owner.boundary_data_correction is None
         raise RuntimeError("stop before any solver work")
 
     owner.fvm_solver = SimpleNamespace(apply_velocity_boundaries=stop, time=0.0)
     with pytest.raises(RuntimeError, match="before any solver work"):
         owner._start()
 
-    owner.interface_trace_correction = trace(1.0)
+    owner.boundary_data_correction = boundary_data(1.0)
     owner.vorticity_transfer = SimpleNamespace(step=0)
 
     def load(*args, **kwargs):
-        assert owner.interface_trace_correction is None
+        assert owner.boundary_data_correction is None
         return 11
 
     monkeypatch.setattr(driver, "load_coupled_backup", load)
@@ -165,19 +165,19 @@ def test_new_start_and_backup_load_start_cold(monkeypatch):
     assert owner.vorticity_transfer.step == 12
 
 
-def test_iteration_rejects_output_inside_provisional_interval():
+def test_coupling_iterations_reject_output_inside_a_coupling_interval():
     case = SimpleNamespace(
         output=fvm_api.Output(schedule=fvm_api.EverySteps(10)),
         samplers=SimpleNamespace(samples=(SimpleNamespace(schedule=fvm_api.EverySteps(2)),)),
     )
-    with pytest.raises(ValueError, match="exchange times"):
+    with pytest.raises(ValueError, match="coupling times"):
         iteration.validate_output_schedules(case, 5, 0.05)
     case.samplers.samples[0].schedule = fvm_api.EveryTime(0.1)
     iteration.validate_output_schedules(case, 5, 0.05)
 
 
 @pytest.mark.integration
-def test_two_rank_sweeps_follow_the_master_decision():
+def test_two_rank_coupling_iterations_follow_the_root_decision():
     pytest.importorskip("mpi4py")
     launcher = Path(sys.executable).with_name("mpiexec")
     if not launcher.is_file():
@@ -190,7 +190,7 @@ def test_two_rank_sweeps_follow_the_master_decision():
             "-n",
             "2",
             sys.executable,
-            str(Path(__file__).with_name("_interface_iteration_mpi.py")),
+            str(Path(__file__).with_name("_coupling_iteration_mpi.py")),
         ],
         text=True,
         capture_output=True,
@@ -198,4 +198,4 @@ def test_two_rank_sweeps_follow_the_master_decision():
         env=environment,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert '"sweep_counts": [1, 4, 4]' in result.stdout
+    assert '"iteration_counts": [1, 4, 4]' in result.stdout

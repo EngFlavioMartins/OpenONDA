@@ -10,7 +10,7 @@ work.
 This module does not select a solver stopping settings or publish induction
 fields. It does not modify rounding or denormal controls. Callers must supply
 the checked IEEE environment and validate an explicit source epoch before
-reusing a snapshot; source provenance is never inferred from object identity.
+reusing a snapshot; which sources produced it is never inferred from object identity.
 Finite-image interpolation, FFT and GPU accuracy remain separate obligations.
 """
 

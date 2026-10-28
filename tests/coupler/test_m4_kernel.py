@@ -1,8 +1,8 @@
-"""M4-prime kernel identities used by particle renewal and GBD."""
+"""M4' kernel identities used by the vorticity transfer and GBD diffusion."""
 
 import numpy as np
 
-from openonda.coupler.lattice_transfer import m4_prime
+from openonda.coupler.m4_kernel import m4_prime
 
 
 def test_coupler_m4_prime_matches_the_grid_diffusion_kernel():

@@ -18,9 +18,9 @@
     "particle_spacing": 0.048,
     "fvm_dt": 0.004,
     "coupling_dt": 0.04,
-    "interface_max_sweeps": 3,
-    "interface_acceleration": "none",
-    "interface_tolerances": 1e-05,
+    "max_coupling_iterations": 3,
+    "coupling_iteration_acceleration": "none",
+    "coupling_iteration_tolerance": 1e-05,
     "physical_end_time_configured": 100,
     "bounded_stop_time": 0.36,
     "max_particles": 1000000
@@ -90,10 +90,10 @@
         "fvm": 70.81069219198253,
         "transfer": 6.988375201981398,
         "total": 153.5907314789656,
-        "last_sweep_donor_gather": 0.058300089003751054
+        "last_transfer_fvm_gather": 0.058300089003751054
       },
       "accepted_residual": {
-        "sweep": 3,
+        "iteration": 3,
         "normal_residual_rms": 0.00041071140372703907,
         "gradient_residual_rms": 0.0004726448369698425,
         "scaled_residual": 47.26448369698424,
@@ -150,10 +150,10 @@
         "fvm": 71.30878457799554,
         "transfer": 5.271498032991076,
         "total": 91.16488570997899,
-        "last_sweep_donor_gather": 0.021669120993465185
+        "last_transfer_fvm_gather": 0.021669120993465185
       },
       "accepted_residual": {
-        "sweep": 3,
+        "iteration": 3,
         "normal_residual_rms": 1.0875288151044641e-05,
         "gradient_residual_rms": 1.2521617255984326e-05,
         "scaled_residual": 1.2521617255984325,
@@ -210,10 +210,10 @@
         "fvm": 75.02424636099022,
         "transfer": 5.406215456983773,
         "total": 91.92507471296994,
-        "last_sweep_donor_gather": 0.020336265995865688
+        "last_transfer_fvm_gather": 0.020336265995865688
       },
       "accepted_residual": {
-        "sweep": 3,
+        "iteration": 3,
         "normal_residual_rms": 6.519677280292491e-06,
         "gradient_residual_rms": 7.515892200655596e-06,
         "scaled_residual": 0.7515892200655595,
@@ -270,10 +270,10 @@
         "fvm": 75.99238173099002,
         "transfer": 5.2440531219908735,
         "total": 115.93350050898152,
-        "last_sweep_donor_gather": 0.023309716998483054
+        "last_transfer_fvm_gather": 0.023309716998483054
       },
       "accepted_residual": {
-        "sweep": 3,
+        "iteration": 3,
         "normal_residual_rms": 5.3452047790507235e-06,
         "gradient_residual_rms": 6.169814679931598e-06,
         "scaled_residual": 0.6169814679931598,
@@ -330,10 +330,10 @@
         "fvm": 72.9404920800007,
         "transfer": 6.014850221996312,
         "total": 98.34551410999848,
-        "last_sweep_donor_gather": 0.017782312002964318
+        "last_transfer_fvm_gather": 0.017782312002964318
       },
       "accepted_residual": {
-        "sweep": 3,
+        "iteration": 3,
         "normal_residual_rms": 4.247924096770262e-06,
         "gradient_residual_rms": 4.902062818335169e-06,
         "scaled_residual": 0.49020628183351683,
@@ -390,10 +390,10 @@
         "fvm": 66.42692182499741,
         "transfer": 5.3579672450287035,
         "total": 86.07057867302501,
-        "last_sweep_donor_gather": 0.025385255008586682
+        "last_transfer_fvm_gather": 0.025385255008586682
       },
       "accepted_residual": {
-        "sweep": 3,
+        "iteration": 3,
         "normal_residual_rms": 4.170930441061919e-06,
         "gradient_residual_rms": 4.813677128601294e-06,
         "scaled_residual": 0.4813677128601293,
@@ -453,15 +453,15 @@
         "fvm": 73.69174728600774,
         "transfer": 48.197777530003805,
         "total": 193.28875294201134,
-        "last_sweep_donor_gather": 0.023548255005152896
+        "last_transfer_fvm_gather": 0.023548255005152896
       },
-      "interface": {
-        "sweeps": 3,
-        "accepted_sweep": 3,
+      "coupling_iteration": {
+        "iterations": 3,
+        "accepted_iteration": 3,
         "converged": true,
         "residuals": [
           {
-            "sweep": 1,
+            "iteration": 1,
             "normal_residual_rms": 0.0011174480186044392,
             "gradient_residual_rms": 0.001963818208400681,
             "scaled_residual": 196.38182084006806,
@@ -472,7 +472,7 @@
             "accepted": true
           },
           {
-            "sweep": 2,
+            "iteration": 2,
             "normal_residual_rms": 4.1212126163454214e-05,
             "gradient_residual_rms": 4.861259331862572e-05,
             "scaled_residual": 4.861259331862572,
@@ -483,7 +483,7 @@
             "accepted": true
           },
           {
-            "sweep": 3,
+            "iteration": 3,
             "normal_residual_rms": 4.361426851506497e-06,
             "gradient_residual_rms": 5.0322527834784775e-06,
             "scaled_residual": 0.5032252783478477,
@@ -513,15 +513,15 @@
         "fvm": 77.00104511500103,
         "transfer": 5.445783874980407,
         "total": 90.23687225797039,
-        "last_sweep_donor_gather": 0.027279714005999267
+        "last_transfer_fvm_gather": 0.027279714005999267
       },
-      "interface": {
-        "sweeps": 3,
-        "accepted_sweep": 3,
+      "coupling_iteration": {
+        "iterations": 3,
+        "accepted_iteration": 3,
         "converged": true,
         "residuals": [
           {
-            "sweep": 1,
+            "iteration": 1,
             "normal_residual_rms": 0.0011033091330635016,
             "gradient_residual_rms": 0.001935181713042957,
             "scaled_residual": 193.5181713042957,
@@ -532,7 +532,7 @@
             "accepted": true
           },
           {
-            "sweep": 2,
+            "iteration": 2,
             "normal_residual_rms": 4.3890214179859654e-05,
             "gradient_residual_rms": 5.155528518277646e-05,
             "scaled_residual": 5.155528518277645,
@@ -543,7 +543,7 @@
             "accepted": true
           },
           {
-            "sweep": 3,
+            "iteration": 3,
             "normal_residual_rms": 4.655706180833313e-06,
             "gradient_residual_rms": 5.3707078974675e-06,
             "scaled_residual": 0.5370707897467499,
@@ -573,15 +573,15 @@
         "fvm": 64.79982337797992,
         "transfer": 5.559502979987883,
         "total": 81.94949905198882,
-        "last_sweep_donor_gather": 0.023008916003163904
+        "last_transfer_fvm_gather": 0.023008916003163904
       },
-      "interface": {
-        "sweeps": 3,
-        "accepted_sweep": 3,
+      "coupling_iteration": {
+        "iterations": 3,
+        "accepted_iteration": 3,
         "converged": true,
         "residuals": [
           {
-            "sweep": 1,
+            "iteration": 1,
             "normal_residual_rms": 0.0010894587710346903,
             "gradient_residual_rms": 0.001886148173310431,
             "scaled_residual": 188.61481733104307,
@@ -592,7 +592,7 @@
             "accepted": true
           },
           {
-            "sweep": 2,
+            "iteration": 2,
             "normal_residual_rms": 4.622381103863498e-05,
             "gradient_residual_rms": 5.4160000523586454e-05,
             "scaled_residual": 5.416000052358645,
@@ -603,7 +603,7 @@
             "accepted": true
           },
           {
-            "sweep": 3,
+            "iteration": 3,
             "normal_residual_rms": 4.919748353698668e-06,
             "gradient_residual_rms": 5.6811482864292405e-06,
             "scaled_residual": 0.568114828642924,
@@ -683,7 +683,7 @@
       "vpm_step": 9,
       "time": 0.36
     },
-    "all_renewal_strength_and_linear_impulse_within_tolerance": true,
+    "all_transfer_strength_and_linear_impulse_within_tolerance": true,
     "focused_tests_passed": 60,
     "ruff_passed": true,
     "diff_check_passed": true,
@@ -995,7 +995,7 @@
   "interpretation": [
     "Profile categories can be nested; MPI costs include waiting and load imbalance.",
     "No end-to-end speedup claim: ordinary restart has different states and no profiler.",
-    "First two capped interface iterations did not reach tolerance; steps 3\u20139 did.",
+    "First two capped coupling iterations did not reach tolerance; steps 3\u20139 did.",
     "The ordinary step 9 timer excludes the final forced stop checkpoint."
   ]
 }

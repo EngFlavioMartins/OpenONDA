@@ -23,7 +23,7 @@ from ..config.case import FVMCase
 from ..config.configuration import FVMConfiguration
 from ..coupling import CouplerInterfaceMixin
 from ..fields.mixed_velocity_boundary import (
-    update_normal_velocity_tangential_gradient_boundary,
+    update_mixed_velocity_boundary,
 )
 from ..io import logging, solver_io
 from ..mesh import geometry
@@ -101,10 +101,8 @@ def _enforce_velocity_boundary_constraints(
                 boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
             ]
             velocity[start:end] = velocity[owners_b]
-        elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
-            update_normal_velocity_tangential_gradient_boundary(
-                velocity, boundary, mesh_data, geo_data
-            )
+        elif strategy is BoundaryStrategy.MIXED_VELOCITY:
+            update_mixed_velocity_boundary(velocity, boundary, mesh_data, geo_data)
         elif strategy is BoundaryStrategy.CYCLIC:
             faces = np.arange(boundary["start_face"], boundary["start_face"] + boundary["n_faces"])
             paired = mesh_data["boundary_neighbour_cell"][faces]
@@ -599,7 +597,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.max_courant_number = 0.0
         # Coupling / driver-split state
         self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
-        self._coupling_patch_ids_by_rank: dict[str, Any] = {}
+        self._outer_boundary_patch_ids_by_rank: dict[str, Any] = {}
         self._coupling_cell_ids_by_rank: dict[str, Any] = {}
         self._coupling_consistency_filter = None
         # Optional conservative field projection applied after the pressure-
@@ -1698,7 +1696,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 normals = self.gather_boundary_face_normal(name)
                 if condition.normal_only:
                     normal_velocity = normals @ velocity
-                    self.set_normal_velocity_tangential_gradient_boundary_condition(
+                    self.set_mixed_velocity_boundary_condition(
                         normal_velocity, np.zeros_like(normals), name
                     )
                     restore_slip = configured[name].velocity_type == "slip" and bool(
@@ -1711,8 +1709,8 @@ class FVMSolver(CouplerInterfaceMixin):
                             boundary["velocity_type"] = "slip"
                             for key in (
                                 "normal_velocity_field",
-                                "tangential_gradient_field",
-                                "max_removed_tangential_gradient_normal_component",
+                                "tangential_velocity_normal_gradient_field",
+                                "max_removed_normal_gradient_normal_component",
                             ):
                                 boundary.pop(key, None)
                 else:

@@ -6,8 +6,8 @@ studies", J. Comput. Phys. 262 (2014) 104-130. A family is a set of runs that va
 refinement variable x (h/D or U dt/D) with everything else fixed. The coupled error splits into
 the FVM discretization error of the reference on the same cells and step, and the coupling error,
 the difference between the coupled run and that reference. The coupling error is then fitted
-against its candidate drivers in flow scales, and compared with the interface mismatch that the
-coupler logs at every exchange, which a user can read from their own run.
+against its possible drivers in flow scales, and compared with the boundary-data mismatch that
+the coupler logs at every coupling step, which a user can read from their own run.
 """
 
 from itertools import combinations
@@ -18,20 +18,20 @@ from scipy.optimize import least_squares, minimize_scalar
 
 from assets.plot_forces import DEVELOPED_SHEDDING, shedding_statistics
 from assets.plot_sensitivity import BASELINE, STATISTICS, errors_against, jsonl_records
-from setup import BLEND_WIDTH, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_TIME_STEP
-from setup import REYNOLDS_NUMBER, VPM_ONLY_WIDTH
+from setup import BLEND_END, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_TIME_STEP
+from setup import REYNOLDS_NUMBER
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SPEED = FREESTREAM_VELOCITY[0]
 STATISTICS_END = 55.0  # s, common end of the study runs: every statistic uses 40 <= t <= 55 s
 MINIMUM_LEVELS = 3  # refinement levels a family needs for an order and an uncertainty
 ORDER_RANGE = (0.05, 8.0)  # search range of the observed order
-# max|S| the particle field sees at Re = 150 (h_p = h_f), scaling as about 1.58 U sqrt(Re)/D; the
+# max|S| the particle field sees at Re = 150 (h_VPM = h_FVM), scaling as about 1.58 U sqrt(Re)/D; the
 # FVM wall strain (flow_scales.csv, 12.3 1/s at h = 0.04) is lower and grows with refinement
 PARTICLE_STRAIN_RATE = 19.4  # 1/s
 
-# Family F: the 2^3 design at Re = 150, downstream box face [D], inset [cells] and n
-# Downstream box face [D] and FVM steps per exchange, at the baseline inset
+# Family F: the 2^3 design at Re = 150, downstream outer FVM boundary [D], inset [cells] and N
+# Downstream outer FVM boundary [D] and FVM substeps per coupling interval, at the baseline inset
 FACTORIAL_LEVELS = {
     "box_downstream": (3.36, 4.4),
     "fvm_substeps": (2, 5),
@@ -40,24 +40,34 @@ FACTORIAL_LEVELS = {
 # Fits of the procedure: free order, the fixed first and second orders, and both terms together
 FIXED_FITS = {"order 1": (1.0,), "order 2": (2.0,), "orders 1 and 2": (1.0, 2.0)}
 
-# Interface mismatch logged at every exchange, with its velocity or gradient scale
+# Boundary-data mismatch logged at every coupling step, with its velocity or gradient scale
 INDICATORS = {
-    "trace velocity mismatch, mean": ("fvm_boundary_trace", "mean_velocity_mismatch", SPEED),
-    "trace velocity mismatch, max": ("fvm_boundary_trace", "maximum_velocity_mismatch", SPEED),
-    "outflow mismatch, mean": ("fvm_boundary_trace", "mean_outflow_velocity_mismatch", SPEED),
-    "first-sweep normal residual": ("residuals", 0, "normal_residual_rms", SPEED),
-    "first-sweep gradient residual": ("residuals", 0, "gradient_residual_rms", SPEED / DIAMETER),
-    "last-sweep gradient residual": ("residuals", -1, "gradient_residual_rms", SPEED / DIAMETER),
+    "boundary velocity mismatch, mean": ("fvm_boundary_data", "mean_velocity_mismatch", SPEED),
+    "boundary velocity mismatch, max": ("fvm_boundary_data", "maximum_velocity_mismatch", SPEED),
+    "outflow mismatch, mean": ("fvm_boundary_data", "mean_outflow_velocity_mismatch", SPEED),
+    "first-iteration normal-velocity residual": ("residuals", 0, "normal_velocity_residual", SPEED),
+    "first-iteration normal-gradient residual": (
+        "residuals",
+        0,
+        "normal_gradient_residual",
+        SPEED / DIAMETER,
+    ),
+    "last-iteration normal-gradient residual": (
+        "residuals",
+        -1,
+        "normal_gradient_residual",
+        SPEED / DIAMETER,
+    ),
 }
 
 
 # ---------------------------------------------------------------------------------------------
-# Least-squares fits of phi_i = phi_0 + sum_k alpha_k x_i^p_k
+# Least-squares fits of Q_i = Q_ext + sum_k alpha_k x_i^p_k
 # ---------------------------------------------------------------------------------------------
 
 
 def linear_fit(x, phi, orders, weights):
-    """phi_0 and the alpha_k of fixed orders, the fitted values and the standard deviation.
+    """Q_ext and the alpha_k of fixed orders, the fitted values and the standard deviation.
 
     The weighted fit uses w_i proportional to 1/x_i, normalized to sum to one, so that the
     finest levels count most; its standard deviation carries the factor n_g to compare with the
@@ -69,11 +79,11 @@ def linear_fit(x, phi, orders, weights):
     fitted = columns @ coefficients
     freedom = len(x) - columns.shape[1]
     sigma = np.sqrt(len(x) * np.sum(weights * (phi - fitted) ** 2) / freedom) if freedom else 0.0
-    return {"phi0": coefficients[0], "alpha": coefficients[1:], "fitted": fitted, "sigma": sigma}
+    return {"Q_ext": coefficients[0], "alpha": coefficients[1:], "fitted": fitted, "sigma": sigma}
 
 
 def power_fit(x, phi, weights):
-    """phi = phi_0 + alpha x^p with the order free: the order minimizing the residual."""
+    """Q = Q_ext + alpha x^p with the order free: the order minimizing the residual."""
 
     def residual(order):
         return np.sum(weights * (phi - linear_fit(x, phi, (order,), weights)["fitted"]) ** 2)
@@ -138,7 +148,7 @@ def discretization_uncertainty(x, phi):
         chosen, safety = candidates[name], 3.0
 
     data_range = np.ptp(phi) / (len(x) - 1)
-    error = phi - chosen["phi0"]
+    error = phi - chosen["Q_ext"]
     deviation = np.abs(phi - chosen["fitted"])
     sigma = chosen["sigma"]
     well_behaved = sigma < data_range
@@ -149,7 +159,7 @@ def discretization_uncertainty(x, phi):
     return {
         "x": x,
         "phi": phi,
-        "phi0": chosen["phi0"],
+        "Q_ext": chosen["Q_ext"],
         "order": free["order"] if category == "monotone" else np.nan,
         "class": category,
         "fit": name,
@@ -165,13 +175,13 @@ def fit_curve(fit, orders):
     """The fitted phi(x) of a chosen fit, for plotting."""
     orders = np.atleast_1d(orders)
     return lambda x: (
-        fit["phi0"]
+        fit["Q_ext"]
         + sum(alpha * np.asarray(x) ** order for alpha, order in zip(fit["alpha"], orders))
     )
 
 
 def space_time_fit(cell_sizes, time_steps, phi):
-    """phi = phi_0 + a h^p + b dt^q over every reference level, with the standard errors.
+    """Q = Q_ext + a h^p + b dt^q over every reference level, with the standard errors.
 
     The orders are found on a grid first, the linear coefficients solved for each pair, then all
     five refined together; the covariance follows from the Jacobian and the residual variance.
@@ -197,12 +207,12 @@ def space_time_fit(cell_sizes, time_steps, phi):
     covariance = variance * np.linalg.inv(solution.jac.T @ solution.jac)
     phi0, a, p, b, q = solution.x
     return {
-        "phi0": phi0,
+        "Q_ext": phi0,
         "a": a,
         "p": p,
         "b": b,
         "q": q,
-        "standard errors": dict(zip(("phi0", "a", "p", "b", "q"), np.sqrt(np.diag(covariance)))),
+        "standard errors": dict(zip(("Q_ext", "a", "p", "b", "q"), np.sqrt(np.diag(covariance)))),
         "rms residual": np.sqrt(np.mean(solution.fun**2)),
         "freedom": freedom,
     }
@@ -244,8 +254,8 @@ def at_baseline(run, *varied):
 def coupled_families(runs):
     """Coupled runs of each family of the plan, and the variable each refines or varies.
 
-    Family C counts the interface widths in its own cells, as a user refining the whole method
-    would; family X keeps the interface in place (widths in 0.04 m cells) so that only the
+    Family C counts the interface depths in its own cells, as a user refining the whole method
+    would; family X keeps the interface in place (depths in 0.04 m cells) so that only the
     discretization is refined.
     """
     spatial = ("cell_size", "fvm_time_step", "fvm_substeps", "particle_spacing")
@@ -298,13 +308,16 @@ def coupled_families(runs):
                 if at_baseline(run, "fvm_substeps") and np.isclose(run["fvm_time_step"], 0.008)
             ],
         ),
-        "K": ("interface_sweeps", [run for run in runs if at_baseline(run, "interface_sweeps")]),
+        "K": (
+            "coupling_iterations",
+            [run for run in runs if at_baseline(run, "coupling_iterations")],
+        ),
         "S": (
             "particle_spacing",
             [run for run in runs if at_baseline(run, "fvm_substeps", "particle_spacing")],
         ),
         "R": ("reynolds_number", [run for run in runs if at_baseline(run, "reynolds_number")]),
-        # Downstream face and side margin of the FVM box, at each Reynolds number
+        # Downstream outer FVM boundary and side margin of the FVM domain, at each Reynolds number
         "B": (
             "box_downstream",
             [
@@ -336,11 +349,11 @@ def statistics_of(forces):
 
 
 def exact_values(references):
-    """phi_0 of each statistic: the space-time fit when it determines phi_0 more tightly than the
+    """Q_ext of each statistic: the space-time fit when it determines Q_ext more tightly than the
     family-C uncertainty, else family C.
 
     A statistic that barely changes with the cells or the step, such as the mean drag, leaves the
-    orders of the space-time fit undetermined and its phi_0 meaningless.
+    orders of the space-time fit undetermined and its Q_ext meaningless.
     """
     levels = [ref for (re, h, dt), ref in references.items() if re == REYNOLDS_NUMBER]
     family = reference_families(references)["C"][1]
@@ -350,20 +363,20 @@ def exact_values(references):
             [ref["cell_size"] / DIAMETER for ref in family],
             [statistics_of(ref["forces"])[quantity] for ref in family],
         )
-        exact[quantity] = (fit["phi0"], "family C")
+        exact[quantity] = (fit["Q_ext"], "family C")
         if len(levels) > 5:
             combined = space_time_fit(
                 [ref["cell_size"] for ref in levels],
                 [ref["time_step"] for ref in levels],
                 [statistics_of(ref["forces"])[quantity] for ref in levels],
             )
-            if combined["standard errors"]["phi0"] < np.min(fit["uncertainty"]):
-                exact[quantity] = (combined["phi0"], "space-time fit")
+            if combined["standard errors"]["Q_ext"] < np.min(fit["uncertainty"]):
+                exact[quantity] = (combined["Q_ext"], "space-time fit")
     return exact
 
 
 def decompose(run, references, exact, finest):
-    """Total, FVM and coupling errors of one coupled run, in % of phi_0.
+    """Total, FVM and coupling errors of one coupled run, in % of Q_ext.
 
     The wake velocity has no scalar to extrapolate: its total and FVM errors are distances to the
     finest reference, the coupling error the distance to the reference on the same cells and step.
@@ -408,18 +421,18 @@ def decompose(run, references, exact, finest):
 
 
 def drivers(run):
-    """Candidate drivers of the coupling error, each in flow scales."""
+    """Possible drivers of the coupling error, each in flow scales."""
     particle_step = run["particle_time_step"]
     strain_rate = PARTICLE_STRAIN_RATE * np.sqrt(run["reynolds_number"] / REYNOLDS_NUMBER)
     return {
         "particle step": SPEED * particle_step / DIAMETER,
-        "stability number": strain_rate * particle_step,
-        "exchanges per convective time": DIAMETER / (SPEED * particle_step),
-        "FVM steps per exchange": float(run["fvm_substeps"]),
+        "Lagrangian CFL number": strain_rate * particle_step,
+        "coupling intervals per convective time": DIAMETER / (SPEED * particle_step),
+        "FVM substeps per coupling interval": float(run["fvm_substeps"]),
         "FVM step": SPEED * run["fvm_time_step"] / DIAMETER,
         "particle Courant number": run["particle_courant"],
         "spacing ratio": run["particle_spacing"] / run["cell_size"],
-        "interface sweeps": float(run["interface_sweeps"] or run["mean sweeps"]),
+        "coupling iterations": float(run["coupling_iterations"] or run["mean coupling iterations"]),
     }
 
 
@@ -446,18 +459,18 @@ def wake_scales():
 
 
 def box_scales(run, scales):
-    """The FVM box in wake scales: downstream reach R and side clearance c.
+    """The FVM domain in wake scales: wake reach l_wake/L_f and lateral clearance l_side/delta_w.
 
-    R = (x_t - L_f)/L_f, with x_t the downstream transfer face, is how far past the formation
-    point the FVM holds the wake, given for both formation lengths; c = (m - w - D/2)/delta_w is
-    the clearance of the shear layer from the inner edge w of the interface bands on the sides.
+    l_wake/L_f = (x_t - L_f)/L_f, with x_t the downstream transfer surface, is how far past the
+    formation point the FVM holds the wake, given for both formation lengths;
+    l_side/delta_w = (m - w - D/2)/delta_w is the clearance of the shear layer from the side faces
+    of the replacement region, a depth w inside the outer FVM boundary.
     """
     scale = scales[run["reynolds_number"]]
     interface_cell = run["interface_cell_size"] / DIAMETER
     transfer_face = run["box_downstream"] - run["transfer_inset"] * interface_cell
-    # The particle-only band lies inside the blend width, so the FVM-weighted core starts
-    # the inset plus the blend width inside the box faces
-    bands = (run["transfer_inset"] + BLEND_WIDTH) * interface_cell
+    # The replacement region starts the inset plus the blend end depth inside the outer FVM boundary
+    bands = (run["transfer_inset"] + BLEND_END) * interface_cell
     return {
         "reach": (transfer_face - scale["L_f"]) / scale["L_f"],
         "reach, v_rms": (transfer_face - scale["L_f,v"]) / scale["L_f,v"],
@@ -516,19 +529,19 @@ def term_model(columns, error):
 
 
 def interface_indicators(path):
-    """Developed-flow means of the logged interface mismatch, in flow scales.
+    """Developed-flow means of the logged boundary-data mismatch, in flow scales.
 
-    Exchanges without interface iteration (one forced sweep) log no residuals; their residual
-    indicators are NaN.
+    Coupling steps with a single coupling iteration log no residuals; their residual indicators
+    are NaN.
     """
     records = [record for record in jsonl_records(path) if record["time"] >= DEVELOPED_SHEDDING]
     means = {}
     for name, (*keys, scale) in INDICATORS.items():
         if keys[0] == "residuals":
             values = [
-                record["interface_iteration"]["residuals"][keys[1]][keys[2]]
+                record["coupling_iteration"]["residuals"][keys[1]][keys[2]]
                 for record in records
-                if record.get("interface_iteration", {}).get("residuals")
+                if record.get("coupling_iteration", {}).get("residuals")
             ]
         else:
             values = [record[keys[0]][keys[1]] for record in records if keys[0] in record]
@@ -537,7 +550,7 @@ def interface_indicators(path):
 
 
 def logged_keys(path):
-    """Every mismatch, residual and error key logged in the last exchange record."""
+    """Every mismatch, residual and error key logged in the last coupling-step record."""
     keys = []
 
     def walk(record, prefix):

@@ -253,7 +253,7 @@ class OfflineFlowDiagnostics:
             )
 
     def _estimate_max_particles(self) -> int:
-        """Read the largest saved population; pruning can make later frames smaller."""
+        """Read the largest saved particle count; weak-strength removal can make later frames smaller."""
         maximum = 0
         for path in self.h5_files:
             with h5py.File(path, "r") as archive:

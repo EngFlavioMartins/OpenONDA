@@ -25,7 +25,7 @@ class BoundaryStrategy(Enum):
     FREESTREAM = auto()
     FIXED_FLUX_PRESSURE = auto()
     FIXED_GRADIENT = auto()
-    NORMAL_VALUE_TANGENTIAL_GRADIENT = auto()
+    MIXED_VELOCITY = auto()
 
 
 @dataclass(frozen=True)
@@ -196,15 +196,15 @@ BOUNDARIES.register(
     )
 )
 
-# Coupling trace that prescribes the normal velocity and the two tangential
-# components of its face-normal derivative.  Unlike fixed_value, its tangential
+# Mixed velocity condition of the coupling: prescribes the normal velocity and
+# the normal gradient of the tangential velocity.  Unlike fixed_value, its tangential
 # face velocity is reconstructed from the evolving owner-cell state.
 BOUNDARIES.register(
     BoundaryOperator(
-        "normal_value_tangential_gradient",
+        "mixed_velocity",
         frozenset({"velocity"}),
         _ALL_OPERATORS,
-        BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT,
+        BoundaryStrategy.MIXED_VELOCITY,
         coupling_only=True,
     )
 )

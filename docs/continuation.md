@@ -23,7 +23,7 @@ In your own script, pass `start_from` to `run()`:
 | --- | --- |
 | FVM | `solution/fvm/fvm_{step:06d}.npz`: velocity, pressure and fluxes. An MPI run writes a directory of that name and restarts with the same core count. |
 | VPM/VLM | `solution/vpm/vpm_{step:06d}.h5`: particles and lifting-surface state. |
-| Coupled | `solution/coupled/coupled_{step:06d}/`: both solver states and the coupling state of one exchange; keep each folder together. |
+| Coupled | `solution/coupled/coupled_{step:06d}/`: both solver states and the boundary data of one coupling step; keep each folder together. |
 
 `Backup(schedule=...)` sets how often a backup is written, and so how much work an interruption costs; `Backup(write_at_end=True)` (default) writes one at the end of the run. ParaView files alone cannot restore a run.
 

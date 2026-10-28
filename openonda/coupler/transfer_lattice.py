@@ -1,8 +1,10 @@
-"""Buffered fixed-lattice FVM-to-VPM renewal compatible with GBD diffusion.
+"""Vorticity transfer on the fixed transfer lattice, compatible with GBD diffusion.
 
-Operators return renewed particle arrays without mutating a solver. Interior
-particles receive FVM vorticity while the release buffer preserves the VPM
-wake. Renewed particles use the fixed lattice and base core radius.
+The particles of the remeshing region are remeshed onto the transfer lattice,
+blended with the FVM target strengths, corrected, thresholded and returned as
+transfer-lattice particles; particles outside the remeshing region are kept.
+The operators return particle arrays and do not modify a solver. Transfer-lattice
+particles sit on the lattice nodes and carry the base core radius.
 """
 
 from __future__ import annotations
@@ -17,13 +19,13 @@ from openonda.core._numba import cacheable_njit as njit
 from openonda.core.grid_connectivity import connected_grid_components
 from openonda.core.slip_slab_images import add_slab_images
 
-from .lattice_transfer import _m4_prime_scalar, m4_prime
+from .m4_kernel import _m4_prime_scalar, m4_prime
 
 ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
 CORE_RADIUS_RATIO = 1.0
 M4_PRIME_SUPPORT_CELLS = 2.0
-DEFAULT_AMPLIFICATION_CAP = 2.0
+DEFAULT_MAX_STRENGTH_RATIO = 2.0
 _ALIGNMENT_TOLERANCE_CELLS = 1.0e-5
 
 
@@ -35,29 +37,29 @@ def _scatter_unaligned_m4_prime(
     shape: np.ndarray,
 ) -> np.ndarray:
     result = np.zeros((shape[0], shape[1], shape[2], 3), dtype=np.float64)
-    for donor in range(len(relative_position)):
+    for particle in range(len(relative_position)):
         for offset_x in range(4):
-            index_x = lower_stencil_index[donor, 0] + offset_x
-            weight_x = _m4_prime_scalar(relative_position[donor, 0] - index_x)
+            index_x = lower_stencil_index[particle, 0] + offset_x
+            weight_x = _m4_prime_scalar(relative_position[particle, 0] - index_x)
             for offset_y in range(4):
-                index_y = lower_stencil_index[donor, 1] + offset_y
-                weight_y = _m4_prime_scalar(relative_position[donor, 1] - index_y)
+                index_y = lower_stencil_index[particle, 1] + offset_y
+                weight_y = _m4_prime_scalar(relative_position[particle, 1] - index_y)
                 for offset_z in range(4):
-                    index_z = lower_stencil_index[donor, 2] + offset_z
-                    weight_z = _m4_prime_scalar(relative_position[donor, 2] - index_z)
+                    index_z = lower_stencil_index[particle, 2] + offset_z
+                    weight_z = _m4_prime_scalar(relative_position[particle, 2] - index_z)
                     weight = weight_x * weight_y * weight_z
-                    result[index_x, index_y, index_z, 0] += weight * vortex_strength[donor, 0]
-                    result[index_x, index_y, index_z, 1] += weight * vortex_strength[donor, 1]
-                    result[index_x, index_y, index_z, 2] += weight * vortex_strength[donor, 2]
+                    result[index_x, index_y, index_z, 0] += weight * vortex_strength[particle, 0]
+                    result[index_x, index_y, index_z, 1] += weight * vortex_strength[particle, 1]
+                    result[index_x, index_y, index_z, 2] += weight * vortex_strength[particle, 2]
     return result
 
 
-def vortex_strength_from_velocity_trace(
+def fvm_target_strength(
     positions: np.ndarray,
     particle_spacing: float,
     velocity_at: ArrayFunction,
 ) -> np.ndarray:
-    """Integrate the velocity circulation over the six faces of a cubic control cell.
+    """Return the FVM target strength: the Stokes integral over the faces of a lattice cube.
 
     Parameters
     ----------
@@ -101,32 +103,33 @@ def vortex_strength_from_velocity_trace(
     return strength
 
 
-def inward_cosine_blend_weight(
+def blending_weight(
     positions: np.ndarray,
-    transfer_box: np.ndarray | list[float] | tuple[float, ...],
-    ramp_width: float,
-    vpm_dead_zone: float = 0.0,
+    transfer_region_bounds: np.ndarray | list[float] | tuple[float, ...],
+    blend_start_depth: float,
+    blend_end_depth: float,
     *,
     slip_slab: bool = False,
 ) -> np.ndarray:
-    """Return the dimensionless FVM blending weight at each world-frame point.
+    """Return the blending weight ``η`` at each world-frame point.
 
-    Positions have shape (N,3), and transfer_box contains
-    (xmin,xmax,ymin,ymax,zmin,zmax), all in m. The blending weight is zero through
-    vpm_dead_zone measured inward from each face, rises with a cosine and
-    reaches one at ramp_width (both nonnegative, in m). A zero ramp gives a
-    sharp interior mask.
-    With slip_slab=True, z faces retain full blending weight through the closed
+    Positions have shape (N,3), and transfer_region_bounds contains
+    (xmin,xmax,ymin,ymax,zmin,zmax), all in m. With ``d`` the depth below the
+    transfer surface, the blending weight is zero in the zero-weight layer
+    ``d ≤ blend_start_depth``, rises with a cosine and reaches one at
+    ``d = blend_end_depth`` (both non-negative, in m). A zero blend_end_depth gives
+    a sharp mask, one everywhere inside the transfer surface.
+    With slip_slab=True, z faces keep the full blending weight through the closed
     physical span but points outside it have zero blending weight.
     The returned independent float64 array has shape (N,) and values in [0,1].
-    Invalid bounds, vectors or widths raise ValueError; inputs are unchanged.
+    Invalid bounds, vectors or depths raise ValueError; inputs are unchanged.
     """
     position = _vectors("positions", positions)
-    bounds = _bounds(transfer_box)
-    width = _nonnegative_finite("ramp_width", ramp_width)
-    dead_zone = _nonnegative_finite("vpm_dead_zone", vpm_dead_zone)
-    if width > 0.0 and dead_zone >= width:
-        raise ValueError("vpm_dead_zone must be smaller than ramp_width")
+    bounds = _bounds(transfer_region_bounds)
+    start_depth = _nonnegative_finite("blend_start_depth", blend_start_depth)
+    width = _nonnegative_finite("blend_end_depth", blend_end_depth)
+    if width > 0.0 and start_depth >= width:
+        raise ValueError("blend_start_depth must be smaller than blend_end_depth")
 
     skip_z_ramp = slip_slab
     face_distance = np.minimum.reduce(
@@ -147,9 +150,9 @@ def inward_cosine_blend_weight(
         return blend_weight
 
     blend_weight[face_distance >= width] = 1.0
-    ramp = (face_distance > dead_zone) & (face_distance < width)
+    ramp = (face_distance > start_depth) & (face_distance < width)
     if np.any(ramp):
-        phase = (face_distance[ramp] - dead_zone) / (width - dead_zone)
+        phase = (face_distance[ramp] - start_depth) / (width - start_depth)
         blend_weight[ramp] = 0.5 * (1.0 - np.cos(np.pi * phase))
     if slip_slab:
         blend_weight[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
@@ -157,28 +160,28 @@ def inward_cosine_blend_weight(
 
 
 @dataclass(frozen=True)
-class VortexInvariants:
-    """Integral vortex strength and the first two impulse measures."""
+class VortexMoments:
+    """Total vortex strength and the linear and angular impulse per unit density."""
 
     total_vortex_strength: np.ndarray
     linear_impulse: np.ndarray
     angular_impulse: np.ndarray
 
 
-def vortex_invariants(
+def vortex_moments(
     positions: np.ndarray,
     vortex_strength: np.ndarray,
-) -> VortexInvariants:
-    """Compute the invariants used to close remeshing and population pruning."""
+) -> VortexMoments:
+    """Return the total vortex strength (m³/s), linear impulse (m⁴/s) and angular impulse (m⁵/s)."""
     position = _vectors("positions", positions)
     strength = _vectors("vortex_strength", vortex_strength)
     if len(position) != len(strength):
         raise ValueError("positions and vortex_strength must have the same length")
     if len(position) == 0:
         zero = np.zeros(3, dtype=np.float64)
-        return VortexInvariants(zero.copy(), zero.copy(), zero.copy())
+        return VortexMoments(zero.copy(), zero.copy(), zero.copy())
     position_cross_strength = np.cross(position, strength)
-    return VortexInvariants(
+    return VortexMoments(
         total_vortex_strength=strength.sum(axis=0, dtype=np.float64),
         linear_impulse=0.5 * position_cross_strength.sum(axis=0, dtype=np.float64),
         angular_impulse=(1.0 / 3.0)
@@ -186,14 +189,18 @@ def vortex_invariants(
     )
 
 
-def recover_vortex_invariants(
+def correct_vortex_moments(
     positions: np.ndarray,
     vortex_strength: np.ndarray,
-    target: VortexInvariants,
+    target: VortexMoments,
     *,
     volumes: np.ndarray,
 ) -> np.ndarray:
-    """Recover total strength and linear impulse with minimum volume weighting."""
+    """Apply the moment correction that restores the total strength and linear impulse.
+
+    The correction is the volume-weighted minimum-norm change of the strengths
+    that matches both moments of ``target``.
+    """
     position = _vectors("positions", positions)
     strength = _vectors("vortex_strength", vortex_strength)
     volume = np.asarray(volumes, dtype=np.float64).reshape(-1)
@@ -207,10 +214,10 @@ def recover_vortex_invariants(
     target_impulse = np.asarray(target.linear_impulse, dtype=np.float64).reshape(3)
     if count == 0:
         if np.any(target_strength != 0.0) or np.any(target_impulse != 0.0):
-            raise ValueError("cannot recover non-zero invariants without particles")
+            raise ValueError("a non-zero total strength or impulse needs particles to carry it")
         return strength
     if count < 2:
-        raise ValueError("at least two particles are required for invariant recovery")
+        raise ValueError("the moment correction needs at least two particles")
 
     reference = np.average(position, weights=volume, axis=0)
     relative = position - reference
@@ -225,9 +232,9 @@ def recover_vortex_invariants(
     )
     length_scale = max(float(np.linalg.norm(relative, axis=1).max()), np.finfo(float).tiny)
     roundoff = 4.0 * np.finfo(np.float64).eps * strength_scale
-    # Circulation and impulse have different dimensions. An absolute 1e-14
-    # skip threshold loses small-but-resolved budgets and can exceed the
-    # production wrapper's storage-precision conservation tolerance.
+    # Total strength and impulse have different dimensions. An absolute 1e-14
+    # skip threshold loses small but resolved moments and can exceed the
+    # storage-precision conservation tolerance of the vorticity transfer.
     if (
         np.linalg.norm(residual[:3]) <= roundoff
         and np.linalg.norm(residual[3:]) <= roundoff * length_scale
@@ -242,7 +249,7 @@ def recover_vortex_invariants(
     condition = float(np.linalg.cond(matrix))
     if not np.isfinite(condition) or condition > 1.0e12:
         raise np.linalg.LinAlgError(
-            f"invariant recovery matrix is ill-conditioned ({condition:.3e})"
+            f"moment-correction matrix is ill-conditioned ({condition:.3e})"
         )
     corrected = strength.copy()
     # Refinement removes rounding from distributing a correction over many
@@ -266,48 +273,48 @@ def recover_vortex_invariants(
 
 
 @dataclass(frozen=True)
-class StableRenewalLattice:
-    """Fixed Cartesian renewal geometry and dimensionless transfer weights.
+class TransferLattice:
+    """Fixed Cartesian transfer lattice and its dimensionless node weights.
 
     Lengths, bounds and positions are in m. ``shape`` is (nx,ny,nz), with
-    positions flattened in C order. mesh_weight, fluid_weight, fvm_blend_weight
+    positions flattened in C order. mesh_weight, fluid_weight, blending_weight
     and solid_interior each have one entry per node. Each particle has volume h³.
     The frozen dataclass prevents attribute reassignment but does not make its
     NumPy arrays immutable; callers must treat these shared arrays as read only.
     """
 
-    transfer_box: np.ndarray
-    renewal_bounds: np.ndarray
+    transfer_region_bounds: np.ndarray
+    remeshing_region_bounds: np.ndarray
     origin: np.ndarray
     shape: tuple[int, int, int]
     positions: np.ndarray
     particle_spacing: float
-    buffer_length: float
+    remeshing_extension_length: float
     lattice_anchor: np.ndarray | None
     mesh_weight: np.ndarray
     fluid_weight: np.ndarray
     solid_interior: np.ndarray
-    fvm_blend_weight: np.ndarray
+    blending_weight: np.ndarray
     slip_slab: bool = False
-    wall_links: np.ndarray | None = None
+    wall_crossing_links: np.ndarray | None = None
     wall_scatter_correction: Callable | None = None
 
     @property
     def particle_volume(self) -> float:
-        """Return the represented volume of each renewal particle in m³.
+        """Return the volume of each transfer-lattice particle in m³.
 
         The uniform volume is h³, where h is particle_spacing in m.
         """
         return self.particle_spacing**3
 
 
-def build_stable_renewal_lattice(
-    transfer_box: np.ndarray | list[float] | tuple[float, ...],
+def build_transfer_lattice(
+    transfer_region_bounds: np.ndarray | list[float] | tuple[float, ...],
     particle_spacing: float,
     *,
-    buffer_length: float,
-    blend_ramp_width: float,
-    vpm_dead_zone: float = 0.0,
+    remeshing_extension_length: float,
+    blend_start_depth: float = 0.0,
+    blend_end_depth: float,
     lattice_anchor: np.ndarray | None = None,
     mesh_weight_at_node: ArrayFunction | None = None,
     fluid_weight_at_node: ArrayFunction | None = None,
@@ -315,18 +322,19 @@ def build_stable_renewal_lattice(
     slip_slab: bool = False,
     solid_boundary=None,
     wall_scatter_correction: Callable | None = None,
-) -> StableRenewalLattice:
-    """Build fixed renewal nodes and transfer weights around the FVM region.
+) -> TransferLattice:
+    """Build the transfer lattice that covers the remeshing region and its M4' support.
 
     Parameters
     ----------
-    transfer_box : array_like, shape (6,)
+    transfer_region_bounds : array_like, shape (6,)
         (xmin,xmax,ymin,ymax,zmin,zmax) in m, with increasing bounds.
     particle_spacing : float
         Positive uniform node spacing h in m.
-    buffer_length, blend_ramp_width, vpm_dead_zone : float
-        Nonnegative lengths in m. The dead zone must be narrower than a
-        nonzero blending ramp.
+    remeshing_extension_length, blend_start_depth, blend_end_depth : float
+        Non-negative lengths in m: the outward extension ``L_remesh`` of the
+        remeshing region and the blending depths ``δ_0 < δ_1`` (``δ_1 = 0``
+        disables blending).
     lattice_anchor : array_like, shape (3,), optional
         Fixed lattice phase in m. Nodes align to this phase when provided.
     mesh_weight_at_node, fluid_weight_at_node : callable, optional
@@ -337,17 +345,18 @@ def build_stable_renewal_lattice(
         Use physical z faces without a spanwise blending ramp; ghost support nodes
         remain on the lattice with zero fluid weight.
     solid_boundary : optional
-        Static solid-query interface. Its segment queries cache blocked lattice
-        links for component-local pruning and invariant recovery.
+        Static solid-query interface. Its segment queries mark the lattice links
+        that cross the wall, so weak-strength removal and the moment correction
+        act on each fluid-connected component separately.
     wall_scatter_correction : callable, optional
-        Existing GBD visible-support M4 correction for off-lattice 3-D donors.
+        GBD fluid-side M4' correction for off-lattice three-dimensional particles.
         Called with positions, strengths, origin, spacing and shape; returns
         sparse node indices, additive strength corrections and diagnostics.
 
     Returns
     -------
-    StableRenewalLattice
-        Geometry and masks for repeated renewal. Newly allocated arrays
+    TransferLattice
+        Geometry and masks for repeated vorticity transfers. Newly allocated arrays
         remain mutable despite the frozen container and must be treated as read only.
 
     Raises
@@ -357,25 +366,25 @@ def build_stable_renewal_lattice(
 
     Notes
     -----
-    The physical belt expands transfer_box by buffer_length. Two additional
-    nodes on every active axis retain each donor's complete M4-prime support:
-    4-by-4-by-4 nodes.
+    The remeshing region extends transfer_region_bounds outward by
+    remeshing_extension_length. Two more nodes on every active axis hold the
+    complete M4' support of each particle: 4-by-4-by-4 nodes.
     """
-    bounds = _bounds(transfer_box)
+    bounds = _bounds(transfer_region_bounds)
     spacing = _positive_finite("particle_spacing", particle_spacing)
-    buffer = _nonnegative_finite("buffer_length", buffer_length)
-    width = _nonnegative_finite("blend_ramp_width", blend_ramp_width)
-    dead_zone = _nonnegative_finite("vpm_dead_zone", vpm_dead_zone)
-    if width > 0.0 and dead_zone >= width:
-        raise ValueError("vpm_dead_zone must be smaller than blend_ramp_width")
+    extension = _nonnegative_finite("remeshing_extension_length", remeshing_extension_length)
+    start_depth = _nonnegative_finite("blend_start_depth", blend_start_depth)
+    end_depth = _nonnegative_finite("blend_end_depth", blend_end_depth)
+    if end_depth > 0.0 and start_depth >= end_depth:
+        raise ValueError("blend_start_depth must be smaller than blend_end_depth")
 
-    renewal_bounds = bounds.copy()
-    renewal_bounds[::2] -= buffer
-    renewal_bounds[1::2] += buffer
+    remeshing_region_bounds = bounds.copy()
+    remeshing_region_bounds[::2] -= extension
+    remeshing_region_bounds[1::2] += extension
     if slip_slab:
-        renewal_bounds[4:6] = bounds[4:6]
-    lower = renewal_bounds[::2] - M4_PRIME_SUPPORT_CELLS * spacing
-    upper = renewal_bounds[1::2] + M4_PRIME_SUPPORT_CELLS * spacing
+        remeshing_region_bounds[4:6] = bounds[4:6]
+    lower = remeshing_region_bounds[::2] - M4_PRIME_SUPPORT_CELLS * spacing
+    upper = remeshing_region_bounds[1::2] + M4_PRIME_SUPPORT_CELLS * spacing
     anchor_array: np.ndarray | None = None
     if lattice_anchor is not None:
         anchor_array = np.asarray(lattice_anchor, dtype=np.float64).reshape(3)
@@ -404,42 +413,46 @@ def build_stable_renewal_lattice(
     if solid_interior.shape != (count,):
         raise ValueError(f"interior_at_node returned {solid_interior.shape}, expected ({count},)")
     blend_weight = (
-        inward_cosine_blend_weight(positions, bounds, width, dead_zone, slip_slab=slip_slab)
+        blending_weight(positions, bounds, start_depth, end_depth, slip_slab=slip_slab)
         * mesh_weight
     )
-    wall_links = (
+    wall_crossing_links = (
         None
         if solid_boundary is None
-        else _blocked_lattice_links(positions, shape, solid_interior, solid_boundary)
+        else _wall_crossing_links(positions, shape, solid_interior, solid_boundary)
     )
-    return StableRenewalLattice(
-        transfer_box=bounds,
-        renewal_bounds=renewal_bounds,
+    return TransferLattice(
+        transfer_region_bounds=bounds,
+        remeshing_region_bounds=remeshing_region_bounds,
         origin=lower,
         shape=shape,
         positions=positions,
         particle_spacing=spacing,
-        buffer_length=buffer,
+        remeshing_extension_length=extension,
         lattice_anchor=anchor_array,
         mesh_weight=mesh_weight,
         fluid_weight=fluid_weight,
         solid_interior=solid_interior,
-        fvm_blend_weight=blend_weight,
+        blending_weight=blend_weight,
         slip_slab=slip_slab,
-        wall_links=wall_links,
+        wall_crossing_links=wall_crossing_links,
         wall_scatter_correction=wall_scatter_correction,
     )
 
 
 def _snap_grid_roundoff(coordinates: np.ndarray) -> np.ndarray:
-    """Keep floor/ceil invariant under roundoff-sized translations of a grid."""
+    """Keep floor/ceil unchanged under roundoff-sized translations of a grid."""
     nearest = np.rint(coordinates)
     tolerance = 64.0 * np.finfo(float).eps * np.maximum(1.0, np.abs(coordinates))
     return np.where(np.abs(coordinates - nearest) <= tolerance, nearest, coordinates)
 
 
-def _blocked_lattice_links(positions, shape, solid_interior, boundary) -> np.ndarray:
-    """Cache six-neighbour wall visibility using one bit per positive axis."""
+def _wall_crossing_links(positions, shape, solid_interior, boundary) -> np.ndarray:
+    """Mark the lattice links that cross the wall, one bit per positive axis.
+
+    A set bit closes the link to the diffusion flux, the strength redistribution
+    and the fluid-connected components; the diffusion-flux mask is its complement.
+    """
     links = np.zeros(shape, dtype=np.uint8)
     flat_links = links.reshape(-1)
     strides = (shape[1] * shape[2], shape[2], 1)
@@ -449,24 +462,24 @@ def _blocked_lattice_links(positions, shape, solid_interior, boundary) -> np.nda
         for axis, stride in enumerate(strides):
             lower = rows[(rows // stride) % shape[axis] < shape[axis] - 1]
             upper = lower + stride
-            blocked = solid_interior[lower] | solid_interior[upper]
-            fluid = ~blocked
+            crosses_wall = solid_interior[lower] | solid_interior[upper]
+            fluid = ~crosses_wall
             if np.any(fluid):
-                blocked[fluid] = boundary.blocks_segments(
+                crosses_wall[fluid] = boundary.segments_cross_wall(
                     positions[lower[fluid]], positions[upper[fluid]]
                 )
-            flat_links[lower[blocked]] |= np.uint8(1 << axis)
+            flat_links[lower[crosses_wall]] |= np.uint8(1 << axis)
     return links
 
 
 def scatter_m4_prime_to_lattice(
     positions: np.ndarray,
     vortex_strength: np.ndarray,
-    lattice: StableRenewalLattice,
+    lattice: TransferLattice,
     *,
     position_dtype=None,
 ) -> np.ndarray:
-    """Scatter donors with aligned direct insertion and complete M4' support.
+    """Remesh particles onto the lattice: node-aligned ones directly, the others with M4'.
 
     ``position_dtype`` retains source storage precision when a caller has
     already converted positions to double precision for geometric arithmetic.
@@ -482,18 +495,19 @@ def scatter_m4_prime_to_lattice(
         raise ValueError("positions and vortex_strength must have the same length")
     if len(position) == 0:
         return np.zeros((len(lattice.positions), 3), dtype=np.float64)
-    if np.any(position < lattice.renewal_bounds[::2]) or np.any(
-        position > lattice.renewal_bounds[1::2]
+    if np.any(position < lattice.remeshing_region_bounds[::2]) or np.any(
+        position > lattice.remeshing_region_bounds[1::2]
     ):
-        raise ValueError("M4' donors must lie inside the physical renewal belt")
+        raise ValueError("remeshed particles must lie inside the remeshing region")
 
     relative = (position - lattice.origin) / lattice.particle_spacing
     nearest = np.rint(relative).astype(np.int64)
     shape_array = np.asarray(lattice.shape, dtype=np.int64)
     aligned = np.max(np.abs(relative - nearest), axis=1) <= _ALIGNMENT_TOLERANCE_CELLS
-    if lattice.wall_links is not None:
-        # GBD and renewal share a lattice; finite position storage can shift
-        # an exact node by a few ulps. Do not spread those shifts through walls.
+    if lattice.wall_crossing_links is not None:
+        # GBD diffusion and the vorticity transfer share a lattice; finite position
+        # storage can shift an exact node by a few ulps. Do not spread those shifts
+        # through walls.
         dimensions = 3
         exact = lattice.origin + lattice.particle_spacing * nearest
         storage_roundoff = (
@@ -503,7 +517,7 @@ def scatter_m4_prime_to_lattice(
         )
         if np.any(storage_roundoff >= 0.01 * lattice.particle_spacing):
             raise ValueError(
-                "Wall renewal cannot resolve the particle spacing at "
+                "The vorticity transfer next to a wall cannot resolve the particle spacing at "
                 f"{storage_dtype.name} position precision"
             )
         tolerance = np.maximum(
@@ -514,13 +528,13 @@ def scatter_m4_prime_to_lattice(
         )
     aligned &= np.all((nearest >= 0) & (nearest < shape_array), axis=1)
     if (
-        lattice.wall_links is not None
+        lattice.wall_crossing_links is not None
         and np.any(~aligned)
         and lattice.wall_scatter_correction is None
     ):
         raise ValueError(
-            "Wall-aware buffered renewal requires GBD-aligned particles; "
-            "off-lattice M4 scatter has no wall-visible support"
+            "The vorticity transfer next to a wall requires GBD-aligned particles; "
+            "an off-lattice M4' scatter has no fluid-side remeshing stencil"
         )
     field = np.zeros((*lattice.shape, 3), dtype=np.float64)
     if np.any(aligned):
@@ -532,14 +546,14 @@ def scatter_m4_prime_to_lattice(
         lower_stencil = np.floor(relative_free).astype(np.int64) - 1
         upper_stencil = lower_stencil + 3
         if np.any(lower_stencil < 0) or np.any(upper_stencil >= shape_array):
-            raise RuntimeError("fixed renewal lattice does not contain a complete M4' stencil")
+            raise RuntimeError("the transfer lattice does not contain a complete M4' stencil")
         field += _scatter_unaligned_m4_prime(
             relative_free,
             lower_stencil,
             strength[~aligned],
             shape_array,
         )
-        if lattice.wall_links is not None:
+        if lattice.wall_crossing_links is not None:
             indices, corrections, _ = lattice.wall_scatter_correction(
                 position[~aligned],
                 strength[~aligned],
@@ -548,12 +562,12 @@ def scatter_m4_prime_to_lattice(
                 lattice.shape,
             )
             np.add.at(field, tuple(indices.T), corrections)
-    if lattice.wall_links is not None:
+    if lattice.wall_crossing_links is not None:
         field[lattice.solid_interior.reshape(lattice.shape)] = 0.0
     return field.reshape(-1, 3)
 
 
-def gaussian_represented_vortex_strength(
+def gaussian_representation(
     lattice_vortex_strength: np.ndarray,
     shape: tuple[int, int, int],
     particle_spacing: float,
@@ -562,7 +576,7 @@ def gaussian_represented_vortex_strength(
     slip_slab_bounds: tuple[float, float] | None = None,
     lattice_origin_z: float | None = None,
 ) -> np.ndarray:
-    """Sample the represented Gaussian strength on a Cartesian lattice.
+    """Return the particle-represented vorticity ``ℳ_σ[Γ]`` on a Cartesian lattice, as strengths.
 
     lattice_vortex_strength has shape (prod(shape),3), in m³/s; shape is
     (nx,ny,nz), particle_spacing is h in m, and core_radius is sigma in m.
@@ -570,7 +584,7 @@ def gaussian_represented_vortex_strength(
 
     Each source represents Gamma*exp(-r²/sigma²)/(pi**1.5*sigma³).
     The sampled Gaussian weights are not renormalized: doing so would change
-    the represented kernel. Truncation occurs beyond six core radii.
+    the Gaussian kernel. Truncation occurs beyond six core radii.
     Invalid spacing, radius or lattice length raises ValueError. Inputs are read only.
     """
     spacing = _positive_finite("particle_spacing", particle_spacing)
@@ -638,52 +652,59 @@ def gaussian_represented_vortex_strength(
 
 
 @dataclass(frozen=True)
-class RepresentedStateBlend:
-    """Result of blending in represented-vorticity space."""
+class StrengthCorrection:
+    """Limited lattice strengths of the strength correction and its residuals.
 
-    vortex_strength: np.ndarray
-    physical_target: np.ndarray
-    represented_vortex_strength: np.ndarray | None
+    ``limited_strength`` holds ``Γ_lim``, ``blended_target`` ``Γ_blend`` and
+    ``represented_strength`` the particle-represented vorticity ``ℳ_σ[Γ_lim]``,
+    all as strengths in m³/s. The residuals are relative to ``Γ_blend`` and
+    ``strength_ratio`` is ``κ``.
+    """
+
+    limited_strength: np.ndarray
+    blended_target: np.ndarray
+    represented_strength: np.ndarray | None
     residual_before_correction: float
     residual_after_correction: float | None
-    maximum_amplification: float
+    strength_ratio: float
 
 
-def blend_represented_state(
+def correct_lattice_strength(
     vpm_vortex_strength: np.ndarray,
     fvm_target_vortex_strength: np.ndarray,
-    fvm_blend_weight: np.ndarray,
+    blending_weight: np.ndarray,
     shape: tuple[int, int, int],
     particle_spacing: float,
     *,
     core_radius: float,
-    amplification_cap: float = DEFAULT_AMPLIFICATION_CAP,
+    max_strength_ratio: float = DEFAULT_MAX_STRENGTH_RATIO,
     output_weight: np.ndarray | None = None,
     compute_final_representation: bool = True,
     slip_slab_bounds: tuple[float, float] | None = None,
     lattice_origin_z: float | None = None,
-) -> RepresentedStateBlend:
-    """Correct the represented-field mismatch while preserving VPM coefficients.
+) -> StrengthCorrection:
+    """Correct the remeshed strengths toward the blended target and limit them.
 
-    The strength arrays contain volume-integrated Gamma in m³/s.
-    The represented field uses three-dimensional Gaussian convolution.
-    With a binary output support mask, matching FVM/represented-VPM fields on
-    active nodes are a fixed point, including through a spatially varying
-    blending ramp. Fractional output weights additionally scale coefficients.
-    The approximate inverse acts only on the active physical mismatch.
-    Each correction is limited along its update direction so
-    no node grows beyond the larger of its previous magnitude and ``cap``
-    times the maximum physical target. This prevents repeated inversion of
-    unresolved wall structure from accumulating unbounded coefficients.
+    The strength arrays contain volume-integrated vorticity ``Γ`` in m³/s, and the
+    particle-represented vorticity is their three-dimensional Gaussian
+    convolution ``ℳ_σ``. The weighted mismatch ``Γ_mis = η (Γ^FVM − ℳ_σ[Γ^VPM])``
+    receives one Van Cittert step, ``δΓ_corr = Γ_mis + γ (Γ_mis − ℳ_σ[Γ_mis])``
+    with gain ``γ = min(κ_max − 1, 1)``. Where the FVM and particle-represented
+    vorticity already agree the strengths are unchanged, also inside the blending
+    ramp; fractional output weights scale the strengths. Each corrected strength
+    is limited along its update direction so its magnitude does not exceed the
+    larger of its remeshed magnitude and ``κ_max`` times the peak target
+    strength, which keeps repeated corrections of unresolved wall structure
+    bounded.
     """
-    cap = float(amplification_cap)
-    if not np.isfinite(cap) or cap < 1.0:
-        raise ValueError("amplification_cap must be finite and at least one")
+    max_ratio = float(max_strength_ratio)
+    if not np.isfinite(max_ratio) or max_ratio < 1.0:
+        raise ValueError("max_strength_ratio must be finite and at least one")
     vpm_strength = _vectors("vpm_vortex_strength", vpm_vortex_strength)
     fvm_strength = _vectors("fvm_target_vortex_strength", fvm_target_vortex_strength)
-    blend_weight = np.asarray(fvm_blend_weight, dtype=np.float64).reshape(-1)
+    blend_weight = np.asarray(blending_weight, dtype=np.float64).reshape(-1)
     if vpm_strength.shape != fvm_strength.shape or blend_weight.shape != (len(vpm_strength),):
-        raise ValueError("blend inputs must share one lattice shape")
+        raise ValueError("the remeshed, target and blending arrays must share one lattice shape")
     weight: np.ndarray | None = None
     if output_weight is not None:
         weight = np.asarray(output_weight, dtype=np.float64).reshape(-1)
@@ -702,7 +723,7 @@ def blend_represented_state(
         )
         physical &= np.broadcast_to(physical_z, shape).reshape(-1)
 
-    represented_vpm = gaussian_represented_vortex_strength(
+    represented_vpm = gaussian_representation(
         vpm_strength,
         shape,
         particle_spacing,
@@ -710,66 +731,70 @@ def blend_represented_state(
         slip_slab_bounds=slip_slab_bounds,
         lattice_origin_z=lattice_origin_z,
     )
-    physical_target = represented_vpm + blend_weight[:, None] * (fvm_strength - represented_vpm)
-    physical_target[~physical] = 0.0
+    blended_target = represented_vpm + blend_weight[:, None] * (fvm_strength - represented_vpm)
+    blended_target[~physical] = 0.0
 
-    # FVM values are physical vorticity; VPM values are Gaussian coefficients.
-    # Blending those two representations directly would damp even F = G(v).
-    # Instead invert only r = eta * (F - G(v)), with eta inside the operator:
-    # v_new = v + [I + beta * (I - G)] r. This also retains the blending-weight ramp
-    # commutator; multiplying a deconvolved difference by eta is not equivalent.
-    mismatch = blend_weight[:, None] * (fvm_strength - represented_vpm)
-    mismatch[~physical] = 0.0
-    represented_mismatch = gaussian_represented_vortex_strength(
-        mismatch,
+    # FVM strengths sample the vorticity; particle strengths are Gaussian
+    # coefficients. Blending the two directly would damp even F = M(v). Instead
+    # correct only r = eta (F - M(v)), with eta inside the operator:
+    # v_new = v + [I + gamma (I - M)] r. This keeps the commutator of the blending
+    # ramp; multiplying a deconvolved difference by eta is not equivalent.
+    weighted_mismatch = blend_weight[:, None] * (fvm_strength - represented_vpm)
+    weighted_mismatch[~physical] = 0.0
+    represented_weighted_mismatch = gaussian_representation(
+        weighted_mismatch,
         shape,
         particle_spacing,
         core_radius=core_radius,
         slip_slab_bounds=slip_slab_bounds,
         lattice_origin_z=lattice_origin_z,
     )
-    residual = mismatch - represented_mismatch
-    denominator = float(np.linalg.norm(physical_target[physical])) + 1.0e-30
+    residual = weighted_mismatch - represented_weighted_mismatch
+    denominator = float(np.linalg.norm(blended_target[physical])) + 1.0e-30
     residual_before = float(np.linalg.norm(residual[physical])) / denominator
 
-    correction_gain = min(cap - 1.0, 1.0)
-    correction = mismatch + correction_gain * residual
+    correction_gain = min(max_ratio - 1.0, 1.0)
+    strength_correction = weighted_mismatch + correction_gain * residual
     baseline = vpm_strength.copy()
     if weight is not None:
         baseline *= weight[:, None]
-        correction *= weight[:, None]
+        strength_correction *= weight[:, None]
     baseline[~physical] = 0.0
-    correction[~physical] = 0.0
-    target_maximum = (
-        float(np.linalg.norm(physical_target[physical], axis=1).max(initial=0.0)) + 1.0e-30
+    strength_correction[~physical] = 0.0
+    peak_target_strength = (
+        float(np.linalg.norm(blended_target[physical], axis=1).max(initial=0.0)) + 1.0e-30
     )
     bound_squared = np.maximum(
-        np.einsum("ij,ij->i", baseline, baseline), (cap * target_maximum) ** 2
+        np.einsum("ij,ij->i", baseline, baseline), (max_ratio * peak_target_strength) ** 2
     )
-    corrected_strength = baseline + correction
-    limited = np.einsum("ij,ij->i", corrected_strength, corrected_strength) > bound_squared
-    if np.any(limited):
-        previous = baseline[limited]
-        delta = correction[limited]
+    limited_strength = baseline + strength_correction
+    exceeds_limit = np.einsum("ij,ij->i", limited_strength, limited_strength) > bound_squared
+    if np.any(exceeds_limit):
+        previous = baseline[exceeds_limit]
+        delta = strength_correction[exceeds_limit]
         a = np.einsum("ij,ij->i", delta, delta)
         b = np.einsum("ij,ij->i", previous, delta)
-        c = np.minimum(np.einsum("ij,ij->i", previous, previous) - bound_squared[limited], 0.0)
+        c = np.minimum(
+            np.einsum("ij,ij->i", previous, previous) - bound_squared[exceeds_limit], 0.0
+        )
         root = np.sqrt(np.maximum(b * b - a * c, 0.0))
         # Stable positive quadratic root, including an already saturated node.
-        fraction = np.zeros_like(a)
+        update_fraction = np.zeros_like(a)
         outward = b >= 0.0
-        np.divide(-c, root + b, out=fraction, where=outward & (root + b > 0.0))
-        np.divide(root - b, a, out=fraction, where=~outward & (a > 0.0))
-        corrected_strength[limited] = previous + np.clip(fraction, 0.0, 1.0)[:, None] * delta
-    maximum_amplification = (
-        float(np.linalg.norm(corrected_strength, axis=1).max(initial=0.0)) / target_maximum
+        np.divide(-c, root + b, out=update_fraction, where=outward & (root + b > 0.0))
+        np.divide(root - b, a, out=update_fraction, where=~outward & (a > 0.0))
+        limited_strength[exceeds_limit] = (
+            previous + np.clip(update_fraction, 0.0, 1.0)[:, None] * delta
+        )
+    strength_ratio = (
+        float(np.linalg.norm(limited_strength, axis=1).max(initial=0.0)) / peak_target_strength
     )
 
-    represented_corrected: np.ndarray | None = None
+    represented_limited: np.ndarray | None = None
     residual_after: float | None = None
     if compute_final_representation:
-        represented_corrected = gaussian_represented_vortex_strength(
-            corrected_strength,
+        represented_limited = gaussian_representation(
+            limited_strength,
             shape,
             particle_spacing,
             core_radius=core_radius,
@@ -777,46 +802,55 @@ def blend_represented_state(
             lattice_origin_z=lattice_origin_z,
         )
         residual_after = (
-            float(np.linalg.norm((physical_target - represented_corrected)[physical])) / denominator
+            float(np.linalg.norm((blended_target - represented_limited)[physical])) / denominator
         )
-    return RepresentedStateBlend(
-        vortex_strength=corrected_strength,
-        physical_target=physical_target,
-        represented_vortex_strength=represented_corrected,
+    return StrengthCorrection(
+        limited_strength=limited_strength,
+        blended_target=blended_target,
+        represented_strength=represented_limited,
         residual_before_correction=residual_before,
         residual_after_correction=residual_after,
-        maximum_amplification=maximum_amplification,
+        strength_ratio=strength_ratio,
     )
 
 
-def soft_prune_vortex_strength(
+def remove_weak_strengths(
     vortex_strength: np.ndarray,
     threshold: float | np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Apply continuous non-negative-garrote shrinkage."""
+    """Remove weak strengths by smooth thresholding.
+
+    A strength of magnitude ``|Γ|`` above the strength threshold ``Γ_τ`` is scaled
+    by ``1 − (Γ_τ/|Γ|)²``; weaker strengths are removed. Returns the retained
+    strengths and the removed part, both in m³/s.
+    """
     strength = _vectors("vortex_strength", vortex_strength)
     threshold_array = np.broadcast_to(np.asarray(threshold, dtype=np.float64), (len(strength),))
     if np.any(~np.isfinite(threshold_array)) or np.any(threshold_array < 0.0):
-        raise ValueError("prune threshold must be finite and non-negative")
+        raise ValueError("the strength threshold must be finite and non-negative")
     if not np.any(threshold_array > 0.0):
         return strength.copy(), np.zeros_like(strength)
     magnitude = np.linalg.norm(strength, axis=1)
     scale = np.zeros_like(magnitude)
     active = magnitude > threshold_array
     scale[active] = 1.0 - (threshold_array[active] / magnitude[active]) ** 2
-    shrunk = strength * scale[:, None]
-    return shrunk, strength - shrunk
+    retained = strength * scale[:, None]
+    return retained, strength - retained
 
 
-def redistribute_pruned_vortex_strength_locally(
+def redistribute_removed_strength(
     removed_vortex_strength: np.ndarray,
     retained_vortex_strength: np.ndarray,
     shape: tuple[int, int, int],
     *,
     labels: np.ndarray | None = None,
-    wall_links: np.ndarray | None = None,
+    wall_crossing_links: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Move removed strength to surviving face neighbours without a periodic seam."""
+    """Move the removed strength to retained face neighbours, never across a wall.
+
+    Neighbours belong to the same fluid-connected component and are not joined by
+    a wall-crossing link; the lattice edges are not periodic.
+    """
     removed = _vectors("removed_vortex_strength", removed_vortex_strength).reshape(*shape, 3)
     retained = _vectors("retained_vortex_strength", retained_vortex_strength)
     if len(retained) != int(np.prod(shape)):
@@ -831,25 +865,31 @@ def redistribute_pruned_vortex_strength_locally(
     for index, (axis, step) in enumerate(shifts):
         if labels is not None:
             neighbours[index] &= (labels >= 0) & (labels == np.roll(labels, -step, axis=axis))
-        if wall_links is not None:
-            edge_links = wall_links if step == 1 else np.roll(wall_links, 1, axis=axis)
+        if wall_crossing_links is not None:
+            edge_links = (
+                wall_crossing_links if step == 1 else np.roll(wall_crossing_links, 1, axis=axis)
+            )
             neighbours[index] &= (edge_links & (1 << axis)) == 0
         boundary_slice: list[slice | int] = [slice(None)] * 3
         boundary_slice[axis] = -1 if step == 1 else 0
         neighbours[index][tuple(boundary_slice)] = False
 
     count = np.sum(neighbours, axis=0).astype(np.float64)
-    donatable = count > 0.0
+    has_neighbour = count > 0.0
     share = np.zeros_like(removed)
-    np.divide(removed, count[..., None], out=share, where=donatable[..., None])
+    np.divide(removed, count[..., None], out=share, where=has_neighbour[..., None])
     for neighbour, (axis, step) in zip(neighbours, shifts, strict=True):
         contribution = np.where(neighbour[..., None], share, 0.0)
         output += np.roll(contribution, step, axis=axis)
     return output.reshape(-1, 3)
 
 
-def _recover_wall_components(lattice, original, redistributed, labels, recover):
-    """Close each fluid component, retaining its original state if rank is lost."""
+def _correct_fluid_component_moments(lattice, original, redistributed, labels, correct):
+    """Apply the moment correction to each fluid-connected component.
+
+    A component whose retained strengths cannot carry the correction keeps its
+    limited strengths unchanged.
+    """
     raw = redistributed.copy()
     corrected = redistributed.copy()
     flat_labels = labels.reshape(-1)
@@ -862,11 +902,11 @@ def _recover_wall_components(lattice, original, redistributed, labels, recover):
     for start, stop in zip(boundaries[:-1], boundaries[1:], strict=True):
         component = rows[start:stop]
         retained = component[np.linalg.norm(raw[component], axis=1) > 0.0]
-        target = vortex_invariants(lattice.positions[component], original[component])
+        target = vortex_moments(lattice.positions[component], original[component])
         try:
             if len(retained) < 2:
-                raise ValueError("insufficient component support")
-            result = recover(
+                raise ValueError("too few retained nodes for the moment correction")
+            result = correct(
                 lattice.positions[retained],
                 raw[retained],
                 target,
@@ -876,83 +916,92 @@ def _recover_wall_components(lattice, original, redistributed, labels, recover):
                 raise FloatingPointError("nonfinite component correction")
             corrected[retained] = result
         except (ValueError, np.linalg.LinAlgError, FloatingPointError):
-            # A pruning threshold cannot justify moving a component's strength
-            # into another fluid region. Keep its original support instead.
+            # A removal threshold cannot justify moving a component's strength
+            # into another fluid region. Keep its limited strengths instead.
             raw[component] = original[component]
             corrected[component] = original[component]
     return raw, corrected
 
 
 @dataclass(frozen=True)
-class StableRenewalResult:
-    """Complete particle state produced by one stable whole-belt renewal."""
+class LatticeTransferResult:
+    """Particle state after one vorticity transfer on the lattice, with its diagnostics.
+
+    The particles hold the transfer-lattice particles first, then the kept
+    particles outside the remeshing region. The ``particle_set_*`` fields describe
+    the removal of the weakest particles when the particle capacity is reached.
+    """
 
     position: np.ndarray
     vortex_strength: np.ndarray
     particle_volume: np.ndarray
     core_radius: np.ndarray
-    renewed_input_count: int = 0
-    renewed_output_count: int = 0
+    transfer_input_count: int = 0
+    transfer_output_count: int = 0
     preserved_outer_count: int = 0
     coalesced_outer_count: int = 0
     coalesced_outer_input_indices: np.ndarray = field(
         default_factory=lambda: np.empty(0, dtype=np.int64)
     )
-    pruned_node_count: int = 0
-    pruned_vortex_strength_l1: float = 0.0
-    pruned_vortex_strength_fraction: float = 0.0
-    population_pruned_count: int = 0
-    population_pruned_vortex_strength_fraction: float = 0.0
-    population_pruned_velocity_bound: float = 0.0
+    removed_node_count: int = 0
+    removed_vortex_strength_l1: float = 0.0
+    removed_vortex_strength_fraction: float = 0.0
+    particle_set_removed_count: int = 0
+    particle_set_removed_vortex_strength_fraction: float = 0.0
+    particle_set_removed_velocity_bound: float = 0.0
     transfer_cfl: float = 0.0
     conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
     conservation_applied_correction: dict[str, float] = field(default_factory=dict)
     conservation_residual: dict[str, float] = field(default_factory=dict)
     conservation_applied_particle_strength_fraction: float = 0.0
-    conservation_target_invariants: VortexInvariants | None = None
-    conservation_raw_invariants: VortexInvariants | None = None
+    conservation_target_moments: VortexMoments | None = None
+    conservation_raw_moments: VortexMoments | None = None
     conservation_reference_strength_l1: float = 0.0
-    population_conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
-    population_conservation_applied_correction: dict[str, float] = field(default_factory=dict)
-    population_conservation_residual: dict[str, float] = field(default_factory=dict)
-    population_conservation_applied_particle_strength_fraction: float = 0.0
-    representation_residual_before_prune: float | None = None
-    representation_residual_after_prune: float | None = None
-    maximum_transfer_amplification: float = 0.0
+    particle_set_conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
+    particle_set_conservation_applied_correction: dict[str, float] = field(default_factory=dict)
+    particle_set_conservation_residual: dict[str, float] = field(default_factory=dict)
+    particle_set_conservation_applied_particle_strength_fraction: float = 0.0
+    representation_residual_before_removal: float | None = None
+    representation_residual_after_removal: float | None = None
+    strength_ratio: float = 0.0
     excluded_target_vortex_strength_l1: float = 0.0
 
     @property
     def particle_count(self) -> int:
-        """Return the number of active particles represented by this result."""
+        """Return the number of particles of this result."""
         return len(self.position)
 
 
-def renew_stable_overlap(
+def transfer_on_lattice(
     positions: np.ndarray,
     vortex_strength: np.ndarray,
-    lattice: StableRenewalLattice,
+    lattice: TransferLattice,
     *,
-    fvm_vortex_strength_at_node: ArrayFunction,
+    fvm_target_strength_at_node: ArrayFunction,
     particle_fluid_weight: ArrayFunction | None = None,
     particle_in_solid: ArrayFunction | None = None,
-    prune_threshold: float = 0.0,
-    release_prune_threshold: float | None = None,
+    strength_threshold: float = 0.0,
+    surface_strength_threshold: float | None = None,
     core_radius_ratio: float = CORE_RADIUS_RATIO,
-    amplification_cap: float = DEFAULT_AMPLIFICATION_CAP,
+    max_strength_ratio: float = DEFAULT_MAX_STRENGTH_RATIO,
     maximum_particle_count: int | None = None,
     freestream_speed: float = 0.0,
     time_step_size: float = 0.0,
     compute_diagnostics: bool = True,
-) -> StableRenewalResult:
-    """Renew the whole buffered belt and preserve the outer Lagrangian wake.
+) -> LatticeTransferResult:
+    """Transfer the FVM vorticity on the lattice and keep the particles outside it.
 
-    This is the side-effect-free numerical core of the long-running method.
-    The caller supplies a synchronized FVM velocity-trace target through
-    ``fvm_vortex_strength_at_node`` and may then atomically replace the VPM
-    particle arrays with the returned state. ``prune_threshold`` is the
-    particle-strength cutoff in the FVM-owned interior. A distinct
-    ``release_prune_threshold`` is blended in as FVM blending weight decreases and
-    applies at the transfer surface; ``None`` uses a uniform threshold.
+    The particles of the remeshing region are remeshed onto the lattice, the
+    strengths are corrected toward the blended target, weak strengths are
+    removed, and the moment correction restores the total strength and linear
+    impulse of the limited strengths. Particles outside the remeshing region are
+    kept. The function does not modify its inputs; the caller supplies the FVM
+    target strengths through ``fvm_target_strength_at_node`` and may then
+    replace the particle arrays with the returned state in one step.
+    ``strength_threshold`` is the strength threshold ``h³ τ_transfer`` of the
+    replacement region. ``surface_strength_threshold`` (``h³ τ_VPM``) applies at
+    the transfer surface, and the threshold varies linearly with the blending
+    weight between the two; ``None`` uses one threshold everywhere.
     """
     position_dtype = np.asarray(positions).dtype
     position = _vectors("positions", positions)
@@ -960,16 +1009,16 @@ def renew_stable_overlap(
     if len(position) != len(strength):
         raise ValueError("positions and vortex_strength must have the same length")
     spacing = lattice.particle_spacing
-    invariant_recovery = recover_vortex_invariants
+    moment_correction = correct_vortex_moments
     ratio = _positive_finite("core_radius_ratio", core_radius_ratio)
-    threshold = _nonnegative_finite("prune_threshold", prune_threshold)
-    release_threshold = (
+    threshold = _nonnegative_finite("strength_threshold", strength_threshold)
+    surface_threshold = (
         threshold
-        if release_prune_threshold is None
-        else _nonnegative_finite("release_prune_threshold", release_prune_threshold)
+        if surface_strength_threshold is None
+        else _nonnegative_finite("surface_strength_threshold", surface_strength_threshold)
     )
-    if release_threshold > threshold:
-        raise ValueError("release_prune_threshold must not exceed prune_threshold")
+    if surface_threshold > threshold:
+        raise ValueError("surface_strength_threshold must not exceed strength_threshold")
     if maximum_particle_count is not None and maximum_particle_count < 2:
         raise ValueError("maximum_particle_count must be at least two")
 
@@ -988,180 +1037,183 @@ def renew_stable_overlap(
     if lattice.slip_slab and np.any(
         valid
         & (
-            (position[:, 2] < lattice.transfer_box[4] - 1e-7)
-            | (position[:, 2] > lattice.transfer_box[5] + 1e-7)
+            (position[:, 2] < lattice.transfer_region_bounds[4] - 1e-7)
+            | (position[:, 2] > lattice.transfer_region_bounds[5] + 1e-7)
         )
     ):
-        raise ValueError("physical renewal particle is outside the slip slab")
-    in_renewal_belt = valid & np.all(
-        (position >= lattice.renewal_bounds[::2]) & (position <= lattice.renewal_bounds[1::2]),
+        raise ValueError("a particle of the vorticity transfer lies outside the slip slab")
+    in_remeshing_region = valid & np.all(
+        (position >= lattice.remeshing_region_bounds[::2])
+        & (position <= lattice.remeshing_region_bounds[1::2]),
         axis=1,
     )
-    preserved_outer = valid & ~in_renewal_belt
+    preserved_outer = valid & ~in_remeshing_region
 
     vpm_lattice_strength = scatter_m4_prime_to_lattice(
-        position[in_renewal_belt],
-        tapered_strength[in_renewal_belt],
+        position[in_remeshing_region],
+        tapered_strength[in_remeshing_region],
         lattice,
         position_dtype=position_dtype,
     )
     if lattice.slip_slab:
-        # The lattice holds each donor's complete support, so the physical
-        # deposits fix the field of every slab image.
+        # The lattice holds the complete M4' support of each particle, so the
+        # physical deposits fix the field of every slab image.
         vpm_lattice_strength = add_slab_images(
             vpm_lattice_strength.reshape(*lattice.shape, 3),
             lattice.origin[2],
             lattice.particle_spacing,
-            lattice.transfer_box[4:6],
+            lattice.transfer_region_bounds[4:6],
         ).reshape(-1, 3)
     vpm_lattice_strength *= lattice.fluid_weight[:, None]
 
     raw_target = _vectors(
-        "fvm_vortex_strength_at_node",
-        fvm_vortex_strength_at_node(lattice.positions),
+        "fvm_target_strength_at_node",
+        fvm_target_strength_at_node(lattice.positions),
     )
     if len(raw_target) != len(lattice.positions):
-        raise ValueError("fvm_vortex_strength_at_node must return one vector per lattice node")
+        raise ValueError("fvm_target_strength_at_node must return one vector per lattice node")
     excluded_target_l1 = float(
         np.linalg.norm(raw_target * (1.0 - lattice.fluid_weight)[:, None], axis=1).sum()
     )
     fvm_target = raw_target * (lattice.fluid_weight * lattice.mesh_weight)[:, None]
 
     base_core_radius = ratio * spacing
-    # The taper can be positive just inside the wall, but those nodes cannot
-    # store particles. Exclude their mismatch before the approximate inverse
-    # can spread an impossible solid-interior target into fluid coefficients.
+    # The fluid weight can be positive just inside the wall, but those nodes
+    # cannot hold particles. Exclude their mismatch before the strength
+    # correction spreads a solid-interior target into fluid strengths.
     output_weight = lattice.fluid_weight * ~lattice.solid_interior
-    blend = blend_represented_state(
+    correction = correct_lattice_strength(
         vpm_lattice_strength,
         fvm_target,
-        lattice.fvm_blend_weight,
+        lattice.blending_weight,
         lattice.shape,
         spacing,
         core_radius=base_core_radius,
-        amplification_cap=amplification_cap,
+        max_strength_ratio=max_strength_ratio,
         output_weight=output_weight,
         compute_final_representation=compute_diagnostics,
-        slip_slab_bounds=tuple(lattice.transfer_box[4:6]) if lattice.slip_slab else None,
+        slip_slab_bounds=tuple(lattice.transfer_region_bounds[4:6]) if lattice.slip_slab else None,
         lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
     )
     comparison_weight = output_weight * lattice.mesh_weight
-    residual_before_prune: float | None = None
+    residual_before_removal: float | None = None
     if compute_diagnostics:
-        if blend.represented_vortex_strength is None:
-            raise RuntimeError("represented-state diagnostic was not evaluated")
+        if correction.represented_strength is None:
+            raise RuntimeError("the particle-represented vorticity was not evaluated")
         denominator = (
-            float(np.linalg.norm(blend.physical_target * comparison_weight[:, None])) + 1.0e-30
+            float(np.linalg.norm(correction.blended_target * comparison_weight[:, None])) + 1.0e-30
         )
-        residual_before_prune = (
+        residual_before_removal = (
             float(
                 np.linalg.norm(
-                    (blend.represented_vortex_strength - blend.physical_target)
+                    (correction.represented_strength - correction.blended_target)
                     * comparison_weight[:, None]
                 )
             )
             / denominator
         )
 
-    pre_prune_strength = blend.vortex_strength
-    if lattice.wall_links is not None:
-        pre_prune_strength = pre_prune_strength.copy()
-        pre_prune_strength[lattice.solid_interior] = 0.0
-    pre_prune_invariants = vortex_invariants(lattice.positions, pre_prune_strength)
-    magnitude_before = np.linalg.norm(pre_prune_strength, axis=1)
+    limited_strength = correction.limited_strength
+    if lattice.wall_crossing_links is not None:
+        limited_strength = limited_strength.copy()
+        limited_strength[lattice.solid_interior] = 0.0
+    limited_moments = vortex_moments(lattice.positions, limited_strength)
+    magnitude_before = np.linalg.norm(limited_strength, axis=1)
     labels = (
         None
-        if lattice.wall_links is None
+        if lattice.wall_crossing_links is None
         else connected_grid_components(
             magnitude_before.reshape(lattice.shape),
             np.zeros(lattice.shape, dtype=np.int8),
-            lattice.wall_links,
+            lattice.wall_crossing_links,
         )
     )
-    # Interior state is regenerated from the FVM. At the release surface the
-    # VPM is the sole owner, so pruning must fall to its own resolved GBD floor.
-    local_threshold = release_threshold + (threshold - release_threshold) * lattice.fvm_blend_weight
-    shrunk, removed = soft_prune_vortex_strength(pre_prune_strength, local_threshold)
-    redistributed = redistribute_pruned_vortex_strength_locally(
+    # The replacement region is regenerated from the FVM vorticity. At the transfer
+    # surface the particles evolve under the VPM alone, so the removal threshold
+    # falls to the GBD removal threshold there.
+    local_threshold = surface_threshold + (threshold - surface_threshold) * lattice.blending_weight
+    retained, removed = remove_weak_strengths(limited_strength, local_threshold)
+    redistributed = redistribute_removed_strength(
         removed,
-        shrunk,
+        retained,
         lattice.shape,
         labels=labels,
-        wall_links=lattice.wall_links,
+        wall_crossing_links=lattice.wall_crossing_links,
     )
     redistributed[lattice.solid_interior] = 0.0
     wall_corrected = None
     if labels is not None:
-        redistributed, wall_corrected = _recover_wall_components(
-            lattice, pre_prune_strength, redistributed, labels, invariant_recovery
+        redistributed, wall_corrected = _correct_fluid_component_moments(
+            lattice, limited_strength, redistributed, labels, moment_correction
         )
     keep = np.linalg.norm(redistributed, axis=1) > 0.0
-    pruned = (magnitude_before > 0.0) & ~keep
+    removed_nodes = (magnitude_before > 0.0) & ~keep
     active_l1 = float(magnitude_before[magnitude_before > 0.0].sum())
-    pruned_l1 = float(magnitude_before[pruned].sum())
+    removed_l1 = float(magnitude_before[removed_nodes].sum())
 
-    renewed_position = lattice.positions[keep]
-    raw_renewed_strength = redistributed[keep]
-    renewed_strength = raw_renewed_strength if wall_corrected is None else wall_corrected[keep]
-    renewed_volume = np.full(len(renewed_position), lattice.particle_volume, dtype=np.float64)
-    raw_invariants = vortex_invariants(renewed_position, raw_renewed_strength)
-    conservation_raw_mismatch = vortex_invariant_residual(pre_prune_invariants, raw_invariants)
-    conservation_target_invariants = pre_prune_invariants
-    conservation_raw_invariants = raw_invariants
+    transfer_position = lattice.positions[keep]
+    raw_transfer_strength = redistributed[keep]
+    transfer_strength = raw_transfer_strength if wall_corrected is None else wall_corrected[keep]
+    transfer_volume = np.full(len(transfer_position), lattice.particle_volume, dtype=np.float64)
+    raw_moments = vortex_moments(transfer_position, raw_transfer_strength)
+    conservation_raw_mismatch = vortex_moment_residual(limited_moments, raw_moments)
+    conservation_target_moments = limited_moments
+    conservation_raw_moments = raw_moments
     conservation_reference_strength_l1 = active_l1
-    if wall_corrected is None and len(renewed_position) > 1:
-        renewed_strength = invariant_recovery(
-            renewed_position,
-            raw_renewed_strength,
-            pre_prune_invariants,
-            volumes=renewed_volume,
+    if wall_corrected is None and len(transfer_position) > 1:
+        transfer_strength = moment_correction(
+            transfer_position,
+            raw_transfer_strength,
+            limited_moments,
+            volumes=transfer_volume,
         )
-    corrected_invariants = vortex_invariants(renewed_position, renewed_strength)
-    conservation_applied_correction = vortex_invariant_residual(
-        raw_invariants,
-        corrected_invariants,
+    corrected_moments = vortex_moments(transfer_position, transfer_strength)
+    conservation_applied_correction = vortex_moment_residual(
+        raw_moments,
+        corrected_moments,
     )
-    conservation_residual = vortex_invariant_residual(pre_prune_invariants, corrected_invariants)
+    conservation_residual = vortex_moment_residual(limited_moments, corrected_moments)
     applied_particle_strength_fraction = float(
-        np.linalg.norm(renewed_strength - raw_renewed_strength, axis=1).sum(dtype=np.float64)
+        np.linalg.norm(transfer_strength - raw_transfer_strength, axis=1).sum(dtype=np.float64)
         / (active_l1 + 1.0e-30)
     )
 
-    residual_after_prune: float | None = None
+    residual_after_removal: float | None = None
     if compute_diagnostics:
-        final_lattice_strength = np.zeros_like(blend.vortex_strength)
-        final_lattice_strength[keep] = renewed_strength
-        represented_final = gaussian_represented_vortex_strength(
-            final_lattice_strength,
+        transferred_lattice_strength = np.zeros_like(correction.limited_strength)
+        transferred_lattice_strength[keep] = transfer_strength
+        represented_transfer = gaussian_representation(
+            transferred_lattice_strength,
             lattice.shape,
             spacing,
             core_radius=base_core_radius,
-            slip_slab_bounds=tuple(lattice.transfer_box[4:6]) if lattice.slip_slab else None,
+            slip_slab_bounds=tuple(lattice.transfer_region_bounds[4:6])
+            if lattice.slip_slab
+            else None,
             lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
         )
         denominator = (
-            float(np.linalg.norm(blend.physical_target * comparison_weight[:, None])) + 1.0e-30
+            float(np.linalg.norm(correction.blended_target * comparison_weight[:, None])) + 1.0e-30
         )
-        residual_after_prune = (
+        residual_after_removal = (
             float(
                 np.linalg.norm(
-                    (represented_final - blend.physical_target) * comparison_weight[:, None]
+                    (represented_transfer - correction.blended_target) * comparison_weight[:, None]
                 )
             )
             / denominator
         )
 
-    renewed_radius = np.full(len(renewed_position), base_core_radius, dtype=np.float64)
+    transfer_radius = np.full(len(transfer_position), base_core_radius, dtype=np.float64)
 
-    # M4' support extends beyond the physical renewal belt.  A support value
-    # can therefore land on the same regular node as an existing persistent
-    # particle.  Merge only those exact lattice collisions after renewal
-    # closure; this keeps the configured persistence boundary unchanged and
-    # prevents duplicate co-located particles at the support seam.
+    # The M4' support extends beyond the remeshing region, so a support node can
+    # coincide with a kept particle outside it. Merge only those exact lattice
+    # coincidences after the moment correction; this keeps the edge of the
+    # remeshing region unchanged and avoids two particles at one node.
     preserved_for_append = preserved_outer.copy()
     coalesced_outer_count = 0
     coalesced_outer_input_indices = np.empty(0, dtype=np.int64)
-    if len(renewed_position) and np.any(preserved_outer):
+    if len(transfer_position) and np.any(preserved_outer):
         outer_index = np.flatnonzero(preserved_outer)
         lattice_maximum = lattice.origin + spacing * (np.asarray(lattice.shape) - 1)
         position_tolerance = _ALIGNMENT_TOLERANCE_CELLS * spacing
@@ -1170,8 +1222,8 @@ def renew_stable_overlap(
             coordinate = position[outer_index, axis]
             inside_support &= coordinate >= lattice.origin[axis] - position_tolerance
             inside_support &= coordinate <= lattice_maximum[axis] + position_tolerance
-        candidate_outer_index = outer_index[inside_support]
-        relative_outer = (position[candidate_outer_index] - lattice.origin) / spacing
+        nearby_outer_index = outer_index[inside_support]
+        relative_outer = (position[nearby_outer_index] - lattice.origin) / spacing
         nearest_outer = np.rint(relative_outer).astype(np.int64)
         shape_array = np.asarray(lattice.shape, dtype=np.int64)
         aligned_outer = (
@@ -1181,50 +1233,48 @@ def renew_stable_overlap(
             (nearest_outer >= 0) & (nearest_outer < shape_array),
             axis=1,
         )
-        aligned_candidate = np.flatnonzero(aligned_outer)
-        if len(aligned_candidate):
-            candidate_lattice_index = nearest_outer[aligned_candidate]
-            candidate_flat_index = np.ravel_multi_index(
-                candidate_lattice_index.T,
+        aligned_nearby = np.flatnonzero(aligned_outer)
+        if len(aligned_nearby):
+            nearby_lattice_index = nearest_outer[aligned_nearby]
+            nearby_flat_index = np.ravel_multi_index(
+                nearby_lattice_index.T,
                 lattice.shape,
             )
-            renewed_flat_index = np.flatnonzero(keep)
-            renewed_row = np.searchsorted(renewed_flat_index, candidate_flat_index)
-            valid_row = renewed_row < len(renewed_flat_index)
-            collision = np.zeros(len(renewed_row), dtype=bool)
+            transfer_flat_index = np.flatnonzero(keep)
+            transfer_row = np.searchsorted(transfer_flat_index, nearby_flat_index)
+            valid_row = transfer_row < len(transfer_flat_index)
+            collision = np.zeros(len(transfer_row), dtype=bool)
             collision[valid_row] = (
-                renewed_flat_index[renewed_row[valid_row]] == candidate_flat_index[valid_row]
+                transfer_flat_index[transfer_row[valid_row]] == nearby_flat_index[valid_row]
             )
             if np.any(collision):
-                collided_outer_index = candidate_outer_index[aligned_candidate[collision]]
-                coalesced_invariants = vortex_invariants(
-                    renewed_position[renewed_row[collision]],
+                collided_outer_index = nearby_outer_index[aligned_nearby[collision]]
+                coalesced_moments = vortex_moments(
+                    transfer_position[transfer_row[collision]],
                     tapered_strength[collided_outer_index],
                 )
 
-                def with_coalesced(base: VortexInvariants) -> VortexInvariants:
-                    return VortexInvariants(
+                def with_coalesced(base: VortexMoments) -> VortexMoments:
+                    return VortexMoments(
                         total_vortex_strength=(
-                            base.total_vortex_strength + coalesced_invariants.total_vortex_strength
+                            base.total_vortex_strength + coalesced_moments.total_vortex_strength
                         ),
-                        linear_impulse=base.linear_impulse + coalesced_invariants.linear_impulse,
-                        angular_impulse=(
-                            base.angular_impulse + coalesced_invariants.angular_impulse
-                        ),
+                        linear_impulse=base.linear_impulse + coalesced_moments.linear_impulse,
+                        angular_impulse=(base.angular_impulse + coalesced_moments.angular_impulse),
                     )
 
-                conservation_target_invariants = with_coalesced(conservation_target_invariants)
-                conservation_raw_invariants = with_coalesced(conservation_raw_invariants)
+                conservation_target_moments = with_coalesced(conservation_target_moments)
+                conservation_raw_moments = with_coalesced(conservation_raw_moments)
                 conservation_reference_strength_l1 += float(
                     np.linalg.norm(
                         tapered_strength[collided_outer_index],
                         axis=1,
                     ).sum(dtype=np.float64)
                 )
-                renewed_strength = renewed_strength.copy()
+                transfer_strength = transfer_strength.copy()
                 np.add.at(
-                    renewed_strength,
-                    renewed_row[collision],
+                    transfer_strength,
+                    transfer_row[collision],
                     tapered_strength[collided_outer_index],
                 )
                 preserved_for_append[collided_outer_index] = False
@@ -1232,11 +1282,11 @@ def renew_stable_overlap(
                 coalesced_outer_input_indices = collided_outer_index
 
     if np.any(preserved_for_append):
-        output_position = np.vstack((renewed_position, position[preserved_for_append]))
-        output_strength = np.vstack((renewed_strength, tapered_strength[preserved_for_append]))
+        output_position = np.vstack((transfer_position, position[preserved_for_append]))
+        output_strength = np.vstack((transfer_strength, tapered_strength[preserved_for_append]))
         output_volume = np.concatenate(
             (
-                renewed_volume,
+                transfer_volume,
                 np.full(
                     np.count_nonzero(preserved_for_append),
                     lattice.particle_volume,
@@ -1246,7 +1296,7 @@ def renew_stable_overlap(
         )
         output_radius = np.concatenate(
             (
-                renewed_radius,
+                transfer_radius,
                 np.full(
                     np.count_nonzero(preserved_for_append),
                     base_core_radius,
@@ -1255,143 +1305,147 @@ def renew_stable_overlap(
             )
         )
     else:
-        output_position = renewed_position
-        output_strength = renewed_strength
-        output_volume = renewed_volume
-        output_radius = renewed_radius
+        output_position = transfer_position
+        output_strength = transfer_strength
+        output_volume = transfer_volume
+        output_radius = transfer_radius
 
-    population_pruned_count = 0
-    population_pruned_fraction = 0.0
-    population_velocity_bound = 0.0
-    population_conservation_raw_mismatch: dict[str, float] = {}
-    population_conservation_applied_correction: dict[str, float] = {}
-    population_conservation_residual: dict[str, float] = {}
-    population_applied_particle_strength_fraction = 0.0
-    final_renewed_count = len(renewed_position)
+    particle_set_removed_count = 0
+    particle_set_removed_fraction = 0.0
+    particle_set_velocity_bound = 0.0
+    particle_set_conservation_raw_mismatch: dict[str, float] = {}
+    particle_set_conservation_applied_correction: dict[str, float] = {}
+    particle_set_conservation_residual: dict[str, float] = {}
+    particle_set_applied_particle_strength_fraction = 0.0
+    final_transfer_count = len(transfer_position)
     final_outer_count = int(np.count_nonzero(preserved_for_append))
     if maximum_particle_count is not None and len(output_position) > maximum_particle_count:
-        if lattice.wall_links is not None:
+        if lattice.wall_crossing_links is not None:
             raise RuntimeError(
-                "Wall-aware renewal exceeds particle capacity after component-local pruning; "
-                "increase capacity rather than applying a global cross-wall correction"
+                "The vorticity transfer next to a wall exceeds the particle capacity after "
+                "weak-strength removal; increase the capacity rather than correcting the "
+                "moments across the wall"
             )
         target_count = int(maximum_particle_count)
-        combined_invariants = vortex_invariants(output_position, output_strength)
+        combined_moments = vortex_moments(output_position, output_strength)
         combined_magnitude = np.linalg.norm(output_strength, axis=1)
-        renewed_count = len(renewed_position)
-        outer_count = len(output_position) - renewed_count
+        transfer_count = len(transfer_position)
+        outer_count = len(output_position) - transfer_count
         if outer_count < target_count:
-            renewed_budget = target_count - outer_count
-            renewed_keep = np.argpartition(combined_magnitude[:renewed_count], -renewed_budget)[
-                -renewed_budget:
+            transfer_budget = target_count - outer_count
+            transfer_keep = np.argpartition(combined_magnitude[:transfer_count], -transfer_budget)[
+                -transfer_budget:
             ]
             keep_indices = np.concatenate(
                 (
-                    renewed_keep,
-                    np.arange(renewed_count, len(output_position), dtype=np.int64),
+                    transfer_keep,
+                    np.arange(transfer_count, len(output_position), dtype=np.int64),
                 )
             )
         elif outer_count == target_count:
-            keep_indices = np.arange(renewed_count, len(output_position), dtype=np.int64)
+            keep_indices = np.arange(transfer_count, len(output_position), dtype=np.int64)
         else:
-            outer_keep = np.argpartition(combined_magnitude[renewed_count:], -target_count)[
+            outer_keep = np.argpartition(combined_magnitude[transfer_count:], -target_count)[
                 -target_count:
             ]
-            keep_indices = outer_keep + renewed_count
+            keep_indices = outer_keep + transfer_count
         keep_indices = np.sort(keep_indices)
-        population_keep = np.zeros(len(output_position), dtype=bool)
-        population_keep[keep_indices] = True
-        discarded_l1 = float(combined_magnitude[~population_keep].sum())
+        particle_set_keep = np.zeros(len(output_position), dtype=bool)
+        particle_set_keep[keep_indices] = True
+        discarded_l1 = float(combined_magnitude[~particle_set_keep].sum())
         delta = np.maximum(
             np.maximum(
-                lattice.transfer_box[::2] - output_position,
-                output_position - lattice.transfer_box[1::2],
+                lattice.transfer_region_bounds[::2] - output_position,
+                output_position - lattice.transfer_region_bounds[1::2],
             ),
             0.0,
         )
         distance_squared = np.einsum("ij,ij->i", delta, delta)
-        population_velocity_bound = float(
+        particle_set_velocity_bound = float(
             np.sum(
-                combined_magnitude[~population_keep]
+                combined_magnitude[~particle_set_keep]
                 / (
                     4.0
                     * np.pi
                     * np.maximum(
-                        distance_squared[~population_keep] + output_radius[~population_keep] ** 2,
+                        distance_squared[~particle_set_keep]
+                        + output_radius[~particle_set_keep] ** 2,
                         1.0e-30,
                     )
                 )
             )
         )
-        population_pruned_fraction = discarded_l1 / (float(combined_magnitude.sum()) + 1.0e-30)
-        population_pruned_count = int(np.count_nonzero(~population_keep))
-        final_renewed_count = int(np.count_nonzero(keep_indices < renewed_count))
-        final_outer_count = int(len(keep_indices) - final_renewed_count)
+        particle_set_removed_fraction = discarded_l1 / (float(combined_magnitude.sum()) + 1.0e-30)
+        particle_set_removed_count = int(np.count_nonzero(~particle_set_keep))
+        final_transfer_count = int(np.count_nonzero(keep_indices < transfer_count))
+        final_outer_count = int(len(keep_indices) - final_transfer_count)
         output_position = output_position[keep_indices]
-        raw_population_strength = output_strength[keep_indices]
+        raw_particle_set_strength = output_strength[keep_indices]
         output_volume = output_volume[keep_indices]
         output_radius = output_radius[keep_indices]
-        raw_population_invariants = vortex_invariants(output_position, raw_population_strength)
-        population_conservation_raw_mismatch = vortex_invariant_residual(
-            combined_invariants,
-            raw_population_invariants,
+        raw_particle_set_moments = vortex_moments(output_position, raw_particle_set_strength)
+        particle_set_conservation_raw_mismatch = vortex_moment_residual(
+            combined_moments,
+            raw_particle_set_moments,
         )
-        output_strength = invariant_recovery(
+        output_strength = moment_correction(
             output_position,
-            raw_population_strength,
-            combined_invariants,
+            raw_particle_set_strength,
+            combined_moments,
             volumes=output_volume,
         )
-        corrected_population_invariants = vortex_invariants(output_position, output_strength)
-        population_conservation_applied_correction = vortex_invariant_residual(
-            raw_population_invariants,
-            corrected_population_invariants,
+        corrected_particle_set_moments = vortex_moments(output_position, output_strength)
+        particle_set_conservation_applied_correction = vortex_moment_residual(
+            raw_particle_set_moments,
+            corrected_particle_set_moments,
         )
-        population_conservation_residual = vortex_invariant_residual(
-            combined_invariants,
-            corrected_population_invariants,
+        particle_set_conservation_residual = vortex_moment_residual(
+            combined_moments,
+            corrected_particle_set_moments,
         )
-        population_applied_particle_strength_fraction = float(
-            np.linalg.norm(output_strength - raw_population_strength, axis=1).sum(dtype=np.float64)
+        particle_set_applied_particle_strength_fraction = float(
+            np.linalg.norm(output_strength - raw_particle_set_strength, axis=1).sum(
+                dtype=np.float64
+            )
             / (float(combined_magnitude.sum(dtype=np.float64)) + 1.0e-30)
         )
 
     speed = _nonnegative_finite("freestream_speed", abs(float(freestream_speed)))
     time_step = _nonnegative_finite("time_step_size", abs(float(time_step_size)))
-    transfer_cfl = speed * time_step / (lattice.buffer_length + 1.0e-30)
-    return StableRenewalResult(
+    transfer_cfl = speed * time_step / (lattice.remeshing_extension_length + 1.0e-30)
+    return LatticeTransferResult(
         position=output_position,
         vortex_strength=output_strength,
         particle_volume=output_volume,
         core_radius=output_radius,
-        renewed_input_count=int(np.count_nonzero(in_renewal_belt)),
-        renewed_output_count=final_renewed_count,
+        transfer_input_count=int(np.count_nonzero(in_remeshing_region)),
+        transfer_output_count=final_transfer_count,
         preserved_outer_count=final_outer_count,
         coalesced_outer_count=coalesced_outer_count,
         coalesced_outer_input_indices=coalesced_outer_input_indices,
-        pruned_node_count=int(np.count_nonzero(pruned)),
-        pruned_vortex_strength_l1=pruned_l1,
-        pruned_vortex_strength_fraction=pruned_l1 / (active_l1 + 1.0e-30),
-        population_pruned_count=population_pruned_count,
-        population_pruned_vortex_strength_fraction=population_pruned_fraction,
-        population_pruned_velocity_bound=population_velocity_bound,
+        removed_node_count=int(np.count_nonzero(removed_nodes)),
+        removed_vortex_strength_l1=removed_l1,
+        removed_vortex_strength_fraction=removed_l1 / (active_l1 + 1.0e-30),
+        particle_set_removed_count=particle_set_removed_count,
+        particle_set_removed_vortex_strength_fraction=particle_set_removed_fraction,
+        particle_set_removed_velocity_bound=particle_set_velocity_bound,
         transfer_cfl=float(transfer_cfl),
         conservation_raw_mismatch=conservation_raw_mismatch,
         conservation_applied_correction=conservation_applied_correction,
         conservation_residual=conservation_residual,
         conservation_applied_particle_strength_fraction=applied_particle_strength_fraction,
-        conservation_target_invariants=conservation_target_invariants,
-        conservation_raw_invariants=conservation_raw_invariants,
+        conservation_target_moments=conservation_target_moments,
+        conservation_raw_moments=conservation_raw_moments,
         conservation_reference_strength_l1=conservation_reference_strength_l1,
-        population_conservation_raw_mismatch=population_conservation_raw_mismatch,
-        population_conservation_applied_correction=population_conservation_applied_correction,
-        population_conservation_residual=population_conservation_residual,
-        population_conservation_applied_particle_strength_fraction=(
-            population_applied_particle_strength_fraction
+        particle_set_conservation_raw_mismatch=particle_set_conservation_raw_mismatch,
+        particle_set_conservation_applied_correction=particle_set_conservation_applied_correction,
+        particle_set_conservation_residual=particle_set_conservation_residual,
+        particle_set_conservation_applied_particle_strength_fraction=(
+            particle_set_applied_particle_strength_fraction
         ),
-        representation_residual_before_prune=residual_before_prune,
-        representation_residual_after_prune=residual_after_prune,
-        maximum_transfer_amplification=blend.maximum_amplification,
+        representation_residual_before_removal=residual_before_removal,
+        representation_residual_after_removal=residual_after_removal,
+        strength_ratio=correction.strength_ratio,
         excluded_target_vortex_strength_l1=excluded_target_l1,
     )
 
@@ -1421,11 +1475,11 @@ def _evaluate_weight(
     return np.clip(weight, 0.0, 1.0)
 
 
-def vortex_invariant_residual(
-    target: VortexInvariants,
-    actual: VortexInvariants,
+def vortex_moment_residual(
+    target: VortexMoments,
+    actual: VortexMoments,
 ) -> dict[str, float]:
-    """Return Euclidean residual norms of the three conserved vector budgets.
+    """Return the Euclidean norms of the differences of the three vortex moments.
 
     Keys are ``total_vortex_strength`` (m³/s), ``linear_impulse`` (m⁴/s) and
     ``angular_impulse`` (m⁵/s).
@@ -1449,7 +1503,7 @@ def _vectors(name: str, values: np.ndarray) -> np.ndarray:
 def _bounds(values: np.ndarray | list[float] | tuple[float, ...]) -> np.ndarray:
     bounds = np.asarray(values, dtype=np.float64).reshape(6)
     if np.any(~np.isfinite(bounds)) or np.any(bounds[1::2] <= bounds[::2]):
-        raise ValueError("transfer_box must contain six finite increasing bounds")
+        raise ValueError("transfer_region_bounds must contain six finite increasing bounds")
     return bounds
 
 
@@ -1468,23 +1522,23 @@ def _nonnegative_finite(name: str, value: float) -> float:
 
 
 __all__ = [
-    "DEFAULT_AMPLIFICATION_CAP",
+    "DEFAULT_MAX_STRENGTH_RATIO",
+    "LatticeTransferResult",
     "M4_PRIME_SUPPORT_CELLS",
-    "RepresentedStateBlend",
-    "StableRenewalLattice",
-    "StableRenewalResult",
-    "VortexInvariants",
-    "blend_represented_state",
-    "build_stable_renewal_lattice",
-    "gaussian_represented_vortex_strength",
-    "inward_cosine_blend_weight",
+    "StrengthCorrection",
+    "TransferLattice",
+    "VortexMoments",
+    "blending_weight",
+    "build_transfer_lattice",
+    "correct_lattice_strength",
+    "correct_vortex_moments",
+    "fvm_target_strength",
+    "gaussian_representation",
     "m4_prime",
-    "recover_vortex_invariants",
-    "redistribute_pruned_vortex_strength_locally",
-    "renew_stable_overlap",
+    "redistribute_removed_strength",
+    "remove_weak_strengths",
     "scatter_m4_prime_to_lattice",
-    "soft_prune_vortex_strength",
-    "vortex_invariant_residual",
-    "vortex_invariants",
-    "vortex_strength_from_velocity_trace",
+    "transfer_on_lattice",
+    "vortex_moment_residual",
+    "vortex_moments",
 ]

@@ -9,7 +9,7 @@ from scipy.spatial import cKDTree
 
 from openonda.coupler.geometry import TriangulatedWall
 from openonda.coupler.interpolation import FVMVelocityInterpolator
-from openonda.coupler.solid import SolidParticleGuard
+from openonda.coupler.solid import WallProjection
 from tests.coupler._solid_geometry import wall_case
 
 
@@ -17,7 +17,7 @@ from tests.coupler._solid_geometry import wall_case
 def test_generic_projection_follows_first_wall_and_leaves_strength_unchanged(shape):
     boundary, start, end, normal = wall_case(shape)
     assert not boundary.contains(start[None])[0]
-    assert boundary.blocks_segments(start[None], end[None])[0]
+    assert boundary.segments_cross_wall(start[None], end[None])[0]
     if shape == "thin":
         assert not boundary.contains(end[None])[0]  # Endpoint-only checks miss tunnelling.
     positions = end[None].astype(np.float32)
@@ -28,7 +28,7 @@ def test_generic_projection_follows_first_wall_and_leaves_strength_unchanged(sha
     )
     assert selected.tolist() == [True]
     assert not boundary.contains(corrected).any()
-    assert not boundary.blocks_segments(start[None], corrected).any()
+    assert not boundary.segments_cross_wall(start[None], corrected).any()
     assert 0 < maximum < 0.25 * 0.25
     assert np.dot(displacement[0], normal) > 0
     np.testing.assert_allclose(np.cross(displacement[0], normal), 0, atol=2e-7)
@@ -38,7 +38,7 @@ def test_concave_void_is_fluid_and_distinct_from_the_bounding_box():
     boundary, *_ = wall_case("concave")
     points = np.array([[0.5, 0.5, 0], [1.5, 0.5, 0], [0.5, 1.5, 0], [1.5, 1.5, 0]])
     np.testing.assert_array_equal(boundary.contains(points), [True, True, True, False])
-    assert not boundary.blocks_segments([[1.2, 1.2, 0]], [[1.8, 1.8, 0]])[0]
+    assert not boundary.segments_cross_wall([[1.2, 1.2, 0]], [[1.8, 1.8, 0]])[0]
 
 
 @pytest.mark.parametrize("shape", ["curved", "rotated", "thin", "concave"])
@@ -131,7 +131,7 @@ def test_stage_and_accepted_motion_share_geometry_and_report_impulse(shape):
         download_vector_field=lambda field, count: field[:count].copy(),
         upload_vector_array=lambda values, field, count: np.copyto(field[:count], values),
     )
-    guard = SolidParticleGuard(boundary, physics, 0.25, logging.getLogger(__name__))
+    guard = WallProjection(boundary, physics, 0.25, logging.getLogger(__name__))
     strength = np.array([[0.2, -0.1, 0.5]], dtype=np.float32)
     original_strength = strength.copy()
     state = SimpleNamespace(
@@ -157,21 +157,21 @@ def test_stage_and_accepted_motion_share_geometry_and_report_impulse(shape):
     assert physics.last_solid_projection["accepted_count"] == 1
 
 
-def test_velocity_trace_uses_visible_donors_without_mixing_opposite_wall_sides():
+def test_interpolation_stencil_uses_fluid_side_cells_without_mixing_opposite_wall_sides():
     boundary, *_ = wall_case("thin")
     left = np.array([[-0.2, y, z] for y in (-0.1, 0.1) for z in (-0.1, 0.1)])
     right = np.array([[0.02, y, z] for y in (-0.02, 0.02) for z in (-0.02, 0.02)])
-    donors = np.vstack((left, right))
-    trace = FVMVelocityInterpolator(donors, cKDTree(donors), solid_boundary=boundary)
+    cells = np.vstack((left, right))
+    interpolator = FVMVelocityInterpolator(cells, cKDTree(cells), solid_boundary=boundary)
     targets = np.array([[-0.015, 0, 0], [0.015, 0, 0]])
-    # The geometrically nearest four donors to the left target are all
-    # across the thin wall; the search must expand to find visible support.
-    velocity = np.zeros_like(donors)
+    # The geometrically nearest four cells to the left target are all across the
+    # thin wall; the search must expand to cells reached without crossing it.
+    velocity = np.zeros_like(cells)
     velocity[:4, 0], velocity[4:, 0] = 1, 100
-    sampled = trace.sample(targets, velocity, np.zeros((8, 3, 3)))
+    sampled = interpolator.sample(targets, velocity, np.zeros((8, 3, 3)))
     np.testing.assert_allclose(sampled[:, 0], [1, 100], atol=1e-13)
     gradient = np.broadcast_to(np.eye(3), (8, 3, 3))
-    np.testing.assert_allclose(trace.sample(targets, donors, gradient), targets, atol=1e-13)
+    np.testing.assert_allclose(interpolator.sample(targets, cells, gradient), targets, atol=1e-13)
 
 
 def test_long_thin_wall_keeps_its_resolved_interior():

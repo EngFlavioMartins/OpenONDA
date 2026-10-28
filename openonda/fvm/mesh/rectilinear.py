@@ -158,16 +158,16 @@ def wall_refined_axis(
 
 def _cells_along(lo: float, hi: float, spacing: float, axis: str) -> int:
     """Number of cells along one axis; the box must be an integer number of
-    cells wide (the hand-off lattice and the blending zone assume a uniform,
+    cells wide (the transfer lattice and the blending ramp assume a uniform,
     box-conforming grid)."""
     length = float(hi) - float(lo)
     if length <= 0.0:
-        raise ValueError(f"fvm_box has non-positive extent along {axis}: {length}")
+        raise ValueError(f"fvm_domain_bounds has non-positive extent along {axis}: {length}")
     n = length / float(spacing)
     n_int = int(round(n))
     if n_int < 1 or abs(n - n_int) > 1e-6 * max(n, 1.0):
         raise ValueError(
-            f"fvm_box extent along {axis} ({length:g}) is not an integer "
+            f"fvm_domain_bounds extent along {axis} ({length:g}) is not an integer "
             f"multiple of grid_spacing ({spacing:g}): {n:g} cells."
         )
     return n_int
@@ -470,7 +470,7 @@ def box_mesh_3d(
 
 
 def coupling_box_mesh(
-    fvm_box: tuple[float, float, float, float, float, float],
+    fvm_domain_bounds: tuple[float, float, float, float, float, float],
     spacing: float,
     patch_name: str = "numericalBoundary",
     hole_box: tuple[float, float, float, float, float, float] | None = None,
@@ -495,7 +495,7 @@ def coupling_box_mesh(
 
     Parameters
     ----------
-    fvm_box : tuple[float, ...]
+    fvm_domain_bounds : tuple[float, ...]
         ``(xmin, xmax, ymin, ymax, zmin, zmax)`` domain bounds in m.
     spacing : float
         Uniform spacing in m when explicit ``nodes`` are not supplied.
@@ -505,7 +505,7 @@ def coupling_box_mesh(
         Forwarded to :func:`box_mesh_3d`.
     nodes : tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray] or None
         Optional explicit per-axis nodes in m; endpoints must match
-        ``fvm_box``.
+        ``fvm_domain_bounds``.
 
     Returns
     -------
@@ -518,7 +518,7 @@ def coupling_box_mesh(
         If the box extent is not a positive integer number of uniform cells or
         explicit nodes do not match the bounds.
     """
-    x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_box)
+    x0, x1, y0, y1, z0, z1 = (float(v) for v in fvm_domain_bounds)
     xs: np.ndarray
     ys: np.ndarray
     zs: np.ndarray
@@ -532,7 +532,7 @@ def coupling_box_mesh(
             and abs(zs[0] - z0) < 1e-9
             and abs(zs[-1] - z1) < 1e-9
         ):
-            raise ValueError("nodes endpoints must equal fvm_box bounds")
+            raise ValueError("nodes endpoints must equal fvm_domain_bounds")
     else:
         nx = _cells_along(x0, x1, spacing, "x")
         ny = _cells_along(y0, y1, spacing, "y")

@@ -1,4 +1,4 @@
-"""Normal-value/tangential-gradient velocity boundary reconstruction."""
+"""Mixed velocity boundary: prescribed normal velocity and normal gradient of the tangential velocity."""
 
 from __future__ import annotations
 
@@ -47,12 +47,12 @@ def boundary_skew_velocity_increment(
     return increment
 
 
-def reconstruct_normal_velocity_tangential_gradient(
+def reconstruct_mixed_velocity_boundary(
     owner_velocity: np.ndarray,
     normal: np.ndarray,
     normal_distance: np.ndarray,
     normal_velocity: np.ndarray,
-    tangential_gradient: np.ndarray,
+    tangential_velocity_normal_gradient: np.ndarray,
     *,
     skew_velocity_increment: np.ndarray | None = None,
 ) -> np.ndarray:
@@ -73,18 +73,18 @@ def reconstruct_normal_velocity_tangential_gradient(
     On a planar boundary, with P = I - nn^T and omega = curl(U),
     P dU/dn = grad_t(U . n) - n x omega. The coupler supplies P J_VPM n
     from the induced-velocity Jacobian; equivalence to a separately sampled
-    vorticity trace requires that trace to equal curl(U_VPM).
+    boundary vorticity requires that vorticity to equal curl(U_VPM).
 
     The skew increment is projected tangentially, preserving the prescribed
     normal velocity and physical normal derivative. The solver's
     fixed_flux_pressure condition separately enforces the prescribed normal
-    flux; it is not an independent pressure trace prescribed by the paper.
+    flux; it is not an independent pressure boundary value prescribed by the paper.
     """
     owner = np.asarray(owner_velocity, dtype=np.float64)
     unit_normals = np.asarray(normal, dtype=np.float64)
     distance = np.asarray(normal_distance, dtype=np.float64).reshape(-1)
     prescribed_normal = np.asarray(normal_velocity, dtype=np.float64).reshape(-1)
-    prescribed_tangent_gradient = np.asarray(tangential_gradient, dtype=np.float64)
+    prescribed_normal_gradient = np.asarray(tangential_velocity_normal_gradient, dtype=np.float64)
 
     n_faces = owner.shape[0]
     expected_vector_shape = (n_faces, 3)
@@ -92,8 +92,10 @@ def reconstruct_normal_velocity_tangential_gradient(
         raise ValueError(f"owner_velocity must have shape {expected_vector_shape}")
     if unit_normals.shape != expected_vector_shape:
         raise ValueError(f"normal must have shape {expected_vector_shape}")
-    if prescribed_tangent_gradient.shape != expected_vector_shape:
-        raise ValueError(f"tangential_gradient must have shape {expected_vector_shape}")
+    if prescribed_normal_gradient.shape != expected_vector_shape:
+        raise ValueError(
+            f"tangential_velocity_normal_gradient must have shape {expected_vector_shape}"
+        )
     if distance.shape != (n_faces,) or prescribed_normal.shape != (n_faces,):
         raise ValueError("normal_distance and normal_velocity must have one value per face")
     if not all(
@@ -103,7 +105,7 @@ def reconstruct_normal_velocity_tangential_gradient(
             unit_normals,
             distance,
             prescribed_normal,
-            prescribed_tangent_gradient,
+            prescribed_normal_gradient,
         )
     ):
         raise ValueError("mixed velocity boundary reconstruction requires finite data")
@@ -114,7 +116,7 @@ def reconstruct_normal_velocity_tangential_gradient(
     reconstructed = (
         owner
         + (prescribed_normal - owner_normal)[:, np.newaxis] * unit_normals
-        + distance[:, np.newaxis] * prescribed_tangent_gradient
+        + distance[:, np.newaxis] * prescribed_normal_gradient
     )
     if skew_velocity_increment is not None:
         increment = np.asarray(skew_velocity_increment, dtype=np.float64)
@@ -127,7 +129,7 @@ def reconstruct_normal_velocity_tangential_gradient(
     return reconstructed
 
 
-def update_normal_velocity_tangential_gradient_boundary(
+def update_mixed_velocity_boundary(
     velocity: np.ndarray,
     boundary: BoundaryPatchData,
     mesh_data: MeshData,
@@ -151,17 +153,17 @@ def update_normal_velocity_tangential_gradient_boundary(
     normal_distance = np.einsum("ij,ij->i", owner_to_face, normal)
 
     normal_velocity = boundary.get("normal_velocity_field")
-    tangential_gradient = boundary.get("tangential_gradient_field")
-    if normal_velocity is None or tangential_gradient is None:
+    tangential_velocity_normal_gradient = boundary.get("tangential_velocity_normal_gradient_field")
+    if normal_velocity is None or tangential_velocity_normal_gradient is None:
         raise ValueError(
-            f"Mixed velocity boundary {boundary.get('name')!r} has incomplete trace data"
+            f"Mixed velocity boundary {boundary.get('name')!r} has incomplete boundary data"
         )
-    velocity[ghosts] = reconstruct_normal_velocity_tangential_gradient(
+    velocity[ghosts] = reconstruct_mixed_velocity_boundary(
         velocity[owners],
         normal,
         normal_distance,
         normal_velocity,
-        tangential_gradient,
+        tangential_velocity_normal_gradient,
         skew_velocity_increment=boundary_skew_velocity_increment(
             velocity, mesh_data, geo_data, faces, normal, owner_to_face
         ),

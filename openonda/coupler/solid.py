@@ -1,14 +1,15 @@
-"""Geometry-independent particle exclusion at static FVM walls."""
+"""Wall projection of particles that cross a static FVM wall."""
 
 import numpy as np
 
 
-class SolidParticleGuard:
-    """Constrain RK candidates and accepted positions using the same geometry.
+class WallProjection:
+    """Project Runge--Kutta stage positions and accepted positions back into the fluid.
 
-    The first RK stage supplies the physical path origin. Diagnostic and
-    backup evaluations have no stage index and never change that origin.
-    Circulation is untouched; displacement and impulse changes are reported.
+    The first Runge--Kutta stage supplies the start of each particle path.
+    Diagnostic and backup evaluations have no stage index and never change it.
+    The strengths are unchanged; the displacements ``δx_p`` and the resulting
+    impulse changes are reported.
     """
 
     def __init__(self, boundary, physics, spacing, logger):
@@ -21,7 +22,7 @@ class SolidParticleGuard:
         self._pending_logs = None
 
     def begin_trial(self):
-        """Buffer projection warnings until this RK trial is accepted."""
+        """Hold the projection warnings until this Runge--Kutta step is accepted."""
         self._pending_logs = []
 
     def end_trial(self, *, accepted):

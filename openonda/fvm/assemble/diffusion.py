@@ -466,10 +466,10 @@ def assemble_diffusion_term(
             if flux_tf is not None:
                 flux_tf[indices] = np.where(inflow, b_fluxes["flux_tf"], 0.0)
 
-        elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
+        elif strategy is BoundaryStrategy.MIXED_VELOCITY:
             if vector_field is None or component not in (0, 1, 2):
                 raise ValueError(
-                    "normal_value_tangential_gradient diffusion requires the full velocity "
+                    "mixed_velocity diffusion requires the full velocity "
                     "field and a component index"
                 )
             start = int(boundary["start_face"])
@@ -501,7 +501,7 @@ def assemble_diffusion_term(
             cross_normal = owner_normal - n_i * owner_velocity[:, component]
             prescribed_normal = np.asarray(boundary["normal_velocity_field"], dtype=np.float64)
             prescribed_gradient = np.asarray(
-                boundary["tangential_gradient_field"], dtype=np.float64
+                boundary["tangential_velocity_normal_gradient_field"], dtype=np.float64
             )[:, component]
 
             # F_i = D n_i (n·velocity_owner + n·J_owner r_t - velocity_normal)

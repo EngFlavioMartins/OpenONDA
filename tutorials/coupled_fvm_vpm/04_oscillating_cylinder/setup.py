@@ -36,16 +36,16 @@ FVM_TIME_STEP = 0.008  # s
 # VPM: particles in the outer wake, positions relative to the moving box
 VPM_DOMAIN = (-5.0, 30.0, -5.0, 5.0)  # m, x and y bounds
 OUTFLOW_FRINGE = 15.0  # m, shed vortices fade over about three wake wavelengths
-VORTICITY_FLOOR = 0.01  # 1/s, weaker particles are pruned after diffusion
+VORTICITY_FLOOR = 0.01  # 1/s, GBD removal threshold: weaker particles are removed after diffusion
 PARTICLE_LIMIT = 1_000_000
 
 # Coupling: FVM vorticity replaces the particles inside the transfer region
-TRANSFER_INSET = 8.75  # cells from the FVM box faces in to the transfer-region faces
-BLEND_WIDTH = 6  # cells over which the FVM weight rises from zero to one
-VPM_ONLY_WIDTH = 2  # cells inside the transfer faces that only the particles own
-FVM_SUBSTEPS = 5  # FVM steps per exchange; one particle step per exchange
-INTERFACE_ITERATIONS = 6  # FVM solves per exchange until the boundary trace converges
-INTERFACE_TOLERANCE = 1.0e-5  # m/s for normal velocity, 1/s for its tangential gradient
+TRANSFER_INSET = 8.75  # cells from the outer FVM boundary in to the transfer surface
+BLEND_START = 2  # cells below the transfer surface where the blending weight starts to rise
+BLEND_END = 6  # cells below the transfer surface where the blending weight reaches one
+FVM_SUBSTEPS = 5  # FVM steps per coupling interval; one particle step per coupling interval
+COUPLING_ITERATIONS = 6  # most FVM solves per coupling interval until the boundary data converge
+COUPLING_TOLERANCE = 1.0e-5  # m/s for the normal velocity, 1/s for the normal gradient of u_t
 END_TIME = 50.0  # s
 
 # Observations
@@ -54,7 +54,9 @@ PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
 FIELD_INTERVAL = 0.2  # s, FVM and particle fields, 28 per heave period, over the locked-in wake ...
 FIELD_START = 25.0  # s, ... from this time on
 BACKUP_INTERVAL = 1.0  # s, coupled restart states and matching particle fields
-RENEWAL_CHECK_INTERVAL = 2.4  # s, costly checks of how well particles represent FVM vorticity
+TRANSFER_DIAGNOSTIC_INTERVAL = (
+    2.4  # s, full diagnostics of how well particles represent FVM vorticity
+)
 
 
 def build_case():
@@ -63,20 +65,20 @@ def build_case():
     span = CELL_SIZE
     half_span = 0.5 * span
 
-    # FVM box, transfer region inset from its faces, and the exchange step
+    # FVM domain, transfer region inset from its outer boundary, and the coupling interval
     margin = BOX_MARGIN * DIAMETER
-    fvm_box = (-margin, margin + 2.0 * DIAMETER, -margin, margin)
+    fvm_domain_bounds = (-margin, margin + 2.0 * DIAMETER, -margin, margin)
     inner = margin - TRANSFER_INSET * CELL_SIZE
     transfer_region = (-inner, inner + 2.0 * DIAMETER, -inner, inner)
-    exchange_time_step = FVM_SUBSTEPS * FVM_TIME_STEP
+    coupling_time_step_size = FVM_SUBSTEPS * FVM_TIME_STEP
 
-    # Observations fall on exchanges, where both solvers hold the same time
-    def on_exchanges(interval):
-        return max(1, round(interval / exchange_time_step)) * exchange_time_step
+    # Observations fall on coupling times, where both solvers hold the same time
+    def on_coupling_times(interval):
+        return max(1, round(interval / coupling_time_step_size)) * coupling_time_step_size
 
     # Explicit GBD diffusion keeps 12 x Fourier number below one per stage; each
     # stage reaches one more grid cell beyond the span planes
-    fourier_number = KINEMATIC_VISCOSITY * exchange_time_step / CELL_SIZE**2
+    fourier_number = KINEMATIC_VISCOSITY * coupling_time_step_size / CELL_SIZE**2
     diffusion_stages = math.floor(12.0 * fourier_number) + 1
 
     # Mesh a slab around the long cylinder, then keep one periodic cell across the span
@@ -89,7 +91,9 @@ def build_case():
         zmax="zmax",
     )
     slab = msh.CartesianMesher(
-        domain=msh.BoxDomain(bounds=(*fvm_box, -16 * CELL_SIZE, 16 * CELL_SIZE), patches=patches),
+        domain=msh.BoxDomain(
+            bounds=(*fvm_domain_bounds, -16 * CELL_SIZE, 16 * CELL_SIZE), patches=patches
+        ),
         surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
         max_cell_size=CELL_SIZE,
         cell_size_anchor=CELL_SIZE,
@@ -122,7 +126,7 @@ def build_case():
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=END_TIME),
         output=fvm.Output(
-            schedule=fvm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START),
+            schedule=fvm.EveryTime(on_coupling_times(FIELD_INTERVAL), start_time=FIELD_START),
             compression="lz4",
             ghost_layers=0,
         ),
@@ -134,7 +138,7 @@ def build_case():
                     reference_velocity=FREESTREAM_VELOCITY[0],
                     reference_area=DIAMETER * span,
                     reference_length=DIAMETER,
-                    schedule=fvm.EveryTime(on_exchanges(FORCE_INTERVAL)),
+                    schedule=fvm.EveryTime(on_coupling_times(FORCE_INTERVAL)),
                 ),
                 # Near-wake profile inside the box, at a fixed inertial position
                 fvm.LineSampler(
@@ -144,7 +148,7 @@ def build_case():
                     n_neighbours=12,
                     reconstruction="affine",
                     file_name="fvm_transverse_x2",
-                    schedule=fvm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+                    schedule=fvm.EveryTime(on_coupling_times(PROFILE_INTERVAL)),
                 ),
             )
         ),
@@ -172,7 +176,7 @@ def build_case():
         name="coupled_oscillating_cylinder",
         directory=CASE_DIR,
         numerics=vpm.Numerics(
-            time_step_size=exchange_time_step,
+            time_step_size=coupling_time_step_size,
             freestream_velocity=FREESTREAM_VELOCITY,
             integrator=vpm.RK2(),
             # Full 3D induction of the particle layer and all its images in the span planes
@@ -196,7 +200,7 @@ def build_case():
         ),
         run=vpm.RunPlan(end_time=END_TIME),
         output=vpm.Output(
-            schedule=vpm.EveryTime(on_exchanges(FIELD_INTERVAL), start_time=FIELD_START)
+            schedule=vpm.EveryTime(on_coupling_times(FIELD_INTERVAL), start_time=FIELD_START)
         ),
         # Transverse wake profiles in the frame of the box; 0.4 m longer on each side,
         # so they cover y = -2 to 2 m about the mean cylinder position at any heave
@@ -208,7 +212,7 @@ def build_case():
                     spacing=0.1,
                     include_derivatives=False,
                     file_name=f"vpm_transverse_x{x:g}",
-                    schedule=vpm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+                    schedule=vpm.EveryTime(on_coupling_times(PROFILE_INTERVAL)),
                 )
                 for x in (2.0, 4.0)
             )
@@ -219,13 +223,15 @@ def build_case():
     coupling = coupler.CouplerConfig(
         freestream_velocity=FREESTREAM_VELOCITY,
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
-        eta_blend_width=BLEND_WIDTH * CELL_SIZE,
-        vpm_only_width=VPM_ONLY_WIDTH * CELL_SIZE,
-        interface_iterations=INTERFACE_ITERATIONS,
-        interface_normal_tolerance=INTERFACE_TOLERANCE,
-        interface_gradient_tolerance=INTERFACE_TOLERANCE,
-        transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / exchange_time_step),
-        backup=coupler.Backup(schedule=coupler.EveryTime(on_exchanges(BACKUP_INTERVAL))),
+        blend_start_depth=BLEND_START * CELL_SIZE,
+        blend_end_depth=BLEND_END * CELL_SIZE,
+        max_coupling_iterations=COUPLING_ITERATIONS,
+        normal_velocity_tolerance=COUPLING_TOLERANCE,
+        normal_gradient_tolerance=COUPLING_TOLERANCE,
+        transfer_diagnostic_interval_steps=round(
+            TRANSFER_DIAGNOSTIC_INTERVAL / coupling_time_step_size
+        ),
+        backup=coupler.Backup(schedule=coupler.EveryTime(on_coupling_times(BACKUP_INTERVAL))),
     )
     return flow, particles, coupling
 

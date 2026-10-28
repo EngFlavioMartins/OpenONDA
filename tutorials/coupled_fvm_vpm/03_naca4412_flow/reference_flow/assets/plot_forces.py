@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Lift and drag on the wing of the FVM reference, in wind axes."""
+"""Lift and drag on the wing of the FVM-only reference."""
 
-import math
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +10,6 @@ from openonda.plotting import save_validation_figure, validation_subplots
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 STATISTICS_START = 12.0  # s, start of the statistics window
-ALPHA = math.radians(10.0)  # incidence of the freestream to the chord
 
 
 def main():
@@ -22,13 +20,9 @@ def main():
         dtype=None,
         encoding="utf-8",
     )
-    time, body_x, body_y = forces["time"], forces["drag_coefficient"], forces["lift_coefficient"]
-
-    # Body-axis x and y forces turned into the freestream direction
-    coefficients = {
-        "$C_D$": body_x * math.cos(ALPHA) + body_y * math.sin(ALPHA),
-        "$C_L$": -body_x * math.sin(ALPHA) + body_y * math.cos(ALPHA),
-    }
+    # The freestream runs along x
+    time = forces["time"]
+    coefficients = {"$C_D$": forces["drag_coefficient"], "$C_L$": forces["lift_coefficient"]}
     window = time >= STATISTICS_START
     figure, axes = validation_subplots(2, sharex=True)
     for axis, (name, values) in zip(axes, coefficients.items()):

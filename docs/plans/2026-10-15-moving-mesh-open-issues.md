@@ -25,7 +25,7 @@ motion, because the VPM has no rotating frame (no Coriolis/centrifugal terms,
 no rotating domain, diffusion grid or samplers). Options:
 
 - solve the particles in the inertial frame and move the FVM box geometry
-  (coupler regions, transfer region, wall triangles) every exchange, or
+  (coupler regions, transfer region, wall triangles) every coupling interval, or
 - add a non-inertial frame to the VPM.
 
 The first is likely simpler and also removes issue 3.
@@ -97,7 +97,7 @@ not saved. Coupled restart is compared with `atol=1e-6/1e-7`.
 
 ## 11. Coupled cost
 
-The coupled heaving case costs ~2.7–5 s per exchange (6 interface iterations ×
+The coupled heaving case costs ~2.7–5 s per coupling interval (6 coupling iterations ×
 5 FVM steps + FMM slab induction). Moving-mesh overhead itself is small (geometry
 rewrite + boundary stencil cache rebuild only on rotation), but profile once the
 validation is done.

@@ -171,7 +171,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     from .remeshing import gaussian_core_remesh
 
     # Gaussian redistribution preserves variable source-core variance.  The
-    # container capacity is the sole population limit; the remesher rejects a
+    # container capacity is the sole limit on the particle count; the remesher rejects a
     # proposal that cannot satisfy both that limit and the tail budget.
     proposal = gaussian_core_remesh(
         particles,

@@ -13,7 +13,7 @@ def uniform_stream_cases(
     directory: str | Path,
     *,
     fvm_time_step_size: float,
-    exchange_time_step_size: float,
+    coupling_time_step_size: float,
     end_time: float,
     particle_spacing: float = 0.25,
     cores: int = 1,
@@ -51,7 +51,7 @@ def uniform_stream_cases(
         name="uniform_stream",
         directory=directory,
         numerics=vpm.Numerics(
-            time_step_size=exchange_time_step_size,
+            time_step_size=coupling_time_step_size,
             compute_device="cpu",
             max_n_particles=max_n_particles,
             domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),

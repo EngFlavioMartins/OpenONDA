@@ -1,4 +1,4 @@
-"""Coupled runs continue from their latest numbered backup, including exchange zero."""
+"""Coupled runs continue from their latest numbered backup, including coupling step zero."""
 
 import json
 
@@ -10,11 +10,11 @@ from tests.support.coupler import FREESTREAM_VELOCITY, uniform_stream_cases
 
 def _solver(directory):
     flow, particles = uniform_stream_cases(
-        directory, fvm_time_step_size=0.01, exchange_time_step_size=0.02, end_time=0.08
+        directory, fvm_time_step_size=0.01, coupling_time_step_size=0.02, end_time=0.08
     )
     config = coupler.CouplerConfig(
         transfer_inset_spacings=0.0,
-        eta_blend_width=0.0,
+        blend_end_depth=0.0,
         freestream_velocity=FREESTREAM_VELOCITY,
         backup=coupler.Backup(schedule=coupler.EverySteps(2)),
     )
@@ -27,7 +27,7 @@ def _history(directory):
 
 
 def test_latest_continues_an_interrupted_run_and_stops_at_the_end(tmp_path):
-    # Interrupted after exchange three of four; the last backup is the scheduled one at two.
+    # Interrupted after coupling step three of four; the last backup is the scheduled one at two.
     with _solver(tmp_path) as first:
         first.start_from("latest")
         for _ in range(3):
@@ -54,14 +54,14 @@ def test_latest_continues_an_interrupted_run_and_stops_at_the_end(tmp_path):
         np.testing.assert_allclose(reference.fvm_solver.velocity, expected, atol=1e-12, rtol=0)
 
 
-def test_backup_at_exchange_zero_does_not_repeat_the_initial_transfer(tmp_path):
+def test_backup_at_coupling_step_zero_does_not_repeat_the_initial_transfer(tmp_path):
     with _solver(tmp_path) as first:
         first.save_backup()
     assert (tmp_path / "solution/coupled/coupled_000000/checkpoint_info.json").is_file()
     with _solver(tmp_path) as resumed:
         assert resumed.start_from("latest")
         resumed.advance()
-        # One transfer at the initial time, then one per exchange.
+        # One transfer at the initial time, then one per coupling step.
         assert resumed.vorticity_transfer.step == 2
 
 

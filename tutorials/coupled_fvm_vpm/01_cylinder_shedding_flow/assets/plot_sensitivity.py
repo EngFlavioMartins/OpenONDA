@@ -7,8 +7,8 @@ the reference of its own Reynolds number, cells and FVM step; the orders, the un
 the split of the coupled error into the FVM discretization and the coupling are the subject of
 plot_error_analysis.py. The studies of the coupling-error plan
 (docs/plans/2026-10-19-coupling-error-sources.md) are drawn in their own figures, and the
-exchange-ratio and particle-resolution runs again against the dimensionless groups
-C_f = U dt_f / h_f, C_p = U dt_p / h_p and Lambda = max|S| dt_p.
+FVM-substep and particle-resolution runs again against the dimensionless groups
+C_FVM = U dt_FVM / h_FVM, C_VPM = U dt_VPM / h and Lambda = max|S| dt_VPM.
 """
 
 import json
@@ -27,13 +27,13 @@ from openonda.plotting import validation_legend
 
 from assets.plot_forces import DEVELOPED_SHEDDING, read_forces, shedding_statistics
 from assets.shedding_phase import phase_averaged_difference, shedding_phase
-from setup import BLEND_WIDTH, BOX_MARGIN, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_SUBSTEPS
-from setup import FVM_TIME_STEP, REYNOLDS_NUMBER, TRANSFER_INSET, VPM_ONLY_WIDTH
+from setup import BLEND_END, BOX_MARGIN, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_SUBSTEPS
+from setup import FVM_TIME_STEP, REYNOLDS_NUMBER, TRANSFER_INSET
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 ERROR_BAND = 2.0  # %, accuracy targeted for the coupled forces
 STATISTICS_LENGTH = 10.0  # s, about two shedding periods of developed shedding at least
-WALL_STRAIN_RATE = 19.4  # 1/s, max|S| at the wall, Re = 150, h_p = h_f (8-step stability check)
+WALL_STRAIN_RATE = 19.4  # 1/s, max|S| at the wall, Re = 150, h_VPM = h_FVM (8-step stability check)
 
 # Study parameters with their baselines, and the force statistics compared
 PARAMETERS = {
@@ -43,12 +43,12 @@ PARAMETERS = {
 }
 BASELINE = {
     **{name: value for name, (_, value) in PARAMETERS.items()},
-    "box_downstream": BOX_MARGIN + 2.0,  # D, downstream FVM box face from the cylinder axis
+    "box_downstream": BOX_MARGIN + 2.0,  # D, downstream outer FVM boundary from the cylinder axis
     "cell_size": CELL_SIZE,
     "fvm_time_step": FVM_TIME_STEP,
     "particle_spacing": CELL_SIZE,
-    "interface_cell_size": CELL_SIZE,  # m, counts the inset, blend and particle-only widths
-    "interface_sweeps": 0,  # 0: sweeps until the boundary trace converges
+    "interface_cell_size": CELL_SIZE,  # m, counts the transfer inset and the blending depths
+    "coupling_iterations": 0,  # 0: coupling iterations until the boundary data converge
     "repeat": 0,  # an identical run made again, to measure run-to-run scatter
     "reynolds_number": REYNOLDS_NUMBER,
 }
@@ -68,7 +68,7 @@ RUN_NAME = re.compile(
     r"(?:_h(?P<cell_size>[\d.]+))?(?:_dtf(?P<fvm_time_step>[^_]+))?"
     r"(?:_ic(?P<interface_cell_size>[^_]+))?"
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
-    r"(?:_k(?P<interface_sweeps>\d+))?(?:_re(?P<reynolds_number>[\d.]+))?"
+    r"(?:_k(?P<coupling_iterations>\d+))?(?:_re(?P<reynolds_number>[\d.]+))?"
     r"(?:_rep(?P<repeat>\d+))?"
 )
 REFERENCE_NAME = re.compile(
@@ -148,22 +148,23 @@ def no_errors():
     return dict.fromkeys(ERRORS, np.nan)
 
 
-def exchange_statistics(path):
-    """Wall time per flow time and the interface sweeps and residuals of developed exchanges."""
+def coupling_step_statistics(path):
+    """Wall time per flow time and the coupling iterations and residuals of developed steps."""
     records = jsonl_records(path)
-    exchange_step = records[1]["time"] - records[0]["time"]
+    coupling_interval = records[1]["time"] - records[0]["time"]
     records = [record for record in records if record["time"] >= DEVELOPED_SHEDDING]
-    sweeps = [
-        record.get("interface_iteration", {"sweeps": 1, "residuals": []}) for record in records
+    iterations = [
+        record.get("coupling_iteration", {"iterations": 1, "residuals": []}) for record in records
     ]
-    final = [entry["residuals"][-1] for entry in sweeps if entry["residuals"]]
+    final = [entry["residuals"][-1] for entry in iterations if entry["residuals"]]
     return {
-        "cost": np.mean([record["timing_seconds"]["total"] for record in records]) / exchange_step,
-        "mean sweeps": np.mean([entry["sweeps"] for entry in sweeps]),
-        "normal residual": np.mean([row["normal_residual_rms"] for row in final])
+        "cost": np.mean([record["timing_seconds"]["total"] for record in records])
+        / coupling_interval,
+        "mean coupling iterations": np.mean([entry["iterations"] for entry in iterations]),
+        "normal residual": np.mean([row["normal_velocity_residual"] for row in final])
         if final
         else np.nan,
-        "gradient residual": np.mean([row["gradient_residual_rms"] for row in final])
+        "gradient residual": np.mean([row["normal_gradient_residual"] for row in final])
         if final
         else np.nan,
     }
@@ -219,7 +220,7 @@ def read_runs(references):
                 "particle_courant": FREESTREAM_VELOCITY[0]
                 * particle_time_step
                 / parameters["particle_spacing"],
-                "stability_number": WALL_STRAIN_RATE * particle_time_step,
+                "lagrangian_cfl": WALL_STRAIN_RATE * particle_time_step,
                 "end time": forces["time"][-1],
                 "forces": forces,
                 "phase": phase,
@@ -236,7 +237,7 @@ def read_runs(references):
                 "finest": no_errors()
                 if finest_reference is None
                 else errors_against(forces, phase, wake, finest_reference),
-                **exchange_statistics(directory / "solution/coupler_diagnostics.jsonl"),
+                **coupling_step_statistics(directory / "solution/coupler_diagnostics.jsonl"),
             }
         )
     return runs
@@ -317,25 +318,25 @@ def print_runs(runs, references):
         f"Errors [%] against the reference of equal Re and FVM step, t >= {DEVELOPED_SHEDDING:g} s"
     )
     print(
-        f"  {'run':40s} {'end [s]':>8s} {'FVM core [D]':>13s}"
+        f"  {'run':40s} {'end [s]':>8s} {'replacement [D]':>15s}"
         + "".join(f" {name:>16s}" for name in ROWS)
     )
     for run in runs:
-        # Half-width of the region where FVM vorticity alone replaces the particles
-        core = (
-            run["box_margin"]
-            - (run["transfer_inset"] + BLEND_WIDTH + VPM_ONLY_WIDTH) * CELL_SIZE / DIAMETER
-        )
+        # Half-width of the replacement region, where FVM vorticity alone replaces the particle
+        # vorticity: the blend end depth is measured from the transfer surface
+        replacement = run["box_margin"] - (run["transfer_inset"] + BLEND_END) * CELL_SIZE / DIAMETER
         values = "".join(f" {run[name]:16.2f}" for name in ROWS)
-        print(f"  {run['name']:40s} {run['end time']:8.1f} {core:13.2f}{values}")
+        print(f"  {run['name']:40s} {run['end time']:8.1f} {replacement:15.2f}{values}")
     for reference in references.values():
         print(
             f"  Reference {reference['name']} wall time per flow time: {reference['cost']:.1f} s/s"
         )
-    print("  An FVM core below 0.5 D lies inside the cylinder: the wall vorticity is blended.")
     print(
-        f"  Lambda = max|S| dt_p with max|S| = {WALL_STRAIN_RATE} 1/s, measured at Re = 150 with"
-        " h_p = h_f; the runs do not record their own strain rate."
+        "  A replacement region below 0.5 D lies inside the cylinder: the wall vorticity is blended."
+    )
+    print(
+        f"  Lagrangian CFL number Lambda = max|S| dt_VPM with max|S| = {WALL_STRAIN_RATE} 1/s,"
+        " measured at Re = 150 with h_VPM = h_FVM; the runs do not record their own strain rate."
     )
 
 
@@ -385,7 +386,7 @@ def reference_changes(references):
             {
                 **reference,
                 **errors,
-                # The exchange ratio a 0.04 s particle step gives at this FVM step
+                # The FVM substeps N a 0.04 s particle step gives at this FVM step
                 "fvm_substeps": 0.04 / time_step,
                 "fvm_courant": FREESTREAM_VELOCITY[0] * time_step / CELL_SIZE,
             }
@@ -394,7 +395,7 @@ def reference_changes(references):
 
 
 def parameter_figure(runs, reference_cost):
-    """The box, exchange-step and inset study about the baseline."""
+    """The domain-margin, FVM-substep and inset study about the baseline."""
     # One column per parameter, varied while the other two keep their baselines
     set_thesis_style()
     figure, axes = plt.subplots(
@@ -453,7 +454,7 @@ def main():
     figures = CASE_DIR / "figures"
     hybrid, teal, gray = COLORS["hybrid"], COLORS["fvm"], COLORS["reference"]
 
-    # S1b: particle step fixed at 0.04 s, so the exchange ratio grows as the FVM step falls
+    # S1b: particle step fixed at 0.04 s, so the FVM substeps N grow as the FVM step falls
     s1b = [
         run
         for run in varied(runs, "fvm_substeps", "fvm_time_step")
@@ -466,10 +467,10 @@ def main():
             if change["reynolds_number"] == REYNOLDS_NUMBER
         ]
         study_figure(
-            figures / "sensitivity_exchange_ratio",
+            figures / "sensitivity_fvm_substeps",
             {
-                "fvm_substeps": r"Exchange ratio $n$, $\Delta t_p=0.04$ s",
-                "fvm_courant": r"$C_f=U_\infty\Delta t_f/h_f$",
+                "fvm_substeps": r"FVM substeps $N$, $\Delta t_{\rm VPM}=0.04$ s",
+                "fvm_courant": r"$C_{\rm FVM}=U_\infty\Delta t_{\rm FVM}/h_{\rm FVM}$",
             },
             ROWS,
             [
@@ -484,19 +485,19 @@ def main():
             ],
         )
 
-    # S2: particle spacing h_f and h_f/2 at a fixed FVM step, against n and C_p
+    # S2: particle spacing h_FVM and h_FVM/2 at a fixed FVM step, against N and C_VPM
     s2 = varied(runs, "fvm_substeps", "particle_spacing")
     if any(run["particle_spacing"] != CELL_SIZE for run in s2):
         study_figure(
             figures / "sensitivity_particle_spacing",
             {
-                "fvm_substeps": r"Exchange ratio $n$",
-                "particle_courant": r"$C_p=U_\infty\Delta t_p/h_p$",
+                "fvm_substeps": r"FVM substeps $N$",
+                "particle_courant": r"$C_{\rm VPM}=U_\infty\Delta t_{\rm VPM}/h$",
             },
             ROWS,
             [
                 (
-                    f"$h_p={spacing:g}$ m",
+                    f"$h={spacing:g}$ m",
                     [run for run in s2 if run["particle_spacing"] == spacing],
                     color,
                     marker,
@@ -508,23 +509,31 @@ def main():
             ],
         )
 
-    # S4: forced interface sweeps per exchange, and the converged baseline at its mean sweeps
-    s4 = varied(runs, "interface_sweeps")
-    if any(run["interface_sweeps"] for run in s4):
-        sweeps = [{**run, "sweeps": run["interface_sweeps"] or run["mean sweeps"]} for run in s4]
+    # S4: forced coupling iterations per interval, and the converged baseline at its mean count
+    s4 = varied(runs, "coupling_iterations")
+    if any(run["coupling_iterations"] for run in s4):
+        iterations = [
+            {**run, "iterations": run["coupling_iterations"] or run["mean coupling iterations"]}
+            for run in s4
+        ]
         study_figure(
-            figures / "sensitivity_interface_sweeps",
-            {"sweeps": "Interface sweeps per exchange $K$"},
+            figures / "sensitivity_coupling_iterations",
+            {"iterations": "Coupling iterations per interval $M$"},
             {
                 **ERRORS,
-                "gradient residual": "Last-sweep\n" + r"$\partial u_t/\partial n$ change [1/s]",
+                "gradient residual": "Last-iteration\n" + r"$r_{g_t}$ [1/s]",
                 "cost": ROWS["cost"],
             },
             [
-                ("Exactly $K$", [run for run in sweeps if run["interface_sweeps"]], hybrid, "o"),
                 (
-                    "Tolerance $10^{-5}$",
-                    [run for run in sweeps if not run["interface_sweeps"]],
+                    "Exactly $M$",
+                    [run for run in iterations if run["coupling_iterations"]],
+                    hybrid,
+                    "o",
+                ),
+                (
+                    r"Tolerance $\varepsilon_{u_n}=\varepsilon_{g_t}=10^{-5}$",
+                    [run for run in iterations if not run["coupling_iterations"]],
                     teal,
                     "s",
                 ),
@@ -549,22 +558,22 @@ def main():
     study_figure(
         figures / "sensitivity_dimensionless",
         {
-            "fvm_courant": r"$C_f$",
-            "particle_courant": r"$C_p$",
-            "stability_number": r"$\Lambda=\max|S|\,\Delta t_p$",
+            "fvm_courant": r"$C_{\rm FVM}$",
+            "particle_courant": r"$C_{\rm VPM}$",
+            "lagrangian_cfl": r"$\Lambda=\max|S|\,\Delta t_{\rm VPM}$",
         },
         ERRORS,
         [
-            (r"S1a, $\Delta t_f=0.008$ s", s1a, hybrid, "o"),
-            (r"S1b, $\Delta t_p=0.04$ s", s1b, teal, "s"),
+            (r"$\Delta t_{\rm FVM}=8$ ms", s1a, hybrid, "o"),
+            (r"$\Delta t_{\rm VPM}=40$ ms", s1b, teal, "s"),
             (
-                r"S2, $h_p=h_f/2$",
+                r"$h_{\rm VPM}=h_{\rm FVM}/2$",
                 [run for run in s2 if run["particle_spacing"] != CELL_SIZE],
                 COLORS["vpm"],
                 "^",
             ),
         ],
-        lines=False,  # S1a holds C_f and S1b holds C_p and Lambda fixed
+        lines=False,  # S1a holds C_FVM and S1b holds C_VPM and Lambda fixed
     )
 
 

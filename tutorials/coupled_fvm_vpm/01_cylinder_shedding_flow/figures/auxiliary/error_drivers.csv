@@ -1,0 +1,29 @@
+quantity,driver,runs,c0,a,q,R2,rms
+mean drag,particle step,6,0.0907491,-0.000761935,-1.675,0.999768,0.0126784
+mean drag,Lagrangian CFL number,6,0.0907491,-0.109392,-1.675,0.999768,0.0126784
+mean drag,coupling intervals per convective time,6,0.0907491,-0.000761935,1.675,0.999768,0.0126784
+mean drag,FVM substeps per coupling interval,6,-0.0274196,-8.42503,-3,0.351493,0.670015
+mean drag,FVM step,6,-0.153195,-1.57152e-07,-2.85,0.296291,0.69795
+mean drag,particle Courant number,6,0.0907491,-0.167289,-1.675,0.999768,0.0126784
+mean drag,coupling iterations,6,1.17441,-6.11252,-3,0.838761,0.33409
+lift amplitude,particle step,6,-1.00042,-0.00130087,-1.75,0.999709,0.0351206
+lift amplitude,Lagrangian CFL number,6,-1.00042,-0.233285,-1.75,0.999709,0.0351206
+lift amplitude,coupling intervals per convective time,6,-1.00042,-0.00130087,1.75,0.999709,0.0351206
+lift amplitude,FVM substeps per coupling interval,6,-1.27743,-20.0837,-3,0.326283,1.68966
+lift amplitude,FVM step,6,-1.35883,-7.59723e-06,-2.325,0.308367,1.71198
+lift amplitude,particle Courant number,6,-1.00042,-0.363604,-1.75,0.999709,0.0351206
+lift amplitude,coupling iterations,6,1.72968,-15.0641,-3,0.832175,0.843314
+Strouhal number,particle step,6,0.542927,-0.000853959,-1.7,0.999818,0.014219
+Strouhal number,Lagrangian CFL number,6,0.542927,-0.132038,-1.7,0.999818,0.014219
+Strouhal number,coupling intervals per convective time,6,0.542927,-0.000853959,1.7,0.999818,0.014219
+Strouhal number,FVM substeps per coupling interval,6,0.400806,-10.6274,-3,0.347627,0.852382
+Strouhal number,FVM step,6,0.255183,-2.65709e-07,-2.8,0.30058,0.882583
+Strouhal number,particle Courant number,6,0.542927,-0.203205,-1.7,0.999818,0.014219
+Strouhal number,coupling iterations,6,1.92653,-7.74412,-3,0.836803,0.426327
+wake velocity,particle step,6,2.53713,2.59552e-05,-2.425,0.949299,0.259295
+wake velocity,Lagrangian CFL number,6,2.53713,0.0344464,-2.425,0.949299,0.259295
+wake velocity,coupling intervals per convective time,6,2.53713,2.59552e-05,2.425,0.949299,0.259295
+wake velocity,FVM substeps per coupling interval,6,2.26263,8.43653,-2.3,0.437839,0.863408
+wake velocity,FVM step,6,2.72884,7.87226e-08,-3,0.208149,1.02473
+wake velocity,particle Courant number,6,2.53713,0.0637131,-2.425,0.949299,0.259295
+wake velocity,coupling iterations,6,0.927856,7.94357,-3,0.739455,0.587797

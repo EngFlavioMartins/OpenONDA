@@ -403,11 +403,10 @@ def assemble_convection_term_boundary(
     b_elem_start = start_face - n_interior_faces
     b_elem_indices = np.arange(n_cells + b_elem_start, n_cells + b_elem_start + n_faces)
 
-    if strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
+    if strategy is BoundaryStrategy.MIXED_VELOCITY:
         if geo_data is None or component not in (0, 1, 2):
             raise ValueError(
-                "normal_value_tangential_gradient convection requires geometry "
-                "and a velocity component index"
+                "mixed_velocity convection requires geometry and a velocity component index"
             )
         sf = np.asarray(geo_data["face_area_vector"])[b_face_indices]
         area = np.linalg.norm(sf, axis=1)

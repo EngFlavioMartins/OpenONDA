@@ -525,8 +525,8 @@ def runtime_audit(solution_dir: Path = SOLUTION_DIR) -> dict:
     }
 
 
-def _gbd_moment_recovery_failures(cases: tuple[str, ...]) -> list[str]:
-    """Verify that every GBD log records successful pruning closure."""
+def _gbd_moment_correction_failures(cases: tuple[str, ...]) -> list[str]:
+    """Verify that every GBD log records a successful moment correction."""
     failures: list[str] = []
     residual_limit = 1.0e-5
     for physics_id in cases:
@@ -535,7 +535,7 @@ def _gbd_moment_recovery_failures(cases: tuple[str, ...]) -> list[str]:
         try:
             log = path.read_text(encoding="utf-8", errors="replace")
         except OSError as error:
-            failures.append(f"{name}: missing GBD recovery log ({error})")
+            failures.append(f"{name}: missing GBD log ({error})")
             continue
         try:
             residuals = np.asarray(
@@ -543,15 +543,15 @@ def _gbd_moment_recovery_failures(cases: tuple[str, ...]) -> list[str]:
                 dtype=float,
             )
         except ValueError:
-            failures.append(f"{name}: malformed GBD recovery residual")
+            failures.append(f"{name}: malformed GBD moment-correction residual")
             continue
         if residuals.size == 0:
-            failures.append(f"{name}: no GBD moment-recovery closure was recorded")
+            failures.append(f"{name}: no GBD moment correction was recorded")
         elif not np.isfinite(residuals).all():
-            failures.append(f"{name}: non-finite GBD recovery residual")
+            failures.append(f"{name}: non-finite GBD moment-correction residual")
         elif float(residuals.max()) > residual_limit:
             failures.append(
-                f"{name}: GBD recovery residual exceeds {residual_limit:.1e} "
+                f"{name}: GBD moment-correction residual exceeds {residual_limit:.1e} "
                 f"(maximum {float(residuals.max()):.3e})"
             )
     return failures
@@ -721,7 +721,7 @@ def validate(
                 failures.append(f"{name}: missing sampled surface-field PVD")
 
     if "gbd" in schemes:
-        failures.extend(_gbd_moment_recovery_failures(cases))
+        failures.extend(_gbd_moment_correction_failures(cases))
 
     if "merging" in cases:
         _, normalization_failures = merging_normalization_audit(SAMPLES_DIR, schemes)

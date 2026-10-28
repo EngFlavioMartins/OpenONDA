@@ -21,15 +21,16 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 FIGURES = CASE_DIR / "figures"
 CHORD = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
-FVM_BOX = (-1.6, 2.72, -1.04, 1.36, -3.6, 3.6)  # m
-WING_SECTION = section_outline("4412", CHORD, 161)
+ANGLE_OF_ATTACK = 10.0  # degrees, nose-up pitch of the wing
+FVM_DOMAIN_BOUNDS = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m
+WING_SECTION = section_outline("4412", CHORD, 161, ANGLE_OF_ATTACK)
 
 # Each plane: its slices, the axes drawn across and up, the plotting window, the vorticity
 # component normal to it, and whether the coupled FVM samples it
 PLANES = {
-    "z0": {"axes": (0, 1), "window": (-1.0, 8.0, -1.0, 2.0), "normal": 2, "fvm": True},
-    "x2": {"axes": (2, 1), "window": (-3.6, 3.6, -1.0, 1.4), "normal": 0, "fvm": True},
-    "x5": {"axes": (2, 1), "window": (-3.6, 3.6, -0.4, 2.0), "normal": 0, "fvm": False},
+    "z0": {"axes": (0, 1), "window": (-1.0, 8.0, -1.5, 1.5), "normal": 2, "fvm": True},
+    "x2": {"axes": (2, 1), "window": (-3.6, 3.6, -1.2, 1.2), "normal": 0, "fvm": True},
+    "x5": {"axes": (2, 1), "window": (-3.6, 3.6, -1.2, 1.2), "normal": 0, "fvm": False},
 }
 AXIS_NAMES = "xyz"
 
@@ -139,8 +140,8 @@ def comparison_figure(name, plane_name, quantity, across, up, panels):
         if row > 0 and plane["fvm"]:
             # The FVM box: the coupled flow is the FVM inside it, the particles outside
             box = (
-                FVM_BOX[2 * plane["axes"][0] : 2 * plane["axes"][0] + 2],
-                FVM_BOX[2 * plane["axes"][1] : 2 * plane["axes"][1] + 2],
+                FVM_DOMAIN_BOUNDS[2 * plane["axes"][0] : 2 * plane["axes"][0] + 2],
+                FVM_DOMAIN_BOUNDS[2 * plane["axes"][1] : 2 * plane["axes"][1] + 2],
             )
             axes.add_patch(
                 plt.Rectangle(

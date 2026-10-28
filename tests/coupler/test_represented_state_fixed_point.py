@@ -1,14 +1,14 @@
-"""Renewal must preserve an already matching physical vorticity field."""
+"""The vorticity transfer keeps particle strengths whose represented vorticity already matches the FVM."""
 
 import numpy as np
 import pytest
 
-from openonda.coupler.stable_renewal import (
-    blend_represented_state,
-    build_stable_renewal_lattice,
-    gaussian_represented_vortex_strength,
-    renew_stable_overlap,
+from openonda.coupler.transfer_lattice import (
+    build_transfer_lattice,
+    correct_lattice_strength,
+    gaussian_representation,
     scatter_m4_prime_to_lattice,
+    transfer_on_lattice,
 )
 
 
@@ -25,29 +25,29 @@ def test_matching_state_is_fixed_point_through_blend_weight_ramp_and_wall(slab):
     options = {}
     if slab:
         options.update(slip_slab_bounds=(-0.12, 0.12), lattice_origin_z=-0.10)
-    physical = gaussian_represented_vortex_strength(strength, shape, h, core_radius=h, **options)
-    # Production FVM targets have no support inside the wall. Gaussian tails
-    # there are not an error to invert into neighboring fluid coefficients.
+    physical = gaussian_representation(strength, shape, h, core_radius=h, **options)
+    # FVM target strengths are zero inside the wall. Gaussian tails there are not
+    # a mismatch to correct into the neighbouring fluid strengths.
     physical *= wall_weight[:, None]
 
-    result = blend_represented_state(
+    result = correct_lattice_strength(
         strength,
         physical,
         blend_weight,
         shape,
         h,
         core_radius=h,
-        amplification_cap=1.8,
+        max_strength_ratio=1.8,
         output_weight=wall_weight,
         **options,
     )
 
-    np.testing.assert_array_equal(result.vortex_strength, strength)
+    np.testing.assert_array_equal(result.limited_strength, strength)
     assert result.residual_before_correction == 0.0
     assert result.residual_after_correction == 0.0
 
 
-def test_repeated_matching_renewals_do_not_damp_resolved_wake_mode():
+def test_repeated_matching_transfers_do_not_damp_resolved_wake_mode():
     shape, h = (101, 17, 1), 0.04
     strength = np.zeros((*shape, 3))
     strength[..., 2] = np.sin(2 * np.pi * np.arange(shape[0])[:, None, None] * h / 0.2)
@@ -55,21 +55,21 @@ def test_repeated_matching_renewals_do_not_damp_resolved_wake_mode():
     initial = strength.copy()
     blend_weight = np.full(len(strength), 0.5)
     for _ in range(25):
-        physical = gaussian_represented_vortex_strength(
+        physical = gaussian_representation(
             strength,
             shape,
             h,
             core_radius=h,
         )
-        strength = blend_represented_state(
+        strength = correct_lattice_strength(
             strength,
             physical,
             blend_weight,
             shape,
             h,
             core_radius=h,
-            amplification_cap=1.8,
-        ).vortex_strength
+            max_strength_ratio=1.8,
+        ).limited_strength
     np.testing.assert_array_equal(strength, initial)
 
 
@@ -83,21 +83,21 @@ def test_repeated_unresolved_wall_target_remains_bounded():
     strength = np.zeros_like(target)
     target_maximum = np.linalg.norm(target, axis=1).max()
     for _ in range(100):
-        result = blend_represented_state(
+        result = correct_lattice_strength(
             strength,
             target,
             np.ones(len(strength)),
             shape,
             h,
             core_radius=h,
-            amplification_cap=1.8,
+            max_strength_ratio=1.8,
             output_weight=wall_weight,
         )
-        strength = result.vortex_strength
+        strength = result.limited_strength
         assert np.linalg.norm(strength, axis=1).max() <= 1.8 * target_maximum * (1 + 1e-13)
         np.testing.assert_array_equal(strength[wall_weight == 0], 0.0)
         assert np.isfinite(strength).all()
-    assert result.maximum_amplification == pytest.approx(1.8)
+    assert result.strength_ratio == pytest.approx(1.8)
 
 
 def test_one_saturated_node_does_not_stop_remote_correction():
@@ -105,7 +105,7 @@ def test_one_saturated_node_does_not_stop_remote_correction():
     strength = np.zeros((*shape, 3))
     strength[8, 15, 0, 2] = 10.0
     strength = strength.reshape(-1, 3)
-    physical = gaussian_represented_vortex_strength(
+    physical = gaussian_representation(
         strength,
         shape,
         h,
@@ -113,32 +113,32 @@ def test_one_saturated_node_does_not_stop_remote_correction():
     ).reshape(*shape, 3)
     physical[8, 15, 0, 2] += 0.01
     physical[23, 15, 0, 2] += 0.01
-    result = blend_represented_state(
+    result = correct_lattice_strength(
         strength,
         physical.reshape(-1, 3),
         np.ones(len(strength)),
         shape,
         h,
         core_radius=h,
-        amplification_cap=1.8,
-    ).vortex_strength.reshape(*shape, 3)
+        max_strength_ratio=1.8,
+    ).limited_strength.reshape(*shape, 3)
     assert result[8, 15, 0, 2] == 10.0
     assert result[23, 15, 0, 2] > 0.01
 
 
 @pytest.mark.parametrize("slab", [False, True])
-def test_renewal_ignores_fractional_taper_inside_actual_solid(slab):
+def test_transfer_ignores_fractional_fluid_weight_inside_actual_solid(slab):
     from openonda.coupler.geometry import SolidBoundary, TriangulatedWall
 
     h = 0.04
     boundary = SolidBoundary(
         (TriangulatedWall.from_box((-2.0, 0.0, -2.0, 2.0, -2.0, 2.0), (-3.0, 3.0) * 3),)
     )
-    lattice = build_stable_renewal_lattice(
+    lattice = build_transfer_lattice(
         (-0.4, 0.4, -0.4, 0.4, -0.12, 0.12),
         h,
-        buffer_length=0.08,
-        blend_ramp_width=0.12,
+        remeshing_extension_length=0.08,
+        blend_end_depth=0.12,
         lattice_anchor=np.full(3, 0.02),
         fluid_weight_at_node=lambda points: np.clip(1 + points[:, 0] / h, 0, 1),
         interior_at_node=boundary.contains,
@@ -162,23 +162,21 @@ def test_renewal_ignores_fractional_taper_inside_actual_solid(slab):
     options = {}
     if slab:
         options.update(slip_slab_bounds=(-0.12, 0.12), lattice_origin_z=lattice.origin[2])
-    raw_target = gaussian_represented_vortex_strength(
-        strength, lattice.shape, h, core_radius=h, **options
-    )
-    # The production caller multiplies this field by the smooth taper, which
+    raw_target = gaussian_representation(strength, lattice.shape, h, core_radius=h, **options)
+    # The vorticity transfer multiplies this field by the smooth fluid weight, which
     # still leaves a nonzero, unrepresentable target in partial_solid nodes.
     assert np.linalg.norm(raw_target[partial_solid]) > 0
-    result = renew_stable_overlap(
+    result = transfer_on_lattice(
         points[active],
         strength[active],
         lattice,
-        fvm_vortex_strength_at_node=lambda _: raw_target,
-        amplification_cap=1.8,
-        prune_threshold=0.0,
+        fvm_target_strength_at_node=lambda _: raw_target,
+        max_strength_ratio=1.8,
+        strength_threshold=0.0,
         compute_diagnostics=True,
     )
-    renewed = scatter_m4_prime_to_lattice(result.position, result.vortex_strength, lattice)
-    np.testing.assert_allclose(renewed, strength, rtol=0, atol=1e-14)
+    remeshed = scatter_m4_prime_to_lattice(result.position, result.vortex_strength, lattice)
+    np.testing.assert_allclose(remeshed, strength, rtol=0, atol=1e-14)
     assert not np.any(boundary.contains(result.position))
-    assert result.representation_residual_before_prune < 1e-14
-    assert result.representation_residual_after_prune < 1e-14
+    assert result.representation_residual_before_removal < 1e-14
+    assert result.representation_residual_after_removal < 1e-14

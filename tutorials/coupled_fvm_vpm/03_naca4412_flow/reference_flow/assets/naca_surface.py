@@ -47,22 +47,25 @@ def naca4_section(code, chord, n_points):
     return chord * (lower - centre), chord * (upper - centre)
 
 
-def section_outline(code, chord, n_points):
+def section_outline(code, chord, n_points, angle_of_attack):
     """Counter-clockwise outline: lower surface to the trailing edge, upper surface back.
 
-    The leading and trailing edges appear once, so both surfaces share them.
+    The leading and trailing edges appear once, so both surfaces share them. The
+    section is pitched nose-up by ``angle_of_attack`` (degrees) about the mid-chord.
     """
     lower, upper = naca4_section(code, chord, n_points)
-    return np.vstack((lower[:-1], upper[:0:-1]))
+    alpha = np.radians(angle_of_attack)
+    rotation = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
+    return np.vstack((lower[:-1], upper[:0:-1])) @ rotation
 
 
-def write_wing_stl(path, code, chord, span, n_points, n_span_segments):
+def write_wing_stl(path, code, chord, span, n_points, n_span_segments, angle_of_attack):
     """Write the wing extruded along z over the span, closed by flat tip caps.
 
     Every edge is shared by exactly two triangles and every normal points out
     of the solid, so the surface is watertight and consistently oriented.
     """
-    outline = section_outline(code, chord, n_points)
+    outline = section_outline(code, chord, n_points, angle_of_attack)
     n_outline = len(outline)
     n_chord = n_outline // 2  # outline index of the trailing edge
     stations = np.linspace(-0.5 * span, 0.5 * span, n_span_segments + 1)

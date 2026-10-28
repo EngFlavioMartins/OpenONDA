@@ -1,4 +1,4 @@
-"""Curl convention, release support and fixed subcycling."""
+"""Curl convention, remeshing extension and fixed sub-cycling."""
 
 from types import SimpleNamespace
 
@@ -6,22 +6,22 @@ import numpy as np
 import pytest
 
 from openonda.coupler.boundary import advance_fvm_substeps
-from openonda.coupler.vorticity_transfer import VorticityTransfer, required_renewal_buffer_length
+from openonda.coupler.vorticity_transfer import VorticityTransfer, remeshing_extension_length
 
 
-def test_renewal_buffer_covers_release_travel_plus_complete_m4_support():
+def test_remeshing_extension_covers_one_interval_of_travel_plus_complete_m4_support():
     h = 0.03125
-    coupling_time_step = 0.01
+    coupling_time_step_size = 0.01
 
-    buffer_length = required_renewal_buffer_length(
+    extension = remeshing_extension_length(
         [1.0, 0.0, 0.0],
-        coupling_time_step,
+        coupling_time_step_size,
         h,
     )
 
-    assert buffer_length == pytest.approx(1.5 * coupling_time_step + 2.0 * h)
-    assert buffer_length == pytest.approx(0.0775)
-    assert required_renewal_buffer_length([0.0, 0.0, 0.0], coupling_time_step, h) == pytest.approx(
+    assert extension == pytest.approx(1.5 * coupling_time_step_size + 2.0 * h)
+    assert extension == pytest.approx(0.0775)
+    assert remeshing_extension_length([0.0, 0.0, 0.0], coupling_time_step_size, h) == pytest.approx(
         2.0 * h
     )
 
@@ -38,12 +38,12 @@ def test_fvm_gradient_curl_matches_cell_vorticity_convention():
     )
 
 
-def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
+def test_mixed_boundary_substeps_use_both_interval_ends(monkeypatch):
     coupler = SimpleNamespace(
         n_fvm_substeps=4,
         fvm_time_step_size=0.005,
         fvm_solver=SimpleNamespace(step=4),
-        exchange_time=lambda step: step * 0.02,
+        coupling_time=lambda step: step * 0.02,
         freestream_velocity=np.array([1.0, 0.0, 0.0]),
         config=SimpleNamespace(),
     )
@@ -55,11 +55,11 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
         _patch,
         velocity,
         normal_velocity=None,
-        tangential_gradient=None,
+        normal_gradient=None,
         *,
         accepted_time,
     ):
-        recorded.append((velocity.copy(), normal_velocity.copy(), tangential_gradient.copy()))
+        recorded.append((velocity.copy(), normal_velocity.copy(), normal_gradient.copy()))
         times.append(accepted_time)
 
     monkeypatch.setattr("openonda.coupler.boundary.apply_fvm_boundary", record_step)
@@ -70,8 +70,8 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
     next_velocity = np.tile([1.0, 0.4, 0.0], (3, 1))
     previous_normal_velocity = np.full(3, 0.2)
     next_normal_velocity = np.full(3, 0.6)
-    previous_tangential_gradient = np.zeros((3, 3))
-    next_tangential_gradient = np.full((3, 3), 0.8)
+    previous_normal_gradient = np.zeros((3, 3))
+    next_normal_gradient = np.full((3, 3), 0.8)
 
     advance_fvm_substeps(
         coupler,
@@ -83,8 +83,8 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
         next_velocity,
         previous_normal_velocity=previous_normal_velocity,
         next_normal_velocity=next_normal_velocity,
-        previous_tangential_gradient=previous_tangential_gradient,
-        next_tangential_gradient=next_tangential_gradient,
+        previous_normal_gradient=previous_normal_gradient,
+        next_normal_gradient=next_normal_gradient,
     )
 
     for values, alpha in zip(recorded, (0.25, 0.5, 0.75, 1.0), strict=True):
@@ -95,7 +95,7 @@ def test_vorticity_mixed_substeps_use_both_time_endpoints(monkeypatch):
             values[1],
             (1.0 - alpha) * previous_normal_velocity + alpha * next_normal_velocity,
         )
-        np.testing.assert_allclose(values[2], alpha * next_tangential_gradient)
-    # Substeps follow the exchange clock and the last one lands exactly on its end.
+        np.testing.assert_allclose(values[2], alpha * next_normal_gradient)
+    # Substeps follow the coupling clock and the last one lands exactly on the interval end.
     np.testing.assert_allclose(times[:3], [0.025, 0.03, 0.035], rtol=0.0, atol=1e-15)
     assert times[-1] == 2 * 0.02

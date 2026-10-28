@@ -45,7 +45,7 @@ SAMPLE_INTERVAL_TIME = 2.0 * 0.291  # time between field samples [s]
 MERGING_SAMPLE_INTERVAL_STEPS = 6  # resolve the rapid final collapse of the two vorticity peaks
 BACKUP_INTERVAL_TIME = 10.0 * 0.291  # time between snapshots [s]
 INITIAL_STRENGTH_CUTOFF = 1e-4  # minimum initial strength relative to the peak
-MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD population)
+MAX_PARTICLES = 400_000  # particle-container capacity (largest DVH/GBD particle count)
 
 ALL_VISCOUS_SCHEMES = ("cs", "rwm", "dvh", "gbd")
 RWM_ENSEMBLE_SIZE = 10

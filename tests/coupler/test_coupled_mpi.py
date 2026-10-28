@@ -34,10 +34,10 @@ directory = Path(sys.argv[1])
 
 def solver(case_dir):
     flow, particles = uniform_stream_cases(
-        case_dir, fvm_time_step_size=.01, exchange_time_step_size=.01, end_time=.02,
+        case_dir, fvm_time_step_size=.01, coupling_time_step_size=.01, end_time=.02,
         cores=2, max_n_particles=1000,
     )
-    return coupler.CoupledSolver(flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0))
+    return coupler.CoupledSolver(flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, blend_end_depth=0.0))
 
 
 with solver(directory / "first") as first:
@@ -95,7 +95,7 @@ from tests.support.coupler import uniform_stream_cases
 directory = Path(sys.argv[1])
 mode = sys.argv[2]
 flow, particles = uniform_stream_cases(
-    directory, fvm_time_step_size=.01, exchange_time_step_size=.01, end_time=.01,
+    directory, fvm_time_step_size=.01, coupling_time_step_size=.01, end_time=.01,
     cores=2, max_n_particles=1000,
 )
 if mode == "construction_failure":
@@ -104,7 +104,7 @@ if mode == "construction_failure":
     vpm_api.VPMSolver = fail
 solver = None
 try:
-    solver = coupler.CoupledSolver(flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0))
+    solver = coupler.CoupledSolver(flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, blend_end_depth=0.0))
     with solver:
         native = solver.fvm_solver
         assert native.parallel.size == 2

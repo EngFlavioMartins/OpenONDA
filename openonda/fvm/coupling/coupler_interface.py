@@ -11,7 +11,7 @@ Getters
     ``gather_boundary_face_velocity``, ``n_ranks``.
 Setters
     ``set_dirichlet_velocity_boundary_condition``,
-    ``set_normal_velocity_tangential_gradient_boundary_condition``,
+    ``set_mixed_velocity_boundary_condition``,
     ``set_flux_consistent_pressure_boundary_condition``.
 Driver
     ``solve_step``, ``accept_step``, ``advance`` and ``move_mesh`` live on the
@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 
 from ..fields.mixed_velocity_boundary import (
-    update_normal_velocity_tangential_gradient_boundary,
+    update_mixed_velocity_boundary,
 )
 
 
@@ -48,7 +48,7 @@ class CouplerInterfaceMixin:
     registered_fields: dict[str, np.ndarray]
     time_step_size: float
     _accepted_time_step_size: float
-    _coupling_patch_ids_by_rank: dict[str, Any]
+    _outer_boundary_patch_ids_by_rank: dict[str, Any]
     _coupling_cell_ids_by_rank: dict[str, Any]
 
     def _velocity_gradient(self) -> np.ndarray:
@@ -81,7 +81,7 @@ class CouplerInterfaceMixin:
         self, patch_name: str, local_ids: np.ndarray
     ) -> list[np.ndarray] | tuple[()]:
         """Gather an immutable face layout once per coupling patch."""
-        cache = self._coupling_patch_ids_by_rank
+        cache = self._outer_boundary_patch_ids_by_rank
         if patch_name not in cache:
             gathered = self.parallel.comm.gather(np.asarray(local_ids, dtype=np.int64), root=0)
             cache[patch_name] = gathered if self.parallel.is_root else ()
@@ -498,13 +498,16 @@ class CouplerInterfaceMixin:
         b.pop("_freestream_outflow", None)
         self._write_patch_ghosts(b, field)
 
-    def set_normal_velocity_tangential_gradient_boundary_condition(
-        self, normal_velocity: np.ndarray, tangential_gradient: np.ndarray, patch_name: str
+    def set_mixed_velocity_boundary_condition(
+        self,
+        normal_velocity: np.ndarray,
+        tangential_velocity_normal_gradient: np.ndarray,
+        patch_name: str,
     ) -> None:
-        """Prescribe normal velocity and the tangential velocity gradient per face."""
+        """Prescribe the normal velocity and the normal gradient of the tangential velocity per face."""
         normal_field = self._scatter_patch_values(patch_name, normal_velocity)
         gradient_field = self._scatter_patch_values(
-            patch_name, tangential_gradient, trailing_shape=(3,)
+            patch_name, tangential_velocity_normal_gradient, trailing_shape=(3,)
         )
         b = self._optional_patch(patch_name)
         if b is None:
@@ -516,8 +519,8 @@ class CouplerInterfaceMixin:
             )
         if gradient_field.shape != (n_faces, 3) or not np.all(np.isfinite(gradient_field)):
             raise ValueError(
-                f"Tangential gradient for patch {patch_name!r} must be finite with shape "
-                f"({n_faces}, 3)"
+                f"Normal gradient of the tangential velocity for patch {patch_name!r} must be finite "
+                f"with shape ({n_faces}, 3)"
             )
 
         start = b["start_face"]
@@ -531,18 +534,16 @@ class CouplerInterfaceMixin:
         removed_normal_component = np.einsum("ij,ij->i", gradient_field, normals)
         gradient_field = gradient_field - removed_normal_component[:, np.newaxis] * normals
 
-        b["velocity_type"] = "normal_value_tangential_gradient"
+        b["velocity_type"] = "mixed_velocity"
         b["normal_velocity_field"] = normal_field
-        b["tangential_gradient_field"] = gradient_field
-        b["max_removed_tangential_gradient_normal_component"] = (
+        b["tangential_velocity_normal_gradient_field"] = gradient_field
+        b["max_removed_normal_gradient_normal_component"] = (
             float(np.max(np.abs(removed_normal_component))) if n_faces else 0.0
         )
         b.pop("velocity_value_field", None)
         b.pop("_freestream_pressure_outflow", None)
         b.pop("_freestream_outflow", None)
-        update_normal_velocity_tangential_gradient_boundary(
-            self.velocity, b, self.mesh_data, self.geo_data
-        )
+        update_mixed_velocity_boundary(self.velocity, b, self.mesh_data, self.geo_data)
         self._invalidate_derived_fields()
         self._publish_state()
 

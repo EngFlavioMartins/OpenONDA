@@ -1,13 +1,13 @@
-"""Independent Gaussian image-sum checks for slab renewal."""
+"""Independent Gaussian image-sum checks of the vorticity transfer in a slip slab."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from openonda.coupler.stable_renewal import (
-    blend_represented_state,
-    gaussian_represented_vortex_strength,
+from openonda.coupler.transfer_lattice import (
+    correct_lattice_strength,
+    gaussian_representation,
 )
 
 
@@ -53,7 +53,7 @@ def test_slip_slab_gaussian_matches_full_image_sum(origin_z, source_z, planes):
     strength = np.zeros((*shape, 3))
     strength[1, 1, source_z] = gamma
     sigma = 1.2
-    represented = gaussian_represented_vortex_strength(
+    represented = gaussian_representation(
         strength.reshape(-1, 3),
         shape,
         1.0,
@@ -69,7 +69,7 @@ def test_node_aligned_plane_cancels_tangential_and_doubles_normal_source():
     shape = (3, 3, 13)
     strength = np.zeros((*shape, 3))
     strength[1, 1, 3] = [1.0, 0.0, 1.0]
-    represented = gaussian_represented_vortex_strength(
+    represented = gaussian_representation(
         strength.reshape(-1, 3),
         shape,
         1.0,
@@ -81,7 +81,7 @@ def test_node_aligned_plane_cancels_tangential_and_doubles_normal_source():
     assert represented.reshape(*shape, 3)[1, 1, 3, 2] > 2 / np.pi**1.5 - 1e-12
 
 
-def test_blend_corrects_only_physical_slab_and_uses_image_residual():
+def test_strength_correction_acts_only_in_physical_slab_and_uses_image_residual():
     shape = (3, 3, 14)
     origin_z = -3.5
     planes = (0.0, 6.0)
@@ -91,7 +91,7 @@ def test_blend_corrects_only_physical_slab_and_uses_image_residual():
     blend_weight = np.ones(len(vpm))
     weight = np.zeros(len(vpm))
     weight.reshape(shape)[:, :, 4:10] = 1.0
-    slab = blend_represented_state(
+    slab = correct_lattice_strength(
         vpm,
         target,
         blend_weight,
@@ -102,7 +102,7 @@ def test_blend_corrects_only_physical_slab_and_uses_image_residual():
         slip_slab_bounds=planes,
         lattice_origin_z=origin_z,
     )
-    free = blend_represented_state(
+    free = correct_lattice_strength(
         vpm,
         target,
         blend_weight,
@@ -111,18 +111,18 @@ def test_blend_corrects_only_physical_slab_and_uses_image_residual():
         core_radius=1.2,
         output_weight=weight,
     )
-    assert np.all(slab.vortex_strength[weight == 0.0] == 0.0)
-    assert np.all(slab.physical_target[weight == 0.0] == 0.0)
-    assert not np.allclose(slab.vortex_strength, free.vortex_strength)
-    represented = gaussian_represented_vortex_strength(
-        slab.vortex_strength,
+    assert np.all(slab.limited_strength[weight == 0.0] == 0.0)
+    assert np.all(slab.blended_target[weight == 0.0] == 0.0)
+    assert not np.allclose(slab.limited_strength, free.limited_strength)
+    represented = gaussian_representation(
+        slab.limited_strength,
         shape,
         1.0,
         core_radius=1.2,
         slip_slab_bounds=planes,
         lattice_origin_z=origin_z,
     )
-    expected = np.linalg.norm((represented - slab.physical_target)[weight > 0.0]) / np.linalg.norm(
-        slab.physical_target[weight > 0.0]
+    expected = np.linalg.norm((represented - slab.blended_target)[weight > 0.0]) / np.linalg.norm(
+        slab.blended_target[weight > 0.0]
     )
     assert slab.residual_after_correction == pytest.approx(expected)

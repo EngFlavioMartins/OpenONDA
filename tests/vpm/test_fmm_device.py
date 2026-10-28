@@ -289,7 +289,8 @@ def test_device_hierarchy_handles_edge_cases_and_rebuilds_stage_metadata():
     workspace = harness.induction.workspace
     root = int(workspace.tree._root[None])
     first_centre = np.array(workspace.tree.node_centre[root], dtype=np.float32)
-    root_moments = workspace.multipole.to_numpy().reshape(workspace.max_nodes, 20, 3)[root]
+    root_slot = int(workspace._expansion_slot[root])
+    root_moments = workspace.multipole.to_numpy().reshape(-1, 20, 3)[root_slot]
     displacement = position - first_centre
     for coefficient, (a, b, c) in enumerate(_MULTI_INDICES):
         expected = (
@@ -308,7 +309,9 @@ def test_device_hierarchy_handles_edge_cases_and_rebuilds_stage_metadata():
     changed_position[:, 0] += np.linspace(0.0, 0.5, len(position), dtype=np.float32)
     harness.evaluate(changed_position, 2.0 * strength, radius)
     second_centre = np.array(workspace.tree.node_centre[root], dtype=np.float32)
-    second_moment = np.array(workspace.multipole[root * 20], dtype=np.float32)
+    second_moment = np.array(
+        workspace.multipole[int(workspace._expansion_slot[root]) * 20], dtype=np.float32
+    )
     assert not np.array_equal(first_centre, second_centre)
     np.testing.assert_allclose(second_moment, 2.0 * first_moment, rtol=2.0e-5, atol=2.0e-7)
 

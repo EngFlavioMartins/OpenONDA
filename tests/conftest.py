@@ -31,7 +31,7 @@ INTEGRATION_MODULES = frozenset(
         "test_fvm_vpm_smoke.py",
         "test_moving_mesh_coupling.py",
         "test_physical_coupling.py",
-        "test_stable_renewal.py",
+        "test_transfer_lattice.py",
     }
 )
 

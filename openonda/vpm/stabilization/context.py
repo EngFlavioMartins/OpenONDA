@@ -26,7 +26,7 @@ class ParticleMutationPort(Protocol):
         ...
 
     def set_properties(self, **properties: object) -> None:
-        """Update selected per-particle fields without changing population."""
+        """Update selected per-particle fields without changing the particle count."""
 
         ...
 

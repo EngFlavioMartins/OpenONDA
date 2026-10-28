@@ -1,0 +1,7 @@
+reference,reynolds_number,cell_size,time_step,cost,mean drag vs finest,lift amplitude vs finest,Strouhal number vs finest,wake velocity vs finest
+reference_re100,100.0,0.04,0.008,83.8205,0,0,0,0
+reference_dt0.002,150.0,0.04,0.002,344.292,0,0,0,0
+reference_dt0.004,150.0,0.04,0.004,164.882,0.138578,0.418377,-0.00556463,2.96481
+reference_flow,150.0,0.04,0.008,131.791,0.269662,1.16235,-0.0482334,2.46864
+reference_dt0.016,150.0,0.04,0.016,38.6767,0.470709,2.63231,-0.169418,1.76463
+reference_re250,250.0,0.04,0.008,82.0515,0,0,0,0

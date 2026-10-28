@@ -1,7 +1,7 @@
 """Full-vector induction between a pair of free-slip span planes.
 
 Only physical particles are advanced. Their slab images are summed by the
-image field mesh and are never added to the particle population or
+image field mesh and are never added to the particle set or
 diagnostics.
 """
 

@@ -21,7 +21,7 @@ def _configure_curved_wall(physics):
         boundary.contains,
         revision=boundary.revision,
         query_bounds=boundary.bounds,
-        blocks_segments=boundary.blocks_segments,
+        segments_cross_wall=boundary.segments_cross_wall,
     )
 
 

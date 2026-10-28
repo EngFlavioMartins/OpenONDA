@@ -25,7 +25,7 @@ def _configuration_mismatches(
                     and type(new_capacity) is int
                     and new_capacity > old_capacity
                 ):
-                    # Population is bounded strictly by capacity: no
+                    # The particle count is bounded strictly by capacity: no
                     # active operator truncates a field or changes algorithms
                     # when a proposal exceeds it. A larger allocation can
                     # resume the same configuration after an exhausted one.

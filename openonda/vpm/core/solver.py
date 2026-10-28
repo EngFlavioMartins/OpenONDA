@@ -659,7 +659,7 @@ class VPMSolver:
         defer_output : bool, default=False
             Leave the scheduled output of the accepted state to a later
             :meth:`write_step_output` call, so a coupled driver can first
-            exchange the particle cloud.
+            transfer vorticity to the particles.
         time : float or None, default=None
             Accepted time in s imposed by a driver that owns the clock, such
             as the FVM--VPM coupler. It must equal ``time + time_step_size``
@@ -1051,7 +1051,7 @@ class VPMSolver:
     def _output_preparation(self) -> Iterator[None]:
         """Allow one backup to reuse fields within a framework-owned event.
 
-        Nothing survives the event: manual saves, coupling exchanges, changed
+        Nothing survives the event: manual saves, coupling steps, changed
         callbacks and restart loads must evaluate their current transport field.
         Consuming the token before writing also prevents sampler callbacks from
         reusing it for a second save with externally changed boundary data.
@@ -1533,9 +1533,9 @@ class VPMSolver:
             If a body callback returns non-finite or incorrectly shaped data.
         """
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
-        # Use the same approximation as the target-velocity trace.  Mixing a
+        # Use the same approximation as the target velocity.  Mixing a
         # direct Jacobian with a treecode velocity is both prohibitively
-        # expensive at coupling faces and inconsistent with the boundary trace.
+        # expensive at coupling faces and inconsistent with the boundary data.
         gradient = np.asarray(
             self.physics.compute_target_velocity_gradient_consistent(self.particles, points),
             dtype=np.float64,
@@ -1611,7 +1611,7 @@ class VPMSolver:
         *,
         particle_spacing: float,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Return velocity and tangential normal-gradient trace at points.
+        """Return the velocity and the normal gradient of the tangential velocity at points.
 
         The mixed FVM boundary condition does not consume the full nine-component
         Jacobian. Particle induction is still evaluated by the configured fused
@@ -1885,10 +1885,8 @@ class VPMSolver:
         count = int(self.particles.n_particles_total)
         buffer = buffers.get(slot)
         if buffer is None or buffer.capacity < count:
-            capacity = min(
-                self.particles.capacity,
-                max(1, count, 2 * buffer.capacity if buffer is not None else count),
-            )
+            # A tenth of headroom: a doubled copy of a large particle set may not fit on the device
+            capacity = min(self.particles.capacity, max(1, int(np.ceil(1.1 * count))))
             replacement = ParticleSnapshotBuffer(capacity, self.particles._taichi_dtype)
             if buffer is not None:
                 buffer.destroy()

@@ -437,7 +437,7 @@ def restore_restart_state(solver: FVMSolver, restart_state: FieldRestartState) -
 
 
 def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
-    """Copy the standard accepted state into memory for coupling sweeps.
+    """Copy the standard accepted state into memory for coupling iterations.
 
     This has the same numerical content as a disk restart, without compression,
     mesh hashing or filesystem traffic. Each MPI rank captures its local state.

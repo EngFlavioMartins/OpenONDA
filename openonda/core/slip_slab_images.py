@@ -4,7 +4,7 @@ Free-slip planes at z_min and z_max reflect vorticity as an axial vector: an
 image across a plane keeps the spanwise component and reverses the in-plane
 ones, and two reflections translate by twice the slab width. A nodal scalar
 such as the eddy viscosity is even under every image. Grid diffusion and
-particle renewal both need the field of every image, for slabs of any width
+the vorticity transfer both need the field of every image, for slabs of any width
 down to a single lattice layer.
 """
 

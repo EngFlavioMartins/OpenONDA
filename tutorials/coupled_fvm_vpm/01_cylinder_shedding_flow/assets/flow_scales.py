@@ -13,8 +13,8 @@ carry over to other flows:
   keeps rising beyond it and peaks further downstream, as listed for comparison;
 - vorticity thickness of the separated shear layer at the base plane x = D/2,
   delta_w = Delta u / max|du/dy| of the time-mean velocity, against the viscous scale D/sqrt(Re);
-- largest strain rate at the wall, where it peaks, for the particle stability number
-  Lambda = max|S| dt_p. At a no-slip wall the planar strain is pure shear, so the infinity norm
+- largest strain rate at the wall, where it peaks, for the Lagrangian CFL number
+  Lambda = max|S| dt_VPM. At a no-slip wall the planar strain is pure shear, so the infinity norm
   max_i sum_j |S_ij| that the particle solver checks equals |omega_z|/2 there; it is taken from
   the FVM vorticity of the cells next to the wall;
 - Strouhal number of the lift and wake half-width at x = 2 D and 4 D, where the time-mean

@@ -1,8 +1,9 @@
 """Coupled FVM--VPM solver of OpenONDA.
 
-The FVM resolves the body and the near wake inside a box whose outer boundary
-is driven by the particle field; the FVM vorticity renews the particles in the
-overlap while the VPM carries the outer wake::
+The FVM resolves the body and the near wake inside the FVM domain, whose outer
+boundary receives its boundary data from the particle field; the FVM vorticity is
+transferred to the particles in the transfer region while the VPM carries the
+outer wake::
 
     import openonda.coupler as coupling
 

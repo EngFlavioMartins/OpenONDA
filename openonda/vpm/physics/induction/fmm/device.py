@@ -70,11 +70,17 @@ _M2L_BATCH_SIZE = 32768
 # not grow eight pair arrays until a small accelerator runs out of memory.
 _FMM_LEAF_CAPACITY = 32
 _MAX_TREE_LEVELS = 96
-# Start each list at 32 pairs per particle, then grow from observed demand.
+# Start each list at 16 pairs per particle, then grow from observed demand.
 # Overflowed final lists are never consumed by the field passes.
-_PAIR_CAPACITY_FACTOR = 32
+_PAIR_CAPACITY_FACTOR = 16
+# Expansions live on the active cells of the interaction tree only, about one per eight
+# particles; start at one per four particles, then grow from observed demand.
+_ACTIVE_CELL_FRACTION = 0.25
+# Particle-capacity growth of the workspace; doubling a million-particle workspace
+# would not fit a 6 GB device.
+_CAPACITY_GROWTH = 1.25
 _MAX_PAIR_CAPACITY = (1 << 30) - 1  # A queued pair can produce two i32 entries.
-_MAX_LIST_GROWTH_RETRIES = 4
+_MAX_LIST_GROWTH_RETRIES = 8
 _EPSILON_SQUARED = 1.0e-24
 _ONE_OVER_FOUR_PI = 0.07957747154594767
 _GEOMETRIC_SEPARATION_FACTOR = 3.0
@@ -121,6 +127,16 @@ class _InteractionListCapacityError(RuntimeError):
         super().__init__(
             "FMM interaction-list capacity was exceeded "
             f"(capacities={self.capacities}, observed={self.counts})"
+        )
+
+
+class _ExpansionCapacityError(RuntimeError):
+    """Too few expansion slots for the active cells, raised before any expansion is written."""
+
+    def __init__(self, capacity: int, active_cells: int):
+        self.active_cells = int(active_cells)
+        super().__init__(
+            f"FMM expansion storage holds {capacity} cells; the source tree has {active_cells}"
         )
 
 
@@ -234,6 +250,7 @@ class FMMDeviceWorkspace:
         max_evaluation_points: int,
         *,
         _list_capacities: _ListCapacities | None = None,
+        _active_cell_capacity: int | None = None,
     ) -> None:
         """Allocate fixed-capacity f32 storage for one device FMM evaluator.
 
@@ -268,6 +285,11 @@ class FMMDeviceWorkspace:
             else _list_capacities
         )
         self.max_m2l_pairs, self.max_near_pairs, self.max_queue_pairs = self.list_capacities
+        self.max_active_cells = (
+            max(1, math.ceil(_ACTIVE_CELL_FRACTION * self.max_n_particles))
+            if _active_cell_capacity is None
+            else int(_active_cell_capacity)
+        )
         self.m2l_batch_size = min(_M2L_BATCH_SIZE, self.max_m2l_pairs)
         self.radial_factors = radial_factors
         self.velocity_tail_cutoff = float(velocity_tail_cutoff)
@@ -287,10 +309,12 @@ class FMMDeviceWorkspace:
             max_evaluation_points=self.target_batch_capacity,
         )
         fields = _DeviceFields()
-        self.multipole = fields.vector(3, dtype=ti.f32, shape=self.max_nodes * _MOMENT_COUNT)
-        self.local = fields.vector(3, dtype=ti.f32, shape=self.max_nodes * _LOCAL_COUNT)
         # Expansions are needed only on the interaction tree, which stops at
-        # maximal <=32-particle cells, not at every singleton LBVH leaf.
+        # maximal <=32-particle cells, not at every singleton LBVH leaf: they are
+        # stored per active cell, at the slot the active-cell schedule assigns.
+        self.multipole = fields.vector(3, dtype=ti.f32, shape=self.max_active_cells * _MOMENT_COUNT)
+        self.local = fields.vector(3, dtype=ti.f32, shape=self.max_active_cells * _LOCAL_COUNT)
+        self._expansion_slot = fields.scalar(dtype=ti.i32, shape=self.max_nodes)
         self._active_internal_nodes = fields.scalar(dtype=ti.i32, shape=self.max_nodes)
         self._active_leaf_nodes = fields.scalar(dtype=ti.i32, shape=self.max_n_particles)
         self._particle_cell = fields.scalar(dtype=ti.i32, shape=self.max_n_particles)
@@ -475,9 +499,11 @@ class FMMDeviceWorkspace:
             if self._is_fmm_leaf(node) == 0:
                 destination = ti.atomic_add(self._level_node_cursor[self.tree.node_depth[node]], 1)
                 self._active_internal_nodes[destination] = node
+                self._expansion_slot[node] = destination
             elif self._is_active_cell(node) != 0:
                 destination = ti.atomic_add(self._active_leaf_count[None], 1)
                 self._active_leaf_nodes[destination] = node
+                self._expansion_slot[node] = self._active_internal_count[None] + destination
                 first = self.tree.node_particle_start[node]
                 for slot in range(first, first + self.tree.node_particle_count[node]):
                     self._particle_cell[slot] = node
@@ -488,9 +514,13 @@ class FMMDeviceWorkspace:
         for node in range(node_count):
             if self._is_active_cell(node) != 0:
                 for coefficient in ti.static(range(_MOMENT_COUNT)):
-                    self.multipole[node * _MOMENT_COUNT + coefficient] = ti.Vector([0.0, 0.0, 0.0])
+                    self.multipole[self._expansion_slot[node] * _MOMENT_COUNT + coefficient] = (
+                        ti.Vector([0.0, 0.0, 0.0])
+                    )
                 for coefficient in ti.static(range(_LOCAL_COUNT)):
-                    self.local[node * _LOCAL_COUNT + coefficient] = ti.Vector([0.0, 0.0, 0.0])
+                    self.local[self._expansion_slot[node] * _LOCAL_COUNT + coefficient] = ti.Vector(
+                        [0.0, 0.0, 0.0]
+                    )
         for particle in range(particle_count):
             self.velocity[particle] = ti.Vector([0.0, 0.0, 0.0])
             self.gradient[particle] = ti.Matrix.zero(ti.f32, 3, 3)
@@ -518,14 +548,14 @@ class FMMDeviceWorkspace:
                         / self._factorial(c)
                     )
                     moment += self.tree.vortex_strength[particle] * scale
-                self.multipole[node * _MOMENT_COUNT + coefficient] = moment
+                self.multipole[self._expansion_slot[node] * _MOMENT_COUNT + coefficient] = moment
 
     @ti.kernel
     def _m2m_level(self, count: ti.i32, level: ti.i32):
         for internal_slot in range(self._level_node_count[level]):
             node = self._active_internal_nodes[self._level_node_start[level] + internal_slot]
             if self.tree.node_depth[node] == level:
-                node_base = node * _MOMENT_COUNT
+                node_base = self._expansion_slot[node] * _MOMENT_COUNT
                 for alpha_index in range(_MOMENT_COUNT):
                     alpha_a = self._coefficient_a[alpha_index]
                     alpha_b = self._coefficient_b[alpha_index]
@@ -537,7 +567,7 @@ class FMMDeviceWorkspace:
                             if child_slot == 0
                             else self.tree.node_right[node]
                         )
-                        child_base = child * _MOMENT_COUNT
+                        child_base = self._expansion_slot[child] * _MOMENT_COUNT
                         offset = self.tree.node_centre[child] - self.tree.node_centre[node]
                         for beta_index in range(_MOMENT_COUNT):
                             beta_a = self._coefficient_a[beta_index]
@@ -735,8 +765,8 @@ class FMMDeviceWorkspace:
             pair = pair_start + local_pair
             target = self.m2l_target[pair]
             source = self.m2l_source[pair]
-            source_base = source * _MOMENT_COUNT
-            target_base = target * _LOCAL_COUNT
+            source_base = self._expansion_slot[source] * _MOMENT_COUNT
+            target_base = self._expansion_slot[target] * _LOCAL_COUNT
             for beta_index in range(_LOCAL_COUNT):
                 beta_a = self._coefficient_a[beta_index]
                 beta_b = self._coefficient_b[beta_index]
@@ -778,8 +808,8 @@ class FMMDeviceWorkspace:
                         self.tree.node_left[node] if child_slot == 0 else self.tree.node_right[node]
                     )
                     offset = self.tree.node_centre[child] - self.tree.node_centre[node]
-                    parent_base = node * _LOCAL_COUNT
-                    child_base = child * _LOCAL_COUNT
+                    parent_base = self._expansion_slot[node] * _LOCAL_COUNT
+                    child_base = self._expansion_slot[child] * _LOCAL_COUNT
                     translation_norm_sq = 0.0
                     for beta_index in range(_LOCAL_COUNT):
                         beta_a = self._coefficient_a[beta_index]
@@ -819,7 +849,7 @@ class FMMDeviceWorkspace:
         for slot in range(count):
             particle = self.tree.sorted_indices[slot]
             node = self._particle_cell[slot]
-            base = node * _LOCAL_COUNT
+            base = self._expansion_slot[node] * _LOCAL_COUNT
             offset = self.tree.position[particle] - self.tree.node_centre[node]
             x, y, z = offset[0], offset[1], offset[2]
             # The local is now evaluated at a multi-particle cell instead of
@@ -1139,6 +1169,9 @@ class FMMDeviceWorkspace:
         self._count_active_cells(node_count)
         self._initialize_active_cell_offsets()
         self._write_active_cell_schedule(node_count)
+        active_cells = int(self._active_internal_count[None]) + int(self._active_leaf_count[None])
+        if active_cells > self.max_active_cells:
+            raise _ExpansionCapacityError(self.max_active_cells, active_cells)
         self._zero_pass(node_count, count)
         self._p2m_pass(count)
         for level in range(level_count - 1, -1, -1):
@@ -1369,13 +1402,19 @@ class FMMInduction:
             return
         if getattr(self, "_fixed_source_key", None) is not None:
             raise RuntimeError("cannot grow FMM workspace inside fixed-source target scope")
-        capacity = min(self.max_n_particles, max(source_count, 2 * current.max_n_particles))
+        capacity = min(
+            self.max_n_particles,
+            max(source_count, math.ceil(_CAPACITY_GROWTH * current.max_n_particles)),
+        )
         pairs = _ListCapacities(
             *(max(_PAIR_CAPACITY_FACTOR * capacity, item) for item in current.list_capacities)
         )
-        self._replace_workspace(capacity, pairs)
+        active_cells = max(math.ceil(_ACTIVE_CELL_FRACTION * capacity), current.max_active_cells)
+        self._replace_workspace(capacity, pairs, active_cells)
 
-    def _replace_workspace(self, capacity: int, max_pairs: int | _ListCapacities) -> None:
+    def _replace_workspace(
+        self, capacity: int, max_pairs: int | _ListCapacities, active_cells: int
+    ) -> None:
         """Replace only disposable scratch; stage inputs and published outputs stay intact."""
         if getattr(self, "_fixed_source_key", None) is not None:
             raise RuntimeError("cannot grow FMM workspace inside fixed-source target scope")
@@ -1397,6 +1436,7 @@ class FMMInduction:
             self._gradient_tail_cutoff,
             self._max_evaluation_points,
             _list_capacities=pairs,
+            _active_cell_capacity=active_cells,
         )
 
     def close(self) -> None:
@@ -1415,23 +1455,28 @@ class FMMInduction:
             current.destroy()
 
     def _grow_interaction_lists(self, error: _InteractionListCapacityError) -> None:
-        """Grow from observed demand, without changing FMM accuracy or particle capacity.
+        """Grow the overflowed lists from observed demand, without changing FMM accuracy.
 
-        Every list grows together: the traversal stops at the first overflow,
-        so the counts of the other lists are incomplete. Growing them one at a
-        time replaces the workspace once per list, and the GPU memory pool
-        keeps each discarded workspace.
+        Only a full queue stops the traversal. While the queue holds, the M2L and
+        near counts are the complete demand, so an overflowed list grows once to
+        it. After a queue overflow the counts are lower bounds, and an overflowed
+        list grows by at least half. A list that did not overflow keeps its size:
+        the discarded workspace returns its device memory before the new one is
+        allocated, so retries cost traversal time, not memory.
         """
         current = self.workspace
         assert current is not None
+        queue_complete = error.counts.queue <= current.list_capacities.queue
         proposed = _ListCapacities(
             *(
-                max(
-                    _PAIR_CAPACITY_FACTOR * current.max_n_particles,
-                    math.ceil(1.5 * capacity),
-                    math.ceil(1.25 * required),
+                capacity
+                if required <= capacity
+                else math.ceil(1.25 * required)
+                if queue_complete and name != "queue"
+                else max(math.ceil(1.5 * capacity), math.ceil(1.25 * required))
+                for name, capacity, required in zip(
+                    _ListCapacities._fields, current.list_capacities, error.counts, strict=True
                 )
-                for capacity, required in zip(current.list_capacities, error.counts, strict=True)
             )
         )
         if max(proposed) > _MAX_PAIR_CAPACITY:
@@ -1441,7 +1486,19 @@ class FMMInduction:
             "retrying the unchanged particle stage",
             stacklevel=2,
         )
-        self._replace_workspace(current.max_n_particles, proposed)
+        self._replace_workspace(current.max_n_particles, proposed, current.max_active_cells)
+
+    def _grow_expansion_storage(self, error: _ExpansionCapacityError) -> None:
+        """Grow the expansion storage to the observed active cells, without changing FMM accuracy."""
+        current = self.workspace
+        assert current is not None
+        active_cells = math.ceil(1.25 * error.active_cells)
+        Logging.runtime_warning(
+            f"Growing FMM expansion storage from {current.max_active_cells} to {active_cells} "
+            "active cells; retrying the unchanged particle stage",
+            stacklevel=2,
+        )
+        self._replace_workspace(current.max_n_particles, current.list_capacities, active_cells)
 
     def estimated_workspace_bytes(self, max_n_particles: int) -> int:
         """Estimate fixed FMM and hierarchy field arrays for a capacity.
@@ -1474,7 +1531,8 @@ class FMMInduction:
         evaluation_capacity = min(evaluation_capacity, _TRAVERSAL_BATCH_SIZE)
         node_count = 2 * capacity
         pairs = _normalize_list_capacities(_PAIR_CAPACITY_FACTOR * capacity)
-        coefficient_bytes = node_count * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT)
+        active_cells = max(1, math.ceil(_ACTIVE_CELL_FRACTION * capacity))
+        coefficient_bytes = active_cells * 3 * 4 * (_MOMENT_COUNT + _LOCAL_COUNT) + node_count * 4
         interaction_bytes = pairs.storage_bytes + 4  # Queue high-water counter.
         near_adjacency_bytes = node_count * 3 * 4
         active_schedule_bytes = (node_count + 2 * capacity + 3 * _MAX_TREE_LEVELS + 2) * 4
@@ -1576,13 +1634,16 @@ class FMMInduction:
                     position, vortex_strength, core_radius, count, self._stretching_mode
                 )
                 break
-            except _InteractionListCapacityError as error:
+            except (_InteractionListCapacityError, _ExpansionCapacityError) as error:
                 if attempt == _MAX_LIST_GROWTH_RETRIES:
                     raise RuntimeError(
-                        "FMM interaction-list storage still insufficient after bounded growth; "
-                        "no stage output was published"
+                        "FMM interaction-list or expansion storage still insufficient after "
+                        "bounded growth; no stage output was published"
                     ) from error
-                self._grow_interaction_lists(error)
+                if isinstance(error, _ExpansionCapacityError):
+                    self._grow_expansion_storage(error)
+                else:
+                    self._grow_interaction_lists(error)
         self.physics._copy_vec3(self.workspace.velocity, velocity_out, count)
         if velocity_gradient_out is not None:
             self.physics._copy_mat3(self.workspace.gradient, velocity_gradient_out, count)

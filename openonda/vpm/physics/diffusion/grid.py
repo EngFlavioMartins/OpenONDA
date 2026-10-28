@@ -48,7 +48,7 @@ _GBD_MOMENT_RCOND = 1.0e-12
 _GBD_MOMENT_CONDITION_LIMIT = 1.0e12
 _GBD_MOMENT_RESIDUAL_LIMIT = 1.0e-5
 # If the complete post-diffusion field has one vortex-vector direction, the
-# pruning closure must stay in that physical subspace.  A fully vector-valued
+# moment correction must stay in that physical subspace.  A fully vector-valued
 # nine-moment solve can otherwise satisfy the same global moments by inventing
 # transverse strength components.
 _GBD_DIRECTION_SUBSPACE_TOLERANCE = 1.0e-12
@@ -56,9 +56,9 @@ _GBD_DIRECTION_SUBSPACE_TOLERANCE = 1.0e-12
 # cap-full search to a small weakest-node frontier so each candidate is judged
 # with fixed 9x9 algebra instead of an O(N_retained) trial cloud.
 _GBD_MOMENT_REPLACEMENT_POOL_SIZE = 32
-# A recovery whose L1 change is comparable with the complete diffused field is
-# no longer a small pruning closure.  Stop before mutating the production grid
-# instead of accepting a numerically closed but physically amplified cloud.
+# A moment correction whose L1 change is comparable with the complete diffused
+# field is no longer small.  Stop before mutating the production grid instead of
+# accepting a cloud that meets the moments numerically but not physically.
 _GBD_MOMENT_CORRECTION_FRACTION_LIMIT = 0.5
 
 # Radius assigned to freshly regenerated particles: σ = _REGEN_RADIUS_RATIO * particle_spacing
@@ -68,30 +68,30 @@ _REGEN_RADIUS_RATIO = 2.5
 class _GBDMomentCorrectionError(RuntimeError):
     """A retained support cannot safely represent its discarded moments."""
 
-    def __init__(self, message: str, *, recovery_label: int | None):
+    def __init__(self, message: str, *, correction_label: int | None):
         super().__init__(message)
-        self.recovery_label = recovery_label
+        self.correction_label = correction_label
 
 
-def _nearest_visible_nodes(
-    survivors: np.ndarray, removed: np.ndarray, blocks_segments: Callable | None = None
+def _nearest_fluid_connected_nodes(
+    survivors: np.ndarray, removed: np.ndarray, segments_cross_wall: Callable | None = None
 ) -> np.ndarray:
     """Return nearest retained nodes, querying occluded alternatives in batches."""
     from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
     tree = cKDTree(survivors, compact_nodes=False)
     nearest = tree.query(removed, k=1, workers=-1)[1]
-    if blocks_segments is None:
+    if segments_cross_wall is None:
         return nearest
 
     for start in range(0, len(removed), _GRID_TRANSFER_CHUNK):
         stop = min(start + _GRID_TRANSFER_CHUNK, len(removed))
-        hidden = blocks_segments(removed[start:stop], survivors[nearest[start:stop]])
+        hidden = segments_cross_wall(removed[start:stop], survivors[nearest[start:stop]])
         nearest[start:stop][hidden] = -1
     pending = np.flatnonzero(nearest < 0)
     # Asking for a list of ranks stores only that list's results, rather than
-    # a growing donor-by-survivor matrix. Most donors use the initial nearest
-    # result; only occluded donors enter these additional geometry queries.
+    # a growing removed-by-retained matrix. Most removed nodes use the initial
+    # nearest result; only those behind the wall enter these geometry queries.
     for first_rank in range(2, len(survivors) + 1, 32):
         if not len(pending):
             break
@@ -101,16 +101,16 @@ def _nearest_visible_nodes(
             rows = pending[start : start + batch_size]
             candidates = tree.query(removed[rows], k=ranks, workers=-1)[1]
             sources = np.broadcast_to(removed[rows, None, :], (*candidates.shape, 3))
-            visible = ~blocks_segments(
+            connected = ~segments_cross_wall(
                 sources.reshape(-1, 3), survivors[candidates].reshape(-1, 3)
             ).reshape(candidates.shape)
-            found = visible.any(axis=1)
-            nearest[rows[found]] = candidates[found, visible[found].argmax(axis=1)]
+            found = connected.any(axis=1)
+            nearest[rows[found]] = candidates[found, connected[found].argmax(axis=1)]
         pending = pending[nearest[pending] < 0]
     if len(pending):
         raise RuntimeError(
-            "GBD pruning has no wall-visible retained node for discarded support; "
-            "reduce the pruning threshold or increase the regeneration cap."
+            "GBD weak-strength removal has no fluid-connected retained node for a removed "
+            "node; reduce the removal threshold or increase the regeneration cap."
         )
     return nearest
 
@@ -272,7 +272,7 @@ def _gbd_directional_moment_gram(
 
 
 def _gbd_moment_gram_quality(gram: np.ndarray) -> tuple[int, float]:
-    """Return numerical rank and condition under the production closure limits."""
+    """Return numerical rank and condition under the moment-correction limits."""
     if not np.all(np.isfinite(gram)):
         return 0, float("inf")
     singular_values = np.linalg.svd(gram, compute_uv=False)
@@ -433,7 +433,7 @@ class _GridDiffusionMixin:
     _REALLOC_HEADROOM = 2.0
 
     # Retained nodes preserve the diffused field's circulation and impulse.
-    conserve_pruned_moments: bool = True
+    conserve_removed_moments: bool = True
     _body_link_grid: TaichiField = None
     _body_segment_classifier: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None
 
@@ -447,7 +447,7 @@ class _GridDiffusionMixin:
     def _init_grid_diffusion(self) -> None:
         """Initialize grid-based diffusion state."""
         self._last_gbd_diffusion_substeps: int = 1
-        self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
+        self._last_gbd_moment_correction = self._empty_gbd_moment_correction()
         self._last_gbd_wall_transfer = {
             "wall_adjacent_particles": 0,
             "excluded_signed_weight_l1": 0.0,
@@ -470,7 +470,7 @@ class _GridDiffusionMixin:
         self._grid_a: TaichiField = None
         self._grid_b: TaichiField = None
         self._body_mask_grid: TaichiField = None  # 1=inside solid, 0=fluid
-        self._body_link_grid = None  # Three bits: blocked positive x/y/z links.
+        self._body_link_grid = None  # Three bits: positive x/y/z links that cross the wall.
         self._effective_viscosity_grid: TaichiField = None
         self._grid_shape: tuple[int, ...] | None = None
 
@@ -510,12 +510,12 @@ class _GridDiffusionMixin:
         return self._last_gbd_diffusion_substeps
 
     @staticmethod
-    def _empty_gbd_moment_recovery() -> dict[str, bool | int | float]:
+    def _empty_gbd_moment_correction() -> dict[str, bool | int | float]:
         return {
             "applied": False,
             "nonzero_node_count": 0,
             "retained_node_count": 0,
-            "pruned_node_count": 0,
+            "removed_node_count": 0,
             "support_augmented_node_count": 0,
             "correction_fraction": 0.0,
             "normalized_vortex_strength_residual": 0.0,
@@ -524,13 +524,13 @@ class _GridDiffusionMixin:
         }
 
     @property
-    def last_gbd_moment_recovery(self) -> dict[str, bool | int | float]:
-        """Return a copy of the most recent GBD pruning-closure diagnostic."""
+    def last_gbd_moment_correction(self) -> dict[str, bool | int | float]:
+        """Return a copy of the moment-correction diagnostic of the latest GBD weak-strength removal."""
         return dict(
             getattr(
                 self,
-                "_last_gbd_moment_recovery",
-                self._empty_gbd_moment_recovery(),
+                "_last_gbd_moment_correction",
+                self._empty_gbd_moment_correction(),
             )
         )
 
@@ -783,7 +783,7 @@ class _GridDiffusionMixin:
 
         Only the origin phase changes; the pre-allocated dimensions remain
         unchanged.  This avoids alternating between half-cell-shifted GBD and
-        handoff lattices every coupling window.
+        transfer lattices every coupling interval.
         """
         if self._fixed_grid_min is None:
             return
@@ -805,7 +805,7 @@ class _GridDiffusionMixin:
         *,
         revision: object,
         query_bounds: np.ndarray | None = None,
-        blocks_segments: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+        segments_cross_wall: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
         geometry_queries: ImmutableBodyGeometryQueries | None = None,
     ) -> None:
         """Use the transfer body's strict-interior classifier on the GBD lattice.
@@ -819,7 +819,7 @@ class _GridDiffusionMixin:
         if revision is None:
             raise ValueError("body geometry revision must be supplied")
         self._body_classifier = contains_interior
-        self._body_segment_classifier = blocks_segments
+        self._body_segment_classifier = segments_cross_wall
         self._body_geometry_queries = geometry_queries
         self._body_grid_geometry_cache = None
         self._body_geometry_revision = revision
@@ -900,7 +900,7 @@ class _GridDiffusionMixin:
                         particle_spacing,
                         (nx, ny, nz),
                         contains=self._body_interior_at_particles,
-                        blocks=self._body_blocked_segments
+                        segments_cross_wall=self._segments_cross_wall
                         if self._body_segment_classifier is not None
                         else None,
                         geometry_key=geometry_key,
@@ -973,7 +973,7 @@ class _GridDiffusionMixin:
         self._body_mask_host = host_mask.reshape(nx, ny, nz)
         self._prepare_body_links(g, particle_spacing, nx, ny, nz)
 
-    def _body_blocked_segments(self, starts: np.ndarray, ends: np.ndarray) -> np.ndarray:
+    def _segments_cross_wall(self, starts: np.ndarray, ends: np.ndarray) -> np.ndarray:
         """Test visibility on the physical wall, including reflected slab paths."""
         starts = np.asarray(starts, dtype=np.float64).reshape(-1, 3)
         ends = np.asarray(ends, dtype=np.float64).reshape(-1, 3)
@@ -1051,7 +1051,7 @@ class _GridDiffusionMixin:
                 ends = points[rows].copy()
                 ends[:, axis] += spacing
                 values[rows] |= (
-                    self._body_blocked_segments(points[rows], ends).astype(np.int32) << axis
+                    self._segments_cross_wall(points[rows], ends).astype(np.int32) << axis
                 )
             buffer[: len(values)] = values
             host_links[start:stop] = values
@@ -1101,7 +1101,7 @@ class _GridDiffusionMixin:
         spacing: float,
         shape: tuple[int, int, int],
     ) -> tuple[np.ndarray, np.ndarray, int]:
-        """Find bounded conservative weights on visible fluid support.
+        """Find bounded conservative weights on fluid-connected support.
 
         A cut stencil can need more than its original four nodes per axis
         to represent a particle between the wall and the nearest grid node.
@@ -1118,7 +1118,7 @@ class _GridDiffusionMixin:
                 indices = indices[np.all((indices >= 0) & (indices < np.asarray(shape)), axis=1)]
                 nodes = origin + spacing * indices
                 fluid = ~self._body_interior_at_particles(nodes)
-                fluid[fluid] &= ~self._body_blocked_segments(
+                fluid[fluid] &= ~self._segments_cross_wall(
                     np.broadcast_to(point, nodes[fluid].shape),
                     nodes[fluid],
                 )
@@ -1136,7 +1136,7 @@ class _GridDiffusionMixin:
             if np.max(np.abs(constraints @ corrected - target)) <= 1e-10:
                 return indices[fluid], correction, radius
         raise RuntimeError(
-            "GBD wall transfer has insufficient visible fluid support for bounded moment "
+            "GBD wall transfer has insufficient fluid-connected support for bounded moment "
             "conservation. Refine the particle spacing near the wall or narrow gap."
         )
 
@@ -1210,10 +1210,10 @@ class _GridDiffusionMixin:
             if self._body_segment_classifier is not None:
                 node_batch = grid_min + index_batch * float(spacing)
                 sources = np.broadcast_to(points[particle_ids, None, :], node_batch.shape)
-                visible_candidates = valid_batch & ~solid_batch
-                unavailable_batch[visible_candidates] |= self._body_blocked_segments(
-                    sources[visible_candidates],
-                    node_batch[visible_candidates],
+                fluid_side_candidates = valid_batch & ~solid_batch
+                unavailable_batch[fluid_side_candidates] |= self._segments_cross_wall(
+                    sources[fluid_side_candidates],
+                    node_batch[fluid_side_candidates],
                 )
             for row in np.flatnonzero(np.any(unavailable_batch, axis=1)):
                 particle = particle_ids[row]
@@ -1238,7 +1238,7 @@ class _GridDiffusionMixin:
                 value_chunks.append((correction[:, None] * gamma[particle]).astype(np.float32))
                 # The initial device scatter included fluid nodes hidden
                 # behind a wall. Remove those deposits before redistributing
-                # on this particle's visible side of the surface.
+                # on this particle's fluid side of the wall.
                 occluded = unavailable_batch[row] & ~solid
                 if np.any(occluded):
                     node_chunks.append(indices[occluded].astype(np.int32))
@@ -1483,8 +1483,8 @@ class _GridDiffusionMixin:
                 f"max_n_particles={capacity}; increase the declared particle capacity"
             )
 
-    def _wall_recovery_labels(self, magnitude: np.ndarray, groups: np.ndarray) -> np.ndarray:
-        """Keep pruning recovery within connected, wall-visible grid support.
+    def _wall_correction_labels(self, magnitude: np.ndarray, groups: np.ndarray) -> np.ndarray:
+        """Keep the moment correction within grid support connected through the fluid.
 
         Zero-strength nodes are excluded: a correction cannot jump across a
         wall by following an empty route around its far edge. Existing source
@@ -1493,7 +1493,7 @@ class _GridDiffusionMixin:
         return connected_grid_components(magnitude, groups, self._body_links_host)
 
     @staticmethod
-    def _augment_moment_recovery_support(
+    def _augment_moment_correction_support(
         grid_np: np.ndarray,
         vortex_strength_magnitude: np.ndarray,
         ix: np.ndarray,
@@ -1505,18 +1505,17 @@ class _GridDiffusionMixin:
         labels: np.ndarray | None = None,
         strict_labels: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int, bool]:
-        """Introduce the strongest pruned nodes needed for a safe moment basis.
+        """Introduce the strongest removed nodes needed for a well-conditioned moment basis.
 
-        The threshold/cap selection remains the physical population-control
-        decision.  This method only augments that set when its geometry cannot
-        carry the nine historical recovery constraints.  It first fills unused
+        The threshold/cap selection remains the physical decision on the particle
+        count.  This method only augments that set when its geometry cannot
+        carry the nine moment constraints.  It first fills unused
         capacity, then (only when the cap is full) exchanges the weakest
         retained node for the strongest discarded candidate that improves the
         moment basis.  It never exceeds the cap.
 
-        The final boolean selects historical per-group recovery.  If any group
-        was sparse in the original threshold result, recovery remains global,
-        exactly matching the former sparse-group fallback.
+        The final boolean selects a moment correction per group.  If any group
+        was sparse in the original threshold result, the correction is global.
         """
         shape = vortex_strength_magnitude.shape
         flat_grid = grid_np.reshape(-1, 3)
@@ -1591,8 +1590,8 @@ class _GridDiffusionMixin:
             scoped_candidates = candidate_flat
             if label is not None and flat_labels is not None:
                 scoped_candidates = scoped_candidates[flat_labels[scoped_candidates] == label]
-            # Per-group closure does not require a basis for a group from which
-            # no node was pruned.
+            # A per-group correction needs no basis for a group from which no
+            # node was removed.
             if len(scoped_candidates) == 0:
                 return
 
@@ -1601,10 +1600,10 @@ class _GridDiffusionMixin:
                 scoped_nonzero = scoped_nonzero[flat_labels[scoped_nonzero] == label]
             direction = _gbd_rank_one_direction(flat_grid[scoped_nonzero])
             # A scalar strength correction along one fixed 3-D direction has
-            # at most six independent moment modes: one circulation, two
+            # at most six independent moment modes: one total vortex strength, two
             # linear-impulse, and three angular-impulse modes.  Degenerate
             # physical geometries can carry fewer, so measure the rank of the
-            # complete unpruned support rather than requiring nonexistent
+            # complete support before removal rather than requiring nonexistent
             # modes from the retained subset.
             target_rank = 9
             if direction is not None:
@@ -1786,7 +1785,7 @@ class _GridDiffusionMixin:
                     return
             scope_name = "the complete cloud" if label is None else f"group {label!r}"
             raise RuntimeError(
-                "GBD moment recovery cannot form full-rank support within the "
+                "GBD moment correction cannot form full-rank support within the "
                 f"regeneration cap for {scope_name}: rank={rank}/{target_rank}, "
                 f"condition={condition:.6e}, retained={len(selected):,}, cap={cap:,}"
             )
@@ -1812,38 +1811,42 @@ class _GridDiffusionMixin:
         )
 
     @staticmethod
-    def _retain_unsafe_moment_scope(
+    def _retain_diffused_component(
         magnitude: np.ndarray,
         ix: np.ndarray,
         iy: np.ndarray,
         iz: np.ndarray,
         cap: int,
         labels: np.ndarray | None,
-        recovery_label: int | None,
+        correction_label: int | None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-        """Keep the original donor field of an unsafe pruning scope exactly.
+        """Keep the diffused field of a component whose moment correction is too large.
 
-        A rank-complete retained basis can still need excessive amplification
+        A rank-complete retained basis can still need an excessive strength correction
         when a small disconnected component loses much of its local strength.
-        Retaining that component's post-diffusion donors preserves its field
+        Retaining that component's diffused nodes preserves its field
         and all moments without moving any strength across component boundaries.
         Capacity remains a hard limit; no retained winner is replaced.
         """
-        donor_mask = magnitude > 0.0
-        if recovery_label is not None:
+        diffused_mask = magnitude > 0.0
+        if correction_label is not None:
             if labels is None:
-                raise RuntimeError("GBD safety support requires the failed recovery labels")
-            donor_mask &= labels == recovery_label
-        donor_mask[ix, iy, iz] = False
-        added_ix, added_iy, added_iz = np.where(donor_mask)
+                raise RuntimeError(
+                    "GBD retention of a diffused component requires its correction labels"
+                )
+            diffused_mask &= labels == correction_label
+        diffused_mask[ix, iy, iz] = False
+        added_ix, added_iy, added_iz = np.where(diffused_mask)
         added_count = len(added_ix)
         if added_count == 0:
-            raise RuntimeError("GBD unsafe moment recovery has no additional donor support")
+            raise RuntimeError("GBD moment correction has no additional diffused nodes to retain")
         required = len(ix) + added_count
         if required > cap:
-            scope = "the complete cloud" if recovery_label is None else f"group {recovery_label}"
+            scope = (
+                "the complete cloud" if correction_label is None else f"group {correction_label}"
+            )
             raise RuntimeError(
-                "GBD conservative safety support for "
+                "GBD retention of the diffused field of "
                 f"{scope} needs {required:,} particles, exceeding max_n_particles={cap:,}; "
                 "increase the declared particle capacity"
             )
@@ -1855,7 +1858,7 @@ class _GridDiffusionMixin:
         )
 
     @staticmethod
-    def _redistribute_pruned_moments(
+    def _redistribute_removed_moments(
         grid_np: np.ndarray,
         vortex_strength_magnitude: np.ndarray,
         ix: np.ndarray,
@@ -1866,21 +1869,21 @@ class _GridDiffusionMixin:
         labels: np.ndarray | None = None,
         diagnostics: dict[str, bool | int | float] | None = None,
         strict_labels: bool = False,
-        blocks_segments: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+        segments_cross_wall: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
     ) -> np.ndarray:
-        """Coarsen pruned nodes locally while preserving diffusive moments.
+        """Coarsen removed nodes locally while preserving diffusive moments.
 
         The retained cloud preserves total vortex strength, linear impulse, and
         angular impulse of the complete post-diffusion grid.  A nearest-node
         coarsening first keeps discarded tail strength close to its physical
-        location; a weighted minimum-norm correction then closes the nine
+        location; a weighted minimum-norm correction then satisfies the nine
         moment constraints.  Discarded nodes alone are queried against the
         retained-node tree, and the constraint algebra is evaluated in bounded
         chunks so memory use does not grow by 27 float64 values per survivor.
 
         The returned values have already been rounded to the storage dtype and
-        validated.  Singular geometry, excessive correction, or a failed
-        post-cast moment closure raises before the production grid is mutated.
+        validated.  Singular geometry, excessive correction, or moments that fail
+        after the cast to storage precision raise before the production grid is mutated.
         """
         retained_vortex_strength = grid_np[ix, iy, iz].astype(np.float64)
         retained_position = np.stack(
@@ -1945,12 +1948,14 @@ class _GridDiffusionMixin:
             *,
             scope: str,
             record_diagnostics: bool = False,
-            recovery_label: int | None = None,
+            correction_label: int | None = None,
         ) -> np.ndarray:
             stored = corrected.astype(grid_np.dtype, copy=False)
             stored_float64 = stored.astype(np.float64, copy=False)
             if not np.all(np.isfinite(stored_float64)):
-                raise RuntimeError(f"GBD moment recovery produced non-finite strengths for {scope}")
+                raise RuntimeError(
+                    f"GBD moment correction produced non-finite strengths for {scope}"
+                )
 
             survivor_moments, survivor_scales = moment_state(
                 survivor_position,
@@ -2019,7 +2024,7 @@ class _GridDiffusionMixin:
                 relative_residual > _GBD_MOMENT_RESIDUAL_LIMIT
             ):
                 message = (
-                    "GBD moment recovery failed its post-cast closure for "
+                    "GBD moment correction failed after the cast to storage precision for "
                     f"{scope}: normalized residuals "
                     f"gamma={relative_residual[0]:.6e}, "
                     f"linear={relative_residual[1]:.6e}, "
@@ -2028,10 +2033,10 @@ class _GridDiffusionMixin:
                     f"correction fraction={correction_fraction:.6e}"
                 )
                 # Large cancelling corrections from nearly dependent constraints
-                # (e.g. one slab layer) lose closure when cast to storage
-                # precision. A fluid component keeps its donor field instead.
-                if recovery_label is not None:
-                    raise _GBDMomentCorrectionError(message, recovery_label=recovery_label)
+                # (e.g. one slab layer) lose the moments when cast to storage
+                # precision. A fluid component keeps its diffused field instead.
+                if correction_label is not None:
+                    raise _GBDMomentCorrectionError(message, correction_label=correction_label)
                 raise RuntimeError(message)
 
             if (
@@ -2039,10 +2044,10 @@ class _GridDiffusionMixin:
                 or correction_fraction > _GBD_MOMENT_CORRECTION_FRACTION_LIMIT
             ):
                 raise _GBDMomentCorrectionError(
-                    "GBD moment recovery requires an excessive strength correction for "
+                    "GBD moment correction requires an excessive strength correction for "
                     f"{scope}: fraction={correction_fraction:.6e}, "
                     f"limit={_GBD_MOMENT_CORRECTION_FRACTION_LIMIT:.6e}",
-                    recovery_label=recovery_label,
+                    correction_label=correction_label,
                 )
             if record_diagnostics and diagnostics is not None:
                 diagnostics.update(
@@ -2061,18 +2066,20 @@ class _GridDiffusionMixin:
             *,
             scope: str,
             record_diagnostics: bool = False,
-            recovery_label: int | None = None,
+            correction_label: int | None = None,
         ) -> np.ndarray:
             weight_magnitude = np.linalg.norm(survivor_vortex_strength, axis=1)
             weight_sum = float(weight_magnitude.sum())
             if not np.isfinite(weight_sum) or weight_sum <= 0.0:
                 raise RuntimeError(
-                    f"GBD moment recovery has no finite retained strength for {scope}"
+                    f"GBD moment correction has no finite retained strength for {scope}"
                 )
             if len(removed_position) == 0:
                 return survivor_vortex_strength.astype(grid_np.dtype, copy=False)
 
-            nearest = _nearest_visible_nodes(survivor_position, removed_position, blocks_segments)
+            nearest = _nearest_fluid_connected_nodes(
+                survivor_position, removed_position, segments_cross_wall
+            )
             corrected = survivor_vortex_strength.copy()
             np.add.at(corrected, nearest, removed_vortex_strength)
 
@@ -2106,11 +2113,11 @@ class _GridDiffusionMixin:
                     corrected,
                     scope=scope,
                     record_diagnostics=record_diagnostics,
-                    recovery_label=recovery_label,
+                    correction_label=correction_label,
                 )
             if len(survivor_position) < 4:
                 raise RuntimeError(
-                    "GBD moment recovery requires at least four retained nodes "
+                    "GBD moment correction requires at least four retained nodes "
                     f"for {scope}; got {len(survivor_position)}"
                 )
 
@@ -2139,7 +2146,9 @@ class _GridDiffusionMixin:
                 )
             )
             if not np.all(np.isfinite(gram)) or not np.all(np.isfinite(right_hand_side)):
-                raise RuntimeError(f"GBD moment recovery formed non-finite constraints for {scope}")
+                raise RuntimeError(
+                    f"GBD moment correction formed non-finite constraints for {scope}"
+                )
 
             if direction is not None:
                 multipliers, _residual, rank, singular_values = np.linalg.lstsq(
@@ -2154,32 +2163,32 @@ class _GridDiffusionMixin:
                 )
                 if not np.isfinite(condition) or condition > _GBD_MOMENT_CONDITION_LIMIT:
                     raise RuntimeError(
-                        "GBD directional moment recovery constraints are ill-conditioned "
+                        "GBD directional moment correction constraints are ill-conditioned "
                         f"for {scope}: rank={rank}, condition={condition:.6e}, "
                         f"limit={_GBD_MOMENT_CONDITION_LIMIT:.6e}"
                     )
                 if not np.all(np.isfinite(multipliers)):
                     raise RuntimeError(
-                        f"GBD directional moment recovery produced non-finite multipliers "
+                        f"GBD directional moment correction produced non-finite multipliers "
                         f"for {scope}"
                     )
 
-                recovered = corrected.copy()
+                moment_corrected = corrected.copy()
                 for start in range(0, len(survivor_position), _GBD_MOMENT_CHUNK_SIZE):
                     stop = min(start + _GBD_MOMENT_CHUNK_SIZE, len(survivor_position))
                     rows = _gbd_moment_constraint_rows(survivor_position[start:stop] / length_scale)
                     projected_rows = np.einsum("ijk,k->ij", rows, direction)
                     scalar_correction = weights[start:stop] * (projected_rows @ multipliers)
-                    recovered[start:stop] += scalar_correction[:, None] * direction
+                    moment_corrected[start:stop] += scalar_correction[:, None] * direction
                 return validate(
                     survivor_position,
                     survivor_vortex_strength,
                     removed_position,
                     removed_vortex_strength,
-                    recovered,
+                    moment_corrected,
                     scope=scope,
                     record_diagnostics=record_diagnostics,
-                    recovery_label=recovery_label,
+                    correction_label=correction_label,
                 )
 
             multipliers, _residual, rank, singular_values = np.linalg.lstsq(
@@ -2194,20 +2203,20 @@ class _GridDiffusionMixin:
             )
             if rank < 9 or not np.isfinite(condition) or condition > _GBD_MOMENT_CONDITION_LIMIT:
                 raise RuntimeError(
-                    "GBD moment recovery constraints are rank-deficient or ill-conditioned "
+                    "GBD moment correction constraints are rank-deficient or ill-conditioned "
                     f"for {scope}: rank={rank}/9, condition={condition:.6e}, "
                     f"limit={_GBD_MOMENT_CONDITION_LIMIT:.6e}"
                 )
             if not np.all(np.isfinite(multipliers)):
                 raise RuntimeError(
-                    f"GBD moment recovery produced non-finite multipliers for {scope}"
+                    f"GBD moment correction produced non-finite multipliers for {scope}"
                 )
 
-            recovered = corrected.copy()
+            moment_corrected = corrected.copy()
             for start in range(0, len(survivor_position), _GBD_MOMENT_CHUNK_SIZE):
                 stop = min(start + _GBD_MOMENT_CHUNK_SIZE, len(survivor_position))
                 rows = _gbd_moment_constraint_rows(survivor_position[start:stop] / length_scale)
-                recovered[start:stop] += np.einsum(
+                moment_corrected[start:stop] += np.einsum(
                     "i,ijk,j->ik",
                     weights[start:stop],
                     rows,
@@ -2218,10 +2227,10 @@ class _GridDiffusionMixin:
                 survivor_vortex_strength,
                 removed_position,
                 removed_vortex_strength,
-                recovered,
+                moment_corrected,
                 scope=scope,
                 record_diagnostics=record_diagnostics,
-                recovery_label=recovery_label,
+                correction_label=correction_label,
             )
 
         if labels is None:
@@ -2245,7 +2254,7 @@ class _GridDiffusionMixin:
                 discarded_vortex_strength,
                 scope=f"group {unique_labels[0]!r}",
                 record_diagnostics=True,
-                recovery_label=int(unique_labels[0]),
+                correction_label=int(unique_labels[0]),
             )
         corrected = np.zeros_like(retained_vortex_strength)
         for label in unique_labels:
@@ -2257,8 +2266,8 @@ class _GridDiffusionMixin:
             if np.count_nonzero(survivor_selection) < 4:
                 if strict_labels:
                     raise RuntimeError(
-                        "GBD pruning has insufficient support in a fluid component; "
-                        "increase the regeneration cap or reduce the pruning threshold."
+                        "GBD weak-strength removal has insufficient support in a fluid component; "
+                        "increase the regeneration cap or reduce the removal threshold."
                     )
                 return redistribute(
                     retained_position,
@@ -2274,7 +2283,7 @@ class _GridDiffusionMixin:
                 discarded_position[discarded_selection],
                 discarded_vortex_strength[discarded_selection],
                 scope=f"group {label!r}",
-                recovery_label=int(label),
+                correction_label=int(label),
             )
         return validate(
             retained_position,
@@ -2282,7 +2291,7 @@ class _GridDiffusionMixin:
             discarded_position,
             discarded_vortex_strength,
             corrected,
-            scope="the complete cloud after per-group recovery",
+            scope="the complete cloud after the per-group correction",
             record_diagnostics=True,
         )
 
@@ -2508,12 +2517,12 @@ class _GridDiffusionMixin:
            viscosity it is not ``curl(div(2 nu_eff S))``, the complete
            incompressible viscous-stress source used by the FVM solver.
            Matching Smagorinsky constants does not make those models equivalent.
-        3. Threshold pruning: discard weak grid nodes  (CPU NumPy — small).
+        3. Weak-strength removal: discard weak grid nodes  (CPU NumPy — small).
         4. Spawn new particles at surviving nodes       (CPU NumPy).
 
         Vortex-strength scatter and diffusion run on the device. Variable
         viscosity is mapped on the host and uploaded before diffusion; the
-        diffused strength grid is downloaded once for pruning.
+        diffused strength grid is downloaded once for weak-strength removal.
 
         If the macro-step exceeds the 3-D explicit limit, only the Laplacian is
         substepped. Scatter, thresholding, and regeneration still occur once.
@@ -2526,7 +2535,7 @@ class _GridDiffusionMixin:
             raise ValueError("unsupported GBD remeshing kernel")
         if remeshing_kernel == "lagrange6" and domain_padding < 4:
             raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
-        self._last_gbd_moment_recovery = self._empty_gbd_moment_recovery()
+        self._last_gbd_moment_correction = self._empty_gbd_moment_correction()
         self._last_gbd_wall_transfer = {
             "wall_adjacent_particles": 0,
             "excluded_signed_weight_l1": 0.0,
@@ -2766,7 +2775,7 @@ class _GridDiffusionMixin:
             fill_empty=True,
         )
 
-        # -- Threshold pruning (CPU — read diffused grid back once) ------------
+        # -- Weak-strength removal (CPU — read diffused grid back once) --------
         grid_np = self._download_active_vec_grid(self._current_grid, nx, ny, nz)
 
         if slab_bounds is not None:
@@ -2831,22 +2840,22 @@ class _GridDiffusionMixin:
 
         nonzero_node_count = int(np.count_nonzero(vortex_strength_magnitude > 0.0))
         support_augmented_node_count = 0
-        preserve_group_recovery = False
-        wall_recovery = self._body_segment_classifier is not None
-        recovery_labels = group_winner_grid
-        if wall_recovery and self.conserve_pruned_moments and len(ix) < nonzero_node_count:
-            recovery_labels = self._wall_recovery_labels(
+        preserve_group_correction = False
+        wall_correction = self._body_segment_classifier is not None
+        correction_labels = group_winner_grid
+        if wall_correction and self.conserve_removed_moments and len(ix) < nonzero_node_count:
+            correction_labels = self._wall_correction_labels(
                 vortex_strength_magnitude, group_winner_grid
             )
-        if self.conserve_pruned_moments and len(ix) < nonzero_node_count:
+        if self.conserve_removed_moments and len(ix) < nonzero_node_count:
             retained_before_support = len(ix)
             (
                 ix,
                 iy,
                 iz,
                 support_augmented_node_count,
-                preserve_group_recovery,
-            ) = self._augment_moment_recovery_support(
+                preserve_group_correction,
+            ) = self._augment_moment_correction_support(
                 grid_np,
                 vortex_strength_magnitude,
                 ix,
@@ -2855,8 +2864,8 @@ class _GridDiffusionMixin:
                 grid_min_np,
                 particle_spacing,
                 cap,
-                labels=recovery_labels,
-                strict_labels=wall_recovery,
+                labels=correction_labels,
+                strict_labels=wall_correction,
             )
             if support_augmented_node_count:
                 self._event_observer.record(
@@ -2866,20 +2875,20 @@ class _GridDiffusionMixin:
                     ("nodes, final retained", f"{len(ix):,}"),
                     ("regeneration cap", f"{cap:,}"),
                 )
-        recovery_diagnostics = self._empty_gbd_moment_recovery()
-        recovery_diagnostics.update(
+        correction_diagnostics = self._empty_gbd_moment_correction()
+        correction_diagnostics.update(
             nonzero_node_count=nonzero_node_count,
             retained_node_count=int(len(ix)),
-            pruned_node_count=int(nonzero_node_count - len(ix)),
+            removed_node_count=int(nonzero_node_count - len(ix)),
             support_augmented_node_count=int(support_augmented_node_count),
         )
-        self._last_gbd_moment_recovery = recovery_diagnostics
-        if self.conserve_pruned_moments and len(ix) < nonzero_node_count:
-            closure_diagnostics: dict[str, bool | int | float] = {}
-            active_recovery_labels = recovery_labels if preserve_group_recovery else None
+        self._last_gbd_moment_correction = correction_diagnostics
+        if self.conserve_removed_moments and len(ix) < nonzero_node_count:
+            moment_diagnostics: dict[str, bool | int | float] = {}
+            active_correction_labels = correction_labels if preserve_group_correction else None
             while True:
                 try:
-                    corrected_retained = self._redistribute_pruned_moments(
+                    corrected_retained = self._redistribute_removed_moments(
                         grid_np,
                         vortex_strength_magnitude,
                         ix,
@@ -2887,36 +2896,36 @@ class _GridDiffusionMixin:
                         iz,
                         grid_min_np,
                         particle_spacing,
-                        labels=active_recovery_labels,
-                        diagnostics=closure_diagnostics,
-                        strict_labels=wall_recovery,
-                        blocks_segments=self._body_blocked_segments if wall_recovery else None,
+                        labels=active_correction_labels,
+                        diagnostics=moment_diagnostics,
+                        strict_labels=wall_correction,
+                        segments_cross_wall=self._segments_cross_wall if wall_correction else None,
                     )
                     break
                 except _GBDMomentCorrectionError as error:
-                    # A geometrically complete basis can nevertheless be an
-                    # unsafe representation of a heavily pruned small fluid
-                    # component. Keep that component's original donor field;
-                    # never relax the closure or amplification guards.
-                    ix, iy, iz, added = self._retain_unsafe_moment_scope(
+                    # A geometrically complete basis can still misrepresent a
+                    # small fluid component that lost most of its nodes. Keep that
+                    # component's diffused field; never relax the moment or
+                    # correction-fraction limits.
+                    ix, iy, iz, added = self._retain_diffused_component(
                         vortex_strength_magnitude,
                         ix,
                         iy,
                         iz,
                         cap,
-                        active_recovery_labels,
-                        error.recovery_label,
+                        active_correction_labels,
+                        error.correction_label,
                     )
                     support_augmented_node_count += added
-                    recovery_diagnostics.update(
+                    correction_diagnostics.update(
                         retained_node_count=int(len(ix)),
-                        pruned_node_count=int(nonzero_node_count - len(ix)),
+                        removed_node_count=int(nonzero_node_count - len(ix)),
                         support_augmented_node_count=int(support_augmented_node_count),
                     )
                     self._event_observer.record(
-                        "gaussian blob diffusion conservative safety support",
-                        ("component", str(error.recovery_label)),
-                        ("donor nodes retained", f"{added:,}"),
+                        "gaussian blob diffusion retained diffused component",
+                        ("component", str(error.correction_label)),
+                        ("diffused nodes retained", f"{added:,}"),
                         ("nodes, final retained", f"{len(ix):,}"),
                         ("regeneration cap", f"{cap:,}"),
                     )
@@ -2931,7 +2940,7 @@ class _GridDiffusionMixin:
             corrected_net = corrected_retained.sum(axis=0, dtype=np.float64)
             net_scale = vortex_strength_total + 1.0e-30
             self._event_observer.record(
-                "gaussian blob diffusion moment recovery",
+                "gaussian blob diffusion moment correction",
                 ("correction strength fraction", f"{correction_l1 / net_scale:.6e}"),
                 (
                     "net residual, before",
@@ -2943,9 +2952,9 @@ class _GridDiffusionMixin:
                 ),
             )
             grid_np[ix, iy, iz] = corrected_retained
-            recovery_diagnostics.update(closure_diagnostics)
-            recovery_diagnostics["applied"] = True
-            self._last_gbd_moment_recovery = recovery_diagnostics
+            correction_diagnostics.update(moment_diagnostics)
+            correction_diagnostics["applied"] = True
+            self._last_gbd_moment_correction = correction_diagnostics
 
         result = self._build_diffusion_particle_arrays(
             ix,
@@ -2977,7 +2986,7 @@ class _GridDiffusionMixin:
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
 
-        Moment-preserving scatter → explicit 7-point Laplacian → pruning → spawn.
+        Moment-preserving scatter → explicit 7-point Laplacian → weak-strength removal → spawn.
 
         Per-particle ``effective_viscosity`` (ν+ν_t) enables the conservative
         componentwise operator ``div(nu_eff grad(omega))``. This is not the
@@ -3155,12 +3164,12 @@ class _GridDiffusionMixin:
         1. DVH scatter: each particle's vortex strength is spread to grid nodes
            within R_d = rd_ratio * particle_spacing using the exact heat-kernel Gaussian.
            Shepard normalization ensures exact per-particle Γ conservation.
-        2. Threshold pruning: discard nodes whose |Γ| is below the threshold.
+        2. Weak-strength removal: discard nodes whose |Γ| is below the threshold.
         3. Spawn new particles at surviving grid nodes.
 
         No finite-difference solve is involved — diffusion is encoded directly
         in the Gaussian scatter weights. The finite-lattice scatter, support
-        truncation, and optional pruning are a remap approximation, not an
+        truncation, and optional weak-strength removal are a remap approximation, not an
         exact continuum heat solve. The remap requires a
         uniform effective viscosity and an accepted interval resolved by the
         configured lattice; callers must accumulate smaller intervals first.
@@ -3314,7 +3323,7 @@ class _GridDiffusionMixin:
             fill_empty=True,
         )
 
-        # -- Threshold pruning -------------------------------------------------
+        # -- Weak-strength removal ---------------------------------------------
         grid_np = self._download_active_vec_grid(self._current_grid, nx, ny, nz)
         if slab_bounds is not None:
             # Keep the physical share only, as in GBD.
@@ -3578,7 +3587,7 @@ class _GridDiffusionMixin:
 
     @ti.func
     def _fluid_link_open(self, body_mask: ti.template(), i, j, k, ni, nj, nk):  # type: ignore[invalid-annotation]
-        open_link = body_mask[ni, nj, nk] == 0
+        fluid_link = body_mask[ni, nj, nk] == 0
         if ti.static(self._has_body_links):
             axis = 0
             if nj != j:
@@ -3586,8 +3595,8 @@ class _GridDiffusionMixin:
             elif nk != k:
                 axis = 2
             bits = self._body_link_grid[ti.min(i, ni), ti.min(j, nj), ti.min(k, nk)]
-            open_link = open_link and ((bits & (1 << axis)) == 0)
-        return open_link
+            fluid_link = fluid_link and ((bits & (1 << axis)) == 0)
+        return fluid_link
 
     @ti.kernel
     def _laplacian_step_gpu_kernel(
@@ -3861,7 +3870,7 @@ _BODY_GRID_GEOMETRY_METHODS = {
         "_prepare_body_mask_fresh",
         "_prepare_body_links",
         "_body_interior_at_particles",
-        "_body_blocked_segments",
+        "_segments_cross_wall",
         "_fold_slab_exterior_z",
     )
 }

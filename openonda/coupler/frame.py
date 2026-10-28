@@ -4,12 +4,12 @@ A uniform frame translation leaves the vorticity equation unchanged: particle
 strengths, induced velocities and diffusion are identical, and only the
 particle drift changes by the frame velocity. The coupled VPM therefore runs
 in the frame of a translating FVM mesh with the freestream ``U(t) - V(t)``. In
-that frame the FVM box, its cells, walls and coupling faces stay fixed, so the
+that frame the FVM domain, its cells, walls and outer-boundary faces stay fixed, so the
 transfer lattice, its solid masks and the diffusion grid built for a static
 mesh remain exact.
 
-The FVM keeps absolute (inertial) velocities on its moving mesh. Interface
-velocities are converted when they cross between the solvers.
+The FVM keeps absolute (inertial) velocities on its moving mesh. Boundary data
+and transferred velocities are converted when they pass between the solvers.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ class MeshFrame:
         """Mean mesh velocity in m/s from the accepted FVM time over the FVM substeps.
 
         ``substep_times`` are the end times of the coming FVM substeps. The
-        VPM drifts with ``U - step_velocity`` over the exchange, so particles
+        VPM drifts with ``U - step_velocity`` over the coupling interval, so particles
         keep their exact position relative to the mesh the FVM will reach.
         """
         if self._motion is None:

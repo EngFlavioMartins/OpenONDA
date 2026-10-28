@@ -36,7 +36,7 @@ def project_grid_strength(field: np.ndarray, spacing: float) -> np.ndarray:
 
     Gaussian convolution commutes with this projection. The curl and hence
     induced velocity are unchanged on the complete grid; finite padding,
-    particle pruning and subsequent moment correction remain approximations.
+    weak-strength removal and the subsequent moment correction remain approximations.
     """
     from .divergence_relaxation import _wave_numbers
 

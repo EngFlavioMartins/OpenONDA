@@ -18,13 +18,14 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 FIGURES = CASE_DIR / "figures"
 CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
-FVM_BOX = (-1.8, 4.3, -1.8, 1.8)  # m, x and y bounds in the mid-plane
+FVM_DOMAIN_BOUNDS = (-1.8, 4.3, -1.8, 1.8)  # m, x and y bounds in the mid-plane
 WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, bounds of the reference and particle slices
 DEVELOPED_FLOW = 30.0  # s, start of the time averages
 STATISTICS_END = 60.0  # s, end of the coupled run; the reference is cut to the same window
 
 # Mid-plane slices: the reference FVM, the coupled FVM inside its box, the particles everywhere
-REFERENCE = CASE_DIR / "reference_flow/samples/grid_h0045/slice_z0.pvd"
+# The reference at the FVM time step of the coupled case, which samples the mid-plane
+REFERENCE = CASE_DIR / "reference_flow/samples/grid_h0045_dt001/slice_z0.pvd"
 COUPLED_FVM = CASE_DIR / "samples/fvm_slice_z0.pvd"
 COUPLED_VPM = CASE_DIR / "samples/vpm_slice_z0.pvd"
 
@@ -77,7 +78,7 @@ def read_slice(path):
 x_axis, y_axis = read_slice(saved_frames(COUPLED_VPM)[1][0])[:2]
 x, y = np.meshgrid(x_axis, y_axis)
 cube = (np.abs(x) < CUBE_SIDE / 2) & (np.abs(y) < CUBE_SIDE / 2)
-in_box = (x <= FVM_BOX[1]) & (np.abs(y) <= FVM_BOX[3])
+in_fvm_domain = (x <= FVM_DOMAIN_BOUNDS[1]) & (np.abs(y) <= FVM_DOMAIN_BOUNDS[3])
 
 
 def reference_fields(path):
@@ -95,7 +96,7 @@ def coupled_fields(paths):
         on_lattice = RegularGridInterpolator(
             (box_y, box_x), box_values, bounds_error=False, fill_value=np.nan
         )((y, x))
-        values[in_box] = on_lattice[in_box]
+        values[in_fvm_domain] = on_lattice[in_fvm_domain]
         values[cube] = np.nan
     return velocity, vorticity
 
@@ -157,9 +158,9 @@ def comparison_figure(path, quantity, reference, coupled, difference, mean=False
         if row > 0:
             axes.add_patch(
                 plt.Rectangle(
-                    FVM_BOX[::2],
-                    FVM_BOX[1] - FVM_BOX[0],
-                    FVM_BOX[3] - FVM_BOX[2],
+                    FVM_DOMAIN_BOUNDS[::2],
+                    FVM_DOMAIN_BOUNDS[1] - FVM_DOMAIN_BOUNDS[0],
+                    FVM_DOMAIN_BOUNDS[3] - FVM_DOMAIN_BOUNDS[2],
                     fill=False,
                     edgecolor="black",
                     linestyle="--",

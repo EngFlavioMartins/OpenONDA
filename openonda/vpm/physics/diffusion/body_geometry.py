@@ -37,7 +37,7 @@ class ImmutableBodyGeometryQueries:
     """
 
     contains: Callable[[np.ndarray], np.ndarray]
-    blocks: Callable[[np.ndarray, np.ndarray], np.ndarray]
+    segments_cross_wall: Callable[[np.ndarray, np.ndarray], np.ndarray]
     # Current (revision, content, runtime) signature, or None if unverifiable.
     signature: Callable[[], tuple[object, object, object] | None]
     initial_content: object
@@ -46,14 +46,14 @@ class ImmutableBodyGeometryQueries:
     def key(
         self,
         contains: Callable[[np.ndarray], np.ndarray] | None,
-        blocks: Callable[[np.ndarray, np.ndarray], np.ndarray] | None,
+        segments_cross_wall: Callable[[np.ndarray, np.ndarray], np.ndarray] | None,
         revision: object,
     ) -> ImmutableToken | None:
         """Identity of the immutable body geometry these queries answer for."""
         if (
             type(self) is not ImmutableBodyGeometryQueries
             or not _same_callable(self.contains, contains)
-            or not _same_callable(self.blocks, blocks)
+            or not _same_callable(self.segments_cross_wall, segments_cross_wall)
         ):
             return None
         signature = self.signature()
@@ -140,7 +140,7 @@ class BodyGridGeometryCache:
         shape: tuple[int, ...],
         *,
         contains: Callable[[np.ndarray], np.ndarray],
-        blocks: Callable[[np.ndarray, np.ndarray], np.ndarray] | None,
+        segments_cross_wall: Callable[[np.ndarray, np.ndarray], np.ndarray] | None,
         geometry_key: BodyGeometryKey,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return the cached geometry of one lattice, building it on a miss."""
@@ -185,8 +185,8 @@ class BodyGridGeometryCache:
                 if len(values) != len(missing):
                     raise RuntimeError("body classifier must return one flag per node")
                 mask[tuple(missing.T)] = values
-            if blocks is not None:
-                self._links(old, axes64, shape, mask, links, spacing, blocks)
+            if segments_cross_wall is not None:
+                self._links(old, axes64, shape, mask, links, spacing, segments_cross_wall)
             candidate = _Record(key, axes32, axes64, mask, links)
             # The previous owned record is no longer needed. Release it before
             # copying the new data, rather than retaining two capped banks
@@ -216,7 +216,7 @@ class BodyGridGeometryCache:
         mask: np.ndarray,
         links: np.ndarray,
         spacing: float,
-        blocks: Callable,
+        segments_cross_wall: Callable,
     ) -> None:
         for axis in range(3):
             lower, upper = [slice(None)] * 3, [slice(None)] * 3
@@ -245,7 +245,7 @@ class BodyGridGeometryCache:
                 # Deliberately not axes64[axis][i+1]: original endpoint is
                 # formed by adding h to the already-rounded start.
                 ends[:, axis] += spacing
-                values = np.asarray(blocks(starts, ends), dtype=bool).reshape(-1)
+                values = np.asarray(segments_cross_wall(starts, ends), dtype=bool).reshape(-1)
                 if len(values) != len(missing):
                     raise RuntimeError("segment classifier must return one flag per edge")
                 links[tuple(missing.T)] |= values.astype(np.int32) << axis

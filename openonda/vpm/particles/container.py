@@ -85,7 +85,7 @@ class Particles:
     ----------
     max_n_particles : int, default=MAX_N_PARTICLES
         Capacity allocated once in Taichi fields. Runtime append/removal can
-        change the active population but cannot resize the allocation.
+        change the active particle count but cannot resize the allocation.
     float_dtype : {'f32', 'f64'}, default='f32'
         Compute precision for floating particle fields.
 
@@ -111,7 +111,7 @@ class Particles:
     Device fields are mutable and are the numerical source of truth. Methods
     ending in ``_cpu`` download/copy active data and may be cached until the
     particle state revision changes. Mutations of position, vortex strength,
-    core radius, or population must invalidate source caches through
+    core radius, or particle count must invalidate source caches through
     :meth:`touch_state`; the provided mutators do so automatically.
     """
 
@@ -132,7 +132,7 @@ class Particles:
         self.step = 0  # For cache invalidation
         # Monotone source-state version for consumers that cache spatial
         # acceleration structures.  Velocity/diagnostic writes do not affect
-        # Biot-Savart sources; position, vortex strength, core_radius, and population do.
+        # Biot-Savart sources; position, vortex strength, core_radius, and particle count do.
         self._state_revision = 0
         # NumPy dtype matching Taichi float precision (avoids repeated branching)
         self._np_float_dtype = np.float32 if self.float_dtype == "f32" else np.float64
@@ -215,7 +215,7 @@ class Particles:
         )
 
     def _warn_near_capacity(self) -> None:
-        """Warn once when the active population reaches 80% of capacity."""
+        """Warn once when the active particle count reaches 80% of capacity."""
         if (
             not self._capacity_warning_emitted
             and self.n_particles_total >= 0.80 * self._max_particles
@@ -934,8 +934,8 @@ class Particles:
             "zone_id": self.zone_id_cpu()[index],
         }
 
-    def _log_population(self, change: log_style.Row) -> None:
-        """Report the population left behind by an operation that changed it."""
+    def _log_particle_count(self, change: log_style.Row) -> None:
+        """Report the particle count left behind by an operation that changed it."""
         if not Logging._routine_messages_enabled:
             return
         total = int(self.n_particles_total)
@@ -950,14 +950,14 @@ class Particles:
         )
 
     def _log_particles_added(self, count: int) -> None:
-        """Report initial population and capacity warnings; progress reports later growth."""
+        """Report the initial particle count and capacity warnings; progress reports later growth."""
         self._warn_near_capacity()
         if self.n_particles_total == count:
-            self._log_population(("added", count))
+            self._log_particle_count(("added", count))
 
     def _log_particles_replaced(self, previous: int) -> None:
-        """Report the population after the whole cloud was replaced."""
-        self._log_population(("count, previous", previous))
+        """Report the particle count after the whole particle set was replaced."""
+        self._log_particle_count(("count, previous", previous))
 
     def add_vortex_particles(
         self,
@@ -1144,7 +1144,7 @@ class Particles:
         Side Effects
         ------------
         Replaces every active device field, synchronizes the device count,
-        invalidates caches, and records the population replacement.
+        invalidates caches, and records the replaced particle set.
         """
         previous = int(self.n_particles_total)
         _validate_finite_array(position, "position")
@@ -1392,7 +1392,9 @@ class Particles:
 
         max_strength_global = np.max(vortex_strength_magnitudes)
         if max_strength_global == 0:
-            Logging.warning("Particle pruning skipped because the vortex-strength field is zero")
+            Logging.warning(
+                "Weak-strength removal skipped because the vortex-strength field is zero"
+            )
             return np.empty(0, dtype=np.int64)
         else:
             cutoff = (percent / 100.0) * max_strength_global
@@ -1401,10 +1403,10 @@ class Particles:
         indices_to_remove = np.where(remove_mask)[0]
 
         if len(indices_to_remove) > 0:
-            # Safety cap: never remove ALL particles via weak-removal (keep at least 1)
+            # Never remove all particles by weak-strength removal (keep at least one)
             if len(indices_to_remove) >= N:
                 Logging.warning_record(
-                    "Particle pruning skipped: all particles were selected for removal",
+                    "Weak-strength removal skipped: all particles were selected for removal",
                     ("particles retained", N),
                 )
                 return np.empty(0, dtype=np.int64)

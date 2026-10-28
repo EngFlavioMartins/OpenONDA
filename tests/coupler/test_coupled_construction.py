@@ -27,23 +27,23 @@ def test_vpm_construction_failure_closes_the_fvm_solver(tmp_path, monkeypatch):
     monkeypatch.setattr(fvm_api.FVMSolver, "close", close)
     monkeypatch.setattr(vpm_api, "VPMSolver", fail)
     flow, particles = uniform_stream_cases(
-        tmp_path, fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
+        tmp_path, fvm_time_step_size=0.05, coupling_time_step_size=0.15, end_time=0.3
     )
     with pytest.raises(ValueError, match="bad particle configuration"):
         coupler.CoupledSolver(
-            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
+            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, blend_end_depth=0.0)
         )
     assert len(closed) == 1 and isinstance(closed[0], ValueError)
 
 
 def test_solver_backups_belong_to_the_coupled_case(tmp_path):
     flow, particles = uniform_stream_cases(
-        tmp_path, fvm_time_step_size=0.05, exchange_time_step_size=0.15, end_time=0.3
+        tmp_path, fvm_time_step_size=0.05, coupling_time_step_size=0.15, end_time=0.3
     )
     particles = replace(particles, backup=vpm_api.Backup(schedule=vpm_api.EverySteps(1)))
     with pytest.raises(ValueError, match="CouplerConfig.backup"):
         coupler.CoupledSolver(
-            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
+            flow, particles, coupler.CouplerConfig(transfer_inset_spacings=0.0, blend_end_depth=0.0)
         )
 
 

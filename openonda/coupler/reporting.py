@@ -58,7 +58,7 @@ def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
 
 
 def configure_coupler_logging(path: Path | None, *, console: bool) -> logging.Logger:
-    """Send ``openonda.coupler`` to ``solution/coupler.log`` and buffer each exchange."""
+    """Send ``openonda.coupler`` to ``solution/coupler.log``, one report per accepted coupling step."""
     logger = log_style.configure_logging("openonda.coupler", path, console=console)
     for progress_filter in list(logger.filters):
         if isinstance(progress_filter, _CouplingProgress):
@@ -68,7 +68,7 @@ def configure_coupler_logging(path: Path | None, *, console: bool) -> logging.Lo
 
 
 def close_coupler_logging() -> None:
-    """Close the handlers and the exchange buffer of ``openonda.coupler``."""
+    """Close the handlers and the held coupling-step records of ``openonda.coupler``."""
     logger = logging.getLogger("openonda.coupler")
     for progress_filter in list(logger.filters):
         if isinstance(progress_filter, _CouplingProgress):
@@ -85,9 +85,9 @@ def flush_log(logger: logging.Logger) -> None:
 class _CouplingProgress(logging.Filter):
     """Keep only this coupling interval's latest module records until acceptance.
 
-    Capturing host rows is independent of particle/mesh size. No formatting,
-    numerical work or growing cross-step history occurs on skipped reports.
-    Warnings bypass the buffer immediately; scientific JSONL is independent.
+    Holding the log rows does not depend on the particle or mesh size. Skipped
+    reports are not formatted and keep no history across coupling steps.
+    Warnings are written at once; the JSONL diagnostics do not pass through here.
     """
 
     def __init__(self) -> None:
@@ -202,12 +202,12 @@ def boundary_induction_summary(vpm_solver, *, target_count: int, wall_seconds: f
 def _transfer_record(result) -> dict[str, object]:
     """Flatten a transfer result; 3-vectors become ``_x``, ``_y``, ``_z`` scalars.
 
-    ``None`` (no transfer yet) gives zero counts and budgets with method ``none``.
+    ``None`` (no transfer yet) gives zero counts and errors.
     """
     from .vorticity_transfer import TransferResult
 
     if result is None:
-        result = TransferResult(0, 0, 0, 0, 0, 0, 0.0, transfer_method="none")
+        result = TransferResult(0, 0, 0, 0, 0, 0, 0.0)
     record: dict[str, object] = {}
     for item in fields(result):
         value = getattr(result, item.name)
@@ -227,8 +227,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     Parameters
     ----------
     coupler : CoupledSolver
-        Driver exposing the latest boundary, transfer, solver, and recovery
-        state.
+        Coupled solver with the latest boundary data, transfer and solver state.
     transfer_result : TransferResult or None, optional
         Result for the current replacement. ``None`` uses the coupler cache;
         before the first transfer, zero/``None`` placeholders are returned.
@@ -236,7 +235,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     Returns
     -------
     dict[str, object]
-        Nested boundary, transfer, interface, and recovery records. Vector
+        Nested boundary-data, transfer, transfer-surface and moment-correction records. Vector
         quantities are split into scalar components for JSONL serialization;
         strengths use m³/s, velocities m/s, and normalized errors are
         dimensionless.
@@ -261,29 +260,29 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     }
     if not all(np.isfinite(value) for value in boundary_flux.values()):
         raise FloatingPointError("non-finite VPM boundary-flux diagnostic")
-    boundary_trace = {
+    boundary_data = {
         str(name): float(value)
-        for name, value in getattr(coupler, "_last_fvm_boundary_trace_diagnostics", {}).items()
+        for name, value in getattr(coupler, "_last_fvm_boundary_data_diagnostics", {}).items()
     }
-    if not all(np.isfinite(value) for value in boundary_trace.values()):
-        raise FloatingPointError("non-finite FVM boundary-trace diagnostic")
+    if not all(np.isfinite(value) for value in boundary_data.values()):
+        raise FloatingPointError("non-finite FVM boundary-data diagnostic")
 
-    interface = {}
-    closure = {}
+    surface_flow = {}
+    surface_vorticity = {}
     if coupler.vorticity_transfer is not None:
-        interface = {
+        surface_flow = {
             str(name): float(value)
-            for name, value in coupler.vorticity_transfer.last_interface_flow.items()
+            for name, value in coupler.vorticity_transfer.last_transfer_surface_flow.items()
         }
-        closure = {
+        surface_vorticity = {
             str(name): float(value)
-            for name, value in coupler.vorticity_transfer.last_vortex_line_closure.items()
+            for name, value in coupler.vorticity_transfer.last_transfer_surface_vorticity.items()
         }
-    gbd_moment_recovery = {
+    gbd_moment_correction = {
         "applied": False,
         "nonzero_node_count": 0,
         "retained_node_count": 0,
-        "pruned_node_count": 0,
+        "removed_node_count": 0,
         "support_augmented_node_count": 0,
         "correction_fraction": 0.0,
         "normalized_vortex_strength_residual": 0.0,
@@ -292,42 +291,42 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     }
     vpm_solver = getattr(coupler, "vpm_solver", None)
     if vpm_solver is not None:
-        recovery = getattr(vpm_solver.physics, "last_gbd_moment_recovery", None)
-        if recovery is not None:
-            gbd_moment_recovery = {
-                "applied": bool(recovery["applied"]),
-                "nonzero_node_count": int(recovery["nonzero_node_count"]),
-                "retained_node_count": int(recovery["retained_node_count"]),
-                "pruned_node_count": int(recovery["pruned_node_count"]),
+        correction = getattr(vpm_solver.physics, "last_gbd_moment_correction", None)
+        if correction is not None:
+            gbd_moment_correction = {
+                "applied": bool(correction["applied"]),
+                "nonzero_node_count": int(correction["nonzero_node_count"]),
+                "retained_node_count": int(correction["retained_node_count"]),
+                "removed_node_count": int(correction["removed_node_count"]),
                 "support_augmented_node_count": int(
-                    recovery.get("support_augmented_node_count", 0)
+                    correction.get("support_augmented_node_count", 0)
                 ),
-                "correction_fraction": float(recovery["correction_fraction"]),
+                "correction_fraction": float(correction["correction_fraction"]),
                 "normalized_vortex_strength_residual": float(
-                    recovery["normalized_vortex_strength_residual"]
+                    correction["normalized_vortex_strength_residual"]
                 ),
                 "normalized_linear_impulse_residual": float(
-                    recovery["normalized_linear_impulse_residual"]
+                    correction["normalized_linear_impulse_residual"]
                 ),
                 "normalized_angular_impulse_residual": float(
-                    recovery["normalized_angular_impulse_residual"]
+                    correction["normalized_angular_impulse_residual"]
                 ),
             }
-            numeric_recovery = [
-                value for name, value in gbd_moment_recovery.items() if name != "applied"
+            numeric_correction = [
+                value for name, value in gbd_moment_correction.items() if name != "applied"
             ]
-            if not all(np.isfinite(value) for value in numeric_recovery):
-                raise FloatingPointError("non-finite GBD moment-recovery diagnostic")
+            if not all(np.isfinite(value) for value in numeric_correction):
+                raise FloatingPointError("non-finite GBD moment-correction diagnostic")
     diagnostics = {
         "vpm_boundary_condition_flux": boundary_flux,
-        "fvm_boundary_trace": boundary_trace,
+        "fvm_boundary_data": boundary_data,
         "transfer": transfer,
-        "boundary_normal_velocity": interface,
-        "vortex_line_closure": closure,
-        "gbd_moment_recovery": gbd_moment_recovery,
+        "transfer_surface_normal_velocity": surface_flow,
+        "transfer_surface_normal_vorticity": surface_vorticity,
+        "gbd_moment_correction": gbd_moment_correction,
         "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "n_transfer_particles": int(particle_count),
-        # VPM positions are relative to the FVM mesh; add this to recover
+        # VPM positions are relative to the FVM mesh; add this to obtain
         # inertial-frame positions.
         "mesh_translation": coupler.frame.translation().tolist(),
     }
@@ -402,16 +401,17 @@ def record_step(
     transfer_result,
     *,
     logger: logging.Logger,
-    exchange_started: float,
+    interval_started: float,
     output_seconds: float,
 ) -> None:
-    """Report one accepted exchange, write its due backup and its diagnostics record.
+    """Report one accepted coupling step, write its due backup and its diagnostics record.
 
-    Boundary time includes the initial trace and all post-renewal refreshes.
-    Transfer includes renewal and interface state capture/restoration. The four
+    Boundary time includes the predictor boundary data and every evaluation after a
+    vorticity transfer. Transfer time includes the vorticity transfers and the state
+    capture and restoration of the coupling iterations. The four
     evolution timers exclude output and backup; the total includes them,
     reporting, logging and collective waits. A failed backup does not undo the
-    accepted exchange: its diagnostics record is written and the backup error
+    accepted coupling step: its diagnostics record is written and the backup error
     is raised on every rank.
     """
     comm = coupler._comm
@@ -419,9 +419,9 @@ def record_step(
     with collective_phase(comm, "coupled step reporting"):
         t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
         diagnostics = compute_diagnostics(coupler, transfer_result)
-        interface_iteration = getattr(coupler, "_last_interface_iteration_diagnostics", None)
-        if interface_iteration is not None:
-            diagnostics["interface_iteration"] = interface_iteration
+        coupling_iteration = getattr(coupler, "_last_coupling_iteration_diagnostics", None)
+        if coupling_iteration is not None:
+            diagnostics["coupling_iteration"] = coupling_iteration
         diagnostics = _diagnostic_json_value(diagnostics, "coupled step diagnostic")
         timing_data = {
             "vpm": float(t_vpm),
@@ -432,7 +432,7 @@ def record_step(
             "state_checks_and_samplers": float(output_seconds),
         }
         stats = coupler._step_transfer_stats or {}
-        timing_data["last_sweep_donor_gather"] = float(stats.get("donor_gather_seconds", 0.0))
+        timing_data["last_transfer_fvm_gather"] = float(stats.get("fvm_gather_seconds", 0.0))
         if coupler._is_root:
             logger.info(
                 format_coupler_log(
@@ -475,7 +475,7 @@ def record_step(
     backup_time = time.perf_counter() - backup_started
     measured_end = time.perf_counter()
     phases = float(sum(timing) + output_seconds + reporting_time + backup_time)
-    total = measured_end - exchange_started
+    total = measured_end - interval_started
     timing_data.update(
         {
             "reporting": float(reporting_time),
@@ -485,7 +485,7 @@ def record_step(
         }
     )
     try:
-        with collective_phase(comm, "accepted exchange diagnostics output"):
+        with collective_phase(comm, "accepted coupling-step diagnostics output"):
             if coupler._is_root:
                 diagnostics.update(
                     {
@@ -509,7 +509,9 @@ def record_step(
                         },
                     }
                 )
-                diagnostics = _diagnostic_json_value(diagnostics, "accepted exchange diagnostic")
+                diagnostics = _diagnostic_json_value(
+                    diagnostics, "accepted coupling-step diagnostic"
+                )
                 coupler.coupling_diagnostics.append(diagnostics)
                 append_jsonl(coupler.solution_dir / "coupler_diagnostics.jsonl", diagnostics)
                 logger.info(

@@ -9,29 +9,30 @@ from openonda.core.simulation.forcing import VelocityRamp
 
 __all__ = ["Backup", "CouplerConfig"]
 
-# Interface widths in particle spacings, recommended by the cylinder error study
-# (docs/reports/2026-10-23-coupling-error-sources.md): the inset of the transfer region from
-# the FVM box faces, the blending ramp inside it and the particle-only band inside the ramp.
+# Interface depths in particle spacings, recommended by the cylinder error study
+# (docs/reports/2026-10-23-coupling-error-sources.md): the inset of the transfer surface from
+# the outer FVM boundary, and the depths below the transfer surface where the blending weight
+# starts to rise (end of the zero-weight layer) and reaches one (start of the replacement region).
 TRANSFER_INSET_SPACINGS = 8.75
-BLEND_WIDTH_SPACINGS = 6.0
-PARTICLE_ONLY_WIDTH_SPACINGS = 2.0
+BLEND_START_SPACINGS = 2.0
+BLEND_END_SPACINGS = 6.0
 
 
 @dataclass(frozen=True, slots=True)
 class Backup:
     """Coupled restart backups ``solution/coupled/coupled_{step:06d}/``.
 
-    One coupled backup holds the FVM fields, the particles and the interface
-    trace of one exchange, and the FVM and particle frames of that time.
+    One coupled backup holds the FVM fields, the particles and the boundary
+    data of one coupling step, and the FVM and particle frames of that time.
 
     Parameters
     ----------
     schedule : EverySteps, EveryTime, FinalOnly or None, default=None
-        Exchanges with a backup. ``EverySteps(n)`` counts exchanges; an
+        Coupling steps with a backup. ``EverySteps(n)`` counts coupling steps; an
         ``EveryTime`` interval and start time must be whole numbers of
-        exchange time steps. ``None`` writes no periodic backups.
+        coupling intervals. ``None`` writes no periodic backups.
     write_at_end : bool, default=True
-        Write a backup of the last exchange when the run ends.
+        Write a backup of the last coupling step when the run ends.
     """
 
     schedule: Schedule | None = None
@@ -48,63 +49,72 @@ class Backup:
 
 @dataclass(frozen=True, slots=True)
 class CouplerConfig:
-    """Overlap transfer, interface iteration and backups of the FVM--VPM exchange.
+    """Vorticity transfer, coupling iterations and backups of the FVM--VPM coupling.
 
-    The FVM and VPM cases own viscosity, density, geometry, mesh and particle
+    The FVM and VPM cases set viscosity, density, geometry, mesh and particle
     resolution and the time steps; the coupled solver checks that they agree.
-    Particle strengths are integrated vorticity, in m³/s. Renewal requires
-    GBD diffusion with an absolute vorticity threshold.
+    Particle strengths are integrated vorticity, in m³/s. The vorticity transfer
+    requires GBD diffusion with an absolute vorticity threshold.
     """
 
     freestream_velocity: tuple[float, float, float] = (1.0, 0.0, 0.0)
-    """Cartesian background velocity in m/s; must match the VPM."""
+    """Cartesian free-stream velocity in m/s; must match the VPM."""
     freestream: VelocityRamp | None = None
-    """Optional background velocity history; part of the restart configuration."""
+    """Optional free-stream velocity history; part of the restart configuration."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
     """Transfer-region bounds (xmin, xmax, ymin, ymax, zmin, zmax), in m.
 
-    ``None`` insets the FVM box by ``transfer_inset_spacings`` on every face (not on slip planes).
+    ``None`` insets the outer FVM boundary by ``transfer_inset_spacings`` on every face (not on
+    slip planes).
     """
     transfer_inset_spacings: float = TRANSFER_INSET_SPACINGS
-    """Inset of the transfer region from the FVM box faces, in particle spacings.
+    """Transfer inset ``L_inset``, from the outer FVM boundary to the transfer surface, in particle
+    spacings.
 
     Used when ``transfer_region_bounds`` is ``None``; the default is the inset recommended by the
     cylinder error study.
     """
-    eta_blend_width: float | None = None
-    """Width of the smooth blending ramp inside the transfer faces, in m.
+    blend_start_depth: float | None = None
+    """Depth ``δ_0`` below the transfer surface where the blending weight starts to rise, in m.
 
-    ``None`` uses ``BLEND_WIDTH_SPACINGS`` particle spacings, with ``PARTICLE_ONLY_WIDTH_SPACINGS``
-    for an unset particle-only band; zero disables blending.
+    The zero-weight layer ``0 < d ≤ δ_0`` keeps its particle vorticity. ``None`` uses
+    ``BLEND_START_SPACINGS`` particle spacings, and zero when ``blend_end_depth`` is zero.
     """
-    vpm_only_width: float | None = None
-    """VPM-owned band inside transfer faces, in m; smaller than the ramp.
+    blend_end_depth: float | None = None
+    """Depth ``δ_1`` below the transfer surface where the blending weight reaches one, in m.
 
-    ``None`` with a given ramp width means no band.
+    Deeper lies the replacement region, where FVM vorticity replaces the particle vorticity.
+    ``None`` uses ``BLEND_END_SPACINGS`` particle spacings; zero disables blending, so the FVM
+    vorticity replaces the particle vorticity everywhere inside the transfer surface.
     """
-    transfer_vorticity_cutoff: float = 0.05
-    """Interior soft-pruning threshold in 1/s, at least the VPM GBD floor."""
-    transfer_amplification_cap: float = 1.8
-    """Correction gain and coefficient bound relative to the target peak; at least one.
+    transfer_removal_threshold: float = 0.05
+    """Removal threshold ``τ_transfer`` of the replacement region, in 1/s; at least the GBD
+    threshold ``τ_VPM``."""
+    max_strength_ratio: float = 1.8
+    """Strength-ratio limit ``κ_max`` of the strength correction; at least one.
 
-    Existing larger coefficients are retained when the fields already agree.
+    It sets the correction gain ``γ = min(κ_max − 1, 1)`` and bounds each corrected lattice strength
+    by ``κ_max`` times the peak target strength. Larger existing strengths are kept when the FVM
+    and particle vorticity already agree.
     """
     transfer_diagnostic_interval_steps: int = 1
-    """Accepted transfers between expensive diagnostics; positive."""
-    transfer_discretization_error_limit: float = 0.08
-    """Maximum relative closure-correction fraction, in (0, 1]."""
-    coupling_patch: str = "numericalBoundary"
-    """Outer FVM patch receiving normal velocity and tangential gradient."""
-    interface_iterations: int = 6
-    """Maximum fixed-predictor sweeps; FVM output must fall on exchanges when above one.
+    """Accepted transfers between full diagnostics; positive."""
+    max_moment_correction_fraction: float = 0.08
+    """Largest moment correction, as a fraction of the transferred strength L1 norm, in (0, 1]."""
+    outer_boundary_patch: str = "numericalBoundary"
+    """Mesh patch of the outer FVM boundary, which receives the normal velocity and the normal
+    gradient of the tangential velocity."""
+    max_coupling_iterations: int = 6
+    """Largest number of coupling iterations at a fixed VPM predictor; above one, FVM output must
+    fall on coupling times.
 
-    With the tolerances below the cylinder study converged in 1.8 sweeps on average; one
-    sweep changed the drag by 3%.
+    With the tolerances below the cylinder study converged in 1.8 coupling iterations on average;
+    a single iteration changed the drag by 3%.
     """
-    interface_normal_tolerance: float = 1.0e-5
-    """Area-weighted RMS normal-velocity residual tolerance, in m/s."""
-    interface_gradient_tolerance: float = 1.0e-5
-    """Area-weighted RMS tangential-gradient residual tolerance, in 1/s."""
+    normal_velocity_tolerance: float = 1.0e-5
+    """Tolerance of the area-weighted RMS normal-velocity residual, in m/s."""
+    normal_gradient_tolerance: float = 1.0e-5
+    """Tolerance of the area-weighted RMS normal-gradient residual, in 1/s."""
     backup: Backup = field(default_factory=Backup)
     """Coupled restart backups."""
 
@@ -124,48 +134,47 @@ class CouplerConfig:
                     "Each transfer_region_bounds upper bound must exceed its lower bound"
                 )
             object.__setattr__(self, "transfer_region_bounds", tuple(float(v) for v in bounds))
-        for name in ("interface_iterations", "transfer_diagnostic_interval_steps"):
+        for name in ("max_coupling_iterations", "transfer_diagnostic_interval_steps"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
-        for name in ("interface_normal_tolerance", "interface_gradient_tolerance"):
+        for name in ("normal_velocity_tolerance", "normal_gradient_tolerance"):
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0.0:
-                raise ValueError("Interface tolerances must be finite and positive")
-        for name in ("eta_blend_width", "vpm_only_width", "transfer_vorticity_cutoff"):
+                raise ValueError(f"{name} must be finite and positive")
+        for name in ("blend_start_depth", "blend_end_depth", "transfer_removal_threshold"):
             value = getattr(self, name)
             if value is not None and (not np.isfinite(value) or value < 0.0):
                 raise ValueError(f"{name} must be finite and non-negative")
-        if self.eta_blend_width is None and self.vpm_only_width is not None:
-            raise ValueError("vpm_only_width requires an eta_blend_width")
-        if self.eta_blend_width is not None and self.vpm_only_width is not None:
-            if self.eta_blend_width == 0.0 and self.vpm_only_width != 0.0:
-                raise ValueError("vpm_only_width requires a positive eta_blend_width")
-            if self.eta_blend_width > 0.0 and self.vpm_only_width >= self.eta_blend_width:
-                raise ValueError("vpm_only_width must be smaller than eta_blend_width")
+        if self.blend_end_depth == 0.0 and self.blend_start_depth not in (None, 0.0):
+            raise ValueError("blend_start_depth must be zero when blend_end_depth is zero")
+        if (
+            self.blend_start_depth is not None
+            and self.blend_end_depth is not None
+            and self.blend_end_depth > 0.0
+            and self.blend_start_depth >= self.blend_end_depth
+        ):
+            raise ValueError("blend_start_depth must be smaller than blend_end_depth")
         if not np.isfinite(self.transfer_inset_spacings) or self.transfer_inset_spacings < 0.0:
             raise ValueError("transfer_inset_spacings must be finite and non-negative")
-        if (
-            not np.isfinite(self.transfer_amplification_cap)
-            or self.transfer_amplification_cap < 1.0
+        if not np.isfinite(self.max_strength_ratio) or self.max_strength_ratio < 1.0:
+            raise ValueError("max_strength_ratio must be at least one")
+        if not np.isfinite(self.max_moment_correction_fraction) or not (
+            0.0 < self.max_moment_correction_fraction <= 1.0
         ):
-            raise ValueError("transfer_amplification_cap must be at least one")
-        if not np.isfinite(self.transfer_discretization_error_limit) or not (
-            0.0 < self.transfer_discretization_error_limit <= 1.0
-        ):
-            raise ValueError("transfer_discretization_error_limit must lie in (0, 1]")
+            raise ValueError("max_moment_correction_fraction must lie in (0, 1]")
         if not isinstance(self.backup, Backup):
             raise TypeError("backup must be a coupler Backup")
 
     @property
     def freestream_velocity_vector(self) -> np.ndarray:
-        """Return the Cartesian freestream vector in m/s."""
+        """Return the Cartesian free-stream vector in m/s."""
         return np.asarray(self.freestream_velocity, dtype=np.float64)
 
     def transfer_region(
-        self, fvm_box: tuple | np.ndarray, particle_spacing: float, slip_planes: bool
+        self, fvm_domain_bounds: tuple | np.ndarray, particle_spacing: float, slip_planes: bool
     ) -> np.ndarray:
-        """Transfer-region bounds in m, inset from the FVM box when none are given.
+        """Transfer-region bounds in m, inset from the outer FVM boundary when none are given.
 
         Slip planes bound a planar flow in z, so the default inset leaves them in place.
         """
@@ -175,33 +184,41 @@ class CouplerConfig:
         offsets = np.array([inset, -inset] * 3)
         if slip_planes:
             offsets[4:6] = 0.0
-        return np.asarray(fvm_box, dtype=np.float64) + offsets
+        return np.asarray(fvm_domain_bounds, dtype=np.float64) + offsets
 
-    def blend_widths(self, particle_spacing: float) -> tuple[float, float]:
-        """Blending-ramp and particle-only widths in m, from the particle spacing when unset."""
-        if self.eta_blend_width is None:
-            spacing = float(particle_spacing)
-            return BLEND_WIDTH_SPACINGS * spacing, PARTICLE_ONLY_WIDTH_SPACINGS * spacing
-        return float(self.eta_blend_width), float(self.vpm_only_width or 0.0)
+    def blend_depths(self, particle_spacing: float) -> tuple[float, float]:
+        """Blending depths ``(δ_0, δ_1)`` in m, from the particle spacing when unset."""
+        spacing = float(particle_spacing)
+        end = BLEND_END_SPACINGS * spacing if self.blend_end_depth is None else self.blend_end_depth
+        if self.blend_start_depth is not None:
+            start = self.blend_start_depth
+        else:
+            start = 0.0 if end == 0.0 else BLEND_START_SPACINGS * spacing
+        if end > 0.0 and start >= end:
+            raise ValueError(
+                f"blend_start_depth {start:g} m must be smaller than blend_end_depth {end:g} m"
+            )
+        return float(start), float(end)
 
-    def validate_transfer_region_box(
-        self, fvm_box: tuple | np.ndarray, particle_spacing: float, slip_planes: bool
+    def validate_transfer_region(
+        self, fvm_domain_bounds: tuple | np.ndarray, particle_spacing: float, slip_planes: bool
     ) -> None:
         """Require the transfer region to lie inside the FVM domain."""
-        outer = np.asarray(fvm_box, dtype=np.float64)
+        outer = np.asarray(fvm_domain_bounds, dtype=np.float64)
         inner = self.transfer_region(outer, particle_spacing, slip_planes)
         if np.any(inner[::2] < outer[::2]) or np.any(inner[1::2] > outer[1::2]):
             raise ValueError("transfer_region_bounds must be contained within the FVM domain")
         if np.any(inner[1::2] <= inner[::2]):
-            raise ValueError("the transfer-region inset leaves no transfer region in the FVM box")
+            raise ValueError("the transfer inset leaves no transfer region inside the FVM domain")
 
     def to_dict(self) -> dict[str, object]:
         """Return the settings that change the solution, for restart validation.
 
-        The backup schedule only selects saved states and is left out.
+        The backup schedule and the interval of the full transfer diagnostics only
+        select outputs and are left out.
         """
         values = {item.name: getattr(self, item.name) for item in fields(self)}
-        del values["backup"]
+        del values["backup"], values["transfer_diagnostic_interval_steps"]
         values["freestream_velocity"] = list(self.freestream_velocity)
         values["freestream"] = None if self.freestream is None else asdict(self.freestream)
         if self.transfer_region_bounds is not None:

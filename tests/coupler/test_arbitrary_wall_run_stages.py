@@ -99,12 +99,12 @@ def make_coupler(directory, kind, *, les=False, error_limit=1.0):
         run=vpm.RunPlan(end_time=0.02),
     )
     config = coupler.CouplerConfig(
-        # One sweep, so the restart must reproduce the run exactly
-        interface_iterations=1,
+        # One coupling iteration, so the restart must reproduce the run exactly
+        max_coupling_iterations=1,
         transfer_inset_spacings=0.0,
-        eta_blend_width=0.0,
+        blend_end_depth=0.0,
         freestream_velocity=velocity,
-        transfer_discretization_error_limit=error_limit,
+        max_moment_correction_fraction=error_limit,
     )
     return coupler.CoupledSolver(flow, particles, config)
 
@@ -135,7 +135,7 @@ def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
         resumed.advance()
         np.testing.assert_allclose(resumed.fvm_solver.gather_velocity_field(), velocity, atol=1e-7)
         # VPM fields and GBD atomic accumulation use float32; accept its
-        # roundoff in the pressure trace while catching lost boundary history.
+        # roundoff in the pressure while catching lost boundary data.
         np.testing.assert_allclose(resumed.fvm_solver.gather_pressure_field(), pressure, atol=1e-6)
         restored_positions, restored_strengths = particle_state(resumed)
         np.testing.assert_allclose(restored_positions, positions, atol=2e-7)
@@ -144,7 +144,7 @@ def test_arbitrary_walls_advance_and_restore_latest(tmp_path, kind):
     assert [json.loads(row)["step"] for row in diagnostics.read_text().splitlines()] == [1, 2]
 
 
-def test_finite_wall_body_with_les_uses_three_dimensional_exchange(tmp_path):
+def test_finite_wall_body_with_les_uses_three_dimensional_coupling(tmp_path):
     with make_coupler(tmp_path, "concave", les=True, error_limit=0.08) as driver:
         driver.advance()
         assert driver.fvm_case.numerics.turbulence.model == "smagorinsky"
@@ -153,10 +153,11 @@ def test_finite_wall_body_with_les_uses_three_dimensional_exchange(tmp_path):
         assert np.ptp(position[:, 2]) > 0.5
         assert np.all(np.isfinite(strength))
         diagnostics = driver._last_transfer_result
-        assert diagnostics.transfer_method == "buffered_m4_renewal"
         assert (
-            diagnostics.renewal_conservation_error <= diagnostics.renewal_vortex_strength_tolerance
+            diagnostics.transfer_conservation_error
+            <= diagnostics.transfer_vortex_strength_tolerance
         )
         assert (
-            diagnostics.renewal_linear_impulse_error <= diagnostics.renewal_linear_impulse_tolerance
+            diagnostics.transfer_linear_impulse_error
+            <= diagnostics.transfer_linear_impulse_tolerance
         )

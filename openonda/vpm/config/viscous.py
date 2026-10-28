@@ -30,7 +30,7 @@ class ViscousConfig:
     dvh_domain_padding, gbd_domain_padding : float, default=3.0
         Number of grid cells padded beyond the active particle bounds.
     dvh_threshold, gbd_threshold : float, default=0.01
-        Node-pruning controls interpreted by the corresponding threshold mode.
+        Weak-strength removal thresholds interpreted by the corresponding threshold mode.
         ``budget`` is the allowed discarded L1 fraction, ``relative_max`` is a
         fraction of peak node strength, and ``absolute`` is a threshold in m³/s.
     dvh_threshold_mode, gbd_threshold_mode : {'budget', 'relative_max', 'absolute'}
@@ -84,10 +84,10 @@ class ViscousConfig:
     """DVH domain padding in grid cells."""
 
     dvh_threshold: float = 0.01
-    """DVH pruning threshold interpreted by ``dvh_threshold_mode``."""
+    """DVH weak-strength removal threshold interpreted by ``dvh_threshold_mode``."""
 
     dvh_threshold_mode: str = "budget"
-    """DVH pruning mode."""
+    """DVH weak-strength removal mode."""
 
     gbd_grid_spacing: float | None = None
     """GBD regeneration-grid spacing [m]."""
@@ -96,10 +96,10 @@ class ViscousConfig:
     """GBD domain padding in grid cells."""
 
     gbd_threshold: float = 0.01
-    """GBD pruning threshold interpreted by ``gbd_threshold_mode``."""
+    """GBD weak-strength removal threshold interpreted by ``gbd_threshold_mode``."""
 
     gbd_threshold_mode: str = "budget"
-    """GBD pruning mode."""
+    """GBD weak-strength removal mode."""
 
     gbd_remeshing_kernel: str = "m4_prime"
     """Scatter kernel: M4_PRIME or experimental six-point LAGRANGE6."""

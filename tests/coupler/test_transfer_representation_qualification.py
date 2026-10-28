@@ -7,13 +7,13 @@ import pytest
 
 from openonda import fvm
 from openonda.coupler import CouplerConfig
-from openonda.coupler.boundary import apply_fvm_boundary, tangential_normal_velocity_gradient
+from openonda.coupler.boundary import apply_fvm_boundary, tangential_velocity_normal_gradient
 from openonda.coupler.geometry import TriangulatedWall
-from openonda.coupler.stable_renewal import (
-    gaussian_represented_vortex_strength,
-    recover_vortex_invariants,
-    vortex_invariants,
-    vortex_strength_from_velocity_trace,
+from openonda.coupler.transfer_lattice import (
+    correct_vortex_moments,
+    fvm_target_strength,
+    gaussian_representation,
+    vortex_moments,
 )
 from openonda.coupler.vorticity_transfer import VorticityTransfer
 from openonda.fvm.coupling.coupler_interface import CouplerInterfaceMixin
@@ -59,13 +59,13 @@ def _taylor_green_pressure_gradient(position, time, viscosity=0.01):
     )
 
 
-def _transfer_owner(config, box, particle_spacing):
+def _coupled_solver_view(config, box, particle_spacing):
     """Coupled-solver attributes read by the vorticity transfer."""
     viscous = SimpleNamespace(scheme="gbd", gbd_threshold_mode="absolute", gbd_threshold=0.0)
     return SimpleNamespace(
         config=config,
         kinematic_viscosity=0.01,
-        fvm_box=box,
+        fvm_domain_bounds=box,
         vpm_core_radius_ratio=1.0,
         vpm_particle_spacing=particle_spacing,
         vpm_time_step_size=0.01,
@@ -75,7 +75,7 @@ def _transfer_owner(config, box, particle_spacing):
     )
 
 
-def _donor_cells(position, volume, wall_triangles=(), *, wall=None):
+def _fvm_cells(position, volume, wall_triangles=(), *, wall=None):
     """FVM solver attributes read by the vorticity transfer setup."""
     boundaries = [] if wall is None else [SimpleNamespace(name=wall, mesh_type="wall")]
     return SimpleNamespace(
@@ -140,7 +140,7 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         ),
     )
     with fvm.FVMSolver(case) as solver:
-        config = CouplerConfig(transfer_inset_spacings=0.0, eta_blend_width=0.0)
+        config = CouplerConfig(transfer_inset_spacings=0.0, blend_end_depth=0.0)
         coupler = SimpleNamespace(
             fvm_solver=solver,
             config=config,
@@ -151,9 +151,9 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
         normal = solver.gather_boundary_face_normal("numericalBoundary")
         initial, _, pressure = _taylor_green_fields(centre, 0)
         velocity, jacobian, _ = _taylor_green_fields(face, 0)
-        solver.set_normal_velocity_tangential_gradient_boundary_condition(
+        solver.set_mixed_velocity_boundary_condition(
             np.einsum("ij,ij->i", velocity, normal),
-            tangential_normal_velocity_gradient(jacobian, normal),
+            tangential_velocity_normal_gradient(jacobian, normal),
             "numericalBoundary",
         )
         solver.kinematic_pressure[: len(centre)] = pressure
@@ -165,7 +165,7 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
                 "numericalBoundary",
                 velocity,
                 normal_velocity=np.einsum("ij,ij->i", velocity, normal),
-                tangential_gradient=tangential_normal_velocity_gradient(jacobian, normal),
+                normal_gradient=tangential_velocity_normal_gradient(jacobian, normal),
                 accepted_time=step * dt,
             )
         assert solver.step == steps
@@ -187,14 +187,14 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
 
 
 @pytest.mark.parametrize("strength_scale", [1.0e-18, 1.0, 1.0e18])
-def test_invariant_recovery_resolves_small_and_large_circulation(strength_scale):
+def test_moment_correction_resolves_small_and_large_total_strength(strength_scale):
     rng = np.random.default_rng(20260913)
     position = rng.uniform(-1, 1, size=(120, 3))
     expected = rng.normal(size=(120, 3)) * strength_scale
-    target = vortex_invariants(position, expected)
+    target = vortex_moments(position, expected)
     perturbed = expected + rng.normal(size=(120, 3)) * strength_scale * 0.01
-    corrected = recover_vortex_invariants(position, perturbed, target, volumes=np.ones(120))
-    actual = vortex_invariants(position, corrected)
+    corrected = correct_vortex_moments(position, perturbed, target, volumes=np.ones(120))
+    actual = vortex_moments(position, corrected)
     tolerance = 32 * np.finfo(float).eps * np.linalg.norm(expected, axis=1).sum()
     assert np.linalg.norm(actual.total_vortex_strength - target.total_vortex_strength) < tolerance
     assert np.linalg.norm(actual.linear_impulse - target.linear_impulse) < tolerance
@@ -218,22 +218,22 @@ def test_exact_unsteady_boundary_data_converges_under_fvm_refinement(
 
 @pytest.mark.qualification
 @pytest.mark.parametrize("cell_spacing", [(0.5, 0.5, 0.5), (0.125, 0.5, 1.0)])
-def test_anisotropic_donors_preserve_constant_vorticity_target(cell_spacing, record_property):
+def test_anisotropic_cells_preserve_constant_vorticity_target(cell_spacing, record_property):
     h = 0.0625
     box = np.array([-1.0, 1.0] * 3)
     axes = [np.arange(-1.0 + d / 2, 1.0, d) for d in cell_spacing]
     position = np.array(np.meshgrid(*axes, indexing="ij")).reshape(3, -1).T
-    coupler = _transfer_owner(
+    coupler = _coupled_solver_view(
         CouplerConfig(
-            transfer_region_bounds=tuple(box), transfer_vorticity_cutoff=0.0, eta_blend_width=0.0
+            transfer_region_bounds=tuple(box), transfer_removal_threshold=0.0, blend_end_depth=0.0
         ),
         box,
         h,
     )
-    donors = _donor_cells(position, np.prod(cell_spacing))
+    fvm_cells = _fvm_cells(position, np.prod(cell_spacing))
     transfer = VorticityTransfer(coupler)
-    transfer.setup(donors)
-    lattice = transfer._stable_renewal_lattice
+    transfer.setup(fvm_cells)
+    lattice = transfer._transfer_lattice
     interior = np.all(np.abs(lattice.positions) < 0.75, axis=1)
     # Rigid rotation: divergence zero, curl exactly (0, 0, 1), regardless
     # of FVM/VPM spacing or lattice phase.
@@ -241,16 +241,16 @@ def test_anisotropic_donors_preserve_constant_vorticity_target(cell_spacing, rec
     gradient[:, 1, 0] = -0.5
     gradient[:, 0, 1] = 0.5
     velocity = position @ gradient[0]
-    strength = vortex_strength_from_velocity_trace(
+    strength = fvm_target_strength(
         lattice.positions,
         h,
-        lambda points: transfer._velocity_trace.sample(points, velocity, gradient),
+        lambda points: transfer._velocity_interpolator.sample(points, velocity, gradient),
     )
     target = strength[interior] * lattice.mesh_weight[interior, None] / h**3
     error = float(np.max(np.abs(target - [0.0, 0.0, 1.0])))
     record_property("constant_vorticity_max_error", error)
     assert error < 3.0e-14
-    np.testing.assert_array_equal(lattice.fvm_blend_weight[interior], 1.0)
+    np.testing.assert_array_equal(lattice.blending_weight[interior], 1.0)
 
 
 @pytest.mark.qualification
@@ -266,7 +266,7 @@ def test_lattice_representation_matches_independent_gaussian_sum(ratio, record_p
     displacement = positions[:, None] - positions[source_rows]
     kernel = np.exp(-np.sum(displacement**2, axis=-1) / sigma**2) / (np.pi**1.5 * sigma**3)
     expected = h**3 * kernel @ strength[source_rows]
-    actual = gaussian_represented_vortex_strength(strength, shape, h, core_radius=sigma)
+    actual = gaussian_representation(strength, shape, h, core_radius=sigma)
     error = float(np.max(np.abs(actual - expected)))
     record_property("physical_gaussian_max_error", error)
     assert error < 8.0e-15
@@ -330,14 +330,14 @@ def test_curved_wall_uses_actual_triangles_without_a_shape_substitution(capped):
     normals = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
     normals /= np.linalg.norm(normals, axis=1)[:, None]
     axis = np.arange(-0.875, 1, 0.25)
-    donors = np.array(np.meshgrid(axis, axis, axis, indexing="ij")).reshape(3, -1).T
-    donors = donors[np.linalg.norm(donors[:, :2], axis=1) > 0.5]
-    coupler = _transfer_owner(
-        CouplerConfig(transfer_region_bounds=(-0.9, 0.9) * 3, eta_blend_width=0.0),
+    cells = np.array(np.meshgrid(axis, axis, axis, indexing="ij")).reshape(3, -1).T
+    cells = cells[np.linalg.norm(cells[:, :2], axis=1) > 0.5]
+    coupler = _coupled_solver_view(
+        CouplerConfig(transfer_region_bounds=(-0.9, 0.9) * 3, blend_end_depth=0.0),
         np.array([-1.0, 1.0] * 3),
         0.125,
     )
-    fvm_cells = _donor_cells(donors, 0.25**3, triangles, wall="cylinder")
+    fvm_cells = _fvm_cells(cells, 0.25**3, triangles, wall="cylinder")
     transfer = VorticityTransfer(coupler)
     transfer.setup(fvm_cells)
     assert transfer.solid_boundary is not None

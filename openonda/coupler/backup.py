@@ -1,7 +1,7 @@
 """Numbered restart backups of the coupled FVM--VPM state.
 
 A coupled backup ``solution/coupled/coupled_{step:06d}/`` holds the FVM
-backup, the VPM backup and the VPM interface trace of one exchange, described
+backup, the VPM backup and the boundary data of one coupling step, described
 by ``checkpoint_info.json``. It is written to a hidden staging directory and
 renamed into place once complete.
 """
@@ -25,15 +25,15 @@ from openonda.vpm.config.restart_changes import validate_exact_configuration_cha
 
 from .reporting import format_coupler_log
 
-BACKUP_FORMAT_VERSION = 14
-BOUNDARY_SCHEMA_VERSION = 4
+BACKUP_FORMAT_VERSION = 16
+BOUNDARY_SCHEMA_VERSION = 5
 _BOUNDARY_KEYS = (
     "has_velocity",
     "velocity",
     "has_normal_velocity",
     "normal_velocity",
-    "has_tangential_gradient",
-    "tangential_gradient",
+    "has_normal_gradient",
+    "normal_gradient",
 )
 _INFO_KEYS = frozenset(
     (
@@ -99,7 +99,7 @@ def restart_configuration(coupler) -> dict:
 
 
 def save_coupled_backup(coupler, path: Path) -> Path:
-    """Write the FVM, VPM and interface-trace backup of the current exchange.
+    """Write the FVM, VPM and boundary-data backup of the current coupling step.
 
     Collective under MPI. Returns ``path`` on every rank.
     """
@@ -108,7 +108,7 @@ def save_coupled_backup(coupler, path: Path) -> Path:
     step = coupler.fvm_solver.step // coupler.n_fvm_substeps
     with collective_phase(comm, "coupled backup clock validation"):
         if fvm.step != step * coupler.n_fvm_substeps:
-            raise ValueError("The FVM state is not at a completed exchange")
+            raise ValueError("The FVM state is not at the end of a coupling interval")
         if vpm is not None and (vpm.step != step or vpm.time != fvm.time):
             raise ValueError("The FVM and VPM steps or times differ")
     staging = path.with_name(f".{path.name}.tmp")
@@ -125,16 +125,16 @@ def save_coupled_backup(coupler, path: Path) -> Path:
                 "vpm": vpm.save_backup(staging / f"vpm_{step:06d}.h5").name,
                 "boundary_condition": f"boundary_condition_{step:06d}.npz",
             }
-            trace = {
+            boundary_data = {
                 "velocity": (coupler._velocity_boundary_condition_old, (0, 3)),
                 "normal_velocity": (coupler._normal_velocity_boundary_condition_old, (0,)),
-                "tangential_gradient": (
-                    coupler._tangential_gradient_boundary_condition_old,
+                "normal_gradient": (
+                    coupler._normal_gradient_boundary_condition_old,
                     (0, 3),
                 ),
             }
             state = {"boundary_schema_version": np.asarray(BOUNDARY_SCHEMA_VERSION)}
-            for name, (values, empty_shape) in trace.items():
+            for name, (values, empty_shape) in boundary_data.items():
                 state[f"has_{name}"] = np.asarray(values is not None)
                 state[name] = np.empty(empty_shape) if values is None else values
             with (staging / files["boundary_condition"]).open("wb") as stream:
@@ -165,7 +165,7 @@ def save_coupled_backup(coupler, path: Path) -> Path:
             logger.info(
                 format_coupler_log(
                     "coupled backup",
-                    ("exchange", step),
+                    ("coupling step", step),
                     ("time", f"{fvm.time:.6g}", "s"),
                     ("directory", str(path)),
                 )
@@ -205,8 +205,8 @@ def _read_checkpoint_info(path: Path) -> dict:
     return info
 
 
-def _load_boundary_trace(path: Path) -> tuple:
-    """Return the stored VPM interface trace (velocity, normal velocity, tangential gradient)."""
+def _load_boundary_data(path: Path) -> tuple:
+    """Return the stored boundary data: velocity, normal velocity, normal gradient of u_t."""
     with np.load(path, allow_pickle=False) as stored:
         state = decode_state({name: np.array(stored[name], copy=True) for name in stored.files})
     if int(state.get("boundary_schema_version", -1)) != BOUNDARY_SCHEMA_VERSION or any(
@@ -215,7 +215,7 @@ def _load_boundary_trace(path: Path) -> tuple:
         raise ValueError(f"Unsupported coupled boundary backup {path}")
     return tuple(
         state[name].copy() if bool(state[f"has_{name}"]) else None
-        for name in ("velocity", "normal_velocity", "tangential_gradient")
+        for name in ("velocity", "normal_velocity", "normal_gradient")
     )
 
 
@@ -226,9 +226,12 @@ def load_coupled_backup(
     allowed_config_differences: Collection[str] = (),
     expected_config_differences: Mapping[str, tuple[object, object]] | None = None,
 ) -> int:
-    """Restore both solvers and the interface trace; return the exchange count.
+    """Restore both solvers and the boundary data; return the coupling step.
 
-    Configuration differences are refused unless listed. Paths starting with
+    A backup written with another number of FVM substeps continues when its FVM
+    step ends a coupling interval of the present size: the particles continue
+    with the present particle step, and the coupling step counts intervals of
+    the present size from t = 0. Configuration differences are refused unless listed. Paths starting with
     ``vpm.`` are passed to the VPM backup reader without the prefix; the
     others name coupling settings. The VPM is restored and validated before
     the FVM. Collective under MPI.
@@ -252,10 +255,15 @@ def load_coupled_backup(
                     p: v for p, v in expected.items() if not p.startswith("vpm.")
                 },
             )
-            if info["n_fvm_substeps"] != coupler.n_fvm_substeps:
-                raise ValueError("The coupled backup has a different number of FVM substeps")
+            if info["fvm_step"] % coupler.n_fvm_substeps:
+                raise ValueError(
+                    f"The coupled backup at FVM step {info['fvm_step']} does not end a coupling "
+                    f"interval of {coupler.n_fvm_substeps} FVM steps"
+                )
+            changed_interval = info["n_fvm_substeps"] != coupler.n_fvm_substeps
             coupler.vpm_solver.load_backup(
                 path / info["files"]["vpm"],
+                time_step_size=coupler.vpm_time_step_size if changed_interval else None,
                 allowed_config_differences=tuple(p[4:] for p in allowed if p.startswith("vpm.")),
                 expected_config_differences={
                     p[4:]: v for p, v in expected.items() if p.startswith("vpm.")
@@ -263,6 +271,7 @@ def load_coupled_backup(
             )
             if coupler.vpm_solver.step != info["step"]:
                 raise ValueError("The VPM backup step differs from the coupled backup")
+            coupler.vpm_solver.step = info["fvm_step"] // coupler.n_fvm_substeps
             if changes:
                 logger.warning(
                     "Loading a coupled backup with allowed configuration differences: "
@@ -271,30 +280,30 @@ def load_coupled_backup(
     if comm is not None and comm.Get_size() > 1:
         info = comm.bcast(info, root=0)
     coupler.fvm_solver.load_backup(path / info["files"]["fvm"])
-    step = int(info["step"])
-    exchange_time = coupler.exchange_time(step)
-    with collective_phase(comm, "coupled backup clock and trace restore"):
+    step = int(info["fvm_step"]) // coupler.n_fvm_substeps
+    coupling_time = coupler.coupling_time(step)
+    with collective_phase(comm, "coupled backup clock and boundary-data restore"):
         if coupler.fvm_solver.step != info["fvm_step"]:
             raise ValueError("The FVM backup step differs from the coupled backup")
-        tolerance = 1.0e-12 + 4.0 * info["fvm_step"] * np.finfo(np.float64).eps * exchange_time
-        if abs(coupler.fvm_solver.time - exchange_time) > tolerance:
+        tolerance = 1.0e-12 + 4.0 * info["fvm_step"] * np.finfo(np.float64).eps * coupling_time
+        if abs(coupler.fvm_solver.time - coupling_time) > tolerance:
             raise ValueError(
                 f"Coupled backup time {coupler.fvm_solver.time!r} s is not the time "
-                f"{exchange_time!r} s of exchange {step}"
+                f"{coupling_time!r} s of coupling step {step}"
             )
         if coupler._is_root:
             (
                 coupler._velocity_boundary_condition_old,
                 coupler._normal_velocity_boundary_condition_old,
-                coupler._tangential_gradient_boundary_condition_old,
-            ) = _load_boundary_trace(path / info["files"]["boundary_condition"])
+                coupler._normal_gradient_boundary_condition_old,
+            ) = _load_boundary_data(path / info["files"]["boundary_condition"])
             coupler._normal_velocity_boundary_condition = None
-            coupler._tangential_gradient_boundary_condition = None
-            rewind_jsonl(coupler.solution_dir / "coupler_diagnostics.jsonl", exchange_time)
-    # Continue on the exchange clock so both solvers write identical times.
-    coupler.fvm_solver.time = exchange_time
+            coupler._normal_gradient_boundary_condition = None
+            rewind_jsonl(coupler.solution_dir / "coupler_diagnostics.jsonl", coupling_time)
+    # Continue on the coupling clock so both solvers write identical times.
+    coupler.fvm_solver.time = coupling_time
     if coupler._is_root:
-        coupler.vpm_solver.time = exchange_time
+        coupler.vpm_solver.time = coupling_time
     return step
 
 

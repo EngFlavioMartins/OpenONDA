@@ -53,7 +53,7 @@ class StabilizationConfig:
     regularization_grid_spacing : float or None
         Positive standard remeshing lattice spacing in m when enabled.
     regularization_tail_budget : float, default=3e-3
-        Fractional circulation-magnitude budget in ``(0, 1)`` available to pruning.
+        Fractional circulation-magnitude budget in ``(0, 1)`` available to weak-strength removal.
     regularization_solenoidal_remesh : bool, default=False
         Project the remeshed lattice toward a divergence-free field.
     regularization_transfer_only : bool, default=False

@@ -156,7 +156,7 @@ def _check_coupling_coverage(coupling: list[dict], metadata: dict) -> None:
 def _check_coupling_history(
     coupling: list[dict],
     *,
-    closure_correction_limit: float,
+    moment_correction_limit: float,
 ) -> None:
     vpm_boundary_condition_error = max(
         abs(float(record["vpm_boundary_condition_flux"]["corrected_mismatch"]))
@@ -175,48 +175,50 @@ def _check_coupling_history(
     if flux_excess > 0.0:
         raise SystemExit("FAIL: a physically significant VPM boundary flux was projected")
     for record in coupling:
-        recovery = record["gbd_moment_recovery"]
+        correction = record["gbd_moment_correction"]
         for name in (
             "nonzero_node_count",
             "retained_node_count",
-            "pruned_node_count",
+            "removed_node_count",
             "support_augmented_node_count",
             "correction_fraction",
             "normalized_vortex_strength_residual",
             "normalized_linear_impulse_residual",
             "normalized_angular_impulse_residual",
         ):
-            if not np.isfinite(float(recovery[name])):
-                raise SystemExit(f"FAIL: non-finite GBD moment-recovery diagnostic {name!r}")
+            if not np.isfinite(float(correction[name])):
+                raise SystemExit(f"FAIL: non-finite GBD moment-correction diagnostic {name!r}")
         for name in (
             "nonzero_node_count",
             "retained_node_count",
-            "pruned_node_count",
+            "removed_node_count",
             "support_augmented_node_count",
         ):
-            if int(recovery[name]) < 0:
-                raise SystemExit(f"FAIL: negative GBD moment-recovery diagnostic {name!r}")
-        if int(recovery["pruned_node_count"]) > 0 and not bool(recovery["applied"]):
-            raise SystemExit("FAIL: GBD pruned vortex nodes without conservative moment recovery")
-        if float(recovery["correction_fraction"]) > closure_correction_limit:
+            if int(correction[name]) < 0:
+                raise SystemExit(f"FAIL: negative GBD moment-correction diagnostic {name!r}")
+        if int(correction["removed_node_count"]) > 0 and not bool(correction["applied"]):
+            raise SystemExit("FAIL: GBD removed weak strengths without the moment correction")
+        if float(correction["correction_fraction"]) > moment_correction_limit:
             raise SystemExit(
-                "FAIL: GBD pruning required an excessive particle-strength correction "
-                f"({float(recovery['correction_fraction']):.3%} > "
-                f"{closure_correction_limit:.3%})"
+                "FAIL: the GBD weak-strength removal needed a moment correction above its limit "
+                f"({float(correction['correction_fraction']):.3%} > "
+                f"{moment_correction_limit:.3%})"
             )
         if (
             max(
-                float(recovery["normalized_vortex_strength_residual"]),
-                float(recovery["normalized_linear_impulse_residual"]),
-                float(recovery["normalized_angular_impulse_residual"]),
+                float(correction["normalized_vortex_strength_residual"]),
+                float(correction["normalized_linear_impulse_residual"]),
+                float(correction["normalized_angular_impulse_residual"]),
             )
             > 1.0e-5
         ):
-            raise SystemExit("FAIL: GBD moment recovery exceeds its precision-aware tolerance")
-        transfer = record["transfer"]
-        if int(transfer["population_pruned_particles"]) != 0:
             raise SystemExit(
-                "FAIL: the renewal hit its particle-capacity limit; this run is not a "
+                "FAIL: the GBD moment correction exceeds its storage-precision tolerance"
+            )
+        transfer = record["transfer"]
+        if int(transfer["particle_set_removed_particles"]) != 0:
+            raise SystemExit(
+                "FAIL: the vorticity transfer hit the particle capacity; this run is not a "
                 "valid coupling comparison"
             )
         expected_after = (
@@ -225,42 +227,40 @@ def _check_coupling_history(
             + int(transfer["n_particles_injected"])
         )
         if int(transfer["n_particles_after"]) != expected_after:
-            raise SystemExit("FAIL: inconsistent overlap-replacement particle budget")
-        circulation_budget = [
+            raise SystemExit("FAIL: inconsistent particle count of the vorticity transfer")
+        strength_change = [
             float(transfer[f"state_change_vortex_strength_net_{axis}"]) for axis in "xyz"
         ]
-        if not np.all(np.isfinite(circulation_budget)):
-            raise SystemExit("FAIL: non-finite overlap-replacement circulation budget")
-        if transfer["transfer_method"] != "buffered_m4_renewal":
-            continue
+        if not np.all(np.isfinite(strength_change)):
+            raise SystemExit("FAIL: non-finite total-strength change of the vorticity transfer")
         for name in (
-            "renewal_raw_vortex_strength_error",
-            "renewal_applied_vortex_strength_correction",
-            "renewal_conservation_error",
-            "renewal_vortex_strength_tolerance",
-            "renewal_raw_linear_impulse_error",
-            "renewal_applied_linear_impulse_correction",
-            "renewal_linear_impulse_error",
-            "renewal_linear_impulse_tolerance",
-            "renewal_applied_particle_strength_fraction",
+            "transfer_raw_vortex_strength_error",
+            "transfer_applied_vortex_strength_correction",
+            "transfer_conservation_error",
+            "transfer_vortex_strength_tolerance",
+            "transfer_raw_linear_impulse_error",
+            "transfer_applied_linear_impulse_correction",
+            "transfer_linear_impulse_error",
+            "transfer_linear_impulse_tolerance",
+            "transfer_applied_particle_strength_fraction",
         ):
             if name not in transfer:
-                raise SystemExit(f"FAIL: renewal closure diagnostic {name!r} is missing")
+                raise SystemExit(f"FAIL: moment-correction diagnostic {name!r} is missing")
             if not np.isfinite(float(transfer[name])):
-                raise SystemExit(f"FAIL: non-finite renewal closure diagnostic {name!r}")
-        if float(transfer["renewal_conservation_error"]) > float(
-            transfer["renewal_vortex_strength_tolerance"]
+                raise SystemExit(f"FAIL: non-finite moment-correction diagnostic {name!r}")
+        if float(transfer["transfer_conservation_error"]) > float(
+            transfer["transfer_vortex_strength_tolerance"]
         ):
-            raise SystemExit("FAIL: renewal did not close total vortex strength")
-        if float(transfer["renewal_linear_impulse_error"]) > float(
-            transfer["renewal_linear_impulse_tolerance"]
+            raise SystemExit("FAIL: the vorticity transfer did not conserve the total strength")
+        if float(transfer["transfer_linear_impulse_error"]) > float(
+            transfer["transfer_linear_impulse_tolerance"]
         ):
-            raise SystemExit("FAIL: renewal did not close linear impulse")
-        correction_fraction = float(transfer["renewal_applied_particle_strength_fraction"])
-        if correction_fraction > closure_correction_limit:
+            raise SystemExit("FAIL: the vorticity transfer did not conserve the linear impulse")
+        correction_fraction = float(transfer["transfer_applied_particle_strength_fraction"])
+        if correction_fraction > moment_correction_limit:
             raise SystemExit(
-                "FAIL: renewal closure required an excessive particle-strength correction "
-                f"({correction_fraction:.3%} > {closure_correction_limit:.3%})"
+                "FAIL: the vorticity transfer needed a moment correction above its limit "
+                f"({correction_fraction:.3%} > {moment_correction_limit:.3%})"
             )
 
 
@@ -445,7 +445,7 @@ def main() -> None:
     _check_coupling_coverage(coupling, metadata)
     _check_coupling_history(
         coupling,
-        closure_correction_limit=float(metadata["coupler"]["transfer_discretization_error_limit"]),
+        moment_correction_limit=float(metadata["coupler"]["max_moment_correction_fraction"]),
     )
 
     physics_summary = _check_reference_accuracy(

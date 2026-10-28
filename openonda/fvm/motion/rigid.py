@@ -25,7 +25,7 @@ from scipy import sparse
 from openonda.core.kinematics import RigidPose, advance_pose
 
 from ..fields.mixed_velocity_boundary import (
-    update_normal_velocity_tangential_gradient_boundary,
+    update_mixed_velocity_boundary,
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from .mesh_motion import MeshMotion
@@ -338,19 +338,19 @@ class RigidMeshMotion:
                 area = np.linalg.norm(surface[faces], axis=1)
                 normal_velocity = self.mesh_face_flux[faces] / area
                 if moving[name]:
-                    boundary["velocity_type"] = "normal_value_tangential_gradient"
+                    boundary["velocity_type"] = "mixed_velocity"
                     boundary["normal_velocity_field"] = normal_velocity
-                    boundary["tangential_gradient_field"] = np.zeros((len(area), 3))
-                    boundary["max_removed_tangential_gradient_normal_component"] = 0.0
-                    update_normal_velocity_tangential_gradient_boundary(
+                    boundary["tangential_velocity_normal_gradient_field"] = np.zeros((len(area), 3))
+                    boundary["max_removed_normal_gradient_normal_component"] = 0.0
+                    update_mixed_velocity_boundary(
                         solver.velocity, boundary, self._mesh_data, self._geo_data
                     )
                 elif boundary["velocity_type"] != self._slip_type[name]:
                     boundary["velocity_type"] = self._slip_type[name]
                     for key in (
                         "normal_velocity_field",
-                        "tangential_gradient_field",
-                        "max_removed_tangential_gradient_normal_component",
+                        "tangential_velocity_normal_gradient_field",
+                        "max_removed_normal_gradient_normal_component",
                     ):
                         boundary.pop(key, None)
                 solver.volumetric_face_flux[faces] = self.mesh_face_flux[faces]

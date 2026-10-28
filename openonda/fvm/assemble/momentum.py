@@ -7,7 +7,7 @@ import numpy as np
 
 from ..fields import gradients
 from ..fields.mixed_velocity_boundary import (
-    update_normal_velocity_tangential_gradient_boundary,
+    update_mixed_velocity_boundary,
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
 from ..solve.linear_interface import (
@@ -268,10 +268,8 @@ def _apply_ustar_bc(
             raise ValueError(
                 f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
             )
-    elif strategy is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT:
-        update_normal_velocity_tangential_gradient_boundary(
-            velocity_star, boundary, mesh_data, geo_data
-        )
+    elif strategy is BoundaryStrategy.MIXED_VELOCITY:
+        update_mixed_velocity_boundary(velocity_star, boundary, mesh_data, geo_data)
     elif strategy in (
         BoundaryStrategy.EMPTY,
         BoundaryStrategy.SLIP,
@@ -383,7 +381,7 @@ def assemble_momentum_equation(
     vol = geo_data["cell_volume"]
     has_directional_mixed_bc = any(
         BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "diffusion")
-        is BoundaryStrategy.NORMAL_VALUE_TANGENTIAL_GRADIENT
+        is BoundaryStrategy.MIXED_VELOCITY
         for boundary in boundaries
     )
 

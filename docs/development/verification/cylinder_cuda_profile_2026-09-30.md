@@ -6,10 +6,10 @@ mesh/time-step convergence; the configured case ends at 100 s.
 
 The tutorial's numerical settings were retained: the generated 143,600-cell
 mesh, four FVM ranks, h = 0.04 m, particle/GBD spacing 0.048 m, FVM dt = 0.004 s,
-coupling dt = 0.04 s, and up to three ordinary interface sweeps. CUDA was
+coupling dt = 0.04 s, and up to three coupling iterations. CUDA was
 requested explicitly and checked inside the process using both the solver's
 backend and Taichi's `Arch.cuda`. Particle fields and device kernels use CUDA;
-FVM, wall geometry, renewal algebra, and host/device staging still involve CPU
+FVM, wall geometry, vorticity-transfer algebra, and host/device staging still involve CPU
 work. The machine has an RTX 3060 Laptop GPU with 6 GiB memory. Another
 simulation was active on the GPU, so these are measurements on a shared machine.
 
@@ -20,12 +20,12 @@ force/probe sampling at t = 0.20 s and field/slice/checkpoint output at
 t = 0.24 s succeeded. The native restart passed configuration and checkpoint-file
 validation, continued the journal without duplicate steps, and wrote a final
 checkpoint with coupling/VPM step 9, FVM step 90, and time 0.36 s. The final
-checkpoint-file hashes and stored particle arrays also passed verification. Renewal
+checkpoint-file hashes and stored particle arrays also passed verification. Transfer
 strength and linear-impulse residuals remained within their recorded tolerances
 at all nine accepted intervals.
 
-**Interface convergence needs qualification.** The first two intervals hit the
-three-sweep cap without reaching the 1e-5 tolerance. Their final normal/gradient
+**Coupling-iteration convergence needs qualification.** The first two intervals hit the
+three-iteration limit without reaching the 1e-5 tolerance. Their final normal/gradient
 residuals were 4.11e-4/4.73e-4 and 1.09e-5/1.25e-5, respectively. Intervals 3–9
 reached tolerance. The final residuals were 4.92e-6 and 5.68e-6. No tolerance,
 iteration cap, geometry correction, or physical boundary model was changed.
@@ -33,16 +33,12 @@ iteration cap, geometry correction, or physical boundary model was changed.
 The baseline used cProfile on every MPI rank and synchronized VPM section
 timers. Its six intervals took 685.07 s; including initialization from the
 saved mesh, the run took 919.35 s. Creating and validating the mesh beforehand
-took 652.16 s under cProf
-
-ile. Loading that exact native mesh took 1.18 s.
+took 652.16 s under cProfile. Loading that exact native mesh took 1.18 s.
 These startup costs are separate from advancement.
 
-| Interval | Physical time (s) | Particles after renewal | Profiled wall time (s) | Interface converged |
+| Interval | Physical time (s) | Particles after transfer | Profiled wall time (s) | Coupling iterations converged |
 | --- | ---: | ---: | ---: | --- |
-| 1
-
-| 0.04 | 5,841 | 173.04 | No |
+| 1 | 0.04 | 5,841 | 173.04 | No |
 | 2 | 0.08 | 6,462 | 91.66 | No |
 | 3 | 0.12 | 6,795 | 92.71 | Yes |
 | 4 | 0.16 | 7,254 | 131.45 | Yes |
@@ -50,17 +46,17 @@ These startup costs are separate from advancement.
 | 6 | 0.24 | 7,959 | 95.34 | Yes |
 
 For a representative warmed interval, step 2 divides approximately as follows.
-Boundary refresh is separated from the transfer total because it evaluates
-particle-induced fields. Particle state checks also evaluates fields after renewal.
+The boundary-data update is separated from the transfer total because it evaluates
+particle-induced fields. Particle state checks also evaluate fields after the transfer.
 
 | Sequential phase | Seconds |
 | --- | ---: |
 | FVM advancement, including its communication | 71.306 |
 | Particle advancement, including wall/GBD handling | 12.610 |
-| Boundary induction and post-renewal refresh | 5.545 |
+| Boundary induction and boundary-data update after the transfer | 5.545 |
 | Transfer calculations and gathers | 1.569 |
 | Particle state checks/field refresh | 0.489 |
-| Interface state capture and restore | 0.132 |
+| Coupling-iteration state capture and restore | 0.132 |
 | Accepted FVM output | 0.003 |
 
 The largest supporting costs are:
@@ -87,7 +83,7 @@ The largest supporting costs are:
 
 Startup additionally spent about 31.30 s constructing global VTK connectivity,
 18.87 s validating topology, 14.59 s hashing the mesh, and 21.00 s preparing
-fixed donor stencils. These did not recur in the measured advancement steps.
+fixed interpolation stencils. These did not recur in the measured advancement steps.
 The new connected-component bookkeeping took about 0.015 s in step 1.
 
 One small shared-code optimization was applied in
@@ -124,8 +120,8 @@ checkpoint lies outside its interval timer. These different states and timing
 modes cannot establish a before/after solver speedup. They verify continuation
 with the optimization and provide ordinary-run timing observations.
 
-All 60 focused tests passed across native solid geometry, visible interpolation,
-wall retries, arbitrary-wall GBD, and wall-aware renewal. Coverage includes
+All 60 focused tests passed across native solid geometry, interpolation through the fluid,
+wall retries, arbitrary-wall GBD, and the vorticity transfer next to the wall. Coverage includes
 rotated, concave, curved, thin and multiple bodies, exact repeated-start result
 parity, one-ULP-distinct starts, and outside-domain queries. Ruff and
 `git diff --check` passed. No full second tutorial GPU run was performed.

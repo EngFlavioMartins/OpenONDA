@@ -1,46 +1,48 @@
 # Coupling overhaul — 5-minute brief
 
-**Headline:** the FVM–VPM exchange is now one canonical, physically consistent
-algorithm: a mixed VPM-to-FVM boundary trace plus fixed-lattice, buffered M4′
-renewal.  The last-week work removed competing experimental paths and fixed the
-two errors that could otherwise accumulate at repeated exchanges.
+**Headline:** the FVM–VPM coupling is now one physically consistent algorithm:
+a mixed boundary condition from the particles on the outer FVM boundary, and a
+vorticity transfer by M4′ remeshing onto a fixed transfer lattice. The work of
+the last week removed competing experimental paths and fixed the two errors
+that could otherwise accumulate over repeated coupling intervals.
 
 ## What changed
 
 | Area | Before | Now / benefit |
 |---|---|---|
-| Boundary hand-off | Several selectable velocity/pressure paths | One mixed trace: VPM supplies normal velocity and tangential normal derivative; FVM uses `fixedFluxPressure`. This makes the patch treatment consistent across cases. |
-| FVM → VPM renewal | Multiple paths (`common_lattice`, projected renewal, buffered renewal) | One supported route: fixed-lattice M4′ renewal, GBD diffusion, an advective VPM-owned release buffer. Less configuration surface and one validation target. |
-| Field representation | FVM *physical vorticity* could be blended directly with VPM *Gaussian coefficients* | The new update compares the FVM field with the field **represented by** particles. A matching state is a fixed point—no artificial smoothing at every exchange. |
-| Wall handling | Tapered cells just inside a solid could feed the inverse correction | Solid-interior nodes are excluded before correction; impossible wall targets cannot leak into nearby fluid coefficients. |
-| Stability / observability | Coefficient growth and boundary-query cost were less explicit | Directional amplitude cap prevents unresolved structures from accumulating; initial/refresh boundary-induction timing is recorded. |
-| Continuation | Coupled cylinder continuation had boundary-state/workflow inconsistencies | Start/latest continuation now preserves the canonical boundary/renewal lifecycle. |
+| Boundary data | Several selectable velocity/pressure paths | One mixed boundary condition: the VPM supplies the normal velocity and the normal gradient of the tangential velocity; the FVM uses `fixedFluxPressure`. The outer FVM boundary is treated the same way in every case. |
+| Vorticity transfer | Multiple paths (`common_lattice`, projected transfer, extended-lattice transfer) | One supported route: M4′ remeshing onto a fixed transfer lattice extended by the remeshing region, GBD diffusion, and free particles in the inset band. Fewer settings and one validation target. |
+| Particle-represented vorticity | FVM vorticity could be blended directly with the particle strengths | The update compares the FVM target strengths with the vorticity the particles represent. A matching state is a fixed point: no artificial smoothing in every coupling interval. |
+| Wall | Cells just inside a solid could feed the strength correction | Lattice nodes inside the solid are excluded before the correction, so targets inside the wall cannot leak into nearby fluid nodes. |
+| Stability and diagnostics | Strength growth and the cost of the boundary data were less explicit | The strength-ratio limit `κ_max` keeps unresolved structures from accumulating; the time of the first and repeated boundary-data evaluations is recorded. |
+| Restart | The coupled cylinder restart had inconsistent boundary data | Starting from the latest backup now restores the boundary data and the transfer lattice of the accepted coupling step. |
 
 ## The algorithm now
 
 ```text
-advance VPM over one exchange interval
+advance the VPM over one coupling interval
       ↓
-evaluate VPM trace on the FVM coupling patch
+evaluate the boundary data of the particles on the outer FVM boundary
       ↓
-FVM subcycle with normal velocity + tangential normal-gradient trace
+advance the FVM over N substeps with the normal velocity and the
+normal gradient of the tangential velocity
       ↓
-renew the FVM-owned inner VPM lattice; preserve released outer wake
+transfer the FVM vorticity to the transfer lattice; particles in the inset band evolve freely
       ↓
-refresh boundary trace (repeat fixed-point sweep if configured)
+update the boundary data (repeat as coupling iterations if configured)
 ```
 
-The physical interface condition is
+The mixed boundary condition on the outer FVM boundary is
 
 $$
 U_{FVM}\cdot n=U_{VPM}\cdot n, \qquad
 P\,\partial_n U_{FVM}=P\,J_{VPM}n.
 $$
 
-## Key implementation change: represented-state correction
+## Key implementation change: correction against the particle-represented vorticity
 
-The essential correction is now (notation: `G` = Gaussian representation,
-`eta` = FVM authority ramp):
+The strength correction is now (notation: `G` = Gaussian representation,
+`eta` = blending weight):
 
 ```python
 represented = G(vpm_strength)
@@ -50,13 +52,13 @@ correction = mismatch + beta * residual
 corrected_strength = baseline + correction
 ```
 
-This replaces direct coefficient/field blending. Therefore, if
-`fvm_strength == G(vpm_strength)`, then `mismatch == 0` and the exchange does
-not change the particle field. `beta` is bounded by
-`transfer_amplification_cap`; the actual implementation additionally clips the
-step along `correction` so that a node cannot grow beyond the allowed magnitude.
+This replaces direct blending of strengths and fields. Therefore, if
+`fvm_strength == G(vpm_strength)`, then `mismatch == 0` and the vorticity
+transfer does not change the particle field. `beta` is bounded by
+`max_strength_ratio`; the implementation also limits the update along
+`correction` so that no node grows beyond the allowed strength.
 
-The wall fix is deliberately applied *before* this inverse-like correction:
+The wall fix is applied *before* this correction:
 
 ```python
 output_weight = lattice.fluid_weight * ~lattice.solid_interior
@@ -65,29 +67,27 @@ baseline[~physical] = 0.0
 correction[~physical] = 0.0
 ```
 
-## Boundary hand-off, in code
+## Boundary data, in code
 
 ```python
-velocity, tangential_normal_gradient = (
-    vpm.compute_velocity_and_tangential_normal_gradient_at_points(
-        face_centre, face_normal, particle_spacing=h
-    )
+velocity, normal_gradient = vpm.compute_velocity_and_tangential_normal_gradient_at_points(
+    face_centre, face_normal, particle_spacing=h
 )
 normal_velocity = einsum("ij,ij->i", velocity, face_normal)
-# FVM: fixedFluxPressure + normal_velocity + tangential_normal_gradient
+# FVM: fixedFluxPressure + normal_velocity + normal_gradient
 ```
 
-The flux check remains a guardrail: a physically significant net VPM flux
-rejects the exchange rather than being silently hidden by a projection.
+The net-flux check remains: a physically significant net VPM flux through the
+outer FVM boundary stops the coupling step instead of being hidden by a projection.
 
 ## Take-away / slide close
 
-**We traded several partially overlapping coupling modes for one auditable
-pipeline.** It preserves the VPM wake at the release boundary, regenerates the
-FVM-owned near field without repeated Gaussian damping, respects solid
-geometry, and applies one consistent mixed boundary condition at every
-exchange and restart.
+**Several partially overlapping coupling modes became one verifiable
+algorithm.** It keeps the particle wake outside the transfer surface, replaces
+the near-field vorticity with the FVM vorticity without repeated Gaussian damping, respects the solid
+wall, and applies one mixed boundary condition in every coupling interval and
+after every restart.
 
 **Relevant changes:** `24a2be62` (29 Sep), `b1ff9eb6` (3 Oct), `379697e4` (5
-Oct).  Main implementation: `openonda/coupler/stable_renewal.py`,
+Oct). Main implementation: `openonda/coupler/transfer_lattice.py`,
 `openonda/coupler/boundary.py`, and `openonda/coupler/vorticity_transfer.py`.

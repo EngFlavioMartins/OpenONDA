@@ -22,7 +22,7 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 FIGURES = CASE_DIR / "figures"
 DIAMETER = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
-FVM_BOX = (-2.4, 4.4, -2.4, 2.4)  # m, relative to the cylinder
+FVM_DOMAIN_BOUNDS = (-2.4, 4.4, -2.4, 2.4)  # m, relative to the cylinder
 WINDOW = (-1.5, 9.5, -1.5, 1.5)  # m, inertial frame, about the mean cylinder position
 SPACING = 0.02  # m, comparison lattice
 LOCKED_IN = 25.0  # s, start of the phase averages
@@ -144,9 +144,9 @@ def comparison_figure(name, quantity, reference, coupled, difference, displaceme
         if row > 0:
             axes.add_patch(
                 plt.Rectangle(
-                    (FVM_BOX[0], FVM_BOX[2] + displacement),
-                    FVM_BOX[1] - FVM_BOX[0],
-                    FVM_BOX[3] - FVM_BOX[2],
+                    (FVM_DOMAIN_BOUNDS[0], FVM_DOMAIN_BOUNDS[2] + displacement),
+                    FVM_DOMAIN_BOUNDS[1] - FVM_DOMAIN_BOUNDS[0],
+                    FVM_DOMAIN_BOUNDS[3] - FVM_DOMAIN_BOUNDS[2],
                     fill=False,
                     edgecolor="black",
                     linestyle="--",

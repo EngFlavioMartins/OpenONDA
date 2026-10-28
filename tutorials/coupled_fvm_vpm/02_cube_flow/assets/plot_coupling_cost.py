@@ -23,16 +23,16 @@ PHASES = {
 
 
 def main():
-    # One record per accepted exchange; a running case may still be writing the last line
+    # One record per accepted coupling step; a running case may still be writing the last line
     lines = (CASE_DIR / "solution/coupler_diagnostics.jsonl").read_text().split("\n")[:-1]
     records = [json.loads(line) for line in lines]
     time = np.array([record["time"] for record in records])
     particles = np.array([record["transfer"]["n_particles_after"] for record in records])
-    # Wall time per second of flow time: each exchange advances the flow by one exchange step
-    exchange_step = time[1] - time[0]
+    # Wall time per second of flow time: each coupling step advances the flow by one interval
+    coupling_interval = time[1] - time[0]
     cost = [
         sum(np.array([record["timing_seconds"][key] for record in records]) for key in keys)
-        / exchange_step
+        / coupling_interval
         for keys, _ in PHASES.values()
     ]
     coupled_mean = np.sum(cost, axis=0).mean()
@@ -52,7 +52,7 @@ def main():
 
     figure, axes = validation_subplots(2, sharex=True)
     axes[0].stackplot(time, *cost, labels=PHASES, colors=[color for _, color in PHASES.values()])
-    # Clip the start-up exchange and isolated spikes; leave headroom for the legend
+    # Clip the start-up coupling step and isolated spikes; leave headroom for the legend
     axes[0].set_ylim(0.0, 1.6 * np.percentile(np.sum(cost, axis=0), 99.9))
     for mean, style, label in (
         (coupled_mean, "-", "Coupled"),

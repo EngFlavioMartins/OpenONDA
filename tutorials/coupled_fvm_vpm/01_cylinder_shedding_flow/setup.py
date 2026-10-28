@@ -40,16 +40,16 @@ FVM_TIME_STEP = 0.008  # s
 # VPM: particles in the outer wake
 VPM_DOMAIN = (-5.0, 30.0, -5.0, 5.0)  # m, x and y bounds
 OUTFLOW_FRINGE = 15.0  # m, shed vortices fade over about three wake wavelengths
-VORTICITY_FLOOR = 0.01  # 1/s, weaker particles are pruned after diffusion
+VORTICITY_FLOOR = 0.01  # 1/s, GBD removal threshold: weaker particles are removed after diffusion
 PARTICLE_LIMIT = 1_000_000
 
-# Coupling: FVM vorticity replaces the particles inside the transfer region
-TRANSFER_INSET = 8.75  # cells from the FVM box faces in to the transfer-region faces
-BLEND_WIDTH = 6  # cells over which the FVM weight rises from zero to one
-VPM_ONLY_WIDTH = 2  # cells inside the transfer faces that only the particles own
-FVM_SUBSTEPS = 5  # FVM steps per exchange; one particle step per exchange
-INTERFACE_ITERATIONS = 6  # FVM solves per exchange until the boundary trace converges
-INTERFACE_TOLERANCE = 1.0e-5  # m/s for normal velocity, 1/s for its tangential gradient
+# Coupling: FVM vorticity replaces the particle vorticity inside the transfer region
+TRANSFER_INSET = 8.75  # cells from the outer FVM boundary in to the transfer surface
+BLEND_START = 2  # cells below the transfer surface where the blending weight starts to rise
+BLEND_END = 6  # cells below the transfer surface where the blending weight reaches one
+FVM_SUBSTEPS = 5  # FVM steps per coupling interval; one particle step per coupling interval
+COUPLING_ITERATIONS = 6  # most FVM solves per coupling interval until the boundary data converge
+COUPLING_TOLERANCE = 1.0e-5  # m/s for the normal velocity, 1/s for the normal gradient of u_t
 END_TIME = 100.0  # s
 
 # Observations
@@ -58,7 +58,9 @@ PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
 FIELD_INTERVAL = 0.2  # s, FVM and particle fields over developed shedding ...
 FIELD_START = 40.0  # s, ... from this time on
 BACKUP_INTERVAL = 1.0  # s, coupled restart states and matching particle fields
-RENEWAL_CHECK_INTERVAL = 2.4  # s, costly checks of how well particles represent FVM vorticity
+TRANSFER_DIAGNOSTIC_INTERVAL = (
+    2.4  # s, full diagnostics of how well particles represent FVM vorticity
+)
 
 
 def initial_velocity(position):
@@ -81,8 +83,8 @@ def build_case(
     end_time=END_TIME,
     fvm_time_step=FVM_TIME_STEP,
     particle_spacing=CELL_SIZE,
-    interface_iterations=INTERFACE_ITERATIONS,
-    interface_tolerance=INTERFACE_TOLERANCE,
+    coupling_iterations=COUPLING_ITERATIONS,
+    coupling_tolerance=COUPLING_TOLERANCE,
     reynolds_number=REYNOLDS_NUMBER,
     cell_size=CELL_SIZE,
     box_downstream=BOX_MARGIN + 2.0,
@@ -95,21 +97,21 @@ def build_case(
     span = particle_spacing
     half_span = 0.5 * span
 
-    # FVM box, transfer region inset from its faces, and the exchange step
+    # FVM domain, transfer region inset from its outer boundary, and the coupling interval
     margin = box_margin * DIAMETER
     downstream = box_downstream * DIAMETER
-    fvm_box = (-margin, downstream, -margin, margin)
+    fvm_domain_bounds = (-margin, downstream, -margin, margin)
     inset = transfer_inset * interface_cell_size
     transfer_region = (-margin + inset, downstream - inset, -margin + inset, margin - inset)
-    exchange_time_step = fvm_substeps * fvm_time_step
+    coupling_time_step_size = fvm_substeps * fvm_time_step
 
-    # Observations and the end fall on exchanges, where both solvers hold the same time
-    def on_exchanges(interval):
-        return max(1, round(interval / exchange_time_step)) * exchange_time_step
+    # Observations and the end fall on coupling times, where both solvers hold the same time
+    def on_coupling_times(interval):
+        return max(1, round(interval / coupling_time_step_size)) * coupling_time_step_size
 
     # Explicit GBD diffusion keeps 12 x Fourier number below one per stage; each
     # stage reaches one more grid cell beyond the span planes
-    fourier_number = kinematic_viscosity * exchange_time_step / particle_spacing**2
+    fourier_number = kinematic_viscosity * coupling_time_step_size / particle_spacing**2
     diffusion_stages = math.floor(12.0 * fourier_number) + 1
 
     # Mesh a slab around the long cylinder, then keep one periodic cell across the span
@@ -122,7 +124,9 @@ def build_case(
         zmax="zmax",
     )
     slab = msh.CartesianMesher(
-        domain=msh.BoxDomain(bounds=(*fvm_box, -16 * cell_size, 16 * cell_size), patches=patches),
+        domain=msh.BoxDomain(
+            bounds=(*fvm_domain_bounds, -16 * cell_size, 16 * cell_size), patches=patches
+        ),
         surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
         max_cell_size=cell_size,
         cell_size_anchor=cell_size,
@@ -144,7 +148,7 @@ def build_case(
             reference_velocity=FREESTREAM_VELOCITY[0],
             reference_area=DIAMETER * span,
             reference_length=DIAMETER,
-            schedule=fvm.EveryTime(on_exchanges(FORCE_INTERVAL)),
+            schedule=fvm.EveryTime(on_coupling_times(FORCE_INTERVAL)),
         ),
         fvm.LineSampler(
             (2.0, -1.5, 0.0),
@@ -153,7 +157,7 @@ def build_case(
             n_neighbours=12,
             reconstruction="affine",
             file_name="fvm_transverse_x2",
-            schedule=fvm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+            schedule=fvm.EveryTime(on_coupling_times(PROFILE_INTERVAL)),
         ),
     )
     flow = fvm.FVMCase(
@@ -172,10 +176,10 @@ def build_case(
             execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
-        run=fvm.RunPlan(end_time=on_exchanges(end_time)),
+        run=fvm.RunPlan(end_time=on_coupling_times(end_time)),
         output=fvm.Output(
             schedule=fvm.EveryTime(
-                on_exchanges(FIELD_INTERVAL), start_time=on_exchanges(FIELD_START)
+                on_coupling_times(FIELD_INTERVAL), start_time=on_coupling_times(FIELD_START)
             ),
             compression="lz4",
             ghost_layers=0,
@@ -201,7 +205,7 @@ def build_case(
         name="coupled_cylinder_flow",
         directory=CASE_DIR,
         numerics=vpm.Numerics(
-            time_step_size=exchange_time_step,
+            time_step_size=coupling_time_step_size,
             freestream_velocity=FREESTREAM_VELOCITY,
             integrator=vpm.RK2(),
             # Full 3D induction of the particle layer and all its images in the span planes
@@ -223,10 +227,10 @@ def build_case(
             domain_bounds=(*VPM_DOMAIN, -half_span, half_span),
             max_n_particles=PARTICLE_LIMIT,
         ),
-        run=vpm.RunPlan(end_time=on_exchanges(end_time)),
+        run=vpm.RunPlan(end_time=on_coupling_times(end_time)),
         output=vpm.Output(
             schedule=vpm.EveryTime(
-                on_exchanges(FIELD_INTERVAL), start_time=on_exchanges(FIELD_START)
+                on_coupling_times(FIELD_INTERVAL), start_time=on_coupling_times(FIELD_START)
             )
         ),
         samplers=vpm.Samplers(
@@ -237,7 +241,7 @@ def build_case(
                     spacing=0.1,
                     include_derivatives=False,
                     file_name=f"vpm_transverse_x{x:g}",
-                    schedule=vpm.EveryTime(on_exchanges(PROFILE_INTERVAL)),
+                    schedule=vpm.EveryTime(on_coupling_times(PROFILE_INTERVAL)),
                 )
                 for x in (2.0, 4.0)
             )
@@ -245,17 +249,19 @@ def build_case(
         logging=vpm.LoggingConfig(console=False),
     )
 
-    # Exchange: transfer region, interface iteration and coupled backups with particle fields
+    # Coupling: transfer region, coupling iterations and coupled backups with particle fields
     coupling = coupler.CouplerConfig(
         freestream_velocity=FREESTREAM_VELOCITY,
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
-        eta_blend_width=BLEND_WIDTH * interface_cell_size,
-        vpm_only_width=VPM_ONLY_WIDTH * interface_cell_size,
-        interface_iterations=interface_iterations,
-        interface_normal_tolerance=interface_tolerance,
-        interface_gradient_tolerance=interface_tolerance,
-        transfer_diagnostic_interval_steps=round(RENEWAL_CHECK_INTERVAL / exchange_time_step),
-        backup=coupler.Backup(schedule=coupler.EveryTime(on_exchanges(BACKUP_INTERVAL))),
+        blend_start_depth=BLEND_START * interface_cell_size,
+        blend_end_depth=BLEND_END * interface_cell_size,
+        max_coupling_iterations=coupling_iterations,
+        normal_velocity_tolerance=coupling_tolerance,
+        normal_gradient_tolerance=coupling_tolerance,
+        transfer_diagnostic_interval_steps=round(
+            TRANSFER_DIAGNOSTIC_INTERVAL / coupling_time_step_size
+        ),
+        backup=coupler.Backup(schedule=coupler.EveryTime(on_coupling_times(BACKUP_INTERVAL))),
     )
     return flow, particles, coupling
 
@@ -267,15 +273,15 @@ if __name__ == "__main__":
         "--box-margin",
         type=float,
         default=BOX_MARGIN,
-        help="FVM box margin upstream and sideways [D]",
+        help="FVM domain margin upstream and sideways [D]",
     )
     parser.add_argument(
         "--box-downstream",
         type=float,
-        help="downstream FVM box face from the cylinder axis [D]; the margin + 2 by default",
+        help="downstream outer FVM boundary from the cylinder axis [D]; the margin + 2 by default",
     )
     parser.add_argument(
-        "--fvm-substeps", type=int, default=FVM_SUBSTEPS, help="FVM steps per exchange"
+        "--fvm-substeps", type=int, default=FVM_SUBSTEPS, help="FVM steps per coupling interval"
     )
     parser.add_argument(
         "--transfer-inset", type=float, default=TRANSFER_INSET, help="transfer-region inset [cells]"
@@ -287,7 +293,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--interface-cell-size",
         type=float,
-        help="cell size counting the inset, blend and particle-only widths [m]; the cell size by"
+        help="cell size counting the transfer inset and the blending depths [m]; the cell size by"
         " default, a fixed value keeps the interface in place while the cells are refined",
     )
     parser.add_argument(
@@ -301,16 +307,16 @@ if __name__ == "__main__":
         help="particle spacing and span [m]; the cell size by default",
     )
     parser.add_argument(
-        "--interface-iterations",
+        "--coupling-iterations",
         type=int,
-        default=INTERFACE_ITERATIONS,
-        help="maximum FVM solves per exchange",
+        default=COUPLING_ITERATIONS,
+        help="most coupling iterations (FVM solves) per coupling interval",
     )
     parser.add_argument(
-        "--interface-tolerance",
+        "--coupling-tolerance",
         type=float,
-        default=INTERFACE_TOLERANCE,
-        help="boundary-trace tolerance [m/s, 1/s]; 1e-30 forces every solve",
+        default=COUPLING_TOLERANCE,
+        help="boundary-data tolerance [m/s, 1/s]; 1e-30 forces every iteration",
     )
     parser.add_argument(
         "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
@@ -331,8 +337,8 @@ if __name__ == "__main__":
         arguments.end_time,
         fvm_time_step,
         particle_spacing,
-        arguments.interface_iterations,
-        arguments.interface_tolerance,
+        arguments.coupling_iterations,
+        arguments.coupling_tolerance,
         arguments.reynolds_number,
         arguments.cell_size,
         box_downstream,

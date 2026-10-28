@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Body-fitted FVM reference for the coupled NACA 4412 wing at 10 degrees and Re = 1000.
 
-The same wing as in the coupled case sits in a large box. The inlet and the
-freestream faces carry the inclined stream; distant slip faces bound the span.
+The same pitched wing as in the coupled case sits in a large box. The inlet and
+the freestream faces carry the stream along x; distant slip faces bound the span.
 """
 
 import math
@@ -29,16 +29,16 @@ REYNOLDS_NUMBER = 1000.0
 DENSITY = 1.0  # kg/m^3
 KINEMATIC_VISCOSITY = FREESTREAM_SPEED * CHORD / REYNOLDS_NUMBER  # m^2/s
 ALPHA = math.radians(ANGLE_OF_ATTACK)
-FREESTREAM_VELOCITY = (FREESTREAM_SPEED * math.cos(ALPHA), FREESTREAM_SPEED * math.sin(ALPHA), 0.0)
+FREESTREAM_VELOCITY = (FREESTREAM_SPEED, 0.0, 0.0)
 
 # Domain: faces about ten chords and two spans from the wing keep the blockage small
-DOMAIN = (-10.24, 30.72, -10.24, 15.36, -12.8, 12.8)  # m
+DOMAIN = (-10.24, 30.72, -12.8, 12.8, -12.8, 12.8)  # m
 
 # Mesh: octree cells of 0.04 m over the coupled FVM box, coarsening by two in each wake box
 CELL_SIZE = 0.04  # m
-NEAR_BODY = (-1.6, 2.72, -1.15, 1.45, -3.6, 3.6)  # m, the coupled FVM box, cells of CELL_SIZE
-NEAR_WAKE = (-2.0, 6.0, -1.44, 2.24, -4.0, 4.0)  # m, cells of 2 CELL_SIZE
-WAKE = (-2.4, 14.0, -2.4, 4.0, -4.8, 4.8)  # m, cells of 4 CELL_SIZE
+NEAR_BODY = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m, the coupled FVM box, cells of CELL_SIZE
+NEAR_WAKE = (-2.0, 6.0, -1.84, 1.84, -4.0, 4.0)  # m, cells of 2 CELL_SIZE
+WAKE = (-2.4, 14.0, -3.2, 3.2, -4.8, 4.8)  # m, cells of 4 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
 # Time, as in the coupled case
@@ -55,17 +55,14 @@ FIELD_INTERVAL = 2.0  # s, over the statistics window
 BACKUP_INTERVAL = 1.0  # s
 WAKE_STATIONS = (2.0, 5.0)  # m
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
-TRAILING_EDGE = 0.5 * CHORD  # m
-SLICE_Z0 = (-1.6, 8.0, -1.6, 3.2)  # m, x and y bounds of the mid-span plane
-SLICE_CROSS = (-1.6, 3.2, -4.0, 4.0)  # m, y and z bounds of the cross-flow planes
+# Height of the trailing edge, and of the freestream line through it where the spanwise probes run
+WAKE_HEIGHT = -0.5 * CHORD * math.sin(ALPHA)  # m
+QUARTER_CHORD = (-0.25 * CHORD * math.cos(ALPHA), 0.25 * CHORD * math.sin(ALPHA), 0.0)  # m
+SLICE_Z0 = (-1.6, 8.0, -2.4, 2.4)  # m, x and y bounds of the mid-span plane
+SLICE_CROSS = (-2.4, 2.4, -4.0, 4.0)  # m, y and z bounds of the cross-flow planes
 
 
-def wake_height(x):
-    """Height of the freestream line through the trailing edge, where the spanwise probes run."""
-    return (x - TRAILING_EDGE) * math.tan(ALPHA)
-
-
-write_wing_stl(WING_STL, NACA_CODE, CHORD, SPAN, N_SECTION_POINTS, n_span_segments=1)
+write_wing_stl(WING_STL, NACA_CODE, CHORD, SPAN, N_SECTION_POINTS, 1, ANGLE_OF_ATTACK)
 
 MESH = msh.CartesianMesher(
     domain=msh.BoxDomain(
@@ -115,13 +112,13 @@ def plane(point, normal, bounds, name):
 
 
 SAMPLERS = (
-    # Body-axis force coefficients on the planform area c b
+    # Drag and lift coefficients on the planform area c b; the moment about the quarter chord
     fvm.ForceSampler(
         patch_names=["wing"],
         reference_velocity=FREESTREAM_SPEED,
         reference_area=CHORD * SPAN,
         reference_length=CHORD,
-        moment_centre=(-0.25 * CHORD, 0.0, 0.0),
+        moment_centre=QUARTER_CHORD,
         schedule=fvm.EveryTime(FORCE_INTERVAL),
     ),
     *(
@@ -130,8 +127,8 @@ SAMPLERS = (
     ),
     *(
         probe(
-            (x, wake_height(x), SLICE_CROSS[2]),
-            (x, wake_height(x), SLICE_CROSS[3]),
+            (x, WAKE_HEIGHT, SLICE_CROSS[2]),
+            (x, WAKE_HEIGHT, SLICE_CROSS[3]),
             f"spanwise_x{x:g}",
         )
         for x in WAKE_STATIONS
@@ -175,7 +172,7 @@ CASE = fvm.FVMCase(
     boundaries=(
         fvm.BoundaryConfig.inlet("inlet", FREESTREAM_VELOCITY),
         fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
-        # The inclined stream enters through the lower face and leaves through the upper one
+        # The stream runs along the lateral faces
         fvm.BoundaryConfig.freestream("ymin", FREESTREAM_VELOCITY),
         fvm.BoundaryConfig.freestream("ymax", FREESTREAM_VELOCITY),
         fvm.BoundaryConfig.slip("zmin"),

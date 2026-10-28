@@ -1,4 +1,4 @@
-"""Coupled FVM--VPM solver: VPM boundary traces drive the FVM, FVM vorticity renews the particles."""
+"""Coupled FVM--VPM solver: particle boundary data drive the FVM, FVM vorticity is transferred to the particles."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from .reporting import (
     format_coupler_log,
     record_step,
 )
-from .vorticity_transfer import VorticityTransfer, required_renewal_buffer_length
+from .vorticity_transfer import VorticityTransfer, remeshing_extension_length
 
 if TYPE_CHECKING:
     from openonda.fvm import FVMCase, FVMSolver
@@ -46,60 +46,62 @@ if TYPE_CHECKING:
 logger = logging.getLogger("openonda.coupler")
 
 
-def _validate_gbd_moment_recovery(
-    recovery: Mapping[str, bool | int | float] | None,
+def _validate_gbd_moment_correction(
+    correction: Mapping[str, bool | int | float] | None,
     correction_limit: float,
 ) -> None:
-    """Fail fast when the just-completed GBD prune is not trustworthy."""
-    if recovery is None:
+    """Stop when the GBD weak-strength removal of the last VPM step failed its moment checks."""
+    if correction is None:
         return
     numeric_names = (
         "nonzero_node_count",
         "retained_node_count",
-        "pruned_node_count",
+        "removed_node_count",
         "correction_fraction",
         "normalized_vortex_strength_residual",
         "normalized_linear_impulse_residual",
         "normalized_angular_impulse_residual",
     )
     try:
-        values = {name: float(recovery[name]) for name in numeric_names}
+        values = {name: float(correction[name]) for name in numeric_names}
         values["support_augmented_node_count"] = float(
-            recovery.get("support_augmented_node_count", 0)
+            correction.get("support_augmented_node_count", 0)
         )
     except (KeyError, TypeError, ValueError) as error:
-        raise RuntimeError("GBD moment-recovery diagnostics are incomplete or invalid") from error
+        raise RuntimeError("GBD moment-correction diagnostics are incomplete or invalid") from error
     for name, value in values.items():
         if not np.isfinite(value):
-            raise RuntimeError(f"GBD moment-recovery diagnostic {name!r} is non-finite")
+            raise RuntimeError(f"GBD moment-correction diagnostic {name!r} is non-finite")
     for name in (
         "nonzero_node_count",
         "retained_node_count",
-        "pruned_node_count",
+        "removed_node_count",
         "support_augmented_node_count",
     ):
         if values[name] < 0.0:
-            raise RuntimeError(f"GBD moment-recovery diagnostic {name!r} is negative")
+            raise RuntimeError(f"GBD moment-correction diagnostic {name!r} is negative")
 
-    if values["pruned_node_count"] > 0.0 and not bool(recovery.get("applied", False)):
-        raise RuntimeError("GBD pruned vortex nodes without conservative moment recovery")
+    if values["removed_node_count"] > 0.0 and not bool(correction.get("applied", False)):
+        raise RuntimeError("GBD removed weak strengths without the moment correction")
     maximum_residual = max(
         values["normalized_vortex_strength_residual"],
         values["normalized_linear_impulse_residual"],
         values["normalized_angular_impulse_residual"],
     )
     if maximum_residual > 1.0e-5:
-        raise RuntimeError("GBD moment recovery exceeds its precision-aware residual tolerance")
+        raise RuntimeError(
+            "the GBD moment correction exceeds its storage-precision residual tolerance"
+        )
     if values["correction_fraction"] > float(correction_limit):
         raise RuntimeError(
-            "GBD pruning required an excessive particle-strength correction: "
+            "the GBD weak-strength removal needed a moment correction above its limit: "
             f"fraction={values['correction_fraction']:.6e}, "
             f"limit={float(correction_limit):.6e}"
         )
 
 
 def _n_fvm_substeps(vpm_time_step_size: float, fvm_time_step_size: float) -> int:
-    """Return the whole number of FVM steps in one exchange."""
+    """Return the whole number of FVM steps in one coupling interval."""
     if fvm_time_step_size <= 0.0 or vpm_time_step_size <= 0.0:
         raise ValueError("The FVM and VPM time-step sizes must be positive")
     ratio = vpm_time_step_size / fvm_time_step_size
@@ -134,7 +136,7 @@ def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig)
     if fvm_case.numerics.time_step_control is not None:
         raise ValueError(
             "Coupling requires a fixed FVM time-step size: adaptive FVM steps would not "
-            "partition each exchange exactly"
+            "divide each coupling interval exactly"
         )
     if fvm_case.run.start_time != 0.0:
         raise ValueError("Coupled runs start at time zero")
@@ -161,32 +163,34 @@ def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig)
             f"The VPM freestream velocity {tuple(numerics.freestream_velocity)} differs from "
             f"the coupling freestream velocity {tuple(config.freestream_velocity)}"
         )
-    exchange_time_step_size = numerics.time_step_size
-    n_substeps = _n_fvm_substeps(exchange_time_step_size, fvm_case.numerics.time_step_size)
+    coupling_time_step_size = numerics.time_step_size
+    n_substeps = _n_fvm_substeps(coupling_time_step_size, fvm_case.numerics.time_step_size)
     schedule = config.backup.schedule
     if isinstance(schedule, EveryTime):
         for name in ("interval", "start_time"):
-            ratio = getattr(schedule, name) / exchange_time_step_size
+            ratio = getattr(schedule, name) / coupling_time_step_size
             if not math.isclose(ratio, round(ratio), rel_tol=0.0, abs_tol=1.0e-9):
                 raise ValueError(
-                    f"The coupled backup {name} must be a whole number of exchange time steps"
+                    f"The coupled backup {name} must be a whole number of coupling intervals"
                 )
-    if config.interface_iterations > 1:
-        from .interface_iteration import validate_output_schedules
+    if config.max_coupling_iterations > 1:
+        from .coupling_iteration import validate_output_schedules
 
-        validate_output_schedules(fvm_case, n_substeps, exchange_time_step_size)
+        validate_output_schedules(fvm_case, n_substeps, coupling_time_step_size)
 
 
-def _validate_vpm_domain(vpm_case: VPMCase, config: CouplerConfig, box: np.ndarray) -> None:
-    """Check the particle domain, slip planes and fringes against the FVM box."""
+def _validate_vpm_domain(vpm_case: VPMCase, config: CouplerConfig, fvm_bounds: np.ndarray) -> None:
+    """Check the particle domain, slip planes and fringes against the FVM domain bounds."""
     numerics = vpm_case.numerics
     induction = numerics.induction
     if getattr(induction, "method", None) == "slip_slab":
         # The FVM extrusion, transfer region and VPM slab share one span.
         planes = np.array([induction.z_min, induction.z_max], dtype=np.float64)
         tolerance = 1.0e-9 * max(1.0, float(np.max(np.abs(planes))))
-        transfer = config.transfer_region(box, numerics.viscous.particle_spacing, slip_planes=True)
-        for name, bounds in (("FVM box", box), ("transfer_region_bounds", transfer)):
+        transfer = config.transfer_region(
+            fvm_bounds, numerics.viscous.particle_spacing, slip_planes=True
+        )
+        for name, bounds in (("FVM domain", fvm_bounds), ("transfer_region_bounds", transfer)):
             z_bounds = np.asarray(bounds, dtype=np.float64)[4:6]
             if np.any(np.abs(z_bounds - planes) > tolerance):
                 raise ValueError(
@@ -197,13 +201,13 @@ def _validate_vpm_domain(vpm_case: VPMCase, config: CouplerConfig, box: np.ndarr
     if domain is not None:
         # Projected wall vertices can move an outer face by a few picometres;
         # the VPM domain is specified at the intended plane.
-        tolerance = 1.0e-9 * max(1.0, float(np.max(np.abs(box))))
-        lower = np.asarray(domain[::2]) <= box[::2] + tolerance
-        upper = np.asarray(domain[1::2]) >= box[1::2] - tolerance
+        tolerance = 1.0e-9 * max(1.0, float(np.max(np.abs(fvm_bounds))))
+        lower = np.asarray(domain[::2]) <= fvm_bounds[::2] + tolerance
+        upper = np.asarray(domain[1::2]) >= fvm_bounds[1::2] - tolerance
         if not (np.all(lower) and np.all(upper)):
             raise ValueError(
-                f"The VPM domain {tuple(domain)} does not contain the FVM box {tuple(box)}: "
-                "the particles the coupler renews would be removed every step"
+                f"The VPM domain {tuple(domain)} does not contain the FVM domain {tuple(fvm_bounds)}: "
+                "the transfer-lattice particles would be removed every step"
             )
     stabilization = numerics.stabilization
     fringe = getattr(stabilization, "outflow_fringe_depth", None)
@@ -211,23 +215,24 @@ def _validate_vpm_domain(vpm_case: VPMCase, config: CouplerConfig, box: np.ndarr
         depth = np.asarray(fringe, dtype=np.float64)
         keep = np.asarray(stabilization.remove_particles_by_bounds, dtype=np.float64)
         inner = keep + depth * np.array([1.0, -1.0] * 3)
-        lower_overlap = (depth[::2] > 0.0) & (inner[::2] > box[::2])
-        upper_overlap = (depth[1::2] > 0.0) & (inner[1::2] < box[1::2])
-        if np.any(lower_overlap) or np.any(upper_overlap):
+        lower_reach = (depth[::2] > 0.0) & (inner[::2] > fvm_bounds[::2])
+        upper_reach = (depth[1::2] > 0.0) & (inner[1::2] < fvm_bounds[1::2])
+        if np.any(lower_reach) or np.any(upper_reach):
             raise ValueError(
-                f"The VPM outflow fringes {tuple(fringe)} reach the FVM box {tuple(box)}; "
-                "place each fringe outside the FVM box"
+                f"The VPM outflow fringes {tuple(fringe)} reach the FVM domain {tuple(fvm_bounds)}; "
+                "place each fringe outside the FVM domain"
             )
 
 
 class CoupledSolver:
     """Inner FVM solution coupled to an outer VPM wake.
 
-    At each exchange the particles advance one step, their velocity and
-    tangential velocity gradient on the outer FVM patch drive the FVM
-    substeps to the same time, and the FVM vorticity replaces the particles
-    inside the transfer region. The coupler owns the exchange clock: both
-    solvers accept exactly the time :meth:`exchange_time` of each exchange.
+    In each coupling interval the particles advance one VPM step to the
+    predictor; their normal velocity and the normal gradient of their tangential
+    velocity on the outer FVM boundary are the boundary data of the FVM substeps
+    to the same time, and the FVM vorticity replaces the particle vorticity
+    inside the transfer region. The coupler sets the coupling clock: both
+    solvers accept exactly the time :meth:`coupling_time` of each coupling step.
     On a translating FVM mesh the VPM runs in the frame of the mesh, with the
     freestream relative to the mesh (:class:`~openonda.coupler.frame.MeshFrame`).
 
@@ -238,10 +243,10 @@ class CoupledSolver:
         coupled solver; the FVM runs on all ranks.
     vpm_case : VPMCase
         Particle wake and its output; the VPM runs on the root rank. Its
-        time-step size is the exchange time-step size, a whole multiple of
-        the FVM one, and its directory and variant are those of the FVM case.
+        time-step size is the coupling interval, a whole multiple of the FVM
+        time step, and its directory and variant are those of the FVM case.
     config : CouplerConfig
-        Overlap transfer, interface iteration and coupled backups.
+        Vorticity transfer, coupling iterations and coupled backups.
 
     Attributes
     ----------
@@ -256,9 +261,9 @@ class CoupledSolver:
     solution_dir : pathlib.Path
         ``solution/`` of the case, below its variant.
     fvm_time_step_size, vpm_time_step_size : float
-        FVM substep and exchange time-step sizes in s.
+        FVM time step and coupling interval in s.
     n_fvm_substeps : int
-        FVM steps per exchange.
+        FVM steps per coupling interval.
     frame : MeshFrame
         Frame translating with the FVM mesh, in which the VPM is solved.
     freestream_velocity : numpy.ndarray
@@ -266,7 +271,7 @@ class CoupledSolver:
     absolute_freestream_velocity : numpy.ndarray
         Inertial-frame freestream in m/s.
     coupling_diagnostics : list[dict]
-        Diagnostics of the exchanges of this process, also appended to
+        Diagnostics of the coupling steps of this process, also appended to
         ``solution/coupler_diagnostics.jsonl``.
 
     Notes
@@ -299,7 +304,7 @@ class CoupledSolver:
         self.solution_dir = fvm_case.solution_directory.resolve()
         self.run_status = RunStatus.not_started
         self.run_failure: BaseException | None = None
-        self.interface_trace_correction: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self.boundary_data_correction: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         self.coupling_diagnostics: list[dict] = []
         self._closed = False
         self._run_started = False
@@ -366,10 +371,10 @@ class CoupledSolver:
         self._velocity_boundary_condition_old: np.ndarray | None = None
         self._normal_velocity_boundary_condition_old: np.ndarray | None = None
         self._normal_velocity_boundary_condition: np.ndarray | None = None
-        self._tangential_gradient_boundary_condition_old: np.ndarray | None = None
-        self._tangential_gradient_boundary_condition: np.ndarray | None = None
-        self._velocity_global_buffer: np.ndarray | None = None
-        self._velocity_gradient_global_buffer: np.ndarray | None = None
+        self._normal_gradient_boundary_condition_old: np.ndarray | None = None
+        self._normal_gradient_boundary_condition: np.ndarray | None = None
+        self._gathered_velocity: np.ndarray | None = None
+        self._gathered_velocity_gradient: np.ndarray | None = None
         self._last_vpm_boundary_condition_flux_diagnostics = {
             "raw_mismatch": 0.0,
             "raw_relative": 0.0,
@@ -377,7 +382,7 @@ class CoupledSolver:
             "applied_correction": 0.0,
             "corrected_mismatch": 0.0,
         }
-        self._last_fvm_boundary_trace_diagnostics = {
+        self._last_fvm_boundary_data_diagnostics = {
             "mean_velocity_mismatch": 0.0,
             "maximum_velocity_mismatch": 0.0,
             "maximum_normal_velocity_mismatch": 0.0,
@@ -387,13 +392,13 @@ class CoupledSolver:
         self._last_transfer_result = None
         self._step_transfer_stats: dict[str, float | int] | None = None
 
-        self.fvm_box = self._gather_fvm_box()
-        self.config.validate_transfer_region_box(
-            self.fvm_box,
+        self.fvm_domain_bounds = self._gather_fvm_domain_bounds()
+        self.config.validate_transfer_region(
+            self.fvm_domain_bounds,
             self.vpm_particle_spacing,
             getattr(self.vpm_case.numerics.induction, "method", None) == "slip_slab",
         )
-        _validate_vpm_domain(self.vpm_case, self.config, self.fvm_box)
+        _validate_vpm_domain(self.vpm_case, self.config, self.fvm_domain_bounds)
         if self._is_root:
             backup = self.config.backup.schedule
             logger.info(
@@ -402,7 +407,7 @@ class CoupledSolver:
                     ("fvm time step", f"{self.fvm_time_step_size:.4e}", "s"),
                     ("vpm time step", f"{self.vpm_time_step_size:.4e}", "s"),
                     ("fvm substeps per coupling step", self.n_fvm_substeps),
-                    ("exchanges", f"{self.n_steps:,}"),
+                    ("coupling steps", f"{self.n_steps:,}"),
                     ("end time", f"{self.end_time:.6g}", "s"),
                     ("coupled backups", "none" if backup is None else backup.describe()),
                 )
@@ -410,11 +415,11 @@ class CoupledSolver:
 
         self.vorticity_transfer = VorticityTransfer(self)
         if self.frame.moving:
-            # The renewal belt must hold one exchange of drift relative to the mesh.
+            # The remeshing region must hold one coupling interval of drift relative to the mesh.
             relative_speed = self.frame.maximum_relative_speed(
                 self._absolute_freestream, fvm.time, self.end_time, self.vpm_time_step_size
             )
-            self.vorticity_transfer.renewal_buffer_length = required_renewal_buffer_length(
+            self.vorticity_transfer.remeshing_extension_length = remeshing_extension_length(
                 [relative_speed, 0.0, 0.0], self.vpm_time_step_size, self.vpm_particle_spacing
             )
         self.vorticity_transfer.setup(fvm)
@@ -422,10 +427,10 @@ class CoupledSolver:
             if self._is_root:
                 self._configure_vpm_geometry()
 
-    def _gather_fvm_box(self) -> np.ndarray:
+    def _gather_fvm_domain_bounds(self) -> np.ndarray:
         """Return the outer FVM bounds from its non-wall patches (collective)."""
         fvm = self.fvm_solver
-        patch = self.config.coupling_patch
+        patch = self.config.outer_boundary_patch
         names = [patch] + [
             boundary.name
             for boundary in self.fvm_case.boundaries
@@ -437,16 +442,16 @@ class CoupledSolver:
             )
             for name in names
         ]
-        box = None
-        with collective_phase(self._comm, "FVM box"):
+        bounds = None
+        with collective_phase(self._comm, "FVM domain bounds"):
             if self._is_root:
                 if len(faces[0]) == 0:
                     raise ValueError(f"The coupling patch {patch!r} has no faces")
                 points = np.concatenate(faces)
-                box = np.ravel(np.column_stack((points.min(axis=0), points.max(axis=0))))
+                bounds = np.ravel(np.column_stack((points.min(axis=0), points.max(axis=0))))
         if self._comm is not None and self._comm.Get_size() > 1:
-            box = self._comm.bcast(box, root=0)
-        return np.asarray(box, dtype=np.float64)
+            bounds = self._comm.bcast(bounds, root=0)
+        return np.asarray(bounds, dtype=np.float64)
 
     def _configure_vpm_geometry(self) -> None:
         """Give the VPM the FVM wall geometry and the transfer lattice phase."""
@@ -454,18 +459,18 @@ class CoupledSolver:
         transfer = self.vorticity_transfer
         boundary = transfer.solid_boundary
         if boundary is not None:
-            from .solid import SolidParticleGuard
+            from .solid import WallProjection
 
             vpm.physics.configure_body_classifier(
                 boundary.contains,
                 revision=boundary.revision,
                 query_bounds=boundary.bounds,
-                blocks_segments=boundary.blocks_segments,
+                segments_cross_wall=boundary.segments_cross_wall,
                 geometry_queries=boundary.grid_geometry_queries(),
             )
-            guard = SolidParticleGuard(boundary, vpm.physics, self.vpm_particle_spacing, logger)
-            vpm.stage_rhs.position_guard = guard.stage
-            vpm.stage_rhs.accepted_position_projector = guard.accepted
+            projection = WallProjection(boundary, vpm.physics, self.vpm_particle_spacing, logger)
+            vpm.stage_rhs.position_guard = projection.stage
+            vpm.stage_rhs.accepted_position_projector = projection.accepted
             logger.info(
                 format_coupler_log(
                     "vpm diffusion grid",
@@ -489,12 +494,12 @@ class CoupledSolver:
 
     @property
     def n_steps(self) -> int:
-        """Number of exchanges from time zero to ``RunPlan.end_time``."""
+        """Number of coupling steps from time zero to ``RunPlan.end_time``."""
         return self.vpm_case.n_steps
 
     @property
     def step(self) -> int:
-        """Number of completed exchanges."""
+        """Number of completed coupling steps."""
         return self.fvm_solver.step // self.n_fvm_substeps
 
     @property
@@ -502,12 +507,12 @@ class CoupledSolver:
         """Accepted physical time in s."""
         return self.fvm_solver.time
 
-    def exchange_time(self, step: int) -> float:
-        """Return the physical time of exchange ``step``, in s.
+    def coupling_time(self, step: int) -> float:
+        """Return the physical time ``t^n`` of coupling step ``n = step``, in s.
 
-        The coupler owns the clock. Both solvers accept exactly this time at every exchange, so their
-        outputs carry identical time values; summing time-step sizes would
-        drift by round-off between the two solvers.
+        The coupler sets the clock. Both solvers accept exactly this time at every
+        coupling step, so their outputs carry identical time values; summing
+        time-step sizes would drift by round-off between the two solvers.
         """
         return step * self.vpm_time_step_size
 
@@ -520,7 +525,7 @@ class CoupledSolver:
         self.close(failure=exc_value)
 
     def start_from(self, selection: str | Path = "latest") -> bool:
-        """Select the initial state or a coupled backup before the first exchange.
+        """Select the initial state or a coupled backup before the first coupling step.
 
         Parameters
         ----------
@@ -556,7 +561,9 @@ class CoupledSolver:
             return self.start_from("initial")
         self.load_backup(selected)
         if self._is_root:
-            logger.info(f"Continuing from {selected}: exchange {self.step}, time {self.time:.17g}")
+            logger.info(
+                f"Continuing from {selected}: coupling step {self.step}, time {self.time:.17g}"
+            )
         return True
 
     def run(self, *, start_from: str | Path | None = None) -> None:
@@ -572,7 +579,7 @@ class CoupledSolver:
         -----
         A fresh run writes the initial frames and samples of both solvers
         with their ``write_initial_output``; a restarted run does not repeat
-        them. The run then advances the exchanges, writes the scheduled output
+        them. The run then advances the coupling steps, writes the scheduled output
         and backups, a final coupled backup with ``Backup.write_at_end``, and
         the final frames and final-only samples with ``write_final_output``.
         The run status is recorded in ``solution/coupler_metadata.json``.
@@ -612,12 +619,12 @@ class CoupledSolver:
             raise failure.with_traceback(failure.__traceback__)
 
     def advance(self) -> None:
-        """Advance one exchange and write its scheduled output and backup.
+        """Advance one coupling interval and write its scheduled output and backup.
 
-        The VPM advances to the next exchange time, its boundary trace drives
-        the FVM substeps, the FVM vorticity renews the overlap particles, and
-        the due samples, frames and coupled backup are written. Every MPI
-        rank calls this method.
+        The VPM advances to the next coupling time, the boundary data of its
+        predictor drive the FVM substeps, the FVM vorticity is transferred to
+        the particles of the transfer region, and the due samples, frames and
+        coupled backup are written. Every MPI rank calls this method.
         """
         if self._closed:
             raise RuntimeError("The coupled solver is closed")
@@ -628,19 +635,19 @@ class CoupledSolver:
         if not self._run_started:
             self.run_status = RunStatus.running
         face_geometry = self._face_geometry
-        exchange_started = time.perf_counter()
-        time_end = self.exchange_time(step)
-        with collective_phase(self._comm, "freestream at the exchange end"):
-            self._update_freestream(time_end, self._exchange_frame_velocity(step))
+        interval_started = time.perf_counter()
+        time_end = self.coupling_time(step)
+        with collective_phase(self._comm, "free stream at the interval end"):
+            self._update_freestream(time_end, self._interval_frame_velocity(step))
         vpm_seconds = self._advance_vpm(step, time_end)
         velocity_old, next_velocity, boundary_seconds = evaluate_vpm_boundary(self, *face_geometry)
-        if self.config.interface_iterations > 1:
-            from .interface_iteration import advance_iterated_interface
+        if self.config.max_coupling_iterations > 1:
+            from .coupling_iteration import advance_coupling_iterations
 
-            transfer_result, fvm_seconds, transfer_seconds = advance_iterated_interface(
+            transfer_result, fvm_seconds, transfer_seconds = advance_coupling_iterations(
                 self, face_geometry, next_velocity
             )
-            boundary_seconds += self._last_interface_iteration_diagnostics["phase_seconds"][
+            boundary_seconds += self._last_coupling_iteration_diagnostics["phase_seconds"][
                 "boundary_refresh"
             ]
         else:
@@ -668,24 +675,24 @@ class CoupledSolver:
             (vpm_seconds, boundary_seconds, fvm_seconds, transfer_seconds),
             transfer_result,
             logger=logger,
-            exchange_started=exchange_started,
+            interval_started=interval_started,
             output_seconds=output_seconds,
         )
 
     def _start(self) -> None:
-        """Prepare the first exchange of this process once (collective).
+        """Prepare the first coupling step of this process once (collective).
 
         A fresh state first receives the FVM vorticity at the initial time,
         so every VPM interval starts from the FVM state of the same time.
         """
         if self._started:
             return
-        self.interface_trace_correction = None
+        self.boundary_data_correction = None
         fvm = self.fvm_solver
         fvm.apply_velocity_boundaries(fvm.time)
         with collective_phase(self._comm, "initial freestream"):
             self._update_freestream(fvm.time, self.frame.velocity(fvm.time))
-        patch = self.config.coupling_patch
+        patch = self.config.outer_boundary_patch
         self._face_geometry = (
             self.frame.to_frame(
                 np.asarray(fvm.gather_boundary_face_centre_coordinates(patch)).reshape(-1, 3)
@@ -699,7 +706,7 @@ class CoupledSolver:
         self._started = True
 
     def _fvm_frame_written(self) -> bool:
-        """Whether the FVM frame of the current exchange already exists."""
+        """Whether the FVM frame of the current coupling step already exists."""
         if self._frame_step == self.step:
             return True
         schedule = self.fvm_case.output.schedule
@@ -711,7 +718,7 @@ class CoupledSolver:
         )
 
     def _write_frames(self, *, fvm_frame: bool, vpm_frame: bool) -> None:
-        """Write the frames of the current exchange; a particle frame brings an FVM frame."""
+        """Write the frames of the current coupling step; a particle frame brings an FVM frame."""
         if (fvm_frame or vpm_frame) and not self._fvm_frame_written():
             self.fvm_solver.write_vtk()
         self.fvm_solver.flush_output()
@@ -756,11 +763,11 @@ class CoupledSolver:
     def _backup_due(self, step: int) -> bool:
         schedule = self.config.backup.schedule
         return schedule is not None and schedule.is_due(
-            step, self.exchange_time(step), self.vpm_time_step_size
+            step, self.coupling_time(step), self.vpm_time_step_size
         )
 
     def save_backup(self, path: str | Path | None = None) -> Path:
-        """Save a coupled backup of the current exchange with both frames.
+        """Save a coupled backup of the current coupling step with both frames.
 
         Parameters
         ----------
@@ -775,8 +782,8 @@ class CoupledSolver:
 
         Notes
         -----
-        The backup holds the FVM backup, the VPM backup and the interface
-        trace. The FVM and particle frames of the same time are written too.
+        The backup holds the FVM backup, the VPM backup and the boundary
+        data. The FVM and particle frames of the same time are written too.
         Collective under MPI.
         """
         self._start()
@@ -813,14 +820,14 @@ class CoupledSolver:
         The output series of both solvers and the coupler diagnostics are
         rewound to the restored time. Collective under MPI.
         """
-        self.interface_trace_correction = None
+        self.boundary_data_correction = None
         step = load_coupled_backup(
             self,
             Path(path),
             allowed_config_differences=allowed_config_differences,
             expected_config_differences=expected_config_differences,
         )
-        # A fresh run transfers once at the start and once per exchange.
+        # A fresh run transfers once at the start and once per coupling step.
         self.vorticity_transfer.step = step + 1
         self._restart_loaded = True
         self._started = False
@@ -838,7 +845,7 @@ class CoupledSolver:
         with collective_phase(self._comm, "coupler metadata"):
             if self._is_root:
                 names = ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
-                box = dict(zip(names, map(float, self.fvm_box), strict=True))
+                domain_bounds = dict(zip(names, map(float, self.fvm_domain_bounds), strict=True))
                 write_run_metadata(
                     destination,
                     solver="coupler",
@@ -854,7 +861,7 @@ class CoupledSolver:
                             "n_steps": self.n_steps,
                             "kinematic_viscosity": self.kinematic_viscosity,
                             "density": self.density,
-                            "fvm_box": box,
+                            "fvm_domain_bounds": domain_bounds,
                             "particle_spacing": self.vpm_particle_spacing,
                             "core_radius_ratio": self.vpm_core_radius_ratio,
                             "diffusion_grid_spacing": self.vpm_diffusion_grid_spacing,
@@ -913,7 +920,7 @@ class CoupledSolver:
             else:
                 raise cleanup_error
 
-    # Exchange operations
+    # Coupling-interval operations
 
     def _absolute_freestream(self, time: float) -> np.ndarray:
         """Inertial-frame freestream velocity in m/s at ``time``."""
@@ -921,11 +928,11 @@ class CoupledSolver:
             return np.asarray(self.config.freestream.at(time), dtype=np.float64)
         return self.config.freestream_velocity_vector
 
-    def _exchange_frame_velocity(self, step: int) -> np.ndarray:
-        """Mean mesh velocity over the FVM substeps of exchange ``step``, in m/s."""
-        start = self.exchange_time(step - 1)
+    def _interval_frame_velocity(self, step: int) -> np.ndarray:
+        """Mean mesh velocity over the FVM substeps of coupling interval ``step``, in m/s."""
+        start = self.coupling_time(step - 1)
         substep_times = start + self.fvm_time_step_size * np.arange(1, self.n_fvm_substeps + 1)
-        substep_times[-1] = self.exchange_time(step)
+        substep_times[-1] = self.coupling_time(step)
         return self.frame.step_velocity(substep_times)
 
     def _update_freestream(self, time: float, frame_velocity: np.ndarray) -> None:
@@ -939,7 +946,7 @@ class CoupledSolver:
             if self._is_root:
                 self.vpm_solver.set_freestream_velocity(self.freestream_velocity)
 
-    def absolute_interface_velocity(self, velocity: np.ndarray) -> np.ndarray:
+    def inertial_boundary_velocity(self, velocity: np.ndarray) -> np.ndarray:
         """Convert a VPM velocity, with the VPM freestream, to the inertial frame."""
         return velocity + (self.absolute_freestream_velocity - self.freestream_velocity)
 
@@ -961,9 +968,9 @@ class CoupledSolver:
                 vpm.advance(defer_output=True, time=time_end)
                 vpm.synchronize()
                 if vpm.viscous_scheme == "gbd":
-                    _validate_gbd_moment_recovery(
-                        getattr(vpm.physics, "last_gbd_moment_recovery", None),
-                        self.config.transfer_discretization_error_limit,
+                    _validate_gbd_moment_correction(
+                        getattr(vpm.physics, "last_gbd_moment_correction", None),
+                        self.config.max_moment_correction_fraction,
                     )
         return time.perf_counter() - started
 
@@ -1006,29 +1013,27 @@ class CoupledSolver:
                     "sum_before": sum_before,
                     "sum_after": sum_after,
                     "face_count": len(face_centre),
-                    "donor_gather_seconds": gather_seconds,
+                    "fvm_gather_seconds": gather_seconds,
                 }
         return transfer_result, time.perf_counter() - started
 
     def _gather_velocity_field(self) -> np.ndarray:
-        if self._velocity_global_buffer is None:
-            self._velocity_global_buffer = np.ascontiguousarray(
+        if self._gathered_velocity is None:
+            self._gathered_velocity = np.ascontiguousarray(
                 self.fvm_solver.gather_velocity_field(), dtype=np.float64
             ).reshape(-1, 3)
         else:
-            self.fvm_solver.gather_velocity_field_into(self._velocity_global_buffer)
-        return self._velocity_global_buffer
+            self.fvm_solver.gather_velocity_field_into(self._gathered_velocity)
+        return self._gathered_velocity
 
     def _gather_velocity_gradient_field(self) -> np.ndarray:
-        if self._velocity_gradient_global_buffer is None:
-            self._velocity_gradient_global_buffer = np.ascontiguousarray(
+        if self._gathered_velocity_gradient is None:
+            self._gathered_velocity_gradient = np.ascontiguousarray(
                 self.fvm_solver.gather_velocity_gradient_field(), dtype=np.float64
             ).reshape(-1, 3, 3)
         else:
-            self.fvm_solver.gather_velocity_gradient_field_into(
-                self._velocity_gradient_global_buffer
-            )
-        return self._velocity_gradient_global_buffer
+            self.fvm_solver.gather_velocity_gradient_field_into(self._gathered_velocity_gradient)
+        return self._gathered_velocity_gradient
 
 
 __all__ = ["CoupledSolver"]

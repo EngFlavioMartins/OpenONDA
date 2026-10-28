@@ -18,8 +18,8 @@ class TriangulatedWall:
 
     Native face normals point out of the fluid. Reverse wall faces for
     VTK's outward-from-solid convention. Open surfaces crossing a domain
-    boundary are only classified inside that domain: their continuation
-    or closure is not inferred. Coordinates/distances are metres; the mesh
+    boundary are only classified inside that domain: they are not continued
+    or closed outside it. Coordinates/distances are metres; the mesh
     must be static and its wall faces consistently oriented.
     """
 
@@ -129,30 +129,30 @@ class TriangulatedWall:
         fraction = np.full(len(starts), np.inf)
         normals = np.zeros_like(starts)
         bounds = self.surface_bounds
-        candidates = np.flatnonzero(
+        nearby = np.flatnonzero(
             (lengths > 0)
             & np.all(np.maximum(starts, ends) >= bounds[::2], axis=1)
             & np.all(np.minimum(starts, ends) <= bounds[1::2], axis=1)
         )
-        if len(candidates):
+        if len(nearby):
             # Signed distance is a conservative broad phase for a segment.
-            candidate_starts = starts[candidates]
-            new_start = np.ones(len(candidates), dtype=bool)
-            new_start[1:] = np.any(candidate_starts[1:] != candidate_starts[:-1], axis=1)
+            nearby_starts = starts[nearby]
+            new_start = np.ones(len(nearby), dtype=bool)
+            new_start[1:] = np.any(nearby_starts[1:] != nearby_starts[:-1], axis=1)
             if np.all(new_start):
-                distance = self.signed_distance(candidate_starts)
+                distance = self.signed_distance(nearby_starts)
             else:
                 # Stencils repeat a source for each target. Evaluate each
                 # adjacent run once without sorting or changing query order.
                 run_index = np.cumsum(new_start, dtype=np.intp) - 1
-                distance = self.signed_distance(candidate_starts[new_start])[run_index]
-            candidates = candidates[
-                (distance <= lengths[candidates] + self.interior_tolerance) | ~np.isfinite(distance)
+                distance = self.signed_distance(nearby_starts[new_start])[run_index]
+            nearby = nearby[
+                (distance <= lengths[nearby] + self.interior_tolerance) | ~np.isfinite(distance)
             ]
         hits, cells, cell = vtkPoints(), vtkIdList(), vtkGenericCell()
         hits.SetDataTypeToDouble()
         tolerance = max(1e-12, self.interior_tolerance * 1e-3)
-        for index in candidates:
+        for index in nearby:
             hits.Reset()
             cells.Reset()
             self._locator.IntersectWithLine(
@@ -253,7 +253,7 @@ class SolidBoundary:
             return None
         return ImmutableBodyGeometryQueries(
             self.contains,
-            self.blocks_segments,
+            self.segments_cross_wall,
             self._grid_geometry_signature,
             geometry_signature[1],
             geometry_signature[2],
@@ -360,7 +360,7 @@ class SolidBoundary:
             fraction[earlier], normals[earlier] = hit[earlier], normal[earlier]
         return fraction, normals
 
-    def blocks_segments(self, starts, ends):
+    def segments_cross_wall(self, starts, ends):
         """Whether a segment enters solid, even with two fluid endpoints."""
         return self.first_intersections(starts, ends)[0] < 1.0 - 1e-10
 

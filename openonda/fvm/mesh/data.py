@@ -48,8 +48,8 @@ class BoundaryPatchData(TypedDict, total=False):
     velocity_value: FloatArray
     velocity_value_field: FloatArray
     normal_velocity_field: FloatArray
-    tangential_gradient_field: FloatArray
-    max_removed_tangential_gradient_normal_component: float
+    tangential_velocity_normal_gradient_field: FloatArray
+    max_removed_normal_gradient_normal_component: float
     boundary_condition_type: str
     value: Any  # scalar component or vector value of a per-component copy
 
