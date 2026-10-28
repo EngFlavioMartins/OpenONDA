@@ -43,7 +43,7 @@ A vortex behind the cylinder breaks the symmetry; the freestream is steady from 
 | `figures/velocity_fields/t*`, `figures/vorticity_fields/t*` | Streamwise velocity and spanwise vorticity of the reference, of the coupled flow (the FVM inside its domain, dashed, and the particles outside it) and their difference at every time both runs saved fields, every 4 s; instantaneous, so the shed vortices' phases differ once shedding develops. `figures/auxiliary/field_differences.csv` lists the rms and maximum differences |
 | `figures/coupling_cost` | Wall time per second of flow time of each coupling step by solver part, with the mean of the coupled run and of the reference FVM; the particle count |
 | `figures/cylinder_shedding.gif` | Four shedding periods from $t=75.6$ s: vorticity magnitude of the FVM mid-plane and of the particles outside the FVM domain, with $C_L$ and $C_D$; the frames use the 0.2 s field output of developed shedding and the animation loops |
-| `assets/cylinder_wake` | The same scene on white for print at $t=86$ s, 125 mm wide, with freestream arrows: `cylinder_wake_raw.png` is the text-free render and `cylinder_wake.tex` typesets its labels and colour bar in the thesis fonts (newpx) |
+| `assets/cylinder_wake_t86` | The same scene on white for print at $t=86$ s, with physically based materials and a freestream arrow, 125 mm wide at 300 dpi: `cylinder_wake_t86_raw.png` is the text-free render and `cylinder_wake_t86.tex` typesets its labels and colour bar in the thesis fonts (newpx) |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; every particle frame, written with each coupled backup, has an FVM frame of the same time. `assets/paraview_state.py` loads both in ParaView |
 
 ## Sensitivity study
