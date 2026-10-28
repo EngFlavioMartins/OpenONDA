@@ -2,44 +2,59 @@
 
 The scene of the README animation on a white page: the FVM vorticity on the
 mid-plane of the FVM domain and the particles outside it, on one
-vorticity-magnitude scale, the FVM domain edges and the cylinder. On white,
-weak vorticity fades to light blue and strong vorticity is dark. Writes
-``assets/cylinder_wake.png`` and ``.pdf`` at the 125 mm print width.
+vorticity-magnitude scale, the FVM domain edges, the cylinder and grey arrows
+of the freestream direction. On white, weak vorticity fades to light blue and
+strong vorticity is dark. The render carries no text: ``cylinder_wake.tex``
+places it at the 125 mm print width and typesets the freestream label, the
+colour bar and the time in the thesis fonts, at positions projected from the
+scene. pdflatex writes ``assets/cylinder_wake.pdf``, and ``cylinder_wake.png``
+is rasterised from it.
 """
 
 from __future__ import annotations
 
-from matplotlib.colors import LinearSegmentedColormap, Normalize
-import matplotlib.pyplot as plt
+import shutil
+import subprocess
+import tempfile
+
+from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
+from PIL import Image
 import pyvista as pv
 
 from assets.render_cylinder_animation import (
     CASE_DIR,
     DIAMETER,
-    FOCAL_POINT,
     FVM_DOMAIN,
     FVM_HEIGHT,
     SOLUTION_DIR,
-    VIEW_ANGLE,
-    VIEW_DIRECTION,
-    VIEW_DISTANCE,
     camera,
     frame_files,
     fvm_plane,
     wake_particles,
 )
-from openonda.plotting import CM, FONT_SIZE_PT, export_figure, set_thesis_style
 
-OUTPUT = CASE_DIR / "assets" / "cylinder_wake"
+ASSETS_DIR = CASE_DIR / "assets"
 TIME = 86.0  # [s], developed shedding, a lift minimum
 
-WIDTH_CM, HEIGHT_CM = 12.5, 7.0
-PIXELS_PER_CM = 200  # 508 ppi
+WIDTH_MM, HEIGHT_MM = 125.0, 65.0  # the thesis print width
+PIXELS_PER_MM = 20  # 508 ppi
 OMEGA_MAX = (
     3.0  # omega D/U_inf, as the vorticity field figures; the shear layers keep their gradation
 )
 OPAQUE_FROM = 1.0  # omega D/U_inf, weaker vorticity fades into the page
+
+# An oblique view from above and downstream: FVM domain top left, wake toward bottom right
+VIEW_DIRECTION = (0.9, -0.9, 1.2)  # toward the camera
+FOCAL_POINT = (6.2, 0.6, 0.0)  # [m]
+VIEW_DISTANCE = 35.0  # [m]
+VIEW_ANGLE = 17.0  # [deg]
+
+# Freestream arrows upstream of the FVM domain
+ARROW_ROWS = (-1.4, 0.0, 1.4)  # [m], y of each arrow
+ARROW_START = -5.1  # [m], x of the arrow tails
+ARROW_LENGTH = 2.1  # [m]
+ARROW_COLOUR = (0.5, 0.5, 0.5)  # matte neutral grey of the thesis physical arrows
 
 # The gallery blue scale, reversed, so weak vorticity fades into the white page
 VORTICITY_COLORMAP = LinearSegmentedColormap.from_list(
@@ -47,8 +62,20 @@ VORTICITY_COLORMAP = LinearSegmentedColormap.from_list(
 )
 
 
-def render_scene(plane, cloud, view, window_size):
-    """Render the FVM plane, particles, domain edges and cylinder on white, returning the RGB image."""
+def screen_mm(plotter, point) -> tuple[float, float]:
+    """Position of a scene point on the printed figure, in mm from its lower-left corner."""
+    plotter.renderer.SetWorldPoint(*point, 1.0)
+    plotter.renderer.WorldToDisplay()
+    column, row, _ = plotter.renderer.GetDisplayPoint()
+    return column / PIXELS_PER_MM, row / PIXELS_PER_MM
+
+
+def render_scene(plane, cloud, view):
+    """Render the scene on white; return the RGB image and the freestream-label anchor.
+
+    The label sits below the middle of the lowest freestream arrow.
+    """
+    window_size = [round(WIDTH_MM * PIXELS_PER_MM), round(HEIGHT_MM * PIXELS_PER_MM)]
     plotter = pv.Plotter(off_screen=True, window_size=window_size)
     plotter.set_background("white")
     plotter.enable_depth_peeling()
@@ -81,6 +108,29 @@ def render_scene(plane, cloud, view, window_size):
     plotter.add_mesh(
         cylinder, color="#b4b4b4", smooth_shading=True, specular=0.4, specular_power=20
     )
+    arrows = pv.merge(
+        [
+            pv.Arrow(
+                start=(ARROW_START, y, 0.0),
+                direction=(1.0, 0.0, 0.0),
+                scale=ARROW_LENGTH,
+                tip_length=0.3,
+                tip_radius=0.08,
+                shaft_radius=0.03,
+                tip_resolution=48,
+                shaft_resolution=48,
+            )
+            for y in ARROW_ROWS
+        ]
+    )
+    plotter.add_mesh(
+        arrows,
+        color=ARROW_COLOUR,
+        smooth_shading=True,
+        ambient=0.65,
+        diffuse=0.35,
+        specular=0.0,
+    )
     plotter.camera.position = view["position"]
     plotter.camera.focal_point = view["focal_point"]
     plotter.camera.up = view["view_up"]
@@ -89,35 +139,90 @@ def render_scene(plane, cloud, view, window_size):
     plotter.enable_anti_aliasing("ssaa")
     plotter.render()
     image = plotter.screenshot(return_img=True)
+    label_anchor = screen_mm(plotter, (ARROW_START + 0.5 * ARROW_LENGTH, min(ARROW_ROWS), 0.0))
     plotter.close()
-    return image
+    return image, label_anchor
+
+
+def colour_bar(left: float, bottom: float) -> str:
+    """TikZ for the stepped vorticity colour bar, 35 x 2 mm, with its ticks and label below."""
+    width, height = 35.0, 2.0
+    steps = VORTICITY_COLORMAP.N
+    lines = []
+    for step in range(steps):
+        red, green, blue, _ = VORTICITY_COLORMAP((step + 0.5) / steps)
+        lines.append(rf"\definecolor{{bar{step}}}{{rgb}}{{{red:.4f},{green:.4f},{blue:.4f}}}")
+        x0 = left + width * step / steps
+        lines.append(
+            rf"\fill[bar{step}] ({x0:.3f},{bottom}) rectangle ++({width / steps:.3f},{height});"
+        )
+    lines.append(rf"\draw[line width=.6pt] ({left},{bottom}) rectangle ++({width},{height});")
+    for fraction, value in ((0.0, "0"), (0.5, f"{0.5 * OMEGA_MAX:g}"), (1.0, f"{OMEGA_MAX:g}")):
+        x = left + fraction * width
+        lines.append(rf"\draw[line width=.6pt] ({x},{bottom}) -- ++(0,-0.8);")
+        lines.append(rf"\node[anchor=north,inner sep=.3mm] at ({x},{bottom - 0.8}) {{${value}$}};")
+    lines.append(
+        rf"\node[anchor=north,inner sep=.3mm] at ({left + 0.5 * width},{bottom - 5.2})"
+        r" {$|\boldsymbol{\omega}|\,D/U_\infty$};"
+    )
+    return "\n".join(lines)
+
+
+def overlay(label_anchor) -> str:
+    """The standalone TikZ figure: the render at print width and its text in the thesis fonts."""
+    label_x, label_y = label_anchor
+    return "\n".join(
+        [
+            r"\documentclass[11pt,tikz,border=0pt]{standalone}",
+            r"\usepackage[T1]{fontenc}",
+            r"\usepackage{newpxtext,amsmath,newpxmath,graphicx}",
+            r"\begin{document}",
+            r"\begin{tikzpicture}[x=1mm,y=1mm,every node/.style={font=\normalsize}]",
+            rf"\path[use as bounding box] (0,0) rectangle ({WIDTH_MM:g},{HEIGHT_MM:g});",
+            r"\node[anchor=south west,inner sep=0] at (0,0)"
+            rf" {{\includegraphics[width={WIDTH_MM:g}mm]{{cylinder_wake_raw.png}}}};",
+            rf"\node[anchor=north east,inner sep=.8mm] at ({label_x:.2f},{label_y:.2f})"
+            r" {$\mathbf{U}_\infty$};",
+            colour_bar(WIDTH_MM - 39.0, HEIGHT_MM - 6.0),
+            rf"\node[anchor=south west,inner sep=0] at (2,2) {{$t\,U_\infty/D = {TIME:g}$}};",
+            r"\end{tikzpicture}",
+            r"\end{document}",
+            "",
+        ]
+    )
 
 
 def main() -> None:
     plane_file = frame_files(SOLUTION_DIR / "fvm.pvd", TIME, TIME)[0][1]
     particle_file = frame_files(SOLUTION_DIR / "vpm.pvd", TIME, TIME)[0][1]
     view = camera(VIEW_DIRECTION, FOCAL_POINT, VIEW_DISTANCE, VIEW_ANGLE)
-    window_size = [round(WIDTH_CM * PIXELS_PER_CM), round(HEIGHT_CM * PIXELS_PER_CM)]
-    image = render_scene(fvm_plane(plane_file), wake_particles(particle_file), view, window_size)
+    image, label_anchor = render_scene(fvm_plane(plane_file), wake_particles(particle_file), view)
 
-    set_thesis_style()
-    figure = plt.figure(figsize=(WIDTH_CM * CM, HEIGHT_CM * CM))
-    scene = figure.add_axes((0.0, 0.0, 1.0, 1.0))
-    scene.imshow(image, interpolation="antialiased")
-    scene.set_axis_off()
+    Image.fromarray(image).save(ASSETS_DIR / "cylinder_wake_raw.png")
+    (ASSETS_DIR / "cylinder_wake.tex").write_text(overlay(label_anchor))
 
-    # Vorticity magnitude of the FVM field and the particles: end values, title above the bar
-    bar = figure.add_axes((0.86, 0.5, 0.018, 0.3))
-    figure.colorbar(
-        plt.cm.ScalarMappable(Normalize(0.0, OMEGA_MAX), VORTICITY_COLORMAP),
-        cax=bar,
-        ticks=(0.0, OMEGA_MAX),
+    # Typeset the overlay; LaTeX's auxiliary files stay in a temporary directory
+    with tempfile.TemporaryDirectory() as build:
+        subprocess.run(
+            [
+                "pdflatex",
+                "-interaction=nonstopmode",
+                "-output-directory",
+                build,
+                "cylinder_wake.tex",
+            ],
+            cwd=ASSETS_DIR,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        shutil.copy(f"{build}/cylinder_wake.pdf", ASSETS_DIR / "cylinder_wake.pdf")
+    subprocess.run(
+        ["pdftoppm", "-r", "400", "-png", "-singlefile", "cylinder_wake.pdf", "cylinder_wake"],
+        cwd=ASSETS_DIR,
+        check=True,
     )
-    bar.set_yticklabels(["0", f"{OMEGA_MAX:g}"], fontsize=FONT_SIZE_PT)
-    bar.set_title(r"$|\omega| D/U_\infty$", fontsize=FONT_SIZE_PT, pad=10)
-    figure.text(0.03, 0.05, rf"$t\,U_\infty/D = {TIME:g}$", fontsize=FONT_SIZE_PT)
-
-    export_figure(figure, OUTPUT)
+    print(f"  Saved: {ASSETS_DIR / 'cylinder_wake.pdf'}")
+    print(f"  Saved: {ASSETS_DIR / 'cylinder_wake.png'}")
 
 
 if __name__ == "__main__":

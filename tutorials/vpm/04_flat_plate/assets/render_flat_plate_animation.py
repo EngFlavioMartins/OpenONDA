@@ -28,6 +28,8 @@ CHORD = 1.0  # [m]
 FREESTREAM_SPEED = 10.0  # [m/s], plate speed after the ramp
 IMAGE_SIZE = (800, 500)  # [px], as the other gallery animations
 RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
+VIEW_DISTANCE = 1.6  # camera distance per extent of the final wake
+FOCAL_RISE = 0.1  # focal point above the wake centre, per extent of the final wake
 
 # README gallery style: white DejaVu Serif text on black, a stepped blue vorticity scale
 GALLERY_STYLE = {
@@ -74,10 +76,10 @@ def camera(bounds: np.ndarray) -> dict[str, np.ndarray]:
     screen_up = view_up - (view_up @ toward_camera) * toward_camera
     screen_up /= np.linalg.norm(screen_up)
     # Aim above the wake, so it sits below the colour bar and the force inset
-    focal_point = centre + 0.12 * length * screen_up
+    focal_point = centre + FOCAL_RISE * length * screen_up
     return {
         "focal_point": focal_point,
-        "position": focal_point + 1.85 * length * toward_camera,
+        "position": focal_point + VIEW_DISTANCE * length * toward_camera,
         "view_up": view_up,
     }
 
@@ -104,6 +106,8 @@ def render_scene(plotter, particles, surface, view, omega_max):
     plotter.camera.position = view["position"]
     plotter.camera.focal_point = view["focal_point"]
     plotter.camera.up = view["view_up"]
+    plotter.reset_camera_clipping_range()
+    plotter.render()
     return plotter.screenshot(return_img=True)
 
 
@@ -128,7 +132,7 @@ def compose(image, time, forces, omega_max):
         bar.set_title(r"$|\omega|$ [1/s]", fontsize=30, pad=28, loc="left")
 
         # Lift and drag up to this time; the rest of the history stays faint
-        inset = figure.add_axes((0.64, 0.64, 0.32, 0.26))
+        inset = figure.add_axes((0.64, 0.70, 0.32, 0.24))
         inset.set_facecolor("none")
         travel = forces["time"].to_numpy() * FREESTREAM_SPEED / CHORD
         now = forces["time"].to_numpy() <= time + 1e-9
@@ -147,9 +151,11 @@ def compose(image, time, forces, omega_max):
                     color=colour,
                     markeredgecolor="white",
                     markersize=8,
+                    clip_on=False,
                 )
         inset.set_xlim(0.0, 25.0)
-        inset.set_ylim(0.0, 1.5)
+        # Start below zero, so the small drag stays clear of the axis
+        inset.set_ylim(-0.25, 1.5)
         inset.set_xticks((0, 10, 20))
         inset.set_yticks((0.0, 0.5, 1.0))
         inset.set_xlabel(r"$t\,U_\infty/c$")
@@ -166,7 +172,7 @@ def compose(image, time, forces, omega_max):
         figure.canvas.draw()
         frame = Image.fromarray(np.asarray(figure.canvas.buffer_rgba())[..., :3])
         plt.close(figure)
-    return frame.quantize(colors=256)
+    return frame
 
 
 def main() -> None:
@@ -194,6 +200,13 @@ def main() -> None:
         image = render_scene(plotter, cloud, surface, view, omega_max)
         frames.append(compose(image, time, forces, omega_max))
     plotter.close()
+
+    # One palette for every frame, from four frames across the animation, keeps the GIF small
+    sample = Image.new("RGB", (IMAGE_SIZE[0], 4 * IMAGE_SIZE[1]))
+    for row, frame in enumerate(frames[len(frames) // 4 :: len(frames) // 4][:4]):
+        sample.paste(frame, (0, row * IMAGE_SIZE[1]))
+    palette = sample.quantize(colors=256)
+    frames = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
 
     # Hold the final wake for one second before the animation repeats
     durations = [round(1000 / args.fps)] * (len(frames) - 1) + [1000]

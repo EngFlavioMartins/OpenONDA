@@ -19,6 +19,7 @@ ASSETS_DIR = Path(__file__).resolve().parent
 CASE_DIR = ASSETS_DIR.parent
 FIGURES_DIR = CASE_DIR / "figures"
 SOLUTION_DIR = CASE_DIR / "solution" / "rotor"
+SAMPLES_DIR = CASE_DIR / "samples" / "rotor"
 OPERATING_WINDOW_REVOLUTIONS = 5
 FIELD_STATIONARITY_COMPARISON_REVOLUTIONS = 5
 REQUIRED_PLANE_NAMES = tuple((f"wake_{distance}D" for distance in WAKE_PLANE_DIAMETERS))
@@ -66,7 +67,7 @@ def rotor_inputs():
         blade=blade,
         density=vlm["density"],
         n_blades=len(vlm["surfaces"]),
-        samples_dir=CASE_DIR / "samples" / configuration["variant"],
+        samples_dir=SAMPLES_DIR,
         freestream_speed=speed,
         angular_velocity=omega,
         rotor_radius=radius,

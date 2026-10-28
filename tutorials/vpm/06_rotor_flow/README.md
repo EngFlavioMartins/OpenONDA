@@ -32,7 +32,7 @@ where positive $P$ is extracted shaft power. The BEM reference uses the same bla
 
 Wake planes lie at the disk, 1 diameter and 2 diameters downstream. Streamwise lines span $x/D=-1$ to 3 at $r/R=0.25$ and 0.65. Ideal actuator-disk velocities are $u_d/U=1-a$ at the disk and $u_\infty/U=1-2a$ in the far wake; 1D or 2D need not be far enough for that limit. Finite-distance vortex-cylinder induction is a separate approximate comparison.
 
-Loading CSVs are in `samples/rotor/`, with fields every 0.06 s. Particle frames and backups every 0.024 s are in `solution/rotor/`; open `vlm.pvd` and `vpm.pvd` in ParaView. Compare successive revolution windows, refine the panels, time step and wake cores, and compare developed loads and induction with the BEM reference.
+Loading CSVs are in `samples/rotor/`, with fields every 0.06 s. Particle frames and backups every 0.024 s are in `solution/rotor/`; open `vlm.pvd` and `vpm.pvd` in ParaView. `figures/rotor_flow.gif` animates the particle wake from rest with the thrust and power coefficients. Compare successive revolution windows, refine the panels, time step and wake cores, and compare developed loads and induction with the BEM reference.
 
 Short startup intervals do not describe a developed rotor wake; use complete averaging windows when comparing loading and induction.
 

@@ -26,6 +26,9 @@ OUTPUT = CASE_DIR / "figures" / "quadcopter_flow.gif"
 
 IMAGE_SIZE = (800, 500)  # [px], as the other gallery animations
 RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
+VIEW_DIRECTION = (-0.45, -1.0, 0.35)  # toward the camera
+VIEW_DISTANCE = 1.48  # camera distance per extent of the final wake
+FOCAL_DROP = 0.14  # focal point below the wake centre, per extent of the final wake
 
 # README gallery style: white DejaVu Serif text on black, a stepped blue vorticity scale
 GALLERY_STYLE = {
@@ -62,20 +65,20 @@ def read_series(collection: Path) -> list[tuple[float, pv.DataSet]]:
 
 
 def camera(bounds: np.ndarray) -> dict[str, np.ndarray]:
-    """A fixed view from above one side, with the rotors left of the frame centre."""
+    """A fixed view from above one side, with the vehicle centred in the top of the frame."""
     lower, upper = bounds[::2], bounds[1::2]
     centre = 0.5 * (lower + upper)
     length = float(np.max(upper - lower))
-    toward_camera = np.array([-0.45, -1.0, 0.35])
+    toward_camera = np.asarray(VIEW_DIRECTION, dtype=float)
     toward_camera /= np.linalg.norm(toward_camera)
     view_up = np.array([0.0, 0.0, 1.0])
-    screen_right = np.cross(-toward_camera, view_up)
-    screen_right /= np.linalg.norm(screen_right)
-    # Aim right of the vehicle, so it sits beside the colour bar and the force inset
-    focal_point = centre + 0.3 * length * screen_right
+    screen_up = view_up - (view_up @ toward_camera) * toward_camera
+    screen_up /= np.linalg.norm(screen_up)
+    # Aim below the vehicle, so it fills the top above the colour bar and the force inset
+    focal_point = centre - FOCAL_DROP * length * screen_up
     return {
         "focal_point": focal_point,
-        "position": focal_point + 2.2 * length * toward_camera,
+        "position": focal_point + VIEW_DISTANCE * length * toward_camera,
         "view_up": view_up,
     }
 
@@ -102,6 +105,8 @@ def render_scene(plotter, particles, blades, view, omega_max):
     plotter.camera.position = view["position"]
     plotter.camera.focal_point = view["focal_point"]
     plotter.camera.up = view["view_up"]
+    plotter.reset_camera_clipping_range()
+    plotter.render()
     return plotter.screenshot(return_img=True)
 
 
@@ -114,16 +119,17 @@ def compose(image, time, coefficients, period, omega_max):
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
-        # Vorticity magnitude: its two end values, the title above the bar
-        bar = figure.add_axes((0.775, 0.54, 0.04, 0.28))
+        # Vorticity magnitude, bottom left: its two end values, the title above the bar
+        bar = figure.add_axes((0.06, 0.17, 0.3, 0.045))
         figure.colorbar(
             plt.cm.ScalarMappable(Normalize(0.0, omega_max), VORTICITY_COLORMAP),
             cax=bar,
+            orientation="horizontal",
             ticks=(0.0, omega_max),
         )
-        bar.set_yticklabels(["0", f"{omega_max:g}"], fontsize=24)
+        bar.set_xticklabels(["0", f"{omega_max:g}"])
         bar.tick_params(direction="out", length=10, width=1.5)
-        bar.set_title(r"$|\omega|$ [1/s]", fontsize=24, pad=14)
+        bar.set_title(r"$|\omega|$ [1/s]", pad=10)
 
         # Thrust and power up to this time; the rest of the history stays faint
         inset = figure.add_axes((0.64, 0.15, 0.32, 0.22))
@@ -145,6 +151,7 @@ def compose(image, time, coefficients, period, omega_max):
                     color=colour,
                     markeredgecolor="white",
                     markersize=8,
+                    clip_on=False,
                 )
         inset.set_xlim(0.0, 3.0)
         inset.set_ylim(0.0, 9.0)
@@ -165,7 +172,7 @@ def compose(image, time, coefficients, period, omega_max):
         figure.canvas.draw()
         frame = Image.fromarray(np.asarray(figure.canvas.buffer_rgba())[..., :3])
         plt.close(figure)
-    return frame.quantize(colors=256)
+    return frame
 
 
 def main() -> None:
@@ -193,6 +200,13 @@ def main() -> None:
         image = render_scene(plotter, cloud, surface, view, omega_max)
         frames.append(compose(image, time, coefficients, rotor.period, omega_max))
     plotter.close()
+
+    # One palette for every frame, from four frames across the animation, keeps the GIF small
+    sample = Image.new("RGB", (IMAGE_SIZE[0], 4 * IMAGE_SIZE[1]))
+    for row, frame in enumerate(frames[len(frames) // 4 :: len(frames) // 4][:4]):
+        sample.paste(frame, (0, row * IMAGE_SIZE[1]))
+    palette = sample.quantize(colors=256)
+    frames = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
 
     # Hold the final wake for one second before the animation repeats
     durations = [round(1000 / args.fps)] * (len(frames) - 1) + [1000]

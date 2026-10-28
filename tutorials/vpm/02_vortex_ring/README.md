@@ -28,6 +28,6 @@ Edit [setup.py](setup.py):
 
 Toroidal support is truncated at 5% of the represented Gaussian tail. Core compensation accounts for particle smoothing. All variants use direct induction for the 8.8k particles, SSPRK3 and core spreading. `les_transposed` adds $C_s=0.20$ Smagorinsky viscosity; the three DNS variants change only the discrete stretching choice.
 
-Samples every 0.1 s track ring position, radius, circulation, mode amplitudes, energy and particle resolution and state. Checkpoints every 0.5 s are in `solution/<variant>/`; diagnostics are in `samples/<variant>/`. Figures compare translation, energy, circulation, stretching stability and ring shape.
+Samples every 0.1 s track ring position, radius, circulation, mode amplitudes, energy and particle resolution and state. Checkpoints every 0.5 s are in `solution/<variant>/`; diagnostics are in `samples/<variant>/`. Figures compare translation, energy, circulation, stretching stability and ring shape. `figures/vortex_ring.gif` follows the `dns_transposed` ring along a ruler in ring radii.
 
 The calculation stops if configured strain, divergence or misalignment limits are exceeded. A stopped curve is a partial trajectory. Compare instability onset only while the physical core and particle overlap remain resolved; numerical growth is not sufficient evidence of a physical Widnall instability.
