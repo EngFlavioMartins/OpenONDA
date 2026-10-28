@@ -163,6 +163,10 @@ Inputs are in SI units. Open `vpm-example/solution/vpm.pvd` or
     <td width="50%"><a href="tutorials/vpm/06_rotor_flow/README.md"><img src="tutorials/vpm/06_rotor_flow/assets/rotor_flow.gif" alt="Animation of a three-bladed rotor and its vortex-particle wake, with thrust and power coefficients over the revolutions"></a><br><sub><b>Rotor</b>: VLM blades shed a helical particle wake behind a three-bladed rotor while thrust and power settle.</sub></td>
     <td width="50%"><a href="tutorials/vpm/07_quadcopter/README.md"><img src="tutorials/vpm/07_quadcopter/assets/quadcopter_flow.gif" alt="Animation of the four rotors of a quadcopter and their interacting vortex-particle wakes, with thrust and power coefficients over the revolutions"></a><br><sub><b>Quadcopter</b>: four two-bladed rotors of a climbing quadcopter shed tip-vortex wakes that interact with each other.</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><a href="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md"><img src="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_shedding.gif" alt="Animation of coupled FVM and VPM flow past a cylinder at Re = 150: vorticity magnitude of the FVM mid-plane and of the particles, with the lift and drag coefficients over time"></a><br><sub><b>Cylinder shedding</b>: the FVM resolves the cylinder wall and near wake, and vortex particles carry the shed vortex street downstream.</sub></td>
+    <td width="50%"></td>
+  </tr>
 </table>
 
 ## Learn more

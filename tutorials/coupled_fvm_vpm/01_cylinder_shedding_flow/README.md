@@ -42,6 +42,8 @@ A vortex behind the cylinder breaks the symmetry; the freestream is steady from 
 | `figures/velocity_profiles/t*` | Streamwise and transverse velocity at $x/D=2$ and $4$ at every sample time shared by both runs, every 0.2 s |
 | `figures/velocity_fields/t*`, `figures/vorticity_fields/t*` | Streamwise velocity and spanwise vorticity of the reference, of the coupled flow (the FVM inside its box, dashed, and the particles outside it) and their difference at every time both runs saved fields, every 4 s; instantaneous, so the shed vortices' phases differ once shedding develops. `figures/auxiliary/field_differences.csv` lists the rms and maximum differences |
 | `figures/coupling_cost` | Wall time per second of flow time of each exchange by solver part, with the mean of the coupled run and of the reference FVM; the particle count |
+| `figures/cylinder_shedding.gif` | Four shedding periods from $t=75.6$ s: vorticity magnitude of the FVM mid-plane and of the particles outside the FVM domain, with $C_L$ and $C_D$; the frames use the 0.2 s field output of developed shedding and the animation loops |
+| `assets/cylinder_wake` | The same scene on white for print at $t=86$ s, 125 mm wide |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particles; every particle frame, written with each coupled backup, has an FVM frame of the same time. `assets/paraview_state.py` loads both in ParaView |
 
 ## Sensitivity study
