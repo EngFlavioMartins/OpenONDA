@@ -25,14 +25,14 @@ WINDOW = (-1.5, 9.5, -1.5, 1.5)  # m
 SPACING = 0.02  # m, comparison lattice
 DEVELOPED_SHEDDING = 40.0  # s, start of the phase averages
 
-# FVM only, coupled FVM inside its box and the coupled particles outside it
+# Reference FVM, coupled FVM in the box, and particles in the outer wake.
 REFERENCE = CASE_DIR / "reference_flow/solution/fvm.pvd"
 COUPLED_FVM = CASE_DIR / "solution/fvm.pvd"
 COUPLED_VPM = CASE_DIR / "solution/vpm.pvd"
 REFERENCE_FORCES = CASE_DIR / "reference_flow/samples/forces_history.csv"
 COUPLED_FORCES = CASE_DIR / "samples/forces_history.csv"
 
-# Field label and colour map, and the label of the difference panel
+# Field labels, colour maps, and difference scales.
 QUANTITIES = {
     "velocity": ("$u_x/U_\\infty$", COLORMAPS["velocity"], r"$\|\Delta\mathbf{u}\|/U_\infty$ [\%]"),
     "vorticity": (
@@ -42,10 +42,10 @@ QUANTITIES = {
     ),
 }
 
-# Differences in amber, pale at zero, apart from the field colour maps
+# Absolute differences use amber, with white at zero.
 DIFFERENCE_COLOURS = colormaps["thesis_amber"].reversed()
 
-# Figure layout in cm, measured from the top of the canvas; the plotting area is centred
+# Fixed thesis layout, in cm.
 LEFT = 1.4
 WIDTH = 12.5 - 2 * LEFT
 PANEL = WIDTH * (WINDOW[3] - WINDOW[2]) / (WINDOW[1] - WINDOW[0])
@@ -102,7 +102,7 @@ def comparison_figure(name, quantity, reference, coupled, difference):
             np.nanmax([reference[valid], coupled[valid]]),
         )
     else:
-        # Saturate at the wake's peak, which lies well below the wall layer's
+        # Set the vorticity scale from the wake rather than the wall layer.
         wake = valid & (x > 1.0)
         high = max(np.percentile(np.abs([reference[wake], coupled[wake]]), 99.5), 0.01)
         low = -high
@@ -177,7 +177,7 @@ def main():
     vpm_times, vpm_paths = saved_frames(COUPLED_VPM)
     coupled_times = match_saved_times(fvm_times, vpm_times)
 
-    # Both FVM meshes are fixed, so their triangulations are built once
+    # Static FVM meshes use one triangulation per run.
     reference_triangles = triangulation(cell_centres(reference_paths[0]))
     box_triangles = triangulation(cell_centres(fvm_paths[0]))
 
@@ -197,10 +197,10 @@ def main():
             particles.point_data["velocity"],
             particles.point_data["vorticity"],
         )
-        # The FVM supplies the coupled flow inside its box, the particles outside it
+        # Use the FVM field in the box and particle field in the outer wake.
         return [np.where(np.isfinite(inner), inner, outer) for inner, outer in zip(box, outside)]
 
-    # Each run is averaged over the states of equal shedding phase, by its own lift
+    # Average each run over its own lift phase.
     reference_sums = phase_sums(
         zip(reference_times, reference_paths), reference_fields, shedding_phase(REFERENCE_FORCES)
     )

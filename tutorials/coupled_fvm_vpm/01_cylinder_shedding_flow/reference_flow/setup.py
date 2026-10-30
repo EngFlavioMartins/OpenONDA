@@ -63,9 +63,18 @@ def initial_velocity(position):
 
 
 def build_case(
-    time_step=TIME_STEP, reynolds_number=REYNOLDS_NUMBER, end_time=END_TIME, cell_size=CELL_SIZE
+    time_step=TIME_STEP,
+    reynolds_number=REYNOLDS_NUMBER,
+    end_time=END_TIME,
+    cell_size=CELL_SIZE,
+    fine_wake_end=None,
 ) -> fvm.FVMCase:
-    """Return the FVM case of the cylinder flow."""
+    """Return the FVM case of the cylinder flow.
+
+    ``fine_wake_end`` [m] extends the cells of ``cell_size`` downstream to that x over
+    |y| <= 2.4 m, the extent of the coupled FVM domain, so that the reference resolves the
+    near wake as finely as the coupled FVM does.
+    """
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     half_span = 0.5 * SPAN
 
@@ -83,6 +92,15 @@ def build_case(
             surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
             max_cell_size=BACKGROUND * cell_size,
             refinements=(
+                *(
+                    ()
+                    if fine_wake_end is None
+                    else (
+                        msh.BoxRefinement(
+                            "coupledDomain", (-2.4, fine_wake_end, -2.4, 2.4, -slab, slab), request
+                        ),
+                    )
+                ),
                 msh.BoxRefinement("nearBody", (*NEAR_BODY, -slab, slab), request),
                 msh.BoxRefinement("nearWake", (*NEAR_WAKE, -slab, slab), 2 * request),
                 msh.BoxRefinement("wake", (*WAKE, -slab, slab), 4 * request),
@@ -174,11 +192,23 @@ if __name__ == "__main__":
         "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
     )
     parser.add_argument("--end-time", type=float, default=END_TIME, help="end time [s]")
+    parser.add_argument(
+        "--fine-wake-end",
+        type=float,
+        help="x [m] to which the near-body cells extend over |y| <= 2.4 m (the coupled FVM"
+        " domain); by default the cells coarsen to 2h beyond x = 1.5 m",
+    )
     arguments = parser.parse_args()
 
     # Refining the cells refines the step at constant Courant number
     time_step = arguments.time_step or arguments.cell_size / CELL_SIZE * TIME_STEP
-    case = build_case(time_step, arguments.reynolds_number, arguments.end_time, arguments.cell_size)
+    case = build_case(
+        time_step,
+        arguments.reynolds_number,
+        arguments.end_time,
+        arguments.cell_size,
+        arguments.fine_wake_end,
+    )
     with fvm.FVMSolver(case) as solver:
         cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
         solver.set_initial_velocity(initial_velocity(cell_centres))

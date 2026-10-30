@@ -151,6 +151,15 @@ def configuration_digest(solver: FVMSolver) -> str:
     return _hash(solver._configuration.restart_configuration())
 
 
+def fixed_step_configuration_digest(solver: FVMSolver) -> str:
+    """Return the legacy configuration digest with adaptive time-step control disabled."""
+    configuration = solver._configuration.restart_configuration()
+    numerics = dict(configuration["numerics"])
+    numerics["time_step_control"] = None
+    configuration["numerics"] = numerics
+    return _hash(configuration)
+
+
 def mesh_digest(mesh_data: dict[str, object]) -> str:
     """Hash the mesh topology, coordinates, and stable patch names and types.
 
@@ -478,7 +487,12 @@ def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
     )
 
 
-def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState:
+def _load_backup_local(
+    solver: FVMSolver,
+    path: Path | str,
+    *,
+    allow_time_step_control_change: bool = False,
+) -> FieldRestartState:
     """Validate and restore one standard FVM backup."""
     source = Path(path)
     required = {
@@ -531,7 +545,15 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState
             )
         if metadata.get("mesh_sha256") != mesh_digest(solver.mesh_data):
             raise ValueError("FVM backup mesh hash does not match the active mesh")
-        if metadata.get("configuration_sha256") != configuration_digest(solver):
+        configuration_matches = metadata.get("configuration_sha256") == configuration_digest(
+            solver
+        )
+        fixed_step_configuration_matches = (
+            allow_time_step_control_change
+            and solver._configuration.numerics.time_step_control is not None
+            and metadata.get("configuration_sha256") == fixed_step_configuration_digest(solver)
+        )
+        if not configuration_matches and not fixed_step_configuration_matches:
             raise ValueError("FVM backup configuration hash does not match the active case")
         archived_viscosity = metadata.get("kinematic_viscosity")
         if (
@@ -563,7 +585,12 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState
     return restart_state
 
 
-def load_backup(solver: FVMSolver, path: Path | str) -> None:
+def load_backup(
+    solver: FVMSolver,
+    path: Path | str,
+    *,
+    allow_time_step_control_change: bool = False,
+) -> None:
     """Collectively validate and publish one standard FVM backup.
 
     Replicated ranks stage independently, exchange only validation status, and
@@ -574,7 +601,9 @@ def load_backup(solver: FVMSolver, path: Path | str) -> None:
     restart_state: FieldRestartState | None = None
     local_error = None
     try:
-        restart_state = _load_backup_local(solver, path)
+        restart_state = _load_backup_local(
+            solver, path, allow_time_step_control_change=allow_time_step_control_change
+        )
     except BaseException as error:
         local_error = {
             "rank": int(parallel.rank),

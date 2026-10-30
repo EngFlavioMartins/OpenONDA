@@ -1,18 +1,4 @@
-"""Render the coupled cylinder wake at one time of developed shedding, for print.
-
-The scene of the README animation on a white page, with physically based
-materials: the FVM vorticity on the mid-plane of the FVM domain and the
-particles outside it, on one vorticity-magnitude scale, the FVM domain edges,
-the cylinder and an arrow of the freestream direction. On white, weak vorticity
-fades to light blue and strong vorticity is dark. The render carries no text:
-``cylinder_wake_t86.tex`` places it at the 125 mm print width and typesets the
-freestream label and the colour bar in the thesis fonts, at positions projected
-from the scene. pdflatex writes ``assets/cylinder_wake_t86.pdf``, and
-``cylinder_wake_t86.png`` is rasterised from it at 300 dpi; the file names
-carry the time of the snapshot.
-"""
-
-from __future__ import annotations
+"""Render a developed coupled cylinder wake for print."""
 
 import shutil
 import subprocess
@@ -37,7 +23,7 @@ from assets.render_cylinder_animation import (
 
 ASSETS_DIR = CASE_DIR / "assets"
 TIME = 86.0  # [s], developed shedding, a lift minimum
-NAME = f"cylinder_wake_t{TIME:g}"  # the file names carry the time of the snapshot
+NAME = f"cylinder_wake_t{TIME:g}"
 
 WIDTH_MM, HEIGHT_MM = 125.0, 50.0  # the thesis print width
 DPI = 300
@@ -45,22 +31,22 @@ PIXELS_PER_MM = DPI / 25.4
 OMEGA_MAX = 3.0  # omega D/U_inf, as the vorticity field figures
 OPAQUE_FROM = 1.0  # omega D/U_inf, weaker vorticity fades into the page
 
-# Oblique view from above and downstream: FVM domain top left, wake to the bottom-right corner
+# Oblique view from above and downstream.
 VIEW_DIRECTION = (0.45, -1.0, 1.2)  # toward the camera
 FOCAL_POINT = (7.3, 0.46, 0.0)  # [m]
 VIEW_DISTANCE = 32.0  # [m]
 VIEW_ANGLE = 15.5  # [deg]
 
-# Freestream arrow upstream of the FVM domain, on the wake axis
+# Freestream arrow upstream of the FVM domain.
 ARROW_START = -4.7  # [m], x of the arrow tail
 ARROW_LENGTH = 2.0  # [m]
 
-# Physically based materials: colour, metallic and roughness
+# Surface materials: colour, metallic fraction, and roughness.
 FRAME_MATERIAL = ("#c3c8cc", 0.1, 0.4)  # light grey tubes of the FVM domain edges
 CYLINDER_MATERIAL = ("#c8c8c8", 0.05, 0.45)
 ARROW_MATERIAL = ("#9a9a9a", 0.0, 0.5)
 
-# The gallery blue scale, reversed, so weak vorticity fades into the white page
+# Blue vorticity scale for a white background.
 VORTICITY_COLORMAP = LinearSegmentedColormap.from_list(
     "print_vorticity", ["#c9e6fd", "#73c0ff", "#3791ed", "#0d58b7", "#031a3c"], N=16
 )
@@ -104,7 +90,7 @@ def render_scene(plane, cloud, view):
     plotter.set_background("white")
     plotter.set_environment_texture(studio_environment())
     plotter.enable_depth_peeling()
-    # FVM and particle vorticity share one scale; weak vorticity fades out, so the street is continuous
+    # Use one vorticity scale for FVM and particles.
     vorticity = {
         "scalars": "vorticity magnitude",
         "cmap": VORTICITY_COLORMAP,
@@ -149,7 +135,7 @@ def render_scene(plane, cloud, view):
     plotter.camera.up = view["view_up"]
     plotter.camera.view_angle = view["view_angle"]
     plotter.reset_camera_clipping_range()
-    # Ambient occlusion shades the contacts of the cylinder, the edges and the vorticity plane
+    # Ambient occlusion separates the body, box, and vorticity plane.
     plotter.enable_ssao(radius=0.4, bias=0.005, kernel_size=128)
     plotter.enable_anti_aliasing("ssaa")
     plotter.render()
@@ -215,7 +201,7 @@ def main() -> None:
     Image.fromarray(image).save(ASSETS_DIR / f"{NAME}_raw.png", dpi=(DPI, DPI))
     (ASSETS_DIR / f"{NAME}.tex").write_text(overlay(label_anchor))
 
-    # Typeset the overlay; LaTeX's auxiliary files stay in a temporary directory
+    # Typeset the print overlay without retaining LaTeX auxiliary files.
     with tempfile.TemporaryDirectory() as build:
         subprocess.run(
             ["pdflatex", "-interaction=nonstopmode", "-output-directory", build, f"{NAME}.tex"],

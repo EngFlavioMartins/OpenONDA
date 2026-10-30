@@ -17,7 +17,7 @@ STATISTICS_START = 12.0  # s, start of the averaging window
 CHORD = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 
-# Reference FVM, coupled FVM (inside its box at x = 2 m) and the coupled particles
+# Data sources at each station: reference FVM, coupled FVM box, and particle wake.
 STATIONS = {2: ("Reference FVM", "Coupled FVM", "Coupled VPM"), 5: ("Reference FVM", "Coupled VPM")}
 PREFIX = {
     "Reference FVM": "reference_flow/samples/",
@@ -30,7 +30,7 @@ STYLES = {
     "Coupled VPM": {"color": COLORS["vpm"], "linewidth": LINE_WIDTH},
 }
 
-# Probe lines: the coordinate along each line and the two velocity components shown
+# Probe coordinate and velocity components on each line.
 LINES = {
     "transverse": ("position_y", "$y/c$", ("velocity_x", "velocity_y"), ("$u_x$", "$u_y$")),
     "spanwise": ("position_z", "$z/c$", ("velocity_y", "velocity_z"), ("$u_y$", "$u_z$")),
@@ -81,7 +81,7 @@ def main():
     for line, (coordinate, axis_label, components, symbols) in LINES.items():
         samples = read_samples(line)
 
-        # Time-mean profiles over the statistics window, and the coupled deviation from the reference
+        # Compare time-mean coupled profiles with the reference.
         curves = {station: [] for station in STATIONS}
         for (station, label), table in samples.items():
             mean = profile(table, coordinate, components, table["time"] >= STATISTICS_START)
@@ -103,7 +103,7 @@ def main():
         figure, _ = profile_figure(curves, axis_label, mean_labels)
         save_fig(figure, CASE_DIR / f"figures/velocity_profiles/{line}_mean")
 
-        # One y-range per row for every sample time, so the frames compare one by one
+        # All profile frames share one range for each velocity component.
         limits = [
             (
                 min(table[name].min() for table in samples.values()) / FREESTREAM_SPEED,

@@ -25,8 +25,7 @@ ANGLE_OF_ATTACK = 10.0  # degrees, nose-up pitch of the wing
 FVM_DOMAIN_BOUNDS = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m
 WING_SECTION = section_outline("4412", CHORD, 161, ANGLE_OF_ATTACK)
 
-# Each plane: its slices, the axes drawn across and up, the plotting window, the vorticity
-# component normal to it, and whether the coupled FVM samples it
+# Plane coordinates, plotting window, normal vorticity, and coupled-FVM coverage.
 PLANES = {
     "z0": {"axes": (0, 1), "window": (-1.0, 8.0, -1.5, 1.5), "normal": 2, "fvm": True},
     "x2": {"axes": (2, 1), "window": (-3.6, 3.6, -1.2, 1.2), "normal": 0, "fvm": True},
@@ -34,10 +33,10 @@ PLANES = {
 }
 AXIS_NAMES = "xyz"
 
-# Differences in amber, pale at zero, apart from the field colour maps
+# Absolute differences use amber, with white at zero.
 DIFFERENCE_COLOURS = colormaps["thesis_amber"].reversed()
 
-# Figure layout in cm, measured from the top of the canvas; the plotting area is centred
+# Fixed thesis layout, in cm.
 LEFT = 1.4
 WIDTH = 12.5 - 2 * LEFT
 TITLE, PANEL_GAP, BAR_GAP, BAR_HEIGHT, BAR_LABEL = 0.7, 0.75, 1.25, 0.16, 1.25
@@ -58,7 +57,7 @@ def on_plane(path, plane):
     n_first, n_second, _ = grid.dimensions
     across, up = plane["axes"]
 
-    # Frames list the points with the first in-plane axis fastest
+    # VTK writes the first in-plane axis fastest.
     def lattice(values):
         values = values.reshape(n_second, n_first, *values.shape[1:])
         return values if across < up else values.swapaxes(0, 1)
@@ -103,11 +102,11 @@ def comparison_figure(name, plane_name, quantity, across, up, panels):
             np.nanmin([reference[valid], coupled[valid]]),
             np.nanmax([reference[valid], coupled[valid]]),
         )
-        # A plane the wake has not reached yet holds the uniform freestream
+        # Keep a visible range for an undisturbed plane.
         high = max(high, low + 0.01)
         cmap = COLORMAPS["velocity"]
     else:
-        # Saturate at the wake's peak, which lies well below the wall layer's
+        # Set the vorticity scale from the wake rather than the wall layer.
         wake = valid & ((across > 0.6 * CHORD) if plane_name == "z0" else True)
         high = max(np.percentile(np.abs([reference[wake], coupled[wake]]), 99.5), 0.01)
         low = -high
@@ -138,7 +137,7 @@ def comparison_figure(name, plane_name, quantity, across, up, panels):
         if plane_name == "z0":
             axes.add_patch(plt.Polygon(WING_SECTION, facecolor="white", edgecolor="black", lw=0.6))
         if row > 0 and plane["fvm"]:
-            # The FVM box: the coupled flow is the FVM inside it, the particles outside
+            # The FVM field occupies the box; particles occupy the outer wake.
             box = (
                 FVM_DOMAIN_BOUNDS[2 * plane["axes"][0] : 2 * plane["axes"][0] + 2],
                 FVM_DOMAIN_BOUNDS[2 * plane["axes"][1] : 2 * plane["axes"][1] + 2],
@@ -212,7 +211,7 @@ def main():
             paths.append(fvm_paths)
         common = match_saved_times(*clocks)
 
-        # The particles and the reference share one lattice; the FVM slice covers the box only
+        # Reference and particle slices share a lattice; the FVM covers only the box.
         across, up = on_plane(reference_paths[0], plane)[:2]
         inside_wing = np.zeros(across.shape, dtype=bool)
         if plane_name == "z0":
@@ -227,7 +226,7 @@ def main():
             reference = frames[0][2:]
             coupled = frames[1][2:]
             if plane["fvm"]:
-                # The FVM supplies the coupled flow inside its box, the particles outside it
+                # Use FVM values in the box and particle values outside it.
                 coupled = [
                     np.where(np.isfinite(inner), inner, outer)
                     for inner, outer in zip(onto(frames[2], across, up), coupled)
@@ -245,7 +244,7 @@ def main():
                 ]
             )
 
-        # Time-mean over the common frames of the statistics window
+        # Time mean over the saved frames shared by both runs.
         n_frames = len(common.times)
         mean_reference, mean_coupled = ([field / n_frames for field in total] for total in sums)
         statistics = compare(

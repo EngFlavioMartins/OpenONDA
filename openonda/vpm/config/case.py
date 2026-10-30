@@ -386,7 +386,6 @@ class VPMCase:
         ):
             if not isinstance(getattr(self, name), kind):
                 raise TypeError(f"VPMCase.{name} must be a {kind.__name__} instance")
-        self.run.n_steps(self.numerics.time_step_size)
         if self.numerics.vlm is not None:
             self._validate_coupled_vlm_output()
         percent = self.initial_weak_particle_percent

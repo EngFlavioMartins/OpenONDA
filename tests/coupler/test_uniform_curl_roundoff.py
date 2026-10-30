@@ -24,6 +24,8 @@ def test_cached_target_stencils_preserve_uniform_flow_and_resolved_weak_curl(
         vpm_core_radius_ratio=1.0,
         vpm_particle_spacing=0.25,
         vpm_time_step_size=0.01,
+        fvm_time_step_size=0.01,
+        maximum_coupling_time_step_size=0.01,
         vpm_case=SimpleNamespace(
             numerics=SimpleNamespace(viscous=viscous, induction=SimpleNamespace())
         ),

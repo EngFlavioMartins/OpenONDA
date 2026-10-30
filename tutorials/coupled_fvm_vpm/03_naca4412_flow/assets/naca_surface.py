@@ -105,6 +105,6 @@ def write_wing_stl(path, code, chord, span, n_points, n_span_segments, angle_of_
         lines += ["    endloop", "  endfacet"]
     lines.append("endsolid naca" + code)
 
-    # Each MPI rank writes the same file; an atomic replace never exposes a partial one
+    # Write the completed surface in one operation.
     write_text_atomic(path, "\n".join(lines) + "\n")
     return path

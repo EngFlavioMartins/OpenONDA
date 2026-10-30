@@ -1,17 +1,5 @@
-"""Animate the coupled cylinder wake over four shedding periods, with its lift and drag.
+"""Animate the developed cylinder wake over four shedding periods."""
 
-Each frame shows the FVM vorticity on the mid-plane of the FVM domain and the
-particles outside it, on one vorticity-magnitude scale, at one field output
-time of developed shedding. Fields are written every 0.2 s from 40 s on; the
-frames span four shedding periods, so the animation repeats without a jump.
-The inset traces the lift and drag coefficients up to that time.
-``assets/cylinder_shedding.gif``, shown in the README gallery, is a copy of the
-result.
-"""
-
-from __future__ import annotations
-
-import argparse
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -26,6 +14,7 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution"
 FORCES = CASE_DIR / "samples" / "forces_history.csv"
 OUTPUT = CASE_DIR / "figures" / "cylinder_shedding.gif"
+FRAMES_PER_SECOND = 20.0
 
 DIAMETER = 1.0  # [m]
 FREESTREAM_SPEED = 1.0  # [m/s]
@@ -33,19 +22,19 @@ FVM_DOMAIN = (-2.4, 4.4, -2.4, 2.4)  # [m], x and y bounds
 START_TIME = 75.6  # [s], an upward zero crossing of the lift in developed shedding
 SHEDDING_PERIODS = 4
 SHEDDING_PERIOD = 5.488  # [s], between upward zero crossings of the lift
-FVM_HEIGHT = 1.0  # [m], drawn height of the FVM domain and cylinder; the span is one cell
+FVM_HEIGHT = 1.0  # m, drawn span of the planar FVM domain
 
-# An oblique view from above and downstream: FVM domain top left, wake toward bottom right
+# Oblique view from above and downstream.
 VIEW_DIRECTION = (0.9, -0.9, 1.2)  # toward the camera
 FOCAL_POINT = (6.5, 0.2, 0.0)  # [m]
 VIEW_DISTANCE = 36.0  # [m]
-VIEW_ANGLE = 17.0  # [deg], a long lens keeps the far wake from looming
+VIEW_ANGLE = 17.0  # deg
 
-IMAGE_SIZE = (800, 500)  # [px], as the other gallery animations
-RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
-OMEGA_MAX = 1.5  # [1/s], vorticity magnitude of the shed vortices in the particle wake
+IMAGE_SIZE = (800, 500)  # px
+RENDER_SCALE = 2
+OMEGA_MAX = 1.5  # 1/s
 
-# README gallery style: white DejaVu Serif text on black, a stepped blue vorticity scale
+# Dark gallery style and blue vorticity scale.
 GALLERY_STYLE = {
     "font.family": "DejaVu Serif",
     "mathtext.fontset": "dejavuserif",
@@ -114,7 +103,7 @@ def wake_particles(path: Path) -> pv.PolyData:
 def render_scene(plotter, plane, cloud, view):
     """Render one frame of FVM plane, particles and cylinder, returning its RGB image."""
     plotter.clear()
-    # FVM and particle vorticity share one scale; weak vorticity fades out, so the street is continuous
+    # Use one vorticity scale for FVM and particles.
     vorticity = {
         "scalars": "vorticity magnitude",
         "cmap": VORTICITY_COLORMAP,
@@ -126,7 +115,7 @@ def render_scene(plotter, plane, cloud, view):
     plotter.add_mesh(
         cloud, render_points_as_spheres=True, point_size=3.0 * RENDER_SCALE, **vorticity
     )
-    # FVM domain edges, over the drawn height of the planar flow
+    # Draw the FVM-domain edges and cylinder.
     xmin, xmax, ymin, ymax = FVM_DOMAIN
     box = pv.Box(bounds=(xmin, xmax, ymin, ymax, -0.5 * FVM_HEIGHT, 0.5 * FVM_HEIGHT))
     plotter.add_mesh(
@@ -158,7 +147,7 @@ def compose(image, time, forces):
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
-        # Vorticity magnitude of the FVM field and the particles: end values, title above the bar
+        # Common vorticity scale for FVM and particle fields.
         bar = figure.add_axes((0.80, 0.53, 0.04, 0.29))
         figure.colorbar(
             plt.cm.ScalarMappable(Normalize(0.0, OMEGA_MAX), VORTICITY_COLORMAP),
@@ -169,7 +158,7 @@ def compose(image, time, forces):
         bar.tick_params(direction="out", length=10, width=1.5)
         bar.set_title(r"$|\omega|$ [1/s]", fontsize=30, pad=28)
 
-        # Lift and drag up to this time; the rest of the history stays faint
+        # Force history up to the current frame.
         inset = figure.add_axes((0.12, 0.17, 0.29, 0.24))
         inset.set_facecolor("none")
         times = forces["time"].to_numpy()
@@ -191,7 +180,6 @@ def compose(image, time, forces):
                 markersize=8,
                 clip_on=False,
             )
-            # Each curve is named at its right end, clear of the other
             inset.annotate(
                 label,
                 (1.0, values.mean()),
@@ -215,12 +203,7 @@ def compose(image, time, forces):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fps", type=float, default=20.0)
-    parser.add_argument("--output", type=Path, default=OUTPUT)
-    args = parser.parse_args()
-
-    # Four shedding periods of output times; the next one repeats the first
+    # Four shedding periods return the wake to its starting phase.
     end_time = START_TIME + SHEDDING_PERIODS * SHEDDING_PERIOD - 0.1
     particles = frame_files(SOLUTION_DIR / "vpm.pvd", START_TIME, end_time)
     planes = frame_files(SOLUTION_DIR / "fvm.pvd", START_TIME, end_time)
@@ -237,23 +220,22 @@ def main() -> None:
         frames.append(compose(image, time, forces))
     plotter.close()
 
-    # One palette for every frame, from four frames across the loop, keeps the GIF small
+    # Reuse one palette for a compact GIF.
     sample = Image.new("RGB", (IMAGE_SIZE[0], 4 * IMAGE_SIZE[1]))
     for row, frame in enumerate(frames[:: len(frames) // 4][:4]):
         sample.paste(frame, (0, row * IMAGE_SIZE[1]))
     palette = sample.quantize(colors=256)
     frames = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
 
-    # The frames span whole shedding periods, so the animation loops without a pause
-    args.output.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(
-        args.output,
+        OUTPUT,
         save_all=True,
         append_images=frames[1:],
-        duration=round(1000 / args.fps),
+        duration=round(1000 / FRAMES_PER_SECOND),
         loop=0,
     )
-    print(f"  Saved: {args.output}")
+    print(f"  Saved: {OUTPUT}")
 
 
 if __name__ == "__main__":

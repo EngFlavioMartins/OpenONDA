@@ -46,6 +46,17 @@ def test_triangulated_curved_body_mask_excludes_only_open_solid_interior():
     assert mask[5, 3, 3] == 0  # exterior fluid
 
 
+def test_scalar_grid_transfer_buffers_match_the_field_type():
+    _ensure_taichi_cpu()
+    physics = _Harness()
+    physics._init_grid_diffusion()
+    integer_grid = ti.field(dtype=ti.i32, shape=(2, 2, 2))
+    scalar_grid = ti.field(dtype=ti.f32, shape=(2, 2, 2))
+
+    assert physics._grid_transfer_buffer("scalar", integer_grid, "upload").dtype == np.int32
+    assert physics._grid_transfer_buffer("scalar", scalar_grid, "upload").dtype == np.float32
+
+
 def test_wall_classifier_mask_is_cached_and_follows_lattice_phase():
     _ensure_taichi_cpu()
     physics = _Harness()

@@ -27,12 +27,12 @@ WINDOW = (-1.5, 9.5, -1.5, 1.5)  # m, inertial frame, about the mean cylinder po
 SPACING = 0.02  # m, comparison lattice
 LOCKED_IN = 25.0  # s, start of the phase averages
 
-# Reference FVM, coupled FVM inside its box and the coupled particles outside it
+# Reference FVM, coupled FVM in the box, and particles in the outer wake.
 REFERENCE = CASE_DIR / "reference_flow/solution/fvm.pvd"
 COUPLED_FVM = CASE_DIR / "solution/fvm.pvd"
 COUPLED_VPM = CASE_DIR / "solution/vpm.pvd"
 
-# Field label and colour map, and the label of the difference panel
+# Field labels, colour maps, and difference scales.
 QUANTITIES = {
     "velocity": ("$u_x/U_\\infty$", COLORMAPS["velocity"], r"$\|\Delta\mathbf{u}\|/U_\infty$ [\%]"),
     "vorticity": (
@@ -42,16 +42,16 @@ QUANTITIES = {
     ),
 }
 
-# Differences in amber, pale at zero, apart from the field colour maps
+# Absolute differences use amber, with white at zero.
 DIFFERENCE_COLOURS = colormaps["thesis_amber"].reversed()
 
-# Figure layout in cm, measured from the top of the canvas; the plotting area is centred
+# Fixed thesis layout, in cm.
 LEFT = 1.4
 WIDTH = 12.5 - 2 * LEFT
 PANEL = WIDTH * (WINDOW[3] - WINDOW[2]) / (WINDOW[1] - WINDOW[0])
 TITLE, PANEL_GAP, BAR_GAP, BAR_HEIGHT, BAR_LABEL = 0.7, 0.75, 1.25, 0.16, 1.25
 
-# Comparison lattice, fixed in the inertial frame
+# Comparison lattice in the inertial frame.
 x, y = np.meshgrid(
     np.arange(WINDOW[0], WINDOW[1] + SPACING / 2, SPACING),
     np.arange(WINDOW[2], WINDOW[3] + SPACING / 2, SPACING),
@@ -110,7 +110,7 @@ def comparison_figure(name, quantity, reference, coupled, difference, displaceme
             np.nanmax([reference[valid], coupled[valid]]),
         )
     else:
-        # Saturate at the wake's peak, which lies well below the wall layer's
+        # Set the vorticity scale from the wake rather than the wall layer.
         wake = valid & (x > 1.0)
         high = max(np.percentile(np.abs([reference[wake], coupled[wake]]), 99.5), 0.01)
         low = -high
@@ -135,7 +135,7 @@ def comparison_figure(name, quantity, reference, coupled, difference, displaceme
         top += TITLE
         axes = axes_at(top, PANEL)
         plot = axes.contourf(x, y, values, levels=levels, cmap=colours, extend="both")
-        # Cylinder and FVM box at the heave displacement of the phase-bin centre
+        # Draw the cylinder and FVM box at the phase-bin displacement.
         axes.add_patch(
             plt.Circle(
                 (0, displacement), DIAMETER / 2, facecolor="white", edgecolor="black", lw=0.6
@@ -185,7 +185,7 @@ def phase_sums(frames, fields_of):
     vorticity = np.zeros((N_PHASES, *x.shape))
     count = np.zeros(N_PHASES, dtype=int)
     for time, paths in frames:
-        # Saved times carry clock round-off; the window opens at a saved time
+        # Round saved times to the output precision before selecting the wake.
         if round(time, 6) < LOCKED_IN:
             continue
         k = phase_bin(time)
@@ -202,7 +202,7 @@ def main():
     vpm_times, vpm_paths = saved_frames(COUPLED_VPM)
     coupled_times = match_saved_times(fvm_times, vpm_times)
 
-    # Both FVM meshes move rigidly, so their triangulations are built once in mesh coordinates
+    # Both FVM meshes translate rigidly, so each needs one mesh-frame triangulation.
     reference_triangles = triangulation(cell_centres(reference_paths[0], reference_times[0]))
     box_triangles = triangulation(cell_centres(fvm_paths[0], fvm_times[0]))
 
@@ -217,8 +217,7 @@ def main():
         box = on_lattice(
             box_triangles, box_mesh.cell_data["velocity"], box_mesh.cell_data["vorticity"], time
         )
-        # Particles move in the frame of the box: positions relative to the box at t = 0,
-        # velocity relative to the box
+        # Particle velocity is stored in the translating-box frame.
         velocity = particles.point_data["velocity"].copy()
         velocity[:, 1] += heave_velocity(time)
         outside = on_lattice(
@@ -227,10 +226,10 @@ def main():
             particles.point_data["vorticity"],
             time,
         )
-        # The FVM supplies the coupled flow inside its box, the particles outside it
+        # Use the FVM field in the box and particle field in the outer wake.
         return [np.where(np.isfinite(inner), inner, outer) for inner, outer in zip(box, outside)]
 
-    # Each run is averaged over the states of equal heave phase, which locks the shedding
+    # Average both runs in equal heave-phase bins.
     reference_sums = phase_sums(zip(reference_times, reference_paths), reference_fields)
     coupled_sums = phase_sums(
         (
@@ -250,7 +249,7 @@ def main():
         velocity_difference = 100.0 * np.linalg.norm(coupled[0] - reference[0], axis=-1)
         vorticity_difference = np.abs(coupled[1] - reference[1])
         name = f"phase{k:02d}"
-        # Heave displacement at the phase of the bin centre
+        # Heave displacement at the phase-bin centre.
         displacement = heave_displacement(k / N_PHASES / FREQUENCY)
         comparison_figure(
             name,

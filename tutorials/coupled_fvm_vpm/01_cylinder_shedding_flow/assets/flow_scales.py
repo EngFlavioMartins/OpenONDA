@@ -1,24 +1,8 @@
 #!/usr/bin/env python3
-"""Flow scales of the cylinder wake, measured on the FVM references over developed shedding.
+"""Measure wake scales from the developed FVM reference solutions.
 
-The coupling parameters of the study are expressed in these scales so that the rules found here
-carry over to other flows:
-
-- recirculation length L_r, from the cylinder base x = D/2 to where the time-mean streamwise
-  velocity on the wake centreline returns to zero;
-- vortex-formation length L_f, from the cylinder centre to the centreline maximum of the rms
-  streamwise velocity, the usual definition in cylinder-wake studies (see the review of
-  Williamson 1996). There the alternating vortices first draw fluid across the axis and the
-  streamwise fluctuation, at twice the shedding frequency, peaks; the rms transverse velocity
-  keeps rising beyond it and peaks further downstream, as listed for comparison;
-- vorticity thickness of the separated shear layer at the base plane x = D/2,
-  delta_w = Delta u / max|du/dy| of the time-mean velocity, against the viscous scale D/sqrt(Re);
-- largest strain rate at the wall, where it peaks, for the Lagrangian CFL number
-  Lambda = max|S| dt_VPM. At a no-slip wall the planar strain is pure shear, so the infinity norm
-  max_i sum_j |S_ij| that the particle solver checks equals |omega_z|/2 there; it is taken from
-  the FVM vorticity of the cells next to the wall;
-- Strouhal number of the lift and wake half-width at x = 2 D and 4 D, where the time-mean
-  velocity defect falls to half its centreline value.
+The study reports recirculation and vortex-formation length, shear-layer
+thickness, wall strain rate, Strouhal number and wake width.
 """
 
 from pathlib import Path
@@ -37,9 +21,9 @@ from assets.plot_forces import read_forces, shedding_statistics
 CASE_DIR = Path(__file__).resolve().parents[1]
 DIAMETER = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
-WINDOW = (40.0, 55.0)  # s, developed shedding saved by every reference, averaged over whole periods
+WINDOW = (40.0, 55.0)  # s
 
-# Developed FVM references: Reynolds number, cell size near the body [m] and time step [s]
+# Reference data: Reynolds number, body cell size [m] and time step [s].
 REFERENCES = {
     "reference_flow": (150.0, 0.04, 0.008),
     "sensitivity/reference_re100": (100.0, 0.04, 0.008),
@@ -54,7 +38,7 @@ FIGURE_COLORS = {
     "sensitivity/reference_re250": COLORS["amber"],
 }
 
-# Sample lines: the wake centreline, the base plane above the axis and two transverse stations
+# Centreline, base-plane and transverse sampling lines.
 SPACING = 0.01  # m
 CENTRELINE = np.arange(0.52, 8.0, SPACING)  # x [m] at y = 0
 BASE_PLANE = np.arange(0.0, 1.5, SPACING)  # y [m] at x = D/2
@@ -89,7 +73,7 @@ def run_statistics(directory, cell_size, end_time):
     times, paths = saved_frames(CASE_DIR / directory / "solution/fvm.pvd")
     frames = [path for time, path in zip(times, paths) if WINDOW[0] <= round(time, 6) < end_time]
 
-    # The mesh does not move: one interpolation and one set of wall cells serve every frame
+    # The static mesh uses one interpolation stencil for every frame.
     cell_centres = pv.read(frames[0]).cell_centers().points[:, :2]
     corners, weights = line_interpolation(cell_centres, sample_points())
     wall_cells = np.hypot(cell_centres[:, 0], cell_centres[:, 1]) < 0.5 * DIAMETER + cell_size
@@ -99,12 +83,12 @@ def run_statistics(directory, cell_size, end_time):
         frame = pv.read(path)
         velocity = frame.cell_data["velocity"][:, :2]
 
-        # Velocity on the sample lines
+        # Interpolate velocity to the sample lines.
         sampled = np.einsum("ni,nic->nc", weights, velocity[corners])
         velocity_sum = velocity_sum + sampled
         velocity_squares = velocity_squares + sampled**2
 
-        # Wall shear strain rate |omega_z|/2
+        # Planar wall shear strain rate, |omega_z|/2.
         strain_rates.append(0.5 * np.abs(frame.cell_data["vorticity"][wall_cells, 2]).max())
 
     mean = velocity_sum / len(frames)

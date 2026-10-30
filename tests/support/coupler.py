@@ -13,13 +13,15 @@ def uniform_stream_cases(
     directory: str | Path,
     *,
     fvm_time_step_size: float,
-    coupling_time_step_size: float,
+    vpm_time_step_size: float | None = None,
     end_time: float,
     particle_spacing: float = 0.25,
     cores: int = 1,
     fvm_output: fvm.Output | None = None,
+    fvm_samplers: fvm.Samplers | None = None,
     vpm_output: vpm.Output | None = None,
     max_n_particles: int = 4000,
+    fvm_time_step_control: fvm.MaximumCourantTimeStep | None = None,
 ) -> tuple[fvm.FVMCase, vpm.VPMCase]:
     """Return a unit FVM box in a uniform stream and its particle case.
 
@@ -32,11 +34,13 @@ def uniform_stream_cases(
         directory=directory,
         numerics=fvm.Numerics(
             time_step_size=fvm_time_step_size,
+            time_step_control=fvm_time_step_control,
             transport=fvm.TransportConfig(kinematic_viscosity=KINEMATIC_VISCOSITY),
         ),
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=end_time),
         output=fvm_output or fvm.Output(),
+        samplers=fvm_samplers or fvm.Samplers(),
         mesh=lambda: coupling_box_mesh((-0.5, 0.5, -0.5, 0.5, -0.5, 0.5), h),
         boundaries=(
             fvm.BoundaryConfig(
@@ -51,7 +55,9 @@ def uniform_stream_cases(
         name="uniform_stream",
         directory=directory,
         numerics=vpm.Numerics(
-            time_step_size=coupling_time_step_size,
+            time_step_size=(
+                fvm_time_step_size if vpm_time_step_size is None else vpm_time_step_size
+            ),
             compute_device="cpu",
             max_n_particles=max_n_particles,
             domain_bounds=(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0),

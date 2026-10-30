@@ -13,7 +13,7 @@ from openonda.plotting import validation_subplots
 CASE_DIR = Path(__file__).resolve().parents[1]
 REFERENCE_DIR = CASE_DIR / "reference_flow"
 
-# Recorded timing phases, grouped by the solver part they belong to
+# Timing phases grouped by solver component.
 PHASES = {
     "VPM": (("vpm",), COLORS["vpm"]),
     "FVM": (("fvm",), COLORS["fvm"]),
@@ -23,12 +23,13 @@ PHASES = {
 
 
 def main():
-    # One record per accepted coupling step; a running case may still be writing the last line
-    lines = (CASE_DIR / "solution/coupler_diagnostics.jsonl").read_text().split("\n")[:-1]
-    records = [json.loads(line) for line in lines]
+    records = [
+        json.loads(line)
+        for line in (CASE_DIR / "solution/coupler_diagnostics.jsonl").read_text().splitlines()
+    ]
     time = np.array([record["time"] for record in records])
     particles = np.array([record["transfer"]["n_particles_after"] for record in records])
-    # Wall time per second of flow time: each coupling step advances the flow by one interval
+    # Normalize every timing phase by the coupling interval.
     coupling_interval = time[1] - time[0]
     cost = [
         sum(np.array([record["timing_seconds"][key] for record in records]) for key in keys)
@@ -37,8 +38,10 @@ def main():
     ]
     coupled_mean = np.sum(cost, axis=0).mean()
 
-    # Reference FVM wall time per step over its own time step
-    steps = [json.loads(line) for line in (REFERENCE_DIR / "solution/performance.jsonl").open()]
+    # Normalize the FVM reference by its own time step.
+    steps = [
+        json.loads(line) for line in (REFERENCE_DIR / "solution/performance.jsonl").read_text().splitlines()
+    ]
     reference_mean = (
         np.mean([step["step_seconds"]["max"] for step in steps]) / steps[0]["time_step_size"]
     )
@@ -49,7 +52,7 @@ def main():
 
     figure, axes = validation_subplots(2, sharex=True)
     axes[0].stackplot(time, *cost, labels=PHASES, colors=[color for _, color in PHASES.values()])
-    # Clip the start-up coupling step and isolated spikes; leave headroom for the legend
+    # Leave headroom above the timing history for the legend.
     axes[0].set_ylim(0.0, 1.6 * np.percentile(np.sum(cost, axis=0), 99.9))
     for mean, style, label in (
         (coupled_mean, "-", "Coupled"),

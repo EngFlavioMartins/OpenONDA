@@ -27,40 +27,39 @@ FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)  # m/s
 REYNOLDS_NUMBER = 150.0
 DENSITY = 1.0  # kg/m^3
 
-# Startup: a near-wake vortex breaks the symmetry and triggers shedding
+# Startup vortex: breaks wake symmetry and starts shedding
 DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, streamfunction peak
 DISTURBANCE_RADIUS = 0.5  # m
 DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
-# FVM: uniform body-fitted cells near the wall
+# FVM mesh and near wake
 CELL_SIZE = 0.04  # m, also the baseline particle spacing
-BOX_MARGIN = 2.4  # D upstream and sideways, 2 D more downstream: holds the vortex-formation region
+BOX_MARGIN = 2.4  # D upstream and sideways; 2 D farther downstream
 FVM_TIME_STEP = 0.008  # s
 
 # VPM: particles in the outer wake
 VPM_DOMAIN = (-5.0, 30.0, -5.0, 5.0)  # m, x and y bounds
-OUTFLOW_FRINGE = 15.0  # m, shed vortices fade over about three wake wavelengths
-VORTICITY_FLOOR = 0.01  # 1/s, GBD removal threshold: weaker particles are removed after diffusion
+OUTFLOW_FRINGE = 15.0  # m, smooth vorticity removal near the downstream boundary
+VORTICITY_FLOOR = 0.01  # 1/s, remove weak diffused particles
 PARTICLE_LIMIT = 1_000_000
 
-# Coupling: FVM vorticity replaces the particle vorticity inside the transfer region
-TRANSFER_INSET = 8.75  # cells from the outer FVM boundary in to the transfer surface
-BLEND_START = 2  # cells below the transfer surface where the blending weight starts to rise
-BLEND_END = 6  # cells below the transfer surface where the blending weight reaches one
-FVM_SUBSTEPS = 5  # FVM steps per coupling interval; one particle step per coupling interval
-COUPLING_ITERATIONS = 6  # most FVM solves per coupling interval until the boundary data converge
-COUPLING_TOLERANCE = 1.0e-5  # m/s for the normal velocity, 1/s for the normal gradient of u_t
+# FVM–VPM transfer
+TRANSFER_INSET = 8.75  # cells between the outer FVM boundary and the transfer surface
+BLEND_START = 2  # cells below the transfer surface
+BLEND_END = 6  # cells below the transfer surface
+FVM_SUBSTEPS = 5  # per particle step
+COUPLING_ITERATIONS = 6  # maximum FVM solves per particle step
+COUPLING_TOLERANCE = 1.0e-5  # boundary velocity and tangential-gradient tolerance
+MAX_STRENGTH_RATIO = 1.8  # transfer strength-correction limit
 END_TIME = 100.0  # s
 
-# Observations
+# Output
 FORCE_INTERVAL = 0.04  # s
 PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
-FIELD_INTERVAL = 0.2  # s, FVM and particle fields over developed shedding ...
-FIELD_START = 40.0  # s, ... from this time on
-BACKUP_INTERVAL = 1.0  # s, coupled restart states and matching particle fields
-TRANSFER_DIAGNOSTIC_INTERVAL = (
-    2.4  # s, full diagnostics of how well particles represent FVM vorticity
-)
+FIELD_INTERVAL = 0.2  # s, FVM and particle fields
+FIELD_START = 40.0  # s, developed shedding
+BACKUP_INTERVAL = 1.0  # s
+TRANSFER_DIAGNOSTIC_INTERVAL = 2.4  # s
 
 
 def initial_velocity(position):
@@ -89,15 +88,18 @@ def build_case(
     cell_size=CELL_SIZE,
     box_downstream=BOX_MARGIN + 2.0,
     interface_cell_size=CELL_SIZE,
+    max_strength_ratio=MAX_STRENGTH_RATIO,
+    blend_start=BLEND_START,
+    blend_end=BLEND_END,
 ):
     """Return the FVM case, the particle case and the coupling settings."""
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
 
-    # One FVM cell and one particle layer across the span make the flow planar
+    # One FVM cell and one particle layer across the span make the flow planar.
     span = particle_spacing
     half_span = 0.5 * span
 
-    # FVM domain, transfer region inset from its outer boundary, and the coupling interval
+    # FVM domain, transfer region and coupling interval.
     margin = box_margin * DIAMETER
     downstream = box_downstream * DIAMETER
     fvm_domain_bounds = (-margin, downstream, -margin, margin)
@@ -105,12 +107,11 @@ def build_case(
     transfer_region = (-margin + inset, downstream - inset, -margin + inset, margin - inset)
     coupling_time_step_size = fvm_substeps * fvm_time_step
 
-    # Observations and the end fall on coupling times, where both solvers hold the same time
+    # Output times coincide with accepted coupling states.
     def on_coupling_times(interval):
         return max(1, round(interval / coupling_time_step_size)) * coupling_time_step_size
 
-    # Explicit GBD diffusion keeps 12 x Fourier number below one per stage; each
-    # stage reaches one more grid cell beyond the span planes
+    # Choose enough diffusion stages for the particle spacing and time step.
     fourier_number = kinematic_viscosity * coupling_time_step_size / particle_spacing**2
     diffusion_stages = math.floor(12.0 * fourier_number) + 1
 
@@ -253,11 +254,12 @@ def build_case(
     coupling = coupler.CouplerConfig(
         freestream_velocity=FREESTREAM_VELOCITY,
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
-        blend_start_depth=BLEND_START * interface_cell_size,
-        blend_end_depth=BLEND_END * interface_cell_size,
+        blend_start_depth=blend_start * interface_cell_size,
+        blend_end_depth=blend_end * interface_cell_size,
         max_coupling_iterations=coupling_iterations,
         normal_velocity_tolerance=coupling_tolerance,
         normal_gradient_tolerance=coupling_tolerance,
+        max_strength_ratio=max_strength_ratio,
         transfer_diagnostic_interval_steps=round(
             TRANSFER_DIAGNOSTIC_INTERVAL / coupling_time_step_size
         ),
@@ -321,6 +323,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
     )
+    parser.add_argument(
+        "--max-strength-ratio",
+        type=float,
+        default=MAX_STRENGTH_RATIO,
+        help="strength-ratio limit kappa_max of the transfer correction",
+    )
+    parser.add_argument(
+        "--blend-start",
+        type=float,
+        default=BLEND_START,
+        help="zero-weight layer depth delta_0 below the transfer surface [interface cells]",
+    )
+    parser.add_argument(
+        "--blend-end",
+        type=float,
+        default=BLEND_END,
+        help="depth delta_1 at which the blending weight reaches one [interface cells]",
+    )
     arguments = parser.parse_args()
 
     # Refining the cells refines the steps at constant Courant number, and the particles with them
@@ -343,6 +363,9 @@ if __name__ == "__main__":
         arguments.cell_size,
         box_downstream,
         interface_cell_size,
+        arguments.max_strength_ratio,
+        arguments.blend_start,
+        arguments.blend_end,
     )
     with coupler.CoupledSolver(flow, particles, coupling) as solver:
         # The startup vortex behind the cylinder; a restart replaces it with the backup

@@ -796,7 +796,7 @@ class VorticityTransfer:
             )
         self.max_strength_ratio = float(cfg.max_strength_ratio)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
-        self.coupling_time_step_size = float(coupler.vpm_time_step_size)
+        self.coupling_time_step_size = float(coupler.maximum_coupling_time_step_size)
         self.remeshing_extension_length = remeshing_extension_length(
             cfg.freestream_velocity,
             self.coupling_time_step_size,

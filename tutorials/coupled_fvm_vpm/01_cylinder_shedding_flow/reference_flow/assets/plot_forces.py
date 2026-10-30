@@ -11,8 +11,9 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 
 
 def main():
-    path = CASE_DIR / "samples/forces_history.csv"
-    forces = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
+    forces = np.genfromtxt(
+        CASE_DIR / "samples/forces_history.csv", delimiter=",", names=True, dtype=None, encoding="utf-8"
+    )
 
     figure, axes = validation_subplots(2, sharex=True)
     for axis, name, label in zip(
@@ -20,7 +21,7 @@ def main():
     ):
         axis.plot(forces["time"], forces[name], color=COLORS["fvm"], linewidth=LINE_WIDTH)
         axis.set_ylabel(label)
-    axes[0].set_ylim(1.0, 1.6)  # hides the impulsive-start peak
+    axes[0].set_ylim(1.0, 1.6)  # developed drag range
     axes[1].set_xlabel("$t$ [s]")
     save_validation_figure(figure, CASE_DIR / "figures/forces")
 

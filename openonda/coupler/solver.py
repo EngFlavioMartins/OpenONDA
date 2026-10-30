@@ -15,9 +15,10 @@ import numpy as np
 
 from openonda.core.metadata import write_run_metadata
 from openonda.core.restart import reset_run_outputs, select_backup
-from openonda.core.schedules import EveryTime
+from openonda.core.schedules import EverySteps
 from openonda.core.simulation.parallel import collective_phase
 from openonda.core.status import RunStatus
+from openonda.fvm.core.time_step import event_aligned_time_step_size
 from openonda.runtime import detected_world_size
 
 from .backup import coupled_backup_path, load_coupled_backup, save_coupled_backup
@@ -100,20 +101,6 @@ def _validate_gbd_moment_correction(
         )
 
 
-def _n_fvm_substeps(vpm_time_step_size: float, fvm_time_step_size: float) -> int:
-    """Return the whole number of FVM steps in one coupling interval."""
-    if fvm_time_step_size <= 0.0 or vpm_time_step_size <= 0.0:
-        raise ValueError("The FVM and VPM time-step sizes must be positive")
-    ratio = vpm_time_step_size / fvm_time_step_size
-    n_substeps = max(1, round(ratio))
-    if not math.isclose(ratio, n_substeps, rel_tol=1.0e-9, abs_tol=1.0e-12):
-        raise ValueError(
-            "The VPM time-step size must be a whole multiple of the FVM time-step size; got "
-            f"{vpm_time_step_size:.12g} s and {fvm_time_step_size:.12g} s (ratio {ratio:.12g})"
-        )
-    return n_substeps
-
-
 def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig) -> None:
     """Check the case settings the two solvers and the coupler must share."""
     from openonda.fvm import FVMCase
@@ -132,11 +119,6 @@ def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig)
         raise ValueError(
             "Coupled backups are set by CouplerConfig.backup; "
             "the FVM and VPM cases take no backup schedule"
-        )
-    if fvm_case.numerics.time_step_control is not None:
-        raise ValueError(
-            "Coupling requires a fixed FVM time-step size: adaptive FVM steps would not "
-            "divide each coupling interval exactly"
         )
     if fvm_case.run.start_time != 0.0:
         raise ValueError("Coupled runs start at time zero")
@@ -163,20 +145,21 @@ def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig)
             f"The VPM freestream velocity {tuple(numerics.freestream_velocity)} differs from "
             f"the coupling freestream velocity {tuple(config.freestream_velocity)}"
         )
-    coupling_time_step_size = numerics.time_step_size
-    n_substeps = _n_fvm_substeps(coupling_time_step_size, fvm_case.numerics.time_step_size)
-    schedule = config.backup.schedule
-    if isinstance(schedule, EveryTime):
-        for name in ("interval", "start_time"):
-            ratio = getattr(schedule, name) / coupling_time_step_size
-            if not math.isclose(ratio, round(ratio), rel_tol=0.0, abs_tol=1.0e-9):
-                raise ValueError(
-                    f"The coupled backup {name} must be a whole number of coupling intervals"
-                )
-    if config.max_coupling_iterations > 1:
-        from .coupling_iteration import validate_output_schedules
 
-        validate_output_schedules(fvm_case, n_substeps, coupling_time_step_size)
+    initial_substep_ratio = numerics.time_step_size / fvm_case.numerics.time_step_size
+    nominal_fvm_substeps = max(
+        1, math.ceil(initial_substep_ratio - 1.0e-12 * max(1.0, initial_substep_ratio))
+    )
+    if config.max_coupling_iterations > 1 and (
+        nominal_fvm_substeps > 1 or fvm_case.numerics.time_step_control is not None
+    ):
+        fvm_step_schedules = [fvm_case.output.schedule]
+        fvm_step_schedules.extend(sampler.schedule for sampler in fvm_case.samplers.samples)
+        if any(isinstance(schedule, EverySteps) for schedule in fvm_step_schedules):
+            raise ValueError(
+                "FVM output and samplers that use EverySteps cannot be combined with multiple "
+                "FVM substeps and coupling iterations; use EveryTime schedules"
+            )
 
 
 def _validate_vpm_domain(vpm_case: VPMCase, config: CouplerConfig, fvm_bounds: np.ndarray) -> None:
@@ -227,12 +210,13 @@ def _validate_vpm_domain(vpm_case: VPMCase, config: CouplerConfig, fvm_bounds: n
 class CoupledSolver:
     """Inner FVM solution coupled to an outer VPM wake.
 
-    In each coupling interval the particles advance one VPM step to the
-    predictor; their normal velocity and the normal gradient of their tangential
-    velocity on the outer FVM boundary are the boundary data of the FVM substeps
-    to the same time, and the FVM vorticity replaces the particle vorticity
-    inside the transfer region. The coupler sets the coupling clock: both
-    solvers accept exactly the time :meth:`coupling_time` of each coupling step.
+    The FVM CFL controller selects each FVM substep. The VPM interval equals
+    the sum of those substep sizes, and the coupler shortens the interval when
+    the particle strain limit requires it. Physical-time samples, frames,
+    backups and the run horizon remain exact event times.
+    Particle velocity and its normal gradient on the outer FVM boundary drive
+    the FVM substeps; FVM vorticity then replaces particle vorticity in the
+    transfer region.
     On a translating FVM mesh the VPM runs in the frame of the mesh, with the
     freestream relative to the mesh (:class:`~openonda.coupler.frame.MeshFrame`).
 
@@ -243,8 +227,8 @@ class CoupledSolver:
         coupled solver; the FVM runs on all ranks.
     vpm_case : VPMCase
         Particle wake and its output; the VPM runs on the root rank. Its
-        time-step size is the coupling interval, a whole multiple of the FVM
-        time step, and its directory and variant are those of the FVM case.
+        configured time-step size is the maximum coupling interval, and its
+        directory and variant are those of the FVM case.
     config : CouplerConfig
         Vorticity transfer, coupling iterations and coupled backups.
 
@@ -261,9 +245,9 @@ class CoupledSolver:
     solution_dir : pathlib.Path
         ``solution/`` of the case, below its variant.
     fvm_time_step_size, vpm_time_step_size : float
-        FVM time step and coupling interval in s.
+        Current FVM substep and VPM coupling interval in s.
     n_fvm_substeps : int
-        FVM steps per coupling interval.
+        Number of FVM substeps in the current VPM coupling interval.
     frame : MeshFrame
         Frame translating with the FVM mesh, in which the VPM is solved.
     freestream_velocity : numpy.ndarray
@@ -312,6 +296,7 @@ class CoupledSolver:
         self._restart_loaded = False
         self._frame_step: int | None = None
         self._backup_step: int | None = None
+        self._coupling_step = 0
         self._resources = ExitStack()
         self.vpm_solver: VPMSolver | None = None
         self._is_root = True
@@ -329,7 +314,10 @@ class CoupledSolver:
             with collective_phase(self._comm, "VPM construction"):
                 if self._is_root:
                     self.vpm_solver = self._resources.enter_context(
-                        VPMSolver(replace(vpm_case, backup=VPMBackup(write_at_end=False)))
+                        VPMSolver(
+                            replace(vpm_case, backup=VPMBackup(write_at_end=False)),
+                            external_clock=True,
+                        )
                     )
             self._initialize()
             self.run_status = RunStatus.created
@@ -353,7 +341,20 @@ class CoupledSolver:
         viscous = numerics.viscous
         self.fvm_time_step_size = float(self.fvm_case.numerics.time_step_size)
         self.vpm_time_step_size = float(numerics.time_step_size)
-        self.n_fvm_substeps = _n_fvm_substeps(self.vpm_time_step_size, self.fvm_time_step_size)
+        initial_substep_ratio = self.vpm_time_step_size / self.fvm_time_step_size
+        self.nominal_fvm_substeps_per_vpm_step = max(
+            1, math.ceil(initial_substep_ratio - 1.0e-12 * max(1.0, initial_substep_ratio))
+        )
+        self.n_fvm_substeps = 1
+        control = self.fvm_case.numerics.time_step_control
+        self.maximum_fvm_time_step_size = (
+            float(control.maximum_time_step_size)
+            if control is not None and control.maximum_time_step_size is not None
+            else self.fvm_time_step_size
+            if control is None
+            else None
+        )
+        self.maximum_coupling_time_step_size = self.vpm_time_step_size
         self.end_time = float(self.fvm_case.run.end_time)
         self.kinematic_viscosity = float(self.fvm_case.numerics.transport.kinematic_viscosity)
         self.density = float(self.fvm_case.numerics.transport.density)
@@ -404,10 +405,16 @@ class CoupledSolver:
             logger.info(
                 format_coupler_log(
                     "time stepping",
-                    ("fvm time step", f"{self.fvm_time_step_size:.4e}", "s"),
-                    ("vpm time step", f"{self.vpm_time_step_size:.4e}", "s"),
-                    ("fvm substeps per coupling step", self.n_fvm_substeps),
-                    ("coupling steps", f"{self.n_steps:,}"),
+                    ("initial fvm time step", f"{self.fvm_time_step_size:.4e}", "s"),
+                    (
+                        "maximum fvm time step",
+                        "none"
+                        if self.maximum_fvm_time_step_size is None
+                        else f"{self.maximum_fvm_time_step_size:.4e}",
+                        "s",
+                    ),
+                    ("maximum vpm interval", f"{self.maximum_coupling_time_step_size:.4e}", "s"),
+                    ("nominal fvm substeps per vpm step", self.nominal_fvm_substeps_per_vpm_step),
                     ("end time", f"{self.end_time:.6g}", "s"),
                     ("coupled backups", "none" if backup is None else backup.describe()),
                 )
@@ -415,12 +422,17 @@ class CoupledSolver:
 
         self.vorticity_transfer = VorticityTransfer(self)
         if self.frame.moving:
-            # The remeshing region must hold one coupling interval of drift relative to the mesh.
+            # The remeshing region must hold the maximum shared-step drift relative to the mesh.
             relative_speed = self.frame.maximum_relative_speed(
-                self._absolute_freestream, fvm.time, self.end_time, self.vpm_time_step_size
+                self._absolute_freestream,
+                fvm.time,
+                self.end_time,
+                self.maximum_coupling_time_step_size,
             )
             self.vorticity_transfer.remeshing_extension_length = remeshing_extension_length(
-                [relative_speed, 0.0, 0.0], self.vpm_time_step_size, self.vpm_particle_spacing
+                [relative_speed, 0.0, 0.0],
+                self.maximum_coupling_time_step_size,
+                self.vpm_particle_spacing,
             )
         self.vorticity_transfer.setup(fvm)
         with collective_phase(self._comm, "VPM grid configuration"):
@@ -493,14 +505,9 @@ class CoupledSolver:
     # Clock
 
     @property
-    def n_steps(self) -> int:
-        """Number of coupling steps from time zero to ``RunPlan.end_time``."""
-        return self.vpm_case.n_steps
-
-    @property
     def step(self) -> int:
         """Number of completed coupling steps."""
-        return self.fvm_solver.step // self.n_fvm_substeps
+        return self._coupling_step
 
     @property
     def time(self) -> float:
@@ -508,13 +515,12 @@ class CoupledSolver:
         return self.fvm_solver.time
 
     def coupling_time(self, step: int) -> float:
-        """Return the physical time ``t^n`` of coupling step ``n = step``, in s.
-
-        The coupler sets the clock. Both solvers accept exactly this time at every
-        coupling step, so their outputs carry identical time values; summing
-        time-step sizes would drift by round-off between the two solvers.
-        """
-        return step * self.vpm_time_step_size
+        """Return the current or next shared physical time, in s."""
+        if step == self.step:
+            return float(self.time)
+        if step == self.step + 1:
+            return float(self.time + self.vpm_time_step_size)
+        raise ValueError("The coupled clock exposes only the current and next accepted times")
 
     # Lifecycle
 
@@ -600,7 +606,7 @@ class CoupledSolver:
                 if start_from is not None:
                     self.save_backup()
             self.write_run_metadata(status=self.run_status)
-            while self.step < self.n_steps:
+            while self.time < self.end_time - max(1.0e-14, abs(self.end_time) * 1.0e-12):
                 self.advance()
             self._write_final_output()
             self.run_status = RunStatus.completed
@@ -619,10 +625,10 @@ class CoupledSolver:
             raise failure.with_traceback(failure.__traceback__)
 
     def advance(self) -> None:
-        """Advance one coupling interval and write its scheduled output and backup.
+        """Advance one shared FVM--VPM step and write its due output and backup.
 
-        The VPM advances to the next coupling time, the boundary data of its
-        predictor drive the FVM substeps, the FVM vorticity is transferred to
+        The VPM and FVM advance by one shared selected step, the boundary data
+        of the VPM predictor drive the FVM, the FVM vorticity is transferred to
         the particles of the transfer region, and the due samples, frames and
         coupled backup are written. Every MPI rank calls this method.
         """
@@ -630,17 +636,18 @@ class CoupledSolver:
             raise RuntimeError("The coupled solver is closed")
         self._start()
         step = self.step + 1
-        if step > self.n_steps:
+        if self.time >= self.end_time - max(1.0e-14, abs(self.end_time) * 1.0e-12):
             raise RuntimeError("The coupled run has reached its end time")
         if not self._run_started:
             self.run_status = RunStatus.running
         face_geometry = self._face_geometry
         interval_started = time.perf_counter()
+        self._select_coupling_interval()
         time_end = self.coupling_time(step)
         with collective_phase(self._comm, "free stream at the interval end"):
             self._update_freestream(time_end, self._interval_frame_velocity(step))
         vpm_seconds = self._advance_vpm(step, time_end)
-        velocity_old, next_velocity, boundary_seconds = evaluate_vpm_boundary(self, *face_geometry)
+        _, next_velocity, boundary_seconds = evaluate_vpm_boundary(self, *face_geometry)
         if self.config.max_coupling_iterations > 1:
             from .coupling_iteration import advance_coupling_iterations
 
@@ -651,11 +658,12 @@ class CoupledSolver:
                 "boundary_refresh"
             ]
         else:
-            fvm_seconds = advance_fvm(self, *face_geometry, velocity_old, next_velocity)
+            fvm_seconds = advance_fvm(self, *face_geometry, next_velocity)
             transfer_result, transfer_seconds = self._transfer_vorticity_to_vpm(*face_geometry)
             refresh_started = time.perf_counter()
             update_boundary_history_after_replacement(self, *face_geometry)
             boundary_seconds += time.perf_counter() - refresh_started
+        self._coupling_step = step
         output_started = time.perf_counter()
         with collective_phase(self._comm, "VPM particle-state check and output"):
             if self._is_root:
@@ -714,7 +722,7 @@ class CoupledSolver:
         return (
             self.step > 0
             and schedule is not None
-            and schedule.is_due(fvm.step, fvm.time, self.fvm_time_step_size)
+            and schedule.is_due(fvm.step, fvm.time, fvm._accepted_time_step_size)
         )
 
     def _write_frames(self, *, fvm_frame: bool, vpm_frame: bool) -> None:
@@ -763,7 +771,7 @@ class CoupledSolver:
     def _backup_due(self, step: int) -> bool:
         schedule = self.config.backup.schedule
         return schedule is not None and schedule.is_due(
-            step, self.coupling_time(step), self.vpm_time_step_size
+            step, self.time, self.fvm_solver._accepted_time_step_size
         )
 
     def save_backup(self, path: str | Path | None = None) -> Path:
@@ -856,9 +864,13 @@ class CoupledSolver:
                         "coupling": {
                             "fvm_time_step_size": self.fvm_time_step_size,
                             "vpm_time_step_size": self.vpm_time_step_size,
-                            "n_fvm_substeps": self.n_fvm_substeps,
+                            "fvm_substeps": self.n_fvm_substeps,
+                            "maximum_time_step_size": self.maximum_coupling_time_step_size,
+                            "maximum_fvm_time_step_size": self.maximum_fvm_time_step_size,
+                            "nominal_fvm_substeps_per_vpm_step": (
+                                self.nominal_fvm_substeps_per_vpm_step
+                            ),
                             "end_time": self.end_time,
-                            "n_steps": self.n_steps,
                             "kinematic_viscosity": self.kinematic_viscosity,
                             "density": self.density,
                             "fvm_domain_bounds": domain_bounds,
@@ -895,7 +907,7 @@ class CoupledSolver:
                 RunStatus.failed
                 if failure is not None
                 else RunStatus.completed
-                if self.step >= self.n_steps
+                if self.time >= self.end_time - max(1.0e-14, abs(self.end_time) * 1.0e-12)
                 else RunStatus.partial
             )
             try:
@@ -929,11 +941,80 @@ class CoupledSolver:
         return self.config.freestream_velocity_vector
 
     def _interval_frame_velocity(self, step: int) -> np.ndarray:
-        """Mean mesh velocity over the FVM substeps of coupling interval ``step``, in m/s."""
-        start = self.coupling_time(step - 1)
-        substep_times = start + self.fvm_time_step_size * np.arange(1, self.n_fvm_substeps + 1)
-        substep_times[-1] = self.coupling_time(step)
-        return self.frame.step_velocity(substep_times)
+        """Mean mesh velocity over the next VPM interval, in m/s."""
+        return self.frame.step_velocity(np.asarray([self.coupling_time(step)]))
+
+    def _coupling_event_schedules(self) -> tuple:
+        """Return schedules that must land on VPM coupling times."""
+        schedules = []
+        if self.config.max_coupling_iterations > 1:
+            schedules.extend(self.fvm_solver._run_event_schedules())
+        schedules.append(self.vpm_case.logging.schedule)
+        if self.vpm_case.output.schedule is not None:
+            schedules.append(self.vpm_case.output.schedule)
+        if self.config.backup.schedule is not None:
+            schedules.append(self.config.backup.schedule)
+        schedules.extend(
+            sampler.schedule
+            for sampler in self.vpm_case.samplers.samples
+            if sampler.schedule is not None
+        )
+        return tuple(schedules)
+
+    def _vpm_strain_time_step_limit(self) -> float:
+        """Return a conservative step ceiling from the last accepted VPM strain."""
+        vpm = self.vpm_solver
+        metrics = vpm._accepted_state_metrics
+        maximum = vpm.state_limits.lagrangian_cfl.maximum
+        if maximum is None:
+            return self.maximum_coupling_time_step_size
+        if metrics is None:
+            strain_rate = vpm.maximum_lagrangian_strain_rate()
+        elif metrics.strain_increment_infinity > 0.0:
+            strain_rate = metrics.strain_increment_infinity / vpm.time_step_size
+        else:
+            strain_rate = 0.0
+        if strain_rate <= 0.0:
+            return self.maximum_coupling_time_step_size
+        return 0.9 * maximum / strain_rate
+
+    def _select_coupling_interval(self) -> float:
+        """Select an event-aligned VPM interval from FVM CFL and VPM strain limits."""
+        schedules = self._coupling_event_schedules()
+        fvm_limit = self.fvm_solver.courant_time_step_limit()
+        if self.maximum_fvm_time_step_size is not None:
+            fvm_limit = min(fvm_limit, self.maximum_fvm_time_step_size)
+        strain_limit = None
+        if self._is_root:
+            strain_limit = self._vpm_strain_time_step_limit()
+        if self._comm is not None and self._comm.Get_size() > 1:
+            strain_limit = self._comm.bcast(strain_limit, root=0)
+
+        maximum_interval = self.maximum_coupling_time_step_size
+        maximum_interval = min(
+            maximum_interval,
+            self.nominal_fvm_substeps_per_vpm_step * fvm_limit,
+        )
+        if strain_limit is not None:
+            maximum_interval = min(maximum_interval, float(strain_limit))
+        remaining = self.end_time - self.time
+        maximum_interval = min(maximum_interval, remaining)
+        next_event = min(
+            (
+                event_time
+                for schedule in schedules
+                if (event_time := schedule.next_time_after(self.time)) is not None
+            ),
+            default=self.end_time,
+        )
+        event_distance = min(remaining, next_event - self.time)
+        selected_interval = event_aligned_time_step_size(maximum_interval, event_distance)
+        self.fvm_time_step_size = fvm_limit
+        self.vpm_time_step_size = selected_interval
+        if self._is_root:
+            self.vpm_solver.time_step_size = selected_interval
+        self.vorticity_transfer.coupling_time_step_size = selected_interval
+        return selected_interval
 
     def _update_freestream(self, time: float, frame_velocity: np.ndarray) -> None:
         """Set the freestream at ``time`` and the VPM freestream relative to the mesh."""
@@ -964,7 +1045,7 @@ class CoupledSolver:
                     "accepted_impulse_change": np.zeros(3),
                 }
                 vpm.set_freestream_velocity(self.freestream_velocity)
-                begin_coupling_step(logger, step, self.n_steps, time_end)
+                begin_coupling_step(logger, step, None, time_end)
                 vpm.advance(defer_output=True, time=time_end)
                 vpm.synchronize()
                 if vpm.viscous_scheme == "gbd":

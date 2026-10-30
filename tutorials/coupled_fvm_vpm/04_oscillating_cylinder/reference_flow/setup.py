@@ -21,29 +21,29 @@ REYNOLDS_NUMBER = 150.0
 DENSITY = 1.0  # kg/m^3
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY[0] * DIAMETER / REYNOLDS_NUMBER  # m^2/s
 
-# Prescribed transverse motion, as in the coupled case
+# Prescribed transverse motion
 AMPLITUDE = 0.2 * DIAMETER  # m
 FREQUENCY = 0.18  # Hz
 
-# Domain: inlet and sides far enough away that the body barely disturbs them
+# Outer FVM domain
 DOMAIN = (-40.0, 60.0, -60.0, 60.0)  # m, x and y bounds
 
-# Mesh: octree cells of 0.04 m near the body, coarsening by two in each wake box
+# Mesh refinement from the cylinder into the wake
 CELL_SIZE = 0.04  # m
 NEAR_BODY = (-1.5, 1.5, -1.5, 1.5)  # m, cells of CELL_SIZE
 NEAR_WAKE = (-2.0, 6.0, -2.0, 2.0)  # m, cells of 2 CELL_SIZE
 WAKE = (-2.5, 12.0, -2.5, 2.5)  # m, cells of 4 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
-# Time
+# Time integration
 TIME_STEP = 0.008  # s
 END_TIME = 50.0  # s
 
-# Observations, matching the coupled case
+# Output
 FORCE_INTERVAL = 0.04  # s
 PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
-FIELD_INTERVAL = 0.2  # s, flow fields, 28 per heave period, over the locked-in wake ...
-FIELD_START = 25.0  # s, ... from this time on
+FIELD_INTERVAL = 0.2  # s
+FIELD_START = 25.0  # s, locked-in wake
 BACKUP_INTERVAL = 1.0  # s
 
 
@@ -51,11 +51,11 @@ def build_case() -> fvm.FVMCase:
     """Return the FVM case of the heaving-cylinder flow."""
     half_span = 0.5 * SPAN
 
-    # Requested sizes sit between octree levels, which then select 1, 2 and 4 CELL_SIZE
+    # Requested sizes select octree levels of one, two and four cell widths.
     request = 4.0 * CELL_SIZE / 3.0
     slab = 16 * request
 
-    # Mesh a slab around the long cylinder, then keep one periodic cell across the span
+    # Mesh a slab around the cylinder and retain one periodic spanwise cell.
     patches = msh.BoxPatches(
         xmin="inlet", xmax="outlet", ymin="ymin", ymax="ymax", zmin="zmin", zmax="zmax"
     )
@@ -77,7 +77,7 @@ def build_case() -> fvm.FVMCase:
     )
 
     samplers = (
-        # Drag and lift coefficients per unit span
+        # Drag and lift coefficients per unit span.
         fvm.ForceSampler(
             patch_names=["cylinder"],
             reference_velocity=FREESTREAM_VELOCITY[0],
@@ -85,7 +85,7 @@ def build_case() -> fvm.FVMCase:
             reference_length=DIAMETER,
             schedule=fvm.EveryTime(FORCE_INTERVAL),
         ),
-        # Transverse wake profiles at fixed inertial positions about the mean cylinder position
+        # Transverse wake profiles at fixed inertial positions.
         *(
             fvm.LineSampler(
                 (x, -2.0, 0.0),

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from openonda.coupler.boundary import advance_fvm_substeps
+from openonda.coupler.boundary import advance_fvm_step
 from openonda.coupler.vorticity_transfer import VorticityTransfer, remeshing_extension_length
 
 
@@ -38,14 +38,12 @@ def test_fvm_gradient_curl_matches_cell_vorticity_convention():
     )
 
 
-def test_mixed_boundary_substeps_use_both_interval_ends(monkeypatch):
+def test_fvm_step_uses_vpm_boundary_data_at_the_shared_end_time(monkeypatch):
     coupler = SimpleNamespace(
-        n_fvm_substeps=4,
+        time=0.035,
         fvm_time_step_size=0.005,
-        fvm_solver=SimpleNamespace(step=4),
-        coupling_time=lambda step: step * 0.02,
-        freestream_velocity=np.array([1.0, 0.0, 0.0]),
-        config=SimpleNamespace(),
+        _normal_velocity_boundary_condition=np.full(3, 0.6),
+        _normal_gradient_boundary_condition=np.full((3, 3), 0.8),
     )
     recorded = []
     times = []
@@ -63,39 +61,16 @@ def test_mixed_boundary_substeps_use_both_interval_ends(monkeypatch):
         times.append(accepted_time)
 
     monkeypatch.setattr("openonda.coupler.boundary.apply_fvm_boundary", record_step)
-    face_centre = np.zeros((3, 3))
-    face_normal = np.tile([1.0, 0.0, 0.0], (3, 1))
-    face_area = np.ones(3)
-    previous_velocity = np.tile([1.0, 0.0, 0.0], (3, 1))
     next_velocity = np.tile([1.0, 0.4, 0.0], (3, 1))
-    previous_normal_velocity = np.full(3, 0.2)
-    next_normal_velocity = np.full(3, 0.6)
-    previous_normal_gradient = np.zeros((3, 3))
-    next_normal_gradient = np.full((3, 3), 0.8)
 
-    advance_fvm_substeps(
+    advance_fvm_step(
         coupler,
         "numericalBoundary",
-        face_centre,
-        face_normal,
-        face_area,
-        previous_velocity,
         next_velocity,
-        previous_normal_velocity=previous_normal_velocity,
-        next_normal_velocity=next_normal_velocity,
-        previous_normal_gradient=previous_normal_gradient,
-        next_normal_gradient=next_normal_gradient,
     )
 
-    for values, alpha in zip(recorded, (0.25, 0.5, 0.75, 1.0), strict=True):
-        np.testing.assert_allclose(
-            values[0], (1.0 - alpha) * previous_velocity + alpha * next_velocity
-        )
-        np.testing.assert_allclose(
-            values[1],
-            (1.0 - alpha) * previous_normal_velocity + alpha * next_normal_velocity,
-        )
-        np.testing.assert_allclose(values[2], alpha * next_normal_gradient)
-    # Substeps follow the coupling clock and the last one lands exactly on the interval end.
-    np.testing.assert_allclose(times[:3], [0.025, 0.03, 0.035], rtol=0.0, atol=1e-15)
-    assert times[-1] == 2 * 0.02
+    assert len(recorded) == 1
+    np.testing.assert_array_equal(recorded[0][0], next_velocity)
+    np.testing.assert_array_equal(recorded[0][1], coupler._normal_velocity_boundary_condition)
+    np.testing.assert_array_equal(recorded[0][2], coupler._normal_gradient_boundary_condition)
+    assert times == [0.04]

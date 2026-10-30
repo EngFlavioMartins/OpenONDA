@@ -69,6 +69,7 @@ def _coupled_solver_view(config, box, particle_spacing):
         vpm_core_radius_ratio=1.0,
         vpm_particle_spacing=particle_spacing,
         vpm_time_step_size=0.01,
+        maximum_coupling_time_step_size=0.01,
         vpm_case=SimpleNamespace(
             numerics=SimpleNamespace(viscous=viscous, induction=SimpleNamespace())
         ),
@@ -145,6 +146,7 @@ def _solve_boundary_refinement(n, mode, output, dt=0.0025, steps=20):
             fvm_solver=solver,
             config=config,
             freestream_velocity=config.freestream_velocity_vector,
+            fvm_time_step_size=dt,
         )
         centre = solver.gather_cell_centre_coordinates()
         face = solver.gather_boundary_face_centre_coordinates("numericalBoundary")

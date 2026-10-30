@@ -94,7 +94,7 @@ class _CouplingProgress(logging.Filter):
         super().__init__()
         self.started = time.perf_counter()
         self.last_report: float | None = None
-        self.context: tuple[int, int, float] | None = None
+        self.context: tuple[int, int | None, float] | None = None
         self.records: dict[str, log_style.Event] = {}
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -107,7 +107,7 @@ class _CouplingProgress(logging.Filter):
             return False
         return True
 
-    def begin(self, step: int, total_steps: int, flow_time: float) -> None:
+    def begin(self, step: int, total_steps: int | None, flow_time: float) -> None:
         """Start a tentative interval without publishing a completed-step banner."""
         self.context = (step, total_steps, flow_time)
         self.records.clear()
@@ -123,7 +123,7 @@ class _CouplingProgress(logging.Filter):
             self.last_report is None
             or now - self.last_report >= 30.0
             or final
-            or step == total_steps
+            or (total_steps is not None and step == total_steps)
         ):
             report: list[str] = [
                 log_style.step_header(
@@ -142,11 +142,13 @@ class _CouplingProgress(logging.Filter):
         self.records.clear()
 
 
-def begin_coupling_step(logger: logging.Logger, step: int, n_steps: int, time_end: float) -> None:
-    """Collect the next coupling interval without claiming its acceptance."""
+def begin_coupling_step(
+    logger: logging.Logger, step: int, total_steps: int | None, time_end: float
+) -> None:
+    """Collect one shared step without claiming its acceptance."""
     for progress_filter in logger.filters:
         if isinstance(progress_filter, _CouplingProgress):
-            progress_filter.begin(step, n_steps, time_end)
+            progress_filter.begin(step, total_steps, time_end)
 
 
 def finish_coupling_step(logger: logging.Logger, *, final: bool = False) -> None:
@@ -324,7 +326,6 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         "transfer_surface_normal_velocity": surface_flow,
         "transfer_surface_normal_vorticity": surface_vorticity,
         "gbd_moment_correction": gbd_moment_correction,
-        "n_fvm_substeps": int(coupler.n_fvm_substeps),
         "n_transfer_particles": int(particle_count),
         # VPM positions are relative to the FVM mesh; add this to obtain
         # inertial-frame positions.
@@ -437,9 +438,8 @@ def record_step(
             logger.info(
                 format_coupler_log(
                     "FVM",
-                    ("accepted substep", coupler.fvm_solver.step),
+                    ("accepted FVM step", coupler.fvm_solver.step),
                     ("physical time", coupler.fvm_solver.time, "s"),
-                    ("substeps per coupling step", coupler.n_fvm_substeps),
                     ("Courant, max", coupler.fvm_solver.max_courant_number),
                 )
             )
@@ -460,7 +460,10 @@ def record_step(
                     ),
                 )
             )
-            finish_coupling_step(logger, final=step == coupler.n_steps)
+            finish_coupling_step(
+                logger,
+                final=time_end >= coupler.end_time - max(1.0e-14, abs(coupler.end_time) * 1.0e-12),
+            )
             flush_log(logger)
 
     reporting_time = time.perf_counter() - reporting_started

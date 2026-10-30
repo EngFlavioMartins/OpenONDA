@@ -1,13 +1,8 @@
-"""Discretization uncertainty, error decomposition and in-run indicators of the coupled method.
+"""Fit discretization error and coupling-error indicators for the sensitivity study.
 
-The orders and uncertainties follow the least-squares procedure of Eça and Hoekstra, "A procedure
-for the estimation of the numerical uncertainty of CFD calculations based on grid refinement
-studies", J. Comput. Phys. 262 (2014) 104-130. A family is a set of runs that varies one
-refinement variable x (h/D or U dt/D) with everything else fixed. The coupled error splits into
-the FVM discretization error of the reference on the same cells and step, and the coupling error,
-the difference between the coupled run and that reference. The coupling error is then fitted
-against its possible drivers in flow scales, and compared with the boundary-data mismatch that
-the coupler logs at every coupling step, which a user can read from their own run.
+Reference refinements estimate the FVM contribution at matched cell size and
+time step. The remaining difference from the coupled solution is reported as
+the coupling contribution.
 """
 
 from itertools import combinations
@@ -18,29 +13,26 @@ from scipy.optimize import least_squares, minimize_scalar
 
 from assets.plot_forces import DEVELOPED_SHEDDING, shedding_statistics
 from assets.plot_sensitivity import BASELINE, STATISTICS, errors_against, jsonl_records
-from setup import BLEND_END, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_TIME_STEP
+from setup import CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_TIME_STEP
 from setup import REYNOLDS_NUMBER
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SPEED = FREESTREAM_VELOCITY[0]
-STATISTICS_END = 55.0  # s, common end of the study runs: every statistic uses 40 <= t <= 55 s
-MINIMUM_LEVELS = 3  # refinement levels a family needs for an order and an uncertainty
-ORDER_RANGE = (0.05, 8.0)  # search range of the observed order
-# max|S| the particle field sees at Re = 150 (h_VPM = h_FVM), scaling as about 1.58 U sqrt(Re)/D; the
-# FVM wall strain (flow_scales.csv, 12.3 1/s at h = 0.04) is lower and grows with refinement
-PARTICLE_STRAIN_RATE = 19.4  # 1/s
+STATISTICS_END = 55.0  # s
+MINIMUM_LEVELS = 3
+ORDER_RANGE = (0.05, 8.0)
+PARTICLE_STRAIN_RATE = 19.4  # 1/s, maximum particle strain rate at the baseline
 
-# Family F: the 2^3 design at Re = 150, downstream outer FVM boundary [D], inset [cells] and N
-# Downstream outer FVM boundary [D] and FVM substeps per coupling interval, at the baseline inset
+# Factorial levels: downstream FVM extent [D] and FVM substeps at the baseline inset.
 FACTORIAL_LEVELS = {
     "box_downstream": (3.36, 4.4),
     "fvm_substeps": (2, 5),
 }
 
-# Fits of the procedure: free order, the fixed first and second orders, and both terms together
+# Fixed orders considered alongside the free-order fit.
 FIXED_FITS = {"order 1": (1.0,), "order 2": (2.0,), "orders 1 and 2": (1.0, 2.0)}
 
-# Boundary-data mismatch logged at every coupling step, with its velocity or gradient scale
+# Coupling diagnostics and their physical scales.
 INDICATORS = {
     "boundary velocity mismatch, mean": ("fvm_boundary_data", "mean_velocity_mismatch", SPEED),
     "boundary velocity mismatch, max": ("fvm_boundary_data", "maximum_velocity_mismatch", SPEED),
@@ -61,9 +53,7 @@ INDICATORS = {
 }
 
 
-# ---------------------------------------------------------------------------------------------
-# Least-squares fits of Q_i = Q_ext + sum_k alpha_k x_i^p_k
-# ---------------------------------------------------------------------------------------------
+# Least-squares fits of Q_i = Q_ext + sum_k alpha_k x_i^p_k.
 
 
 def linear_fit(x, phi, orders, weights):
@@ -88,7 +78,7 @@ def power_fit(x, phi, weights):
     def residual(order):
         return np.sum(weights * (phi - linear_fit(x, phi, (order,), weights)["fitted"]) ** 2)
 
-    # A coarse scan first, so that the bounded search starts in the right valley
+    # Locate the best interval before the bounded minimization.
     orders = np.geomspace(*ORDER_RANGE, 200)
     best = orders[np.argmin([residual(order) for order in orders])]
     low, high = best / 1.05, min(best * 1.05, ORDER_RANGE[1])
@@ -308,6 +298,35 @@ def coupled_families(runs):
                 if at_baseline(run, "fvm_substeps") and np.isclose(run["fvm_time_step"], 0.008)
             ],
         ),
+        # A: cells refined at a coupling interval admissible on the finest cells (0.032 s), and XP:
+        # the same at the baseline interval 0.04 s; both with the interface fixed in 0.04 m cells
+        **{
+            name: (
+                "cell_size",
+                [
+                    run
+                    for run in runs
+                    if at_baseline(run, *spatial, "interface_cell_size")
+                    and np.isclose(run["particle_time_step"], particle_step)
+                    and np.isclose(run["fvm_time_step"], 0.004)
+                    and np.isclose(run["interface_cell_size"], CELL_SIZE)
+                    and np.isclose(run["particle_spacing"], run["cell_size"])
+                ],
+            )
+            for name, particle_step in (("A", 0.032), ("XP", 0.04))
+        },
+        # Strength-ratio limit kappa_max at each number of FVM substeps
+        "KAPPA": (
+            "max_strength_ratio",
+            [
+                run
+                for run in runs
+                if at_baseline(run, "max_strength_ratio", "fvm_substeps")
+                and np.isclose(run["fvm_time_step"], FVM_TIME_STEP)
+            ],
+        ),
+        # Blending depths delta_0 and delta_1 below the transfer surface
+        "BL": ("blend_end", [run for run in runs if at_baseline(run, "blend_start", "blend_end")]),
         "K": (
             "coupling_iterations",
             [run for run in runs if at_baseline(run, "coupling_iterations")],
@@ -470,7 +489,7 @@ def box_scales(run, scales):
     interface_cell = run["interface_cell_size"] / DIAMETER
     transfer_face = run["box_downstream"] - run["transfer_inset"] * interface_cell
     # The replacement region starts the inset plus the blend end depth inside the outer FVM boundary
-    bands = (run["transfer_inset"] + BLEND_END) * interface_cell
+    bands = (run["transfer_inset"] + run["blend_end"]) * interface_cell
     return {
         "reach": (transfer_face - scale["L_f"]) / scale["L_f"],
         "reach, v_rms": (transfer_face - scale["L_f,v"]) / scale["L_f,v"],

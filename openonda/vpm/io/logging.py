@@ -250,7 +250,13 @@ class Logging:
         Logging._pending_sections["flow integrals"] = tuple(rows)
         wall_time = getattr(system, "elapsed_wall_time", getattr(system, "wall_time", 0.0))
         Logging._report_step(
-            system.step, system.time, wall_time, getattr(system, "_run_final_step", None), []
+            system.step,
+            system.time,
+            wall_time,
+            None
+            if getattr(system, "_external_clock", False)
+            else getattr(system, "_run_final_step", None),
+            [],
         )
         if getattr(system, "vlm_solver", None) is not None:
             Logging.vlm_forces(system)

@@ -10,7 +10,7 @@ from tests.support.coupler import FREESTREAM_VELOCITY, uniform_stream_cases
 
 def _solver(directory):
     flow, particles = uniform_stream_cases(
-        directory, fvm_time_step_size=0.01, coupling_time_step_size=0.02, end_time=0.08
+        directory, fvm_time_step_size=0.01, end_time=0.08
     )
     config = coupler.CouplerConfig(
         transfer_inset_spacings=0.0,
@@ -27,7 +27,7 @@ def _history(directory):
 
 
 def test_latest_continues_an_interrupted_run_and_stops_at_the_end(tmp_path):
-    # Interrupted after coupling step three of four; the last backup is the scheduled one at two.
+    # Interrupt after three shared FVM/VPM steps; the last backup is step two.
     with _solver(tmp_path) as first:
         first.start_from("latest")
         for _ in range(3):
@@ -39,8 +39,8 @@ def test_latest_continues_an_interrupted_run_and_stops_at_the_end(tmp_path):
     with _solver(tmp_path) as resumed:
         resumed.run(start_from="latest")
         expected = resumed.fvm_solver.velocity.copy()
-    assert _history(tmp_path) == [1, 2, 3, 4]
-    assert (tmp_path / "solution/coupled/coupled_000004/checkpoint_info.json").is_file()
+    assert _history(tmp_path) == list(range(1, 9))
+    assert (tmp_path / "solution/coupled/coupled_000008/checkpoint_info.json").is_file()
 
     # A completed run continues nowhere and writes nothing new.
     before = (tmp_path / "solution/coupler_diagnostics.jsonl").read_bytes()

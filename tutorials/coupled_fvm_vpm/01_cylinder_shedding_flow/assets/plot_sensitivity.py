@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-"""Result quality and cost of the coupling sensitivity study against the FVM reference.
+"""Plot force error, wake difference and cost for the cylinder sensitivity study.
 
-Force errors, the wake velocity difference at equal shedding phase and the wall time per second
-of flow time, as each coupling parameter is varied about its baseline. Each run is compared with
-the reference of its own Reynolds number, cells and FVM step; the orders, the uncertainties and
-the split of the coupled error into the FVM discretization and the coupling are the subject of
-plot_error_analysis.py. The studies of the coupling-error plan
-(docs/plans/2026-10-19-coupling-error-sources.md) are drawn in their own figures, and the
-FVM-substep and particle-resolution runs again against the dimensionless groups
-C_FVM = U dt_FVM / h_FVM, C_VPM = U dt_VPM / h and Lambda = max|S| dt_VPM.
+Each coupled run is compared with a reference at matching Reynolds number,
+cell size and FVM time step.
 """
 
 import json
@@ -27,15 +21,20 @@ from openonda.plotting import validation_legend
 
 from assets.plot_forces import DEVELOPED_SHEDDING, read_forces, shedding_statistics
 from assets.shedding_phase import phase_averaged_difference, shedding_phase
-from setup import BLEND_END, BOX_MARGIN, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_SUBSTEPS
-from setup import FVM_TIME_STEP, REYNOLDS_NUMBER, TRANSFER_INSET
+from setup import BLEND_END, BLEND_START, BOX_MARGIN, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY
+from setup import FVM_SUBSTEPS
+from setup import FVM_TIME_STEP, MAX_STRENGTH_RATIO, REYNOLDS_NUMBER, TRANSFER_INSET
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-ERROR_BAND = 2.0  # %, accuracy targeted for the coupled forces
-STATISTICS_LENGTH = 10.0  # s, about two shedding periods of developed shedding at least
-WALL_STRAIN_RATE = 19.4  # 1/s, max|S| at the wall, Re = 150, h_VPM = h_FVM (8-step stability check)
+ERROR_BAND = 2.0  # %
+STATISTICS_LENGTH = 10.0  # s
+# Statistics window of the study, the same in every run and reference. Runs continued beyond
+# its end (section h) are compared over LATE_WINDOW separately, never over a longer window.
+STATISTICS_WINDOW = (DEVELOPED_SHEDDING, 55.0)  # s
+LATE_WINDOW = (55.0, 100.0)  # s
+WALL_STRAIN_RATE = 19.4  # 1/s
 
-# Study parameters with their baselines, and the force statistics compared
+# Baseline parameters and compared force statistics.
 PARAMETERS = {
     "box_margin": ("Box margin [$D$]", BOX_MARGIN),
     "fvm_substeps": ("FVM substeps", FVM_SUBSTEPS),
@@ -43,13 +42,16 @@ PARAMETERS = {
 }
 BASELINE = {
     **{name: value for name, (_, value) in PARAMETERS.items()},
-    "box_downstream": BOX_MARGIN + 2.0,  # D, downstream outer FVM boundary from the cylinder axis
+    "box_downstream": BOX_MARGIN + 2.0,  # D
     "cell_size": CELL_SIZE,
     "fvm_time_step": FVM_TIME_STEP,
     "particle_spacing": CELL_SIZE,
-    "interface_cell_size": CELL_SIZE,  # m, counts the transfer inset and the blending depths
-    "coupling_iterations": 0,  # 0: coupling iterations until the boundary data converge
-    "repeat": 0,  # an identical run made again, to measure run-to-run scatter
+    "interface_cell_size": CELL_SIZE,  # m
+    "max_strength_ratio": MAX_STRENGTH_RATIO,
+    "blend_start": float(BLEND_START),  # cells below the transfer surface
+    "blend_end": float(BLEND_END),  # cells below the transfer surface
+    "coupling_iterations": 0,  # tolerance-driven coupling iterations
+    "repeat": 0,
     "reynolds_number": REYNOLDS_NUMBER,
 }
 STATISTICS = {
@@ -61,25 +63,27 @@ WAKE_STATIONS = (2, 4)  # x/D of the transverse velocity probes
 ERRORS = {**STATISTICS, "wake velocity": r"$\|\Delta\mathbf{u}\|/U_\infty$ [\%]"}
 ROWS = {**ERRORS, "cost": "Wall time per\nflow time [s/s]"}
 
-# Run names: box{margin}_sub{n}_inset{cells}, with a suffix for each other parameter changed
+# Run names encode the changed physical or numerical parameters.
 RUN_NAME = re.compile(
     r"box(?P<box_margin>[^_]+)_sub(?P<fvm_substeps>\d+)_inset(?P<transfer_inset>[^_]+)"
     r"(?:_xd(?P<box_downstream>[^_]+))?"
     r"(?:_h(?P<cell_size>[\d.]+))?(?:_dtf(?P<fvm_time_step>[^_]+))?"
     r"(?:_ic(?P<interface_cell_size>[^_]+))?"
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
+    r"(?:_bs(?P<blend_start>[\d.]+))?(?:_be(?P<blend_end>[\d.]+))?"
+    r"(?:_kappa(?P<max_strength_ratio>[\d.]+))?"
     r"(?:_k(?P<coupling_iterations>\d+))?(?:_re(?P<reynolds_number>[\d.]+))?"
     r"(?:_rep(?P<repeat>\d+))?"
 )
 REFERENCE_NAME = re.compile(
     r"reference(?:_h(?P<cell_size>[^_]+))?(?:_dt(?P<time_step>[^_]+))?"
-    r"(?:_re(?P<reynolds_number>[\d.]+))?"
+    r"(?:_re(?P<reynolds_number>[\d.]+))?(?:_fw(?P<fine_wake_end>[\d.]+))?"
 )
 
 
 def jsonl_records(path):
-    """Records of a JSON-lines file; a running case may still be writing the last line."""
-    return [json.loads(line) for line in path.read_text().split("\n")[:-1]]
+    """Records from a JSON-lines file."""
+    return [json.loads(line) for line in path.read_text().splitlines()]
 
 
 def developed(forces):
@@ -116,6 +120,8 @@ def read_references():
         if not developed(np.atleast_1d(read_forces(path))):
             continue  # still developing
         match = REFERENCE_NAME.fullmatch(directory.name.replace("reference_flow", "reference"))
+        if match is None or match["fine_wake_end"]:
+            continue  # the fine-wake reference is compared separately (read_fine_wake_reference)
         # The step follows the cells at constant Courant number unless it is given
         cell_size = float(match["cell_size"] or CELL_SIZE)
         time_step = float(match["time_step"] or cell_size / CELL_SIZE * FVM_TIME_STEP)
@@ -126,14 +132,28 @@ def read_references():
     return references
 
 
-def errors_against(forces, phase, wake, reference):
-    """Signed relative force errors and the rms wake velocity difference, in %."""
-    end_time = min(forces["time"][-1], reference["forces"]["time"][-1])
-    expected = shedding_statistics(reference["forces"][reference["forces"]["time"] <= end_time])
-    measured = shedding_statistics(forces[forces["time"] <= end_time])
+def in_window(samples, start, end):
+    """The rows of a time series with start <= time <= end."""
+    time = samples["time"]
+    return samples[(time >= start) & (time <= end)]
+
+
+def errors_against(forces, phase, wake, reference, window=STATISTICS_WINDOW):
+    """Signed relative force errors and the rms wake velocity difference, in %.
+
+    Both solutions are measured over the same window, cut at the earlier of their end times.
+    """
+    start = window[0]
+    end = min(window[1], forces["time"][-1], reference["forces"]["time"][-1])
+    expected = shedding_statistics(in_window(reference["forces"], start, end))
+    measured = shedding_statistics(in_window(forces, start, end))
     differences = [
         phase_averaged_difference(
-            samples, phase, reference_samples, reference["phase"], DEVELOPED_SHEDDING
+            in_window(samples, start, end),
+            phase,
+            in_window(reference_samples, start, end),
+            reference["phase"],
+            start,
         )[1]
         for samples, reference_samples in zip(wake, reference["wake"])
     ]
@@ -149,10 +169,33 @@ def no_errors():
 
 
 def coupling_step_statistics(path):
-    """Wall time per flow time and the coupling iterations and residuals of developed steps."""
+    """Wall time per flow time, coupling iterations, residuals and transfer limits of developed steps.
+
+    The strength ratio kappa is the largest limited lattice strength over the peak target strength
+    of a transfer; a transfer at its limit kappa_max (within 0.5%) has had its strength correction
+    cut back near the wall.
+    """
     records = jsonl_records(path)
     coupling_interval = records[1]["time"] - records[0]["time"]
-    records = [record for record in records if record["time"] >= DEVELOPED_SHEDDING]
+    records = [
+        record
+        for record in records
+        if STATISTICS_WINDOW[0] <= record["time"] <= STATISTICS_WINDOW[1]
+    ]
+    metadata = path.parent / "coupler_metadata.json"
+    kappa_max = (
+        json.loads(metadata.read_text())["configuration"].get("max_strength_ratio", np.nan)
+        if metadata.exists()
+        else np.nan
+    )
+    kappa = np.array(
+        [record["transfer"]["strength_ratio"] for record in records if "transfer" in record]
+    )
+    mismatch = [
+        record["fvm_boundary_data"]["mean_velocity_mismatch"]
+        for record in records
+        if "fvm_boundary_data" in record
+    ]
     iterations = [
         record.get("coupling_iteration", {"iterations": 1, "residuals": []}) for record in records
     ]
@@ -166,6 +209,12 @@ def coupling_step_statistics(path):
         else np.nan,
         "gradient residual": np.mean([row["normal_gradient_residual"] for row in final])
         if final
+        else np.nan,
+        "strength ratio median": np.median(kappa) if kappa.size else np.nan,
+        "strength ratio max": kappa.max() if kappa.size else np.nan,
+        "strength-limit fraction": np.mean(kappa >= 0.995 * kappa_max) if kappa.size else np.nan,
+        "boundary mismatch mean": np.mean(mismatch) / FREESTREAM_VELOCITY[0]
+        if mismatch
         else np.nan,
     }
 
@@ -324,7 +373,10 @@ def print_runs(runs, references):
     for run in runs:
         # Half-width of the replacement region, where FVM vorticity alone replaces the particle
         # vorticity: the blend end depth is measured from the transfer surface
-        replacement = run["box_margin"] - (run["transfer_inset"] + BLEND_END) * CELL_SIZE / DIAMETER
+        replacement = (
+            run["box_margin"]
+            - (run["transfer_inset"] + run["blend_end"]) * run["interface_cell_size"] / DIAMETER
+        )
         values = "".join(f" {run[name]:16.2f}" for name in ROWS)
         print(f"  {run['name']:40s} {run['end time']:8.1f} {replacement:15.2f}{values}")
     for reference in references.values():
@@ -368,6 +420,16 @@ def write_tables(runs, references):
             f"{run['cost']:.6g}," + ",".join(f"{run[name]:.6g}" for name in ERRORS)
         )
     (CASE_DIR / "figures/auxiliary/sensitivity_references.csv").write_text("\n".join(lines) + "\n")
+
+
+def read_fine_wake_reference():
+    """The FVM-only reference with h cells over the coupled FVM domain (section g), or None."""
+    for directory in sorted(CASE_DIR.glob("sensitivity/reference_fw*")):
+        match = REFERENCE_NAME.fullmatch(directory.name)
+        path = directory / "samples/forces_history.csv"
+        if match and path.exists() and developed(np.atleast_1d(read_forces(path))):
+            return read_reference(directory, CELL_SIZE, FVM_TIME_STEP, REYNOLDS_NUMBER)
+    return None
 
 
 def reference_changes(references):

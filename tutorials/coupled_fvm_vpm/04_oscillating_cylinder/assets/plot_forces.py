@@ -25,13 +25,13 @@ def lock_in_statistics(forces):
     time = forces["time"][window]
     lift = forces["lift_coefficient"][window]
 
-    # The lift period is the mean spacing of upward zero crossings
+    # Upward lift crossings define the lift period.
     fluctuation = lift - lift.mean()
     up = np.flatnonzero((fluctuation[:-1] < 0.0) & (fluctuation[1:] >= 0.0))
     crossing = time[up] - fluctuation[up] * np.diff(time)[up] / np.diff(fluctuation)[up]
     frequency = 1.0 / np.diff(crossing).mean()
 
-    # Phase of the lift harmonic at the heave frequency, relative to y = A sin(2 pi f t)
+    # Lift-harmonic phase relative to y = A sin(2 pi f t).
     omega = 2.0 * np.pi * FREQUENCY
     harmonic = np.sum(fluctuation * np.exp(-1j * omega * time)) / len(time)
     return {
@@ -46,7 +46,7 @@ def main():
     reference = read_forces(CASE_DIR / "reference_flow/samples/forces_history.csv")
     coupled = read_forces(CASE_DIR / "samples/forces_history.csv")
 
-    # Locked-in statistics and the coupled deviation from the reference
+    # Compare locked-in wake statistics.
     expected, measured = lock_in_statistics(reference), lock_in_statistics(coupled)
     print(f"Locked-in wake, t >= {LOCKED_IN:g} s")
     for name in expected:

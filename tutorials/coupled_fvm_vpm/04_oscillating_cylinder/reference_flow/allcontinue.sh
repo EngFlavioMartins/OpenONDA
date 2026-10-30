@@ -1,4 +1,4 @@
 #!/bin/bash
-set -e
-cd "$(dirname "$0")"
-python setup.py
+
+# Continue from the latest accepted FVM backup.
+python setup.py "$@"

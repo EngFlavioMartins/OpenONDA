@@ -28,9 +28,9 @@ class Backup:
     Parameters
     ----------
     schedule : EverySteps, EveryTime, FinalOnly or None, default=None
-        Coupling steps with a backup. ``EverySteps(n)`` counts coupling steps; an
-        ``EveryTime`` interval and start time must be whole numbers of
-        coupling intervals. ``None`` writes no periodic backups.
+        Coupling steps with a backup. ``EverySteps(n)`` counts accepted shared
+        steps; ``EveryTime`` selects fixed physical-time intervals. ``None``
+        writes no periodic backups.
     write_at_end : bool, default=True
         Write a backup of the last coupling step when the run ends.
     """

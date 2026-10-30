@@ -1,4 +1,4 @@
-"""Coupling iterations: fixed-point (Picard) iteration of the boundary data in one coupling interval."""
+"""Fixed-point (Picard) iterations of boundary data within one VPM interval."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from typing import TypeAlias, TypedDict
 
 import numpy as np
 
-from openonda.core.schedules import EverySteps, EveryTime
 from openonda.core.simulation.parallel import collective_phase
 from openonda.fvm.io.backup import capture_restart_state, restore_restart_state
 
@@ -34,37 +33,6 @@ class CouplingIterationRow(TypedDict):
     normal_gradient_residual: float
     scaled_residual: float
     converged: bool
-
-
-def validate_output_schedules(
-    fvm_case, n_fvm_substeps: int, coupling_time_step_size: float
-) -> None:
-    """Reject FVM frames and samples that would fall inside a coupling interval.
-
-    With coupling iterations the FVM output waits for the accepted end of each
-    coupling interval, so every FVM output schedule must select coupling times only.
-    """
-    schedules = [fvm_case.output.schedule]
-    schedules.extend(sampler.schedule for sampler in fvm_case.samplers.samples)
-    for schedule in schedules:
-        if isinstance(schedule, EverySteps):
-            aligned = schedule.interval % n_fvm_substeps == 0 and (
-                schedule.first_step is None or schedule.first_step % n_fvm_substeps == 0
-            )
-        elif isinstance(schedule, EveryTime):
-            aligned = all(
-                np.isclose(ratio, round(ratio), rtol=0.0, atol=1.0e-9)
-                for ratio in (
-                    schedule.interval / coupling_time_step_size,
-                    schedule.start_time / coupling_time_step_size,
-                )
-            )
-        else:
-            aligned = True
-        if not aligned:
-            raise ValueError(
-                "Coupling iterations require FVM output and sampling schedules on coupling times"
-            )
 
 
 def _read_boundary_data(coupler, *, old=False, velocity=None) -> BoundaryData:
@@ -103,9 +71,9 @@ def _first_estimate(coupler, predictor: BoundaryData, face_normal: np.ndarray) -
 def advance_coupling_iterations(coupler, geometry, next_velocity):
     """Repeat the FVM interval and the vorticity transfer until the boundary data converge.
 
-    The VPM advances once per coupling interval, to the predictor. Every coupling
-    iteration restarts the FVM and the advected particles from the same state,
-    sub-cycles the FVM with the end-of-interval estimate ``b^(m)`` of the boundary
+    The VPM advances once to the shared step's end-time predictor. Each coupling
+    iteration restarts the FVM and advected particles from the same state, solves
+    the FVM substeps with the end-time estimate ``b^(m)`` of the boundary
     data, transfers the FVM vorticity and evaluates the boundary data of the
     corrected particles. Those data are the next estimate. The first estimate is :func:`_first_estimate`. Only the accepted
     iteration writes FVM output. MPI ranks share the root's residuals and
@@ -153,7 +121,7 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
             _write_boundary_data(coupler, old, old=True)
         _write_boundary_data(coupler, estimate)
         phase_seconds["state_restore"] += perf_counter() - started
-        fvm_seconds += advance_fvm(coupler, *geometry, old[0], estimate[0])
+        fvm_seconds += advance_fvm(coupler, *geometry, estimate[0])
         started = perf_counter()
         result, _ = coupler._transfer_vorticity_to_vpm(*geometry)
         transfer_seconds += perf_counter() - started

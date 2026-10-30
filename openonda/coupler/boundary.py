@@ -14,6 +14,7 @@ from .reporting import boundary_induction_summary, format_coupler_log
 logger = logging.getLogger("openonda.coupler")
 
 _MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
+_BOUNDARY_FLUX_QUADRATURE_FACTOR = 2.0
 
 
 def _record_boundary_induction(coupler, phase: str, summary: dict) -> None:
@@ -86,12 +87,13 @@ def _log_outflow_velocity(
 
 
 def boundary_flux_tolerance(particle_spacing: float, fvm_domain_bounds: np.ndarray) -> float:
-    """Return the net-flux tolerance ``(h/L_FVM)²`` of the boundary data.
+    """Return a bounded, second-order tolerance for discrete boundary flux.
 
     The face-centre boundary data form a second-order surface quadrature, so the
     normalized net flux through the outer FVM boundary scales as ``(h/L_FVM)²``.
-    The tolerance is at most one percent, so a non-solenoidal particle velocity
-    still stops the coupled run instead of being removed by the flux correction.
+    Its leading coefficient depends on the boundary velocity field; a factor of
+    two allows that coefficient to exceed one while the one-percent ceiling
+    still stops the run when the particle field has a substantial net flux.
     """
     spacing = float(particle_spacing)
     if not np.isfinite(spacing) or spacing <= 0.0:
@@ -101,7 +103,7 @@ def boundary_flux_tolerance(particle_spacing: float, fvm_domain_bounds: np.ndarr
     length = float(np.min(extent))
     if length <= 0.0:
         raise ValueError("the FVM domain extents must be positive")
-    second_order = (spacing / length) ** 2
+    second_order = _BOUNDARY_FLUX_QUADRATURE_FACTOR * (spacing / length) ** 2
     return float(
         max(
             4096.0 * np.finfo(float).eps,
@@ -175,19 +177,17 @@ def evaluate_vpm_velocity(
         raw_flux = float(np.dot(np.einsum("ij,ij->i", velocity, normal), areas))
         if total_area > 0.0:
             freestream_speed = float(np.linalg.norm(freestream_velocity))
-            scale = (
-                max(
-                    freestream_speed,
-                    float(np.sqrt(np.mean(np.einsum("ij,ij->i", velocity, velocity)))),
-                    np.finfo(float).tiny,
-                )
-                * total_area
+            velocity_scale = max(
+                freestream_speed,
+                float(np.sqrt(np.mean(np.einsum("ij,ij->i", velocity, velocity)))),
+                np.finfo(float).tiny,
             )
+            scale = velocity_scale * total_area
             raw_relative = abs(raw_flux) / scale
             if raw_relative > tolerance:
                 raise RuntimeError(
                     "The particle velocity has a significant net flux through the outer FVM "
-                    f"boundary: |integral(u.n dA)|/(U_ref A_FVM)={raw_relative:.3e}, "
+                    f"boundary: |integral(u.n dA)|/(U_scale A_FVM)={raw_relative:.3e}, "
                     f"tolerance={tolerance:.3e}. The flux correction would hide an error "
                     "of the particle velocity."
                 )
@@ -199,7 +199,7 @@ def evaluate_vpm_velocity(
                 "vpm boundary flux",
                 ("particles", f"{int(vpm.particles.n_particles_total):,}"),
                 ("raw flux", f"{raw_flux:.3e}", "m^3/s"),
-                ("relative to inflow", f"{raw_relative:.3e}"),
+                ("relative to boundary velocity scale", f"{raw_relative:.3e}"),
                 ("acceptance limit", f"{tolerance:.3e}"),
                 ("correction, normal velocity", f"{correction:.3e}", "m/s"),
                 ("residual flux", f"{corrected_flux:.3e}", "m^3/s"),
@@ -228,7 +228,7 @@ def evaluate_vpm_boundary(
     face_normal: np.ndarray,
     face_area: np.ndarray,
 ):
-    """Evaluate the boundary data of the predictor at the end of the coupling interval."""
+    """Evaluate predictor boundary data at the end of the shared time step."""
     boundary_condition_wall_time = time.perf_counter()
     vpm_boundary_condition_velocity = None
     normal_gradient: np.ndarray | None = None
@@ -355,24 +355,63 @@ def advance_fvm(
     face_centre: np.ndarray,
     face_normal: np.ndarray,
     face_area: np.ndarray,
-    velocity_boundary_condition_old: np.ndarray,
     velocity_boundary_condition: np.ndarray,
 ) -> float:
-    """Run FVM sub-cycles and refresh its velocity snapshot."""
+    """Advance integer FVM substeps with boundary data interpolated over the VPM interval."""
     fvm_wall_time_start = time.perf_counter()
-    advance_fvm_substeps(
-        coupler,
-        coupler.config.outer_boundary_patch,
-        face_centre,
-        face_normal,
-        face_area,
-        velocity_boundary_condition_old,
-        velocity_boundary_condition,
-        coupler._normal_velocity_boundary_condition_old,
-        coupler._normal_velocity_boundary_condition,
-        coupler._normal_gradient_boundary_condition_old,
-        coupler._normal_gradient_boundary_condition,
-    )
+    previous_velocity = coupler._velocity_boundary_condition_old
+    previous_normal_velocity = coupler._normal_velocity_boundary_condition_old
+    previous_normal_gradient = coupler._normal_gradient_boundary_condition_old
+    next_normal_velocity = coupler._normal_velocity_boundary_condition
+    next_normal_gradient = coupler._normal_gradient_boundary_condition
+    if any(
+        values is None
+        for values in (
+            previous_velocity,
+            previous_normal_velocity,
+            previous_normal_gradient,
+            next_normal_velocity,
+            next_normal_gradient,
+        )
+    ):
+        raise RuntimeError("FVM sub-cycling received incomplete VPM boundary data")
+
+    fvm = coupler.fvm_solver
+    interval_start_time = fvm.time
+    interval_end_time = coupler.coupling_time(coupler.step + 1)
+    interval_duration = interval_end_time - interval_start_time
+    end_tolerance = max(1.0e-14, abs(interval_end_time) * 1.0e-12)
+    substeps = 0
+    while interval_end_time - fvm.time > end_tolerance:
+        proposed_step = fvm.select_next_time_step_size(
+            additional_event_schedules=coupler._coupling_event_schedules(),
+            stop_time=interval_end_time,
+        )
+        remaining = interval_end_time - fvm.time
+        accepted_time = (
+            interval_end_time
+            if remaining <= proposed_step + end_tolerance
+            else fvm.time + proposed_step
+        )
+        coupler.fvm_time_step_size = accepted_time - fvm.time
+        fraction = (accepted_time - interval_start_time) / interval_duration
+        interpolated_velocity = (
+            1.0 - fraction
+        ) * previous_velocity + fraction * velocity_boundary_condition
+        coupler._normal_velocity_boundary_condition = (
+            1.0 - fraction
+        ) * previous_normal_velocity + fraction * next_normal_velocity
+        coupler._normal_gradient_boundary_condition = (
+            1.0 - fraction
+        ) * previous_normal_gradient + fraction * next_normal_gradient
+        advance_fvm_step(
+            coupler,
+            coupler.config.outer_boundary_patch,
+            interpolated_velocity,
+            accepted_time=accepted_time,
+        )
+        substeps += 1
+    coupler.n_fvm_substeps = substeps
     _record_fvm_boundary_data(
         coupler,
         face_centre,
@@ -381,14 +420,12 @@ def advance_fvm(
     )
     if coupler._is_root:
         coupler._velocity_boundary_condition_old = velocity_boundary_condition
-        if coupler._normal_velocity_boundary_condition is not None:
-            coupler._normal_velocity_boundary_condition_old = (
-                coupler._normal_velocity_boundary_condition
-            )
-        if coupler._normal_gradient_boundary_condition is not None:
-            coupler._normal_gradient_boundary_condition_old = (
-                coupler._normal_gradient_boundary_condition
-            )
+        coupler._normal_velocity_boundary_condition_old = next_normal_velocity
+        coupler._normal_gradient_boundary_condition_old = next_normal_gradient
+    else:
+        coupler._velocity_boundary_condition_old = velocity_boundary_condition
+        coupler._normal_velocity_boundary_condition_old = next_normal_velocity
+        coupler._normal_gradient_boundary_condition_old = next_normal_gradient
     return time.perf_counter() - fvm_wall_time_start
 
 
@@ -564,14 +601,16 @@ def apply_fvm_boundary(
     coupler.fvm_solver.set_flux_consistent_pressure_boundary_condition(patch)
     # With coupling iterations the FVM writes its output once the boundary data are accepted.
     coupler.fvm_solver.advance(
-        defer_output=coupler.config.max_coupling_iterations > 1, time=accepted_time
+        defer_output=coupler.config.max_coupling_iterations > 1,
+        time=accepted_time,
+        time_step_size=coupler.fvm_time_step_size,
     )
 
     if prescribed_velocity.shape[0] > 0:
         streamwise = prescribed_velocity @ (freestream_velocity / freestream_speed)
         logger.info(
             format_coupler_log(
-                f"vpm target, fvm substep {int(coupler.fvm_solver.step):,}",
+                f"vpm target, fvm step {int(coupler.fvm_solver.step):,}",
                 ("streamwise velocity, min", f"{streamwise.min() / freestream_speed:.3f}", "U_inf"),
                 (
                     "streamwise velocity, mean",
@@ -583,76 +622,25 @@ def apply_fvm_boundary(
         )
 
 
-def advance_fvm_substeps(
+def advance_fvm_step(
     coupler,
     patch: str,
-    face_centre: np.ndarray,
-    face_normal: np.ndarray,
-    face_area: np.ndarray,
-    previous_velocity: np.ndarray,
-    next_velocity: np.ndarray,
-    previous_normal_velocity: np.ndarray | None = None,
-    next_normal_velocity: np.ndarray | None = None,
-    previous_normal_gradient: np.ndarray | None = None,
-    next_normal_gradient: np.ndarray | None = None,
+    velocity_boundary_condition: np.ndarray,
+    *,
+    accepted_time: float | None = None,
 ) -> None:
-    """Advance FVM substeps with interpolated VPM boundary condition data."""
-    n_substeps = coupler.n_fvm_substeps
-    freestream_speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1e-30
-    if n_substeps > 1 and next_velocity.shape[0] > 0:
-        boundary_velocity_difference_ratio = (
-            float(np.max(np.linalg.norm(next_velocity - previous_velocity, axis=1)))
-            / freestream_speed
-        )
-        is_large_boundary_velocity_difference = boundary_velocity_difference_ratio > 0.5
-        topic = "time interpolation"
-        if is_large_boundary_velocity_difference:
-            topic = "warning  time interpolation, boundary velocity change exceeds limit"
-        logger.log(
-            logging.WARNING if is_large_boundary_velocity_difference else logging.INFO,
-            format_coupler_log(
-                topic,
-                ("fvm substeps", n_substeps),
-                ("fvm time step", f"{coupler.fvm_time_step_size:.3e}", "s"),
-                (
-                    "boundary velocity change",
-                    f"{boundary_velocity_difference_ratio:.3f}",
-                    "U_inf",
-                ),
-                ("warning limit", "0.500", "U_inf"),
-            ),
-        )
-
-    # Substeps land on the coupling clock; the last one exactly on the interval end.
-    step = coupler.fvm_solver.step // n_substeps
-    interval_start_time = coupler.coupling_time(step)
-    interval_end_time = coupler.coupling_time(step + 1)
-    for substep in range(n_substeps):
-        alpha = (substep + 1) / n_substeps
-        substep_time = (
-            interval_end_time
-            if substep + 1 == n_substeps
-            else interval_start_time + (substep + 1) * coupler.fvm_time_step_size
-        )
-        interpolated_velocity = (1.0 - alpha) * previous_velocity + alpha * next_velocity
-        normal_velocity = None
-        interpolated_normal_gradient = None
-        if (
-            previous_normal_velocity is None
-            or next_normal_velocity is None
-            or previous_normal_gradient is None
-            or next_normal_gradient is None
-        ):
-            raise RuntimeError("FVM sub-cycling received incomplete boundary data")
-        normal_velocity = (1.0 - alpha) * previous_normal_velocity + alpha * next_normal_velocity
-        interpolated_normal_gradient = (
-            1.0 - alpha
-        ) * previous_normal_gradient + alpha * next_normal_gradient
-        apply_fvm_boundary(
-            coupler,
-            patch,
-            interpolated_velocity,
-            normal_velocity=normal_velocity,
-            normal_gradient=interpolated_normal_gradient,
-            accepted_time=substep_time,
-        )
+    """Advance one shared FVM--VPM step using the VPM data at its end time."""
+    normal_velocity = coupler._normal_velocity_boundary_condition
+    normal_gradient = coupler._normal_gradient_boundary_condition
+    if normal_velocity is None or normal_gradient is None:
+        raise RuntimeError("The FVM step requires complete VPM boundary data")
+    apply_fvm_boundary(
+        coupler,
+        patch,
+        velocity_boundary_condition,
+        normal_velocity=normal_velocity,
+        normal_gradient=normal_gradient,
+        accepted_time=(
+            coupler.time + coupler.fvm_time_step_size if accepted_time is None else accepted_time
+        ),
+    )

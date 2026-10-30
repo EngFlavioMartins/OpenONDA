@@ -61,18 +61,18 @@ class MeshFrame:
             return np.zeros(3)
         return np.array(self._motion.kinematics.get_velocity(time), dtype=np.float64)
 
-    def step_velocity(self, substep_times: np.ndarray) -> np.ndarray:
-        """Mean mesh velocity in m/s from the accepted FVM time over the FVM substeps.
+    def step_velocity(self, step_end_times: np.ndarray) -> np.ndarray:
+        """Mean mesh velocity in m/s from the accepted time over the coming FVM steps.
 
-        ``substep_times`` are the end times of the coming FVM substeps. The
-        VPM drifts with ``U - step_velocity`` over the coupling interval, so particles
+        ``step_end_times`` are the end times of the coming FVM steps. The
+        VPM drifts with ``U - step_velocity`` over the shared time step, so particles
         keep their exact position relative to the mesh the FVM will reach.
         """
         if self._motion is None:
             return np.zeros(3)
         pose = self._motion.accepted_pose
         start = time = self._motion.accepted_time
-        for end in substep_times:
+        for end in step_end_times:
             pose = advance_pose(self._motion.kinematics, pose, time, end - time)
             time = end
         return (pose.translation - self._motion.accepted_pose.translation) / (time - start)

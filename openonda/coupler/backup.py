@@ -25,7 +25,7 @@ from openonda.vpm.config.restart_changes import validate_exact_configuration_cha
 
 from .reporting import format_coupler_log
 
-BACKUP_FORMAT_VERSION = 16
+BACKUP_FORMAT_VERSION = 18
 BOUNDARY_SCHEMA_VERSION = 5
 _BOUNDARY_KEYS = (
     "has_velocity",
@@ -44,13 +44,18 @@ _INFO_KEYS = frozenset(
         "configuration",
         "step",
         "time",
+        "fvm_time_step_size",
+        "vpm_time_step_size",
         "fvm_step",
         "vpm_step",
-        "n_fvm_substeps",
         "files",
         "file_sha256",
     )
 )
+_VERSION_17_INFO_KEYS = frozenset(_INFO_KEYS - {"fvm_time_step_size", "vpm_time_step_size"}) | {
+    "time_step_size"
+}
+_VERSION_16_INFO_KEYS = frozenset(_VERSION_17_INFO_KEYS - {"time_step_size"}) | {"n_fvm_substeps"}
 
 logger = logging.getLogger("openonda.coupler")
 
@@ -105,12 +110,27 @@ def save_coupled_backup(coupler, path: Path) -> Path:
     """
     comm = coupler._comm
     fvm, vpm = coupler.fvm_solver, coupler.vpm_solver
-    step = coupler.fvm_solver.step // coupler.n_fvm_substeps
+    step = coupler.step
     with collective_phase(comm, "coupled backup clock validation"):
-        if fvm.step != step * coupler.n_fvm_substeps:
-            raise ValueError("The FVM state is not at the end of a coupling interval")
-        if vpm is not None and (vpm.step != step or vpm.time != fvm.time):
-            raise ValueError("The FVM and VPM steps or times differ")
+        if vpm is not None and (
+            vpm.step != step
+            or vpm.time != fvm.time
+            or not np.isclose(
+                vpm.time_step_size, coupler.vpm_time_step_size, rtol=0.0, atol=1.0e-14
+            )
+            or not np.isclose(
+                fvm._accepted_time_step_size, coupler.fvm_time_step_size, rtol=0.0, atol=1.0e-14
+            )
+        ):
+            raise ValueError(
+                "The FVM and VPM backup clocks differ: "
+                f"steps={fvm.step}/{vpm.step}/{step}, "
+                f"times={fvm.time!r}/{vpm.time!r}, "
+                f"time steps={fvm._accepted_time_step_size!r}/{vpm.time_step_size!r} "
+                f"(expected {coupler.fvm_time_step_size!r}/{coupler.vpm_time_step_size!r})"
+            )
+        if vpm is None and not np.isclose(coupler.time, fvm.time, rtol=0.0, atol=1.0e-12):
+            raise ValueError("The coupled clock differs from the FVM time")
     staging = path.with_name(f".{path.name}.tmp")
     with collective_phase(comm, "coupled backup staging"):
         if coupler._is_root:
@@ -150,9 +170,10 @@ def save_coupled_backup(coupler, path: Path) -> Path:
                     "configuration": configuration,
                     "step": step,
                     "time": float(fvm.time),
+                    "fvm_time_step_size": float(fvm._accepted_time_step_size),
+                    "vpm_time_step_size": float(vpm.time_step_size),
                     "fvm_step": int(fvm.step),
                     "vpm_step": int(vpm.step),
-                    "n_fvm_substeps": int(coupler.n_fvm_substeps),
                     "files": files,
                     "file_sha256": {
                         name: file_digest(staging / file) for name, file in files.items()
@@ -176,9 +197,17 @@ def save_coupled_backup(coupler, path: Path) -> Path:
 def _read_checkpoint_info(path: Path) -> dict:
     """Read and check the description and file digests of a coupled backup."""
     info = json.loads((path / "checkpoint_info.json").read_text(encoding="utf-8"))
-    if not isinstance(info, dict) or set(info) != _INFO_KEYS:
+    if not isinstance(info, dict):
         raise ValueError(f"{path} is not a coupled backup")
-    if info["format_version"] != BACKUP_FORMAT_VERSION or info["kind"] != "openonda.coupled_backup":
+    version = info.get("format_version")
+    expected_keys = {
+        16: _VERSION_16_INFO_KEYS,
+        17: _VERSION_17_INFO_KEYS,
+        BACKUP_FORMAT_VERSION: _INFO_KEYS,
+    }.get(version)
+    if expected_keys is None or set(info) != expected_keys:
+        raise ValueError(f"{path} is not a supported coupled backup")
+    if info["kind"] != "openonda.coupled_backup":
         raise ValueError(f"Unsupported coupled backup format in {path}")
     if info["configuration_sha256"] != configuration_digest(info["configuration"]):
         raise ValueError(f"The configuration digest of {path} does not match")
@@ -194,14 +223,34 @@ def _read_checkpoint_info(path: Path) -> dict:
             or file_digest(path / relative) != info["file_sha256"][name]
         ):
             raise ValueError(f"Coupled backup file {path / relative} is missing or changed")
-    for name in ("step", "fvm_step", "vpm_step", "n_fvm_substeps"):
+    for name in ("step", "fvm_step", "vpm_step"):
         if type(info[name]) is not int or info[name] < 0:
             raise ValueError(f"Invalid coupled backup clock {name!r}")
-    if (
-        info["vpm_step"] != info["step"]
-        or info["fvm_step"] != info["step"] * info["n_fvm_substeps"]
-    ):
+    if info["vpm_step"] != info["step"]:
         raise ValueError("The coupled backup steps do not match")
+    if version == 16:
+        if type(info["n_fvm_substeps"]) is not int or info["n_fvm_substeps"] < 1:
+            raise ValueError("Invalid legacy coupled backup substep count")
+        if info["fvm_step"] != info["step"] * info["n_fvm_substeps"]:
+            raise ValueError("The legacy coupled backup steps do not match")
+    time_step_sizes = (
+        ("fvm_time_step_size", "vpm_time_step_size")
+        if version == BACKUP_FORMAT_VERSION
+        else ("time_step_size",)
+        if version == 17
+        else ()
+    )
+    for name in time_step_sizes:
+        value = info[name]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not np.isfinite(float(value))
+            or float(value) <= 0.0
+        ):
+            raise ValueError(f"Invalid coupled backup time-step size {name!r}")
+    if not np.isfinite(float(info["time"])) or float(info["time"]) < 0.0:
+        raise ValueError("Invalid coupled backup physical time")
     return info
 
 
@@ -228,13 +277,12 @@ def load_coupled_backup(
 ) -> int:
     """Restore both solvers and the boundary data; return the coupling step.
 
-    A backup written with another number of FVM substeps continues when its FVM
-    step ends a coupling interval of the present size: the particles continue
-    with the present particle step, and the coupling step counts intervals of
-    the present size from t = 0. Configuration differences are refused unless listed. Paths starting with
-    ``vpm.`` are passed to the VPM backup reader without the prefix; the
-    others name coupling settings. The VPM is restored and validated before
-    the FVM. Collective under MPI.
+    Version 16 backups used fixed FVM steps and a longer VPM step. They can be
+    continued with the current shared-step setup when the remaining case
+    configuration matches. Configuration differences are refused unless
+    listed. Paths starting with ``vpm.`` are passed to the VPM backup reader
+    without the prefix; the others name coupling settings. The VPM is restored
+    and validated before the FVM. Collective under MPI.
     """
     comm = coupler._comm
     if isinstance(allowed_config_differences, str | bytes):
@@ -255,15 +303,12 @@ def load_coupled_backup(
                     p: v for p, v in expected.items() if not p.startswith("vpm.")
                 },
             )
-            if info["fvm_step"] % coupler.n_fvm_substeps:
-                raise ValueError(
-                    f"The coupled backup at FVM step {info['fvm_step']} does not end a coupling "
-                    f"interval of {coupler.n_fvm_substeps} FVM steps"
-                )
-            changed_interval = info["n_fvm_substeps"] != coupler.n_fvm_substeps
+            legacy_backup = info["format_version"] == 16
             coupler.vpm_solver.load_backup(
                 path / info["files"]["vpm"],
-                time_step_size=coupler.vpm_time_step_size if changed_interval else None,
+                time_step_size=(
+                    coupler.vpm_case.numerics.time_step_size if legacy_backup else None
+                ),
                 allowed_config_differences=tuple(p[4:] for p in allowed if p.startswith("vpm.")),
                 expected_config_differences={
                     p[4:]: v for p, v in expected.items() if p.startswith("vpm.")
@@ -271,7 +316,6 @@ def load_coupled_backup(
             )
             if coupler.vpm_solver.step != info["step"]:
                 raise ValueError("The VPM backup step differs from the coupled backup")
-            coupler.vpm_solver.step = info["fvm_step"] // coupler.n_fvm_substeps
             if changes:
                 logger.warning(
                     "Loading a coupled backup with allowed configuration differences: "
@@ -279,18 +323,61 @@ def load_coupled_backup(
                 )
     if comm is not None and comm.Get_size() > 1:
         info = comm.bcast(info, root=0)
-    coupler.fvm_solver.load_backup(path / info["files"]["fvm"])
-    step = int(info["fvm_step"]) // coupler.n_fvm_substeps
-    coupling_time = coupler.coupling_time(step)
+    legacy_backup = info["format_version"] == 16
+    coupler.fvm_solver.load_backup(
+        path / info["files"]["fvm"], allow_time_step_control_change=legacy_backup
+    )
+    step = int(info["step"])
+    coupling_time = float(info["time"])
     with collective_phase(comm, "coupled backup clock and boundary-data restore"):
         if coupler.fvm_solver.step != info["fvm_step"]:
             raise ValueError("The FVM backup step differs from the coupled backup")
-        tolerance = 1.0e-12 + 4.0 * info["fvm_step"] * np.finfo(np.float64).eps * coupling_time
+        tolerance = max(1.0e-12, 4.0 * abs(coupling_time) * np.finfo(np.float64).eps)
         if abs(coupler.fvm_solver.time - coupling_time) > tolerance:
             raise ValueError(
-                f"Coupled backup time {coupler.fvm_solver.time!r} s is not the time "
-                f"{coupling_time!r} s of coupling step {step}"
+                f"Coupled backup time {coupling_time!r} s differs from the FVM time "
+                f"{coupler.fvm_solver.time!r} s"
             )
+        if coupler._is_root and not np.isclose(
+            coupler.vpm_solver.time, coupling_time, rtol=0.0, atol=tolerance
+        ):
+            raise ValueError("The VPM time differs from the coupled backup time")
+        version = info["format_version"]
+        if version in {17, BACKUP_FORMAT_VERSION}:
+            fvm_time_step_size = float(
+                info["fvm_time_step_size"]
+                if version == BACKUP_FORMAT_VERSION
+                else info["time_step_size"]
+            )
+            vpm_time_step_size = float(
+                info["vpm_time_step_size"]
+                if version == BACKUP_FORMAT_VERSION
+                else info["time_step_size"]
+            )
+            if not np.isclose(
+                coupler.fvm_solver.time_step_size,
+                fvm_time_step_size,
+                rtol=0.0,
+                atol=1.0e-14,
+            ):
+                raise ValueError("The FVM time-step size differs from the coupled backup")
+            if coupler._is_root and not np.isclose(
+                coupler.vpm_solver.time_step_size,
+                vpm_time_step_size,
+                rtol=0.0,
+                atol=1.0e-14,
+            ):
+                raise ValueError("The VPM time-step size differs from the coupled backup")
+        coupler.fvm_time_step_size = coupler.fvm_solver.time_step_size
+        if version == BACKUP_FORMAT_VERSION:
+            coupler.vpm_time_step_size = float(info["vpm_time_step_size"])
+        elif version == 17:
+            coupler.vpm_time_step_size = float(info["time_step_size"])
+        else:
+            coupler.vpm_time_step_size = float(coupler.vpm_case.numerics.time_step_size)
+        if coupler._is_root:
+            coupler.vpm_solver.time_step_size = coupler.vpm_time_step_size
+        coupler._coupling_step = step
         if coupler._is_root:
             (
                 coupler._velocity_boundary_condition_old,
@@ -300,7 +387,7 @@ def load_coupled_backup(
             coupler._normal_velocity_boundary_condition = None
             coupler._normal_gradient_boundary_condition = None
             rewind_jsonl(coupler.solution_dir / "coupler_diagnostics.jsonl", coupling_time)
-    # Continue on the coupling clock so both solvers write identical times.
+    # Both solvers retain the same accepted physical time after restoration.
     coupler.fvm_solver.time = coupling_time
     if coupler._is_root:
         coupler.vpm_solver.time = coupling_time

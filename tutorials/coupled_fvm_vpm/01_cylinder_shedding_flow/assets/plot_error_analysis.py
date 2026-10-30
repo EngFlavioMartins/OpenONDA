@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""Orders, uncertainties and sources of the coupled-solution error, from the sensitivity runs.
+"""Plot discretization error, coupling error and diagnostic indicators.
 
-Each family of the coupling-error plan (docs/plans/2026-10-19-coupling-error-sources.md) refines
-or varies one quantity. The references give the FVM orders in space and time and the value Q_ext
-at zero cell size and step; each coupled run's error splits into the FVM error of the reference
-on its cells and step and the coupling error. The coupling error is then set against its
-possible drivers in flow scales, and against the boundary-data mismatch the coupler logs, which
-needs no reference. Families with too few finished runs are left out until their runs land.
+Reference refinements provide FVM error estimates. The difference between a
+coupled run and its matched reference is the coupling contribution.
 """
 
 from itertools import combinations
@@ -27,15 +23,17 @@ from assets.error_analysis import coupled_families, decompose, discretization_un
 from assets.error_analysis import driver_fit, drivers, exact_values, factorial_effects
 from assets.error_analysis import interface_indicators, logged_keys, reference_families
 from assets.error_analysis import space_time_fit, statistics_of, term_model, wake_scales
-from assets.plot_sensitivity import BASELINE, CASE_DIR, ERRORS, STATISTICS
+from assets.plot_sensitivity import BASELINE, CASE_DIR, ERRORS, LATE_WINDOW, STATISTICS
+from assets.plot_sensitivity import STATISTICS_WINDOW, errors_against, read_fine_wake_reference
 from assets.plot_sensitivity import read_references, read_runs
 from setup import DIAMETER, FREESTREAM_VELOCITY, REYNOLDS_NUMBER
 
 SPEED = FREESTREAM_VELOCITY[0]
 FIGURES = CASE_DIR / "figures"
+BASELINE_NAME = "box2.4_sub5_inset8.75"
 TABLES = CASE_DIR / "figures/auxiliary"
 
-# Refinement variables in flow scales: h/D and U dt/D
+# Refinement variables in flow scales.
 VARIABLES = {
     "cell_size": ("$h/D$", 1.0 / DIAMETER),
     "time_step": (r"$U\Delta t/D$", SPEED / DIAMETER),
@@ -43,8 +41,14 @@ VARIABLES = {
     "particle_time_step": (r"$U\Delta t_{\rm VPM}/D$", SPEED / DIAMETER),
 }
 CONVERGENCE_FAMILIES = {"C": "cell_size", "X": "cell_size", "T2": "fvm_time_step"}
-REFINEMENT_FAMILIES = {**CONVERGENCE_FAMILIES, "P": "fvm_time_step", "E": "particle_time_step"}
-DRIVER_FAMILIES = ("T2", "P", "E")  # all on the baseline cells: dt_VPM, N and dt_FVM vary apart
+REFINEMENT_FAMILIES = {
+    **CONVERGENCE_FAMILIES,
+    "A": "cell_size",
+    "XP": "cell_size",
+    "P": "fvm_time_step",
+    "E": "particle_time_step",
+}
+DRIVER_FAMILIES = ("T2", "P", "E")
 PLOTTED_DRIVERS = {
     "particle step": r"$U\Delta t_{\rm VPM}/D$",
     "coupling intervals per convective time": r"$D/(U\Delta t_{\rm VPM})$",
@@ -57,7 +61,7 @@ SERIES = {
     "FVM": ("FVM discretization", COLORS["reference"], "s"),
     "coupling": ("Coupling", COLORS["vpm"], "^"),
 }
-# Panel titles and legend names of the study families
+# Panel titles and legend names for the study families.
 FAMILY_NAMES = {
     "C": "Space and time",
     "X": "Space",
@@ -69,8 +73,12 @@ FAMILY_NAMES = {
     "B": "Box",
     "R": "Reynolds number",
     "S": "Particle spacing",
+    "A": "Space, fixed interval 0.032",
+    "XP": "Space, fixed interval 0.04",
+    "KAPPA": "Strength-ratio limit",
+    "BL": "Blending depths",
 }
-# Each run is drawn once, in the first of these families it belongs to
+# Draw each run in its first matching family.
 FAMILY_STYLE = {
     "T2": (COLORS["fvm"], "s"),
     "P": (COLORS["vpm"], "^"),
@@ -81,6 +89,10 @@ FAMILY_STYLE = {
     "B": (COLORS["gray"], "X"),
     "R": (COLORS["amber"], "*"),
     "S": (COLORS["teal"], "h"),
+    "A": (COLORS["dark"], "p"),
+    "XP": (COLORS["dark"], "d"),
+    "KAPPA": (COLORS["red"], "<"),
+    "BL": (COLORS["amber"], ">"),
 }
 
 
@@ -528,6 +540,84 @@ def indicator_figure(rows, correlations):
     save_validation_figure(figure, FIGURES / "error_indicator")
 
 
+def transfer_limit_summary(runs, decomposition):
+    """Coupling error against the strength-ratio limit, the blending depths and N.
+
+    The strength ratio kappa of every transfer is logged; when it sits at kappa_max in most
+    transfers the strength correction is cut back near the wall at every coupling interval, and
+    a series in N then changes the transfer count and the action of the limit together.
+    """
+    members = [
+        run
+        for run in runs
+        if {"E", "KAPPA", "BL"} & set(run["families"].split()) or run["name"] == BASELINE_NAME
+    ]
+    rows = []
+    print("Transfer limits and blending depths, 40 <= t <= 55 s (e_coupling in % of Q_ext)")
+    for run in sorted(members, key=lambda r: (r["max_strength_ratio"], r["fvm_substeps"])):
+        row = {
+            "run": run["name"],
+            "N": run["fvm_substeps"],
+            "coupling intervals per convective time": DIAMETER / (SPEED * run["particle_time_step"]),
+            "kappa_max": run["max_strength_ratio"],
+            "delta_0 [cells]": run["blend_start"],
+            "delta_1 [cells]": run["blend_end"],
+            "kappa median": run["strength ratio median"],
+            "fraction of transfers at kappa_max": run["strength-limit fraction"],
+            "boundary mismatch mean [U]": run["boundary mismatch mean"],
+        }
+        row.update(
+            {f"e_coupling {q} [%]": decomposition[run["name"]][q]["coupling"] for q in STATISTICS}
+        )
+        rows.append(row)
+        print(
+            f"  {run['name']:36s} N {row['N']:2d}  kappa_max {row['kappa_max']:.1f}"
+            f"  delta {row['delta_0 [cells]']:g}/{row['delta_1 [cells]']:g}"
+            f"  kappa {row['kappa median']:.3f}  at limit {row['fraction of transfers at kappa_max']:.2f}"
+            f"  mismatch {row['boundary mismatch mean [U]']:.2e}"
+            + "".join(f"  {q[:6]} {row[f'e_coupling {q} [%]']:+6.2f}" for q in STATISTICS)
+        )
+    return rows
+
+
+def window_and_reference_checks(runs, references):
+    """The 40-55 s window against 55-100 s, and the coarse against the fine-wake reference.
+
+    Runs continued to 100 s (section h) are compared with the reference of their cells and step
+    over both windows. The baseline is also compared with the reference that keeps the coupled
+    cells over the whole coupled FVM domain (section g), which removes the near-wake resolution
+    difference from e_coupling.
+    """
+    rows = []
+    for run in runs:
+        reference = references.get(
+            (run["reynolds_number"], run["cell_size"], run["fvm_time_step"])
+        )
+        if reference is None or run["forces"]["time"][-1] < LATE_WINDOW[1] - 0.1:  # within a sample
+            continue
+        for window in (STATISTICS_WINDOW, LATE_WINDOW):
+            errors = errors_against(run["forces"], run["phase"], run["wake"], reference, window)
+            rows.append({"run": run["name"], "reference": reference["name"], "window": window, **errors})
+    fine = read_fine_wake_reference()
+    if fine is not None:
+        for run in runs:
+            if run["name"] in (BASELINE_NAME, BASELINE_NAME.replace("sub5", "sub2")):
+                errors = errors_against(run["forces"], run["phase"], run["wake"], fine)
+                rows.append(
+                    {"run": run["name"], "reference": fine["name"], "window": STATISTICS_WINDOW, **errors}
+                )
+    if rows:
+        print("Statistics window and near-wake reference: e_coupling [% of the same-window reference]")
+        for row in rows:
+            print(
+                f"  {row['run']:36s} vs {row['reference']:22s} {row['window'][0]:g}-{row['window'][1]:g} s"
+                + "".join(f"  {q[:6]} {row[q]:+6.2f}" for q in STATISTICS)
+            )
+    return [
+        {**row, "window": f"{row['window'][0]:g}-{row['window'][1]:g}"} for row in rows
+    ]
+
+
 def factorial_summary(runs, decomposition):
     """Main effects and interactions of the F family once all its corners have run."""
     factors = list(FACTORIAL_LEVELS)
@@ -703,6 +793,8 @@ def main():
     )
     indicator_rows, correlations = indicator_analysis(runs, decomposition)
     factorial_summary(runs, decomposition)
+    limit_rows = transfer_limit_summary(runs, decomposition)
+    check_rows = window_and_reference_checks(runs, references)
 
     # Tables
     TABLES.mkdir(parents=True, exist_ok=True)
@@ -720,6 +812,10 @@ def main():
     if driver_rows:
         write_table(TABLES / "error_drivers.csv", driver_rows)
     write_table(TABLES / "error_indicators.csv", indicator_rows)
+    if limit_rows:
+        write_table(TABLES / "error_transfer_limits.csv", limit_rows)
+    if check_rows:
+        write_table(TABLES / "error_window_reference.csv", check_rows)
 
     # Figures
     reference_figure(reference_fits, exact)

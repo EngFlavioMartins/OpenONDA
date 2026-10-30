@@ -11,8 +11,9 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 
 
 def main():
-    path = CASE_DIR / "samples/forces_history.csv"
-    forces = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
+    forces = np.genfromtxt(
+        CASE_DIR / "samples/forces_history.csv", delimiter=",", names=True, dtype=None, encoding="utf-8"
+    )
 
     figure, axes = validation_subplots(2, sharex=True)
     for axis, name, label in zip(

@@ -21,7 +21,7 @@ FREESTREAM_SPEED = 1.0  # m/s
 REFERENCE_FORCES = CASE_DIR / "reference_flow/samples/forces_history.csv"
 COUPLED_FORCES = CASE_DIR / "samples/forces_history.csv"
 
-# FVM only, coupled FVM (inside its box at x = 2 m) and the coupled particles
+# Probe data from the reference, the coupled FVM box, and the particle wake.
 SOURCES = {
     2: {
         "FVM only": "reference_flow/samples/transverse_x2.csv",
@@ -178,7 +178,7 @@ def main():
         for station, files in SOURCES.items()
         for label, path in files.items()
     }
-    # One y-range per row for all figures, so they can be compared frame by frame
+    # All profile frames share one range for each velocity component.
     limits = [
         (
             min(table[name].min() for table in samples.values()),

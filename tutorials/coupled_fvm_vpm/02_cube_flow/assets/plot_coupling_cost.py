@@ -12,8 +12,11 @@ from openonda.plotting import validation_subplots
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 REFERENCE_PERFORMANCE = CASE_DIR / "reference_flow/solution/grid_h0045/performance.jsonl"
+CUBE_SIDE = 1.0  # m
+FREESTREAM_SPEED = 1.0  # m/s
+FLOW_TIME_SCALE = FREESTREAM_SPEED / CUBE_SIDE  # 1/s, convective-time scale
 
-# Recorded timing phases, grouped by the solver part they belong to
+# Timing phases grouped by solver component.
 PHASES = {
     "VPM": (("vpm",), COLORS["vpm"]),
     "FVM": (("fvm",), COLORS["fvm"]),
@@ -23,27 +26,24 @@ PHASES = {
 
 
 def main():
-    # One record per accepted coupling step; a running case may still be writing the last line
-    lines = (CASE_DIR / "solution/coupler_diagnostics.jsonl").read_text().split("\n")[:-1]
-    records = [json.loads(line) for line in lines]
+    records = [
+        json.loads(line)
+        for line in (CASE_DIR / "solution/coupler_diagnostics.jsonl").read_text().splitlines()
+    ]
     time = np.array([record["time"] for record in records])
     particles = np.array([record["transfer"]["n_particles_after"] for record in records])
-    # Wall time per second of flow time: each coupling step advances the flow by one interval
-    coupling_interval = time[1] - time[0]
-    cost = [
+    # Normalize each step by the physical time it advances.
+    flow_interval = np.diff(time, prepend=0.0)
+    wall_seconds = [
         sum(np.array([record["timing_seconds"][key] for record in records]) for key in keys)
-        / coupling_interval
         for keys, _ in PHASES.values()
     ]
-    coupled_mean = np.sum(cost, axis=0).mean()
+    cost = [phase / flow_interval for phase in wall_seconds]
+    coupled_mean = np.sum(wall_seconds) / np.sum(flow_interval)
 
-    # Reference FVM wall time over the flow time it covered; its time step adapts to the
-    # Courant number
-    wall_time = flow_time = 0.0
-    for line in REFERENCE_PERFORMANCE.open():
-        step = json.loads(line)
-        wall_time += step["step_seconds"]["max"]
-        flow_time += step["time_step_size"]
+    reference_steps = [json.loads(line) for line in REFERENCE_PERFORMANCE.read_text().splitlines()]
+    wall_time = sum(step["step_seconds"]["max"] for step in reference_steps)
+    flow_time = sum(step["time_step_size"] for step in reference_steps)
     reference_mean = wall_time / flow_time
     print(
         f"Wall time per second of flow time: coupled {coupled_mean:.0f} s, "
@@ -51,33 +51,36 @@ def main():
     )
 
     figure, axes = validation_subplots(2, sharex=True)
-    axes[0].stackplot(time, *cost, labels=PHASES, colors=[color for _, color in PHASES.values()])
-    # Clip the start-up coupling step and isolated spikes; leave headroom for the legend
+    axes[0].stackplot(
+        time * FLOW_TIME_SCALE,
+        *cost,
+        labels=PHASES,
+        colors=[color for _, color in PHASES.values()],
+    )
+    # Leave headroom above the timing history for the legend.
     axes[0].set_ylim(0.0, 1.6 * np.percentile(np.sum(cost, axis=0), 99.9))
-    for mean, style, label in (
-        (coupled_mean, "-", "Coupled"),
-        (reference_mean, "--", "Reference FVM"),
-    ):
-        axes[0].axhline(
-            mean,
-            color=COLORS["text"],
-            linestyle=style,
-            linewidth=LINE_WIDTH,
-            path_effects=[withStroke(linewidth=2.5 * LINE_WIDTH, foreground="white")],
-        )
-        axes[0].annotate(
-            f"{label}: {mean:.0f} s",
-            xy=(0.01, mean),
-            xycoords=axes[0].get_yaxis_transform(),
-            xytext=(0, 3),
-            textcoords="offset points",
-            verticalalignment="bottom",
-            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.0},
-        )
+    axes[0].axhline(
+        reference_mean,
+        color=COLORS["text"],
+        linestyle="--",
+        linewidth=LINE_WIDTH,
+        path_effects=[withStroke(linewidth=2.5 * LINE_WIDTH, foreground="white")],
+    )
+    axes[0].annotate(
+        f"Reference FVM: {reference_mean:.0f} s",
+        xy=(0.01, reference_mean),
+        xycoords=axes[0].get_yaxis_transform(),
+        xytext=(0, 3),
+        textcoords="offset points",
+        verticalalignment="bottom",
+        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.0},
+    )
     axes[0].set_ylabel("Wall time per\nflow time [s/s]")
-    axes[1].plot(time, particles / 1e6, color=COLORS["vpm"], linewidth=LINE_WIDTH)
+    axes[1].plot(
+        time * FLOW_TIME_SCALE, particles / 1e6, color=COLORS["vpm"], linewidth=LINE_WIDTH
+    )
     axes[1].set_ylabel("Particles [$10^6$]")
-    axes[1].set_xlabel("$t$ [s]")
+    axes[1].set_xlabel(r"$t U_\infty / D$")
     validation_legend(figure, axes[0])
     save_validation_figure(figure, CASE_DIR / "figures/coupling_cost")
 

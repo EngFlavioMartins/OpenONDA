@@ -1538,39 +1538,39 @@ class FVMSolver(CouplerInterfaceMixin):
         local_maximum = float(np.max(courant_number_field[:n_owned])) if n_owned > 0 else 0.0
         return float(self.parallel.global_max(local_maximum))
 
-    def _select_time_step_size(self) -> float:
-        """Select one solver-owned step and cap it at the run horizon.
+    def _select_time_step_size(
+        self,
+        additional_event_schedules: Sequence = (),
+        *,
+        stop_time: float | None = None,
+    ) -> float:
+        """Select one FVM step and stop at the next event or driver deadline.
 
         Fixed stepping reads the immutable construction value; automatic
-        stepping applies the configured maximum-Courant control.
+        stepping applies the configured maximum-Courant control. A driver can
+        provide ``stop_time`` to end its current interval exactly.
         """
         control = self._configuration.numerics.time_step_control
         time_until_event = None
-        if control is None:
-            # The configured step, never the stored one: a horizon-clipped
-            # final step must not carry into a restarted run.
-            selected = float(self._configuration.numerics.time_step_size)
-        else:
-            current_courant_number = self._measure_maximum_courant_number(self.time_step_size)
-            selected = maximum_courant_time_step_size(
-                self.time_step_size,
-                current_courant_number,
-                control,
-            )
+        selected = self._courant_time_step_limit()
 
-            # Find the nearest deadline first, then distribute the remaining
-            # interval over CFL-limited steps. Last-step clipping alone leaves
-            # tiny remainders and pressure spikes at otherwise harmless outputs.
-            for schedule in self._run_event_schedules():
-                next_event_time = schedule.next_time_after(self.time)
-                if next_event_time is not None:
-                    distance = next_event_time - self.time
-                    time_until_event = (
-                        distance if time_until_event is None else min(time_until_event, distance)
-                    )
+        # Adaptive steps are distributed over time deadlines. Fixed steps are
+        # shortened only when a deadline falls before the configured step.
+        for schedule in (*self._run_event_schedules(), *additional_event_schedules):
+            next_event_time = schedule.next_time_after(self.time)
+            if next_event_time is not None:
+                distance = next_event_time - self.time
+                time_until_event = (
+                    distance if time_until_event is None else min(time_until_event, distance)
+                )
 
         # Run-managed runs land exactly on their physical horizon.
-        end_time = self._configuration.run.end_time
+        end_time = float(self._configuration.run.end_time)
+        if stop_time is not None:
+            stop_time = float(stop_time)
+            if not math.isfinite(stop_time) or stop_time <= self.time:
+                raise ValueError("stop_time must be finite and later than the accepted FVM time")
+            end_time = min(end_time, stop_time)
         remaining = float(end_time - self.time)
         tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
         if remaining > tolerance:
@@ -1585,6 +1585,41 @@ class FVMSolver(CouplerInterfaceMixin):
             )
         self.time_step_size = selected
         return selected
+
+    def courant_time_step_limit(self) -> float:
+        """Return the current CFL-limited step ceiling without applying output events."""
+        if self._step_phase != "accepted":
+            raise RuntimeError("A candidate FVM step is pending; accept or restore it first")
+        return self._courant_time_step_limit()
+
+    def _courant_time_step_limit(self) -> float:
+        """Return the current CFL ceiling from the stored flow state."""
+        control = self._configuration.numerics.time_step_control
+        if control is None:
+            return float(self._configuration.numerics.time_step_size)
+        current_courant_number = self._measure_maximum_courant_number(self.time_step_size)
+        return maximum_courant_time_step_size(
+            self.time_step_size,
+            current_courant_number,
+            control,
+        )
+
+    def select_next_time_step_size(
+        self,
+        *,
+        additional_event_schedules: Sequence = (),
+        stop_time: float | None = None,
+    ) -> float:
+        """Select the next CFL-limited step, aligned with local and driver events.
+
+        A coupled driver may pass schedules owned by another solver and a
+        ``stop_time`` for the end of its current interval. The returned value
+        is stored as the current proposed step and can be passed to
+        :meth:`advance`.
+        """
+        if self._step_phase != "accepted":
+            raise RuntimeError("A candidate FVM step is pending; accept or restore it first")
+        return self._select_time_step_size(additional_event_schedules, stop_time=stop_time)
 
     def _run_event_schedules(self) -> tuple:
         """Return construction-time schedules that constrain adaptive steps."""
@@ -1871,7 +1906,13 @@ class FVMSolver(CouplerInterfaceMixin):
         if primary_failure is not None:
             raise primary_failure.with_traceback(primary_failure.__traceback__)
 
-    def advance(self, *, defer_output: bool = False, time: float | None = None) -> None:
+    def advance(
+        self,
+        *,
+        defer_output: bool = False,
+        time: float | None = None,
+        time_step_size: float | None = None,
+    ) -> None:
         """Solve and accept one time step.
 
         The step size is the fixed or maximum-Courant size, shortened to land
@@ -1886,6 +1927,10 @@ class FVMSolver(CouplerInterfaceMixin):
         time : float or None, default=None
             Accepted physical time in s imposed by a driver that owns the
             clock; it must equal ``time + time_step_size`` to round-off.
+        time_step_size : float or None, default=None
+            Step selected by a driver after calling
+            :meth:`select_next_time_step_size`. ``None`` lets the FVM select
+            its own step.
 
         Raises
         ------
@@ -1897,7 +1942,13 @@ class FVMSolver(CouplerInterfaceMixin):
             raise RuntimeError("The 'simple' algorithm is steady; use solve_steady()")
         if self._step_phase != "accepted":
             raise RuntimeError("A candidate FVM step is pending; call accept_step() first")
-        step_time_step_size = self._select_time_step_size()
+        if time_step_size is None:
+            step_time_step_size = self._select_time_step_size()
+        else:
+            step_time_step_size = float(time_step_size)
+            if not np.isfinite(step_time_step_size) or step_time_step_size <= 0.0:
+                raise ValueError("time_step_size must be finite and positive")
+            self.time_step_size = step_time_step_size
         self.apply_velocity_boundaries(self.time + step_time_step_size)
         step_number = self.step + 1
         self.profiler.begin_step(step_number, self.time, step_time_step_size)
@@ -2016,9 +2067,9 @@ class FVMSolver(CouplerInterfaceMixin):
     def write_step_output(self) -> None:
         """Write the diagnostics and the due output of the accepted state.
 
-        A coupler may defer the output of provisional sub-steps and call this
-        once the interface converges; output of earlier sub-steps is not
-        replayed.
+        A coupler may defer output during provisional boundary-coupling
+        iterations and call this once the interface converges. Provisional
+        iteration states are not written.
         """
         if self._step_phase != "accepted":
             raise RuntimeError("Output requires an accepted FVM state")
@@ -2148,7 +2199,12 @@ class FVMSolver(CouplerInterfaceMixin):
         self.logger.output(f"Restart backup written: {saved}")
         return saved
 
-    def load_backup(self, path: str | Path) -> None:
+    def load_backup(
+        self,
+        path: str | Path,
+        *,
+        allow_time_step_control_change: bool = False,
+    ) -> None:
         """Restore a backup of this case and rewind the output histories.
 
         Parameters
@@ -2156,6 +2212,10 @@ class FVMSolver(CouplerInterfaceMixin):
         path : str or pathlib.Path
             Backup written by :meth:`save_backup` with the same mesh and
             numerical configuration.
+        allow_time_step_control_change : bool, default=False
+            Allow a fixed-step coupled backup to continue with an adaptive
+            FVM time-step controller, provided every other restart setting
+            matches the legacy backup digest.
 
         Raises
         ------
@@ -2172,11 +2232,13 @@ class FVMSolver(CouplerInterfaceMixin):
         if self.parallel.is_partitioned:
             from ..io.partitioned import load_partitioned_solver_backup
 
-            load_partitioned_solver_backup(self, path)
+            load_partitioned_solver_backup(
+                self, path, allow_time_step_control_change=allow_time_step_control_change
+            )
         else:
             from ..io.backup import load_backup
 
-            load_backup(self, path)
+            load_backup(self, path, allow_time_step_control_change=allow_time_step_control_change)
 
         rewind_error = None
         if self.parallel.is_root:

@@ -18,7 +18,7 @@ CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 X_RANGE = (-3.0, 12.0)  # m, compared stretch of the lines
 
-# Reference FVM, coupled FVM (inside its box) and the coupled particles
+# Probe data from the reference, the coupled FVM box, and the particle wake.
 LINES = {"centreline": "$y/D=0$", "offaxis_y075": "$y/D=0.75$"}
 SOURCES = {
     "Reference FVM": "reference_flow/samples/grid_h0045/{}.csv",
@@ -52,7 +52,7 @@ def wake_profile(path):
         mean = np.bincount(point, value) / count
         transverse = transverse + np.bincount(point, (value - mean[point]) ** 2) / count
 
-    # The cube interior carries no flow
+    # Mask the solid cube.
     mean_u[inside_cube(x, samples["position_y"][0])] = np.nan
     return x / CUBE_SIDE, mean_u / FREESTREAM_SPEED, np.sqrt(transverse) / FREESTREAM_SPEED
 
@@ -76,7 +76,7 @@ def profile_figure(curves, labels):
 
 def instantaneous_profiles(samples):
     """Streamwise and transverse velocity at every sample time shared by all probes."""
-    # One y-range per row for all times, so the figures can be compared frame by frame
+    # All profile frames share one range for each velocity component.
     shown = {
         key: (table["position_x"] >= X_RANGE[0]) & (table["position_x"] <= X_RANGE[1])
         for key, table in samples.items()
@@ -97,7 +97,7 @@ def instantaneous_profiles(samples):
             rows = table["time"] == clocks[line, label][indices[frame]]
             order = np.argsort(table["position_x"][rows])
             x = table["position_x"][rows][order]
-            # The cube interior carries no flow
+            # Mask the solid cube.
             fluid = np.where(inside_cube(x, table["position_y"][0]), np.nan, 1.0) / FREESTREAM_SPEED
             curves[line].append(
                 (

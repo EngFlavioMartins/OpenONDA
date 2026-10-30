@@ -13,41 +13,42 @@ import numpy as np
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
-# Physical problem
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
+# Restart mode
+START_FROM = "latest"
 
+# Physical problem
 CUBE_SIDE = 1.0
 FREESTREAM_VELOCITY = 1.0
 DENSITY = 1.0
 REYNOLDS_NUMBER = 1000.0
 KINEMATIC_VISCOSITY = FREESTREAM_VELOCITY * CUBE_SIDE / REYNOLDS_NUMBER
 
-# Startup: the same vortex behind the cube as in the coupled case
+# Startup vortex, matching the coupled case
 DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, vector-potential peak
 DISTURBANCE_RADIUS = 0.5  # m
 DISTURBANCE_CENTRE = (1.0, 0.0, 0.0)  # m, half a side behind the rear face
 DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 
-# Domain and mesh refinement
+# Outer domain and mesh refinement
 DOMAIN = (-6.48, 12.96, -6.48, 6.48, -6.48, 6.48)
 BACKGROUND_CELL_SIZE_RATIO = 8.0
 WAKE_CELL_SIZE_RATIO = 2.0
-NEAR_BODY = (-1.8, 4.3, -1.8, 1.8, -1.8, 1.8)  # the coupled FVM box, at the finest spacing
-WAKE = (-2.0, 12.0, -2.0, 2.0, -2.0, 2.0)  # 2h over the compared wake, to x = 12 D
+NEAR_BODY = (-1.8, 4.3, -1.8, 1.8, -1.8, 1.8)  # m, finest spacing
+WAKE = (-2.0, 12.0, -2.0, 2.0, -2.0, 2.0)  # m, wake refinement
 
-# Time, output and sampling
+# Time integration and output
 CORES = 4
 END_TIME = 100.0
 TIME_STEP_SIZE = 0.005
 MAX_COURANT_NUMBER = 0.5
 OUTPUT_INTERVAL = 2.0  # s, FVM fields
 BACKUP_INTERVAL = 1.0  # s
-FORCE_SAMPLE_INTERVAL = 0.05
-PROFILE_SAMPLE_INTERVAL = 0.25
+FORCE_SAMPLE_INTERVAL = 0.04  # s
+PROFILE_SAMPLE_INTERVAL = 0.24  # s
 PROFILE_SPACING = 0.06
-SLICE_INTERVAL = 1.0  # s, mid-plane slices, at the times of the coupled slices
-SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, x and y bounds, as the coupled particle slice
-SLICE_SPACING = 0.09  # m, as the coupled slices
+SLICE_INTERVAL = 1.0  # s
+SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, mid-plane bounds
+SLICE_SPACING = 0.09  # m
 
 CASE_DIR = Path(__file__).resolve().parent
 VELOCITY = (FREESTREAM_VELOCITY, 0.0, 0.0)

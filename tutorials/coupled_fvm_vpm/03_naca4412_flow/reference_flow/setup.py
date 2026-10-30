@@ -15,7 +15,7 @@ from assets.naca_surface import write_wing_stl
 
 CASE_DIR = Path(__file__).resolve().parent
 
-# Wing, as in the coupled case
+# Wing geometry
 NACA_CODE = "4412"
 CHORD = 1.0  # m
 SPAN = 5.0  # m
@@ -31,31 +31,31 @@ KINEMATIC_VISCOSITY = FREESTREAM_SPEED * CHORD / REYNOLDS_NUMBER  # m^2/s
 ALPHA = math.radians(ANGLE_OF_ATTACK)
 FREESTREAM_VELOCITY = (FREESTREAM_SPEED, 0.0, 0.0)
 
-# Domain: faces about ten chords and two spans from the wing keep the blockage small
+# Outer FVM domain
 DOMAIN = (-10.24, 30.72, -12.8, 12.8, -12.8, 12.8)  # m
 
-# Mesh: octree cells of 0.04 m over the coupled FVM box, coarsening by two in each wake box
+# Mesh refinement from the wing into the wake
 CELL_SIZE = 0.04  # m
-NEAR_BODY = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m, the coupled FVM box, cells of CELL_SIZE
+NEAR_BODY = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m, finest spacing
 NEAR_WAKE = (-2.0, 6.0, -1.84, 1.84, -4.0, 4.0)  # m, cells of 2 CELL_SIZE
 WAKE = (-2.4, 14.0, -3.2, 3.2, -4.8, 4.8)  # m, cells of 4 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
-# Time, as in the coupled case
-TIME_STEP = 0.008  # s, the coupled FVM step
+# Time integration
+TIME_STEP = 0.008  # s
 STATISTICS_START = 12.0  # s
 END_TIME = 24.0  # s
 CORES = 4
 
-# Observations, matching the coupled case
-FORCE_INTERVAL = 0.04  # s
-PROFILE_INTERVAL = 0.2  # s
-SLICE_INTERVAL = 0.2  # s, over the statistics window
-FIELD_INTERVAL = 2.0  # s, over the statistics window
-BACKUP_INTERVAL = 1.0  # s
+# Output
+FORCE_INTERVAL = 0.032  # s
+PROFILE_INTERVAL = 0.192  # s
+SLICE_INTERVAL = 0.192  # s
+FIELD_INTERVAL = 1.92  # s
+BACKUP_INTERVAL = 0.96  # s
 WAKE_STATIONS = (2.0, 5.0)  # m
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
-# Height of the trailing edge, and of the freestream line through it where the spanwise probes run
+# Trailing-edge height and the force moment centre
 WAKE_HEIGHT = -0.5 * CHORD * math.sin(ALPHA)  # m
 QUARTER_CHORD = (-0.25 * CHORD * math.cos(ALPHA), 0.25 * CHORD * math.sin(ALPHA), 0.0)  # m
 SLICE_Z0 = (-1.6, 8.0, -2.4, 2.4)  # m, x and y bounds of the mid-span plane

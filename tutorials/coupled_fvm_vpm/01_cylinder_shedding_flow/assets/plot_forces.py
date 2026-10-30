@@ -27,7 +27,7 @@ def shedding_statistics(forces):
     time = forces["time"][window]
     lift = forces["lift_coefficient"][window]
 
-    # The shedding period is the mean spacing of upward zero crossings of the lift
+    # Upward lift crossings define the shedding period.
     fluctuation = lift - lift.mean()
     up = np.flatnonzero((fluctuation[:-1] < 0.0) & (fluctuation[1:] >= 0.0))
     crossing = time[up] - fluctuation[up] * np.diff(time)[up] / np.diff(fluctuation)[up]
@@ -44,7 +44,7 @@ def main():
     reference = read_forces(CASE_DIR / "reference_flow/samples/forces_history.csv")
     coupled = read_forces(CASE_DIR / "samples/forces_history.csv")
 
-    # Developed-shedding statistics and the coupled deviation from the reference
+    # Compare developed-shedding statistics.
     expected, measured = shedding_statistics(reference), shedding_statistics(coupled)
     print(f"Developed shedding, t >= {DEVELOPED_SHEDDING:g} s")
     for name in expected:
@@ -67,9 +67,9 @@ def main():
             label="Coupled",
         )
         axis.set_ylabel(label)
-    axes[0].set_ylim(1.0, 1.6)  # hides the impulsive-start peak
+    axes[0].set_ylim(1.0, 1.6)  # developed drag range
     axes[1].set_xlabel("$t$ [s]")
-    axes[1].xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))  # plain seconds
+    axes[1].xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     validation_legend(figure, axes[0])
     fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, CASE_DIR / "figures/forces")

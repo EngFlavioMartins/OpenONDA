@@ -3800,13 +3800,15 @@ class _GridDiffusionMixin:
         if family == "vector":
             buffers = self._grid_vec_chunks
             shape = (_GRID_TRANSFER_CHUNK, 3)
+            dtype = np.float32
         elif family == "scalar":
             buffers = self._grid_scalar_chunks
             shape = (_GRID_TRANSFER_CHUNK,)
+            dtype = np.int32 if field.dtype == ti.i32 else np.float32
         else:
             raise ValueError(f"Unknown grid transfer buffer family {family!r}")
         if key not in buffers:
-            buffers[key] = np.zeros(shape, dtype=np.float32)
+            buffers[key] = np.zeros(shape, dtype=dtype)
         return buffers[key]
 
     def _download_active_vec_grid(self, src: TaichiField, nx: int, ny: int, nz: int) -> np.ndarray:

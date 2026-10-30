@@ -23,13 +23,12 @@ WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, bounds of the reference and particle slic
 DEVELOPED_FLOW = 30.0  # s, start of the time averages
 STATISTICS_END = 60.0  # s, end of the coupled run; the reference is cut to the same window
 
-# Mid-plane slices: the reference FVM, the coupled FVM inside its box, the particles everywhere
-# The reference at the FVM time step of the coupled case, which samples the mid-plane
-REFERENCE = CASE_DIR / "reference_flow/samples/grid_h0045_dt001/slice_z0.pvd"
+# Mid-plane fields: reference FVM, coupled FVM in the box, and particles in the outer wake.
+REFERENCE_FIELDS = CASE_DIR / "reference_flow/solution/grid_h0045/fvm.pvd"
 COUPLED_FVM = CASE_DIR / "samples/fvm_slice_z0.pvd"
 COUPLED_VPM = CASE_DIR / "samples/vpm_slice_z0.pvd"
 
-# Field symbol and scale, colour map, and the label of the difference panel
+# Field labels, colour maps, and difference scales.
 QUANTITIES = {
     "velocity": (
         "u_x",
@@ -45,10 +44,10 @@ QUANTITIES = {
     ),
 }
 
-# Differences in amber, pale at zero, apart from the field colour maps
+# Absolute differences use amber, with white at zero.
 DIFFERENCE_COLOURS = colormaps["thesis_amber"].reversed()
 
-# Figure layout in cm, measured from the top of the canvas; the plotting area is centred
+# Fixed thesis layout, in cm.
 LEFT = 1.4
 WIDTH = 12.5 - 2 * LEFT
 PANEL = WIDTH * (WINDOW[3] - WINDOW[2]) / (WINDOW[1] - WINDOW[0])
@@ -74,16 +73,27 @@ def read_slice(path):
     return points[0, :, 0], points[:, 0, 1], velocity, vorticity
 
 
-# Every slice of the reference and the particles shares one lattice
+# The particle slice defines the comparison lattice.
 x_axis, y_axis = read_slice(saved_frames(COUPLED_VPM)[1][0])[:2]
 x, y = np.meshgrid(x_axis, y_axis)
+sample_points = np.column_stack((x.ravel(), y.ravel(), np.zeros(x.size)))
 cube = (np.abs(x) < CUBE_SIDE / 2) & (np.abs(y) < CUBE_SIDE / 2)
 in_fvm_domain = (x <= FVM_DOMAIN_BOUNDS[1]) & (np.abs(y) <= FVM_DOMAIN_BOUNDS[3])
 
 
-def reference_fields(path):
-    """Reference velocity and vorticity on the lattice."""
-    _, _, velocity, vorticity = read_slice(path)
+def reference_volume_fields(path):
+    """Fine-grid reference fields sampled onto the coupled slice lattice."""
+    mesh = pv.read(path)
+    velocity = mesh.cell_data["velocity"].copy()
+    vorticity = mesh.cell_data["vorticity"].copy()
+    mesh.cell_data.clear()
+    mesh.cell_data["velocity"] = velocity
+    mesh.cell_data["vorticity"] = vorticity
+    fields = pv.PolyData(sample_points).sample(mesh.cell_data_to_point_data(pass_cell_data=False))
+    valid = np.asarray(fields.point_data["vtkValidPointMask"], dtype=bool).reshape(x.shape)
+    velocity = fields.point_data["velocity"].reshape(*x.shape, 3) / FREESTREAM_SPEED
+    vorticity = fields.point_data["vorticity"][:, 2].reshape(x.shape) * CUBE_SIDE / FREESTREAM_SPEED
+    velocity[~valid], vorticity[~valid] = np.nan, np.nan
     velocity[cube], vorticity[cube] = np.nan, np.nan
     return velocity, vorticity
 
@@ -120,7 +130,7 @@ def comparison_figure(path, quantity, reference, coupled, difference, mean=False
             np.nanmax([reference[valid], coupled[valid]]),
         )
     else:
-        # Saturate at the wake's peak, which lies well below the wall layer's
+        # Set the vorticity scale from the wake rather than the wall layer.
         wake = valid & (x > CUBE_SIDE)
         high = max(np.percentile(np.abs([reference[wake], coupled[wake]]), 99.5), 0.01)
         low = -high
@@ -212,17 +222,17 @@ def write_table(name, rows, header):
 
 
 def main():
-    reference_times, reference_paths = saved_frames(REFERENCE)
+    reference_times, reference_paths = saved_frames(REFERENCE_FIELDS)
     fvm_times, fvm_paths = saved_frames(COUPLED_FVM)
     vpm_times, vpm_paths = saved_frames(COUPLED_VPM)
     coupled_times = match_saved_times(fvm_times, vpm_times)
     coupled_paths = [(fvm_paths[f], vpm_paths[v]) for f, v in zip(*coupled_times.indices)]
 
-    # Instantaneous states at every time both runs saved
+    # Compare instantaneous fields at the saved times shared by both runs.
     common = match_saved_times(reference_times, coupled_times.times)
     rows = []
     for time, r, c in zip(common.times, *common.indices):
-        reference = reference_fields(reference_paths[r])
+        reference = reference_volume_fields(reference_paths[r])
         coupled = coupled_fields(coupled_paths[c])
         velocity_difference, vorticity_difference = differences(reference, coupled)
         name = f"t{time:06.2f}"
@@ -243,13 +253,12 @@ def main():
         "time,velocity_rms_percent,velocity_max_percent,vorticity_rms,vorticity_max",
     )
 
-    # The turbulent wake decorrelates between the runs, so the developed flow is compared
-    # by its time mean; each run is averaged over all its own states
+    # Turbulent wakes decorrelate, so compare developed time means as well.
     def time_mean(times, paths, fields_of):
         states = [fields_of(path) for time, path in zip(times, paths) if DEVELOPED_FLOW <= time <= STATISTICS_END]
         return [np.mean([state[k] for state in states], axis=0) for k in range(2)], len(states)
 
-    reference, n_reference = time_mean(reference_times, reference_paths, reference_fields)
+    reference, n_reference = time_mean(reference_times, reference_paths, reference_volume_fields)
     coupled, n_coupled = time_mean(coupled_times.times, coupled_paths, coupled_fields)
     velocity_difference, vorticity_difference = differences(reference, coupled)
     comparison_figure(

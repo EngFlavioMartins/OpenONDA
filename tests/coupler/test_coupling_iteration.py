@@ -9,7 +9,6 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from openonda import fvm as fvm_api
 from openonda.coupler import CouplerConfig
 from openonda.coupler import coupling_iteration as iteration
 
@@ -61,12 +60,12 @@ def rig(monkeypatch):
 
     def advance(owner, *args):
         value = float(args[-1][0, 0])
-        assert np.array_equal(args[-2], old[0]), "the start-of-interval data changed"
+        assert np.array_equal(args[-1], boundary_data(value)[0])
         assert np.array_equal(owner._normal_velocity_boundary_condition, boundary_data(value)[1])
         assert np.array_equal(owner._normal_gradient_boundary_condition, boundary_data(value)[2])
         starts.append((fvm.step, fvm.time, fvm.field, vpm.strength, transfer.step))
         inputs.append(value)
-        fvm.step, fvm.time, fvm.field = fvm.step + 5, fvm.time + 0.05, value
+        fvm.step, fvm.time, fvm.field = fvm.step + 1, fvm.time + 0.05, value
         return 0.01
 
     monkeypatch.setattr(iteration, "advance_fvm", advance)
@@ -100,8 +99,8 @@ def test_cold_start_iterates_from_the_vpm_predictor(rig):
     rig.run()
     assert rig.inputs == pytest.approx([1.0, 0.01, 1e-4, 1e-6])
     assert rig.starts == [(10, 0.5, 7.0, 3.0, 4)] * 4
-    assert (rig.fvm.step, rig.transfer.step, rig.vpm.strength) == (15, 5, 5.0)
-    assert rig.outputs == [(15, 0.55, pytest.approx(1e-6))]
+    assert (rig.fvm.step, rig.transfer.step, rig.vpm.strength) == (11, 5, 5.0)
+    assert rig.outputs == [(11, 0.55, pytest.approx(1e-6))]
     diagnostics = rig.c._last_coupling_iteration_diagnostics
     assert diagnostics["converged"] and diagnostics["iterations"] == 4
     assert diagnostics["first_estimate"] == "vpm_predictor"
@@ -114,7 +113,7 @@ def test_previous_correction_converges_in_one_coupling_iteration(rig):
     rig.c.boundary_data_correction = boundary_data(-1.0)
     rig.run()
     assert rig.inputs == [0.0]
-    assert rig.outputs == [(15, 0.55, 0.0)]
+    assert rig.outputs == [(11, 0.55, 0.0)]
     diagnostics = rig.c._last_coupling_iteration_diagnostics
     assert diagnostics["iterations"] == 1 and diagnostics["first_estimate"] == "previous_correction"
     assert np.array_equal(rig.c.boundary_data_correction[0], boundary_data(-1.0)[0])
@@ -163,17 +162,6 @@ def test_new_start_and_backup_load_start_cold(monkeypatch):
     monkeypatch.setattr(driver, "load_coupled_backup", load)
     owner.load_backup("unused-backup")
     assert owner.vorticity_transfer.step == 12
-
-
-def test_coupling_iterations_reject_output_inside_a_coupling_interval():
-    case = SimpleNamespace(
-        output=fvm_api.Output(schedule=fvm_api.EverySteps(10)),
-        samplers=SimpleNamespace(samples=(SimpleNamespace(schedule=fvm_api.EverySteps(2)),)),
-    )
-    with pytest.raises(ValueError, match="coupling times"):
-        iteration.validate_output_schedules(case, 5, 0.05)
-    case.samplers.samples[0].schedule = fvm_api.EveryTime(0.1)
-    iteration.validate_output_schedules(case, 5, 0.05)
 
 
 @pytest.mark.integration

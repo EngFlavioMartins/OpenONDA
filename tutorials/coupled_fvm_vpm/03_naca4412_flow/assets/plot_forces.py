@@ -32,7 +32,7 @@ def main():
     )
     coupled_time, coupled = force_coefficients(CASE_DIR / "samples/forces_history.csv")
 
-    # Statistics of the developed flow and the coupled deviation from the reference
+    # Compare developed-flow statistics.
     expected = window_statistics(reference_time, reference)
     measured = window_statistics(coupled_time, coupled)
     print(f"Force coefficients on the planform area, t >= {STATISTICS_START:g} s")
@@ -60,7 +60,7 @@ def main():
         axis.axvspan(
             STATISTICS_START, coupled_time[-1], color=COLORS["background_light"], alpha=0.3, lw=0
         )
-        # Hide the impulsive-start peak
+        # Scale to the developed flow.
         steady = reference[name][reference_time >= 0.5 * STATISTICS_START]
         axis.set_ylim(0.5 * steady.min(), 1.5 * steady.max())
         axis.set_ylabel(name)

@@ -308,7 +308,11 @@ class EvolutionStepper:
             self.solver.step,
             self.solver.time,
             self.solver.elapsed_wall_time,
-            total_steps=getattr(self.solver, "_run_final_step", None),
+            total_steps=(
+                None
+                if getattr(self.solver, "_external_clock", False)
+                else getattr(self.solver, "_run_final_step", None)
+            ),
             n_particles=self.particles.n_particles_total,
         )
 

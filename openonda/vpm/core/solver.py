@@ -125,7 +125,7 @@ class VPMSolver:
 
     # Initialization
 
-    def __init__(self, case: VPMCase) -> None:
+    def __init__(self, case: VPMCase, *, external_clock: bool = False) -> None:
         """Validate a case and allocate its runtime workspaces.
 
         Parameters
@@ -134,6 +134,10 @@ class VPMSolver:
             Immutable VPM configuration. Its particle capacity controls all
             fixed-size device allocations; initial-condition builders are
             invoked by :meth:`run` or the first :meth:`advance`.
+        external_clock : bool, default=False
+            Let a coupled driver set each accepted physical time and shorten
+            the final interval to its own end time. The VPM cannot be run
+            independently when this option is enabled.
 
         Raises
         ------
@@ -155,6 +159,10 @@ class VPMSolver:
         """
         if not isinstance(case, VPMCase):
             raise TypeError("VPMSolver requires a VPMCase construction object")
+        if not isinstance(external_clock, bool):
+            raise TypeError("external_clock must be a bool")
+        if not external_clock:
+            case.run.n_steps(case.numerics.time_step_size)
         self.case = case
         self.numerics = case.numerics
         self.case_dir = Path(case.directory).resolve()
@@ -180,7 +188,8 @@ class VPMSolver:
         self._n_initial_particles = 0
         self._run_initial_step = 0
         self._run_initial_time = 0.0
-        self._run_final_step = case.n_steps
+        self._external_clock = bool(external_clock)
+        self._run_final_step = None if self._external_clock else case.n_steps
         self._run_started = False
         self._run_wall_started_at: float | None = None
         self._run_wall_finished_at: float | None = None
@@ -687,6 +696,9 @@ class VPMSolver:
                 f"Imposed VPM time {time!r} s does not follow {self.time!r} s "
                 f"by one time step of {self.time_step_size!r} s"
             )
+        if time is not None:
+            # An external clock may select a different step on every advance.
+            self._external_clock = True
         if not self._run_started:
             self.run_status = RunStatus.running
         step_started = perf_counter()
@@ -791,6 +803,8 @@ class VPMSolver:
             ``state_limit_action="stop"`` a nonfinite state instead returns
             with ``run_status="unstable"`` and the error in ``run_failure``.
         """
+        if self._external_clock:
+            raise RuntimeError("An externally clocked VPM solver must be advanced by its driver")
         if self._run_started:
             raise RuntimeError("VPMSolver.run() may be called only once")
         try:
@@ -920,7 +934,7 @@ class VPMSolver:
         :meth:`run` calls this after the last step; a driver that advances
         the solver itself calls it once at the end of the run. Both follow
         ``RunPlan.final_output``; a frame already written for this state is
-        not repeated. A run stopped before its final step also writes every
+        not repeated. A run stopped before its final time also writes every
         sampler that has no sample of the last state.
         """
         if not self.case.run.final_output:
@@ -929,7 +943,9 @@ class VPMSolver:
             self._refresh_diagnostics_for_output()
             if self._last_frame_state != self._state_key():
                 self.write_vtk()
-            if self.step < self._run_final_step:
+            final_time = float(self.case.run.end_time)
+            tolerance = max(1.0e-14, abs(final_time) * 1.0e-12)
+            if self.time < final_time - tolerance:
                 self._sampler_manager.write_all(OutputEvent.final)
             else:
                 self._sampler_manager.dispatch(OutputEvent.final)
@@ -1023,7 +1039,11 @@ class VPMSolver:
                     primary_failure = error
         self._particle_snapshot_buffers = {}
         if not self._run_started and self._initial_conditions_built:
-            status = RunStatus.completed if self.step >= self.case.n_steps else RunStatus.partial
+            final_time = float(self.case.run.end_time)
+            tolerance = max(1.0e-14, abs(final_time) * 1.0e-12)
+            status = (
+                RunStatus.completed if self.time >= final_time - tolerance else RunStatus.partial
+            )
             if self._evolution_failure is not None or mesh_failure is not None:
                 status = RunStatus.failed
             self.run_status = status
@@ -1100,6 +1120,16 @@ class VPMSolver:
             previous=self._accepted_state_metrics,
         )
         self.stabilization.lagrangian_cfl = self._accepted_state_metrics.strain_increment_infinity
+
+    def maximum_lagrangian_strain_rate(self) -> float:
+        """Return the maximum infinity-norm strain rate of the current particle field, in 1/s."""
+        self._refresh_particle_diagnostic_fields()
+        strain_rate = float(
+            measure_particle_state(self.particles, 1.0).metrics.strain_increment_infinity
+        )
+        if not np.isfinite(strain_rate) or strain_rate < 0.0:
+            raise FloatingPointError("The particle strain-rate field is not finite")
+        return strain_rate
 
     def _refresh_diagnostics_for_output(self) -> None:
         """Refresh dependencies before framework-owned diagnostics are sampled."""
