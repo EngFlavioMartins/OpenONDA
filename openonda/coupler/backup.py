@@ -369,6 +369,7 @@ def load_coupled_backup(
             ):
                 raise ValueError("The VPM time-step size differs from the coupled backup")
         coupler.fvm_time_step_size = coupler.fvm_solver.time_step_size
+        coupler._selected_interval_end = None
         if version == BACKUP_FORMAT_VERSION:
             coupler.vpm_time_step_size = float(info["vpm_time_step_size"])
         elif version == 17:

@@ -80,14 +80,8 @@ write_wing_stl(WING_STL, NACA_CODE, CHORD, SPAN, N_SECTION_POINTS, 1, ANGLE_OF_A
 FVM_MESH = msh.CartesianMesher(
     domain=msh.BoxDomain(
         bounds=FVM_DOMAIN_BOUNDS,
-        patches=msh.BoxPatches(
-            xmin="numericalBoundary",
-            xmax="numericalBoundary",
-            ymin="numericalBoundary",
-            ymax="numericalBoundary",
-            zmin="numericalBoundary",
-            zmax="numericalBoundary",
-        ),
+        # The whole box is the coupling interface: exact Cartesian faces, edges and corners.
+        patches=msh.BoxPatches.coupled("numericalBoundary"),
     ),
     surfaces=(msh.STLSurface(WING_STL, patch="wing"),),
     max_cell_size=CELL_SIZE,

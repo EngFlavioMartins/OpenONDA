@@ -55,6 +55,18 @@ class BoxPatches:
     xmin, xmax, ymin, ymax, zmin, zmax : str
         Non-empty, case-sensitive patch names for the corresponding outward
         domain face. Names need not encode a boundary-condition type.
+    coupling : tuple[str, ...], default=()
+        Patch names that form an FVM–VPM coupling interface. Every box face
+        carrying one of these names is meshed as an exact Cartesian plane with
+        undistorted, axis-aligned cells at its faces, edges and corners (see
+        :class:`~openonda.fvm.mesh.cartesian.mesher.CartesianMesher`). With any
+        coupling patch, the other box faces that no surface crosses are meshed
+        the same way.
+
+    Examples
+    --------
+    >>> BoxPatches.coupled("numericalBoundary").coupling
+    ('numericalBoundary',)
     """
 
     xmin: str
@@ -63,14 +75,33 @@ class BoxPatches:
     ymax: str
     zmin: str
     zmax: str
+    coupling: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"):
             object.__setattr__(self, name, _nonempty(getattr(self, name), f"patches.{name}"))
+        if isinstance(self.coupling, str):
+            raise TypeError("patches.coupling must be a tuple of patch names, not one string")
+        coupling = tuple(_nonempty(name, "patches.coupling") for name in self.coupling)
+        if len(set(coupling)) != len(coupling):
+            raise ValueError("patches.coupling contains a duplicate patch name")
+        unknown = sorted(set(coupling) - set(self.as_tuple()))
+        if unknown:
+            raise ValueError(f"patches.coupling names no box face: {unknown}")
+        object.__setattr__(self, "coupling", coupling)
+
+    @classmethod
+    def coupled(cls, name: str = "numericalBoundary") -> BoxPatches:
+        """Return six faces named ``name`` that together form one coupling interface."""
+        return cls(name, name, name, name, name, name, coupling=(name,))
 
     def as_tuple(self) -> tuple[str, str, str, str, str, str]:
         """Return names in ``xmin, xmax, ymin, ymax, zmin, zmax`` order."""
         return (self.xmin, self.xmax, self.ymin, self.ymax, self.zmin, self.zmax)
+
+    def coupling_sides(self) -> tuple[int, ...]:
+        """Return the side indices (``xmin`` = 0 ... ``zmax`` = 5) of coupling faces."""
+        return tuple(side for side, name in enumerate(self.as_tuple()) if name in self.coupling)
 
 
 @dataclass(frozen=True, slots=True)

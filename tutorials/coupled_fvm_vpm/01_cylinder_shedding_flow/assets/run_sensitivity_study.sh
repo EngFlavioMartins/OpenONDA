@@ -9,7 +9,13 @@
 # each FVM-only variant a copy of reference_flow/ in sensitivity/reference_{suffix}. The names below
 # are the names of the stored runs, so a section that is launched again resumes its runs from their
 # latest backups, and a run that already reached the end time is skipped. Suffix order (parsed by
-# assets/plot_sensitivity.py): _xd _h _dtf _ic _hp _bs _be _kappa _k _re _rep.
+# assets/plot_sensitivity.py): _xd _h _dtf _ic _hp _bs _be _kappa _tau _mc _rk _vf _co _oc _k _re _rep.
+#
+# Sections are grouped by what they isolate (see claude/cylinder_sensitivity_redesign_2026-10-31.md
+# of the OpenONDA project): D the FVM domain, I the interface at a fixed FVM and VPM, T the coupling
+# interval, V the particle side at a fixed FVM and interface, F the FVM side at a fixed interface
+# and particle set. Every new run holds the baseline cells, steps and Reynolds number unless the
+# section varies them.
 #
 # GPU memory. A coupled run at h = 0.04 m holds about 3 GB of particle images on the GPU; without
 # free memory the image sums fall back to the CPU, about 50 times slower. Before each coupled run the
@@ -81,7 +87,7 @@ reference() {
         || echo "$(date '+%F %T')  $directory stopped, see $directory/run.log"
 }
 
-SECTIONS=(b1 d c a e g h baseline k c_ref x t2 p e_old b f_fact r inset f)
+SECTIONS=(h g b1 n_interval box_conv i_transfer v_side f_side d c a e baseline k c_ref x t2 p e_old b f_fact r inset f)
 if [[ ${1:-} == --list ]]; then
     printf '%s\n' "${SECTIONS[@]}"
     exit 0
@@ -98,11 +104,78 @@ want() { [[ " ${selected[*]} " == *" $1 "* ]]; }
 # transfers, in the baseline never. kappa_max = 1 gives gamma = 0 (direct assignment of the
 # mismatch); kappa_max = 3 leaves the limit inactive. Isolates the strength correction at the wall
 # from the number of transfers per convective time.
+# The gain is gamma = min(kappa_max - 1, 1): kappa_max = 2 is the smallest value with full gain, so
+# kappa_max = 2, 3 and 10 separate the gain from the bound on the corrected strength.
 if want b1; then
     run 2.4 2 8.75 _kappa1 --max-strength-ratio 1.0
     run 2.4 5 8.75 _kappa1 --max-strength-ratio 1.0
     run 2.4 2 8.75 _kappa3 --max-strength-ratio 3.0
     run 2.4 5 8.75 _kappa3 --max-strength-ratio 3.0
+    run 2.4 2 8.75 _kappa2 --max-strength-ratio 2.0
+    run 2.4 5 8.75 _kappa2 --max-strength-ratio 2.0
+    run 2.4 2 8.75 _kappa10 --max-strength-ratio 10.0
+    run 2.4 5 8.75 _kappa10 --max-strength-ratio 10.0
+fi
+
+# ------------------------------------------------------------------------------------------------
+# Sections added on 31 October 2026 (redesign: isolate the interface from the FVM and the VPM)
+# ------------------------------------------------------------------------------------------------
+
+# T. Coupling interval at the baseline FVM step, N = 1 to 6, at the default and at an inactive
+# strength limit. The stored interval series (N = 2, 4, 5 and the dt_FVM variants) gives a coupling
+# error that grows as the interval shrinks and collapses on dt_VPM; this section decides whether
+# the per-transfer error is the limiter (curves separate) or lies elsewhere (curves coincide).
+# N = 6 is the largest admissible interval (Lambda = 0.93); N = 1 transfers every FVM step.
+if want n_interval; then
+    run 2.4 1 8.75 ""
+    run 2.4 3 8.75 ""
+    run 2.4 6 8.75 ""
+    run 2.4 1 8.75 _kappa3 --max-strength-ratio 3.0
+    run 2.4 3 8.75 _kappa3 --max-strength-ratio 3.0
+    run 2.4 4 8.75 _kappa3 --max-strength-ratio 3.0
+    run 2.4 6 8.75 _kappa3 --max-strength-ratio 3.0
+fi
+
+# D. FVM domain beyond the baseline margin. The lateral series 1.4, 1.6, 1.8, 2.4 D has not
+# flattened at 2.4 D (lift-amplitude coupling error -5.4, -3.6, -2.0, -1.4 %); two wider boxes
+# show where the domain error ends and whether the baseline carries any. The downstream face
+# keeps the margin + 2 D rule. Mostly CPU: the FVM slab grows, the particle set hardly does.
+if want box_conv; then
+    run 3.2 5 8.75 ""
+    run 4.0 5 8.75 ""
+fi
+
+# I. Transfer thresholding and conservation at a fixed FVM, particle set and interval. The removal
+# threshold tau_transfer is at least the GBD floor (0.01 1/s); the moment-correction cap is in
+# (0, 1]. Baseline 0.05 1/s and 0.08.
+if want i_transfer; then
+    run 2.4 5 8.75 _tau0.01 --transfer-removal-threshold 0.01
+    run 2.4 5 8.75 _tau0.2 --transfer-removal-threshold 0.2
+    run 2.4 5 8.75 _mc0.02 --moment-correction-fraction 0.02
+    run 2.4 5 8.75 _mc0.3 --moment-correction-fraction 0.3
+    run 2.4 2 8.75 _tau0.2 --transfer-removal-threshold 0.2    # at the short interval, where kappa saturates
+fi
+
+# V. Particle side at the baseline FVM and interface: particles twice as coarse as the cells (the
+# cheapest run of the study; the span follows the particle spacing, so the FVM cell is extruded
+# to 0.08 m), the integrator, and the removal floor of weak diffused particles.
+if want v_side; then
+    run 2.4 5 8.75 _hp0.08 --particle-spacing 0.08
+    run 2.4 5 8.75 _rk4 --vpm-integrator rk4
+    run 2.4 5 8.75 _vf0.001 --vorticity-floor 0.001
+    run 2.4 5 8.75 _vf0.1 --vorticity-floor 0.1
+fi
+
+# F. FVM side at the baseline interface and particle set: PIMPLE outer correctors at the fixed
+# step, and the Courant controller. With --max-courant the FVM step argument is the initial and
+# maximum step and N the nominal ratio, so dt_VPM <= N dt_FVM,max = 0.04 s; the coupler shortens
+# the interval with the FVM Courant step, so these two runs show what a user gets with the
+# controller on rather than isolating one parameter.
+if want f_side; then
+    run 2.4 5 8.75 _oc1 --fvm-outer-correctors 1
+    run 2.4 5 8.75 _oc3 --fvm-outer-correctors 3
+    run 2.4 2 8.75 _dtf0.02_co0.5 --fvm-time-step 0.02 --max-courant 0.5
+    run 2.4 2 8.75 _dtf0.02_co0.9 --fvm-time-step 0.02 --max-courant 0.9
 fi
 
 # d. Coupling interval at the baseline FVM step: two more levels, so that the trend with

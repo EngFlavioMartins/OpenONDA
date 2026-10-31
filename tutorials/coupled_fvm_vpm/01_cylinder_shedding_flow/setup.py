@@ -51,7 +51,15 @@ FVM_SUBSTEPS = 5  # per particle step
 COUPLING_ITERATIONS = 6  # maximum FVM solves per particle step
 COUPLING_TOLERANCE = 1.0e-5  # boundary velocity and tangential-gradient tolerance
 MAX_STRENGTH_RATIO = 1.8  # transfer strength-correction limit
+TRANSFER_REMOVAL_THRESHOLD = 0.05  # 1/s, removal threshold of the replacement region
+MOMENT_CORRECTION_FRACTION = 0.08  # largest moment correction, fraction of transferred strength
 END_TIME = 100.0  # s
+
+# Solver settings varied by the sensitivity study; the FVM step is fixed unless a Courant
+# target is given, in which case FVM_TIME_STEP is the initial and maximum step
+VPM_INTEGRATORS = {"rk2": vpm.RK2, "ssprk3": vpm.SSPRK3, "rk4": vpm.RK4}
+VPM_INTEGRATOR = "rk2"
+FVM_OUTER_CORRECTORS = 2
 
 # Output
 FORCE_INTERVAL = 0.04  # s
@@ -91,8 +99,19 @@ def build_case(
     max_strength_ratio=MAX_STRENGTH_RATIO,
     blend_start=BLEND_START,
     blend_end=BLEND_END,
+    transfer_removal_threshold=TRANSFER_REMOVAL_THRESHOLD,
+    moment_correction_fraction=MOMENT_CORRECTION_FRACTION,
+    vpm_integrator=VPM_INTEGRATOR,
+    vorticity_floor=VORTICITY_FLOOR,
+    max_courant=None,
+    fvm_outer_correctors=FVM_OUTER_CORRECTORS,
 ):
-    """Return the FVM case, the particle case and the coupling settings."""
+    """Return the FVM case, the particle case and the coupling settings.
+
+    ``max_courant`` enables the FVM Courant controller: ``fvm_time_step`` is then the initial
+    and the maximum FVM step, and ``fvm_substeps * fvm_time_step`` the maximum coupling
+    interval, which the coupler shortens with the FVM Courant step.
+    """
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
 
     # One FVM cell and one particle layer across the span make the flow planar.
@@ -123,6 +142,8 @@ def build_case(
         ymax="numericalBoundary",
         zmin="zmin",
         zmax="zmax",
+        # The x and y faces form the coupling interface, meshed as exact Cartesian planes.
+        coupling=("numericalBoundary",),
     )
     slab = msh.CartesianMesher(
         domain=msh.BoxDomain(
@@ -166,13 +187,22 @@ def build_case(
         directory=CASE_DIR,
         numerics=fvm.Numerics(
             time_step_size=fvm_time_step,
+            time_step_control=(
+                None
+                if max_courant is None
+                else fvm.MaximumCourantTimeStep(
+                    maximum=max_courant, maximum_time_step_size=fvm_time_step
+                )
+            ),
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
             schemes=fvm.DiscretizationConfig(time_scheme="backward"),
             linear=fvm.LinearSolverConfig(
                 pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005
             ),
             pimple=fvm.PimpleConfig(
-                n_outer_correctors=2, velocity_relaxation=0.7, pressure_relaxation=0.3
+                n_outer_correctors=fvm_outer_correctors,
+                velocity_relaxation=0.7,
+                pressure_relaxation=0.3,
             ),
             execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
@@ -208,7 +238,7 @@ def build_case(
         numerics=vpm.Numerics(
             time_step_size=coupling_time_step_size,
             freestream_velocity=FREESTREAM_VELOCITY,
-            integrator=vpm.RK2(),
+            integrator=VPM_INTEGRATORS[vpm_integrator](),
             # Full 3D induction of the particle layer and all its images in the span planes
             induction=vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=-half_span, z_max=half_span),
             # Laminar grid-based diffusion on the particle lattice
@@ -217,7 +247,7 @@ def build_case(
                 padding=max(5.0, diffusion_stages + 1.0),
                 kinematic_viscosity=kinematic_viscosity,
                 threshold_mode="absolute",
-                threshold=VORTICITY_FLOOR * particle_spacing**3,
+                threshold=vorticity_floor * particle_spacing**3,
                 core_radius_ratio=1.0,
             ),
             turbulence=vpm.TurbulenceConfig.inviscid(),
@@ -260,6 +290,8 @@ def build_case(
         normal_velocity_tolerance=coupling_tolerance,
         normal_gradient_tolerance=coupling_tolerance,
         max_strength_ratio=max_strength_ratio,
+        transfer_removal_threshold=transfer_removal_threshold,
+        max_moment_correction_fraction=moment_correction_fraction,
         transfer_diagnostic_interval_steps=round(
             TRANSFER_DIAGNOSTIC_INTERVAL / coupling_time_step_size
         ),
@@ -341,6 +373,45 @@ if __name__ == "__main__":
         default=BLEND_END,
         help="depth delta_1 at which the blending weight reaches one [interface cells]",
     )
+    # Interface parameters beyond the geometry: thresholding and conservation of the transfer
+    parser.add_argument(
+        "--transfer-removal-threshold",
+        type=float,
+        default=TRANSFER_REMOVAL_THRESHOLD,
+        help="removal threshold tau_transfer of the replacement region [1/s]",
+    )
+    parser.add_argument(
+        "--moment-correction-fraction",
+        type=float,
+        default=MOMENT_CORRECTION_FRACTION,
+        help="largest moment correction as a fraction of the transferred strength, in (0, 1]",
+    )
+    # Particle-side parameters at a fixed FVM and interface
+    parser.add_argument(
+        "--vpm-integrator",
+        choices=sorted(VPM_INTEGRATORS),
+        default=VPM_INTEGRATOR,
+        help="particle time integrator",
+    )
+    parser.add_argument(
+        "--vorticity-floor",
+        type=float,
+        default=VORTICITY_FLOOR,
+        help="vorticity below which diffused particles are removed [1/s]",
+    )
+    # FVM-side parameters at a fixed interface and particle set
+    parser.add_argument(
+        "--max-courant",
+        type=float,
+        help="FVM Courant target; the FVM step then adapts below --fvm-time-step, and the"
+        " coupling interval below --fvm-substeps times it",
+    )
+    parser.add_argument(
+        "--fvm-outer-correctors",
+        type=int,
+        default=FVM_OUTER_CORRECTORS,
+        help="PIMPLE outer correctors per FVM step",
+    )
     arguments = parser.parse_args()
 
     # Refining the cells refines the steps at constant Courant number, and the particles with them
@@ -366,6 +437,12 @@ if __name__ == "__main__":
         arguments.max_strength_ratio,
         arguments.blend_start,
         arguments.blend_end,
+        arguments.transfer_removal_threshold,
+        arguments.moment_correction_fraction,
+        arguments.vpm_integrator,
+        arguments.vorticity_floor,
+        arguments.max_courant,
+        arguments.fvm_outer_correctors,
     )
     with coupler.CoupledSolver(flow, particles, coupling) as solver:
         # The startup vortex behind the cylinder; a restart replaces it with the backup

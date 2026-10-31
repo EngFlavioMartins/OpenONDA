@@ -10,6 +10,7 @@ exactly-once delivery and restart history trimming.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 import math
 from numbers import Real
 from typing import Protocol
@@ -160,7 +161,17 @@ class EveryTime:
         if time + epsilon < self.start_time:
             return self.start_time
         bucket = math.floor((time - self.start_time + epsilon) / self.interval)
-        return self.start_time + (bucket + 1) * self.interval
+        return self._cadence_time(bucket + 1)
+
+    def _cadence_time(self, index: int) -> float:
+        """Return ``start_time + index * interval`` rounded once from exact decimals.
+
+        The decimal values of the configured floats are summed exactly, so
+        an interval of 0.1 s gives 0.3 rather than 0.30000000000000004 and
+        the written output times keep the digits of the configuration.
+        """
+        start = Decimal(repr(self.start_time))
+        return float(start + index * Decimal(repr(self.interval)))
 
     def describe(self) -> str:
         """Return a compact human-readable cadence."""

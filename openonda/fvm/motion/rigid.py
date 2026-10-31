@@ -342,6 +342,8 @@ class RigidMeshMotion:
                     boundary["normal_velocity_field"] = normal_velocity
                     boundary["tangential_velocity_normal_gradient_field"] = np.zeros((len(area), 3))
                     boundary["max_removed_normal_gradient_normal_component"] = 0.0
+                    boundary.pop("inflow_velocity_field", None)
+                    boundary.pop("inflow_weight_field", None)
                     update_mixed_velocity_boundary(
                         solver.velocity, boundary, self._mesh_data, self._geo_data
                     )
@@ -351,6 +353,8 @@ class RigidMeshMotion:
                         "normal_velocity_field",
                         "tangential_velocity_normal_gradient_field",
                         "max_removed_normal_gradient_normal_component",
+                        "inflow_velocity_field",
+                        "inflow_weight_field",
                     ):
                         boundary.pop(key, None)
                 solver.volumetric_face_flux[faces] = self.mesh_face_flux[faces]

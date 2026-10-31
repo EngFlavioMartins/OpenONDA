@@ -179,7 +179,10 @@ def test_adaptive_coupling_lands_on_events_and_reselects_fvm_steps(tmp_path):
     np.testing.assert_allclose(
         sorted(sample_times), [0.0, 0.07, 0.14, 0.21, 0.28, 0.35], rtol=0.0, atol=1.0e-12
     )
-    assert not np.any(np.isclose(times, 0.07, rtol=0.0, atol=1.0e-12))
+    # FVM output times are coupling times too, so no FVM substep is cut short
+    # to reach them, and every accepted time keeps its configured decimals.
+    assert np.any(times == 0.07)
+    assert all(time == round(time, 10) for time in times)
 
     backup_times = sorted(
         json.loads((path / "checkpoint_info.json").read_text())["time"]
@@ -187,25 +190,26 @@ def test_adaptive_coupling_lands_on_events_and_reselects_fvm_steps(tmp_path):
     )
     np.testing.assert_allclose(backup_times, [0.1, 0.2, 0.3, 0.35], rtol=0.0, atol=1.0e-12)
     first_backup = json.loads(
-        (tmp_path / "solution/coupled/coupled_000001/checkpoint_info.json").read_text()
+        (tmp_path / "solution/coupled/coupled_000002/checkpoint_info.json").read_text()
     )
+    assert first_backup["time"] == 0.1
     assert (first_backup["step"], first_backup["fvm_step"], first_backup["vpm_step"]) == (
-        1,
         2,
-        1,
+        2,
+        2,
     )
-    assert first_backup["fvm_time_step_size"] == pytest.approx(substep_sizes[0][-1])
-    assert first_backup["vpm_time_step_size"] == pytest.approx(0.1)
+    assert first_backup["fvm_time_step_size"] == pytest.approx(substep_sizes[1][-1])
+    assert first_backup["vpm_time_step_size"] == pytest.approx(0.03)
 
     particle_frame_times = [time for time, _ in read_collection(tmp_path / "solution/vpm.pvd")]
     for event_time in (0.13, 0.26):
         assert np.any(np.isclose(particle_frame_times, event_time, rtol=0.0, atol=1.0e-12))
 
     with coupler.CoupledSolver(flow, particles, config) as restored:
-        restored.load_backup(tmp_path / "solution/coupled/coupled_000001")
-        assert restored.time == pytest.approx(0.1)
-        assert restored.fvm_solver.time_step_size == pytest.approx(substep_sizes[0][-1])
-        assert restored.vpm_solver.time_step_size == pytest.approx(0.1)
+        restored.load_backup(tmp_path / "solution/coupled/coupled_000002")
+        assert restored.time == 0.1
+        assert restored.fvm_solver.time_step_size == pytest.approx(substep_sizes[1][-1])
+        assert restored.vpm_solver.time_step_size == pytest.approx(0.03)
 
 
 def test_shared_cfl_step_grows_to_its_configured_maximum(tmp_path):

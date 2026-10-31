@@ -91,6 +91,8 @@ with fvm.FVMSolver(case) as solver:
 
 `CartesianMesher` refines with `BoxRefinement` regions, `PatchRefinement` on a named surface and `FeatureRefinement` along sharp edges, and adds one automatic wrapper layer at walls. Cell sizes are $H/2^\ell$ with $H$ the background `max_cell_size`: a patch target selects the first size at or below the request, a box target a size strictly below it. `CartesianMesher.effective_cell_size(target)` previews the result. The [STL body](../tutorials/fvm/cartesian_mesher/README.md) shows a complete mesher; the [cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) shows an extruded body-fitted 2-D mesh.
 
+For an FVM–VPM coupling, declare the outer faces as coupling patches: `BoxPatches.coupled("numericalBoundary")` for the whole box, or `BoxPatches(..., coupling=("numericalBoundary",))` when other faces carry other patches. Every coupling face, and every other box face that no surface crosses, is then meshed as an exact Cartesian plane, with undistorted axis-aligned cells at its faces, edges and corners. The mesher keeps the octree lattice it would place for the box, so the cells around the bodies are unchanged; an axis with an odd number of background cells grows outward by half a cell on each side to put its faces on that lattice. Surfaces must stay 8 background cells from a coupling face and must not cross it. `mesh_generation["coupling_box"]` records the checked geometry. The coupler logs the outer-cell geometry at start-up and warns if the outer patch is not coupling-grade.
+
 A generated mesh is saved next to the case as `assets/<name>_mesh.npz` (with a `.vtu` copy for ParaView) and reused while its inputs are unchanged. The solver checks cell volumes and closure on construction.
 
 Refine wall-normal spacing where viscous shear matters; the [flat plate](../tutorials/fvm/boundary_layer/README.md) uses a stretched wall-normal grid.
@@ -119,7 +121,7 @@ A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..
 | `DiscretizationConfig(time_scheme=...)` | `euler_implicit` (first order) or `backward` (second-order BDF). |
 | `convection_scheme` | `upwind` (robust, dissipative), `central` (accurate when resolved, may oscillate), bounded `limited_linear` (default), `linear_upwind`, `lust`, `van_leer`, `muscl`, `minmod`, `superbee`. |
 | `gradient_scheme` | `lsq` (default) or `gauss`. |
-| `Numerics(time_step_control=MaximumCourantTimeStep(maximum, maximum_time_step_size))` | Adapts the step to a Courant limit; physical-time output events are reached exactly. |
+| `Numerics(time_step_control=MaximumCourantTimeStep(maximum, maximum_time_step_size))` | Adapts the step to a Courant limit; physical-time output events are reached exactly, at their configured decimal times. |
 
 `LinearSolverConfig` sets the momentum and pressure solver tolerances; `ComputeConfig(operator_backend="numba")` speeds up the discrete operators. `LinearSolverConfig(momentum_preconditioner=...)` selects the preconditioner of the BiCGStab momentum solve:
 

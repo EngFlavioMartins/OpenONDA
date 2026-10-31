@@ -81,6 +81,8 @@ def build_case():
         ymax="numericalBoundary",
         zmin="zmin",
         zmax="zmax",
+        # The x and y faces form the coupling interface, meshed as exact Cartesian planes.
+        coupling=("numericalBoundary",),
     )
     slab = msh.CartesianMesher(
         domain=msh.BoxDomain(

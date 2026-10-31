@@ -23,7 +23,9 @@ from assets.plot_forces import DEVELOPED_SHEDDING, read_forces, shedding_statist
 from assets.shedding_phase import phase_averaged_difference, shedding_phase
 from setup import BLEND_END, BLEND_START, BOX_MARGIN, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY
 from setup import FVM_SUBSTEPS
-from setup import FVM_TIME_STEP, MAX_STRENGTH_RATIO, REYNOLDS_NUMBER, TRANSFER_INSET
+from setup import FVM_OUTER_CORRECTORS, FVM_TIME_STEP, MAX_STRENGTH_RATIO, MOMENT_CORRECTION_FRACTION
+from setup import REYNOLDS_NUMBER, TRANSFER_INSET, TRANSFER_REMOVAL_THRESHOLD, VORTICITY_FLOOR
+from setup import VPM_INTEGRATOR
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 ERROR_BAND = 2.0  # %
@@ -50,6 +52,12 @@ BASELINE = {
     "max_strength_ratio": MAX_STRENGTH_RATIO,
     "blend_start": float(BLEND_START),  # cells below the transfer surface
     "blend_end": float(BLEND_END),  # cells below the transfer surface
+    "transfer_removal_threshold": TRANSFER_REMOVAL_THRESHOLD,  # 1/s
+    "moment_correction_fraction": MOMENT_CORRECTION_FRACTION,
+    "vpm_integrator": VPM_INTEGRATOR,
+    "vorticity_floor": VORTICITY_FLOOR,  # 1/s
+    "max_courant": 0.0,  # fixed FVM step; a Courant target enables the FVM step controller
+    "fvm_outer_correctors": FVM_OUTER_CORRECTORS,
     "coupling_iterations": 0,  # tolerance-driven coupling iterations
     "repeat": 0,
     "reynolds_number": REYNOLDS_NUMBER,
@@ -72,6 +80,10 @@ RUN_NAME = re.compile(
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
     r"(?:_bs(?P<blend_start>[\d.]+))?(?:_be(?P<blend_end>[\d.]+))?"
     r"(?:_kappa(?P<max_strength_ratio>[\d.]+))?"
+    r"(?:_tau(?P<transfer_removal_threshold>[\d.]+))?"
+    r"(?:_mc(?P<moment_correction_fraction>[\d.]+))?"
+    r"(?:_(?P<vpm_integrator>rk2|ssprk3|rk4))?(?:_vf(?P<vorticity_floor>[\d.]+))?"
+    r"(?:_co(?P<max_courant>[\d.]+))?(?:_oc(?P<fvm_outer_correctors>\d+))?"
     r"(?:_k(?P<coupling_iterations>\d+))?(?:_re(?P<reynolds_number>[\d.]+))?"
     r"(?:_rep(?P<repeat>\d+))?"
 )

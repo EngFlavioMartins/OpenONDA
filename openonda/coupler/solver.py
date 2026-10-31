@@ -26,6 +26,7 @@ from .boundary import (
     advance_fvm,
     evaluate_vpm_boundary,
     initialize_vpm_boundary_history,
+    report_coupling_patch_quality,
     update_boundary_history_after_replacement,
 )
 from .config import CouplerConfig
@@ -355,6 +356,8 @@ class CoupledSolver:
             else None
         )
         self.maximum_coupling_time_step_size = self.vpm_time_step_size
+        # (start time, exact end time) of the selected interval when it lands on a deadline
+        self._selected_interval_end: tuple[float, float] | None = None
         self.end_time = float(self.fvm_case.run.end_time)
         self.kinematic_viscosity = float(self.fvm_case.numerics.transport.kinematic_viscosity)
         self.density = float(self.fvm_case.numerics.transport.density)
@@ -519,6 +522,10 @@ class CoupledSolver:
         if step == self.step:
             return float(self.time)
         if step == self.step + 1:
+            # An interval that reaches an event or the end time ends exactly on it.
+            landing = self._selected_interval_end
+            if landing is not None and landing[0] == self.time:
+                return landing[1]
             return float(self.time + self.vpm_time_step_size)
         raise ValueError("The coupled clock exposes only the current and next accepted times")
 
@@ -707,6 +714,11 @@ class CoupledSolver:
             ),
             np.asarray(fvm.gather_boundary_face_normal(patch)).reshape(-1, 3),
             np.asarray(fvm.gather_boundary_face_area(patch)).ravel(),
+        )
+        report_coupling_patch_quality(
+            self,
+            self._face_geometry[1],
+            np.asarray(fvm.gather_boundary_face_owner_offset(patch)).reshape(-1, 3),
         )
         if self.step == 0 and not self._restart_loaded:
             self._last_transfer_result, _ = self._transfer_vorticity_to_vpm(*self._face_geometry)
@@ -945,10 +957,12 @@ class CoupledSolver:
         return self.frame.step_velocity(np.asarray([self.coupling_time(step)]))
 
     def _coupling_event_schedules(self) -> tuple:
-        """Return schedules that must land on VPM coupling times."""
-        schedules = []
-        if self.config.max_coupling_iterations > 1:
-            schedules.extend(self.fvm_solver._run_event_schedules())
+        """Return schedules that must land on VPM coupling times.
+
+        The FVM schedules are included as well: an FVM-only output time inside
+        a coupling interval would otherwise split it into a short FVM substep.
+        """
+        schedules = list(self.fvm_solver._run_event_schedules())
         schedules.append(self.vpm_case.logging.schedule)
         if self.vpm_case.output.schedule is not None:
             schedules.append(self.vpm_case.output.schedule)
@@ -1007,8 +1021,11 @@ class CoupledSolver:
             ),
             default=self.end_time,
         )
+        deadline = self.end_time if remaining <= next_event - self.time else float(next_event)
         event_distance = min(remaining, next_event - self.time)
         selected_interval = event_aligned_time_step_size(maximum_interval, event_distance)
+        lands = selected_interval >= event_distance - max(1.0e-14, abs(deadline) * 1.0e-12)
+        self._selected_interval_end = (float(self.time), deadline) if lands else None
         self.fvm_time_step_size = fvm_limit
         self.vpm_time_step_size = selected_interval
         if self._is_root:

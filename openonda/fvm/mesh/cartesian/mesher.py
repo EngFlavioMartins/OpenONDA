@@ -45,6 +45,16 @@ from .config import (
     PatchRefinement,
     STLSurface,
 )
+from .coupling_box import (
+    BLEND_LAYERS,
+    EXACT_LAYERS,
+    MARGIN_CELLS,
+    clip_to_box,
+    exact_side_layout,
+    restore_exact_zone,
+    validate_exact_sides,
+    workflow_bounds,
+)
 from .features import classify_features
 from .report import (
     GenerationReport,
@@ -591,6 +601,19 @@ class CartesianMesher:
         and the outer domain expands to background-cell planes. Embedded surface
         coordinates are never scaled or translated.
 
+    Coupling boxes
+    --------------
+    When ``domain.patches.coupling`` names coupling patches, every box side
+    that no surface crosses is meshed as an exact Cartesian plane, with
+    undistorted, axis-aligned cells in the first layers at its faces, edges and
+    corners (see :mod:`~openonda.fvm.mesh.cartesian.coupling_box`). The octree
+    keeps the lattice it would place for the box; an axis with an odd number of
+    background cells grows outward by half a cell on each side so that its
+    faces lie on that lattice. ``cell_size_anchor`` defaults to
+    ``max_cell_size``. Surfaces must not cross a coupling side and must stay
+    ``SURFACE_CLEARANCE_CELLS`` background cells from every exact side. The
+    built mesh is checked and ``mesh_generation["coupling_box"]`` records it.
+
     Notes
     -----
     Construction validates inputs but does not run native extraction. The first
@@ -680,6 +703,11 @@ class CartesianMesher:
         )
         if unknown_local:
             raise ValueError(f"patch refinement refers to unknown patches: {sorted(unknown_local)}")
+        coupling_sides = domain.patches.coupling_sides()
+        if coupling_sides and cell_size_anchor is None:
+            # Exact coupling planes are lattice planes: anchor the lattice at the
+            # background spacing so that the box resolves outward onto it.
+            cell_size_anchor = max_cell_size
         if cell_size_anchor is not None:
             cell_size_anchor = float(cell_size_anchor)
             if not math.isfinite(cell_size_anchor) or cell_size_anchor <= 0.0:
@@ -744,6 +772,50 @@ class CartesianMesher:
                 raise ValueError(f"refinement {refinement.name!r} must lie inside domain")
         self.requested_domain = requested_domain
         self.domain = domain
+        # Coupling boxes: exact Cartesian sides, meshed on an enlarged workflow
+        # domain and clipped back (see ``coupling_box``).
+        self._lattice_origin: tuple[float, float, float] | None = None
+        if coupling_sides:
+            # Keep the octree lattice that the workflow would place for this box
+            # (centred on it): the meshing of thin surface features depends on it.
+            # Exact sides must be lattice planes, so an axis with an odd number of
+            # background cells grows outward by half a cell on each side.
+            bounds = np.asarray(domain.bounds, dtype=np.float64)
+            centre = 0.5 * (bounds[::2] + bounds[1::2])
+            natural = []
+            for axis in range(3):
+                lower = (bounds[2 * axis] - centre[axis]) / background_cell_size
+                upper = (bounds[2 * axis + 1] - centre[axis]) / background_cell_size
+                natural.extend(
+                    (
+                        centre[axis] + background_cell_size * math.floor(lower + 1.0e-9),
+                        centre[axis] + background_cell_size * math.ceil(upper - 1.0e-9),
+                    )
+                )
+            domain = BoxDomain(tuple(float(value) for value in natural), domain.patches)
+            self.domain = domain
+            self._lattice_origin = tuple(float(value) for value in centre)
+            self.exact_sides, self.crossed_sides = exact_side_layout(
+                np.asarray(domain.bounds, dtype=np.float64),
+                coupling_sides,
+                [np.asarray(surface.bounds, dtype=np.float64) for surface in surfaces],
+                background_cell_size,
+            )
+            self._workflow_domain = BoxDomain(
+                tuple(
+                    float(value)
+                    for value in workflow_bounds(
+                        np.asarray(domain.bounds, dtype=np.float64),
+                        self.exact_sides,
+                        background_cell_size,
+                    )
+                ),
+                domain.patches,
+            )
+        else:
+            self.exact_sides, self.crossed_sides = (), ()
+            self._workflow_domain = domain
+        self._template_points: np.ndarray | None = None
         self.surfaces = surfaces
         self.max_cell_size = max_cell_size
         self.background_cell_size = background_cell_size
@@ -872,7 +944,7 @@ class CartesianMesher:
             raise ValueError(f"Unsupported Cartesian-mesher checkpoint: {stop_after!r}")
         with mesh_stage("template generation") as progress:
             stage_mesh = build_cfmesh_template(
-                domain=self.domain.bounds,
+                domain=self._workflow_domain.bounds,
                 surfaces=tuple(surface.surface_data for surface in self.surfaces),
                 max_cell_size=self.background_cell_size,
                 boundary_cell_size=self.boundary_cell_size,
@@ -882,6 +954,15 @@ class CartesianMesher:
                 domain_patch_names=self.domain.patches.as_tuple(),
                 surface_patch_names=tuple(surface.patch for surface in self.surfaces),
                 exact_cell_sizes=self.cell_size_anchor is not None,
+                root_lattice_spacing=self.background_cell_size if self.exact_sides else None,
+                root_lattice_origin=self._lattice_origin,
+            )
+            # Template points keep their indices through the workflow; the exact
+            # coupling sides restore them (``restore_exact_zone``).
+            self._template_points = (
+                np.asarray(stage_mesh["vertex_position"], dtype=np.float64).copy()
+                if self.exact_sides
+                else None
             )
             progress.details(
                 cells=stage_mesh.get("n_cells"),
@@ -891,6 +972,8 @@ class CartesianMesher:
         generation = stage_mesh["mesh_generation"]
         generation["requested_domain_bounds"] = list(self.requested_domain.bounds)
         generation["resolved_domain_bounds"] = list(self.domain.bounds)
+        if self.exact_sides:
+            generation["workflow_domain_bounds"] = list(self._workflow_domain.bounds)
         generation["cell_size_anchor"] = self.cell_size_anchor
         generation["resolved_background_cell_size"] = self.background_cell_size
         generation["resolved_box_sizes"] = {
@@ -924,7 +1007,7 @@ class CartesianMesher:
             with mesh_stage("surface projection"):
                 project_cfmesh_template(
                     stage_mesh,
-                    domain=self.domain.bounds,
+                    domain=self._workflow_domain.bounds,
                     domain_patch_names=self.domain.patches.as_tuple(),
                     surfaces=tuple(surface.surface_data for surface in self.surfaces),
                     surface_patch_names=tuple(surface.patch for surface in self.surfaces),
@@ -939,7 +1022,7 @@ class CartesianMesher:
                 with mesh_stage("patch assignment"):
                     assign_cfmesh_patches(
                         stage_mesh,
-                        domain=self.domain.bounds,
+                        domain=self._workflow_domain.bounds,
                         domain_patch_names=self.domain.patches.as_tuple(),
                         surfaces=tuple(surface.surface_data for surface in self.surfaces),
                         surface_patch_names=tuple(surface.patch for surface in self.surfaces),
@@ -955,7 +1038,7 @@ class CartesianMesher:
                 with mesh_stage("patch point remapping"):
                     edge_mapper, surface_untangler = remap_cfmesh_patch_points(
                         stage_mesh,
-                        domain=self.domain.bounds,
+                        domain=self._workflow_domain.bounds,
                         domain_patch_names=self.domain.patches.as_tuple(),
                         surfaces=tuple(surface.surface_data for surface in self.surfaces),
                         surface_patch_names=tuple(surface.patch for surface in self.surfaces),
@@ -1000,6 +1083,41 @@ class CartesianMesher:
                 }
         return stage_mesh
 
+    def _apply_exact_sides(self, mesh_data: MeshData) -> MeshData:
+        """Restore the template lattice at the exact sides and clip to the requested box."""
+        if self._template_points is None:
+            raise RuntimeError("Exact coupling sides require the octree-template points")
+        bounds = np.asarray(self.domain.bounds, dtype=np.float64)
+        with mesh_stage("coupling box") as progress:
+            restored = restore_exact_zone(
+                mesh_data,
+                self._template_points,
+                bounds,
+                self.exact_sides,
+                self.crossed_sides,
+                self.background_cell_size,
+            )
+            generation = mesh_data["mesh_generation"]
+            clipped = clip_to_box(
+                mesh_data,
+                bounds,
+                self.exact_sides,
+                self.domain.patches.as_tuple(),
+                self.background_cell_size,
+            )
+            clipped["mesh_generation"] = generation
+            generation["coupling_box"] = {
+                "coupling_patches": list(self.domain.patches.coupling),
+                "exact_sides": [int(side) for side in self.exact_sides],
+                "crossed_sides": [int(side) for side in self.crossed_sides],
+                "margin_cells": MARGIN_CELLS,
+                "exact_layers": EXACT_LAYERS,
+                "blend_layers": BLEND_LAYERS,
+                **restored,
+            }
+            progress.details(cells=clipped["n_cells"], **restored)
+        return clipped
+
     def _finalize_cfmesh_mesh(self, mesh_data: MeshData) -> MeshData:
         """Name, validate, and report the completed cfMesh-style mesh."""
         surface_names = {surface.patch for surface in self.surfaces}
@@ -1042,6 +1160,16 @@ class CartesianMesher:
         mesh_data.pop("_cfmesh_boundary_column_inner", None)
         mesh_data["mesh_generation"]["method"] = "cartesian_cfmesh"
         quality, geometry = _quality_snapshot(mesh_data)
+        if self.exact_sides:
+            mesh_data["mesh_generation"]["coupling_box"]["validation"] = validate_exact_sides(
+                mesh_data,
+                geometry,
+                np.asarray(self.domain.bounds, dtype=np.float64),
+                self.exact_sides,
+                self.crossed_sides,
+                self.domain.patches.as_tuple(),
+                self.background_cell_size,
+            )
         surface_conformance: dict[str, dict[str, float | int]] = {}
         for surface in self.surfaces:
             if surface.kind == "box":
@@ -1176,7 +1304,9 @@ class CartesianMesher:
                 centre = candidate[face_ids].mean(axis=0)
                 side = min(
                     matching_sides,
-                    key=lambda item: abs(centre[item // 2] - float(self.domain.bounds[item])),
+                    key=lambda item: abs(
+                        centre[item // 2] - float(self._workflow_domain.bounds[item])
+                    ),
                 )
                 side_points[side].update(map(int, face_ids))
             for side, ids in side_points.items():
@@ -1185,7 +1315,7 @@ class CartesianMesher:
                         f"cfMesh workflow did not create side {side} of domain patch {patch_name!r}"
                     )
                 axis = side // 2
-                bound = float(self.domain.bounds[side])
+                bound = float(self._workflow_domain.bounds[side])
                 side_ids = np.fromiter(sorted(ids), dtype=np.int64)
                 domain_points.append((axis, bound, side_ids, column_map))
                 for point_id_value in side_ids:
@@ -1542,6 +1672,11 @@ class CartesianMesher:
         """
         if stop_after is not None:
             mesh_data = self._run_cfmesh_workflow(stop_after)
+            if self.exact_sides and stop_after in ("meshOptimisation", "boundaryLayerRefinement"):
+                # Completed workflow prefixes (used by the extruded mesher) carry
+                # the exact coupling sides; earlier diagnostic checkpoints keep
+                # the enlarged workflow domain.
+                mesh_data = self._apply_exact_sides(mesh_data)
             if on_generated is not None:
                 on_generated(mesh_data)
             return mesh_data
@@ -1550,6 +1685,8 @@ class CartesianMesher:
             on_generated(mesh_data)
         with mesh_stage("wall constraint"):
             self._constrain_cfmesh_wall_points(mesh_data)
+        if self.exact_sides:
+            mesh_data = self._apply_exact_sides(mesh_data)
         with mesh_stage("final mesh validation") as progress:
             finalized = self._finalize_cfmesh_mesh(mesh_data)
             progress.details(

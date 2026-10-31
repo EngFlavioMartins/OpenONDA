@@ -115,6 +115,14 @@ class CouplerConfig:
     """Tolerance of the area-weighted RMS normal-velocity residual, in m/s."""
     normal_gradient_tolerance: float = 1.0e-5
     """Tolerance of the area-weighted RMS normal-gradient residual, in 1/s."""
+    boundary_mismatch_warning: float | None = 0.2
+    """Tangential FVM–particle velocity mismatch on the outer FVM boundary, in units of the
+    reference speed, above which the coupler logs a warning with the face location; ``None``
+    disables it. Inflow faces take the particle velocity, so mismatch arises on outflow faces."""
+    boundary_mismatch_limit: float | None = 1.0
+    """Mismatch, in units of the reference speed, above which the run stops with an error
+    naming the face. A mismatch of the order of the flow speed is not physical; it signals
+    an unstable boundary closure or corrupted boundary data. ``None`` disables the check."""
     backup: Backup = field(default_factory=Backup)
     """Coupled restart backups."""
 
@@ -163,6 +171,16 @@ class CouplerConfig:
             0.0 < self.max_moment_correction_fraction <= 1.0
         ):
             raise ValueError("max_moment_correction_fraction must lie in (0, 1]")
+        for name in ("boundary_mismatch_warning", "boundary_mismatch_limit"):
+            value = getattr(self, name)
+            if value is not None and (not np.isfinite(value) or value <= 0.0):
+                raise ValueError(f"{name} must be finite and positive, or None")
+        if (
+            self.boundary_mismatch_warning is not None
+            and self.boundary_mismatch_limit is not None
+            and self.boundary_mismatch_warning > self.boundary_mismatch_limit
+        ):
+            raise ValueError("boundary_mismatch_warning must not exceed boundary_mismatch_limit")
         if not isinstance(self.backup, Backup):
             raise TypeError("backup must be a coupler Backup")
 
@@ -214,11 +232,12 @@ class CouplerConfig:
     def to_dict(self) -> dict[str, object]:
         """Return the settings that change the solution, for restart validation.
 
-        The backup schedule and the interval of the full transfer diagnostics only
-        select outputs and are left out.
+        The backup schedule, the interval of the full transfer diagnostics and the
+        boundary-mismatch guard only select outputs or stop a run, and are left out.
         """
         values = {item.name: getattr(self, item.name) for item in fields(self)}
         del values["backup"], values["transfer_diagnostic_interval_steps"]
+        del values["boundary_mismatch_warning"], values["boundary_mismatch_limit"]
         values["freestream_velocity"] = list(self.freestream_velocity)
         values["freestream"] = None if self.freestream is None else asdict(self.freestream)
         if self.transfer_region_bounds is not None:

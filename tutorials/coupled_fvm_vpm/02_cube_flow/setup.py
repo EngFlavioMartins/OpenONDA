@@ -36,7 +36,8 @@ DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 CELL_SIZE = 0.045  # m
 BOX_MARGIN = 1.8  # m, clearance around the cube and separated shear layers
 BOX_DOWNSTREAM = 5.05  # m: transfer surface at 1.5 formation lengths (wake reach R = 0.5)
-FVM_TIME_STEP = 0.01  # s, Courant number 0.22
+MAX_COURANT_NUMBER = 0.9  # the FVM step follows the maximum cell Courant number
+FVM_MAX_TIME_STEP = 0.02  # s, also the first step; the controller reduces it before the step
 FVM_CORES = 8
 
 # VPM: particles in the outer wake
@@ -47,7 +48,7 @@ CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000
 
 # FVM–VPM transfer and run duration
-FVM_SUBSTEPS = 1
+FVM_SUBSTEPS = 1  # FVM steps per particle step at the maximum interval
 END_TIME = 60.0  # s
 
 # Output
@@ -64,7 +65,8 @@ PROFILE_SPACING = 2.0 * CELL_SIZE  # m
 # Geometry derived from the inputs above
 FVM_DOMAIN_BOUNDS = (-BOX_MARGIN, BOX_DOWNSTREAM, -BOX_MARGIN, BOX_MARGIN, -BOX_MARGIN, BOX_MARGIN)
 CUBE_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
-COUPLING_TIME_STEP = FVM_SUBSTEPS * FVM_TIME_STEP
+# Maximum particle step; the coupler lowers it with the FVM Courant step and output times
+VPM_MAX_COUPLING_INTERVAL = FVM_SUBSTEPS * FVM_MAX_TIME_STEP
 
 
 def initial_velocity(position):
@@ -79,14 +81,8 @@ def initial_velocity(position):
 FVM_MESH = msh.CartesianMesher(
     domain=msh.BoxDomain(
         bounds=FVM_DOMAIN_BOUNDS,
-        patches=msh.BoxPatches(
-            xmin="numericalBoundary",
-            xmax="numericalBoundary",
-            ymin="numericalBoundary",
-            ymax="numericalBoundary",
-            zmin="numericalBoundary",
-            zmax="numericalBoundary",
-        ),
+        # The whole box is the coupling interface: exact Cartesian faces, edges and corners.
+        patches=msh.BoxPatches.coupled("numericalBoundary"),
     ),
     surfaces=(msh.STLSurface(CASE_DIR / "assets/cube.stl", patch="cube"),),
     max_cell_size=CELL_SIZE,
@@ -97,7 +93,11 @@ FVM_CASE = fvm.FVMCase(
     name=CASE_NAME,
     directory=CASE_DIR,
     numerics=fvm.Numerics(
-        time_step_size=FVM_TIME_STEP,
+        time_step_size=FVM_MAX_TIME_STEP,
+        time_step_control=fvm.MaximumCourantTimeStep(
+            maximum=MAX_COURANT_NUMBER,
+            maximum_time_step_size=FVM_MAX_TIME_STEP,
+        ),
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
         schemes=fvm.DiscretizationConfig(
             convection_scheme="linear_upwind",
@@ -175,7 +175,7 @@ VPM_CASE = vpm.VPMCase(
     name=CASE_NAME,
     directory=CASE_DIR,
     numerics=vpm.Numerics(
-        time_step_size=COUPLING_TIME_STEP,
+        time_step_size=VPM_MAX_COUPLING_INTERVAL,
         freestream_velocity=FREESTREAM_VELOCITY,
         integrator=vpm.RK2(),
         induction=vpm.FMMInduction(),
@@ -226,7 +226,9 @@ VPM_CASE = vpm.VPMCase(
 
 COUPLER_CONFIG = coupling.CouplerConfig(
     freestream_velocity=FREESTREAM_VELOCITY,
-    transfer_diagnostic_interval_steps=round(TRANSFER_DIAGNOSTIC_INTERVAL / COUPLING_TIME_STEP),
+    transfer_diagnostic_interval_steps=round(
+        TRANSFER_DIAGNOSTIC_INTERVAL / VPM_MAX_COUPLING_INTERVAL
+    ),
     backup=coupling.Backup(schedule=coupling.EveryTime(BACKUP_INTERVAL)),
 )
 

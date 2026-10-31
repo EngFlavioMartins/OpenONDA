@@ -8,6 +8,10 @@ from ..config.numerics import MaximumCourantTimeStep
 
 _MAXIMUM_GROWTH_FACTOR = 1.2
 _GROWTH_DAMPING = 0.1
+# Largest ratio between consecutive accepted steps. Variable-step BDF2 is
+# zero-stable below 1 + sqrt(2); a ratio of 2 keeps a clear margin.
+MAXIMUM_STEP_RATIO = 2.0
+_ALIGNMENT_TOLERANCE = 1.0e-10
 
 
 def maximum_courant_time_step_size(
@@ -73,10 +77,18 @@ def event_aligned_time_step_size(maximum_time_step_size: float, time_until_event
     quotient = time_until_event / maximum_time_step_size
     if not math.isfinite(quotient):
         return maximum_time_step_size
-    # Do not introduce an extra substep when roundoff puts an integer ratio
-    # just above its exact value. The min still enforces the original ceiling.
-    n_steps = max(1, math.ceil(quotient - 32.0 * math.ulp(quotient)))
-    return min(maximum_time_step_size, time_until_event / n_steps)
+    # Do not introduce an extra step when roundoff puts an integer ratio just
+    # above its exact value. The distance to an event is a difference of
+    # absolute times, so its roundoff grows with the time itself (about 1e-13
+    # relative for a 0.04 s interval at 60 s); a relative tolerance of 1e-10
+    # covers it. The step may then exceed the ceiling by that fraction, which
+    # is harmless, while clipping it would leave a roundoff-sized last step.
+    n_steps = max(1, math.ceil(quotient * (1.0 - _ALIGNMENT_TOLERANCE)))
+    return time_until_event / n_steps
 
 
-__all__ = ["event_aligned_time_step_size", "maximum_courant_time_step_size"]
+__all__ = [
+    "MAXIMUM_STEP_RATIO",
+    "event_aligned_time_step_size",
+    "maximum_courant_time_step_size",
+]

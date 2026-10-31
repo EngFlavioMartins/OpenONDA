@@ -100,12 +100,24 @@ def _matching_face_id_chunks(
         yield permutation[positions]
 
 
-def _root_cube(domain: SurfaceBounds, max_cell_size: float) -> tuple[SurfaceBounds, int]:
+def _root_cube(
+    domain: SurfaceBounds,
+    max_cell_size: float,
+    lattice_spacing: float | None = None,
+    lattice_origin: Sequence[float] | None = None,
+) -> tuple[SurfaceBounds, int]:
     """Reproduce ``setRootCubeSizeAndRefParameters`` for the outer surface.
 
     cfMesh first creates a cube 1.5 times wider than the surface bounds, adds
     half a requested cell to that sizing calculation, and then chooses a
     power-of-two cube whose level cell size is exactly ``max_cell_size``.
+
+    With ``lattice_spacing`` (m), the cube's lower corner is moved down onto the
+    lattice ``lattice_origin + k * lattice_spacing`` (origin zero by default), so
+    that every leaf face at or below the global level lies on such a plane. The
+    cube keeps its size and still contains the domain: the shift is below one
+    spacing while the cube exceeds the domain by a quarter of its extent on each
+    side.
     """
     lower = np.asarray(domain[::2], dtype=np.float64)
     upper = np.asarray(domain[1::2], dtype=np.float64)
@@ -117,6 +129,12 @@ def _root_cube(domain: SurfaceBounds, max_cell_size: float) -> tuple[SurfaceBoun
     root_size = max_cell_size * (2**global_level)
     root_lower = centre - 0.5 * root_size
     root_upper = centre + 0.5 * root_size
+    if lattice_spacing is not None:
+        origin = np.zeros(3) if lattice_origin is None else np.asarray(lattice_origin, float)
+        root_lower = origin + lattice_spacing * np.floor(
+            (root_lower - origin) / lattice_spacing + 1.0e-9
+        )
+        root_upper = root_lower + root_size
     bounds = tuple(
         float(value) for axis in range(3) for value in (root_lower[axis], root_upper[axis])
     )
@@ -819,9 +837,18 @@ def build_cfmesh_template(
     domain_patch_names: Sequence[str] = (),
     surface_patch_names: Sequence[str] = (),
     exact_cell_sizes: bool = False,
+    root_lattice_spacing: float | None = None,
+    root_lattice_origin: Sequence[float] | None = None,
 ) -> MeshData:
-    """Build the cfMesh template, optionally preserving an exact size lattice."""
-    root_bounds, global_level = _root_cube(domain, max_cell_size)
+    """Build the cfMesh template, optionally preserving an exact size lattice.
+
+    ``root_lattice_spacing`` and ``root_lattice_origin`` align the octree with the
+    planes ``origin + k * spacing`` (see :func:`_root_cube`); exact Cartesian
+    coupling sides require it.
+    """
+    root_bounds, global_level = _root_cube(
+        domain, max_cell_size, root_lattice_spacing, root_lattice_origin
+    )
     boundary_level = global_level + _additional_level(max_cell_size, boundary_cell_size)
     automatic_level = (
         global_level + _additional_level(max_cell_size, min_cell_size * (1.0 + 1.0e-15))

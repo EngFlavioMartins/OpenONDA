@@ -1,4 +1,23 @@
-"""Mixed velocity boundary: prescribed normal velocity and normal gradient of the tangential velocity."""
+"""Mixed velocity boundary: prescribed normal velocity and normal gradient of the tangential velocity.
+
+On a coupling patch the condition is direction-aware. With an external face
+velocity ``u_e`` (the particle velocity), each face blends two well-posed
+closures by the inflow weight ``w`` of :func:`coupled_inflow_weight`:
+
+* inflow faces (``u_e . n <= 0``, ``w = 1``) take the full external velocity,
+  as the characteristics of an inflow boundary require;
+* outflow faces (``u_e . n >= transition speed``, ``w = 0``) keep the mixed
+  condition, ``U_b . n = u_e . n`` and ``P_t dU/dn = g_t``, which lets the
+  FVM's own tangential velocity, and its vorticity, leave the domain;
+* in between, ``w`` decreases smoothly with the prescribed normal velocity.
+
+The weight depends only on the prescribed data, never on the FVM solution, so
+the condition is linear in the solution and cannot chatter when the flow
+reverses on a face. A tangential Neumann condition on an inflow face leaves the
+tangential velocity uncontrolled: the incoming value is the owner's own value
+plus an extrapolation, and on skewed boundary cells that loop is
+anti-dissipative (the instability of the NACA 4412 coupled case).
+"""
 
 from __future__ import annotations
 
@@ -6,6 +25,21 @@ import numpy as np
 
 from ..mesh.data import BoundaryPatchData, GeometryData, MeshData
 from .boundary_reconstruction import boundary_owner_gradient
+
+
+def coupled_inflow_weight(normal_velocity: np.ndarray, transition_speed: float) -> np.ndarray:
+    """Return the Dirichlet weight ``w`` of each face from its prescribed normal velocity.
+
+    ``w = 1`` for ``u_n <= 0`` (inflow and tangential flow); ``w`` decreases with
+    a C1 smoothstep to ``0`` at ``u_n = transition_speed`` (m/s) and stays ``0``
+    beyond it (outflow).
+    """
+    normal = np.asarray(normal_velocity, dtype=np.float64).reshape(-1)
+    speed = float(transition_speed)
+    if not np.isfinite(speed) or speed <= 0.0:
+        raise ValueError("transition_speed must be finite and positive")
+    t = np.clip(normal / speed, 0.0, 1.0)
+    return 1.0 - t * t * (3.0 - 2.0 * t)
 
 
 def boundary_skew_velocity_increment(
@@ -55,6 +89,8 @@ def reconstruct_mixed_velocity_boundary(
     tangential_velocity_normal_gradient: np.ndarray,
     *,
     skew_velocity_increment: np.ndarray | None = None,
+    inflow_velocity: np.ndarray | None = None,
+    inflow_weight: np.ndarray | None = None,
 ) -> np.ndarray:
     r"""Return face velocities satisfying the directional mixed condition.
 
@@ -76,7 +112,11 @@ def reconstruct_mixed_velocity_boundary(
     boundary vorticity requires that vorticity to equal curl(U_VPM).
 
     The skew increment is projected tangentially, preserving the prescribed
-    normal velocity and physical normal derivative. The solver's
+    normal velocity and physical normal derivative.
+
+    With ``inflow_velocity`` (``(N, 3)``, m/s) and ``inflow_weight`` (``(N,)``
+    in ``[0, 1]``), the tangential face velocity is
+    ``w P u_e + (1 - w) P U_mixed``; the normal component stays prescribed. The solver's
     fixed_flux_pressure condition separately enforces the prescribed normal
     flux; it is not an independent pressure boundary value prescribed by the paper.
     """
@@ -126,6 +166,29 @@ def reconstruct_mixed_velocity_boundary(
             )
         normal_increment = np.einsum("ij,ij->i", increment, unit_normals)
         reconstructed += increment - normal_increment[:, np.newaxis] * unit_normals
+    if (inflow_velocity is None) != (inflow_weight is None):
+        raise ValueError("inflow_velocity and inflow_weight must be given together")
+    if inflow_velocity is not None:
+        external = np.asarray(inflow_velocity, dtype=np.float64)
+        weight = np.asarray(inflow_weight, dtype=np.float64).reshape(-1)
+        if external.shape != expected_vector_shape or weight.shape != (n_faces,):
+            raise ValueError("inflow data must have one velocity and one weight per face")
+        if not (np.all(np.isfinite(external)) and np.all((weight >= 0.0) & (weight <= 1.0))):
+            raise ValueError("inflow data must be finite with weights in [0, 1]")
+        external_tangential = (
+            external - np.einsum("ij,ij->i", external, unit_normals)[:, np.newaxis] * unit_normals
+        )
+        mixed_tangential = (
+            reconstructed
+            - np.einsum("ij,ij->i", reconstructed, unit_normals)[:, np.newaxis] * unit_normals
+        )
+        # (1 - w) is exactly zero on inflow faces, so their value carries no
+        # owner dependence, not even at round-off.
+        reconstructed = (
+            prescribed_normal[:, np.newaxis] * unit_normals
+            + weight[:, np.newaxis] * external_tangential
+            + (1.0 - weight)[:, np.newaxis] * mixed_tangential
+        )
     return reconstructed
 
 
@@ -158,13 +221,40 @@ def update_mixed_velocity_boundary(
         raise ValueError(
             f"Mixed velocity boundary {boundary.get('name')!r} has incomplete boundary data"
         )
+    inflow_velocity = boundary.get("inflow_velocity_field")
+    inflow_weight = boundary.get("inflow_weight_field")
     velocity[ghosts] = reconstruct_mixed_velocity_boundary(
         velocity[owners],
         normal,
         normal_distance,
         normal_velocity,
         tangential_velocity_normal_gradient,
-        skew_velocity_increment=boundary_skew_velocity_increment(
-            velocity, mesh_data, geo_data, faces, normal, owner_to_face
+        skew_velocity_increment=mixed_skew_velocity_increment(
+            velocity, mesh_data, geo_data, faces, normal, owner_to_face, inflow_weight
         ),
+        inflow_velocity=inflow_velocity,
+        inflow_weight=inflow_weight,
     )
+
+
+def mixed_skew_velocity_increment(
+    velocity: np.ndarray,
+    mesh_data: MeshData,
+    geo_data: GeometryData,
+    face_indices: np.ndarray,
+    normal: np.ndarray,
+    owner_to_face: np.ndarray,
+    inflow_weight: np.ndarray | None,
+) -> np.ndarray | None:
+    """Return ``J_P r_t``, zeroed on pure-Dirichlet faces (``w = 1``).
+
+    The increment is evaluated on the whole patch so that its cached
+    least-squares stencil does not depend on the current inflow faces.
+    """
+    increment = boundary_skew_velocity_increment(
+        velocity, mesh_data, geo_data, face_indices, normal, owner_to_face
+    )
+    if increment is None or inflow_weight is None:
+        return increment
+    increment[np.asarray(inflow_weight, dtype=np.float64).reshape(-1) >= 1.0] = 0.0
+    return increment

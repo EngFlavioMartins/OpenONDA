@@ -16,6 +16,33 @@ logger = logging.getLogger("openonda.coupler")
 _MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
 _BOUNDARY_FLUX_QUADRATURE_FACTOR = 2.0
 
+INFLOW_TRANSITION_FRACTION = 0.1
+"""Normal outflow speed, as a fraction of the reference speed, above which a
+coupling face is purely mixed; inflow faces always take the particle velocity."""
+
+
+def inflow_transition_speed(coupler, face_velocity: np.ndarray) -> float:
+    """Return the normal speed (m/s) over which coupling faces switch from Dirichlet to mixed.
+
+    The reference speed is the larger of the freestream speed and the RMS boundary
+    speed, so that cases without a freestream still have a meaningful scale. The
+    root rank's value is broadcast, keeping every rank's face weights identical.
+    """
+    value = None
+    if coupler._is_root:
+        velocity = np.asarray(face_velocity, dtype=np.float64).reshape(-1, 3)
+        rms = (
+            float(np.sqrt(np.mean(np.einsum("ij,ij->i", velocity, velocity))))
+            if len(velocity)
+            else 0.0
+        )
+        reference = max(float(np.linalg.norm(coupler.freestream_velocity)), rms)
+        value = INFLOW_TRANSITION_FRACTION * max(reference, 1.0e-12)
+    comm = getattr(coupler, "_comm", None)
+    if comm is not None and comm.Get_size() > 1:
+        value = comm.bcast(value, root=0)
+    return float(value)
+
 
 def _record_boundary_induction(coupler, phase: str, summary: dict) -> None:
     if phase == "initial":
@@ -84,6 +111,66 @@ def _log_outflow_velocity(
             ),
         )
     )
+
+
+COUPLING_PATCH_SKEW_LIMIT = 0.05
+"""Largest owner-to-face tangential offset, relative to the normal distance, of a
+coupling-grade outer patch."""
+
+
+def report_coupling_patch_quality(
+    coupler, face_normal: np.ndarray, owner_offset: np.ndarray
+) -> dict[str, float] | None:
+    """Log the outer patch's geometric quality and warn if it is not coupling-grade.
+
+    A coupling-grade patch has planar faces and axis-aligned owner cells, so the
+    boundary closure does not extrapolate across a skewed cell and the
+    particle-mesh transfer sees a planar interface. ``CartesianMesher`` produces
+    one when the box faces are declared as coupling patches. The direction-aware
+    boundary condition is stable without it, but accuracy degrades.
+    """
+    if not coupler._is_root or not len(face_normal):
+        return None
+    normal = np.asarray(face_normal, dtype=np.float64).reshape(-1, 3)
+    offset = np.asarray(owner_offset, dtype=np.float64).reshape(-1, 3)
+    distance = np.einsum("ij,ij->i", offset, normal)
+    tangential = np.linalg.norm(offset - distance[:, None] * normal, axis=1)
+    ratio = tangential / np.maximum(distance, 1.0e-300)
+    tilt = 1.0 - np.max(np.abs(normal), axis=1)
+    worst = int(np.argmax(ratio))
+    quality = {
+        "max_tangential_offset_ratio": float(ratio[worst]),
+        "max_normal_tilt": float(tilt.max()),
+        "normal_distance_ratio": float(distance.min() / distance.max()),
+    }
+    coupler._coupling_patch_quality = quality
+    logger.info(
+        format_coupler_log(
+            "outer boundary cells",
+            (
+                "owner offset, tangential / normal, max",
+                f"{quality['max_tangential_offset_ratio']:.3e}",
+            ),
+            ("normal tilt from box axis, max", f"{quality['max_normal_tilt']:.3e}"),
+            ("normal distance, min / max", f"{quality['normal_distance_ratio']:.3f}"),
+        )
+    )
+    if quality["max_tangential_offset_ratio"] > COUPLING_PATCH_SKEW_LIMIT:
+        logger.warning(
+            format_coupler_log(
+                "outer boundary cells are not coupling-grade",
+                (
+                    "owner offset, tangential / normal, max",
+                    f"{quality['max_tangential_offset_ratio']:.3f} (limit {COUPLING_PATCH_SKEW_LIMIT:g})",
+                ),
+                ("normal tilt from box axis, max", f"{quality['max_normal_tilt']:.3e}"),
+                (
+                    "remedy",
+                    "mesh the box with BoxPatches(..., coupling=(name,)) or BoxPatches.coupled(name)",
+                ),
+            )
+        )
+    return quality
 
 
 def boundary_flux_tolerance(particle_spacing: float, fvm_domain_bounds: np.ndarray) -> float:
@@ -518,11 +605,90 @@ def _record_fvm_boundary_data(
     face_velocity = coupler.fvm_solver.gather_boundary_face_velocity(
         coupler.config.outer_boundary_patch
     )
-    if not coupler._is_root:
-        return
+    failure = None
+    if coupler._is_root:
+        failure = _record_root_boundary_data(
+            coupler, face_centre, face_normal, vpm_target_velocity, face_velocity
+        )
+    comm = getattr(coupler, "_comm", None)
+    if comm is not None and comm.Get_size() > 1:
+        failure = comm.bcast(failure, root=0)
+    if failure is not None:
+        raise BoundaryMismatchError(failure)
+
+
+class BoundaryMismatchError(RuntimeError):
+    """The FVM boundary velocity departed from the particle data by an unphysical amount."""
+
+
+def _mismatch_location(
+    face_centre: np.ndarray, face_normal: np.ndarray, difference: np.ndarray, index: int
+) -> str:
+    normal = face_normal[index]
+    axis = int(np.argmax(np.abs(normal)))
+    side = ("x", "y", "z")[axis] + ("max" if normal[axis] > 0 else "min")
+    return (
+        f"face at {np.array2string(face_centre[index], precision=4)} m ({side} side), "
+        f"velocity difference {np.array2string(difference[index], precision=4)} m/s"
+    )
+
+
+def _check_boundary_mismatch(
+    coupler,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    difference: np.ndarray,
+    magnitude: np.ndarray,
+    reference_speed: float,
+) -> str | None:
+    """Warn on, or report a stop for, an unphysical boundary mismatch."""
+    config = coupler.config
+    if not len(magnitude):
+        return None
+    index = int(np.argmax(magnitude))
+    ratio = float(magnitude[index] / reference_speed)
+    limit = config.boundary_mismatch_limit
+    if limit is not None and ratio > limit:
+        return (
+            f"The FVM velocity on the outer boundary differs from the particle velocity by "
+            f"{ratio:.3g} times the reference speed {reference_speed:.4g} m/s (limit {limit:g}) "
+            f"at t = {coupler.time:.6g} s: "
+            + _mismatch_location(face_centre, face_normal, difference, index)
+            + ". The FVM boundary closure or the boundary data are unstable there; check the "
+            "outer-patch cells (mesh the box with coupling patches) and the coupling interval."
+        )
+    warning = config.boundary_mismatch_warning
+    if warning is not None and ratio > warning:
+        # One warning per doubling keeps a slowly drifting case readable.
+        level = int(np.floor(np.log2(ratio / warning)))
+        if level > getattr(coupler, "_boundary_mismatch_warning_level", -1):
+            coupler._boundary_mismatch_warning_level = level
+            logger.warning(
+                format_coupler_log(
+                    "boundary mismatch",
+                    ("velocity mismatch, max", f"{ratio:.3e}", "U_ref"),
+                    ("location", _mismatch_location(face_centre, face_normal, difference, index)),
+                )
+            )
+    return None
+
+
+def _record_root_boundary_data(
+    coupler,
+    face_centre: np.ndarray,
+    face_normal: np.ndarray,
+    vpm_target_velocity: np.ndarray,
+    face_velocity: np.ndarray,
+) -> str | None:
     difference = np.asarray(face_velocity) - np.asarray(vpm_target_velocity)
     speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1.0e-30
     magnitude = np.linalg.norm(difference, axis=1)
+    target = np.asarray(vpm_target_velocity, dtype=np.float64).reshape(-1, 3)
+    reference_speed = max(
+        float(np.linalg.norm(coupler.freestream_velocity)),
+        float(np.sqrt(np.mean(np.einsum("ij,ij->i", target, target)))) if len(target) else 0.0,
+        1.0e-12,
+    )
     normal_mismatch = np.abs(np.einsum("ij,ij->i", difference, face_normal))
     axis, sign = outflow_axis_sign(coupler.freestream_velocity)
     assert coupler.fvm_domain_bounds is not None
@@ -572,6 +738,9 @@ def _record_fvm_boundary_data(
             ),
         )
     )
+    return _check_boundary_mismatch(
+        coupler, face_centre, face_normal, difference, magnitude, reference_speed
+    )
 
 
 def apply_fvm_boundary(
@@ -593,10 +762,14 @@ def apply_fvm_boundary(
             "The mixed boundary condition requires the normal velocity and the normal "
             "gradient of the tangential velocity"
         )
+    # Direction-aware coupling condition: the particle velocity on inflow faces,
+    # the mixed condition on outflow faces (see ``mixed_velocity_boundary``).
     coupler.fvm_solver.set_mixed_velocity_boundary_condition(
         np.ascontiguousarray(normal_velocity, dtype=np.float64),
         np.ascontiguousarray(normal_gradient, dtype=np.float64),
         patch,
+        inflow_velocity=prescribed_velocity,
+        transition_speed=inflow_transition_speed(coupler, prescribed_velocity),
     )
     coupler.fvm_solver.set_flux_consistent_pressure_boundary_condition(patch)
     # With coupling iterations the FVM writes its output once the boundary data are accepted.

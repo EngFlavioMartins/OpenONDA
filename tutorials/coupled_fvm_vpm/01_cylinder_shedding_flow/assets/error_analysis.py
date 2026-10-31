@@ -237,7 +237,9 @@ def reference_families(references):
 def at_baseline(run, *varied):
     """Whether a run keeps every parameter except ``varied`` at its baseline."""
     return all(
-        np.isclose(run[name], value) for name, value in BASELINE.items() if name not in varied
+        run[name] == value if isinstance(value, str) else np.isclose(run[name], value)
+        for name, value in BASELINE.items()
+        if name not in varied
     )
 
 

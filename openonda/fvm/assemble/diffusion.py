@@ -515,6 +515,23 @@ def assemble_diffusion_term(
                 coefficient * n_i * (cross_normal - prescribed_normal)
                 - diffusivity_area * prescribed_gradient
             )
+            inflow_weight = boundary.get("inflow_weight_field")
+            if inflow_weight is not None:
+                # Direction-aware coupling patch: the tangential part is the blend
+                # w P u_e + (1 - w) (P U_owner + d g_t). The Dirichlet share adds
+                # D w (1 - n_i^2) to the owner coefficient and moves w of the
+                # cross-normal and prescribed-gradient terms to the external value.
+                weight = np.asarray(inflow_weight, dtype=np.float64)
+                external = np.asarray(boundary["inflow_velocity_field"], dtype=np.float64)
+                external_tangential = (
+                    external[:, component] - np.einsum("ij,ij->i", external, normals) * n_i
+                )
+                flux_cf[indices] = coefficient * (n_i * n_i + weight * (1.0 - n_i * n_i))
+                flux_vf[indices] = (
+                    coefficient * n_i * ((1.0 - weight) * cross_normal - prescribed_normal)
+                    - coefficient * weight * external_tangential
+                    - (1.0 - weight) * diffusivity_area * prescribed_gradient
+                )
             skew_increment = boundary_skew_velocity_increment(
                 vector_field, mesh_data, geo_data, indices, normals, owner_to_face
             )

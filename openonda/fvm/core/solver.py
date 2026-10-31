@@ -31,7 +31,11 @@ from ..sampling.executor import execute_samplers
 from ..solve import pimple_solver, simple_solver
 from .parallel import ParallelContext
 from .state import FieldState
-from .time_step import event_aligned_time_step_size, maximum_courant_time_step_size
+from .time_step import (
+    MAXIMUM_STEP_RATIO,
+    event_aligned_time_step_size,
+    maximum_courant_time_step_size,
+)
 
 if TYPE_CHECKING:
     from ..diagnostics.step import StepDiagnostics
@@ -608,6 +612,12 @@ class FVMSolver(CouplerInterfaceMixin):
         self._n_committed_time_steps = 0  # number of committed time steps (BDF2 startup check)
         self._accepted_time_step_size = self.time_step_size
         self._previous_time_step_size = self.time_step_size
+        # Maximum-Courant estimate before event alignment. Growth starts from
+        # it, not from a step shortened to land on an output time.
+        self._courant_time_step_size = self.time_step_size
+        self._selected_courant_time_step_size: float | None = None
+        # Exact event or end time reached by the selected step, if any.
+        self._selected_landing_time: float | None = None
         self.last_diagnostics = None
         self._last_backup_state: tuple[int, float, int] | None = None
         self._last_vtk_state: tuple[int, float, int] | None = None
@@ -1552,7 +1562,8 @@ class FVMSolver(CouplerInterfaceMixin):
         """
         control = self._configuration.numerics.time_step_control
         time_until_event = None
-        selected = self._courant_time_step_limit()
+        deadline_time = None
+        courant_estimate, selected = self._courant_time_step_estimate()
 
         # Adaptive steps are distributed over time deadlines. Fixed steps are
         # shortened only when a deadline falls before the configured step.
@@ -1560,9 +1571,8 @@ class FVMSolver(CouplerInterfaceMixin):
             next_event_time = schedule.next_time_after(self.time)
             if next_event_time is not None:
                 distance = next_event_time - self.time
-                time_until_event = (
-                    distance if time_until_event is None else min(time_until_event, distance)
-                )
+                if time_until_event is None or distance < time_until_event:
+                    time_until_event, deadline_time = distance, float(next_event_time)
 
         # Run-managed runs land exactly on their physical horizon.
         end_time = float(self._configuration.run.end_time)
@@ -1573,36 +1583,47 @@ class FVMSolver(CouplerInterfaceMixin):
             end_time = min(end_time, stop_time)
         remaining = float(end_time - self.time)
         tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
-        if remaining > tolerance:
-            time_until_event = (
-                remaining if time_until_event is None else min(time_until_event, remaining)
-            )
+        if remaining > tolerance and (time_until_event is None or remaining <= time_until_event):
+            time_until_event, deadline_time = remaining, end_time
+        landing_time = None
         if time_until_event is not None:
             selected = (
                 min(selected, time_until_event)
                 if control is None
                 else event_aligned_time_step_size(selected, time_until_event)
             )
+            # A step that reaches the deadline is accepted at the deadline
+            # itself, so output times keep their configured decimal value.
+            if selected >= time_until_event - max(1.0e-14, abs(deadline_time) * 1.0e-12):
+                landing_time = deadline_time
         self.time_step_size = selected
+        self._selected_courant_time_step_size = courant_estimate
+        self._selected_landing_time = landing_time
         return selected
 
     def courant_time_step_limit(self) -> float:
         """Return the current CFL-limited step ceiling without applying output events."""
         if self._step_phase != "accepted":
             raise RuntimeError("A candidate FVM step is pending; accept or restore it first")
-        return self._courant_time_step_limit()
+        return self._courant_time_step_estimate()[1]
 
-    def _courant_time_step_limit(self) -> float:
-        """Return the current CFL ceiling from the stored flow state."""
+    def _courant_time_step_estimate(self) -> tuple[float, float]:
+        """Return the controller estimate and the step ceiling from the stored flow.
+
+        The estimate follows OpenFOAM's maximum-Courant update from the
+        previous estimate, which is not reduced by event alignment; otherwise
+        output events a few steps apart would hold the step below the CFL
+        target. The ceiling also limits the ratio to the last accepted step
+        to ``MAXIMUM_STEP_RATIO`` for variable-step BDF2.
+        """
         control = self._configuration.numerics.time_step_control
         if control is None:
-            return float(self._configuration.numerics.time_step_size)
-        current_courant_number = self._measure_maximum_courant_number(self.time_step_size)
-        return maximum_courant_time_step_size(
-            self.time_step_size,
-            current_courant_number,
-            control,
-        )
+            fixed = float(self._configuration.numerics.time_step_size)
+            return fixed, fixed
+        base = float(self._courant_time_step_size)
+        current_courant_number = self._measure_maximum_courant_number(base)
+        estimate = maximum_courant_time_step_size(base, current_courant_number, control)
+        return estimate, min(estimate, MAXIMUM_STEP_RATIO * self._accepted_time_step_size)
 
     def select_next_time_step_size(
         self,
@@ -1705,6 +1726,9 @@ class FVMSolver(CouplerInterfaceMixin):
         self._n_committed_time_steps = self.steady_iterations
         self._accepted_time_step_size = self.time_step_size
         self._previous_time_step_size = self.time_step_size
+        self._courant_time_step_size = self.time_step_size
+        self._selected_courant_time_step_size = None
+        self._selected_landing_time = None
         self._step_phase = "accepted"
         self._pending_step_size = None
         self._pending_acceptance_counters = None
@@ -1746,6 +1770,8 @@ class FVMSolver(CouplerInterfaceMixin):
                                 "normal_velocity_field",
                                 "tangential_velocity_normal_gradient_field",
                                 "max_removed_normal_gradient_normal_component",
+                                "inflow_velocity_field",
+                                "inflow_weight_field",
                             ):
                                 boundary.pop(key, None)
                 else:
@@ -1944,6 +1970,8 @@ class FVMSolver(CouplerInterfaceMixin):
             raise RuntimeError("A candidate FVM step is pending; call accept_step() first")
         if time_step_size is None:
             step_time_step_size = self._select_time_step_size()
+            if time is None:
+                time = self._selected_landing_time
         else:
             step_time_step_size = float(time_step_size)
             if not np.isfinite(step_time_step_size) or step_time_step_size <= 0.0:
@@ -2025,6 +2053,13 @@ class FVMSolver(CouplerInterfaceMixin):
                 self.mesh_motion.accept(self.time)
             self._run_metadata_written = False
             self._previous_time_step_size = self._accepted_time_step_size
+            self._courant_time_step_size = (
+                self._accepted_time_step_size
+                if self._selected_courant_time_step_size is None
+                else self._selected_courant_time_step_size
+            )
+            self._selected_courant_time_step_size = None
+            self._selected_landing_time = None
             self._n_consecutive_accepted_steps = pending_counters
             self._pending_acceptance_counters = None
             self._pending_step_size = None

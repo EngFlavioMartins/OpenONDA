@@ -10,9 +10,10 @@ from types import SimpleNamespace
 import pytest
 
 from openonda import fvm
+from openonda.core.schedules import EveryTime
 from openonda.fvm.assemble.time_integration import backward_coefficients
 from openonda.fvm.core.solver import FVMSolver
-from openonda.fvm.core.time_step import maximum_courant_time_step_size
+from openonda.fvm.core.time_step import MAXIMUM_STEP_RATIO, maximum_courant_time_step_size
 from tests.support.fvm_mesh import structured_box
 
 
@@ -63,6 +64,27 @@ def _configuration(time_step_size, end_time, control):
     )
 
 
+def _controller(time, time_step_size, configuration, schedules, courant_rate):
+    """Return a solver shell holding only the time-step controller state."""
+    solver = object.__new__(FVMSolver)
+    solver.time = time
+    solver.time_step_size = time_step_size
+    solver._accepted_time_step_size = time_step_size
+    solver._courant_time_step_size = time_step_size
+    solver._configuration = configuration
+    solver._run_event_schedules = lambda: schedules
+    solver._measure_maximum_courant_number = lambda dt: courant_rate * dt
+    return solver
+
+
+def _accept(solver, dt):
+    """Advance the controller clock as ``accept_step`` does."""
+    landing = solver._selected_landing_time
+    solver.time = solver.time + dt if landing is None else landing
+    solver._accepted_time_step_size = dt
+    solver._courant_time_step_size = solver._selected_courant_time_step_size
+
+
 def test_variable_step_backward_coefficients_are_quadratic_exact() -> None:
     current_step = 0.2
     previous_step = 0.1
@@ -81,53 +103,74 @@ def test_variable_step_backward_coefficients_are_quadratic_exact() -> None:
 
 def test_adaptive_sampling_does_not_create_the_cube_reference_sliver_step() -> None:
     """Replay the time controller immediately before the saved t=8.4 drag spike."""
-    solver = object.__new__(FVMSolver)
-    solver.time = 8.389653072879867
-    solver.time_step_size = 0.008611637016626665
-    solver._configuration = _configuration(
+    time_step_size = 0.008611637016626665
+    courant_rate = 0.3610601598897632 / time_step_size
+    configuration = _configuration(
         0.01, 30.0, fvm.MaximumCourantTimeStep(maximum=0.9, maximum_time_step_size=0.04)
     )
-    schedule = fvm.EveryTime(0.05)
-    solver._run_event_schedules = lambda: (schedule,)
-    courant_rate = 0.3610601598897632 / solver.time_step_size
-    solver._measure_maximum_courant_number = lambda dt: courant_rate * dt
+    solver = _controller(
+        8.389653072879867, time_step_size, configuration, (fvm.EveryTime(0.05),), courant_rate
+    )
     steps = []
     while solver.time < 8.4 - 1.0e-12:
         dt = solver._select_time_step_size()
         steps.append(dt)
-        solver.time += dt
+        _accept(solver, dt)
 
-    assert solver.time == pytest.approx(8.4, abs=1.0e-12)
+    assert solver.time == 8.4
     assert len(steps) == 2
     assert min(steps) > 0.005
     assert max(steps) * courant_rate <= 0.9
 
 
 def test_adaptive_event_alignment_respects_cfl_and_every_schedule() -> None:
-    solver = object.__new__(FVMSolver)
-    solver.time = 0.0
-    solver.time_step_size = 0.013
-    solver._configuration = _configuration(0.013, 0.3, fvm.MaximumCourantTimeStep(maximum=0.9))
     schedules = (fvm.EveryTime(0.05), fvm.EveryTime(0.03))
-    solver._run_event_schedules = lambda: schedules
-    solver._measure_maximum_courant_number = lambda dt: 50 * dt
+    configuration = _configuration(0.013, 0.3, fvm.MaximumCourantTimeStep(maximum=0.9))
+    solver = _controller(0.0, 0.013, configuration, schedules, 50.0)
     due_times = [[], []]
-    previous_step = solver.time_step_size
+    previous_step = previous_estimate = solver.time_step_size
     step = 0
     while solver.time < solver._configuration.run.end_time - 1.0e-12:
         dt = solver._select_time_step_size()
+        estimate = solver._selected_courant_time_step_size
         assert dt <= 0.9 / 50 + 1.0e-14
-        assert dt <= 1.2 * previous_step + 1.0e-14
+        assert estimate <= 1.2 * previous_estimate + 1.0e-14
+        assert dt <= MAXIMUM_STEP_RATIO * previous_step + 1.0e-14
         assert dt >= 0.5 * previous_step - 1.0e-14
-        solver.time += dt
+        _accept(solver, dt)
         step += 1
         for index, schedule in enumerate(schedules):
             if schedule.is_due(step, solver.time, dt):
                 due_times[index].append(solver.time)
-        previous_step = dt
+        previous_step, previous_estimate = dt, estimate
 
-    assert due_times[0] == pytest.approx([0.05 * k for k in range(1, 7)])
-    assert due_times[1] == pytest.approx([0.03 * k for k in range(1, 11)])
+    # Output times are the configured decimals, not accumulated sums.
+    assert due_times[0] == [round(0.05 * k, 10) for k in range(1, 7)]
+    assert due_times[1] == [round(0.03 * k, 10) for k in range(1, 11)]
+
+
+def test_close_events_do_not_lock_the_step_below_the_courant_target() -> None:
+    """Growth starts from the CFL estimate, not from an event-shortened step."""
+    configuration = _configuration(0.01, 2.0, fvm.MaximumCourantTimeStep(maximum=0.8))
+    # The CFL step is 0.016 s; events every 0.04 s allow 0.0133 s (three steps).
+    solver = _controller(0.0, 0.01, configuration, (fvm.EveryTime(0.04),), 0.8 / 0.016)
+    steps = []
+    while solver.time < 2.0 - 1.0e-12:
+        dt = solver._select_time_step_size()
+        steps.append(dt)
+        _accept(solver, dt)
+
+    assert solver.time == 2.0
+    assert steps[-1] == pytest.approx(0.04 / 3)
+    assert len(steps) < 0.85 * 2.0 / 0.01
+
+
+def test_every_time_cadence_times_are_configured_decimals() -> None:
+    assert EveryTime(0.1).next_time_after(0.2) == 0.3
+    assert EveryTime(0.1).next_time_after(0.29999999999999993) == 0.4
+    assert EveryTime(0.04).next_time_after(1.3600000000000001) == 1.4
+    assert EveryTime(0.24).next_time_after(2.5) == 2.64
+    assert EveryTime(0.04, start_time=0.01).next_time_after(1.0) == 1.01
 
 
 def _channel_case(directory, numerics: fvm.Numerics, **fields) -> fvm.FVMCase:

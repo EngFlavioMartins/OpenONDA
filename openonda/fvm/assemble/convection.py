@@ -419,7 +419,14 @@ def assemble_convection_term_boundary(
         # Treating the complete reconstructed value as Dirichlet instead lags
         # this owner dependence and gives the pressure correction a different
         # momentum diagonal. The flux at the assembly state is unchanged.
-        flux_cf = boundary_advective_face_flux * (1.0 - normal_component**2)
+        # On a direction-aware coupling patch only the mixed share (1 - w)
+        # depends on the owner; inflow faces (w = 1) are Dirichlet, so the
+        # owner coefficient never takes the sign of an inflow flux.
+        owner_share = 1.0 - normal_component**2
+        inflow_weight = boundary_patch.get("inflow_weight_field")
+        if inflow_weight is not None:
+            owner_share = owner_share * (1.0 - np.asarray(inflow_weight, dtype=np.float64))
+        flux_cf = boundary_advective_face_flux * owner_share
         flux_ff = np.zeros_like(flux_cf)
         flux_vf = (
             boundary_advective_face_flux * scalar_field[b_elem_indices]

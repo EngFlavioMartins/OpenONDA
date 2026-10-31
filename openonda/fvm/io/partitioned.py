@@ -142,6 +142,7 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
         "time_step_size": np.asarray(solver.time_step_size),
         "accepted_time_step_size": np.asarray(solver._accepted_time_step_size),
         "previous_time_step_size": np.asarray(solver._previous_time_step_size),
+        "courant_time_step_size": np.asarray(solver._courant_time_step_size),
         "max_courant_number": np.asarray(solver.max_courant_number),
         "n_consecutive_accepted_steps": np.asarray(
             [
@@ -347,7 +348,8 @@ def load_partitioned_solver_backup(
             *mesh_pose_arrays(solver),
         }
         state.pop("storage_layout", None)
-        unexpected = sorted(set(state) - required_state)
+        # Optional for backups written before the controller estimate was stored.
+        unexpected = sorted(set(state) - required_state - {"courant_time_step_size"})
         missing = sorted(required_state - set(state))
         if missing or unexpected:
             raise ValueError(

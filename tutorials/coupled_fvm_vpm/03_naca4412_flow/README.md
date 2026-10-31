@@ -7,7 +7,7 @@ A finite NACA 4412 wing is pitched nose-up in a uniform stream. The FVM resolves
 | Chord; span | 1 m; 5 m |
 | Angle of attack; freestream | $10^\circ$; $(1,0,0)$ m/s |
 | Density; viscosity | 1 kg/m³; 0.001 m²/s |
-| FVM domain | $[-1.6,2.72]\times[-1.28,1.24]\times[-3.6,3.6]$ m |
+| FVM domain | $[-1.62,2.54]\times[-1.30,1.26]\times[-3.6,3.6]$ m (requested $[-1.6,2.52]\times[-1.28,1.24]\times[-3.6,3.6]$, on the coupling lattice) |
 | Cell and particle spacing | 0.04 m, $c/25$ |
 | FVM time step | CFL target 0.9; 0.008 s initial; 0.04 s controller ceiling |
 | VPM interval | 0.032 s maximum; four nominal FVM substeps at the initial step |
@@ -16,7 +16,7 @@ A finite NACA 4412 wing is pitched nose-up in a uniform stream. The FVM resolves
 
 ## Physics and numerical model
 
-`assets/naca_surface.py` writes the analytical NACA 4412 surface used by the [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup). The wing is no-slip. Particle boundary data set the FVM boundary velocity and tangential velocity gradient; the FVM replaces particle vorticity inside the transfer region.
+`assets/naca_surface.py` writes the analytical NACA 4412 surface used by the [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup). The six box faces form one coupling patch, meshed with exact Cartesian cells at faces, edges and corners. The wing is no-slip. Particle boundary data set the FVM boundary velocity and tangential velocity gradient; the FVM replaces particle vorticity inside the transfer region.
 
 The particle wake uses Gaussian cores, RK2 transport, grid-based diffusion and FMM induction. A 12 m outflow fringe fades trailing vorticity smoothly. The initial starting vortex leaves the near wake before the statistics window begins.
 

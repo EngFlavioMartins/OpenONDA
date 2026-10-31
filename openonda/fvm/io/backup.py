@@ -36,6 +36,9 @@ class FieldRestartState:
     max_courant_number: float
     n_consecutive_accepted_steps: dict[str, int]
     mesh_pose: tuple[np.ndarray, np.ndarray] | None = None
+    # Maximum-Courant controller estimate; ``None`` for backups written before
+    # it was stored, which continue from ``time_step_size``.
+    courant_time_step_size: float | None = None
 
 
 # Deflate finds almost nothing in raw float64: the mantissa bytes look like
@@ -216,6 +219,7 @@ def save_backup(solver: FVMSolver, path: Path | str) -> Path:
         "time_step_size": np.asarray(solver.time_step_size),
         "accepted_time_step_size": np.asarray(solver._accepted_time_step_size),
         "previous_time_step_size": np.asarray(solver._previous_time_step_size),
+        "courant_time_step_size": np.asarray(solver._courant_time_step_size),
         "max_courant_number": np.asarray(solver.max_courant_number),
         "n_consecutive_accepted_steps": np.asarray(
             [
@@ -333,6 +337,13 @@ def validate_restart_state(
     time_step_size = _read_scalar(state, "time_step_size", kind="float")
     accepted_time_step_size = _read_scalar(state, "accepted_time_step_size", kind="float")
     previous_time_step_size = _read_scalar(state, "previous_time_step_size", kind="float")
+    courant_time_step_size = (
+        _read_scalar(state, "courant_time_step_size", kind="float")
+        if "courant_time_step_size" in state
+        else None
+    )
+    if courant_time_step_size is not None and courant_time_step_size <= 0.0:
+        raise ValueError("Backup courant_time_step_size must be finite and positive")
     max_courant_number = _read_scalar(state, "max_courant_number", kind="float")
     if step < 0 or n_committed < 0:
         raise ValueError("Backup step counters must be non-negative")
@@ -396,6 +407,7 @@ def validate_restart_state(
         max_courant_number=max_courant_number,
         n_consecutive_accepted_steps=counters,
         mesh_pose=mesh_pose,
+        courant_time_step_size=courant_time_step_size,
     )
 
 
@@ -433,6 +445,13 @@ def restore_restart_state(solver: FVMSolver, restart_state: FieldRestartState) -
     solver.time_step_size = restart_state.time_step_size
     solver._accepted_time_step_size = restart_state.accepted_time_step_size
     solver._previous_time_step_size = restart_state.previous_time_step_size
+    solver._courant_time_step_size = (
+        restart_state.time_step_size
+        if restart_state.courant_time_step_size is None
+        else restart_state.courant_time_step_size
+    )
+    solver._selected_courant_time_step_size = None
+    solver._selected_landing_time = None
     solver._kinematic_viscosity = restart_state.kinematic_viscosity
     solver.max_courant_number = restart_state.max_courant_number
     solver._n_consecutive_accepted_steps.update(restart_state.n_consecutive_accepted_steps)
@@ -476,6 +495,7 @@ def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
         kinematic_viscosity=solver._kinematic_viscosity,
         max_courant_number=solver.max_courant_number,
         n_consecutive_accepted_steps=solver._n_consecutive_accepted_steps.copy(),
+        courant_time_step_size=solver._courant_time_step_size,
         mesh_pose=(
             None
             if solver.mesh_motion is None
@@ -518,9 +538,10 @@ def _load_backup_local(
     }
     with np.load(source, allow_pickle=False) as archive:
         archive_keys = set(archive.files)
-        if archive_keys != required:
+        # Optional for backups written before the controller estimate was stored.
+        if archive_keys - {"courant_time_step_size"} != required:
             missing = sorted(required - archive_keys)
-            unexpected = sorted(archive_keys - required)
+            unexpected = sorted(archive_keys - required - {"courant_time_step_size"})
             raise ValueError(
                 f"Invalid FVM backup fields; missing={missing}, unexpected={unexpected}"
             )
