@@ -31,10 +31,33 @@ END_TIME=${END_TIME:-55}               # s, end of every study run
 MIN_FREE_GPU_MIB=${MIN_FREE_GPU_MIB:-3500}
 GPU_POLL_SECONDS=${GPU_POLL_SECONDS:-300}
 
+# GPU work outside the study: while a systemd user unit listed in sensitivity/GPU_RESERVED (one
+# name per line) is active, at most one study run uses the GPU, so the outside run keeps a slot.
+gpu_reserved() {
+    local unit
+    [[ -f sensitivity/GPU_RESERVED ]] || return 1
+    while read -r unit; do
+        [[ -n $unit ]] && systemctl --user is-active --quiet "$unit" && return 0
+    done < sensitivity/GPU_RESERVED
+    return 1
+}
+running_study_runs() {
+    local pid count=0 case_dir
+    case_dir=$(pwd -P)/sensitivity/
+    for pid in $(pgrep -f "python setup.py --box-margin"); do
+        [[ $(readlink "/proc/$pid/cwd") == "$case_dir"* ]] && count=$((count + 1))
+    done
+    echo "$count"
+}
+
 # Wait until the GPU has the given free memory [MiB].
 wait_for_gpu() {
     local needed=${1:-$MIN_FREE_GPU_MIB}
     command -v nvidia-smi > /dev/null || return 0
+    while gpu_reserved && [[ $(running_study_runs) -ge 1 ]]; do
+        echo "$(date '+%F %T')  waiting: GPU slot reserved for $(paste -sd, sensitivity/GPU_RESERVED)"
+        sleep "$GPU_POLL_SECONDS"
+    done
     while true; do
         local free
         free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | head -n 1)
