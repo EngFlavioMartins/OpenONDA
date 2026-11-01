@@ -21,22 +21,41 @@ def read_forces(path):
     return np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
 
 
-def shedding_statistics(forces):
-    """Mean drag, lift amplitude and Strouhal number over developed shedding."""
-    window = forces["time"] >= DEVELOPED_SHEDDING
+def shedding_statistics(forces, start=DEVELOPED_SHEDDING, end=np.inf):
+    """Mean drag, lift amplitude and Strouhal number over whole shedding periods in [start, end].
+
+    Upward crossings of the lift fluctuation bound the periods. The mean drag is taken between the
+    first and the last crossing, so that the drag oscillation averages over whole periods (over a
+    window of 2.7 periods its plain mean scatters by 0.07 %, over whole periods by 0.007 %). The
+    lift amplitude is half the peak-to-peak lift in the window; its per-period mean, the plain
+    window mean of the drag and the number of periods are returned as checks.
+    """
+    window = (forces["time"] >= start) & (forces["time"] <= end)
     time = forces["time"][window]
+    drag = forces["drag_coefficient"][window]
     lift = forces["lift_coefficient"][window]
 
     # Upward lift crossings define the shedding period.
     fluctuation = lift - lift.mean()
     up = np.flatnonzero((fluctuation[:-1] < 0.0) & (fluctuation[1:] >= 0.0))
     crossing = time[up] - fluctuation[up] * np.diff(time)[up] / np.diff(fluctuation)[up]
-    period = np.diff(crossing).mean()
+    if crossing.size < 2:
+        return None
 
+    # Linear interpolation between samples, from the first to the last crossing
+    grid = np.linspace(crossing[0], crossing[-1], 20 * len(time) + 1)
+    drag_grid, lift_grid = np.interp(grid, time, drag), np.interp(grid, time, lift)
+    per_period = [
+        0.5 * np.ptp(lift_grid[(grid >= a) & (grid <= b)])
+        for a, b in zip(crossing[:-1], crossing[1:])
+    ]
     return {
-        "mean drag": forces["drag_coefficient"][window].mean(),
+        "mean drag": np.trapezoid(drag_grid, grid) / (grid[-1] - grid[0]),
         "lift amplitude": 0.5 * np.ptp(lift),
-        "Strouhal number": DIAMETER / (period * FREESTREAM_SPEED),
+        "Strouhal number": DIAMETER * (crossing.size - 1) / ((crossing[-1] - crossing[0]) * FREESTREAM_SPEED),
+        "lift amplitude per period": float(np.mean(per_period)),
+        "mean drag, whole window": drag.mean(),
+        "periods": crossing.size - 1,
     }
 
 
@@ -47,7 +66,7 @@ def main():
     # Compare developed-shedding statistics.
     expected, measured = shedding_statistics(reference), shedding_statistics(coupled)
     print(f"Developed shedding, t >= {DEVELOPED_SHEDDING:g} s")
-    for name in expected:
+    for name in ("mean drag", "lift amplitude", "Strouhal number"):
         deviation = 100.0 * (measured[name] / expected[name] - 1.0)
         print(
             f"  {name:16s} reference {expected[name]:.4f}  "

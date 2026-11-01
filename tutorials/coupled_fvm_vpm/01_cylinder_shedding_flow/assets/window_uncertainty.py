@@ -17,37 +17,12 @@ from pathlib import Path
 
 import numpy as np
 
-from assets.plot_forces import DEVELOPED_SHEDDING, read_forces
+from assets.plot_forces import DEVELOPED_SHEDDING, read_forces, shedding_statistics
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 WINDOW = 15.0  # s, the study window (40-55 s)
 SLIDE = 2.5  # s, window offset between samples
 MARGIN = 15.0  # s, a run must reach the window end plus this to be used
-DIAMETER = 1.0  # m
-FREESTREAM_SPEED = 1.0  # m/s
-
-
-def window_statistics(forces, start, end):
-    """Statistics over one window, with the per-period lift amplitude."""
-    window = (forces["time"] >= start) & (forces["time"] <= end)
-    time = forces["time"][window]
-    lift = forces["lift_coefficient"][window]
-    fluctuation = lift - lift.mean()
-    up = np.flatnonzero((fluctuation[:-1] < 0.0) & (fluctuation[1:] >= 0.0))
-    crossing = time[up] - fluctuation[up] * np.diff(time)[up] / np.diff(fluctuation)[up]
-    if crossing.size < 2:
-        return None
-    period = np.diff(crossing).mean()
-    per_period = [
-        0.5 * np.ptp(lift[(time >= a) & (time < b)]) for a, b in zip(crossing[:-1], crossing[1:])
-    ]
-    return {
-        "mean drag": forces["drag_coefficient"][window].mean(),
-        "lift amplitude": 0.5 * np.ptp(lift),
-        "lift amplitude per period": float(np.mean(per_period)),
-        "Strouhal number": DIAMETER / (period * FREESTREAM_SPEED),
-        "periods": crossing.size - 1,
-    }
 
 
 def sliding_windows(forces):
@@ -56,7 +31,7 @@ def sliding_windows(forces):
     starts = np.arange(DEVELOPED_SHEDDING, end_time - WINDOW + 1.0e-9, SLIDE)
     rows = []
     for start in starts:
-        statistics = window_statistics(forces, start, start + WINDOW)
+        statistics = shedding_statistics(forces, start, start + WINDOW)
         if statistics is not None:
             rows.append({"start": start, **statistics})
     return rows
@@ -68,7 +43,13 @@ def main():
         *sorted(CASE_DIR.glob("sensitivity/*/samples/forces_history.csv")),
         CASE_DIR / "samples/forces_history.csv",
     ]
-    names = ("mean drag", "lift amplitude", "lift amplitude per period", "Strouhal number")
+    names = (
+        "mean drag",
+        "mean drag, whole window",
+        "lift amplitude",
+        "lift amplitude per period",
+        "Strouhal number",
+    )
     table = []
     for path in paths:
         if not path.is_file():

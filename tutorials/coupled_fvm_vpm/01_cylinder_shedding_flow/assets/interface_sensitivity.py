@@ -14,10 +14,9 @@ reference (section g: h cells over the whole coupled FVM domain) where it exists
 cells and step, so that e_coupling no longer holds the coarser wake cells of the standard
 reference; otherwise the standard reference, and the row says so.
 
-Statistics are taken over whole shedding periods in 40 <= t <= 55 s: the mean drag between the
-first and the last upward lift crossing (whole periods, so the drag oscillation averages out),
-the lift amplitude as half the peak-to-peak value, its per-period mean as a check, and the
-Strouhal number from the mean crossing interval.
+Statistics are those of assets/plot_forces.py over 40 <= t <= 55 s: the mean drag over whole
+shedding periods, the lift amplitude as half the peak-to-peak value (its per-period mean as a
+check), and the Strouhal number from the mean upward-crossing interval.
 
 The sampling floor of a difference between two runs over the same window comes from the runs
 that reach 100 s (section h and the 100 s reference): the spread of the statistic between
@@ -42,8 +41,8 @@ from openonda.plotting import BACKGROUND_LIGHT, REFERENCE_STYLE
 from openonda.plotting import centered_subplots_adjust, fit_thesis_y_label_margins
 from openonda.plotting import save_validation_figure, set_thesis_style
 
-from assets.error_analysis import discretization_uncertainty
-from assets.plot_forces import read_forces
+from assets.error_analysis import discretization_uncertainty, space_time_fit
+from assets.plot_forces import read_forces, shedding_statistics
 from assets.plot_sensitivity import BASELINE, REFERENCE_NAME, RUN_NAME, jsonl_records
 from setup import CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_SUBSTEPS, FVM_TIME_STEP
 from setup import REYNOLDS_NUMBER
@@ -71,33 +70,6 @@ CHECKS = ("lift amplitude per period", "mean drag, whole window")
 # ---------------------------------------------------------------------------------------------
 
 
-def shedding_statistics(forces, start=WINDOW[0], end=WINDOW[1]):
-    """Mean drag over whole periods, lift amplitudes and Strouhal number in [start, end]."""
-    window = (forces["time"] >= start) & (forces["time"] <= end)
-    time, drag = forces["time"][window], forces["drag_coefficient"][window]
-    lift = forces["lift_coefficient"][window]
-    fluctuation = lift - lift.mean()
-    up = np.flatnonzero((fluctuation[:-1] < 0.0) & (fluctuation[1:] >= 0.0))
-    crossing = time[up] - fluctuation[up] * np.diff(time)[up] / np.diff(fluctuation)[up]
-    if crossing.size < 2:
-        return None
-    # Linear interpolation between samples: whole periods from the first to the last crossing
-    grid = np.linspace(crossing[0], crossing[-1], 20 * len(time) + 1)
-    drag_grid, lift_grid = np.interp(grid, time, drag), np.interp(grid, time, lift)
-    per_period = [
-        0.5 * np.ptp(lift_grid[(grid >= a) & (grid <= b)])
-        for a, b in zip(crossing[:-1], crossing[1:])
-    ]
-    return {
-        "mean drag": np.trapezoid(drag_grid, grid) / (grid[-1] - grid[0]),
-        "lift amplitude": 0.5 * np.ptp(lift),
-        "Strouhal number": DIAMETER * (crossing.size - 1) / ((crossing[-1] - crossing[0]) * SPEED),
-        "lift amplitude per period": float(np.mean(per_period)),
-        "mean drag, whole window": drag.mean(),
-        "periods": crossing.size - 1,
-    }
-
-
 def sampling_floor(paths):
     """Floor sigma [%] of the difference of two runs, per statistic, and its parts.
 
@@ -114,7 +86,7 @@ def sampling_floor(paths):
         starts = np.arange(WINDOW[0], forces["time"][-1] - (WINDOW[1] - WINDOW[0]) + 1e-9, SLIDE)
         windows = [shedding_statistics(forces, s, s + WINDOW[1] - WINDOW[0]) for s in starts]
         windows = [w for w in windows if w is not None]
-        study = shedding_statistics(forces)
+        study = shedding_statistics(forces, *WINDOW)
         row = {"run": path.parents[1].name, "end time": forces["time"][-1], "windows": len(windows)}
         for name in names:
             late = np.array([w[name] for w in windows[len(windows) // 2 :]])
@@ -165,19 +137,25 @@ def read_references():
             "reynolds_number": reynolds_number,
             "fine wake": bool(match["fine_wake_end"]),
             "forces": forces,
-            "statistics": shedding_statistics(forces),
+            "statistics": shedding_statistics(forces, *WINDOW),
         }
     return references
 
 
 def extrapolated_values(references):
-    """Q_ext and U_ext of each statistic from the standard references at a constant Courant number."""
+    """Q_ext and its uncertainty per statistic from the standard references at Re = 150.
+
+    The family at a constant Courant number gives Q_ext with the Eca-Hoekstra uncertainty of its
+    finest level; the space-time fit Q = Q_ext + a h^p + b dt^q over every standard reference
+    replaces it when its standard error is smaller (a statistic that barely changes with the cells,
+    such as the mean drag, converges oscillatorily within its sampling floor), as in
+    assets/error_analysis.py.
+    """
+    standard = [
+        ref for (re, h, dt, fine), ref in references.items() if re == REYNOLDS_NUMBER and not fine
+    ]
     family = sorted(
-        (
-            ref
-            for (re, h, dt, fine), ref in references.items()
-            if re == REYNOLDS_NUMBER and not fine and np.isclose(dt, h / CELL_SIZE * FVM_TIME_STEP)
-        ),
+        (ref for ref in standard if np.isclose(ref["time_step"], ref["cell_size"] / CELL_SIZE * FVM_TIME_STEP)),
         key=lambda ref: ref["cell_size"],
     )
     exact = {}
@@ -189,11 +167,26 @@ def extrapolated_values(references):
         finest = int(np.argmin(fit["x"]))
         exact[name] = {
             "Q_ext": fit["Q_ext"],
-            "U_finest": fit["uncertainty"][finest],
+            "U_ext": fit["uncertainty"][finest],
+            "method": "family C",
             "class": fit["class"],
             "order": fit["order"],
             "levels": ";".join(ref["name"] for ref in family),
         }
+        if len(standard) > 5:
+            combined = space_time_fit(
+                [ref["cell_size"] for ref in standard],
+                [ref["time_step"] for ref in standard],
+                [ref["statistics"][name] for ref in standard],
+            )
+            if combined["standard errors"]["Q_ext"] < exact[name]["U_ext"]:
+                exact[name].update(
+                    Q_ext=combined["Q_ext"],
+                    U_ext=combined["standard errors"]["Q_ext"],
+                    method="space-time fit",
+                    order=combined["p"],
+                    levels=";".join(ref["name"] for ref in standard),
+                )
     return exact
 
 
@@ -282,7 +275,7 @@ def read_runs(references, exact):
         if forces["time"][-1] < WINDOW[1] - 0.1:
             continue  # still developing, or stopped early
         parameters = run_parameters(directory.name)
-        statistics = shedding_statistics(forces)
+        statistics = shedding_statistics(forces, *WINDOW)
         fine, standard = comparison_references(parameters, references)
         reference = fine or standard
         run = {"name": directory.name, **parameters, "end time": forces["time"][-1]}
@@ -669,7 +662,7 @@ def main():
     print(f"Statistics over whole periods in {WINDOW[0]:g} <= t <= {WINDOW[1]:g} s")
     print("Q_ext (FVM only, zero cell size and step):")
     for name, value in exact.items():
-        print(f"  {name:16s} {value['Q_ext']:.5f} +- {value['U_finest']:.5f} (finest level), {value['class']}")
+        print(f"  {name:16s} {value['Q_ext']:.5f} +- {value['U_ext']:.5f} ({value['method']}, {value['class']})")
     print(f"Sampling floor from {floor[next(iter(floor))]['runs']} run(s) to >= {FLOOR_RUN_END:g} s:")
     for name, value in floor.items():
         print(
