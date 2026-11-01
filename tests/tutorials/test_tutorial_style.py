@@ -1,19 +1,17 @@
 """A single collection-wide guard for the tutorial's pedagogical boundary."""
 
 import ast
-from pathlib import Path
 import re
 import shlex
 
-TUTORIALS = Path(__file__).resolve().parents[2] / "tutorials"
-GENERATED = {"solution", "solutions", "samples", "figures", "study_results", "__pycache__"}
+from tests._tutorial_helpers import GENERATED, TUTORIALS
 
 
 def _tutorial_files(pattern):
     return [
         path
         for path in TUTORIALS.rglob(pattern)
-        if not GENERATED.intersection(path.relative_to(TUTORIALS).parts)
+        if not set(GENERATED).intersection(path.relative_to(TUTORIALS).parts)
         and path.name != "paraview_state.py"
     ]
 
@@ -65,7 +63,7 @@ def test_launchers_clean_then_run_plain_scripts():
             command = shlex.split(line)
             if script.name == "allclean.sh":
                 assert command[:2] == ["rm", "-rf"], (script, line)
-                assert set(command[2:]) <= GENERATED, (script, line)
+                assert set(command[2:]) <= set(GENERATED), (script, line)
                 continue
             assert command[0] == "python" and "||" not in command, (script, line)
             if command[1] == "setup.py":

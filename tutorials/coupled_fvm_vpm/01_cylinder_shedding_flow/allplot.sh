@@ -1,4 +1,7 @@
 #!/bin/bash
+set -e
+
+cd "$(dirname "$0")"
 
 # Compare the coupled cylinder wake with the FVM reference.
 python -m assets.plot_forces

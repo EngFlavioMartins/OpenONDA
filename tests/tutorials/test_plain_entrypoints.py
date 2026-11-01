@@ -37,7 +37,7 @@ def test_fvm_tutorials_use_native_mpi_setup_and_rank_assignment():
                 continue
             # Parameter studies are research tools, outside the direct
             # tutorial setup/launcher learning surface checked here.
-            if path.name in {"run_parameter_study.py", "compare_solvers.py", "run_sensitivity.py"}:
+            if path.name == "COMPLETE.sh":
                 continue
             if path.suffix not in (".py", ".sh"):
                 continue
@@ -177,7 +177,11 @@ def test_all_shell_launchers_work_outside_the_case_and_stop_on_failure(tmp_path)
 
 
 def test_allclean_removes_only_generated_output(tmp_path):
-    for original in sorted(TUTORIALS.rglob("allclean.sh")):
+    for original in sorted(
+        path
+        for path in TUTORIALS.rglob("allclean.sh")
+        if not set(GENERATED).intersection(path.relative_to(TUTORIALS).parts)
+    ):
         case = tmp_path / original.parent.relative_to(TUTORIALS)
         (case / "assets").mkdir(parents=True)
         shutil.copy2(original, case / "allclean.sh")

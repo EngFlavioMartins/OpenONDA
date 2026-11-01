@@ -1,4 +1,7 @@
 #!/bin/bash
+set -e
+
+cd "$(dirname "$0")"
 
 # Plot the completed coupling sensitivity study.
 python -m assets.plot_sensitivity

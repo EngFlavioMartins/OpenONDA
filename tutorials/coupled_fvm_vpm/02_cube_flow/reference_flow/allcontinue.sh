@@ -1,4 +1,7 @@
 #!/bin/bash
+set -e
+
+cd "$(dirname "$0")"
 
 # Continue the three grid levels from their latest accepted backups.
 python setup.py --name "grid_h010125" -h 0.10125

@@ -1,4 +1,7 @@
 #!/bin/bash
+set -e
+
+cd "$(dirname "$0")"
 
 # Remove previous output and run the coarse, medium and fine grids from t = 0.
 ./allclean.sh
