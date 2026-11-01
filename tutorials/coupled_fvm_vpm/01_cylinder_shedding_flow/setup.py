@@ -34,6 +34,11 @@ DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
 # FVM mesh and near wake
 CELL_SIZE = 0.04  # m, also the baseline particle spacing
+SLAB_HALF_DEPTH_LIMIT = 0.5  # m, meshing slab inside the cylinder STL ends at |z| = 0.6 m
+# Slab half-depths [cells] set by hand: at h = 0.056569 m the cfMesh untangling of the mesh
+# optimisation stalls (over 20 min, against 12-45 s at the other sizes) with 6 and 8 cells, and
+# 7 cells mesh in 4 min (checked 1 November 2026).
+SLAB_HALF_DEPTH_CELLS = {0.056569: 7}
 BOX_MARGIN = 2.4  # D upstream and sideways; 2 D farther downstream
 FVM_TIME_STEP = 0.008  # s
 
@@ -145,9 +150,15 @@ def build_case(
         # The x and y faces form the coupling interface, meshed as exact Cartesian planes.
         coupling=("numericalBoundary",),
     )
+    # The slab is thinner than the long cylinder (|z| <= 0.6 m), so the cylinder crosses the
+    # z faces: crossed faces are not meshed as exact coupling-grade sides and need no clearance.
+    slab_cells = SLAB_HALF_DEPTH_CELLS.get(
+        round(cell_size, 6), min(16, math.floor(SLAB_HALF_DEPTH_LIMIT / cell_size))
+    )
+    slab_half_depth = slab_cells * cell_size
     slab = msh.CartesianMesher(
         domain=msh.BoxDomain(
-            bounds=(*fvm_domain_bounds, -16 * cell_size, 16 * cell_size), patches=patches
+            bounds=(*fvm_domain_bounds, -slab_half_depth, slab_half_depth), patches=patches
         ),
         surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
         max_cell_size=cell_size,

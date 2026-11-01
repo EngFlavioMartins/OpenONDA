@@ -56,35 +56,110 @@ sys.exit(0 if time.size and time[-1] >= float(sys.argv[2]) - 0.1 else 1)  # with
 EOF
 }
 
+# Parallel workers (COMPLETE.sh --slots): STUDY_ROLE=gpu runs only the coupled runs, cpu only the
+# FVM-only references, all (default) both. Workers walk the same list, and a run directory is held
+# by one worker at a time, so a run another worker holds is skipped here and finished there.
+STUDY_ROLE=${STUDY_ROLE:-all}
+claim() {
+    mkdir -p "$1"
+    exec {CLAIM_FD}> "$1/.claim"
+    flock -n "$CLAIM_FD" && return 0
+    exec {CLAIM_FD}>&-
+    echo "skip $1 (held by another worker)"
+    return 1
+}
+release() { exec {CLAIM_FD}>&-; }
+
 # Coupled run. Arguments: FVM margin [D], FVM substeps, transfer inset [cells], name suffix,
 # then the changed setup inputs. GPU_MIB overrides the free GPU memory the run waits for.
 run() {
+    [[ -f sensitivity/HALTED ]] && exit 3  # another worker halted the study
+    [[ $STUDY_ROLE == cpu ]] && return 0
     local directory="sensitivity/box$1_sub$2_inset$3$4"
     if finished "$directory"; then
         echo "skip $directory (reached t = $END_TIME s)"
         return 0
     fi
+    claim "$directory" || return 0
+    if finished "$directory"; then  # finished by another worker meanwhile
+        release
+        return 0
+    fi
     wait_for_gpu "${GPU_MIB:-$MIN_FREE_GPU_MIB}"
     echo "$(date '+%F %T')  run $directory"
-    mkdir -p "$directory"
-    cp -r --update=none setup.py assets "$directory"
+    local started=$SECONDS
+    # A run with a coupled backup keeps its setup; one that never stored a backup takes the
+    # current setup, so a fixed setup reaches runs that stopped before their first backup.
+    if [[ -d $directory/solution/coupled ]]; then
+        cp -r --update=none setup.py assets "$directory"
+    else
+        cp -r setup.py assets "$directory"
+    fi
+    record_solver "$directory"
     (cd "$directory" && python setup.py --box-margin "$1" --fvm-substeps "$2" --transfer-inset "$3" \
-        "${@:5}" --end-time "$END_TIME") > "$directory/run.log" 2>&1 \
-        || echo "$(date '+%F %T')  $directory stopped, see $directory/run.log"
+        "${@:5}" --end-time "$END_TIME") > "$directory/run.log" 2>&1
+    local status=$?
+    release
+    quick_failure_check "$directory" "$status" $((SECONDS - started))
+}
+
+# The openonda package a run imports (COMPLETE.sh STUDY_SOLVER), appended to its solver.txt.
+record_solver() {
+    echo "$(date '+%F %T')  $(python -c \
+        "import importlib.util; print(importlib.util.find_spec('openonda').origin)")" >> "$1/solver.txt"
+}
+
+# Three runs in a row that stop within QUICK_FAILURE_SECONDS mark a systematic fault (setup,
+# mesher, environment), not a physical one: stop the study instead of running through the list.
+QUICK_FAILURE_SECONDS=${QUICK_FAILURE_SECONDS:-600}
+QUICK_FAILURE_LIMIT=${QUICK_FAILURE_LIMIT:-3}
+quick_failure_check() {
+    local directory=$1 status=$2 seconds=$3 counter=sensitivity/.quick_failures
+    if [[ $status -eq 0 ]]; then
+        rm -f "$counter"
+        return 0
+    fi
+    echo "$(date '+%F %T')  $directory stopped after ${seconds} s, see $directory/run.log"
+    tail -n 3 "$directory/run.log" | sed 's/^/        /'
+    if [[ $seconds -ge $QUICK_FAILURE_SECONDS ]]; then
+        rm -f "$counter"
+        return 0
+    fi
+    local count=$(( $(cat "$counter" 2>/dev/null || echo 0) + 1 ))
+    echo "$count" > "$counter"
+    if [[ $count -ge $QUICK_FAILURE_LIMIT ]]; then
+        echo "$(date '+%F %T')  $count runs in a row stopped within ${QUICK_FAILURE_SECONDS} s: systematic fault, study halted"
+        echo "$directory" > sensitivity/HALTED
+        exit 3
+    fi
 }
 
 # FVM-only variant on the CPU. Arguments: name suffix, then the changed setup inputs.
 reference() {
+    [[ -f sensitivity/HALTED ]] && exit 3  # another worker halted the study
+    [[ $STUDY_ROLE == gpu ]] && return 0
     local directory="sensitivity/reference_$1"
     if finished "$directory"; then
         echo "skip $directory (reached t = $END_TIME s)"
         return 0
     fi
+    claim "$directory" || return 0
+    if finished "$directory"; then  # finished by another worker meanwhile
+        release
+        return 0
+    fi
     echo "$(date '+%F %T')  reference $directory"
-    mkdir -p "$directory"
-    cp -r --update=none reference_flow/setup.py reference_flow/assets "$directory"
-    (cd "$directory" && python setup.py "${@:2}" --end-time "$END_TIME") > "$directory/run.log" 2>&1 \
-        || echo "$(date '+%F %T')  $directory stopped, see $directory/run.log"
+    if [[ -d $directory/solution/backup || -d $directory/solution/backups ]]; then
+        cp -r --update=none reference_flow/setup.py reference_flow/assets "$directory"
+    else
+        cp -r reference_flow/setup.py reference_flow/assets "$directory"
+    fi
+    local started=$SECONDS
+    record_solver "$directory"
+    (cd "$directory" && python setup.py "${@:2}" --end-time "$END_TIME") > "$directory/run.log" 2>&1
+    local status=$?
+    release
+    quick_failure_check "$directory" "$status" $((SECONDS - started))
 }
 
 SECTIONS=(h g b1 n_interval box_conv i_transfer v_side f_side d c a e baseline k c_ref x t2 p e_old b f_fact r inset f)
@@ -202,8 +277,12 @@ if want a; then
     run 2.4 8 8.75 _h0.056569_dtf0.004_ic0.04 --cell-size 0.056569 --fvm-time-step 0.004 \
         --interface-cell-size 0.04
     run 2.4 8 8.75 _dtf0.004 --fvm-time-step 0.004
-    GPU_MIB=${GPU_MIB_FINE:-5800} run 2.4 8 8.75 _h0.028284_dtf0.004_ic0.04 --cell-size 0.028284 \
-        --fvm-time-step 0.004 --interface-cell-size 0.04
+    # The finest level needs about 6 GB of particle images: on a 6 GB card it does not fit next
+    # to the display, so it runs only with RUN_FINE=1 (COMPLETE.sh --with-fine).
+    if [[ ${RUN_FINE:-0} -eq 1 ]]; then
+        GPU_MIB=${GPU_MIB_FINE:-5800} run 2.4 8 8.75 _h0.028284_dtf0.004_ic0.04 --cell-size 0.028284 \
+            --fvm-time-step 0.004 --interface-cell-size 0.04
+    fi
 fi
 
 # e. Blending depths delta_0 (zero-weight layer) and delta_1 (start of the replacement region),
@@ -219,6 +298,7 @@ fi
 # coupling error no longer contains the coarser 2h cells of the reference between x = 1.5 and 4.4 m.
 if want g; then
     reference fw4.4 --fine-wake-end 4.4
+    reference dt0.004_fw4.4 --time-step 0.004 --fine-wake-end 4.4
 fi
 
 # h. Statistics window: the baseline and the N = 2 run continued to t = 100 s, so that the

@@ -1,91 +1,172 @@
 #!/bin/bash
-# Complete the coupled-cylinder sensitivity study: run every section not yet stored, in the
-# priority order of claude/cylinder_sensitivity_redesign_2026-10-31.md, then redraw the figures.
+# Complete the coupled-cylinder sensitivity study in one solver version, unattended.
 #
-#   ./COMPLETE.sh              # everything that fits a 6 GB GPU, one run after another
-#   ./COMPLETE.sh --with-fine  # also section f (h_VPM = 0.02 m, needs about 12 GB)
-#   ./COMPLETE.sh --dry-run    # list what would run
+#   ./COMPLETE.sh              # phase 1 (new design), then phase 2 (earlier families rerun)
+#   ./COMPLETE.sh --phase 1    # phase 1 only
+#   ./COMPLETE.sh --with-fine  # also the runs that need more than 6 GB of GPU memory
+#   ./COMPLETE.sh --dry-run    # show what is stored, what will run, and what is archived
+#   ./COMPLETE.sh --slots 2    # two coupled runs at a time, references beside them on the CPU
 #
-# assets/run_sensitivity_study.sh skips runs that reached the end time and resumes the others
-# from their latest backup, so this script may be stopped and started again at any time. It
-# waits for free GPU memory before each coupled run (MIN_FREE_GPU_MIB, default 3500).
-# Progress is appended to sensitivity/COMPLETE.log.
+# Restartable: finished runs are skipped, interrupted runs resume from their latest coupled
+# backup. Three runs in a row that stop within 10 minutes halt the study (sensitivity/HALTED)
+# instead of running through the list. Progress: sensitivity/COMPLETE.log.
+#
+# One solver version. Coupled runs stored before the interface fixes of 31 October 2026
+# (direction-aware coupling condition, coupling-grade box mesh), or with the slab mesh before
+# the z-face fix of 1 November 2026, are moved, not deleted, to
+# sensitivity/archive_pre_2026-10-31/, so every compared run comes from the same code. The
+# FVM-only references stay: those fixes do not touch a mesh without coupling patches.
+#
+# Solver. STUDY_SOLVER=<directory holding an openonda/ package> makes every run import that copy
+# instead of the working tree, so that edits to the repository during a campaign of one to two
+# weeks cannot change the solver between runs (for example a `git archive <commit> openonda`
+# export). Each run directory records the package it imported in solver.txt.
+#
+# Slots. A coupled run is bound by one CPU core (the serial FVM) and holds about 2.8 GB of the
+# GPU, so a 6 GB card takes two at a time. With --slots N, N workers walk the same section list,
+# each pinned to its own six P-core threads, and a run directory is held by one worker at a time;
+# a third worker runs the FVM-only references on the E-cores. A run waits for MIN_FREE_GPU_MIB
+# of free GPU memory before it starts (default 3500 with one slot, 3200 with more).
 
 set -u
 cd "$(dirname "$0")"
 
+PHASES="1 2"
 WITH_FINE=0
 DRY_RUN=0
-for argument in "$@"; do
-    case $argument in
+SLOTS=1
+STAGGER_SECONDS=${STAGGER_SECONDS:-900}  # s between the starts of the coupled workers
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --phase) PHASES=$2; shift ;;
         --with-fine) WITH_FINE=1 ;;
         --dry-run) DRY_RUN=1 ;;
-        *) echo "unknown argument $argument"; exit 1 ;;
+        --slots) SLOTS=$2; shift ;;
+        *) echo "unknown argument $1"; exit 1 ;;
     esac
+    shift
 done
 
-# 1. Measurement: the 100 s runs that give the sampling floor, and the fine-wake references
-#    that remove the near-wake mesh difference from the coupling error.
-# 2. Mechanism of the dominant error: the strength limit and the coupling interval.
-# 3. The baseline domain.
-# 4. The interface details, and the particle and FVM sides at a fixed interface.
-# 5. Remaining sections of the 30 October list (blending depths, orders).
-SECTIONS=(
-    h g
-    b1 n_interval
-    box_conv
-    i_transfer v_side f_side
-    e d a c
-)
+# Phase 1: measurement, mechanism, domain, then the interface, particle and FVM sides.
+#   h          baseline and N = 2 to 100 s: the sampling floor and the anchors of this version
+#   g          FVM-only references with h cells over the coupled FVM domain
+#   b1         strength limit kappa_max = 1, 2, 3, 10 at N = 2 and 5
+#   n_interval N = 1 ... 6 at kappa_max = 1.8 and 3
+#   e_old      N = 4 (N = 2 comes from h)
+#   box_conv   FVM margins 3.2 and 4.0 D
+#   i_transfer, inset, k: the interface parameters to calibrate (threshold, moment cap, inset,
+#              coupling iterations)
+#   v_side, f_side, p: particle and FVM sides at a fixed interface (p: FVM step halved at the
+#              baseline interval)
+#   e, d, a
+PHASE_1=(h g b1 n_interval e_old box_conv i_transfer inset k v_side f_side p e d a)
+# Phase 2: the other families of the 19-25 October study, rerun in this version, then the
+# temporal series at a fixed interval (c, the most expensive section).
+PHASE_2=(baseline c_ref x t2 b f_fact r c)
+
+SECTIONS=()
+for phase in $PHASES; do
+    case $phase in
+        1) SECTIONS+=("${PHASE_1[@]}") ;;
+        2) SECTIONS+=("${PHASE_2[@]}") ;;
+    esac
+done
 [[ $WITH_FINE -eq 1 ]] && SECTIONS+=(f)
+export RUN_FINE=$WITH_FINE
 
 mkdir -p sensitivity
 LOG=sensitivity/COMPLETE.log
-log() { echo "$(date '+%F %T')  $*" | tee -a "$LOG"; }
+if [[ -n ${STUDY_SOLVER:-} ]]; then
+    [[ -f $STUDY_SOLVER/openonda/__init__.py ]] || { echo "no openonda package in $STUDY_SOLVER"; exit 1; }
+    export PYTHONPATH=$STUDY_SOLVER${PYTHONPATH:+:$PYTHONPATH}
+fi
+ARCHIVE=sensitivity/archive_pre_2026-10-31
+FIX_TIME=$(date -d '2026-10-31 12:00' +%s)
+SLAB_FIX_TIME=$(date -d '2026-11-01 10:30' +%s)
+
+# Coupled runs with output from an older solver or mesher version.
+stale_runs() {
+    local directory forces stamp
+    for directory in sensitivity/box*/; do
+        directory=${directory%/}
+        forces=$directory/samples/forces_history.csv
+        [[ -f $forces ]] || continue
+        stamp=$(stat -c %Y "$forces")
+        if [[ $stamp -lt $FIX_TIME ]]; then
+            echo "$directory"
+        elif [[ $stamp -lt $SLAB_FIX_TIME ]] \
+            && ! grep -q SLAB_HALF_DEPTH_LIMIT "$directory/setup.py" 2> /dev/null; then
+            echo "$directory"
+        fi
+    done
+}
 
 if [[ $DRY_RUN -eq 1 ]]; then
     echo "sections in order: ${SECTIONS[*]}"
-    echo "stored runs:"
-    for directory in sensitivity/box* sensitivity/reference_*; do
-        [[ -d $directory ]] || continue
-        forces="$directory/samples/forces_history.csv"
-        if [[ -f $forces ]]; then
-            echo "  $(tail -n 1 "$forces" | cut -d, -f1 | xargs printf '%7.2f s')  $directory"
-        else
-            echo "    (no forces)  $directory"
-        fi
+    echo
+    echo "to be archived (older solver or mesher version):"
+    stale_runs | sed 's/^/  /'
+    echo
+    echo "runs listed per section (finished ones are skipped when the study runs):"
+    for section in "${SECTIONS[@]}"; do
+        printf '  %-11s %s\n' "$section" \
+            "$(sed -n "/^if want $section; then/,/^fi/p" assets/run_sensitivity_study.sh \
+                | grep -cE '^\s*(GPU_MIB=\S+ |END_TIME=\S+ )?(run|reference) ')"
     done
     exit 0
 fi
 
-log "start: sections ${SECTIONS[*]}"
-for section in "${SECTIONS[@]}"; do
-    log "section $section"
-    assets/run_sensitivity_study.sh "$section" 2>&1 | tee -a "$LOG"
-done
+log() { echo "$(date '+%F %T')  ${WORKER:+[$WORKER] }$*" | tee -a "$LOG"; }
 
-# The reference with the fine wake also at the halved step (family X / P reference).
-log "section g at dt = 0.004 s"
-(
-    directory=sensitivity/reference_dt0.004_fw4.4
-    if [[ -f $directory/samples/forces_history.csv ]] \
-        && python - "$directory/samples/forces_history.csv" << 'EOF'
-import sys
-import numpy as np
-time = np.atleast_1d(np.genfromtxt(sys.argv[1], delimiter=",", names=True)["time"])
-sys.exit(0 if time.size and time[-1] >= 54.9 else 1)
-EOF
-    then
-        log "skip $directory"
-    else
-        mkdir -p "$directory"
-        cp -r --update=none reference_flow/setup.py reference_flow/assets "$directory"
-        (cd "$directory" && python setup.py --time-step 0.004 --fine-wake-end 4.4 --end-time 55) \
-            > "$directory/run.log" 2>&1 || log "$directory stopped, see $directory/run.log"
-    fi
-)
+rm -f sensitivity/HALTED sensitivity/.quick_failures
+stale=$(stale_runs)
+if [[ -n $stale ]]; then
+    mkdir -p "$ARCHIVE"
+    for directory in $stale; do
+        log "archive $directory -> $ARCHIVE/"
+        mv "$directory" "$ARCHIVE/"
+    done
+fi
+
+# One worker: every section in order, until done or halted.
+work() {
+    for section in "${SECTIONS[@]}"; do
+        [[ -f sensitivity/HALTED ]] && return 3
+        log "section $section"
+        bash assets/run_sensitivity_study.sh "$section" 2>&1 \
+            | sed -u "s/^/${WORKER:+[$WORKER] }/" | tee -a "$LOG"
+        if [[ ${PIPESTATUS[0]} -eq 3 || -f sensitivity/HALTED ]]; then
+            log "HALTED in section $section at $(cat sensitivity/HALTED 2> /dev/null): see its run.log"
+            return 3
+        fi
+    done
+}
+
+log "start: sections ${SECTIONS[*]}, $SLOTS slot(s), solver $(python -c \
+    "import importlib.util; print(importlib.util.find_spec('openonda').origin)")"
+if [[ $SLOTS -le 1 ]]; then
+    work || exit 3
+else
+    export MIN_FREE_GPU_MIB=${MIN_FREE_GPU_MIB:-3200}
+    pids=()
+    for ((slot = 0; slot < SLOTS; slot++)); do
+        (
+            taskset -cp "$((6 * slot))-$((6 * slot + 5))" $BASHPID > /dev/null
+            sleep $((slot * STAGGER_SECONDS))
+            export WORKER=gpu$slot STUDY_ROLE=gpu
+            work
+        ) &
+        pids+=($!)
+    done
+    (taskset -cp 12-19 $BASHPID > /dev/null; export WORKER=cpu STUDY_ROLE=cpu; work) &
+    pids+=($!)
+    halted=0
+    for pid in "${pids[@]}"; do wait "$pid" || halted=1; done
+    [[ $halted -eq 1 ]] && exit 3
+fi
 
 log "figures and tables"
 python -m assets.window_uncertainty 2>&1 | tee -a "$LOG"
-./allplot_sensitivity.sh 2>&1 | tee -a "$LOG"
+bash allplot_sensitivity.sh 2>&1 | tee -a "$LOG"
 log "done"
+touch sensitivity/COMPLETE
