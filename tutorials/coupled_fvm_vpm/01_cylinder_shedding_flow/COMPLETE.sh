@@ -158,7 +158,14 @@ else
         ) &
         pids+=($!)
     done
-    (taskset -cp 12-19 $BASHPID > /dev/null; export WORKER=cpu STUDY_ROLE=cpu; work) &
+    # The references start after the coupled workers, so that their meshers (up to 6 GB) do not
+    # peak together on a 16 GB machine.
+    (
+        taskset -cp 12-19 $BASHPID > /dev/null
+        sleep $((SLOTS * STAGGER_SECONDS))
+        export WORKER=cpu STUDY_ROLE=cpu
+        work
+    ) &
     pids+=($!)
     halted=0
     for pid in "${pids[@]}"; do wait "$pid" || halted=1; done
