@@ -173,7 +173,9 @@ def fit_row(kind, family, variable, quantity, fit):
 
 
 def write_table(path, rows):
-    """Rows of dictionaries with the same keys, as CSV."""
+    """Rows of dictionaries with the same keys, as CSV; no file without rows."""
+    if not rows:
+        return
     names = list(rows[0])
     # Column names keep their words; a comma inside a name would split the column
     lines = [",".join(name.replace(", ", " ") for name in names)]
@@ -486,7 +488,9 @@ def indicator_analysis(runs, decomposition):
     correlations = {}
     for name in INDICATORS:
         for quantity in ERRORS:
-            pairs = np.array([(row[name], row[f"|e_coupling| {quantity} [%]"]) for row in rows])
+            pairs = np.array(
+                [(row[name], row[f"|e_coupling| {quantity} [%]"]) for row in rows]
+            ).reshape(-1, 2)
             pairs = pairs[np.all(np.isfinite(pairs), axis=1)]
             if len(pairs) < 3:
                 continue
@@ -783,14 +787,15 @@ def main():
         )
 
     driver_rows = driver_analysis(families, decomposition)
-    print(
-        "Logged interface keys:",
-        ", ".join(
-            logged_keys(
-                CASE_DIR / f"sensitivity/{runs[0]['name']}/solution/coupler_diagnostics.jsonl"
-            )
-        ),
-    )
+    if runs:
+        print(
+            "Logged interface keys:",
+            ", ".join(
+                logged_keys(
+                    CASE_DIR / f"sensitivity/{runs[0]['name']}/solution/coupler_diagnostics.jsonl"
+                )
+            ),
+        )
     indicator_rows, correlations = indicator_analysis(runs, decomposition)
     factorial_summary(runs, decomposition)
     limit_rows = transfer_limit_summary(runs, decomposition)

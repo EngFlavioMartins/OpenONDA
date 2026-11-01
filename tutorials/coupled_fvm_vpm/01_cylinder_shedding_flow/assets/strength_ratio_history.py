@@ -34,6 +34,8 @@ def developed_transfer_statistics(path):
         for record in records
         if DEVELOPED_START <= record["time"] <= DEVELOPED_END
     ]
+    if not records:
+        return {"transfers": 0}
     strength_ratio = np.array([record["transfer"]["strength_ratio"] for record in records])
     boundary_mismatch = np.array(
         [record["fvm_boundary_data"]["mean_velocity_mismatch"] for record in records]
@@ -64,10 +66,12 @@ def developed_transfer_statistics(path):
 
 def main():
     """Print and save transfer statistics for every sensitivity run."""
-    rows = [
-        {"run": path.parents[1].name, **developed_transfer_statistics(path)}
+    statistics = [
+        (path.parents[1].name, developed_transfer_statistics(path))
         for path in sorted(CASE_DIR.glob("sensitivity/box*/solution/coupler_diagnostics.jsonl"))
     ]
+    # Runs that have not reached the developed window yet have no transfers to report.
+    rows = [{"run": name, **values} for name, values in statistics if values["transfers"]]
     print("Developed transfer diagnostics, 40 <= t <= 55 s")
     print("run  kappa median/max  near limit  mismatch mean/max  removed  moment")
     for row in rows:
