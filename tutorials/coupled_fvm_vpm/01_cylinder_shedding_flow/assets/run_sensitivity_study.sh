@@ -44,6 +44,24 @@ wait_for_gpu() {
     done
 }
 
+# RAM. On the 16 GB laptop two coupled runs, the FVM-only references and other work share the
+# memory; on 1 November 2026 a fine-wake reference mesher (4.3 GB and growing) exhausted RAM and
+# swap and the kernel OOM killer stopped the study. A run starts only when the kernel reports
+# enough available memory: MIN_FREE_RAM_MIB (default 4500) for a coupled run, whose mesher and
+# particle set peak near 3 GB, REFERENCE_RAM_MIB (default 7000) for a reference, whose mesher
+# peaks near 6 GB.
+MIN_FREE_RAM_MIB=${MIN_FREE_RAM_MIB:-4500}
+REFERENCE_RAM_MIB=${REFERENCE_RAM_MIB:-7000}
+wait_for_ram() {
+    local needed=$1 free
+    while true; do
+        free=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)
+        [[ $free -ge $needed ]] && return 0
+        echo "$(date '+%F %T')  waiting for ${needed} MiB of available RAM (${free} MiB available)"
+        sleep "$GPU_POLL_SECONDS"
+    done
+}
+
 # Whether a run directory already holds forces up to the end time.
 finished() {
     local forces="$1/samples/forces_history.csv"
@@ -86,6 +104,7 @@ run() {
         return 0
     fi
     wait_for_gpu "${GPU_MIB:-$MIN_FREE_GPU_MIB}"
+    wait_for_ram "$MIN_FREE_RAM_MIB"
     echo "$(date '+%F %T')  run $directory"
     local started=$SECONDS
     # A run with a coupled backup keeps its setup; one that never stored a backup takes the
@@ -148,6 +167,7 @@ reference() {
         release
         return 0
     fi
+    wait_for_ram "$REFERENCE_RAM_MIB"
     echo "$(date '+%F %T')  reference $directory"
     if [[ -d $directory/solution/backup || -d $directory/solution/backups ]]; then
         cp -r --update=none reference_flow/setup.py reference_flow/assets "$directory"

@@ -22,6 +22,12 @@
 # weeks cannot change the solver between runs (for example a `git archive <commit> openonda`
 # export). Each run directory records the package it imported in solver.txt.
 #
+# Memory. On a desktop, start the study as its own systemd user service with OOMPolicy=continue
+# (systemd-run --user --unit=<name> -p OOMPolicy=continue <launcher>): with the default policy an
+# out-of-memory kill of any process in the unit it was started from stops the whole unit, which
+# took every run of the study down on 1 November 2026. Runs also wait for available RAM before
+# they start (MIN_FREE_RAM_MIB, REFERENCE_RAM_MIB in assets/run_sensitivity_study.sh).
+#
 # Slots. A coupled run is bound by one CPU core (the serial FVM) and holds about 2.8 GB of the
 # GPU, so a 6 GB card takes two at a time. With --slots N, N workers walk the same section list,
 # each pinned to its own six P-core threads, and a run directory is held by one worker at a time;
