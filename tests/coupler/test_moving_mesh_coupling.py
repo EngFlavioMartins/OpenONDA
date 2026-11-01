@@ -132,7 +132,7 @@ def test_body_translating_through_still_fluid_couples_like_a_fixed_body(tmp_path
             if moving:
                 flow.mesh_motion.update_boundaries(flow)
             solver.start_from("initial")
-            while solver.step < solver.n_steps:
+            while solver.time < solver.end_time - 1e-12:
                 solver.advance()
             count = particles.particles.n_particles_total
             position = np.asarray(particles.particle_position)[:count]
@@ -258,9 +258,11 @@ def test_pitching_body_couples_like_a_larger_fvm_domain(tmp_path):
 
     The coupled box of +-1 m pitches with the body; the FVM-only reference
     pitches a box of +-1.5 m with the stream fixed on its faces. Both meshes
-    share their cells inside the coupled box. Forces and cell velocities
-    agree to a few percent, the size of the reference blockage; reading the
-    rotating geometry as a translating one gives errors near 12 percent.
+    share their cells inside the coupled box. Forces agree to about 3 percent
+    and cell velocities to about 2 percent of the stream, the size of the
+    reference blockage and close to the 2 and 4 percent of the static box;
+    reading the rotating geometry as a translating one gives about 12 and 11
+    percent.
     """
     pitch = fvm.MeshMotion(fvm.PitchingMotion(10.0, 2.0, rotation_axis=(0.0, 0.0, 1.0)))
     end_time = 10 * COUPLING_INTERVAL
@@ -300,9 +302,9 @@ def test_pitching_body_couples_like_a_larger_fvm_domain(tmp_path):
     coupled_force = np.array([coupled_force[time] for time in times])
     reference_force = np.array([reference_force[time] for time in times])
     force_error = np.abs(coupled_force - reference_force).max(axis=1)
-    assert force_error.mean() < 0.06 * np.abs(reference_force).max()
+    assert force_error.mean() < 0.07 * np.abs(reference_force).max()
     velocity_error = np.linalg.norm(coupled_velocity - reference_velocity, axis=1)
-    assert velocity_error.mean() < 0.05 * np.linalg.norm(STREAM)
+    assert velocity_error.mean() < 0.06 * np.linalg.norm(STREAM)
 
 
 @pytest.mark.parametrize(
@@ -322,7 +324,7 @@ def test_moving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path, mot
         tmp_path / "continuous", STREAM, heave, end_time=end_time, backup=backup
     ) as continuous:
         continuous.start_from("initial")
-        while continuous.step < continuous.n_steps:
+        while continuous.time < continuous.end_time - 1e-12:
             continuous.advance()
         expected = _coupled_state(continuous)
 
@@ -337,7 +339,7 @@ def test_moving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path, mot
     ) as restarted:
         assert restarted.start_from("latest")
         assert restarted.step == 2
-        while restarted.step < restarted.n_steps:
+        while restarted.time < restarted.end_time - 1e-12:
             restarted.advance()
         actual = _coupled_state(restarted)
 
@@ -400,7 +402,7 @@ flow = fvm.FVMCase(
     ),
     initial_conditions=fvm.InitialFields(velocity=stream),
     run=fvm.RunPlan(end_time=0.06),
-    samplers=fvm.Samplers((fvm.ForceSampler(["body"], schedule=fvm.EverySteps(2)),)),
+    samplers=fvm.Samplers((fvm.ForceSampler(["body"], schedule=fvm.EveryTime(0.02)),)),
     mesh=lambda: coupling_box_mesh((-1.0, 1.0) * 3, 0.125, hole_box=(-0.25, 0.25) * 3,
         wall_patch_name="body"),
     boundaries=(

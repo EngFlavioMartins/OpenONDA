@@ -8,6 +8,7 @@ The coupled solver splits the flow where each method is strongest. The finite-vo
 | [Cube](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated three-dimensional flow at $Re=1000$ with LES in both solvers. |
 | [NACA 4412 wing](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | A finite cambered wing with capped tips at $10^\circ$ and $Re=1000$, meshed body-fitted from an analytical STL, with LES in both solvers. |
 | [Oscillating cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) | The cylinder heaving across the stream at $Re=150$; the FVM domain moves with it. |
+| [Pitching airfoil](../tutorials/coupled_fvm_vpm/05_pitching_airfoil/README.md) | A NACA 0012 airfoil pitching about its quarter chord at $Re=1000$; the FVM domain turns with it. |
 
 Each case has an FVM-only `reference_flow` that solves the same problem on a large domain. Read the [FVM](fvm.md) and [VPM](vpm.md) guides first.
 
@@ -79,7 +80,7 @@ The transfer region, transfer lattice, interpolation stencils and walls are fixe
 
 The FVM keeps inertial-frame velocities on its moving mesh; the boundary data are converted to the inertial frame and the FVM velocity seen by the particles to the frame of the rotation centre. The particle positions, particle output and `domain_bounds` therefore refer to that frame: add `mesh_translation` from `solution/coupler_diagnostics.jsonl` to place a particle field in the inertial frame. The particle domain moves with the rotation centre and must hold the FVM domain at every pose; the outflow fringe stays outside the swept FVM domain. The remeshing extension $L_\mathrm{remesh}$ is sized for the largest particle stream relative to the mesh, including the speed of the FVM-domain corners about the rotation centre.
 
-A planar coupled flow, one particle layer between slip planes normal to z, accepts rotations about z only. A quarter turn of the mesh and the stream turns the coupled forces, cell velocities and particle invariants to within the single-precision particle diffusion, about 1e-5 relative. A box pitching by 10° at 2 Hz couples as an FVM domain 1.5 times larger, to the few-percent blockage of that reference; treating the turning geometry as translating instead gives errors near 12 % (`tests/coupler/test_moving_mesh_coupling.py`).
+A planar coupled flow, one particle layer between slip planes normal to z, accepts rotations about z only. A quarter turn of the mesh and the stream turns the coupled forces, cell velocities and particle invariants to within the single-precision particle diffusion, about 1e-5 relative. A box pitching by 10° at 2 Hz couples as an FVM domain 1.5 times larger: forces agree to about 3 % and cell velocities to about 2 % of the stream, close to the 2 % and 4 % of the same box at rest; treating the turning geometry as translating instead gives about 12 % and 11 % (`tests/coupler/test_moving_mesh_coupling.py`).
 
 ## Configuration
 
