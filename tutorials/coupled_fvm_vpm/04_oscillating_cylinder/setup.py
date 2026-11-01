@@ -73,7 +73,7 @@ def build_case():
     fourier_number = KINEMATIC_VISCOSITY * coupling_time_step_size / CELL_SIZE**2
     diffusion_stages = math.floor(12.0 * fourier_number) + 1
 
-    # Mesh a slab around the cylinder and retain one periodic spanwise cell.
+    # Mesh a slab that the cylinder crosses, then retain one periodic spanwise cell.
     patches = msh.BoxPatches(
         xmin="numericalBoundary",
         xmax="numericalBoundary",
@@ -86,7 +86,7 @@ def build_case():
     )
     slab = msh.CartesianMesher(
         domain=msh.BoxDomain(
-            bounds=(*fvm_domain_bounds, -16 * CELL_SIZE, 16 * CELL_SIZE), patches=patches
+            bounds=(*fvm_domain_bounds, -14 * CELL_SIZE, 14 * CELL_SIZE), patches=patches
         ),
         surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
         max_cell_size=CELL_SIZE,
