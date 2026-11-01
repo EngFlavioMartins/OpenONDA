@@ -225,14 +225,15 @@ want() { [[ " ${selected[*]} " == *" $1 "* ]]; }
 # The gain is gamma = min(kappa_max - 1, 1): kappa_max = 2 is the smallest value with full gain, so
 # kappa_max = 2, 3 and 10 separate the gain from the bound on the corrected strength.
 if want b1; then
-    run 2.4 2 8.75 _kappa1 --max-strength-ratio 1.0
+    # The baseline interval first, the short interval (where kappa saturates) after it.
     run 2.4 5 8.75 _kappa1 --max-strength-ratio 1.0
-    run 2.4 2 8.75 _kappa3 --max-strength-ratio 3.0
     run 2.4 5 8.75 _kappa3 --max-strength-ratio 3.0
-    run 2.4 2 8.75 _kappa2 --max-strength-ratio 2.0
     run 2.4 5 8.75 _kappa2 --max-strength-ratio 2.0
-    run 2.4 2 8.75 _kappa10 --max-strength-ratio 10.0
     run 2.4 5 8.75 _kappa10 --max-strength-ratio 10.0
+    run 2.4 2 8.75 _kappa1 --max-strength-ratio 1.0
+    run 2.4 2 8.75 _kappa3 --max-strength-ratio 3.0
+    run 2.4 2 8.75 _kappa2 --max-strength-ratio 2.0
+    run 2.4 2 8.75 _kappa10 --max-strength-ratio 10.0
 fi
 
 # ------------------------------------------------------------------------------------------------
@@ -347,8 +348,10 @@ fi
 # h. Statistics window: the baseline and the N = 2 run continued to t = 100 s, so that the
 # 40-55 s window (2.7 periods) can be compared with 55-100 s.
 if want h; then
+    # The baseline to 100 s measures the coupled sampling floor; N = 2 stops at 55 s like
+    # every other run (deadline of 3 November 2026).
     END_TIME=100 run 2.4 5 8.75 ""
-    END_TIME=100 run 2.4 2 8.75 ""
+    run 2.4 2 8.75 ""
 fi
 
 # ------------------------------------------------------------------------------------------------

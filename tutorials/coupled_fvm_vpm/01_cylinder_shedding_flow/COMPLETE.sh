@@ -6,16 +6,19 @@
 #   ./COMPLETE.sh --with-fine  # also the runs that need more than 6 GB of GPU memory
 #   ./COMPLETE.sh --dry-run    # show what is stored, what will run, and what is archived
 #   ./COMPLETE.sh --slots 2    # two coupled runs at a time, references beside them on the CPU
+#   ./COMPLETE.sh --sections "h box_conv n_interval"   # these sections only, in this order
 #
 # Restartable: finished runs are skipped, interrupted runs resume from their latest coupled
 # backup. Three runs in a row that stop within 10 minutes halt the study (sensitivity/HALTED)
 # instead of running through the list. Progress: sensitivity/COMPLETE.log.
 #
-# One solver version. Coupled runs stored before the interface fixes of 31 October 2026
-# (direction-aware coupling condition, coupling-grade box mesh), or with the slab mesh before
-# the z-face fix of 1 November 2026, are moved, not deleted, to
-# sensitivity/archive_pre_2026-10-31/, so every compared run comes from the same code. The
-# FVM-only references stay: those fixes do not touch a mesh without coupling patches.
+# One solver version. Coupled runs stored before the coupling-grade box mesh of 31 October
+# 2026, or with the slab mesh before the z-face fix of 1 November 2026, are moved, not
+# deleted, to sensitivity/archive_pre_2026-10-31/; coupled runs made with solver 613b5898,
+# whose direction-aware coupling condition lowered the cylinder drag by 4 % (removed on
+# 1 November 2026), move to sensitivity/archive_613b5898/. So every compared run comes from
+# the same code. The FVM-only references stay: none of this touches a mesh without coupling
+# patches.
 #
 # Solver. STUDY_SOLVER=<directory holding an openonda/ package> makes every run import that copy
 # instead of the working tree, so that edits to the repository during a campaign of one to two
@@ -41,6 +44,7 @@ PHASES="1 2"
 WITH_FINE=0
 DRY_RUN=0
 SLOTS=1
+ONLY_SECTIONS=""
 STAGGER_SECONDS=${STAGGER_SECONDS:-900}  # s between the starts of the coupled workers
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -48,6 +52,7 @@ while [[ $# -gt 0 ]]; do
         --with-fine) WITH_FINE=1 ;;
         --dry-run) DRY_RUN=1 ;;
         --slots) SLOTS=$2; shift ;;
+        --sections) ONLY_SECTIONS=$2; shift ;;
         *) echo "unknown argument $1"; exit 1 ;;
     esac
     shift
@@ -71,12 +76,16 @@ PHASE_1=(h g b1 n_interval e_old box_conv i_transfer inset k v_side f_side p e d
 PHASE_2=(baseline c_ref x t2 b f_fact r c)
 
 SECTIONS=()
-for phase in $PHASES; do
-    case $phase in
-        1) SECTIONS+=("${PHASE_1[@]}") ;;
-        2) SECTIONS+=("${PHASE_2[@]}") ;;
-    esac
-done
+if [[ -n $ONLY_SECTIONS ]]; then
+    read -r -a SECTIONS <<< "$ONLY_SECTIONS"
+else
+    for phase in $PHASES; do
+        case $phase in
+            1) SECTIONS+=("${PHASE_1[@]}") ;;
+            2) SECTIONS+=("${PHASE_2[@]}") ;;
+        esac
+    done
+fi
 [[ $WITH_FINE -eq 1 ]] && SECTIONS+=(f)
 export RUN_FINE=$WITH_FINE
 
@@ -87,10 +96,11 @@ if [[ -n ${STUDY_SOLVER:-} ]]; then
     export PYTHONPATH=$STUDY_SOLVER${PYTHONPATH:+:$PYTHONPATH}
 fi
 ARCHIVE=sensitivity/archive_pre_2026-10-31
+ARCHIVE_613b5898=sensitivity/archive_613b5898
 FIX_TIME=$(date -d '2026-10-31 12:00' +%s)
 SLAB_FIX_TIME=$(date -d '2026-11-01 10:30' +%s)
 
-# Coupled runs with output from an older solver or mesher version.
+# Coupled runs with output from an older solver or mesher version: "<directory> <archive>".
 stale_runs() {
     local directory forces stamp
     for directory in sensitivity/box*/; do
@@ -99,10 +109,12 @@ stale_runs() {
         [[ -f $forces ]] || continue
         stamp=$(stat -c %Y "$forces")
         if [[ $stamp -lt $FIX_TIME ]]; then
-            echo "$directory"
+            echo "$directory $ARCHIVE"
         elif [[ $stamp -lt $SLAB_FIX_TIME ]] \
             && ! grep -q SLAB_HALF_DEPTH_LIMIT "$directory/setup.py" 2> /dev/null; then
-            echo "$directory"
+            echo "$directory $ARCHIVE"
+        elif grep -q solver_613b5898 "$directory/solver.txt" 2> /dev/null; then
+            echo "$directory $ARCHIVE_613b5898"
         fi
     done
 }
@@ -125,14 +137,12 @@ fi
 log() { echo "$(date '+%F %T')  ${WORKER:+[$WORKER] }$*" | tee -a "$LOG"; }
 
 rm -f sensitivity/HALTED sensitivity/.quick_failures
-stale=$(stale_runs)
-if [[ -n $stale ]]; then
-    mkdir -p "$ARCHIVE"
-    for directory in $stale; do
-        log "archive $directory -> $ARCHIVE/"
-        mv "$directory" "$ARCHIVE/"
-    done
-fi
+while read -r directory archive; do
+    [[ -n $directory ]] || continue
+    mkdir -p "$archive"
+    log "archive $directory -> $archive/"
+    mv "$directory" "$archive/"
+done <<< "$(stale_runs)"
 
 # One worker: every section in order, until done or halted.
 work() {
