@@ -2,7 +2,7 @@
 
 The VLM blade of ``tutorials/vpm/06_rotor_flow`` is a flat lifting surface
 whose segments give the leading and trailing edge at 23 radial stations. The
-same chord lines carry a NACA 0012 thickness here, so the two rotors share
+same chord lines carry a NACA four-digit thickness here, so the two rotors share
 their planform, twist and operating point and differ only in the blade
 section model.
 """
@@ -14,6 +14,9 @@ import numpy as np
 from openonda.core.file_output import write_text_atomic
 
 ROTATION_AXIS = np.array([1.0, 0.0, 0.0])
+# The section ends in a flat base at this chord fraction: a sharp trailing edge thinner than
+# the blade cells breaks the mesher's wall projection
+TRAILING_EDGE_CUT = 0.95
 
 
 def naca_half_thickness(x, thickness):
@@ -36,21 +39,23 @@ def blade_stations(blade_file):
 
 
 def section_ring(leading_edge, trailing_edge, thickness, n_points):
-    """Outline of one section: lower surface to the trailing edge, upper surface back.
+    """Outline of one section: lower surface to the blunt trailing edge, upper surface back.
 
     The thickness is laid off normal to the chord line, in the plane normal
-    to the radial direction of the station.
+    to the radial direction of the station; the base closes the section at
+    ``TRAILING_EDGE_CUT`` of the chord.
     """
     chord = trailing_edge - leading_edge
     radial = np.cross(ROTATION_AXIS, np.cross(ROTATION_AXIS, 0.5 * (leading_edge + trailing_edge)))
     radial /= np.linalg.norm(radial)
     normal = np.cross(radial, chord)
     normal /= np.linalg.norm(normal)
-    x = 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, n_points)))
+    x = TRAILING_EDGE_CUT * 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, n_points)))
     offset = np.outer(naca_half_thickness(x, thickness) * np.linalg.norm(chord), normal)
     lower = leading_edge + np.outer(x, chord) - offset
     upper = leading_edge + np.outer(x, chord) + offset
-    return np.vstack((lower[:-1], upper[:0:-1]))
+    # The leading edge appears once; the base edge joins the two trailing-edge points
+    return np.vstack((lower, upper[:0:-1]))
 
 
 def rotate_about_axis(points, angle_degrees):
@@ -69,7 +74,7 @@ def write_blade_stl(path, blade_file, thickness, n_points, azimuth_degrees):
         for le, te in zip(leading, trailing)
     ]
     n_outline = len(rings[0])
-    n_chord = n_outline // 2  # outline index of the trailing edge
+    n_chord = (n_outline + 1) // 2  # points of the lower surface, the base point included
     vertices = np.vstack(rings)
 
     triangles = []
@@ -79,7 +84,8 @@ def write_blade_stl(path, blade_file, thickness, n_points, azimuth_degrees):
             j = (i + 1) % n_outline
             triangles += [(root + i, root + j, tip + j), (root + i, tip + j, tip + i)]
 
-    # Caps: strips between lower point i and upper point i at equal chord position
+    # Caps: strips between lower point i and upper point i at equal chord position; the last
+    # strip ends on the base edge
     def lower_point(i):
         return i
 
@@ -87,7 +93,7 @@ def write_blade_stl(path, blade_file, thickness, n_points, azimuth_degrees):
         return (n_outline - i) % n_outline
 
     cap = [(lower_point(i), lower_point(i + 1), upper_point(i + 1)) for i in range(n_chord - 1)]
-    cap += [(lower_point(i), upper_point(i + 1), upper_point(i)) for i in range(1, n_chord)]
+    cap += [(lower_point(i), upper_point(i + 1), upper_point(i)) for i in range(1, n_chord - 1)]
     tip = (len(rings) - 1) * n_outline
     triangles += [(tip + a, tip + b, tip + c) for a, b, c in cap]
     triangles += [(a, c, b) for a, b, c in cap]

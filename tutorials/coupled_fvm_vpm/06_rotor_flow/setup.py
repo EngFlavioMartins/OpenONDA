@@ -34,7 +34,9 @@ KINEMATIC_VISCOSITY = 1.5e-5  # m^2/s
 AIR_DENSITY = 1.225  # kg/m^3
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS  # rad/s
 BLADE_AZIMUTHS = (0.0, 120.0, 240.0)  # degrees about the rotor axis
-BLADE_THICKNESS = 0.12  # chord fraction, NACA 0012
+# NACA 0018: the 12 % section's tip, 0.042 m thick, collapsed cells in the mesher's wall
+# projection; the 18 % section keeps the tip more than two cells thick
+BLADE_THICKNESS = 0.18  # chord fraction
 N_SECTION_POINTS = 61  # per surface of a blade section
 
 # Time, as the VLM rotor: the coupling interval is its particle step
@@ -42,12 +44,12 @@ COUPLING_TIME_STEP = 0.006  # s
 END_TIME = 15.0  # s
 FIELD_SAMPLE_INTERVAL = 0.06  # s, fields, wake planes and lines
 BACKUP_INTERVAL = 0.024  # s
-FVM_SUBSTEPS = 6  # per coupling interval; the tip cells see Courant numbers near one
+FVM_SUBSTEPS = 12  # per coupling interval; the tip cells see Courant numbers near one
 
 # FVM disk and mesh
 CELL_SIZE = 0.2  # m, at the coupling interface; also the particle spacing
-BLADE_CELL_SIZE = 0.05  # m, two octree levels finer at the blade walls
-DISK_HALF_THICKNESS = 3.0  # m, along the rotor axis
+BLADE_CELL_SIZE = 0.025  # m, three octree levels finer at the blade walls
+DISK_HALF_THICKNESS = 2.4  # m, along the rotor axis; the blades stay eight background cells inside
 DISK_HALF_WIDTH = 9.0  # m, normal to the axis; the blade tips stay eight background cells inside
 
 # VPM wake

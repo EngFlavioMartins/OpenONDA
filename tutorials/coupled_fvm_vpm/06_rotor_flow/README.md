@@ -5,19 +5,23 @@ The three-bladed turbine of the [VLM rotor tutorial](../../vpm/06_rotor_flow/REA
 | Quantity | Value |
 | --- | --- |
 | Rotor | $R=6$ m, hub radius 1 m, three blades 120° apart, no hub body |
-| Blades | Chord lines of `assets/blade.json`, a copy of the VLM blade file `../../vpm/06_rotor_flow/assets/blade.json` (0.6 m at the root, 0.35 m at the tip, twist of the VLM design), with a NACA 0012 thickness; closed at root and tip |
+| Blades | Chord lines of `assets/blade.json`, a copy of the VLM blade file `../../vpm/06_rotor_flow/assets/blade.json` (0.6 m at the root, 0.35 m at the tip, twist of the VLM design), with a NACA 0018 thickness cut to a flat base at 95 % of the chord; closed at root and tip |
 | Wind; air | $U_\infty=7$ m/s along $+x$; $\rho=1.225$ kg/m³, $\nu=1.5\times10^{-5}$ m²/s |
 | Rotation | $\lambda=\Omega R/U_\infty=7$, $\Omega=8.167$ rad/s about $-x$, sin² spin-up over one revolution |
-| FVM disk | $[-3,3]\times[-9,9]\times[-9,9]$ m in the frame of the rotor |
-| Cell and particle spacing | 0.2 m at the interface, 0.05 m at the blades |
-| FVM step; coupling interval | 0.001 s; 0.006 s (the VLM particle step) |
+| FVM disk | $[-2.4,2.4]\times[-9,9]\times[-9,9]$ m in the frame of the rotor |
+| Cell and particle spacing | 0.2 m at the interface, 0.025 m at the blades |
+| FVM step; coupling interval | 0.0005 s; 0.006 s (the VLM particle step) |
 | End time; output | 15 s; fields, wake planes and lines every 0.06 s, backups every 0.024 s |
 
 ## Physics and numerical model
 
-The blade surfaces are generated at setup from the copied VLM blade file (`assets/blade_surface.py`): each of its 23 radial stations gives a chord line, the NACA 0012 thickness is laid off normal to it in the plane of the station, and the sections are lofted and capped. Three STL files, one per blade, become the wall patches `blade_0`, `blade_1` and `blade_2`.
+The blade surfaces are generated at setup from the copied VLM blade file (`assets/blade_surface.py`): each of its 23 radial stations gives a chord line, the NACA 0018 thickness is laid off normal to it in the plane of the station, the section ends in a flat base at 95 % of the chord, and the sections are lofted and capped. The 18 % section keeps the blade tip more than two cells thick; with 12 % the 0.04 m tip collapsed cells in the mesher's wall projection. Three STL files, one per blade, become the wall patches `blade_0`, `blade_1` and `blade_2`.
 
-The disk is a coupling box with all six faces on the particle interface, meshed as exact Cartesian planes, with the blades two octree levels finer; its sides keep the blade tips eight background cells inside, as the mesher requires. The whole mesh turns with `fvm.RotatingMotion`, the rigid ALE form of [moving meshes](../../../docs/fvm.md#moving-meshes); the coupling geometry is kept in the turning body coordinates and the particles stay in the inertial frame ([moving bodies](../../../docs/coupling.md#moving-bodies)). The relative flow at the blade tips, about 50 m/s, sets the FVM step: six substeps per coupling interval keep the tip Courant number near one with three outer PIMPLE passes. Both solvers use the equilibrium Smagorinsky closure, as the [cube](../02_cube_flow/README.md); the VLM rotor uses the Smagorinsky closure in its wake alone. The particle domain holds the disk at every angle, with an outflow fringe at its downstream end.
+The disk is a coupling box with all six faces on the particle interface, meshed as exact Cartesian planes, with the blades three octree levels finer; its sides keep the blade tips eight background cells inside, as the mesher requires. The whole mesh turns with `fvm.RotatingMotion`, the rigid ALE form of [moving meshes](../../../docs/fvm.md#moving-meshes); the coupling geometry is kept in the turning body coordinates and the particles stay in the inertial frame ([moving bodies](../../../docs/coupling.md#moving-bodies)). The relative flow at the blade tips, about 50 m/s, sets the FVM step: twelve substeps per coupling interval keep the tip Courant number near one with three outer PIMPLE passes. Both solvers use the equilibrium Smagorinsky closure, as the [cube](../02_cube_flow/README.md); the VLM rotor uses the Smagorinsky closure in its wake alone. The particle domain holds the disk at every angle, with an outflow fringe at its downstream end.
+
+## Status
+
+The case is configured but has not run: on 2 November 2026 the mesher built the octree mesh of about 350 000 cells for every configuration tried (12 % and 18 % sections, 0.05 m and 0.025 m blade cells, sharp and blunt trailing edges) and then failed its surface-constrained wall projection on the lofted blades, with inverted cells or cell centres inside the blade. The wall projection of thin, twisted surfaces is a mesher limitation to fix before this case runs; the case files are the intended configuration.
 
 ## Run
 
