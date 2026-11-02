@@ -88,17 +88,30 @@ Sizes on the laptop at handoff:
 | `~/openonda_runs/bisect/`, `~/openonda_runs/cases3d/` | | regression bisection of 1 Nov; the 3D-case watchdog of October (stale) |
 | `.claude/cube_screens/` | | cube screen queue (`gate.sh`, `queue1.sh`, `screen.sh`), waits for the GPU |
 
-To continue the cylinder study with the laptop's runs instead of re-running them, copy them
-before the study restarts there (the laptop keeps running them until told otherwise; the
-`COMPLETE.sh` driver resumes any copied run from its latest backup):
+**Cloud backup.** All of it (about 75 GB) was copied on 2 Nov 2026 to the author's Nextcloud:
+`Nextcloud/Research/OpenONDA_solution_backup_2026-11-02/`. The folder mirrors the repository
+paths for every ignored data directory of `tutorials/` (`solution/`, `samples/`, `sensitivity/`,
+`figures/`, the case-level logs; list in its `MANIFEST_paths.txt`) and holds `openonda_runs/`
+(frozen solver exports, launchers, bisection, the 3D-case watchdog). Its `README.txt` repeats the
+restore commands.
+
+**First step on the large machine, after `git clone`/`git pull` and before any run or analysis:
+restore the solution data from that backup.** From the repository root, with the Nextcloud folder
+synced or mounted at `<backup>`:
 
 ```bash
-rsync -a --info=progress2 <laptop>:Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/sensitivity/ tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/sensitivity/
+rsync -a --info=progress2 <backup>/tutorials/ tutorials/
 ```
 
 ```bash
-rsync -a <laptop>:Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/samples/ tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/samples/
+rsync -a --info=progress2 <backup>/openonda_runs/ ~/openonda_runs/
 ```
+
+Then check: `tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/sensitivity/` holds the runs of
+section 3.2 and `python -m assets.study_status` (from that case directory) lists them; the
+`COMPLETE.sh` driver resumes every interrupted run from its latest backup and skips the finished
+ones. Without this restore the driver would start all 23 stored runs from zero (about 100 GPU
+hours) and the tutorials of objective 2 would lose their previous results for comparison.
 
 The `figures/auxiliary/*.csv` tables of case 01 are in git and hold every statistic the analysis
 printed at handoff, so the analysis scripts can be checked against them before any new run.
