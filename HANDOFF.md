@@ -7,8 +7,9 @@ many of these in parallel. Everything that exists in git at commit time is on `o
 data of the runs (`sensitivity/`, `solution/`, `samples/`, `figures/auxiliary` excepted) is
 not in git and is listed in section 2.
 
-Author of every commit: Flavio Martins <flavio.martins@outlook.com>. Every commit message ends
-with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. Work on branch `development`.
+Author of every commit: Flavio Martins <flavio.martins@outlook.com>. Commit messages carry no
+co-author or tool attribution of any kind. Work on branch `development`; GitHub holds only
+`main`, `development`, `openfoam-wrapper` and `openfoam-journal`.
 
 ## 0. Ground rules (apply to every objective)
 
@@ -64,9 +65,12 @@ Section 7 gives a lane plan for running these in parallel on the large machine.
 | Branch | Head at handoff | Content |
 | --- | --- | --- |
 | `development` | this commit | Solver with the mixed coupling condition on every face (`3f771630`, 1 Nov), rigid moving mesh (translation and rotation), study scripts and matched references (`c19cd8a2`), the author's "Candidate release" (`5c9a29aa`, 2 Nov 11:07), and the **uncommitted work of the moving-mesh session committed as is** in this commit (section 6.2). |
-| `cube-optimisation` | pushed with this handoff | Worktree `../OpenONDA-cube` on the laptop, base `f2c71c6c`: selective-eddy-viscosity constant 0.5, strain-cap check excluding the transfer region, and commit `3f771630` applied as a working-tree patch. Committed as is with this handoff (section 5.2). Not merged: the `3f771630` part duplicates `development`. |
-| `moving-mesh-port` | `57d60ac7` | Ancestor of `development`; nothing to merge. |
-| `integration`, `conventions-alignment`, `release-candidate`, `codex/cfd-nomenclature` | pushed with this handoff | Older branches, all merged into `development` before 2 Nov as far as the author's notes record; keep for history only. |
+| `openfoam-wrapper`, `openfoam-journal` | unchanged | The author's branches. |
+
+The older work branches (`cube-optimisation`, merged into `development` on 2 Nov as `e97e0343`;
+`moving-mesh-port`; `integration`; `conventions-alignment`; `release-candidate`; and one more)
+were removed from GitHub on 2 Nov. They are kept in the local bundle
+`~/Projects/OpenONDA_extra_branches_2026-11-02.bundle` and as local refs under `refs/backup/`.
 | `main` | `0c0b3bc3` | Public release branch. Do not force-push or touch without the author. |
 
 Laptop-only worktrees (`git worktree list` there): `../OpenONDA-cube`, `../OpenONDA-port`,
