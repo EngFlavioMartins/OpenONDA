@@ -23,7 +23,12 @@ from assets.plot_forces import DEVELOPED_SHEDDING, read_forces, shedding_statist
 from assets.shedding_phase import phase_averaged_difference, shedding_phase
 from setup import BLEND_END, BLEND_START, BOX_MARGIN, CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY
 from setup import FVM_SUBSTEPS
-from setup import FVM_OUTER_CORRECTORS, FVM_TIME_STEP, MAX_STRENGTH_RATIO, MOMENT_CORRECTION_FRACTION
+from setup import (
+    FVM_OUTER_CORRECTORS,
+    FVM_TIME_STEP,
+    MAX_STRENGTH_RATIO,
+    MOMENT_CORRECTION_FRACTION,
+)
 from setup import REYNOLDS_NUMBER, TRANSFER_INSET, TRANSFER_REMOVAL_THRESHOLD, VORTICITY_FLOOR
 from setup import VPM_INTEGRATOR
 
@@ -195,11 +200,12 @@ def coupling_step_statistics(path):
         for record in records
         if STATISTICS_WINDOW[0] <= record["time"] <= STATISTICS_WINDOW[1]
     ]
-    metadata = path.parent / "coupler_metadata.json"
-    kappa_max = (
-        json.loads(metadata.read_text())["configuration"].get("max_strength_ratio", np.nan)
-        if metadata.exists()
-        else np.nan
+    kappa_max = next(
+        (
+            json.loads(metadata.read_text())["configuration"].get("max_strength_ratio", np.nan)
+            for metadata in path.parent.glob("coupler_metadata.json")
+        ),
+        np.nan,
     )
     kappa = np.array(
         [record["transfer"]["strength_ratio"] for record in records if "transfer" in record]
@@ -441,10 +447,13 @@ def read_fine_wake_reference():
     """The FVM-only reference with h cells over the baseline FVM domain (section g), or None."""
     for directory in sorted(CASE_DIR.glob("sensitivity/reference_fw*")):
         match = REFERENCE_NAME.fullmatch(directory.name)
-        path = directory / "samples/forces_history.csv"
-        if match and not match["fine_box_margin"] and path.exists() \
-                and developed(np.atleast_1d(read_forces(path))):
-            return read_reference(directory, CELL_SIZE, FVM_TIME_STEP, REYNOLDS_NUMBER)
+        for path in directory.glob("samples/forces_history.csv"):
+            if (
+                match
+                and not match["fine_box_margin"]
+                and developed(np.atleast_1d(read_forces(path)))
+            ):
+                return read_reference(directory, CELL_SIZE, FVM_TIME_STEP, REYNOLDS_NUMBER)
     return None
 
 

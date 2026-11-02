@@ -39,9 +39,9 @@ def sliding_windows(forces):
 
 def main():
     paths = [
-        CASE_DIR / "reference_flow/samples/forces_history.csv",
+        *CASE_DIR.glob("reference_flow/samples/forces_history.csv"),
         *sorted(CASE_DIR.glob("sensitivity/*/samples/forces_history.csv")),
-        CASE_DIR / "samples/forces_history.csv",
+        *CASE_DIR.glob("samples/forces_history.csv"),
     ]
     names = (
         "mean drag",
@@ -52,8 +52,6 @@ def main():
     )
     table = []
     for path in paths:
-        if not path.is_file():
-            continue
         forces = np.atleast_1d(read_forces(path))
         if forces["time"][-1] < DEVELOPED_SHEDDING + WINDOW + MARGIN:
             continue  # too short to slide the window

@@ -34,13 +34,13 @@ def last_records(path, count=50):
 
 
 def status(directory):
-    forces = directory / "samples/forces_history.csv"
-    diagnostics = directory / "solution/coupler_diagnostics.jsonl"
+    forces = next(directory.glob("samples/forces_history.csv"), None)
+    diagnostics = next(directory.glob("solution/coupler_diagnostics.jsonl"), None)
     row = {"run": directory.name, "time": np.nan, "flags": []}
-    if not forces.is_file():
-        log = directory / "run.log"
-        row["state"] = "meshing or failed" if log.is_file() else "not started"
-        if log.is_file() and "Traceback" in log.read_text(errors="ignore"):
+    if forces is None:
+        log = next(directory.glob("run.log"), None)
+        row["state"] = "not started" if log is None else "meshing or failed"
+        if log is not None and "Traceback" in log.read_text(errors="ignore"):
             row["state"] = "FAILED: " + log.read_text(errors="ignore").strip().splitlines()[-1][:90]
         return row
     data = np.atleast_1d(np.genfromtxt(forces, delimiter=",", names=True, dtype=None, encoding="utf-8"))
@@ -52,7 +52,7 @@ def status(directory):
         row["drag"] = drag
         if not DRAG_RANGE[0] <= drag <= DRAG_RANGE[1]:
             row["flags"].append(f"mean drag {drag:.3f}")
-    if diagnostics.is_file():
+    if diagnostics is not None:
         records = last_records(diagnostics)
         finite = [r["last_induction_image_call"]["mesh"]["finite_evaluation"] for r in records
                   if "last_induction_image_call" in r]
@@ -77,12 +77,11 @@ def status(directory):
 
 
 def main():
+    # A trailing separator matches directories only
     directories = sorted(
-        [d for d in CASE_DIR.glob("sensitivity/box*") if d.is_dir()]
-        + [d for d in CASE_DIR.glob("sensitivity/reference_*") if d.is_dir()]
+        [*CASE_DIR.glob("sensitivity/box*/"), *CASE_DIR.glob("sensitivity/reference_*/")]
     )
-    halted = CASE_DIR / "sensitivity/HALTED"
-    if halted.exists():
+    for halted in CASE_DIR.glob("sensitivity/HALTED"):
         print(f"STUDY HALTED at {halted.read_text().strip()}")
     print(f"{'run':52s} {'t [s]':>7s} {'s/s':>6s} {'N_p':>7s} {'kappa':>6s} {'mismatch':>9s}  flags")
     for directory in directories:
