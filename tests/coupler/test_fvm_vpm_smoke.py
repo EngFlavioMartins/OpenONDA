@@ -259,6 +259,14 @@ def test_particle_strain_shortens_the_coupling_interval(tmp_path):
         assert solver.vpm_time_step_size <= 0.03
 
 
+
+def test_replaced_particles_do_not_set_the_strain_limit(tmp_path):
+    with _solver(tmp_path) as solver:
+        lattice = solver.vorticity_transfer._transfer_lattice
+        assert solver.vpm_solver.strain_excluded_bounds == tuple(
+            float(value) for value in lattice.remeshing_region_bounds
+        )
+
 def test_fixed_step_checkpoint_can_continue_with_cfl_control(tmp_path):
     with _solver(tmp_path, end_time=0.2, time_step_size=0.05) as solver:
         solver.run()

@@ -441,7 +441,7 @@ class Logging:
         else:
             rows.append(("solution stability check", "enabled"))
             rows.append(("  maximum strain increment, infinity norm", f"{stability_limit:.3f}"))
-        coefficient = getattr(cfg, "selective_eddy_viscosity_coefficient", 0.0)
+        coefficient = getattr(cfg, "selective_eddy_viscosity_coefficient", 0.0) or 0.0
         if coefficient > 0.0:
             rows.append(("selective eddy viscosity", "enabled"))
             rows.append(("  c_stab", f"{coefficient:.3f}"))

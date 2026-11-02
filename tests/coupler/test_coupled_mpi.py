@@ -99,7 +99,7 @@ flow, particles = uniform_stream_cases(
     cores=2, max_n_particles=1000,
 )
 if mode == "construction_failure":
-    def fail(case):
+    def fail(case, **kwargs):
         raise ValueError("injected construction failure")
     vpm_api.VPMSolver = fail
 solver = None

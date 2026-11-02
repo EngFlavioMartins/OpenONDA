@@ -30,10 +30,7 @@ from typing import Any
 
 import numpy as np
 
-from ..fields.mixed_velocity_boundary import (
-    coupled_inflow_weight,
-    update_mixed_velocity_boundary,
-)
+from ..fields.mixed_velocity_boundary import update_mixed_velocity_boundary
 
 
 class CouplerInterfaceMixin:
@@ -517,30 +514,16 @@ class CouplerInterfaceMixin:
         normal_velocity: np.ndarray,
         tangential_velocity_normal_gradient: np.ndarray,
         patch_name: str,
-        *,
-        inflow_velocity: np.ndarray | None = None,
-        transition_speed: float | None = None,
     ) -> None:
         """Prescribe the normal velocity and the normal gradient of the tangential velocity per face.
 
-        With ``inflow_velocity`` (the external ``(N, 3)`` face velocity in m/s,
-        whose normal component equals ``normal_velocity``) the condition is
-        direction-aware: faces with ``u.n <= 0`` take the full external
-        velocity, faces with ``u.n >= transition_speed`` (m/s) keep the mixed
-        condition, and faces in between blend smoothly (see
-        :func:`~openonda.fvm.fields.mixed_velocity_boundary.coupled_inflow_weight`).
-        Without it, the tangential velocity follows the owner cells on every face.
+        The same condition holds on every face whatever the flow direction; the
+        tangential velocity follows the owner cells (see
+        :mod:`~openonda.fvm.fields.mixed_velocity_boundary`).
         """
         normal_field = self._scatter_patch_values(patch_name, normal_velocity)
         gradient_field = self._scatter_patch_values(
             patch_name, tangential_velocity_normal_gradient, trailing_shape=(3,)
-        )
-        if (inflow_velocity is None) != (transition_speed is None):
-            raise ValueError("inflow_velocity and transition_speed must be given together")
-        inflow_field = (
-            self._scatter_patch_values(patch_name, inflow_velocity, trailing_shape=(3,))
-            if inflow_velocity is not None
-            else None
         )
         b = self._optional_patch(patch_name)
         if b is None:
@@ -570,17 +553,6 @@ class CouplerInterfaceMixin:
         b["velocity_type"] = "mixed_velocity"
         b["normal_velocity_field"] = normal_field
         b["tangential_velocity_normal_gradient_field"] = gradient_field
-        if inflow_field is not None:
-            if inflow_field.shape != (n_faces, 3) or not np.all(np.isfinite(inflow_field)):
-                raise ValueError(
-                    f"Inflow velocity for patch {patch_name!r} must be finite with shape "
-                    f"({n_faces}, 3)"
-                )
-            b["inflow_velocity_field"] = inflow_field
-            b["inflow_weight_field"] = coupled_inflow_weight(normal_field, float(transition_speed))
-        else:
-            b.pop("inflow_velocity_field", None)
-            b.pop("inflow_weight_field", None)
         b["max_removed_normal_gradient_normal_component"] = (
             float(np.max(np.abs(removed_normal_component))) if n_faces else 0.0
         )

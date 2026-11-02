@@ -247,7 +247,7 @@ class EvolutionStepper:
         self.profiler.begin_step(self.solver.step, self.solver.time, self.time_step_size)
         _gradients_required = (
             self.flow_model == "les"
-            or self.stabilization_config.selective_eddy_viscosity_coefficient > 0.0
+            or (self.stabilization_config.selective_eddy_viscosity_coefficient or 0.0) > 0.0
             or (
                 self.stabilization_config.pedrizzetti_relaxation_enabled
                 and self.flow_model != "potential"

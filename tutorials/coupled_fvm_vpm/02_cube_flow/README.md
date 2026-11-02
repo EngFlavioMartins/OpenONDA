@@ -13,14 +13,14 @@ The FVM resolves separation from a no-slip unit cube and its near wake; vortex p
 | FVM domain | $[-1.8,5.05]\times[-1.8,1.8]^2$ m |
 | VPM domain; outflow fringe | $[-4.5,24]\times[-3,3]^2$ m; $x\in[12,24]$ m |
 | Cell and particle spacing | 0.045 m |
-| FVM step; coupling interval | 0.01 s; 0.01 s |
+| FVM step; coupling interval | Courant number 0.9, at most 0.02 s; at most 0.1 s, held at 0.04 s by the force output |
 | Statistics window | $30\le t\le60$ s |
 
 ## Physics and numerical model
 
 `assets/cube.stl` defines the cube for the [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup). Particle boundary data supply normal velocity and the normal gradient of tangential velocity on the outer FVM faces. The FVM then replaces particle vorticity inside the transfer region, with a two-cell buffer and a four-cell blending layer.
 
-The particle wake uses Gaussian cores, RK2 transport, grid-based diffusion and FMM induction. Vorticity fades through the outflow fringe rather than being removed at the downstream face. A tilted vortex behind the cube starts asymmetric shedding in both the coupled and reference cases.
+The particle wake uses Gaussian cores, RK2 transport, grid-based diffusion and FMM induction. With LES the particles also receive the [selective eddy viscosity](../../../docs/vpm.md#stabilization), which keeps stretched wake vortices above the particle spacing; without it a vortex at $x\approx10$ m collapsed to the spacing and ended a run at $t=33$ s. Vorticity fades through the outflow fringe rather than being removed at the downstream face. A tilted vortex behind the cube starts asymmetric shedding in both the coupled and reference cases.
 
 ## Run
 

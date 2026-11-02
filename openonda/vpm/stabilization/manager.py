@@ -346,7 +346,7 @@ class StabilizationManager:
         """Names of the mechanisms this configuration switches on."""
         cfg = self.config
         active = []
-        if cfg.selective_eddy_viscosity_coefficient > 0.0:
+        if (cfg.selective_eddy_viscosity_coefficient or 0.0) > 0.0:
             active.append("selective eddy viscosity")
         if cfg.pedrizzetti_relaxation_enabled:
             active.append("Pedrizzetti relaxation")
@@ -451,7 +451,7 @@ class StabilizationManager:
         step = self.ctx.state.step
         if step < cfg.selective_eddy_viscosity_start_step:
             return
-        coefficient = cfg.selective_eddy_viscosity_coefficient
+        coefficient = cfg.selective_eddy_viscosity_coefficient or 0.0
         if coefficient <= 0.0:
             return
         self.operators.apply_selective_eddy_viscosity(self.ctx.particles, coefficient)

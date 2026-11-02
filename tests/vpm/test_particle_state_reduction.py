@@ -77,6 +77,35 @@ def test_extrema_match_strain_norms_strength_and_vorticity(particles):
     assert metrics.maximum_vorticity == pytest.approx((magnitude / volume).max(), rel=1e-15)
 
 
+
+def test_strain_extrema_skip_the_excluded_box_only(particles):
+    gradient, strength, volume = _float64_fields(particles)
+    position = particles.position_cpu(use_cache=False).astype(np.float64)
+    strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))
+    infinity = TIME_STEP_SIZE * np.abs(strain).sum(axis=2).max(axis=1)
+    spectral = TIME_STEP_SIZE * np.linalg.norm(strain, ord=2, axis=(1, 2))
+    # The box holds the particle with the largest strain and about 1/8 of the cloud.
+    centre = position[np.argmax(infinity)]
+    bounds = tuple(float(v) for c in np.clip(centre, -0.5, 0.5) for v in (c - 0.5, c + 0.5))
+    inside = np.all(
+        (position >= np.asarray(bounds[::2])) & (position <= np.asarray(bounds[1::2])), axis=1
+    )
+    assert inside[np.argmax(infinity)] and 0 < inside.sum() < COUNT
+
+    state = measure_particle_state(particles, TIME_STEP_SIZE, bounds)
+    metrics = state.metrics
+    outside = np.flatnonzero(~inside)
+    assert metrics.strain_increment_infinity == infinity[outside].max()
+    assert metrics.strain_increment_infinity_particle == outside[np.argmax(infinity[outside])]
+    assert metrics.strain_increment_spectral == pytest.approx(
+        spectral[outside].max(), rel=1e-14
+    )
+    assert not inside[metrics.strain_increment_spectral_particle]
+    # Strength and vorticity still cover every particle.
+    magnitude = np.linalg.norm(strength, axis=1)
+    assert metrics.maximum_particle_strength == pytest.approx(magnitude.max(), rel=1e-15)
+    assert metrics.maximum_vorticity == pytest.approx((magnitude / volume).max(), rel=1e-15)
+
 def test_spectral_norm_is_largest_absolute_strain_eigenvalue(particles):
     gradient, _, _ = _float64_fields(particles)
     strain = 0.5 * (gradient + np.swapaxes(gradient, 1, 2))

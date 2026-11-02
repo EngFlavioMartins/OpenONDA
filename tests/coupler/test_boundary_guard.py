@@ -15,7 +15,6 @@ import pytest
 from openonda.coupler.boundary import (
     BoundaryMismatchError,
     _check_boundary_mismatch,
-    inflow_transition_speed,
     report_coupling_patch_quality,
 )
 from openonda.coupler.config import CouplerConfig
@@ -71,16 +70,6 @@ def test_the_guard_can_be_disabled_and_is_not_part_of_the_restart_configuration(
         CouplerConfig(boundary_mismatch_warning=2.0, boundary_mismatch_limit=1.0)
     with pytest.raises(ValueError):
         CouplerConfig(boundary_mismatch_limit=0.0)
-
-
-def test_the_inflow_transition_speed_scales_with_the_flow():
-    coupler = _coupler()
-    velocity = np.tile([1.0, 0.0, 0.0], (8, 1))
-    assert inflow_transition_speed(coupler, velocity) == pytest.approx(0.1)
-    # Without a freestream (a body moving in still fluid) the boundary speed sets the scale.
-    coupler.freestream_velocity = np.zeros(3)
-    assert inflow_transition_speed(coupler, 0.5 * velocity) == pytest.approx(0.05)
-    assert inflow_transition_speed(coupler, np.zeros((8, 3))) > 0.0
 
 
 def test_skewed_outer_patch_cells_are_reported(caplog):

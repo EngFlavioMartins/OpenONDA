@@ -16,33 +16,6 @@ logger = logging.getLogger("openonda.coupler")
 _MAX_BOUNDARY_FLUX_TOLERANCE = 1.0e-2
 _BOUNDARY_FLUX_QUADRATURE_FACTOR = 2.0
 
-INFLOW_TRANSITION_FRACTION = 0.1
-"""Normal outflow speed, as a fraction of the reference speed, above which a
-coupling face is purely mixed; inflow faces always take the particle velocity."""
-
-
-def inflow_transition_speed(coupler, face_velocity: np.ndarray) -> float:
-    """Return the normal speed (m/s) over which coupling faces switch from Dirichlet to mixed.
-
-    The reference speed is the larger of the freestream speed and the RMS boundary
-    speed, so that cases without a freestream still have a meaningful scale. The
-    root rank's value is broadcast, keeping every rank's face weights identical.
-    """
-    value = None
-    if coupler._is_root:
-        velocity = np.asarray(face_velocity, dtype=np.float64).reshape(-1, 3)
-        rms = (
-            float(np.sqrt(np.mean(np.einsum("ij,ij->i", velocity, velocity))))
-            if len(velocity)
-            else 0.0
-        )
-        reference = max(float(np.linalg.norm(coupler.freestream_velocity)), rms)
-        value = INFLOW_TRANSITION_FRACTION * max(reference, 1.0e-12)
-    comm = getattr(coupler, "_comm", None)
-    if comm is not None and comm.Get_size() > 1:
-        value = comm.bcast(value, root=0)
-    return float(value)
-
 
 def _record_boundary_induction(coupler, phase: str, summary: dict) -> None:
     if phase == "initial":
@@ -126,8 +99,9 @@ def report_coupling_patch_quality(
     A coupling-grade patch has planar faces and axis-aligned owner cells, so the
     boundary closure does not extrapolate across a skewed cell and the
     particle-mesh transfer sees a planar interface. ``CartesianMesher`` produces
-    one when the box faces are declared as coupling patches. The direction-aware
-    boundary condition is stable without it, but accuracy degrades.
+    one when the box faces are declared as coupling patches. Without it the mixed
+    condition extrapolates across skewed cells, which destabilised the NACA 4412
+    coupled case; ``boundary_mismatch_limit`` then stops the run.
     """
     if not coupler._is_root or not len(face_normal):
         return None
@@ -762,14 +736,12 @@ def apply_fvm_boundary(
             "The mixed boundary condition requires the normal velocity and the normal "
             "gradient of the tangential velocity"
         )
-    # Direction-aware coupling condition: the particle velocity on inflow faces,
-    # the mixed condition on outflow faces (see ``mixed_velocity_boundary``).
+    # The mixed condition on every face, whatever the flow direction (see
+    # ``mixed_velocity_boundary``).
     coupler.fvm_solver.set_mixed_velocity_boundary_condition(
         np.ascontiguousarray(normal_velocity, dtype=np.float64),
         np.ascontiguousarray(normal_gradient, dtype=np.float64),
         patch,
-        inflow_velocity=prescribed_velocity,
-        transition_speed=inflow_transition_speed(coupler, prescribed_velocity),
     )
     coupler.fvm_solver.set_flux_consistent_pressure_boundary_condition(patch)
     # With coupling iterations the FVM writes its output once the boundary data are accepted.

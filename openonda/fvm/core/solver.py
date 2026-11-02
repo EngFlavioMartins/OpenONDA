@@ -1770,8 +1770,6 @@ class FVMSolver(CouplerInterfaceMixin):
                                 "normal_velocity_field",
                                 "tangential_velocity_normal_gradient_field",
                                 "max_removed_normal_gradient_normal_component",
-                                "inflow_velocity_field",
-                                "inflow_weight_field",
                             ):
                                 boundary.pop(key, None)
                 else:

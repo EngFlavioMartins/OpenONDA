@@ -48,7 +48,7 @@ CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000
 
 # FVM–VPM transfer and run duration
-FVM_SUBSTEPS = 1  # FVM steps per particle step at the maximum interval
+FVM_SUBSTEPS = 5  # FVM steps per particle step at the maximum interval
 END_TIME = 60.0  # s
 
 # Output
