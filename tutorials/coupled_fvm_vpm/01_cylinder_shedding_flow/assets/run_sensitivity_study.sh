@@ -11,11 +11,10 @@
 # latest backups, and a run that already reached the end time is skipped. Suffix order (parsed by
 # assets/plot_sensitivity.py): _xd _h _dtf _ic _hp _bs _be _kappa _tau _mc _rk _vf _co _oc _k _re _rep.
 #
-# Sections are grouped by what they isolate (see claude/cylinder_sensitivity_redesign_2026-10-31.md
-# of the OpenONDA project): D the FVM domain, I the interface at a fixed FVM and VPM, T the coupling
-# interval, V the particle side at a fixed FVM and interface, F the FVM side at a fixed interface
-# and particle set. Every new run holds the baseline cells, steps and Reynolds number unless the
-# section varies them.
+# Sections are grouped by what they isolate: D the FVM domain, I the interface at a fixed FVM and
+# VPM, T the coupling interval, V the particle side at a fixed FVM and interface, F the FVM side
+# at a fixed interface and particle set. Every new run holds the baseline cells, steps and
+# Reynolds number unless the section varies them.
 #
 # GPU memory. A coupled run at h = 0.04 m holds about 3 GB of particle images on the GPU; without
 # free memory the image sums fall back to the CPU, about 50 times slower. Before each coupled run the
