@@ -94,7 +94,7 @@ Particles drift apart and stretch, so a long run gradually loses resolution. `St
 | Mechanism | Effect |
 | --- | --- |
 | `bounded_domain(bounds)` | Removes particles that leave a keep box; `outflow_fringe_depth` fades them out first (below). |
-| `selective_eddy_viscosity(coefficient)` | Damps small-scale noise only. |
+| `selective_eddy_viscosity(coefficient)` | Adds $\nu_s=C\,h^2\max(\boldsymbol{\omega}\cdot\mathbf{S}\boldsymbol{\omega}/|\boldsymbol{\omega}|^2,0)$ (Winckelmans, 1995) where the strain stretches the vorticity. On by default with an LES model (below). |
 | `pedrizzetti_relaxation(factor, interval_steps)` | Aligns strengths with the local vorticity. |
 | `conservative_filter(...)` | Regenerates the particles on a regular lattice at intervals, conserving total strength and impulse within energy and enstrophy loss limits. |
 | `filament_refinement` | Splits over-stretched particles along their vortex lines: `FilamentRefinementConfig.adaptive(interval_steps=...)`. |
@@ -108,6 +108,8 @@ $$
 $$
 
 with $s\in[0,1]$ the normalized depth and $A$ the number of e-folds (`outflow_fringe_attenuation`, 8 by default). Make a fringe at least two wake wavelengths deep, as in the [coupled cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md).
+
+With an LES `TurbulenceConfig`, the selective eddy viscosity is on by default with $C=0.5$ (`selective_eddy_viscosity_coefficient=None` selects it; set a number to change it, or `StabilizationConfig.disabled()` to remove it). A vortex tube stretched at the rate $\sigma=\boldsymbol{\omega}\cdot\mathbf{S}\boldsymbol{\omega}/|\boldsymbol{\omega}|^2$ settles at the radius $r^2=4\nu/\sigma$. Smagorinsky is small in a rotation-dominated core, so in the coupled cube wake ($h=0.045$ m, $\nu=10^{-3}$ m²/s) a stretched tube collapsed to one or two spacings, its divergence rose to about half its vorticity gradient (against 3% in the rest of the wake) and its vorticity grew from 11 to 720 s⁻¹ in four seconds. With $C=0.5$ the term holds such a tube above the particle spacing; it is about $1.5\times10^{-4}$ m²/s in the rest of that wake, the size of the Smagorinsky viscosity, and costs no extra induction evaluation.
 
 `ParticleStateLimits` checks every accepted step: finite values, a Lagrangian Courant limit, maximum strength, divergence, strength–vorticity misalignment and growth rates. `RunPlan(state_limit_action="stop")` ends a run cleanly at a crossed limit instead of raising an error.
 

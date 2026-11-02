@@ -513,6 +513,13 @@ class CoupledSolver:
                     ("geometry revision", repr(boundary.revision)),
                 )
             )
+        lattice = transfer._transfer_lattice
+        if lattice is not None:
+            # The FVM vorticity replaces these particles after every interval, so their
+            # strain does not limit the interval; the FVM step follows its own Courant number.
+            vpm.strain_excluded_bounds = tuple(
+                float(value) for value in lattice.remeshing_region_bounds
+            )
         anchor = transfer._lattice_anchor
         if anchor is not None:
             vpm.physics.configure_grid_lattice_anchor(anchor, self.vpm_diffusion_grid_spacing)

@@ -73,7 +73,7 @@ class Numerics:
     axisymmetric_no_swirl_axis: Literal["x", "y", "z"] | None = None
     viscous: ViscousConfig = field(default_factory=ViscousConfig.cs)
     turbulence: TurbulenceConfig = field(default_factory=TurbulenceConfig.dns)
-    stabilization: StabilizationConfig = field(default_factory=StabilizationConfig.disabled)
+    stabilization: StabilizationConfig = field(default_factory=StabilizationConfig)
     vlm: VLMConfig | None = None
     particle_kernel: Literal["gaussian", "high_order_gaussian", "super_gaussian", "winckelmans"] = (
         "gaussian"
@@ -88,6 +88,13 @@ class Numerics:
     domain_bounds: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
+        if isinstance(self.stabilization, StabilizationConfig) and isinstance(
+            self.turbulence, TurbulenceConfig
+        ):
+            # An automatic selective eddy viscosity follows the turbulence model.
+            object.__setattr__(
+                self, "stabilization", self.stabilization.resolved(self.turbulence.flow_model)
+            )
         if not isinstance(self.integrator, RKTableau):
             raise TypeError("integrator must be an RKTableau instance")
         if not callable(getattr(self.induction, "evaluate_stage", None)):

@@ -6,7 +6,9 @@ increment ``dt * ||S||`` in the infinity and spectral norms, and the largest
 particle strength ``|Gamma|`` and vorticity ``|Gamma| / V``. The reductions
 run where the particle fields live; only the extrema, the indices of the
 particles that attain the strain extrema, and the position of the particle
-limiting the Lagrangian CFL number reach the host.
+limiting the Lagrangian CFL number reach the host. The strain extrema may
+skip the particles inside one axis-aligned box: the coupler excludes the
+particles that the FVM vorticity replaces after every interval.
 
 All metric arithmetic is float64. The strain ``S = 0.5 * (J + J^T)`` and its
 infinity norm (largest absolute row sum) are formed exactly as in a float64
@@ -125,9 +127,26 @@ def _attains_maximum(value, maximum, nan_mask, bit: ti.template()):
     )
 
 
+@ti.func
+def _strain_counted(position, excluded, use_exclusion):
+    counted = True
+    if use_exclusion != 0:
+        inside = True
+        for axis in ti.static(range(3)):
+            coordinate = ti.cast(position[axis], ti.f64)
+            if coordinate < excluded[2 * axis] or coordinate > excluded[2 * axis + 1]:
+                inside = False
+        counted = not inside
+    return counted
+
+
 @ti.kernel
 def _reduce_particle_state(
-    particles: ti.template(), count: ti.i32, time_step_size: ti.f64
+    particles: ti.template(),
+    count: ti.i32,
+    time_step_size: ti.f64,
+    excluded: ti.types.vector(6, ti.f64),
+    use_exclusion: ti.i32,
 ) -> ti.types.vector(_RESULT_SIZE, ti.f64):
     invalid_mask = 0
     nan_mask = 0
@@ -153,23 +172,25 @@ def _reduce_particle_state(
             if ti.math.isnan(value) or ti.math.isinf(value) or value <= 0.0:
                 ti.atomic_or(invalid_mask, 1 << bit)
 
-        infinity, spectral = _strain_increments(particles.velocity_gradient[i], time_step_size)
+        if _strain_counted(particles.position[i], excluded, use_exclusion):
+            infinity, spectral = _strain_increments(particles.velocity_gradient[i], time_step_size)
+            _accumulate_maximum(infinity, infinity_maximum, nan_mask, 1)
+            _accumulate_maximum(spectral, spectral_maximum, nan_mask, 2)
         strength, vorticity = _particle_strength_and_vorticity(
             particles.vortex_strength[i], particles.particle_volume[i]
         )
-        _accumulate_maximum(infinity, infinity_maximum, nan_mask, 1)
-        _accumulate_maximum(spectral, spectral_maximum, nan_mask, 2)
         _accumulate_maximum(strength, strength_maximum, nan_mask, 4)
         _accumulate_maximum(vorticity, vorticity_maximum, nan_mask, 8)
 
     infinity_particle = count
     spectral_particle = count
     for i in range(count):
-        infinity, spectral = _strain_increments(particles.velocity_gradient[i], time_step_size)
-        if _attains_maximum(infinity, infinity_maximum, nan_mask, 1):
-            ti.atomic_min(infinity_particle, i)
-        if _attains_maximum(spectral, spectral_maximum, nan_mask, 2):
-            ti.atomic_min(spectral_particle, i)
+        if _strain_counted(particles.position[i], excluded, use_exclusion):
+            infinity, spectral = _strain_increments(particles.velocity_gradient[i], time_step_size)
+            if _attains_maximum(infinity, infinity_maximum, nan_mask, 1):
+                ti.atomic_min(infinity_particle, i)
+            if _attains_maximum(spectral, spectral_maximum, nan_mask, 2):
+                ti.atomic_min(spectral_particle, i)
 
     limiting_position = ti.cast(particles.position[ti.min(infinity_particle, count - 1)], ti.f64)
     return ti.Vector(
@@ -190,7 +211,11 @@ def _reduce_particle_state(
     )
 
 
-def measure_particle_state(particles, time_step_size: float) -> MeasuredParticleState:
+def measure_particle_state(
+    particles,
+    time_step_size: float,
+    strain_excluded_bounds: tuple[float, ...] | None = None,
+) -> MeasuredParticleState:
     """Reduce the active particle fields to the accepted-state limit metrics.
 
     Parameters
@@ -200,6 +225,10 @@ def measure_particle_state(particles, time_step_size: float) -> MeasuredParticle
         for the accepted state.
     time_step_size : float
         Accepted step size in s that scales the strain rate to an increment.
+    strain_excluded_bounds : tuple of float or None
+        ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m. Particles inside this
+        box do not enter the strain extrema; every other metric covers all
+        particles.
 
     Returns
     -------
@@ -211,7 +240,13 @@ def measure_particle_state(particles, time_step_size: float) -> MeasuredParticle
     count = int(particles.n_particles_total)
     if count == 0:
         return MeasuredParticleState((), ParticleStateMetrics(0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
-    result = _reduce_particle_state(particles, count, float(time_step_size)).to_numpy()
+    use_exclusion = strain_excluded_bounds is not None
+    excluded = np.asarray(
+        strain_excluded_bounds if use_exclusion else np.zeros(6), dtype=np.float64
+    ).reshape(6)
+    result = _reduce_particle_state(
+        particles, count, float(time_step_size), excluded, int(use_exclusion)
+    ).to_numpy()
     invalid_mask = int(result[0])
     nan_mask = int(result[1])
     maxima = [float("nan") if nan_mask & (1 << bit) else float(result[2 + bit]) for bit in range(4)]

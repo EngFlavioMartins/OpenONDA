@@ -1,11 +1,17 @@
 """Stabilization configuration for the VPM solver."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
 from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
+
+
+# Winckelmans (1995) uses C_w = 0.5, so C = 2 C_w**2 = 0.5. With h**2 = V**(2/3)
+# this holds a vortex tube stretched at rate sigma at r**2 = 4 nu / sigma > h**2
+# once the eddy viscosity reaches 0.5 h**2 sigma, i.e. above the particle spacing.
+AUTOMATIC_SELECTIVE_EDDY_VISCOSITY = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,9 +20,17 @@ class StabilizationConfig:
 
     Parameters
     ----------
-    selective_eddy_viscosity_coefficient : float, default=0
+    selective_eddy_viscosity_coefficient : float or None, default=None
         Selective eddy-viscosity coefficient C=2*C_w**2 (Winckelmans 1995,
-        Eq. 26, positive-production version, with h=V**(1/3)).
+        Eq. 26, positive-production version, with h=V**(1/3)). It acts only
+        where the resolved strain stretches the particle vorticity. ``None``
+        selects it from the turbulence model in :class:`Numerics`:
+        ``AUTOMATIC_SELECTIVE_EDDY_VISCOSITY`` for an LES model, zero otherwise.
+        A stretched vortex tube reaches the equilibrium radius
+        ``r**2 = 4 nu / (omega.S.omega/|omega|**2)``; without this term the
+        Smagorinsky viscosity, which is small in a rotation-dominated core,
+        lets the tube collapse below the particle spacing and grow without
+        bound.
     selective_eddy_viscosity_start_step : int, default=0
         First accepted step on which selective eddy viscosity may act.
     pedrizzetti_relaxation_factor : float, default=0
@@ -87,7 +101,7 @@ class StabilizationConfig:
     pre-event state and do not advance time.
     """
 
-    selective_eddy_viscosity_coefficient: float = 0.0
+    selective_eddy_viscosity_coefficient: float | None = None
     selective_eddy_viscosity_start_step: int = 0
 
     pedrizzetti_relaxation_factor: float = 0.0
@@ -134,11 +148,13 @@ class StabilizationConfig:
     max_vorticity_growth: float = 5.0e-2
 
     def __post_init__(self) -> None:
-        if (
+        if self.selective_eddy_viscosity_coefficient is not None and (
             not np.isfinite(self.selective_eddy_viscosity_coefficient)
             or self.selective_eddy_viscosity_coefficient < 0.0
         ):
-            raise ValueError("selective_eddy_viscosity_coefficient must be finite and non-negative")
+            raise ValueError(
+                "selective_eddy_viscosity_coefficient must be finite and non-negative or None"
+            )
         if self.selective_eddy_viscosity_start_step < 0:
             raise ValueError("selective_eddy_viscosity_start_step must be non-negative")
         if (
@@ -248,7 +264,20 @@ class StabilizationConfig:
     @staticmethod
     def disabled() -> "StabilizationConfig":
         """Return no field-modifying stabilization; retain the solution check."""
-        return StabilizationConfig()
+        return StabilizationConfig(selective_eddy_viscosity_coefficient=0.0)
+
+    def resolved(self, flow_model: str) -> "StabilizationConfig":
+        """Return this configuration with an automatic selective eddy viscosity resolved.
+
+        Parameters
+        ----------
+        flow_model : {'dns', 'les', 'inviscid', 'potential'}
+            Flow model of the VPM turbulence configuration.
+        """
+        if self.selective_eddy_viscosity_coefficient is not None:
+            return self
+        coefficient = AUTOMATIC_SELECTIVE_EDDY_VISCOSITY if flow_model == "les" else 0.0
+        return replace(self, selective_eddy_viscosity_coefficient=coefficient)
 
     @staticmethod
     def bounded_domain(

@@ -483,6 +483,9 @@ class VPMSolver:
         self._flow_integrals: dict = {}
         self._particle_resolution_metrics: dict = {}
         self._accepted_state_metrics: ParticleStateMetrics | None = None
+        # (xmin, xmax, ymin, ymax, zmin, zmax) in m: particles inside do not set the
+        # Lagrangian CFL number. The coupler excludes the particles the FVM replaces.
+        self.strain_excluded_bounds: tuple[float, ...] | None = None
         self._body_induced_fn = None
         self._particles_removed_this_step = 0
         self._vortex_strength_removed_this_step = np.zeros(3, dtype=self.np_dtype)
@@ -1115,7 +1118,9 @@ class VPMSolver:
             limits=self.state_limits,
             step=self.step,
             time_step_size=self.time_step_size,
-            state=measure_particle_state(self.particles, self.time_step_size),
+            state=measure_particle_state(
+                self.particles, self.time_step_size, self.strain_excluded_bounds
+            ),
             resolution=self._particle_resolution_metrics,
             previous=self._accepted_state_metrics,
         )
@@ -1125,7 +1130,9 @@ class VPMSolver:
         """Return the maximum infinity-norm strain rate of the current particle field, in 1/s."""
         self._refresh_particle_diagnostic_fields()
         strain_rate = float(
-            measure_particle_state(self.particles, 1.0).metrics.strain_increment_infinity
+            measure_particle_state(
+                self.particles, 1.0, self.strain_excluded_bounds
+            ).metrics.strain_increment_infinity
         )
         if not np.isfinite(strain_rate) or strain_rate < 0.0:
             raise FloatingPointError("The particle strain-rate field is not finite")
