@@ -98,9 +98,14 @@ def write_blade_stl(path, blade_file, thickness, n_points, azimuth_degrees):
     triangles += [(tip + a, tip + b, tip + c) for a, b, c in cap]
     triangles += [(a, c, b) for a, b, c in cap]
 
-    # Orient every triangle outward: the cap normals must point away from the blade
+    # Orient every triangle outward: the loft winds the surface consistently, and a negative
+    # enclosed volume means it winds inward, so every triangle is reversed
+    faces = vertices[np.asarray(triangles)]
+    enclosed_volume = np.einsum("ij,ij->i", faces[:, 0], np.cross(faces[:, 1], faces[:, 2])).sum()
+    if enclosed_volume < 0.0:
+        faces = faces[:, ::-1]
     lines = [f"solid blade{azimuth_degrees:g}"]
-    for triangle in vertices[np.asarray(triangles)]:
+    for triangle in faces:
         normal = np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])
         normal /= np.linalg.norm(normal)
         lines += [
