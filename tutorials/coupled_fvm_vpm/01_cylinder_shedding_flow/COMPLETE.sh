@@ -32,10 +32,13 @@
 # they start (MIN_FREE_RAM_MIB, REFERENCE_RAM_MIB in assets/run_sensitivity_study.sh).
 #
 # Slots. A coupled run is bound by one CPU core (the serial FVM) and holds about 2.8 GB of the
-# GPU, so a 6 GB card takes two at a time. With --slots N, N workers walk the same section list,
-# each pinned to its own six P-core threads, and a run directory is held by one worker at a time;
-# a third worker runs the FVM-only references on the E-cores. A run waits for MIN_FREE_GPU_MIB
-# of free GPU memory before it starts (default 3500 with one slot, 3200 with more).
+# GPU, so a 12 GB card takes three at a time. With --slots N, N workers walk the same section
+# list, worker k pinned to the cores of entry k of GPU_CORES, and a run directory is held by one
+# worker at a time; one reference worker per entry of REFERENCE_CORES runs the FVM-only
+# references beside them from the start. The defaults fit the 2 x 6-core workstation of the lane
+# plan (~/openonda_runs/LANES.md): GPU workers on physical cores 0-2, references on 3-5, each
+# with its hyperthread sibling. A run waits for MIN_FREE_GPU_MIB of free GPU memory before it
+# starts (default 3500 with one slot, 3200 with more).
 
 set -u
 cd "$(dirname "$0")"
@@ -46,6 +49,8 @@ DRY_RUN=0
 SLOTS=1
 ONLY_SECTIONS=""
 STAGGER_SECONDS=${STAGGER_SECONDS:-900}  # s between the starts of the coupled workers
+read -r -a GPU_CORES <<< "${GPU_CORES:-0,12 1,13 2,14}"  # taskset -c list per GPU worker
+read -r -a REFERENCE_CORES <<< "${REFERENCE_CORES:-3,15 4,16 5,17}"  # one per reference worker
 while [[ $# -gt 0 ]]; do
     case $1 in
         --phase) PHASES=$2; shift ;;
@@ -161,29 +166,35 @@ work() {
 
 log "start: sections ${SECTIONS[*]}, $SLOTS slot(s), solver $(python -c \
     "import importlib.util; print(importlib.util.find_spec('openonda').origin)")"
-if [[ $SLOTS -le 1 ]]; then
+if [[ $SLOTS -gt ${#GPU_CORES[@]} ]]; then
+    log "--slots $SLOTS needs as many GPU_CORES entries (${#GPU_CORES[@]} given)"
+    exit 1
+fi
+if [[ $SLOTS -le 1 && ${#REFERENCE_CORES[@]} -eq 0 ]]; then
     work || exit 3
 else
-    export MIN_FREE_GPU_MIB=${MIN_FREE_GPU_MIB:-3200}
+    [[ $SLOTS -gt 1 ]] && export MIN_FREE_GPU_MIB=${MIN_FREE_GPU_MIB:-3200}
     pids=()
     for ((slot = 0; slot < SLOTS; slot++)); do
         (
-            taskset -cp "$((6 * slot))-$((6 * slot + 5))" $BASHPID > /dev/null
+            taskset -cp "${GPU_CORES[slot]}" $BASHPID > /dev/null
             sleep $((slot * STAGGER_SECONDS))
             export WORKER=gpu$slot STUDY_ROLE=gpu
             work
         ) &
         pids+=($!)
     done
-    # The references start after the coupled workers, so that their meshers (up to 6 GB) do not
-    # peak together on a 16 GB machine.
-    (
-        taskset -cp 12-19 $BASHPID > /dev/null
-        sleep $((SLOTS * STAGGER_SECONDS))
-        export WORKER=cpu STUDY_ROLE=cpu
-        work
-    ) &
-    pids+=($!)
+    # The references start with the coupled workers: with 121 GB of RAM their meshers fit beside
+    # the coupled runs (REFERENCE_RAM_MIB still guards each start).
+    for ((worker = 0; worker < ${#REFERENCE_CORES[@]}; worker++)); do
+        (
+            taskset -cp "${REFERENCE_CORES[worker]}" $BASHPID > /dev/null
+            sleep $((worker * 60))
+            export WORKER=cpu$worker STUDY_ROLE=cpu
+            work
+        ) &
+        pids+=($!)
+    done
     halted=0
     for pid in "${pids[@]}"; do wait "$pid" || halted=1; done
     [[ $halted -eq 1 ]] && exit 3
