@@ -95,8 +95,8 @@ class Samplers:
     ----------
     samples : tuple of samplers
         :class:`~openonda.fvm.LineSampler`, :class:`~openonda.fvm.SurfaceSampler`,
-        :class:`~openonda.fvm.ForceSampler` or :class:`~openonda.fvm.YPlusSampler`
-        objects.
+        :class:`~openonda.fvm.ForceSampler`, :class:`~openonda.fvm.MotionSampler` or
+        :class:`~openonda.fvm.YPlusSampler` objects.
     """
 
     samples: tuple[object, ...] = ()

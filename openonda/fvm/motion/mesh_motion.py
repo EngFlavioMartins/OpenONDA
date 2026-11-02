@@ -40,7 +40,7 @@ def placement_pose(
 
 @dataclass(frozen=True, slots=True)
 class MeshMotion:
-    """Prescribed rigid-body motion of the whole FVM mesh.
+    """Rigid-body motion of the whole FVM mesh.
 
     The mesh, every boundary patch on it, and every moment centre on it move
     with ``kinematics``. Wall patches become moving no-slip walls; inlet,
@@ -50,7 +50,9 @@ class MeshMotion:
     Parameters
     ----------
     kinematics : RigidMotion
-        Motion of the mesh after its initial placement.
+        Motion of the mesh after its initial placement: a prescribed motion,
+        or an :class:`~openonda.fvm.motion.elastic.ElasticMount` that the
+        fluid force on its wall patches drives.
     translation : array-like, shape (3,) or None
         Initial translation of the constructed mesh in m.
     rotation_degrees : array-like, shape (3,) or None

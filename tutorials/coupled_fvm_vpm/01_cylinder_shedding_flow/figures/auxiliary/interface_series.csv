@@ -1,6 +1,6 @@
 group,label,parameter,series,levels,runs,reference,mean drag range,mean drag slope per factor 2,mean drag resolved,mean drag threshold,lift amplitude range,lift amplitude slope per factor 2,lift amplitude resolved,lift amplitude threshold,Strouhal number range,Strouhal number slope per factor 2,Strouhal number resolved,Strouhal number threshold
 D,margin (face 4.4),box_margin,downstream face at 4.4 $D$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
-D,margin (face $m$+2),box_margin,downstream face at $m+2D$,3,box2.4_sub5_inset8.75;box3.2_sub5_inset8.75;box4.0_sub5_inset8.75,standard,0.253371,-0.350245,True,0.0813435,1.46576,-1.06924,True,0.0417233,0.219858,-0.263684,True,0.0634344
+D,margin (face $m$+2),box_margin,downstream face at $m+2D$,5,box1.6_sub5_inset8.75;box2.0_sub5_inset8.75;box2.4_sub5_inset8.75;box3.2_sub5_inset8.75;box4.0_sub5_inset8.75,standard,0.253371,-0.0626197,True,0.0813435,1.46576,-0.454611,True,0.0417233,0.562573,-0.417615,True,0.0634344
 D,downstream face,box_downstream,margin 2.4 $D$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
 D,$Re$,reynolds_number,own reference,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
 I,$\kappa_{\max}$ ($N$=5),max_strength_ratio,$N=5$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344

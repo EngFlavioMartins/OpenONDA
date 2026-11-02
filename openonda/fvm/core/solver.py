@@ -806,6 +806,9 @@ class FVMSolver(CouplerInterfaceMixin):
         self.volumetric_face_flux_older[:] = self.volumetric_face_flux
         self._invalidate_derived_fields()
         self._publish_state()
+        # An elastically mounted body starts from the fluid force of the initial fields.
+        self.mesh_motion.accept(self.time, self)
+        self._invalidate_derived_fields()
 
     def _carry_face_fluxes(
         self, previous_surface: np.ndarray, *, include_current: bool = True
@@ -2048,7 +2051,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.step += 1
             self.time = summed_time if time is None else float(time)
             if self.mesh_motion is not None:
-                self.mesh_motion.accept(self.time)
+                self.mesh_motion.accept(self.time, self)
             self._run_metadata_written = False
             self._previous_time_step_size = self._accepted_time_step_size
             self._courant_time_step_size = (

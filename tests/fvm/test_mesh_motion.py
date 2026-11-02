@@ -1,5 +1,6 @@
 """Rigid mesh motion: exact kinematics, free-stream preservation, Galilean
-invariance, restart and partitioned execution of the moving FVM mesh."""
+invariance, the elastically mounted body, restart and partitioned execution
+of the moving FVM mesh."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import pytest
 
 from openonda import fvm
 from openonda.core.kinematics import RigidPose, advance_pose, axis_rotation_matrix
+from openonda.fvm.motion.elastic import MountedBody
 
 
 def _advance(kinematics, times):
@@ -264,21 +266,28 @@ def test_body_translating_through_still_fluid_is_galilean_invariant(tmp_path):
     moving.close()
 
 
-def _restart_case(directory, end_time):
+_PRESCRIBED_RESTART_MOTION = fvm.CompositeMotion(
+    (
+        fvm.HeavingMotion(0.3, 0.5, direction=(0, 1, 0)),
+        fvm.PitchingMotion(15.0, 0.5, rotation_axis=(0, 0, 1)),
+    )
+)
+_ELASTIC_RESTART_MOTION = fvm.ElasticMount(
+    mass=0.5,
+    stiffness=(20.0, 30.0),
+    damping=0.2,
+    patch_names=("cube",),
+    initial_velocity=(0.0, 0.4),
+)
+
+
+def _restart_case(directory, end_time, kinematics=_PRESCRIBED_RESTART_MOTION):
     x = np.linspace(-3.0, 6.0, 37)
     y = np.linspace(-3.0, 3.0, 25)
     mesh = fvm.mesher.box_mesh_3d(
         x, y, np.array([0.0, 0.2]), hole_box=(-0.5, 0.5, -0.5, 0.5, 0.0, 0.2), empty_spanwise=True
     )
-    motion = fvm.MeshMotion(
-        fvm.CompositeMotion(
-            (
-                fvm.HeavingMotion(0.3, 0.5, direction=(0, 1, 0)),
-                fvm.PitchingMotion(15.0, 0.5, rotation_axis=(0, 0, 1)),
-            )
-        ),
-        rotation_degrees=(0.0, 0.0, 5.0),
-    )
+    motion = fvm.MeshMotion(kinematics, rotation_degrees=(0.0, 0.0, 5.0))
     return fvm.FVMCase(
         name="moving_restart",
         directory=directory,
@@ -304,13 +313,20 @@ def _restart_case(directory, end_time):
     )
 
 
-def test_moving_mesh_restart_continues_the_same_trajectory(tmp_path):
-    """A restart restores the mesh pose and continues bit for bit."""
-    with fvm.FVMSolver(_restart_case(tmp_path / "continuous", 0.4)) as continuous:
+@pytest.mark.parametrize(
+    "kinematics",
+    [_PRESCRIBED_RESTART_MOTION, _ELASTIC_RESTART_MOTION],
+    ids=["prescribed", "elastic"],
+)
+def test_moving_mesh_restart_continues_the_same_trajectory(tmp_path, kinematics):
+    """A restart restores the mesh pose, and the structural state of a mounted
+    body, and continues bit for bit."""
+    with fvm.FVMSolver(_restart_case(tmp_path / "continuous", 0.4, kinematics)) as continuous:
         continuous.run(start_from="initial")
-    with fvm.FVMSolver(_restart_case(tmp_path / "restarted", 0.2)) as first:
+        assert np.abs(continuous.mesh_motion.pose.translation).max() > 0.01
+    with fvm.FVMSolver(_restart_case(tmp_path / "restarted", 0.2, kinematics)) as first:
         first.run(start_from="initial")
-    with fvm.FVMSolver(_restart_case(tmp_path / "restarted", 0.4)) as restarted:
+    with fvm.FVMSolver(_restart_case(tmp_path / "restarted", 0.4, kinematics)) as restarted:
         restarted.run(start_from="latest")
         for name in ("velocity", "kinematic_pressure", "volumetric_face_flux"):
             np.testing.assert_array_equal(getattr(restarted, name), getattr(continuous, name))
@@ -388,3 +404,97 @@ with fvm.FVMSolver(case) as solver:
     serial, partitioned = histories
     for name in ("total_force_x", "total_force_y", "moment_z"):
         np.testing.assert_allclose(partitioned[name], serial[name], rtol=1e-7, atol=1e-9)
+
+
+def test_elastic_mount_response_is_the_exact_damped_oscillator():
+    """Claim: the mount integrates ``m x'' + b x' + k x = F`` exactly for any
+    interval, so its increments compose over any splitting of an interval."""
+    mass, stiffness, damping, force = 2.0, 50.0, 1.2, 3.0
+    mount = fvm.ElasticMount(
+        mass=mass, stiffness=stiffness, damping=damping, directions=((0.0, 1.0, 0.0),)
+    )
+    body = MountedBody(mount, 0.0)
+    body.accept(0.0, np.array([0.0, force, 0.0]))
+    # Underdamped free response about the static deflection F / k
+    omega = math.sqrt(stiffness / mass)
+    zeta = damping / (2.0 * math.sqrt(stiffness * mass))
+    damped = omega * math.sqrt(1.0 - zeta**2)
+    static = force / stiffness
+    for time in (0.0, 0.013, 0.37, 2.9):
+        decay = math.exp(-zeta * omega * time)
+        expected = static - static * decay * (
+            math.cos(damped * time) + zeta * omega / damped * math.sin(damped * time)
+        )
+        np.testing.assert_allclose(body.increment(0.0, time)[1], [0.0, expected, 0.0], atol=1e-13)
+    whole = body.increment(0.1, 0.9)[1]
+    parts = sum(body.increment(0.1 + 0.09 * k, 0.09)[1] for k in range(10))
+    np.testing.assert_allclose(parts, whole, atol=1e-13)
+    assert body.get_angular_velocity(0.5).tolist() == [0.0, 0.0, 0.0]
+
+
+def test_elastically_mounted_body_rings_at_its_natural_frequency_in_still_fluid(tmp_path):
+    """Claim: a body on springs released in still fluid oscillates at the
+    natural frequency lowered by its added mass, and the fluid damps it.
+
+    The mesh is built with the spring extended by 0.2 m, so the body swings
+    about the position 0.2 m below its start. A square section of side 1 m
+    at mass ratio 50 has an added mass of about 1.5 rho a^2 (Blevins), which
+    lowers the frequency by about 1.5 %; the viscous damping of the fluid is
+    positive. The motion sampler records the response.
+    """
+    mass, stiffness = 50.0 * 0.2, 400.0 * 0.2  # per 0.2 m span; f_n = 1 / (2 pi) ... 0.45 Hz
+    x = np.linspace(-6.0, 6.0, 49)
+    mesh = fvm.mesher.box_mesh_3d(
+        x, x, np.array([0.0, 0.2]), hole_box=(-0.5, 0.5, -0.5, 0.5, 0.0, 0.2), empty_spanwise=True
+    )
+    mount = fvm.ElasticMount(
+        mass=mass,
+        stiffness=stiffness,
+        directions=((0.0, 1.0, 0.0),),
+        patch_names=("cube",),
+        initial_displacement=(0.2,),
+    )
+    period = 2.0 * math.pi * math.sqrt(mass / stiffness)
+    case = fvm.FVMCase(
+        name="ringing",
+        directory=tmp_path,
+        mesh=mesh,
+        numerics=fvm.Numerics(
+            transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
+            time_step_size=period / 100.0,
+            schemes=fvm.DiscretizationConfig(time_scheme="backward"),
+            pimple=fvm.PimpleConfig(n_outer_correctors=3),
+        ),
+        boundaries=(
+            fvm.BoundaryConfig.inlet("inlet", (0.0, 0.0, 0.0)),
+            fvm.BoundaryConfig.inlet("outlet", (0.0, 0.0, 0.0)),
+            fvm.BoundaryConfig.inlet("ymin", (0.0, 0.0, 0.0)),
+            fvm.BoundaryConfig.inlet("ymax", (0.0, 0.0, 0.0)),
+            fvm.BoundaryConfig.empty("zmin"),
+            fvm.BoundaryConfig.empty("zmax"),
+            fvm.BoundaryConfig.wall("cube"),
+        ),
+        initial_conditions=fvm.InitialFields(velocity=(0.0, 0.0, 0.0)),
+        run=fvm.RunPlan(end_time=2.5 * period, final_output=False),
+        samplers=fvm.Samplers((fvm.MotionSampler(schedule=fvm.EverySteps(1)),)),
+        mesh_motion=fvm.MeshMotion(mount),
+    )
+    with fvm.FVMSolver(case) as solver:
+        solver.auto_write = False
+        solver.run(start_from="initial")
+    history = np.genfromtxt(tmp_path / "samples/motion_history.csv", delimiter=",", names=True)
+    time, displacement = history["time"], history["displacement_y"] + 0.2
+    np.testing.assert_allclose(history["position_y"], history["displacement_y"], atol=1e-12)
+    assert np.all(history["displacement_x"] == 0.0)
+    assert displacement[0] == 0.2
+    # Period from the downward zero crossings
+    down = np.flatnonzero((displacement[:-1] > 0.0) & (displacement[1:] <= 0.0))
+    crossings = time[down] - displacement[down] * np.diff(time)[down] / np.diff(displacement)[down]
+    assert len(crossings) >= 2
+    measured = np.diff(crossings).mean()
+    assert 1.005 * period < measured < 1.05 * period, (measured, period)
+    # The fluid takes energy out: the second maximum is lower than the first
+    maxima = displacement[1:-1][
+        (displacement[1:-1] > displacement[:-2]) & (displacement[1:-1] > displacement[2:])
+    ]
+    assert 0.5 * 0.2 < maxima[0] < 0.2

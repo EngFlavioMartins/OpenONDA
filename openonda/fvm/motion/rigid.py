@@ -28,6 +28,7 @@ from ..fields.mixed_velocity_boundary import (
     update_mixed_velocity_boundary,
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from .elastic import ElasticMount, MountedBody
 from .mesh_motion import MeshMotion
 
 if TYPE_CHECKING:
@@ -58,6 +59,11 @@ class RigidMeshMotion:
 
     Attributes
     ----------
+    kinematics : RigidMotion
+        The motion advanced by this solver: the configured motion, or the
+        :class:`~openonda.fvm.motion.elastic.MountedBody` of an
+        :class:`~openonda.fvm.motion.elastic.ElasticMount`, whose state the
+        fluid force on the walls drives at every accepted step.
     pose : RigidPose
         Current map from the placed reference mesh to the current mesh.
     time : float
@@ -70,7 +76,12 @@ class RigidMeshMotion:
 
     def __init__(self, motion: MeshMotion, solver: FVMSolver) -> None:
         self.motion = motion
-        self.kinematics = motion.kinematics
+        self.time = float(solver.time)
+        self.kinematics = (
+            MountedBody(motion.kinematics, self.time)
+            if isinstance(motion.kinematics, ElasticMount)
+            else motion.kinematics
+        )
         self._mesh_data = solver.mesh_data
         self._geo_data = solver.geo_data
         self._boundaries = solver.boundaries
@@ -123,7 +134,6 @@ class RigidMeshMotion:
         }
         self._parallel = solver.parallel
 
-        self.time = float(solver.time)
         self.accepted_time = self.time
         self.accepted_pose = RigidPose()
         self.pose = RigidPose()
@@ -232,18 +242,48 @@ class RigidMeshMotion:
         self._check_empty_patches()
         return previous_surface
 
-    def accept(self, time: float) -> None:
-        """Commit the current pose as the accepted state at solver time ``time``."""
+    def accept(self, time: float, solver: FVMSolver | None = None) -> None:
+        """Commit the current pose as the accepted state at solver time ``time``.
+
+        An elastically mounted body also takes the fluid force of the accepted
+        fields of ``solver`` on its wall patches, which drives its next
+        interval. Collective in a partitioned run.
+        """
+        placed_time = self.time
         self.time = float(time)
         self.accepted_pose = self.pose
         self.accepted_time = self.time
+        if isinstance(self.kinematics, MountedBody) and solver is not None:
+            from ..sampling.forces import wall_forces
 
-    def restore(self, time: float, rotation: np.ndarray, translation: np.ndarray) -> None:
-        """Place the mesh at a restarted accepted pose."""
+            forces = wall_forces(solver, self.kinematics.mount.patch_names)
+            total = np.sum([patch["total_force"] for patch in forces.values()], axis=0)
+            self.kinematics.accept(
+                self.time, np.asarray(total, dtype=np.float64).reshape(3), placed_time
+            )
+
+    def state_arrays(self) -> dict[str, np.ndarray]:
+        """Accepted structural state of a mounted body for a restart file; empty otherwise."""
+        if isinstance(self.kinematics, MountedBody):
+            return self.kinematics.state_arrays()
+        return {}
+
+    def restore(
+        self,
+        time: float,
+        rotation: np.ndarray,
+        translation: np.ndarray,
+        state: dict[str, np.ndarray] | None = None,
+    ) -> None:
+        """Place the mesh at a restarted accepted pose, with the structural ``state`` of a mount."""
         self.accepted_time = float(time)
         self.accepted_pose = RigidPose(
             np.array(rotation, dtype=np.float64), np.array(translation, dtype=np.float64)
         )
+        if isinstance(self.kinematics, MountedBody):
+            if state is None:
+                raise ValueError("Restarting an elastically mounted body needs its structural state")
+            self.kinematics.restore(self.accepted_time, state)
         self.move_to(self.accepted_time, self.accepted_pose)
 
     def _check_empty_patches(self) -> None:

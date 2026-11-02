@@ -43,6 +43,9 @@ FORCE_SAMPLE_COLUMNS = (
     "lift_coefficient",
     "side_force_coefficient",
     "pitching_moment_coefficient",
+    "rotational_power",
+    "translational_power",
+    "power",
 )
 Y_PLUS_SAMPLE_COLUMNS = ("time", "patch", "min", "max", "avg")
 
@@ -54,6 +57,61 @@ def _effective_viscosity(context: FVMSolver) -> tuple[float, float | np.ndarray]
     if context.eddy_viscosity is not None:
         viscosity = viscosity + context.eddy_viscosity[: context.mesh_data["n_cells"]]
     return density, viscosity
+
+
+def wall_forces(
+    context: FVMSolver,
+    patch_names: Sequence[str] | None,
+    *,
+    reference_velocity: float | None = None,
+    reference_area: float | None = None,
+    reference_length: float | None = None,
+    moment_centre: Sequence[float] = (0.0, 0.0, 0.0),
+) -> dict[str, diagnostics.SurfaceForces]:
+    """Integrate the pressure and viscous loads of the current state on wall patches.
+
+    Uses the effective viscosity of the momentum equation (molecular plus
+    ``eddy_viscosity``). On a moving mesh ``moment_centre`` is the start
+    position of a point that moves with the mesh. Collective in a
+    partitioned run: the patch fragments of all ranks are merged.
+    """
+    density, effective_kinematic_viscosity = _effective_viscosity(context)
+    centre = np.asarray(moment_centre, dtype=np.float64)
+    if context.mesh_motion is not None:
+        centre = context.mesh_motion.current_position(centre)
+    forces = diagnostics.compute_surface_forces(
+        context.velocity,
+        context.kinematic_pressure,
+        effective_kinematic_viscosity * density,
+        density,
+        context.mesh_data,
+        context.geo_data,
+        context.boundaries,
+        patch_names=patch_names,
+        reference_velocity=reference_velocity,
+        reference_area=reference_area,
+        reference_length=reference_length,
+        moment_centre=centre,
+        gradient=context._velocity_gradient(),
+    )
+    if context.parallel.is_partitioned:
+        forces = diagnostics.merge_partition_forces(context.parallel.comm.allgather(forces))
+    return forces
+
+
+def motion_power(context: FVMSolver, total_force, moment) -> tuple[float, float]:
+    """Power in W done by the fluid on a moving body: by its rotation and its translation.
+
+    The moment must be taken about a point on the rotation axis for the
+    rotational power ``M . Omega`` to be the shaft power. Both are zero on a
+    static mesh.
+    """
+    motion = context.mesh_motion
+    if motion is None:
+        return 0.0, 0.0
+    angular_velocity = motion.kinematics.get_angular_velocity(context.time)
+    velocity = motion.kinematics.get_velocity(context.time)
+    return float(np.dot(moment, angular_velocity)), float(np.dot(total_force, velocity))
 
 
 class ForceSampler(Sampler):
@@ -146,30 +204,14 @@ class ForceSampler(Sampler):
             Patch force vectors in N, moments in N·m, face counts, and
             coefficient scalars.
         """
-        density, effective_kinematic_viscosity = _effective_viscosity(context)
-        dynamic_viscosity = effective_kinematic_viscosity * density
-        moment_centre = np.asarray(self.moment_centre, dtype=np.float64)
-        if context.mesh_motion is not None:
-            moment_centre = context.mesh_motion.current_position(moment_centre)
-
-        forces = diagnostics.compute_surface_forces(
-            context.velocity,
-            context.kinematic_pressure,
-            dynamic_viscosity,
-            density,
-            context.mesh_data,
-            context.geo_data,
-            context.boundaries,
-            patch_names=self.patch_names,
+        return wall_forces(
+            context,
+            self.patch_names,
             reference_velocity=self.reference_velocity,
             reference_area=self.reference_area,
             reference_length=self.reference_length,
-            moment_centre=moment_centre,
-            gradient=context._velocity_gradient(),
+            moment_centre=self.moment_centre,
         )
-        if context.parallel.is_partitioned:
-            forces = diagnostics.merge_partition_forces(context.parallel.comm.allgather(forces))
-        return forces
 
     def write_csv(self, context: FVMSolver, samples_dir: str | Path, forces: dict) -> None:
         """Append one row per patch for an already-sampled force result.
@@ -190,6 +232,7 @@ class ForceSampler(Sampler):
             total_force = fdata.get("total_force", [0, 0, 0])
             moment = fdata.get("moment", [0, 0, 0])
             C = fdata.get("coeffs", {})
+            rotational_power, translational_power = motion_power(context, total_force, moment)
             rows.append(
                 [
                     context.time,
@@ -211,6 +254,9 @@ class ForceSampler(Sampler):
                     C.get("lift_coefficient"),
                     C.get("side_force_coefficient"),
                     C.get("pitching_moment_coefficient"),
+                    rotational_power,
+                    translational_power,
+                    rotational_power + translational_power,
                 ]
             )
         append_csv_rows(Path(samples_dir) / f"{self.name}.csv", FORCE_SAMPLE_COLUMNS, rows)

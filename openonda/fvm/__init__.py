@@ -60,8 +60,8 @@ from .diagnostics.fields import (
 from .diagnostics.step import StepDiagnostics
 from .grid_study import analyse_grid_study, update_grid_study
 from .io.analysis import AnalysisSnapshot, BoundarySnapshot
-from .motion import MeshMotion
-from .sampling import ForceSampler, LineSampler, SurfaceSampler, YPlusSampler
+from .motion import ElasticMount, MeshMotion
+from .sampling import ForceSampler, LineSampler, MotionSampler, SurfaceSampler, YPlusSampler
 from .solve.linear_interface import LinearSolveResult
 
 __all__ = [
@@ -73,6 +73,7 @@ __all__ = [
     "CompositeMotion",
     "ComputeConfig",
     "DiscretizationConfig",
+    "ElasticMount",
     "EverySteps",
     "EveryTime",
     "FVMCase",
@@ -91,6 +92,7 @@ __all__ = [
     "MaximumCourantTimeStep",
     "MeshMotion",
     "MeshQualityConfig",
+    "MotionSampler",
     "Numerics",
     "Output",
     "PimpleConfig",

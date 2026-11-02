@@ -312,11 +312,19 @@ def test_pitching_body_couples_like_a_larger_fvm_domain(tmp_path):
     [
         fvm.HeavingMotion(0.1, 2.0, direction=(0.0, 1.0, 0.0)),
         fvm.PitchingMotion(10.0, 2.0, rotation_axis=(0.0, 0.0, 1.0)),
+        fvm.ElasticMount(
+            mass=0.2,
+            stiffness=40.0,
+            damping=0.1,
+            patch_names=("body",),
+            initial_velocity=(0.3, -0.2),
+        ),
     ],
-    ids=["heave", "pitch"],
+    ids=["heave", "pitch", "elastic"],
 )
 def test_moving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path, motion):
-    """A coupled restart restores the mesh, the frame and the particle cloud."""
+    """A coupled restart restores the mesh, the frame, the structural state of
+    a mounted body and the particle cloud."""
     heave = fvm.MeshMotion(motion)
     end_time = 3 * COUPLING_INTERVAL
     backup = coupler.Backup(schedule=coupler.EverySteps(1))
@@ -324,6 +332,7 @@ def test_moving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path, mot
         tmp_path / "continuous", STREAM, heave, end_time=end_time, backup=backup
     ) as continuous:
         continuous.start_from("initial")
+        continuous_start = continuous.fvm_solver.geo_data["cell_centre"].copy()
         while continuous.time < continuous.end_time - 1e-12:
             continuous.advance()
         expected = _coupled_state(continuous)
@@ -344,6 +353,7 @@ def test_moving_mesh_coupled_restart_continues_the_same_trajectory(tmp_path, mot
         actual = _coupled_state(restarted)
 
     assert actual["step"] == expected["step"]
+    assert np.abs(expected["cell_centre"] - continuous_start).max() > 1e-3
     np.testing.assert_array_equal(actual["cell_centre"], expected["cell_centre"])
     np.testing.assert_allclose(actual["velocity"], expected["velocity"], atol=1e-6)
     np.testing.assert_allclose(actual["freestream_velocity"], expected["freestream_velocity"])

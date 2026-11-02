@@ -36,6 +36,8 @@ class FieldRestartState:
     max_courant_number: float
     n_consecutive_accepted_steps: dict[str, int]
     mesh_pose: tuple[np.ndarray, np.ndarray] | None = None
+    # Structural state of an elastically mounted body; empty for a prescribed motion.
+    mesh_motion_state: dict[str, np.ndarray] | None = None
     # Maximum-Courant controller estimate; ``None`` for backups written before
     # it was stored, which continue from ``time_step_size``.
     courant_time_step_size: float | None = None
@@ -113,6 +115,7 @@ def mesh_pose_arrays(solver: FVMSolver) -> dict[str, np.ndarray]:
     return {
         "mesh_rotation": np.array(motion.accepted_pose.rotation),
         "mesh_translation": np.array(motion.accepted_pose.translation),
+        **motion.state_arrays(),
     }
 
 
@@ -381,7 +384,14 @@ def validate_restart_state(
         raise ValueError("Backup acceptance counters must be non-negative")
 
     mesh_pose = None
+    mesh_motion_state = None
     if solver.mesh_motion is not None:
+        mesh_motion_state = {}
+        for name, current in solver.mesh_motion.state_arrays().items():
+            array = np.asarray(state[name], dtype=np.float64)
+            if array.shape != current.shape or not np.all(np.isfinite(array)):
+                raise ValueError(f"Backup mesh-motion state {name} is invalid")
+            mesh_motion_state[name] = array
         rotation = np.asarray(state["mesh_rotation"], dtype=np.float64)
         translation = np.asarray(state["mesh_translation"], dtype=np.float64)
         if rotation.shape != (3, 3) or translation.shape != (3,):
@@ -407,6 +417,7 @@ def validate_restart_state(
         max_courant_number=max_courant_number,
         n_consecutive_accepted_steps=counters,
         mesh_pose=mesh_pose,
+        mesh_motion_state=mesh_motion_state,
         courant_time_step_size=courant_time_step_size,
     )
 
@@ -417,7 +428,9 @@ def restore_restart_state(solver: FVMSolver, restart_state: FieldRestartState) -
     if motion is not None:
         # Place the mesh and its moving boundaries first; the saved fields,
         # including their boundary values, then overwrite the solver state.
-        motion.restore(restart_state.time, *restart_state.mesh_pose)
+        motion.restore(
+            restart_state.time, *restart_state.mesh_pose, state=restart_state.mesh_motion_state
+        )
         motion.update_boundaries(solver)
     for name, values in restart_state.fields.items():
         getattr(solver, name)[:] = values
@@ -503,6 +516,9 @@ def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
                 solver.mesh_motion.accepted_pose.rotation.copy(),
                 solver.mesh_motion.accepted_pose.translation.copy(),
             )
+        ),
+        mesh_motion_state=(
+            None if solver.mesh_motion is None else solver.mesh_motion.state_arrays()
         ),
     )
 

@@ -15,6 +15,7 @@ from openonda.core.vtk_output import read_collection, write_collection
 
 from .fields import LineSampler, SurfaceSampler
 from .forces import ForceSampler, YPlusSampler
+from .motion import MotionSampler
 
 if TYPE_CHECKING:
     from openonda.core.sampling import Sampler
@@ -70,5 +71,9 @@ def execute_samplers(solver: FVMSolver, event: OutputEvent) -> None:
                 write_collection(collection, frames)
         elif isinstance(sampler, LineSampler):
             sampler.write_csv(solver, samples_dir)
+        elif isinstance(sampler, MotionSampler):
+            motion = sampler.sample(solver)
+            if parallel.is_root:
+                sampler.write_csv(solver, samples_dir, motion)
         else:
             raise TypeError(f"Unsupported FVM sampler {type(sampler).__name__}")

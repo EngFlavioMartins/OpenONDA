@@ -55,8 +55,9 @@ When checking convergence, refine the spacing and the time step together. Result
 | [Cylinder wake](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) | Laminar shedding at $Re=150$ | Coupling setup, planar flow with one particle layer, outflow fringes, a sensitivity study |
 | [Cube wake](../tutorials/coupled_fvm_vpm/02_cube_flow/README.md) | Separated flow at $Re=1000$ | Three-dimensional coupling, LES in both solvers |
 | [NACA 4412 wing](../tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md) | Finite cambered wing at $10^\circ$ and $Re=1000$ | An analytical STL body, incidence from the freestream direction, trailing vortices through an outflow fringe, wind-axis forces |
-| [Oscillating cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) | Cylinder heaving across the stream at $Re=150$ | A moving FVM domain, particles in the moving frame |
+| [Elastically mounted cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) | Vortex-induced vibration with two degrees of freedom at $Re=1000$–2000 | A body driven by the fluid force, a moving FVM domain, particles in the moving frame, amplitudes against a published response |
 | [Pitching airfoil](../tutorials/coupled_fvm_vpm/05_pitching_airfoil/README.md) | NACA 0012 pitching about its quarter chord at $Re=1000$ | A turning FVM domain, coupling geometry in body coordinates |
+| [Wind turbine with meshed blades](../tutorials/coupled_fvm_vpm/06_rotor_flow/README.md) | The VLM turbine with resolved blades | A rotating FVM disk, blade surfaces lofted from the VLM blade, power and blade forces against the VLM rotor |
 
 Each coupled case has a `reference_flow/` subdirectory that solves the same flow with the FVM alone on a large domain; the cube reference also shows a grid-convergence study and MPI parallel runs.
 

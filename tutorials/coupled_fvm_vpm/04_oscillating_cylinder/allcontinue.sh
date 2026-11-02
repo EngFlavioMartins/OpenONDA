@@ -3,5 +3,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Continue from the latest accepted coupled backup.
-python setup.py "$@"
+# Continue each reduced velocity from its latest accepted coupled backup.
+python setup.py --reduced-velocity 4 "$@"
+python setup.py --reduced-velocity 6 "$@"
+python setup.py --reduced-velocity 8 "$@"

@@ -157,8 +157,11 @@ The motion classes live in `openonda.core.kinematics` and are the same objects t
 | `SmoothRampMotion(final_velocity, acceleration_time, start_time)` | Acceleration from rest with a sin² velocity ramp |
 | `ManeuverMotion(velocity_function, angular_velocity_function, rotation_centre)` | Velocities given as functions of time |
 | `CompositeMotion(components, rotation_centre)` | Sum of several motions about one pivot |
+| `ElasticMount(mass, stiffness, damping, directions, patch_names, rotation_centre, initial_displacement, initial_velocity)` | Body on linear springs and dampers, driven by the fluid force on its wall patches |
 
 Closed-form motions place the mesh exactly; `ManeuverMotion` and `CompositeMotion` integrate their velocities with the interval-midpoint rule. The mesh as constructed is the configuration at the start time, and every rotation centre moves with the mesh.
+
+`ElasticMount` is not prescribed: along each of its orthogonal `directions` the body obeys $m\ddot{x}+b\dot{x}+kx=\mathbf{F}\cdot\mathbf{d}$ with $\mathbf{F}$ the pressure and viscous force on `patch_names` (all walls when `None`). Each step the equation is integrated exactly with the force of the last accepted state (a staggered scheme, first order in the force), so halving the FVM step changes the trajectory only through the force lag; keep the step a small fraction of the natural period, as the [elastically mounted cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) does with 1000 steps per period. The structural state (displacement, velocity and force) is saved with the backups, and `MotionSampler` records the position and velocity of the rotation centre of any moving mesh. A `ForceSampler` on a moving mesh also writes the power the fluid does on the body, `rotational_power` $=\mathbf{M}\cdot\boldsymbol{\Omega}$ about its moment centre and `translational_power` $=\mathbf{F}\cdot\mathbf{V}$; put the moment centre on the rotation axis for the shaft power of a rotor.
 
 The equations are solved in the arbitrary Lagrangian–Eulerian form
 

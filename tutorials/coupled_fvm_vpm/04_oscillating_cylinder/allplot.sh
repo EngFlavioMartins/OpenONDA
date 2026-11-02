@@ -3,8 +3,8 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Compare the coupled heaving-cylinder wake with the FVM reference.
-python -m assets.plot_forces
-python -m assets.plot_velocity_profiles
-python -m assets.plot_fields
+# Compare the vibration of the elastically mounted cylinder with the paper and the FVM reference.
+python -m assets.plot_response
+python -m assets.plot_histories
+python -m assets.render_vorticity
 python -m assets.plot_coupling_cost
