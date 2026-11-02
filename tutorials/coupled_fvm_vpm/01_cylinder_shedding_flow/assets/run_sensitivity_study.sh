@@ -211,7 +211,7 @@ reference() {
     quick_failure_check "$directory" "$status" $((SECONDS - started))
 }
 
-SECTIONS=(h g b1 n_interval box_conv box_min i_transfer v_side f_side d c a e baseline k c_ref x t2 p e_old b f_fact r inset f)
+SECTIONS=(h g b1 n_interval box_conv box_min i_transfer v_side f_side d c a a_fine e baseline k c_ref x t2 p e_old b f_fact r inset f)
 if [[ ${1:-} == --list ]]; then
     printf '%s\n' "${SECTIONS[@]}"
     exit 0
@@ -333,12 +333,14 @@ if want a; then
     run 2.4 8 8.75 _h0.056569_dtf0.004_ic0.04 --cell-size 0.056569 --fvm-time-step 0.004 \
         --interface-cell-size 0.04
     run 2.4 8 8.75 _dtf0.004 --fvm-time-step 0.004
-    # The finest level needs about 6 GB of particle images: on a 6 GB card it does not fit next
-    # to the display, so it runs only with RUN_FINE=1 (COMPLETE.sh --with-fine).
-    if [[ ${RUN_FINE:-0} -eq 1 ]]; then
-        GPU_MIB=${GPU_MIB_FINE:-5800} run 2.4 8 8.75 _h0.028284_dtf0.004_ic0.04 --cell-size 0.028284 \
-            --fvm-time-step 0.004 --interface-cell-size 0.04
-    fi
+fi
+
+# a_fine. The finest level of a, a section of its own so that it can be placed where the GPU has
+# room for it. It needs about 6 GB of particle images: on a 6 GB card it does not fit next to the
+# display, so it runs only with RUN_FINE=1 (COMPLETE.sh --with-fine).
+if want a_fine && [[ ${RUN_FINE:-0} -eq 1 ]]; then
+    GPU_MIB=${GPU_MIB_FINE:-5800} run 2.4 8 8.75 _h0.028284_dtf0.004_ic0.04 --cell-size 0.028284 \
+        --fvm-time-step 0.004 --interface-cell-size 0.04
 fi
 
 # e. Blending depths delta_0 (zero-weight layer) and delta_1 (start of the replacement region),

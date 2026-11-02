@@ -84,7 +84,7 @@ Queue order: `k`, `n_interval`, `inset`, `a`, `p`, `c`, `g` (CPU, in parallel fr
 | `a` | F | `box2.4_sub8_inset8.75_h0.08_dtf0.004_ic0.04` | FVM cells $h_\mathrm{FVM}=0.08$ m, particles 0.04 m, $\Delta t_\mathrm{FVM}=0.004$ s, $N=8$ | queued |
 | `a` | F | `box2.4_sub8_inset8.75_h0.056569_dtf0.004_ic0.04` | $h_\mathrm{FVM}=0.0566$ m | queued |
 | `a` | F | `box2.4_sub8_inset8.75_dtf0.004` | $h_\mathrm{FVM}=0.04$ m | queued |
-| `a` | F | `box2.4_sub8_inset8.75_h0.028284_dtf0.004_ic0.04` | $h_\mathrm{FVM}=0.0283$ m (`RUN_FINE=1`, about 5.8 GB of GPU memory) | queued (once the cube leaves the GPU) |
+| `a_fine` | F | `box2.4_sub8_inset8.75_h0.028284_dtf0.004_ic0.04` | $h_\mathrm{FVM}=0.0283$ m (`RUN_FINE=1`, about 5.8 GB of GPU memory) | queued (section `a_fine`, after the cube's coupled run ends) |
 | `p` | F | `box2.4_sub10_inset8.75_dtf0.004` | $\Delta t_\mathrm{FVM}=0.004$ s at $\Delta t_\mathrm{VPM}=0.04$ s ($N=10$) | queued |
 | `c` | F | `box2.4_sub20_inset8.75_dtf0.002` | $\Delta t_\mathrm{FVM}=0.002$ s at $\Delta t_\mathrm{VPM}=0.04$ s ($N=20$) | queued |
 | `c` | F | `box2.4_sub40_inset8.75_dtf0.001`, `reference_dt0.001` | $\Delta t_\mathrm{FVM}=0.001$ s ($N=40$) | not planned (8 times the FVM steps) |
