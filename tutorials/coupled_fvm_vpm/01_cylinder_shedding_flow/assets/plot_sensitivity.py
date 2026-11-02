@@ -310,7 +310,9 @@ def varied(runs, *names):
         run
         for run in runs
         if all(
-            np.isclose(run[name], value) for name, value in BASELINE.items() if name not in names
+            run[name] == value if isinstance(value, str) else np.isclose(run[name], value)
+            for name, value in BASELINE.items()
+            if name not in names
         )
     ]
 
