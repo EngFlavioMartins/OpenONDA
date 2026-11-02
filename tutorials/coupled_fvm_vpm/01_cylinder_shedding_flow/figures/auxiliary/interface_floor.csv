@@ -1,0 +1,8 @@
+statistic,sigma_w,s_d,sigma,runs,run,end time,windows,mean drag sigma_w [%],mean drag drift [%],lift amplitude sigma_w [%],lift amplitude drift [%],Strouhal number sigma_w [%],Strouhal number drift [%],lift amplitude per period sigma_w [%],lift amplitude per period drift [%],"mean drag, whole window sigma_w [%]","mean drag, whole window drift [%]"
+mean drag,0.00692565,0.0394748,0.0406717,2,,,,,,,,,,,,,
+lift amplitude,0.00662046,0.0186426,0.0208616,2,,,,,,,,,,,,,
+Strouhal number,0.00682167,0.0302144,0.0317172,2,,,,,,,,,,,,,
+lift amplitude per period,0.0104046,0.00889699,0.017195,2,,,,,,,,,,,,,
+"mean drag, whole window",0.073846,0.0246329,0.1073,2,,,,,,,,,,,,,
+,,,,,reference_flow,99.968,18,0.00692565,-0.0343559,0.00361794,-0.203284,0.0051369,-0.000982545,0.010182,-0.372067,0.0715113,-0.11051
+,,,,,box2.4_sub5_inset8.75,100,19,0.00116791,-0.0901817,0.00662046,-0.176919,0.00682167,-0.0437122,0.0104046,-0.384649,0.073846,-0.145346

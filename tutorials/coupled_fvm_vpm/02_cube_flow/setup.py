@@ -35,7 +35,7 @@ DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 # FVM mesh and particle spacing
 CELL_SIZE = 0.045  # m
 BOX_MARGIN = 1.8  # m, clearance around the cube and separated shear layers
-BOX_DOWNSTREAM = 5.05  # m: transfer surface at 1.5 formation lengths (wake reach R = 0.5)
+BOX_DOWNSTREAM = 3.6  # m: transfer surface at 1.5 formation lengths (wake reach R = 0.5)
 MAX_COURANT_NUMBER = 0.9  # the FVM step follows the maximum cell Courant number
 FVM_MAX_TIME_STEP = 0.02  # s, also the first step; the controller reduces it before the step
 FVM_CORES = 8
@@ -48,7 +48,7 @@ CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000
 
 # FVM–VPM transfer and run duration
-FVM_SUBSTEPS = 1  # FVM steps per particle step at the maximum interval
+FVM_SUBSTEPS = 5  # FVM steps per particle step at the maximum interval
 END_TIME = 60.0  # s
 
 # Output
