@@ -144,6 +144,8 @@ motion = fvm.MeshMotion(
 )
 ```
 
+`translation` and `rotation_centre`, the pivot of `rotation_degrees` in mesh coordinates, complete the optional initial placement.
+
 The motion classes live in `openonda.core.kinematics` and are the same objects the VLM surfaces use (`fvm.HeavingMotion is vpm.HeavingMotion`); times are in s, angles of the initial placement in degrees, angular velocities in rad/s:
 
 | Class | Motion |
@@ -161,7 +163,7 @@ The motion classes live in `openonda.core.kinematics` and are the same objects t
 
 Closed-form motions place the mesh exactly; `ManeuverMotion` and `CompositeMotion` integrate their velocities with the interval-midpoint rule. The mesh as constructed is the configuration at the start time, and every rotation centre moves with the mesh.
 
-`ElasticMount` is not prescribed: along each of its orthogonal `directions` the body obeys $m\ddot{x}+b\dot{x}+kx=\mathbf{F}\cdot\mathbf{d}$ with $\mathbf{F}$ the pressure and viscous force on `patch_names` (all walls when `None`). Each step the equation is integrated exactly with the force of the last accepted state (a staggered scheme, first order in the force), so halving the FVM step changes the trajectory only through the force lag; keep the step a small fraction of the natural period, as the [elastically mounted cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) does with over 3000 steps per period. The structural state (displacement, velocity and force) is saved with the backups, and `MotionSampler` records the position and velocity of the rotation centre of any moving mesh. A `ForceSampler` on a moving mesh also writes the power the fluid does on the body, `rotational_power` $=\mathbf{M}\cdot\boldsymbol{\Omega}$ about its moment centre and `translational_power` $=\mathbf{F}\cdot\mathbf{V}$; put the moment centre on the rotation axis for the shaft power of a rotor.
+`ElasticMount` is not prescribed: along each of its orthogonal `directions` the body obeys $m\ddot{x}+b\dot{x}+kx=\mathbf{F}\cdot\mathbf{d}$ with $\mathbf{F}$ the pressure and viscous force on `patch_names` (all walls when `None`). Each step the equation is integrated exactly with the force of the last accepted state (a staggered scheme, first order in the force), so halving the FVM step changes the trajectory only through the force lag; keep the step a small fraction of the natural period, as the [elastically mounted cylinder](../tutorials/coupled_fvm_vpm/04_oscillating_cylinder/README.md) does with over 3000 steps per period. The structural state (displacement, velocity and force) is saved with the backups, and `MotionSampler` records the displacement, position and velocity of the rotation centre and the angular velocity of any moving mesh. A `ForceSampler` also writes the power the fluid does on the body, `rotational_power` $=\mathbf{M}\cdot\boldsymbol{\Omega}$ about its moment centre, `translational_power` $=\mathbf{F}\cdot\mathbf{V}$ and their sum `power`, all zero on a static mesh; put the moment centre on the rotation axis for the shaft power of a rotor.
 
 The equations are solved in the arbitrary Lagrangian–Eulerian form
 

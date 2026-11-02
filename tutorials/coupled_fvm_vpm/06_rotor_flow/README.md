@@ -21,7 +21,7 @@ The disk is a coupling box with all six faces on the particle interface, meshed 
 
 ## Status
 
-The case is configured but has not run: on 2 November 2026 the mesher built the octree mesh of about 350 000 cells for every configuration tried (12 % and 18 % sections, 0.05 m and 0.025 m blade cells, sharp and blunt trailing edges) and then failed its surface-constrained wall projection on the lofted blades, with inverted cells or cell centres inside the blade. The wall projection of thin, twisted surfaces is a mesher limitation to fix before this case runs; the case files are the intended configuration.
+The case is configured but has not run: on 2 November 2026 the mesher built the octree mesh of about 350 000 cells for every configuration tried (12 % and 18 % sections, 0.05 m and 0.025 m blade cells, sharp and blunt trailing edges) and then failed its surface-constrained wall projection on the lofted blades, with inverted cells or cell centres inside the blade. The blade surfaces were then wound inward; wound outward, as every other tutorial body, the 18 % blades with 0.025 m cells still fail the same projection with non-positive cell volumes. The wall projection of thin, twisted surfaces is a mesher limitation to fix before this case runs; the case files are the intended configuration.
 
 ## Run
 
