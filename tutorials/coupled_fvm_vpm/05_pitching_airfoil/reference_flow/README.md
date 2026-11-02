@@ -7,4 +7,4 @@ The FVM alone solves the [coupled pitching airfoil](../README.md) on a body-fitt
 ./allplot.sh
 ```
 
-`./allcontinue.sh` resumes the latest FVM backup. `figures/forces` shows the drag, lift and quarter-chord moment.
+`./allcontinue.sh` resumes the latest FVM backup; `python setup.py --end-time 0.5` runs a short check. `figures/forces` shows the drag, lift and quarter-chord moment.

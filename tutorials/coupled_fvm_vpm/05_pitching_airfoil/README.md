@@ -14,7 +14,7 @@ A no-slip NACA 0012 airfoil pitches about its quarter chord in a uniform stream,
 
 ## Physics and numerical model
 
-The mesh, transfer region and particle model follow the [heaving cylinder](../04_oscillating_cylinder/README.md). Here the mesh turns instead of translating, so the coupled FVM box sweeps a different part of the particle domain at each angle. The transfer region, transfer lattice, interpolation stencils and walls are kept in the coordinates of the turning box; the particles stay in the inertial frame, which the pitch axis does not leave. Particle output and profiles are therefore at inertial positions, as in the reference.
+The mesh, transfer region and particle model follow the [elastically mounted cylinder](../04_oscillating_cylinder/README.md). Here the mesh turns instead of translating, so the coupled FVM box sweeps a different part of the particle domain at each angle. The transfer region, transfer lattice, interpolation stencils and walls are kept in the coordinates of the turning box; the particles stay in the inertial frame, which the pitch axis does not leave. Particle output and profiles are therefore at inertial positions, as in the reference.
 
 Both runs use three outer PIMPLE passes per FVM step, which converge the steps of the accelerating mesh ([FVM moving meshes](../../../docs/fvm.md)).
 
@@ -28,7 +28,7 @@ Run commands from this directory.
 ./allplot.sh
 ```
 
-`./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup.
+`./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. `python setup.py --end-time 0.5 --compute-device cpu` runs a short check on the CPU; the particle solver otherwise takes the GPU.
 
 ## Results
 

@@ -7,6 +7,7 @@ particles of the outer wake stay in the inertial frame, and the coupling
 geometry is kept in the coordinates of the turning box.
 """
 
+import argparse
 import math
 from pathlib import Path
 
@@ -65,7 +66,7 @@ BACKUP_INTERVAL = 1.0  # s
 TRANSFER_DIAGNOSTIC_INTERVAL = 2.5  # s
 
 
-def build_case():
+def build_case(end_time=END_TIME, compute_device="auto"):
     """Return the FVM case, the particle case and the coupling settings."""
     # One FVM cell and one particle layer across the span make the flow planar.
     span = CELL_SIZE
@@ -130,7 +131,7 @@ def build_case():
             execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
-        run=fvm.RunPlan(end_time=END_TIME),
+        run=fvm.RunPlan(end_time=end_time),
         output=fvm.Output(
             schedule=fvm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START),
             compression="lz4",
@@ -179,6 +180,7 @@ def build_case():
         directory=CASE_DIR,
         numerics=vpm.Numerics(
             time_step_size=coupling_time_step_size,
+            compute_device=compute_device,
             freestream_velocity=FREESTREAM_VELOCITY,
             integrator=vpm.RK2(),
             # Full 3D induction of the particle layer and all its images in the span planes
@@ -200,7 +202,7 @@ def build_case():
             domain_bounds=(*VPM_DOMAIN, -half_span, half_span),
             max_n_particles=PARTICLE_LIMIT,
         ),
-        run=vpm.RunPlan(end_time=END_TIME),
+        run=vpm.RunPlan(end_time=end_time),
         output=vpm.Output(schedule=vpm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
         # Transverse wake profiles at fixed inertial positions
         samplers=vpm.Samplers(
@@ -236,6 +238,15 @@ def build_case():
 
 
 if __name__ == "__main__":
-    flow, particles, coupling = build_case()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--end-time", type=float, default=END_TIME, help="end time [s]")
+    parser.add_argument(
+        "--compute-device",
+        default="auto",
+        choices=("auto", "cpu", "cuda", "vulkan"),
+        help="particle solver device; auto takes the GPU when there is one",
+    )
+    arguments = parser.parse_args()
+    flow, particles, coupling = build_case(arguments.end_time, arguments.compute_device)
     with coupler.CoupledSolver(flow, particles, coupling) as solver:
         solver.run(start_from="latest")

@@ -7,6 +7,7 @@ boundaries pass through, as in the unbounded stream that the coupled case
 models.
 """
 
+import argparse
 from pathlib import Path
 
 import openonda.fvm as fvm
@@ -57,7 +58,7 @@ FIELD_START = 15.0  # s, periodic wake
 BACKUP_INTERVAL = 1.0  # s
 
 
-def build_case() -> fvm.FVMCase:
+def build_case(end_time: float = END_TIME) -> fvm.FVMCase:
     """Return the FVM case of the pitching-airfoil flow."""
     half_span = 0.5 * SPAN
 
@@ -127,7 +128,7 @@ def build_case() -> fvm.FVMCase:
         directory=CASE_DIR,
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
-        run=fvm.RunPlan(end_time=END_TIME),
+        run=fvm.RunPlan(end_time=end_time),
         output=fvm.Output(schedule=fvm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
         samplers=fvm.Samplers(samplers),
         backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
@@ -157,5 +158,8 @@ def build_case() -> fvm.FVMCase:
 
 
 if __name__ == "__main__":
-    with fvm.FVMSolver(build_case()) as solver:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--end-time", type=float, default=END_TIME, help="end time [s]")
+    arguments = parser.parse_args()
+    with fvm.FVMSolver(build_case(arguments.end_time)) as solver:
         solver.run(start_from="latest")
