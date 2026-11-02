@@ -49,10 +49,17 @@ running_study_runs() {
     echo "$count"
 }
 
-# Wait until the GPU has the given free memory [MiB].
+# Wait until the GPU has the given free memory [MiB]. A number in sensitivity/MAX_GPU_RUNS caps
+# the coupled runs of the study that may run at once, for a GPU shared with a run whose memory
+# still grows: the free-memory check holds only when a run starts.
 wait_for_gpu() {
     local needed=${1:-$MIN_FREE_GPU_MIB}
     command -v nvidia-smi > /dev/null || return 0
+    while [[ -f sensitivity/MAX_GPU_RUNS ]] \
+        && [[ $(running_study_runs) -ge $(cat sensitivity/MAX_GPU_RUNS) ]]; do
+        echo "$(date '+%F %T')  waiting: at most $(cat sensitivity/MAX_GPU_RUNS) coupled runs at once"
+        sleep "$GPU_POLL_SECONDS"
+    done
     while gpu_reserved && [[ $(running_study_runs) -ge 1 ]]; do
         echo "$(date '+%F %T')  waiting: GPU slot reserved for $(paste -sd, sensitivity/GPU_RESERVED)"
         sleep "$GPU_POLL_SECONDS"
