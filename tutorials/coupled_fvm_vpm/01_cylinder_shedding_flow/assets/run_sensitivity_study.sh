@@ -205,7 +205,7 @@ reference() {
     quick_failure_check "$directory" "$status" $((SECONDS - started))
 }
 
-SECTIONS=(h g b1 n_interval box_conv i_transfer v_side f_side d c a e baseline k c_ref x t2 p e_old b f_fact r inset f)
+SECTIONS=(h g b1 n_interval box_conv box_min i_transfer v_side f_side d c a e baseline k c_ref x t2 p e_old b f_fact r inset f)
 if [[ ${1:-} == --list ]]; then
     printf '%s\n' "${SECTIONS[@]}"
     exit 0
@@ -262,6 +262,12 @@ fi
 if want box_conv; then
     run 3.2 5 8.75 ""
     run 4.0 5 8.75 ""
+fi
+
+# The smallest FVM box: margins below the baseline at the baseline interval (2 Nov 2026)
+if want box_min; then
+    run 1.6 5 8.75 ""
+    run 2.0 5 8.75 ""
 fi
 
 # I. Transfer thresholding and conservation at a fixed FVM, particle set and interval. The removal
@@ -343,6 +349,12 @@ fi
 if want g; then
     reference fw4.4 --fine-wake-end 4.4
     reference dt0.004_fw4.4 --time-step 0.004 --fine-wake-end 4.4
+    # h cells over the coupled FVM domain of the other box margins (box_conv, box_min), so
+    # that each box has an FVM-only reference with its own cells; the largest mesher last
+    reference fw5.2_fb3.2 --fine-wake-end 5.2 --fine-box-margin 3.2
+    reference fw4.0_fb2.0 --fine-wake-end 4.0 --fine-box-margin 2.0
+    reference fw3.6_fb1.6 --fine-wake-end 3.6 --fine-box-margin 1.6
+    reference fw6.0_fb4.0 --fine-wake-end 6.0 --fine-box-margin 4.0
 fi
 
 # h. Statistics window: the baseline and the N = 2 run continued to t = 100 s, so that the

@@ -113,7 +113,11 @@ def sampling_floor(paths):
 
 
 def read_references():
-    """FVM-only references keyed by (Re, h, dt, fine wake); the base reference is reference_flow."""
+    """FVM-only references keyed by (Re, h, dt, fine-wake end, fine-box margin).
+
+    The last two are the extent [D] of the h cells over a coupled FVM domain (section g) and
+    None for the standard mesh; the base reference is reference_flow.
+    """
     references = {}
     for path in [
         CASE_DIR / "reference_flow/samples/forces_history.csv",
@@ -129,13 +133,19 @@ def read_references():
         cell_size = float(match["cell_size"] or CELL_SIZE)
         time_step = float(match["time_step"] or cell_size / CELL_SIZE * FVM_TIME_STEP)
         reynolds_number = float(match["reynolds_number"] or REYNOLDS_NUMBER)
-        key = (reynolds_number, cell_size, time_step, bool(match["fine_wake_end"]))
+        fine_wake_end = round(float(match["fine_wake_end"]), 6) if match["fine_wake_end"] else None
+        fine_box_margin = None
+        if fine_wake_end is not None:
+            fine_box_margin = round(float(match["fine_box_margin"] or BASELINE["box_margin"]), 6)
+        key = (reynolds_number, cell_size, time_step, fine_wake_end, fine_box_margin)
         references[key] = {
             "name": directory.name,
             "cell_size": cell_size,
             "time_step": time_step,
             "reynolds_number": reynolds_number,
-            "fine wake": bool(match["fine_wake_end"]),
+            "fine wake": fine_wake_end is not None,
+            "fine wake end": fine_wake_end,
+            "fine box margin": fine_box_margin,
             "forces": forces,
             "statistics": shedding_statistics(forces, *WINDOW),
         }
@@ -152,7 +162,7 @@ def extrapolated_values(references):
     assets/error_analysis.py.
     """
     standard = [
-        ref for (re, h, dt, fine), ref in references.items() if re == REYNOLDS_NUMBER and not fine
+        ref for (re, h, dt, fine, _), ref in references.items() if re == REYNOLDS_NUMBER and fine is None
     ]
     family = sorted(
         (ref for ref in standard if np.isclose(ref["time_step"], ref["cell_size"] / CELL_SIZE * FVM_TIME_STEP)),
@@ -256,9 +266,14 @@ def transfer_indicators(directory):
 
 
 def comparison_references(parameters, references):
-    """The fine-wake and the standard FVM-only reference of the run's Re, cells and step (or None)."""
+    """The matched fine-box and the standard FVM-only reference of a run (or None).
+
+    The fine-box reference has the run's Re, cells and step and h cells over the run's FVM
+    domain (downstream face and margin), so that both discretise the same region alike.
+    """
     key = (parameters["reynolds_number"], parameters["cell_size"], parameters["fvm_time_step"])
-    return references.get((*key, True)), references.get((*key, False))
+    box = (round(parameters["box_downstream"], 6), round(parameters["box_margin"], 6))
+    return references.get((*key, *box)), references.get((*key, None, None))
 
 
 def read_runs(references, exact):
@@ -670,15 +685,17 @@ def main():
             f"  sigma of a difference {value['sigma']:.3f} %  (resolved above {RESOLVED * value['sigma']:.3f} %)"
         )
     wake = {}
-    for (re, h, dt, fine), ref in references.items():
-        if fine and (re, h, dt, False) in references:
-            standard = references[re, h, dt, False]
-            wake[dt] = {
+    for (re, h, dt, fine, margin), ref in sorted(references.items(), key=lambda item: str(item[0])):
+        if fine is not None and (re, h, dt, None, None) in references:
+            standard = references[re, h, dt, None, None]
+            change = {
                 name: 100.0 * (ref["statistics"][name] - standard["statistics"][name]) / exact[name]["Q_ext"]
                 for name in STATISTICS
             }
-            print(f"Fine-wake minus standard reference at dt = {dt:g} s: "
-                  + ", ".join(f"{name} {value:+.3f} %" for name, value in wake[dt].items()))
+            if margin == round(BASELINE["box_margin"], 6):
+                wake[dt] = change
+            print(f"Fine box (margin {margin:g} D, face {fine:g} D) minus standard reference at"
+                  f" dt = {dt:g} s: " + ", ".join(f"{name} {value:+.3f} %" for name, value in change.items()))
 
     print(f"\n{len(runs)} coupled runs through the window (e_coupling [%]: drag, lift amplitude, St)")
     for run in runs:

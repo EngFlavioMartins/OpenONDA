@@ -65,12 +65,13 @@ done
 #   n_interval N = 1 ... 6 at kappa_max = 1.8 and 3
 #   e_old      N = 4 (N = 2 comes from h)
 #   box_conv   FVM margins 3.2 and 4.0 D
+#   box_min    FVM margins 1.6 and 2.0 D: the smallest box at the baseline interval
 #   i_transfer, inset, k: the interface parameters to calibrate (threshold, moment cap, inset,
 #              coupling iterations)
 #   v_side, f_side, p: particle and FVM sides at a fixed interface (p: FVM step halved at the
 #              baseline interval)
 #   e, d, a
-PHASE_1=(h g b1 n_interval e_old box_conv i_transfer inset k v_side f_side p e d a)
+PHASE_1=(h g b1 n_interval e_old box_conv box_min i_transfer inset k v_side f_side p e d a)
 # Phase 2: the other families of the 19-25 October study, rerun in this version, then the
 # temporal series at a fixed interval (c, the most expensive section).
 PHASE_2=(baseline c_ref x t2 b f_fact r c)

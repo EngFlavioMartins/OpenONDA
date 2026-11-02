@@ -68,12 +68,13 @@ def build_case(
     end_time=END_TIME,
     cell_size=CELL_SIZE,
     fine_wake_end=None,
+    fine_box_margin=2.4,
 ) -> fvm.FVMCase:
     """Return the FVM case of the cylinder flow.
 
     ``fine_wake_end`` [m] extends the cells of ``cell_size`` downstream to that x over
-    |y| <= 2.4 m, the extent of the coupled FVM domain, so that the reference resolves the
-    near wake as finely as the coupled FVM does.
+    |y| <= ``fine_box_margin`` and upstream to -``fine_box_margin`` [m], the coupled FVM
+    domain, so that the reference resolves it as finely as the coupled FVM does.
     """
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     half_span = 0.5 * SPAN
@@ -81,6 +82,7 @@ def build_case(
     # Requested sizes sit between octree levels, which then select 1, 2 and 4 CELL_SIZE
     request = 4.0 * cell_size / 3.0
     slab = 16 * request
+    coupled_domain = (-fine_box_margin, fine_wake_end, -fine_box_margin, fine_box_margin)
 
     # Mesh a slab around the long cylinder, then keep one periodic cell across the span
     patches = msh.BoxPatches(
@@ -95,11 +97,7 @@ def build_case(
                 *(
                     ()
                     if fine_wake_end is None
-                    else (
-                        msh.BoxRefinement(
-                            "coupledDomain", (-2.4, fine_wake_end, -2.4, 2.4, -slab, slab), request
-                        ),
-                    )
+                    else (msh.BoxRefinement("coupledDomain", (*coupled_domain, -slab, slab), request),)
                 ),
                 msh.BoxRefinement("nearBody", (*NEAR_BODY, -slab, slab), request),
                 msh.BoxRefinement("nearWake", (*NEAR_WAKE, -slab, slab), 2 * request),
@@ -195,8 +193,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--fine-wake-end",
         type=float,
-        help="x [m] to which the near-body cells extend over |y| <= 2.4 m (the coupled FVM"
-        " domain); by default the cells coarsen to 2h beyond x = 1.5 m",
+        help="x [m] to which the near-body cells extend over the coupled FVM domain; by"
+        " default the cells coarsen to 2h beyond x = 1.5 m",
+    )
+    parser.add_argument(
+        "--fine-box-margin",
+        type=float,
+        default=2.4,
+        help="upstream and lateral extent [m] of the near-body cells with --fine-wake-end:"
+        " the margin of the coupled FVM domain",
     )
     arguments = parser.parse_args()
 
@@ -208,6 +213,7 @@ if __name__ == "__main__":
         arguments.end_time,
         arguments.cell_size,
         arguments.fine_wake_end,
+        arguments.fine_box_margin,
     )
     with fvm.FVMSolver(case) as solver:
         cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]

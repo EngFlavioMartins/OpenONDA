@@ -90,6 +90,7 @@ RUN_NAME = re.compile(
 REFERENCE_NAME = re.compile(
     r"reference(?:_h(?P<cell_size>[^_]+))?(?:_dt(?P<time_step>[^_]+))?"
     r"(?:_re(?P<reynolds_number>[\d.]+))?(?:_fw(?P<fine_wake_end>[\d.]+))?"
+    r"(?:_fb(?P<fine_box_margin>[\d.]+))?"
 )
 
 
@@ -437,11 +438,12 @@ def write_tables(runs, references):
 
 
 def read_fine_wake_reference():
-    """The FVM-only reference with h cells over the coupled FVM domain (section g), or None."""
+    """The FVM-only reference with h cells over the baseline FVM domain (section g), or None."""
     for directory in sorted(CASE_DIR.glob("sensitivity/reference_fw*")):
         match = REFERENCE_NAME.fullmatch(directory.name)
         path = directory / "samples/forces_history.csv"
-        if match and path.exists() and developed(np.atleast_1d(read_forces(path))):
+        if match and not match["fine_box_margin"] and path.exists() \
+                and developed(np.atleast_1d(read_forces(path))):
             return read_reference(directory, CELL_SIZE, FVM_TIME_STEP, REYNOLDS_NUMBER)
     return None
 
