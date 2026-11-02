@@ -23,8 +23,8 @@ import openonda.vpm as vpm
 from assets.blade_surface import write_blade_stl
 
 CASE_DIR = Path(__file__).resolve().parent
-VLM_CASE_DIR = CASE_DIR.parents[1] / "vpm/06_rotor_flow"
-BLADE_FILE = VLM_CASE_DIR / "assets/blade.json"  # the VLM blade: planform and twist
+# The VLM blade, planform and twist: a copy of tutorials/vpm/06_rotor_flow/assets/blade.json
+BLADE_FILE = CASE_DIR / "assets/blade.json"
 
 # Operating point, as the VLM rotor
 FREESTREAM_SPEED = 7.0  # m/s, along +x

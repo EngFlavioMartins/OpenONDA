@@ -85,7 +85,8 @@ def main():
     axes[2].set_xlabel("$V^* = U_\\infty/(f_{n,w} D)$")
     axes[2].set_xlim(3.0, 13.0)
     axes[0].set_ylim(0.0, 1.0)
-    validation_legend(figure, axes[0], ncol=1)
+    # The paper's response falls away at high reduced velocity, leaving that corner free
+    validation_legend(figure, axes[0], ncol=1).set_loc("upper right")
     save_validation_figure(figure, FIGURES / "response")
 
     (FIGURES / "auxiliary").mkdir(parents=True, exist_ok=True)

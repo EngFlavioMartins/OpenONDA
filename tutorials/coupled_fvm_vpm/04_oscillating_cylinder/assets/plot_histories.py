@@ -4,6 +4,7 @@
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 
 from openonda.plotting import CM, COLORS, LINE_WIDTH, MAX_FIGURE_WIDTH_CM, REFERENCE_STYLE
@@ -38,11 +39,11 @@ def main():
             2,
             width_ratios=(2.2, 1.0),
             left=0.12,
-            right=0.98,
+            right=0.88,
             bottom=0.09,
-            top=0.97,
+            top=0.93,
             hspace=0.12,
-            wspace=0.32,
+            wspace=0.3,
         )
         histories = [figure.add_subplot(grid[row, 0]) for row in range(3)]
         trajectory = figure.add_subplot(grid[:, 1])
@@ -66,7 +67,12 @@ def main():
         histories[2].set_xlabel("$t$ [s]")
         for axis in histories[:2]:
             axis.tick_params(labelbottom=False)
-        trajectory.set(xlabel="$x/D$", ylabel="$y/D$", aspect="equal")
+        for axis in histories:
+            axis.yaxis.set_major_locator(MaxNLocator(4))
+        # The square trajectory panel is narrow: few ticks keep the labels apart
+        trajectory.xaxis.set_major_locator(MaxNLocator(3))
+        trajectory.yaxis.set_major_locator(MaxNLocator(5))
+        trajectory.set(xlabel="$x/D$", ylabel="$y/D$")
         trajectory.yaxis.set_label_position("right")
         trajectory.yaxis.tick_right()
         validation_legend(figure, histories[0], ncol=1)
