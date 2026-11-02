@@ -55,22 +55,59 @@ assets/run_sensitivity_study.sh --list      # section names
 
 The runs are stored under their parameter names, so launching a section again resumes its runs and skips those that reached the end time. Before each coupled run the script waits until enough GPU memory is free (3.5 GB by default, `MIN_FREE_GPU_MIB`), so it does not start next to another GPU job such as the cube or wing tutorial. Statistics use $40\le t\le55$ s in every run.
 
-| Section | Varied quantity | Status |
-| --- | --- | --- |
-| `baseline` | Baseline and a repeat | run |
-| `k` | Coupling iterations per coupling interval | run |
-| `c_ref` | Cells, steps and particles together at constant Courant number ($N=2$), with the FVM-only levels that give $Q_\mathrm{ext}$ | run |
-| `x` | Cells at $\Delta t_\mathrm{FVM}=0.004$ s, $N=4$ and $N=10$, interface fixed in 0.04 m cells | run |
-| `t2`, `p`, `e_old` | Both steps at $N=2$; FVM step at a fixed coupling interval; FVM substeps | run |
-| `b`, `f_fact` | Lateral clearance and wake reach at $Re=150$ and 250; 2×2 factorial | run |
-| `r`, `inset` | Reynolds number; transfer inset | run |
-| `b1` | Strength-ratio limit $\kappa_\mathrm{max}=1$ and 3 at $N=2$ and 5 | to run |
-| `d` | $N=3$ and 6 | to run |
-| `a` | Four cell sizes at $\Delta t_\mathrm{VPM}=0.032$ s (spatial order) | to run |
-| `c` | $N=20$, 40 at $\Delta t_\mathrm{VPM}=0.04$ s (temporal order) | to run |
-| `g` | FVM-only reference with $h$ cells over the coupled FVM domain | to run |
-| `e` | Blending depths $\delta_0$, $\delta_1$ | to run |
-| `h` | Baseline and $N=2$ continued to 100 s | to run |
-| `f` | Particle spacing $h/2$ (needs about 12 GB of GPU memory) | to run |
+### Run tracker, solver `3f771630` (campaign of 2 to 8 November 2026)
+
+Every run below imports the frozen export of commit `3f771630`; runs of other commits are archived and never compared. Baseline: $h=0.04$ m (cells and particle spacing), $\Delta t_\mathrm{FVM}=0.008$ s, $N=5$ ($\Delta t_\mathrm{VPM}=0.04$ s), $y_\mathrm{box}=2.4$ m, $x_\mathrm{box}=4.4$ m, $L_\mathrm{inset}=8.75h$, $\kappa_\mathrm{max}=1.8$, $\tau_\mathrm{t}=0.05$, tolerance-controlled coupling iterations. Statistics over $40\le t\le55$ s. Status: **ok** = reached its end time; **running**; **queued** = in the driver's order; **postponed** = runs only if time remains before 8 November; **not planned** = not part of this campaign. Groups: D FVM domain, I interface, T coupling interval, V particle side, F FVM side, R FVM-only reference.
+
+Queue order: `k`, `n_interval`, `inset`, `a`, `p`, `c`, `g` (CPU, in parallel from the start), `v_side`, `f_side`, then `b1`, `i_transfer`.
+
+| Section | Group | Run directory under `sensitivity/` | Varied quantity | Status |
+| --- | --- | --- | --- | --- |
+| anchor | – | `box2.4_sub5_inset8.75` | baseline, to $t=100$ s (sampling floor) | ok |
+| `k` | I | `box2.4_sub5_inset8.75_k1` | coupling iterations $M=1$ | running |
+| `k` | I | `box2.4_sub5_inset8.75_k2` | $M=2$ | running |
+| `k` | I | `box2.4_sub5_inset8.75_k4` | $M=4$ | running |
+| `n_interval` | T | `box2.4_sub1_inset8.75` | $N=1$ ($\Delta t_\mathrm{VPM}=0.008$ s) | queued (resumes from 36.0 s) |
+| `n_interval` | T | `box2.4_sub2_inset8.75` | $N=2$ ($\Delta t_\mathrm{VPM}=0.016$ s) | ok |
+| `n_interval` | T | `box2.4_sub3_inset8.75` | $N=3$ ($\Delta t_\mathrm{VPM}=0.024$ s) | queued (resumes from 54.8 s) |
+| `n_interval` | T | `box2.4_sub6_inset8.75` | $N=6$ ($\Delta t_\mathrm{VPM}=0.048$ s) | queued |
+| `n_interval` | T | `box2.4_sub1_inset8.75_kappa3` | $N=1$, $\kappa_\mathrm{max}=3$ | queued |
+| `n_interval` | T | `box2.4_sub3_inset8.75_kappa3` | $N=3$, $\kappa_\mathrm{max}=3$ | queued |
+| `n_interval` | T | `box2.4_sub4_inset8.75_kappa3` | $N=4$, $\kappa_\mathrm{max}=3$ | queued |
+| `n_interval` | T | `box2.4_sub6_inset8.75_kappa3` | $N=6$, $\kappa_\mathrm{max}=3$ | queued |
+| `box_min` | D | `box1.6_sub5_inset8.75` | $y_\mathrm{box}=1.6$ m | ok |
+| `box_min` | D | `box2.0_sub5_inset8.75` | $y_\mathrm{box}=2.0$ m | ok |
+| `box_conv` | D | `box3.2_sub5_inset8.75` | $y_\mathrm{box}=3.2$ m | ok |
+| `box_conv` | D | `box4.0_sub5_inset8.75` | $y_\mathrm{box}=4.0$ m | ok |
+| `inset` | I | `box2.4_sub5_inset4` | $L_\mathrm{inset}=4h$ | queued |
+| `inset` | I | `box2.4_sub5_inset14` | $L_\mathrm{inset}=14h$ | queued |
+| `a` | F | `box2.4_sub8_inset8.75_h0.08_dtf0.004_ic0.04` | FVM cells $h_\mathrm{FVM}=0.08$ m, particles 0.04 m, $\Delta t_\mathrm{FVM}=0.004$ s, $N=8$ | queued |
+| `a` | F | `box2.4_sub8_inset8.75_h0.056569_dtf0.004_ic0.04` | $h_\mathrm{FVM}=0.0566$ m | queued |
+| `a` | F | `box2.4_sub8_inset8.75_dtf0.004` | $h_\mathrm{FVM}=0.04$ m | queued |
+| `a` | F | `box2.4_sub8_inset8.75_h0.028284_dtf0.004_ic0.04` | $h_\mathrm{FVM}=0.0283$ m (`RUN_FINE=1`, about 5.8 GB of GPU memory) | queued (once the cube leaves the GPU) |
+| `p` | F | `box2.4_sub10_inset8.75_dtf0.004` | $\Delta t_\mathrm{FVM}=0.004$ s at $\Delta t_\mathrm{VPM}=0.04$ s ($N=10$) | queued |
+| `c` | F | `box2.4_sub20_inset8.75_dtf0.002` | $\Delta t_\mathrm{FVM}=0.002$ s at $\Delta t_\mathrm{VPM}=0.04$ s ($N=20$) | queued |
+| `c` | F | `box2.4_sub40_inset8.75_dtf0.001`, `reference_dt0.001` | $\Delta t_\mathrm{FVM}=0.001$ s ($N=40$) | not planned (8 times the FVM steps) |
+| `v_side` | V | `box2.4_sub5_inset8.75_hp0.08` | particle spacing 0.08 m | queued |
+| `v_side` | V | `box2.4_sub5_inset8.75_rk4` | RK4 particle integrator | queued |
+| `v_side` | V | `box2.4_sub5_inset8.75_vf0.001` | vorticity floor 0.001 | queued |
+| `v_side` | V | `box2.4_sub5_inset8.75_vf0.1` | vorticity floor 0.1 | queued |
+| `f_side` | F | `box2.4_sub5_inset8.75_oc1` | 1 PIMPLE outer corrector | queued |
+| `f_side` | F | `box2.4_sub5_inset8.75_oc3` | 3 PIMPLE outer correctors | queued |
+| `f_side` | F | `box2.4_sub2_inset8.75_dtf0.02_co0.5` | Courant controller 0.5, $\Delta t_\mathrm{FVM}\le0.02$ s | queued |
+| `f_side` | F | `box2.4_sub2_inset8.75_dtf0.02_co0.9` | Courant controller 0.9 | queued |
+| `b1` | I | `box2.4_sub{5,2}_inset8.75_kappa{1,2,3,10}` (8 runs) | $\kappa_\mathrm{max}=1,2,3,10$ at $N=5$ and 2 | postponed |
+| `i_transfer` | I | `box2.4_sub5_inset8.75_{tau0.01,tau0.2,mc0.02,mc0.3}`, `box2.4_sub2_inset8.75_tau0.2` | $\tau_\mathrm{t}=0.01, 0.2$; moment cap 0.02, 0.3 | postponed (two $\tau_\mathrm{t}=0.01$ runs at $y_\mathrm{box}=3.2$, 4.0 m if the wide-box lift deficit survives `g`) |
+| `g` | R | `reference_fw4.4` | $h$ cells over the $y_\mathrm{box}=2.4$ m domain | ok |
+| `g` | R | `reference_dt0.004_fw4.4` | same, $\Delta t_\mathrm{FVM}=0.004$ s | ok |
+| `g` | R | `reference_fw5.2_fb3.2` | $h$ cells over the $y_\mathrm{box}=3.2$ m domain | ok |
+| `g` | R | `reference_fw4.0_fb2.0` | $h$ cells over the $y_\mathrm{box}=2.0$ m domain | running |
+| `g` | R | `reference_fw3.6_fb1.6` | $h$ cells over the $y_\mathrm{box}=1.6$ m domain | running |
+| `g` | R | `reference_fw6.0_fb4.0` | $h$ cells over the $y_\mathrm{box}=4.0$ m domain | running |
+| $Q_\mathrm{ext}$ | R | `reference_h0.08`, `reference_h0.056569`, `reference_flow`, `reference_h0.028284` | $h=0.08$ to 0.0283 m at $\Delta t_\mathrm{FVM}=0.008$ s | ok |
+| $Q_\mathrm{ext}$ | R | `reference_h{0.08,0.056569,0.028284}_dt0.004`, `reference_dt0.004` | $h=0.08$ to 0.0283 m at $\Delta t_\mathrm{FVM}=0.004$ s | ok |
+| $Q_\mathrm{ext}$ | R | `reference_dt0.016`, `reference_flow`, `reference_dt0.004`, `reference_dt0.002` | $\Delta t_\mathrm{FVM}=0.016$ to 0.002 s at $h=0.04$ m | ok |
+| `r` | R | `reference_re100`, `reference_re250` | $Re=100$, 250 | ok (coupled $Re$ runs not planned) |
+| – | – | sections `x`, `c_ref`, `t2`, `e`, `e_old`, `d`, `b`, `f_fact`, `f` | earlier-solver series, blending depths, particle spacing $h/2$ (12 GB) | not planned |
 
 `./allplot.sh` writes the study figures and the tables in `figures/auxiliary/`. [coupling_findings.md](assets/coupling_findings.md) records the physical conclusions and the quantities each section measures.
