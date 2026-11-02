@@ -7,6 +7,7 @@
 #   ./COMPLETE.sh --dry-run    # show what is stored, what will run, and what is archived
 #   ./COMPLETE.sh --slots 2    # two coupled runs at a time, references beside them on the CPU
 #   ./COMPLETE.sh --sections "h box_conv n_interval"   # these sections only, in this order
+#   (a list in sensitivity/SECTIONS replaces it before every section, also while the study runs)
 #
 # Restartable: finished runs are skipped, interrupted runs resume from their latest coupled
 # backup. Three runs in a row that stop within 10 minutes halt the study (sensitivity/HALTED)
@@ -153,9 +154,22 @@ while read -r directory archive; do
     mv "$directory" "$archive/"
 done <<< "$(stale_runs)"
 
+# The section list: sensitivity/SECTIONS when it exists, read again before every section, so that
+# the order can change while the study runs (a section a worker has done is not run again by it);
+# else the list of the command line.
+next_section() {
+    local list=("${SECTIONS[@]}") section
+    [[ -f sensitivity/SECTIONS ]] && read -r -a list < sensitivity/SECTIONS
+    for section in "${list[@]}"; do
+        [[ " ${done_sections[*]} " == *" $section "* ]] || { echo "$section"; return 0; }
+    done
+    return 1
+}
+
 # One worker: every section in order, until done or halted.
 work() {
-    for section in "${SECTIONS[@]}"; do
+    local section done_sections=()
+    while section=$(next_section); do
         [[ -f sensitivity/HALTED ]] && return 3
         log "section $section"
         bash assets/run_sensitivity_study.sh "$section" 2>&1 \
@@ -164,6 +178,7 @@ work() {
             log "HALTED in section $section at $(cat sensitivity/HALTED 2> /dev/null): see its run.log"
             return 3
         fi
+        done_sections+=("$section")
     done
 }
 

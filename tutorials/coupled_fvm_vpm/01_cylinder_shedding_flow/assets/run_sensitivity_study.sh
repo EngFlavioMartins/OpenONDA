@@ -317,11 +317,11 @@ if want d; then
     run 2.4 6 8.75
 fi
 
-# c. Temporal order at a fixed coupling interval dt_VPM = 0.04 s (N = 5 and 10 are stored).
+# c. Temporal order at a fixed coupling interval dt_VPM = 0.04 s (N = 5 is stored, N = 10 is
+# section p). N = 40 and its reference at dt = 0.001 s were dropped (author, 2 Nov 2026): eight
+# times the FVM steps of the baseline.
 if want c; then
-    reference dt0.001 --time-step 0.001
     run 2.4 20 8.75 _dtf0.002 --fvm-time-step 0.002
-    run 2.4 40 8.75 _dtf0.001 --fvm-time-step 0.001
 fi
 
 # a. Spatial order at a coupling interval admissible on the finest cells: dt_VPM = 0.032 s
