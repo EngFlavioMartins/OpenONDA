@@ -103,16 +103,21 @@ rsync -a <laptop>:Projects/OpenONDA/tutorials/coupled_fvm_vpm/01_cylinder_sheddi
 The `figures/auxiliary/*.csv` tables of case 01 are in git and hold every statistic the analysis
 printed at handoff, so the analysis scripts can be checked against them before any new run.
 
-### 2.3 Processes still running on the laptop at handoff (2 Nov, 14:00)
+### 2.3 Laptop processes at handoff
 
-- `openonda-cylinder-study-3f771630` (systemd user unit): two GPU slots, running
-  `box2.4_sub1_inset8.75` (35 s of 55) and `box2.4_sub3_inset8.75` (52.6 s of 55), then the rest
-  of section `n_interval`, then `i_transfer inset k b1 p v_side f_side`.
-- `openonda-cylinder-references`: the matched references `reference_fw4.0_fb2.0`,
-  `reference_fw3.6_fb1.6`, `reference_fw6.0_fb4.0`, waiting for 7000 MiB of available RAM.
-- `openonda-cube-screens`: gate script waiting for the study to free the GPU.
-- The moving-mesh session: a short CPU check of case 04 (`--reduced-velocity 6 --end-time 0.4
-  --compute-device cpu`, 20k cells), state unknown at commit time.
+The study units were stopped by the author on 2 Nov at 14:24 (`sensitivity/COMPLETE.log`,
+last line). State of the two runs that were in progress, to be resumed by `COMPLETE.sh` from
+their backups after the `rsync` of section 2.2:
+
+| Run | Reached | Last coupled backup |
+| --- | --- | --- |
+| `box2.4_sub1_inset8.75` (N = 1) | 36.0 s | `solution/coupled/coupled_004500` (36 s) |
+| `box2.4_sub3_inset8.75` (N = 3) | 54.8 s | `solution/coupled/coupled_002268` (54.4 s) |
+
+The matched references `reference_fw4.0_fb2.0`, `reference_fw3.6_fb1.6`, `reference_fw6.0_fb4.0`
+never started (they waited for RAM); section `g` runs them from scratch. Still running on the
+laptop: `openonda-cube-screens`, the cube session's gate, which starts its 20 s GPU screens once
+the GPU is free, and the moving-mesh session (its case 04 CPU check and the tutorial tests).
 
 ## 3. Objective 1: coupling-interface error and sensitivity analysis
 
