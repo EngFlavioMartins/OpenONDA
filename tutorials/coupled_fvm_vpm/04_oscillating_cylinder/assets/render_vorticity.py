@@ -290,15 +290,15 @@ def overlay(name, panels):
 
 def main():
     FIGURES.mkdir(parents=True, exist_ok=True)
-    for reduced_velocity in completed_runs(CASE_DIR / "samples"):
-        solution = CASE_DIR / "solution" / variant(reduced_velocity)
+    for run in completed_runs(CASE_DIR / "samples"):
+        solution = CASE_DIR / "solution" / variant(*run)
         fvm_frames = dict(frame_files(solution / "fvm.pvd"))
         vpm_frames = dict(frame_files(solution / "vpm.pvd"))
         saved_times = sorted(set(fvm_frames) & set(vpm_frames))
         if not saved_times:
             continue
-        motion, _, _ = read_run(CASE_DIR / "samples" / variant(reduced_velocity), reduced_velocity)
-        name = f"vorticity_{variant(reduced_velocity)}"
+        motion, _, _ = read_run(CASE_DIR / "samples" / variant(*run), run[1])
+        name = f"vorticity_{variant(*run)}"
         panels = []
         for label, time in chosen_instants(motion, saved_times).items():
             shift = displacement_at(motion, time)

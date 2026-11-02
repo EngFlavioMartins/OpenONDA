@@ -23,8 +23,7 @@ DIAMETER = 1.0  # m
 SPAN = 1.0  # m
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)  # m/s
 DENSITY = 1.0  # kg/m^3
-REYNOLDS_PER_REDUCED_VELOCITY = 250.0  # the low-Reynolds set of Martins and Avila (2019)
-REDUCED_VELOCITIES = (4.0, 6.0, 8.0)  # the runs of allrun.sh
+CASE_B1 = (6400.0, 7.68)  # Re, V* of point B1 of Martins and Avila (2019); the default run
 
 # Structure, as the coupled case
 MASS_RATIO = 2.4  # 4 m / (rho pi D^2 L)
@@ -41,7 +40,7 @@ DOMAIN = (-40.0, 60.0, -60.0, 60.0)  # m, x and y bounds
 
 # Mesh refinement from the cylinder into the wake
 CELL_SIZE = 0.04  # m
-WALL_CELL_SIZE = 0.02  # m, one octree level finer at the cylinder wall
+WALL_CELL_SIZE = 0.005  # m, three octree levels finer at the cylinder wall, as the coupled case
 NEAR_BODY = (-1.5, 1.5, -1.5, 1.5)  # m, cells of CELL_SIZE
 NEAR_WAKE = (-2.0, 6.0, -2.0, 2.0)  # m, cells of 2 CELL_SIZE
 WAKE = (-2.5, 12.0, -2.5, 2.5)  # m, cells of 4 CELL_SIZE
@@ -83,9 +82,8 @@ def initial_velocity(position):
     return velocity
 
 
-def build_case(reduced_velocity, end_time=None) -> fvm.FVMCase:
-    """Return the FVM case of one reduced velocity."""
-    reynolds_number = REYNOLDS_PER_REDUCED_VELOCITY * reduced_velocity
+def build_case(reynolds_number, reduced_velocity, end_time=None) -> fvm.FVMCase:
+    """Return the FVM case of one (Re, V*)."""
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     natural_period = reduced_velocity * DIAMETER / FREESTREAM_VELOCITY[0]  # s, in water
     if end_time is None:
@@ -146,7 +144,7 @@ def build_case(reduced_velocity, end_time=None) -> fvm.FVMCase:
     return fvm.FVMCase(
         name="reference_elastic_cylinder",
         directory=CASE_DIR,
-        variant=f"vstar_{reduced_velocity:g}",
+        variant=f"re_{reynolds_number:g}_vstar_{reduced_velocity:g}",
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=end_time),
@@ -180,17 +178,16 @@ def build_case(reduced_velocity, end_time=None) -> fvm.FVMCase:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--reynolds-number", type=float, default=CASE_B1[0], help="Re = U D / nu")
     parser.add_argument(
-        "--reduced-velocity",
-        type=float,
-        default=REDUCED_VELOCITIES[1],
-        help="V* = U / (f_n D); the Reynolds number is 250 V*",
+        "--reduced-velocity", type=float, default=CASE_B1[1], help="V* = U / (f_n D)"
     )
     parser.add_argument(
         "--end-time", type=float, default=None, help="end time [s]; default 25 natural periods"
     )
     arguments = parser.parse_args()
-    with fvm.FVMSolver(build_case(arguments.reduced_velocity, arguments.end_time)) as solver:
+    case = build_case(arguments.reynolds_number, arguments.reduced_velocity, arguments.end_time)
+    with fvm.FVMSolver(case) as solver:
         # The startup vortex behind the cylinder; a restart replaces it with the backup
         cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
         solver.set_initial_velocity(initial_velocity(cell_centres))

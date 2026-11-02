@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Reduced amplitudes of the elastically mounted cylinder against the reduced velocity.
 
-The cross-flow amplitude is overlaid on the low-Reynolds, 0.5 % damping
-response of Martins and Avila (2019): the two points of their table 5 and the
-points digitized from their figure 12, V* = Re / 250. The streamwise amplitude
-and the frequency ratio have no digitized counterpart.
+The cross-flow amplitude is overlaid on the medium-Reynolds, 0.5 % damping
+response of Martins and Avila (2019): points B1 and B2 of their table 5,
+V* = 3 Re / 2500. The streamwise amplitude and the frequency ratio have no
+tabulated counterpart.
 """
 
 import csv
@@ -28,7 +28,7 @@ def main():
     rows = []
     results = {}
     for label, (root, _, _) in RUNS.items():
-        results[label] = [statistics(root / variant(v), v) for v in completed_runs(root)]
+        results[label] = [statistics(root / variant(*run), *run) for run in completed_runs(root)]
         for item in results[label]:
             rows.append({"run": label, **item})
             print(
@@ -42,19 +42,9 @@ def main():
 
     paper_velocity, paper_amplitude, paper_source = paper_points()
     figure, axes = validation_subplots(3, sharex=True)
-    digitized = paper_source == "fig12"
     axes[0].plot(
-        paper_velocity[digitized],
-        paper_amplitude[digitized],
-        **REFERENCE_STYLE,
-        marker="o",
-        markerfacecolor="white",
-        markersize=MARKER_SIZE,
-        label="Martins and Avila (2019), digitized fig. 12",
-    )
-    axes[0].plot(
-        paper_velocity[~digitized],
-        paper_amplitude[~digitized],
+        paper_velocity,
+        paper_amplitude,
         linestyle="none",
         color=COLORS["reference"],
         marker="o",
@@ -83,9 +73,8 @@ def main():
     axes[1].set_ylabel("$A_x^*$")
     axes[2].set_ylabel("$f_y/f_{n,w}$")
     axes[2].set_xlabel("$V^* = U_\\infty/(f_{n,w} D)$")
-    axes[2].set_xlim(3.0, 13.0)
-    axes[0].set_ylim(0.0, 1.0)
-    # The paper's response falls away at high reduced velocity, leaving that corner free
+    axes[2].set_xlim(6.0, 12.0)
+    axes[0].set_ylim(0.0, 1.5)
     validation_legend(figure, axes[0], ncol=1).set_loc("upper right")
     save_validation_figure(figure, FIGURES / "response")
 

@@ -17,19 +17,19 @@ COUPLED = CASE_DIR / "samples"
 REFERENCE = CASE_DIR / "reference_flow/samples"
 
 
-def runs(reduced_velocity):
-    """Coupled and FVM-only histories of one reduced velocity that exist."""
+def runs(run):
+    """Coupled and FVM-only histories of one (Re, V*) that exist."""
     found = {}
     for label, root in (("Coupled FVM and VPM", COUPLED), ("FVM only", REFERENCE)):
-        if reduced_velocity in completed_runs(root):
-            found[label] = read_run(root / variant(reduced_velocity), reduced_velocity)
+        if run in completed_runs(root):
+            found[label] = read_run(root / variant(*run), run[1])
     return found
 
 
 def main():
     set_thesis_style()
-    for reduced_velocity in sorted({*completed_runs(COUPLED), *completed_runs(REFERENCE)}):
-        found = runs(reduced_velocity)
+    for run in sorted({*completed_runs(COUPLED), *completed_runs(REFERENCE)}):
+        found = runs(run)
         if not found:
             continue
         height = 13.0
@@ -77,9 +77,7 @@ def main():
         trajectory.yaxis.tick_right()
         validation_legend(figure, histories[0], ncol=1)
         prepare_figure(figure)
-        export_figure(
-            figure, FIGURES / f"histories_{variant(reduced_velocity)}", figure_format="both"
-        )
+        export_figure(figure, FIGURES / f"histories_{variant(*run)}", figure_format="both")
 
 
 if __name__ == "__main__":

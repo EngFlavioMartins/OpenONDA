@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wall time per second of flow time of the coupled and the FVM-only runs of each reduced velocity."""
+"""Wall time per second of flow time of the coupled and the FVM-only runs of each case."""
 
 import json
 
@@ -22,20 +22,18 @@ PHASES = {
 }
 
 
-def reference_cost(reduced_velocity):
+def reference_cost(run):
     """Mean wall time per second of flow time of the FVM-only run, or None without one."""
-    if reduced_velocity not in completed_runs(REFERENCE_DIR / "samples"):
+    if run not in completed_runs(REFERENCE_DIR / "samples"):
         return None
-    performance = REFERENCE_DIR / "solution" / variant(reduced_velocity) / "performance.jsonl"
+    performance = REFERENCE_DIR / "solution" / variant(*run) / "performance.jsonl"
     steps = [json.loads(line) for line in performance.read_text().splitlines()]
     return np.mean([step["step_seconds"]["max"] for step in steps]) / steps[0]["time_step_size"]
 
 
 def main():
-    for reduced_velocity in completed_runs(CASE_DIR / "samples"):
-        diagnostics = (
-            CASE_DIR / "solution" / variant(reduced_velocity) / "coupler_diagnostics.jsonl"
-        )
+    for run in completed_runs(CASE_DIR / "samples"):
+        diagnostics = CASE_DIR / "solution" / variant(*run) / "coupler_diagnostics.jsonl"
         records = [json.loads(line) for line in diagnostics.read_text().splitlines()]
         time = np.array([record["time"] for record in records])
         particles = np.array([record["transfer"]["n_particles_after"] for record in records])
@@ -48,8 +46,11 @@ def main():
         ]
         coupled_mean = np.sum(cost, axis=0).mean()
         means = [(coupled_mean, "-", "Coupled")]
-        reference_mean = reference_cost(reduced_velocity)
-        report = f"V* = {reduced_velocity:g}: wall time per second of flow time, coupled {coupled_mean:.0f} s"
+        reference_mean = reference_cost(run)
+        report = (
+            f"Re = {run[0]:g}, V* = {run[1]:g}: wall time per second of flow time, "
+            f"coupled {coupled_mean:.0f} s"
+        )
         if reference_mean is not None:
             means.append((reference_mean, "--", "FVM only"))
             report += f", FVM only {reference_mean:.0f} s"
@@ -83,9 +84,7 @@ def main():
         axes[1].set_ylabel("Particles [$10^6$]")
         axes[1].set_xlabel("$t$ [s]")
         validation_legend(figure, axes[0])
-        save_validation_figure(
-            figure, CASE_DIR / f"figures/coupling_cost_{variant(reduced_velocity)}"
-        )
+        save_validation_figure(figure, CASE_DIR / f"figures/coupling_cost_{variant(*run)}")
 
 
 if __name__ == "__main__":

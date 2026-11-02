@@ -3,7 +3,8 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Continue each reduced velocity from its latest accepted backup.
-python setup.py --reduced-velocity 4 "$@"
-python setup.py --reduced-velocity 6 "$@"
-python setup.py --reduced-velocity 8 "$@"
+# Continue cases B1 and B2 from their latest accepted backups.
+# B1
+python setup.py --reynolds-number 6400 --reduced-velocity 7.68 "$@"
+# B2
+python setup.py --reynolds-number 8300 --reduced-velocity 9.96 "$@"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cylinder displacement and force coefficients of the FVM-only runs of each reduced velocity."""
+"""Cylinder displacement and force coefficients of the FVM-only runs."""
 
 from pathlib import Path
 
@@ -17,7 +17,7 @@ def read_table(path):
 
 
 def main():
-    for motion_file in sorted((CASE_DIR / "samples").glob("vstar_*/motion_history.csv")):
+    for motion_file in sorted((CASE_DIR / "samples").glob("re_*_vstar_*/motion_history.csv")):
         variant = motion_file.parent.name
         motion = read_table(motion_file)
         forces = read_table(motion_file.parent / "forces_history.csv")

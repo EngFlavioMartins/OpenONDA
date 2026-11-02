@@ -4,7 +4,8 @@
 The cylinder of Martins and Avila (2019) rides on equal springs and dampers in
 the streamwise and cross-flow directions, with mass ratio 2.4 and damping
 ratio 0.5 %; the fluid force on its wall drives the motion. Each run takes one
-reduced velocity V* = U/(f_n D) of the paper's low-Reynolds set, Re = 250 V*.
+Reynolds number and reduced velocity V* = U/(f_n D) of the paper's
+medium-Reynolds set; allrun.sh runs its points B1 and B2.
 The FVM box and its body-fitted mesh translate with the cylinder; the vortex
 particles of the outer wake are solved in the frame translating with the box,
 where the stream is U - V(t).
@@ -27,11 +28,10 @@ CASE_DIR = Path(__file__).resolve().parent
 DIAMETER = 1.0  # m
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)  # m/s
 DENSITY = 1.0  # kg/m^3
-# Martins and Avila (2019), Int. J. Mech. Sci. 156, 235-249, low-Reynolds set (table 4):
-# Re = 750-3300 over V* = 3-15 at a fixed natural frequency, and the upper-branch peak A1 at
-# Re = 1500 is the V* = 6 peak of the text, so Re = 250 V*
-REYNOLDS_PER_REDUCED_VELOCITY = 250.0
-REDUCED_VELOCITIES = (4.0, 6.0, 8.0)  # the runs of allrun.sh
+# Martins and Avila (2019), Int. J. Mech. Sci. 156, 235-249: points B1 (Re = 6400) and B2
+# (Re = 8300) of table 5, in the medium-Reynolds set of table 4 (Re = 2500-12000 at a fixed
+# natural frequency, so Re = 2500 f_n V* with f_n = 1/3 Hz gives V* = 7.68 and 9.96)
+CASE_B1 = (6400.0, 7.68)  # Re, V*; the default of a single run
 
 # Structure, as the paper: equal springs in x and y, natural frequency in water from the
 # ideal added mass, damping ratio relative to the vacuum critical damping
@@ -46,7 +46,9 @@ DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
 # FVM mesh and near wake
 CELL_SIZE = 0.04  # m, at the coupling interface; also the particle spacing
-WALL_CELL_SIZE = 0.02  # m, one octree level finer at the cylinder wall
+# m, three octree levels finer at the cylinder wall: the laminar boundary layer is about
+# 3 D / sqrt(Re) = 0.033 m thick at Re = 8300
+WALL_CELL_SIZE = 0.005
 BOX_MARGIN = 2.4  # D upstream and sideways; 2 D farther downstream
 # Half depth of the meshing slab in cells: the long cylinder crosses its span faces, and a
 # thin slab keeps the refined wall band small (the slab of 14 cells needed over 3 GB to mesh)
@@ -101,10 +103,9 @@ def initial_velocity(position):
     return velocity
 
 
-def build_case(reduced_velocity, end_time=None, compute_device="auto"):
-    """Return the FVM case, the particle case and the coupling settings of one reduced velocity."""
-    variant = f"vstar_{reduced_velocity:g}"
-    reynolds_number = REYNOLDS_PER_REDUCED_VELOCITY * reduced_velocity
+def build_case(reynolds_number, reduced_velocity, end_time=None, compute_device="auto"):
+    """Return the FVM case, the particle case and the coupling settings of one (Re, V*)."""
+    variant = f"re_{reynolds_number:g}_vstar_{reduced_velocity:g}"
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     natural_period = reduced_velocity * DIAMETER / FREESTREAM_VELOCITY[0]  # s, in water
     if end_time is None:
@@ -272,11 +273,9 @@ def build_case(reduced_velocity, end_time=None, compute_device="auto"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--reynolds-number", type=float, default=CASE_B1[0], help="Re = U D / nu")
     parser.add_argument(
-        "--reduced-velocity",
-        type=float,
-        default=REDUCED_VELOCITIES[1],
-        help="V* = U / (f_n D); the Reynolds number is 250 V*",
+        "--reduced-velocity", type=float, default=CASE_B1[1], help="V* = U / (f_n D)"
     )
     parser.add_argument(
         "--end-time", type=float, default=None, help="end time [s]; default 25 natural periods"
@@ -289,7 +288,10 @@ if __name__ == "__main__":
     )
     arguments = parser.parse_args()
     flow, particles, coupling = build_case(
-        arguments.reduced_velocity, arguments.end_time, arguments.compute_device
+        arguments.reynolds_number,
+        arguments.reduced_velocity,
+        arguments.end_time,
+        arguments.compute_device,
     )
     with coupler.CoupledSolver(flow, particles, coupling) as solver:
         # The startup vortex behind the cylinder; a restart replaces it with the backup
