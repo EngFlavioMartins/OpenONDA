@@ -49,6 +49,9 @@ DRY_RUN=0
 SLOTS=1
 ONLY_SECTIONS=""
 STAGGER_SECONDS=${STAGGER_SECONDS:-900}  # s between the starts of the coupled workers
+# Open MPI 5 binds ranks (and a singleton MPI_Init of mpi4py) to cores 0, 1, ... whatever the
+# taskset of the worker; keep the worker's cores instead.
+export PRTE_MCA_hwloc_default_binding_policy=none
 read -r -a GPU_CORES <<< "${GPU_CORES:-0,12 1,13 2,14}"  # taskset -c list per GPU worker
 read -r -a REFERENCE_CORES <<< "${REFERENCE_CORES:-3,15 4,16 5,17}"  # one per reference worker
 while [[ $# -gt 0 ]]; do
