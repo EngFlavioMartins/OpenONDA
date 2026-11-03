@@ -1,7 +1,6 @@
 {
   "variant": "les_transposed",
-  "initial_provenance": "saved_step_zero_verified",
-  "initial_maximum_strength": 0.006902420950644423,
+  "initial_maximum_strength": 0.006902420427650213,
   "color_limits": [
     0.04,
     0.8
@@ -306,14 +305,14 @@
   ],
   "centroids": [
     [
-      -3.0459015900431407e-18,
-      -0.001099242653934907,
-      7.312844655367304e-05
+      -2.181200220441326e-10,
+      -0.0010992609895765781,
+      7.31350519345142e-05
     ],
     [
-      36.3936285368103,
-      0.168322768146404,
-      -0.03554221503316543
+      36.39369583129883,
+      0.16832253336906433,
+      -0.03554217144846916
     ]
   ],
   "counts": [
@@ -351,12 +350,12 @@
     "focal_offset_up": -0.1,
     "envelope_radius_over_R0": 0.145,
     "core_radius_over_R0": 0.1,
-    "cut_angle_radians": 0.3388,
+    "cut_angle_radians": 0.33880001306533813,
     "section_particles": 43,
     "envelope_meaning": "Illustrative outer surface; not the Gaussian core radius or a material boundary.",
     "section_anchor_mm": [
-      74.61812555165264,
-      23.31290631125349
+      74.61812542449715,
+      23.31290599649749
     ]
   }
 }
