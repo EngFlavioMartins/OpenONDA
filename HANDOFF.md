@@ -368,7 +368,7 @@ cpu`) had meshed 20k cells and was in its first coupling step. Files it changed 
   chord, f = 0.2 Hz, Re = 1000, h = 0.025, FVM step 0.005 s, N = 5, end 30 s, statistics 15 to
   30 s). A smoke run to 0.5 s was clean; the coupled GPU run and the reference were never run.
 - Case 06 `06_rotor_flow` (new, untested): the three-bladed turbine of `tutorials/vpm/06_rotor_flow`
-  with meshed NACA 0012 blades generated from `vpm/06_rotor_flow/assets/blade.json`
+  with meshed NACA 0018 blades generated from `vpm/06_rotor_flow/assets/blade.json`
   (`assets/blade_surface.py`), R = 6 m, U = 7 m/s, tip-speed ratio 7, FVM disk
   (-3, 3) x (-9, 9) x (-9, 9) m rotating with the rotor, cells 0.2 m at the interface and 0.05 m at
   the blades, FVM step 0.001 s, coupling 0.006 s, end 15 s; assets for blade forces, rotor
