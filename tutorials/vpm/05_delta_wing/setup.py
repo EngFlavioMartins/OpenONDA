@@ -5,8 +5,8 @@ A leading wing and a following wing both heave and pitch through the flow,
 shedding vortex wakes that the trailing wing crosses. The sampled forces and
 circulation histories feed the ``allplot.sh`` figures.
 
-The induction backend and stretching formulation are independent. Set
-`stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
+To change the stretching formulation, set the induction's `stretching_scheme` to
+"direct", "mixed" or "transposed".
 
 Usage:
     python setup.py

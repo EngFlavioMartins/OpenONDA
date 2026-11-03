@@ -7,7 +7,7 @@ from matplotlib.collections import PolyCollection
 import numpy as np
 import pyvista as pv
 
-from assets._common import (  # noqa: E402
+from assets._common import (
     COLORMAPS,
     FIGURES_DIR,
     FREESTREAM_SPEED,

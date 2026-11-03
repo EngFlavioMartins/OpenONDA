@@ -13,8 +13,8 @@ Each case is named ``exp_<mode>_aoa<NN>``; the sampled forces are used by
 plates at matching angles. The bound/wake strength figure uses the native
 force sampler, and velocity profiles use its sampled bound-point velocities.
 
-The induction backend and stretching formulation are independent. Set
-`stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
+To change the stretching formulation, set the induction's `stretching_scheme` to
+"direct", "mixed" or "transposed".
 
 Usage:
     python setup.py --mode moving --angle 8

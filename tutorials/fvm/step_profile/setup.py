@@ -33,7 +33,7 @@ UPSTREAM_LENGTH = 4.0  # upstream domain length / step height
 DOWNSTREAM_LENGTH = 20.0  # downstream domain length / step height
 N_UPSTREAM = 24  # cells upstream of the step (x/h < 0)
 N_DOWNSTREAM = 120  # cells downstream of the step (x/h > 0)
-N_HEIGHT = 16  # cells across the inlet channel height h
+N_HEIGHT = 16  # cells across the downstream height 2h; the inlet gets half, keep it even
 
 # Time stepping and numerics
 TIME_STEP_SIZE = 0.02  # initial time step [s]

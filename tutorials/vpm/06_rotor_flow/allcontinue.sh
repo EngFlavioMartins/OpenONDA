@@ -3,4 +3,4 @@ set -e
 
 cd "$(dirname "$0")"
 
-python setup.py "$@"
+python setup.py

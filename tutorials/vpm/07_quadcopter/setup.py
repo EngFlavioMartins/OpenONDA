@@ -6,8 +6,8 @@ climbs at constant speed while the rotors shed their wakes into the flow. The
 native blade forces, shaft power and downstream velocity are sampled for
 the figures made by ``allplot.sh``.
 
-The induction backend and stretching formulation are independent. Set
-`stretching_scheme` to "direct", "mixed", or "transposed" in the case below.
+To change the stretching formulation, set the induction's `stretching_scheme` to
+"direct", "mixed" or "transposed".
 
 Usage:
     python setup.py
