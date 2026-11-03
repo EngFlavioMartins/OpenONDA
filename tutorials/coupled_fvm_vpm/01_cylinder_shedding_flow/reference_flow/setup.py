@@ -27,11 +27,7 @@ DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, streamfunction peak
 DISTURBANCE_RADIUS = 0.5  # m
 DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
-# Domain from the literature, not from a study of its own. Slip walls 16 D from the axis:
-# Behr et al. (1995, CMAME 123) find the Re = 100 lift amplitude and mean drag change by
-# under 0.2% between their two widest domains (A = 24 and 32) and recommend walls at least
-# 8 D away. Outlet 30 D downstream, twice the 14.5 D at which Tezduyar and Shih (1991, J. Eng.
-# Mech. 117) find no change of the solution; inlet 16 D upstream.
+# Domain sizing, Behr et al. (1995, CMAME 123)
 DOMAIN = (-16.0, 30.0, -16.0, 16.0)  # m, x and y bounds
 
 # Mesh: octree cells of CELL_SIZE over the coupled FVM domain, as in the coupled case, then
@@ -41,14 +37,17 @@ FVM_DOMAIN = (-2.4, 4.4, -2.4, 2.4)  # m, cells of CELL_SIZE: the coupled FVM do
 WAKE = (-3.0, DOMAIN[1], -3.0, 3.0)  # m, cells of 2 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
-# Time: the step adapts to a cell Courant number of at most MAX_COURANT
-TIME_STEP = 0.008  # s, first step at CELL_SIZE, scaled with the cell size
-MAX_COURANT = 0.9
+# Time: a fixed step, as in the coupled case, refined with the cells
+TIME_STEP = 0.008  # s, at CELL_SIZE
 END_TIME = 100.0  # s
 
-# Forces, wake profiles and backups share one interval: 50 samples per shedding period
-# (about 5 s); flow fields are written only at the start and the end
-SAMPLE_INTERVAL = 0.1  # s
+# Forces, wake profiles, flow fields and backups at the intervals of the coupled case
+# (setup.py one level up), rounded to whole steps as there
+FORCE_INTERVAL = 0.04  # s
+PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
+FIELD_INTERVAL = 0.2  # s
+FIELD_START = 40.0  # s, developed shedding
+BACKUP_INTERVAL = 1.0  # s
 
 
 def initial_velocity(position):
@@ -68,9 +67,17 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
     """Return the FVM case of the cylinder flow, written under ``solution/<name>``."""
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     half_span = 0.5 * SPAN
+    time_step = cell_size / CELL_SIZE * TIME_STEP
+
+    # Output times are whole steps (a fixed step is shortened to land on any other output time),
+    # written with at most 3 decimals: every step of allrun.sh has 3 decimals, so are its multiples
+    def on_steps(interval):
+        return round(max(1, round(interval / time_step)) * time_step, 3)
 
     # Requested sizes sit between octree levels, which then select 1 and 2 CELL_SIZE
     request = 4.0 * cell_size / 3.0
+    # The meshed slab holds the whole cylinder STL (|z| <= 0.6 m): a slab that cuts through it
+    # (half-depth 0.5 m) stalls the mesh optimisation
     slab = 16 * request
 
     # Mesh a slab around the long cylinder, then keep one periodic cell across the span
@@ -93,7 +100,7 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
         levels=(-half_span, half_span),
     )
 
-    sample = fvm.EveryTime(SAMPLE_INTERVAL)
+    profiles = fvm.EveryTime(on_steps(PROFILE_INTERVAL))
     samplers = (
         # Drag and lift coefficients per unit span
         fvm.ForceSampler(
@@ -101,7 +108,7 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
             reference_velocity=FREESTREAM_VELOCITY[0],
             reference_area=DIAMETER * SPAN,
             reference_length=DIAMETER,
-            schedule=sample,
+            schedule=fvm.EveryTime(on_steps(FORCE_INTERVAL)),
         ),
         # Recirculation region on the wake centreline
         fvm.LineSampler(
@@ -111,7 +118,7 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
             n_neighbours=12,
             reconstruction="affine",
             file_name="centreline",
-            schedule=sample,
+            schedule=profiles,
         ),
         # Transverse wake profiles
         *(
@@ -122,14 +129,13 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
                 n_neighbours=12,
                 reconstruction="affine",
                 file_name=f"transverse_x{x:g}",
-                schedule=sample,
+                schedule=profiles,
             )
             for x in (2.0, 4.0)
         ),
     )
     numerics = fvm.Numerics(
-        time_step_size=cell_size / CELL_SIZE * TIME_STEP,
-        time_step_control=fvm.MaximumCourantTimeStep(maximum=MAX_COURANT),
+        time_step_size=time_step,
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         linear=fvm.LinearSolverConfig(pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005),
@@ -145,9 +151,13 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
         run=fvm.RunPlan(end_time=END_TIME),
-        output=fvm.Output(schedule=None),
+        output=fvm.Output(
+            schedule=fvm.EveryTime(on_steps(FIELD_INTERVAL), start_time=on_steps(FIELD_START)),
+            compression="lz4",
+            ghost_layers=0,
+        ),
         samplers=fvm.Samplers(samplers),
-        backup=fvm.Backup(schedule=sample),
+        backup=fvm.Backup(schedule=fvm.EveryTime(on_steps(BACKUP_INTERVAL))),
         logging=fvm.LoggingConfig(detailed_timing=True),  # wall time per step
         mesh=mesh,
         boundaries=(

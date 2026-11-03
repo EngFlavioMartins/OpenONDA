@@ -34,11 +34,8 @@ DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
 # FVM mesh and near wake
 CELL_SIZE = 0.04  # m, also the baseline particle spacing
-SLAB_HALF_DEPTH_LIMIT = 0.5  # m, meshing slab inside the cylinder STL ends at |z| = 0.6 m
-# Slab half-depths [cells] set by hand: at h = 0.056569 m the cfMesh untangling of the mesh
-# optimisation stalls (over 20 min, against 12-45 s at the other sizes) with 6 and 8 cells, and
-# 7 cells mesh in 4 min (checked 1 November 2026).
-SLAB_HALF_DEPTH_CELLS = {0.056569: 7}
+SLAB_HALF_DEPTH_LIMIT = 0.5  # m, inside the cylinder STL, which ends at |z| = 0.6 m
+SLAB_HALF_DEPTH_CELLS = {0.056569: 7}  # cell size [m]: slab half-depth [cells] that meshes quickly
 BOX_MARGIN = 2.4  # D upstream and sideways; 2 D farther downstream
 FVM_TIME_STEP = 0.008  # s
 
@@ -60,8 +57,7 @@ TRANSFER_REMOVAL_THRESHOLD = 0.05  # 1/s, removal threshold of the replacement r
 MOMENT_CORRECTION_FRACTION = 0.08  # largest moment correction, fraction of transferred strength
 END_TIME = 100.0  # s
 
-# Solver settings varied by the sensitivity study; the FVM step is fixed unless a Courant
-# target is given, in which case FVM_TIME_STEP is the initial and maximum step
+# Solver options of the sensitivity study
 VPM_INTEGRATORS = {"rk2": vpm.RK2, "ssprk3": vpm.SSPRK3, "rk4": vpm.RK4}
 VPM_INTEGRATOR = "rk2"
 FVM_OUTER_CORRECTORS = 2
@@ -110,12 +106,11 @@ def build_case(
     vorticity_floor=VORTICITY_FLOOR,
     max_courant=None,
     fvm_outer_correctors=FVM_OUTER_CORRECTORS,
+    directory=CASE_DIR,
 ):
-    """Return the FVM case, the particle case and the coupling settings.
+    """Return the FVM case, the particle case and the coupling settings, written to ``directory``.
 
-    ``max_courant`` enables the FVM Courant controller: ``fvm_time_step`` is then the initial
-    and the maximum FVM step, and ``fvm_substeps * fvm_time_step`` the maximum coupling
-    interval, which the coupler shortens with the FVM Courant step.
+    With ``max_courant`` the FVM step adapts, and ``fvm_time_step`` is its largest value.
     """
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
 
@@ -139,7 +134,7 @@ def build_case(
     fourier_number = kinematic_viscosity * coupling_time_step_size / particle_spacing**2
     diffusion_stages = math.floor(12.0 * fourier_number) + 1
 
-    # Mesh a slab around the long cylinder, then keep one periodic cell across the span
+    # Mesh a slab through the long cylinder, then keep one periodic cell across the span
     patches = msh.BoxPatches(
         xmin="numericalBoundary",
         xmax="numericalBoundary",
@@ -150,8 +145,6 @@ def build_case(
         # The x and y faces form the coupling interface, meshed as exact Cartesian planes.
         coupling=("numericalBoundary",),
     )
-    # The slab is thinner than the long cylinder (|z| <= 0.6 m), so the cylinder crosses the
-    # z faces: crossed faces are not meshed as exact coupling-grade sides and need no clearance.
     slab_cells = SLAB_HALF_DEPTH_CELLS.get(
         round(cell_size, 6), min(16, math.floor(SLAB_HALF_DEPTH_LIMIT / cell_size))
     )
@@ -195,7 +188,7 @@ def build_case(
     )
     flow = fvm.FVMCase(
         name="coupled_cylinder_flow",
-        directory=CASE_DIR,
+        directory=directory,
         numerics=fvm.Numerics(
             time_step_size=fvm_time_step,
             time_step_control=(
@@ -245,7 +238,7 @@ def build_case(
     # Outer wake: one particle layer between slip planes, with transverse wake profiles
     particles = vpm.VPMCase(
         name="coupled_cylinder_flow",
-        directory=CASE_DIR,
+        directory=directory,
         numerics=vpm.Numerics(
             time_step_size=coupling_time_step_size,
             freestream_velocity=FREESTREAM_VELOCITY,
@@ -338,8 +331,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--interface-cell-size",
         type=float,
-        help="cell size counting the transfer inset and the blending depths [m]; the cell size by"
-        " default, a fixed value keeps the interface in place while the cells are refined",
+        help="cell size that sets the transfer inset and blending depths [m]; the cell size by default",
     )
     parser.add_argument(
         "--fvm-time-step",
@@ -384,7 +376,7 @@ if __name__ == "__main__":
         default=BLEND_END,
         help="depth delta_1 at which the blending weight reaches one [interface cells]",
     )
-    # Interface parameters beyond the geometry: thresholding and conservation of the transfer
+    # Transfer thresholds and corrections
     parser.add_argument(
         "--transfer-removal-threshold",
         type=float,
@@ -397,7 +389,7 @@ if __name__ == "__main__":
         default=MOMENT_CORRECTION_FRACTION,
         help="largest moment correction as a fraction of the transferred strength, in (0, 1]",
     )
-    # Particle-side parameters at a fixed FVM and interface
+    # Particle solver
     parser.add_argument(
         "--vpm-integrator",
         choices=sorted(VPM_INTEGRATORS),
@@ -410,12 +402,11 @@ if __name__ == "__main__":
         default=VORTICITY_FLOOR,
         help="vorticity below which diffused particles are removed [1/s]",
     )
-    # FVM-side parameters at a fixed interface and particle set
+    # FVM solver
     parser.add_argument(
         "--max-courant",
         type=float,
-        help="FVM Courant target; the FVM step then adapts below --fvm-time-step, and the"
-        " coupling interval below --fvm-substeps times it",
+        help="FVM Courant target; the FVM step then adapts below --fvm-time-step",
     )
     parser.add_argument(
         "--fvm-outer-correctors",
@@ -423,9 +414,13 @@ if __name__ == "__main__":
         default=FVM_OUTER_CORRECTORS,
         help="PIMPLE outer correctors per FVM step",
     )
+    parser.add_argument(
+        "--name",
+        help="sensitivity case: solution/sensitivity_analysis/<name>; this directory by default",
+    )
     arguments = parser.parse_args()
 
-    # Refining the cells refines the steps at constant Courant number, and the particles with them
+    # Unless given, the time step and the particle spacing follow the cell size
     refinement = arguments.cell_size / CELL_SIZE
     fvm_time_step = arguments.fvm_time_step or refinement * FVM_TIME_STEP
     particle_spacing = arguments.particle_spacing or arguments.cell_size
@@ -454,6 +449,7 @@ if __name__ == "__main__":
         arguments.vorticity_floor,
         arguments.max_courant,
         arguments.fvm_outer_correctors,
+        CASE_DIR / "solution/sensitivity_analysis" / arguments.name if arguments.name else CASE_DIR,
     )
     with coupler.CoupledSolver(flow, particles, coupling) as solver:
         # The startup vortex behind the cylinder; a restart replaces it with the backup

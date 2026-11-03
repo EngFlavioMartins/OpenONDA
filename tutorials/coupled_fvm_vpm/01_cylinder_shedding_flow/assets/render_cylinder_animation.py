@@ -11,8 +11,9 @@ from PIL import Image
 import pyvista as pv
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-SOLUTION_DIR = CASE_DIR / "solution"
-FORCES = CASE_DIR / "samples" / "forces_history.csv"
+BASELINE_DIR = CASE_DIR / "solution/sensitivity_analysis/box2.4_sub5_inset8.75"  # baseline run
+SOLUTION_DIR = BASELINE_DIR / "solution"
+FORCES = BASELINE_DIR / "samples" / "forces_history.csv"
 OUTPUT = CASE_DIR / "figures" / "cylinder_shedding.gif"
 FRAMES_PER_SECOND = 20.0
 

@@ -25,12 +25,14 @@ WINDOW = (-1.5, 9.5, -1.5, 1.5)  # m
 SPACING = 0.02  # m, comparison lattice
 DEVELOPED_SHEDDING = 40.0  # s, start of the phase averages
 
-# Reference FVM, coupled FVM in the box, and particles in the outer wake.
-REFERENCE = CASE_DIR / "reference_flow/solution/fvm.pvd"
-COUPLED_FVM = CASE_DIR / "solution/fvm.pvd"
-COUPLED_VPM = CASE_DIR / "solution/vpm.pvd"
-REFERENCE_FORCES = CASE_DIR / "reference_flow/samples/forces_history.csv"
-COUPLED_FORCES = CASE_DIR / "samples/forces_history.csv"
+# Matched FVM-only reference, and the baseline coupled run: FVM in the box, particles in the
+# outer wake
+BASELINE_DIR = CASE_DIR / "solution/sensitivity_analysis/box2.4_sub5_inset8.75"
+REFERENCE = CASE_DIR / "reference_flow/solution/h0.04_dt0.008/fvm.pvd"
+COUPLED_FVM = BASELINE_DIR / "solution/fvm.pvd"
+COUPLED_VPM = BASELINE_DIR / "solution/vpm.pvd"
+REFERENCE_FORCES = CASE_DIR / "reference_flow/samples/h0.04_dt0.008/forces_history.csv"
+COUPLED_FORCES = BASELINE_DIR / "samples/forces_history.csv"
 
 # Field labels, colour maps, and difference scales.
 QUANTITIES = {

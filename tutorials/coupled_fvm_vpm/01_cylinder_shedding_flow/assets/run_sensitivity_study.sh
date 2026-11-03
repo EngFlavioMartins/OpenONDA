@@ -5,10 +5,11 @@
 #   assets/run_sensitivity_study.sh b1 a       # the named sections only
 #   assets/run_sensitivity_study.sh --list     # section names
 #
-# Each coupled run solves a copy of this case in sensitivity/box{margin}_sub{N}_inset{cells}{suffix},
-# each FVM-only variant a copy of reference_flow/ in sensitivity/reference_{suffix}. The names below
-# are the names of the stored runs, so a section that is launched again resumes its runs from their
-# latest backups, and a run that already reached the end time is skipped. Suffix order (parsed by
+# Each coupled run is this case with --name, written to
+# solution/sensitivity_analysis/box{margin}_sub{N}_inset{cells}{suffix} (allrun.sh lists the same
+# commands); each FVM-only variant is a copy of reference_flow/ in sensitivity/reference_{suffix}.
+# The names below are the names of the stored runs, so a section that is launched again resumes
+# its runs from their latest backups, and a run that already reached the end time is skipped. Suffix order (parsed by
 # assets/plot_sensitivity.py): _xd _h _dtf _ic _hp _bs _be _kappa _tau _mc _rk _vf _co _oc _k _re _rep.
 #
 # Sections are grouped by what they isolate: D the FVM domain, I the interface at a fixed FVM and
@@ -42,7 +43,7 @@ gpu_reserved() {
 }
 running_study_runs() {
     local pid count=0 case_dir
-    case_dir=$(pwd -P)/sensitivity/
+    case_dir=$(pwd -P)/solution/sensitivity_analysis/
     for pid in $(pgrep -f "python setup.py --box-margin"); do
         [[ $(readlink "/proc/$pid/cwd") == "$case_dir"* ]] && count=$((count + 1))
     done
@@ -122,7 +123,7 @@ release() { exec {CLAIM_FD}>&-; }
 run() {
     [[ -f sensitivity/HALTED ]] && exit 3  # another worker halted the study
     [[ $STUDY_ROLE == cpu ]] && return 0
-    local directory="sensitivity/box$1_sub$2_inset$3$4"
+    local directory="solution/sensitivity_analysis/box$1_sub$2_inset$3$4"
     if finished "$directory"; then
         echo "skip $directory (reached t = $END_TIME s)"
         return 0
@@ -136,16 +137,12 @@ run() {
     wait_for_ram "$MIN_FREE_RAM_MIB"
     echo "$(date '+%F %T')  run $directory"
     local started=$SECONDS
-    # A run with a coupled backup keeps its setup; one that never stored a backup takes the
-    # current setup, so a fixed setup reaches runs that stopped before their first backup.
-    if [[ -d $directory/solution/coupled ]]; then
-        cp -r --update=none setup.py assets "$directory"
-    else
-        cp -r setup.py assets "$directory"
-    fi
     record_solver "$directory"
-    (cd "$directory" && python setup.py --box-margin "$1" --fvm-substeps "$2" --transfer-inset "$3" \
-        "${@:5}" --end-time "$END_TIME") > "$directory/run.log" 2>&1
+    # Started inside the run directory, so that running_study_runs finds the process
+    local case_dir=$PWD
+    (cd "$directory" && python "$case_dir/setup.py" --box-margin "$1" --fvm-substeps "$2" \
+        --transfer-inset "$3" "${@:5}" --end-time "$END_TIME" --name "${directory##*/}") \
+        > "$directory/run.log" 2>&1
     local status=$?
     release
     quick_failure_check "$directory" "$status" $((SECONDS - started))

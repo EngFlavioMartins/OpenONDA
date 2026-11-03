@@ -11,8 +11,7 @@ from openonda.plotting import fit_thesis_y_label_margins
 from openonda.plotting import COLORS, LINE_WIDTH, save_validation_figure, validation_legend
 from openonda.plotting import validation_subplots
 
-CASE_DIR = Path(__file__).resolve().parents[1]
-REFERENCE_DIR = CASE_DIR / "reference_flow"
+from assets.plot_forces import BASELINE_DIR, CASE_DIR, REFERENCE_SOLUTION
 
 # Timing phases grouped by solver component.
 PHASES = {
@@ -26,7 +25,7 @@ PHASES = {
 def main():
     records = [
         json.loads(line)
-        for line in (CASE_DIR / "solution/coupler_diagnostics.jsonl").read_text().splitlines()
+        for line in (BASELINE_DIR / "solution/coupler_diagnostics.jsonl").read_text().splitlines()
     ]
     time = np.array([record["time"] for record in records])
     particles = np.array([record["transfer"]["n_particles_after"] for record in records])
@@ -41,7 +40,7 @@ def main():
 
     # Normalize the FVM reference by its own time step.
     steps = [
-        json.loads(line) for line in (REFERENCE_DIR / "solution/performance.jsonl").read_text().splitlines()
+        json.loads(line) for line in (REFERENCE_SOLUTION / "performance.jsonl").read_text().splitlines()
     ]
     reference_mean = (
         np.mean([step["step_seconds"]["max"] for step in steps]) / steps[0]["time_step_size"]
@@ -55,9 +54,10 @@ def main():
     axes[0].stackplot(time, *cost, labels=PHASES, colors=[color for _, color in PHASES.values()])
     # Leave headroom above the timing history for the legend.
     axes[0].set_ylim(0.0, 1.6 * np.percentile(np.sum(cost, axis=0), 99.9))
-    for mean, style, label in (
-        (coupled_mean, "-", "Coupled"),
-        (reference_mean, "--", "FVM only"),
+    # Labels at opposite ends of their lines, so that close means do not overlap
+    for mean, style, label, x, alignment in (
+        (coupled_mean, "-", "Coupled", 0.01, "left"),
+        (reference_mean, "--", "FVM only", 0.99, "right"),
     ):
         axes[0].axhline(
             mean,
@@ -68,11 +68,12 @@ def main():
         )
         axes[0].annotate(
             f"{label}: {mean:.0f} s",
-            xy=(0.01, mean),
+            xy=(x, mean),
             xycoords=axes[0].get_yaxis_transform(),
             xytext=(0, 3),
             textcoords="offset points",
             verticalalignment="bottom",
+            horizontalalignment=alignment,
             bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.0},
         )
     axes[0].set_ylabel("Wall time per\nflow time [s/s]")

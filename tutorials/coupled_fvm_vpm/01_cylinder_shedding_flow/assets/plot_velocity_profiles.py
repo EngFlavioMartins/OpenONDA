@@ -18,19 +18,22 @@ CASE_DIR = Path(__file__).resolve().parents[1]
 DEVELOPED_SHEDDING = 40.0  # s, start of the averaging window
 DIAMETER = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
-REFERENCE_FORCES = CASE_DIR / "reference_flow/samples/forces_history.csv"
-COUPLED_FORCES = CASE_DIR / "samples/forces_history.csv"
+# The baseline coupled run and its matched FVM-only reference
+REFERENCE = "reference_flow/samples/h0.04_dt0.008"
+BASELINE = "solution/sensitivity_analysis/box2.4_sub5_inset8.75"
+REFERENCE_FORCES = CASE_DIR / REFERENCE / "forces_history.csv"
+COUPLED_FORCES = CASE_DIR / BASELINE / "samples/forces_history.csv"
 
 # Probe data from the reference, the coupled FVM box, and the particle wake.
 SOURCES = {
     2: {
-        "FVM only": "reference_flow/samples/transverse_x2.csv",
-        "Coupled FVM": "samples/fvm_transverse_x2.csv",
-        "Coupled VPM": "samples/vpm_transverse_x2.csv",
+        "FVM only": f"{REFERENCE}/transverse_x2.csv",
+        "Coupled FVM": f"{BASELINE}/samples/fvm_transverse_x2.csv",
+        "Coupled VPM": f"{BASELINE}/samples/vpm_transverse_x2.csv",
     },
     4: {
-        "FVM only": "reference_flow/samples/transverse_x4.csv",
-        "Coupled VPM": "samples/vpm_transverse_x4.csv",
+        "FVM only": f"{REFERENCE}/transverse_x4.csv",
+        "Coupled VPM": f"{BASELINE}/samples/vpm_transverse_x4.csv",
     },
 }
 STYLES = {

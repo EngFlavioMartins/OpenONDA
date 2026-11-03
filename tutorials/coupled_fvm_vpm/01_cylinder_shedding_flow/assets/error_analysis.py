@@ -380,6 +380,9 @@ def exact_values(references):
     family = reference_families(references)["C"][1]
     exact = {}
     for quantity in STATISTICS:
+        if len(family) < MINIMUM_LEVELS:  # references still running: no Q_ext yet
+            exact[quantity] = (np.nan, "too few levels")
+            continue
         fit = discretization_uncertainty(
             [ref["cell_size"] / DIAMETER for ref in family],
             [statistics_of(ref["forces"])[quantity] for ref in family],

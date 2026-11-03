@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from assets.plot_forces import DEVELOPED_SHEDDING, read_forces, shedding_statistics
+from assets.plot_sensitivity import reference_paths, run_paths
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 WINDOW = 15.0  # s, the study window (40-55 s)
@@ -38,11 +39,7 @@ def sliding_windows(forces):
 
 
 def main():
-    paths = [
-        *CASE_DIR.glob("reference_flow/samples/forces_history.csv"),
-        *sorted(CASE_DIR.glob("sensitivity/*/samples/forces_history.csv")),
-        *CASE_DIR.glob("samples/forces_history.csv"),
-    ]
+    paths = [*reference_paths(), *run_paths()]
     names = (
         "mean drag",
         "mean drag, whole window",
@@ -58,7 +55,8 @@ def main():
         rows = sliding_windows(forces)
         if len(rows) < 3:
             continue
-        run = path.parents[1].name if path.parents[1] != CASE_DIR else "coupled_cylinder_flow"
+        # reference_flow/samples/<name>/ or solution/sensitivity_analysis/<name>/samples/
+        run = path.parents[1].name if path.parent.name == "samples" else path.parent.name
         record = {"run": run, "end time": forces["time"][-1], "windows": len(rows)}
         for name in names:
             values = np.array([row[name] for row in rows])

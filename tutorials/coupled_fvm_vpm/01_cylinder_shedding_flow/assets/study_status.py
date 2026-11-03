@@ -17,6 +17,7 @@ import time
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
+STUDY_DIR = CASE_DIR / "solution/sensitivity_analysis"
 MISMATCH_LIMIT = 0.02  # U, mean boundary velocity mismatch
 DRAG_RANGE = (1.2, 1.45)  # developed mean drag after DRAG_START
 DRAG_START = 20.0  # s
@@ -78,11 +79,7 @@ def status(directory):
 
 def main():
     # A trailing separator matches directories only
-    directories = sorted(
-        [*CASE_DIR.glob("sensitivity/box*/"), *CASE_DIR.glob("sensitivity/reference_*/")]
-    )
-    for halted in CASE_DIR.glob("sensitivity/HALTED"):
-        print(f"STUDY HALTED at {halted.read_text().strip()}")
+    directories = sorted(STUDY_DIR.glob("box*/"))
     print(f"{'run':52s} {'t [s]':>7s} {'s/s':>6s} {'N_p':>7s} {'kappa':>6s} {'mismatch':>9s}  flags")
     for directory in directories:
         row = status(directory)

@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """Error sources and one-at-a-time sensitivity of the coupling interface.
 
-Every coupled run in sensitivity/box* (one solver version; older runs are archived by
-COMPLETE.sh) is split into
+Every coupled run in solution/sensitivity_analysis/box* (one solver version) is split into
 
     e_total = e_FVM + e_coupling,
     e_FVM      = Q_FVM / Q_ext - 1,             FVM only on the same cells and step,
     e_coupling = (Q_coupled - Q_FVM) / Q_ext,   what the particle wake and the interface add,
 
 with Q_ext the FVM-only value at zero cell size and step (Eca-Hoekstra least squares over the
-references at a constant Courant number, assets/error_analysis.py). Q_FVM is the fine-wake
-reference (section g: h cells over the whole coupled FVM domain) where it exists for the run's
-cells and step, so that e_coupling no longer holds the coarser wake cells of the standard
-reference; otherwise the standard reference, and the row says so.
+references at a constant Courant number, assets/error_analysis.py). Q_FVM is the FVM-only
+reference on the run's cells and FVM step (reference_flow/samples/<name>,
+assets/plot_sensitivity.reference_key).
 
 Statistics are those of assets/plot_forces.py over 40 <= t <= 55 s: the mean drag over whole
 shedding periods, the lift amplitude as half the peak-to-peak value (its per-period mean as a
@@ -41,9 +39,10 @@ from openonda.plotting import BACKGROUND_LIGHT, REFERENCE_STYLE
 from openonda.plotting import centered_subplots_adjust, fit_thesis_y_label_margins
 from openonda.plotting import save_validation_figure, set_thesis_style
 
-from assets.error_analysis import discretization_uncertainty, space_time_fit
+from assets.error_analysis import MINIMUM_LEVELS, discretization_uncertainty, space_time_fit
 from assets.plot_forces import read_forces, shedding_statistics
 from assets.plot_sensitivity import BASELINE, REFERENCE_NAME, RUN_NAME, jsonl_records
+from assets.plot_sensitivity import REFERENCE_DIR, reference_key, reference_paths, run_paths
 from setup import CELL_SIZE, DIAMETER, FREESTREAM_VELOCITY, FVM_SUBSTEPS, FVM_TIME_STEP
 from setup import REYNOLDS_NUMBER
 
@@ -87,7 +86,9 @@ def sampling_floor(paths):
         windows = [shedding_statistics(forces, s, s + WINDOW[1] - WINDOW[0]) for s in starts]
         windows = [w for w in windows if w is not None]
         study = shedding_statistics(forces, *WINDOW)
-        row = {"run": path.parents[1].name, "end time": forces["time"][-1], "windows": len(windows)}
+        # reference_flow/samples/<name>/ or solution/sensitivity_analysis/<name>/samples/
+        name = path.parents[1].name if path.parent.name == "samples" else path.parent.name
+        row = {"run": name, "end time": forces["time"][-1], "windows": len(windows)}
         for name in names:
             late = np.array([w[name] for w in windows[len(windows) // 2 :]])
             row[f"{name} sigma_w [%]"] = 100.0 * late.std(ddof=1) / late.mean()
@@ -113,39 +114,21 @@ def sampling_floor(paths):
 
 
 def read_references():
-    """FVM-only references keyed by (Re, h, dt, fine-wake end, fine-box margin).
-
-    The last two are the extent [D] of the h cells over a coupled FVM domain (section g) and
-    None for the standard mesh; the base reference is reference_flow.
-    """
+    """FVM-only references through the statistics window, keyed by (Re, h, dt)."""
     references = {}
-    for path in [
-        CASE_DIR / "reference_flow/samples/forces_history.csv",
-        *sorted(CASE_DIR.glob("sensitivity/reference_*/samples/forces_history.csv")),
-    ]:
-        directory = path.parents[1]
+    for path in reference_paths():
+        name = path.parent.name
+        match = REFERENCE_NAME.fullmatch(name)
         forces = np.atleast_1d(read_forces(path))
-        if forces["time"][-1] < WINDOW[1] - 0.1:
-            continue  # not yet through the statistics window
-        match = REFERENCE_NAME.fullmatch(directory.name.replace("reference_flow", "reference"))
-        if match is None:
-            continue
-        cell_size = float(match["cell_size"] or CELL_SIZE)
-        time_step = float(match["time_step"] or cell_size / CELL_SIZE * FVM_TIME_STEP)
-        reynolds_number = float(match["reynolds_number"] or REYNOLDS_NUMBER)
-        fine_wake_end = round(float(match["fine_wake_end"]), 6) if match["fine_wake_end"] else None
-        fine_box_margin = None
-        if fine_wake_end is not None:
-            fine_box_margin = round(float(match["fine_box_margin"] or BASELINE["box_margin"]), 6)
-        key = (reynolds_number, cell_size, time_step, fine_wake_end, fine_box_margin)
-        references[key] = {
-            "name": directory.name,
-            "cell_size": cell_size,
+        if match is None or forces["time"][-1] < WINDOW[1] - 0.1:
+            continue  # not a reference of the study, or not yet through the statistics window
+        steps = jsonl_records(REFERENCE_DIR / "solution" / name / "performance.jsonl")
+        time_step = round(steps[0]["time_step_size"], 9)  # fixed: the step the reference ran with
+        references[reference_key(float(match["cell_size"]), time_step)] = {
+            "name": name,
+            "cell_size": float(match["cell_size"]),
             "time_step": time_step,
-            "reynolds_number": reynolds_number,
-            "fine wake": fine_wake_end is not None,
-            "fine wake end": fine_wake_end,
-            "fine box margin": fine_box_margin,
+            "reynolds_number": REYNOLDS_NUMBER,
             "forces": forces,
             "statistics": shedding_statistics(forces, *WINDOW),
         }
@@ -153,23 +136,25 @@ def read_references():
 
 
 def extrapolated_values(references):
-    """Q_ext and its uncertainty per statistic from the standard references at Re = 150.
+    """Q_ext and its uncertainty per statistic from the references at Re = 150.
 
     The family at a constant Courant number gives Q_ext with the Eca-Hoekstra uncertainty of its
-    finest level; the space-time fit Q = Q_ext + a h^p + b dt^q over every standard reference
+    finest level; the space-time fit Q = Q_ext + a h^p + b dt^q over every reference
     replaces it when its standard error is smaller (a statistic that barely changes with the cells,
     such as the mean drag, converges oscillatorily within its sampling floor), as in
     assets/error_analysis.py.
     """
-    standard = [
-        ref for (re, h, dt, fine, _), ref in references.items() if re == REYNOLDS_NUMBER and fine is None
-    ]
+    standard = list(references.values())
     family = sorted(
         (ref for ref in standard if np.isclose(ref["time_step"], ref["cell_size"] / CELL_SIZE * FVM_TIME_STEP)),
         key=lambda ref: ref["cell_size"],
     )
     exact = {}
     for name in STATISTICS:
+        if len(family) < MINIMUM_LEVELS:  # references still running: no Q_ext yet
+            exact[name] = {"Q_ext": np.nan, "U_ext": np.nan, "method": "too few levels",
+                           "class": "", "order": np.nan, "levels": ";".join(r["name"] for r in family)}
+            continue
         fit = discretization_uncertainty(
             [ref["cell_size"] / DIAMETER for ref in family],
             [ref["statistics"][name] for ref in family],
@@ -265,48 +250,35 @@ def transfer_indicators(directory):
     }
 
 
-def comparison_references(parameters, references):
-    """The matched fine-box and the standard FVM-only reference of a run (or None).
-
-    The fine-box reference has the run's Re, cells and step and h cells over the run's FVM
-    domain (downstream face and margin), so that both discretise the same region alike.
-    """
-    key = (parameters["reynolds_number"], parameters["cell_size"], parameters["fvm_time_step"])
-    box = (round(parameters["box_downstream"], 6), round(parameters["box_margin"], 6))
-    return references.get((*key, *box)), references.get((*key, None, None))
+def comparison_reference(parameters, references):
+    """The FVM-only reference on the cells and step of a run (or None)."""
+    return references.get(reference_key(parameters["cell_size"], parameters["fvm_time_step"]))
 
 
 def read_runs(references, exact):
     """Parameters, statistics, errors and indicators of every coupled run through the window.
 
-    "e_coupling" is against the fine-wake reference where it exists, else the standard one;
-    "e_coupling std" is always against the standard reference, for series that mix FVM steps or
-    cells only some of which have a fine-wake reference.
+    "e_coupling" is against the reference on the run's cells and step.
     """
     runs = []
-    for path in sorted(CASE_DIR.glob("sensitivity/box*/samples/forces_history.csv")):
+    for path in run_paths():
         directory = path.parents[1]
         forces = np.atleast_1d(read_forces(path))
         if forces["time"][-1] < WINDOW[1] - 0.1:
             continue  # still developing, or stopped early
         parameters = run_parameters(directory.name)
         statistics = shedding_statistics(forces, *WINDOW)
-        fine, standard = comparison_references(parameters, references)
-        reference = fine or standard
+        reference = comparison_reference(parameters, references)
         run = {"name": directory.name, **parameters, "end time": forces["time"][-1]}
         run["reference"] = reference["name"] if reference else "none"
-        run["fine-wake reference"] = fine is not None
-        run["standard reference"] = standard["name"] if standard else "none"
         at_re = parameters["reynolds_number"] == REYNOLDS_NUMBER
         for name in (*STATISTICS, *CHECKS):
             value = statistics[name]
             expected = reference["statistics"][name] if reference else np.nan
-            expected_standard = standard["statistics"][name] if standard else np.nan
             # Q_ext exists at Re = 150 only; other Re scale with their own reference
             scale = exact[name]["Q_ext"] if at_re and name in exact else expected
             run[name] = value
             run[f"{name} e_coupling [%]"] = 100.0 * (value - expected) / scale
-            run[f"{name} e_coupling std [%]"] = 100.0 * (value - expected_standard) / scale
             if name in STATISTICS:
                 phi0 = exact[name]["Q_ext"] if at_re else np.nan
                 run[f"{name} e_FVM [%]"] = 100.0 * (expected - phi0) / scale
@@ -314,13 +286,6 @@ def read_runs(references, exact):
         run.update(transfer_indicators(directory))
         runs.append(run)
     return runs
-
-
-def error_key(members):
-    """The coupling error a series is drawn with: fine-wake when every member has that reference."""
-    if members and all(run["fine-wake reference"] for run in members):
-        return "e_coupling [%]"
-    return "e_coupling std [%]"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -450,10 +415,10 @@ def position(parameter, value):
 
 def series_summary(members, parameter, log_scale, floor):
     """Range of e_coupling over a series and its slope per factor of two, per statistic."""
-    summary = {"reference": "fine wake" if error_key(members) == "e_coupling [%]" else "standard"}
+    summary = {}
     x = np.array([position(parameter, run[parameter]) for run in members], float)
     for name in STATISTICS:
-        error = np.array([run[f"{name} {error_key(members)}"] for run in members], float)
+        error = np.array([run[f"{name} e_coupling [%]"] for run in members], float)
         span = np.nanmax(error) - np.nanmin(error) if len(error) > 1 else np.nan
         slope = np.nan
         if len(members) > 1 and log_scale and np.all(x > 0) and np.ptp(np.log2(x)) > 0:
@@ -514,8 +479,7 @@ def group_figure(name, panels, floor):
             {position(parameter, run[parameter]) for _, members in panel["series"] for run in members}
         )
         baseline = position(parameter, BASELINE.get(parameter))
-        # One reference type per panel; open markers: the standard reference (see error_key)
-        key = error_key([run for _, members in panel["series"] for run in members])
+        key = "e_coupling [%]"
         for row, statistic in enumerate(STATISTICS):
             axis = axes[row, column]
             axis.axhline(0.0, **REFERENCE_STYLE)
@@ -533,7 +497,7 @@ def group_figure(name, panels, floor):
                     [position(parameter, run[parameter]) for run in members],
                     [run[f"{statistic} {key}"] for run in members],
                     yerr=floor[statistic]["sigma"], color=color, marker=marker,
-                    markerfacecolor=color if key == "e_coupling [%]" else "white",
+                    markerfacecolor=color,
                     markersize=MARKER_SIZE, linewidth=LINE_WIDTH, capsize=2.0,
                 )
                 if sum(bool(m) for _, m in panel["series"]) > 1:
@@ -591,7 +555,7 @@ def interval_figure(runs, floor):
     ]
     if sum(len(members) for _, members, _, _ in series) < 3:
         return
-    key = error_key([run for _, members, _, _ in series for run in members])
+    key = "e_coupling [%]"
     set_thesis_style()
     quantities = (*STATISTICS, "kappa median")
     labels = sum(len({run["fvm_time_step"] for run in members}) for _, members, _, _ in series)
@@ -667,10 +631,7 @@ def ranking_figure(ranking, floor):
 def main():
     references = read_references()
     exact = extrapolated_values(references)
-    floor_paths = [
-        CASE_DIR / "reference_flow/samples/forces_history.csv",
-        *sorted(CASE_DIR.glob("sensitivity/box*/samples/forces_history.csv")),
-    ]
+    floor_paths = [*reference_paths(), *run_paths()]  # those that reach FLOOR_RUN_END
     floor, floor_rows = sampling_floor(floor_paths)
     runs = read_runs(references, exact)
 
@@ -684,19 +645,6 @@ def main():
             f"  {name:26s} sigma_w {value['sigma_w']:.3f} %  s_d {value['s_d']:.3f} %"
             f"  sigma of a difference {value['sigma']:.3f} %  (resolved above {RESOLVED * value['sigma']:.3f} %)"
         )
-    wake = {}
-    for (re, h, dt, fine, margin), ref in sorted(references.items(), key=lambda item: str(item[0])):
-        if fine is not None and (re, h, dt, None, None) in references:
-            standard = references[re, h, dt, None, None]
-            change = {
-                name: 100.0 * (ref["statistics"][name] - standard["statistics"][name]) / exact[name]["Q_ext"]
-                for name in STATISTICS
-            }
-            if margin == round(BASELINE["box_margin"], 6):
-                wake[dt] = change
-            print(f"Fine box (margin {margin:g} D, face {fine:g} D) minus standard reference at"
-                  f" dt = {dt:g} s: " + ", ".join(f"{name} {value:+.3f} %" for name, value in change.items()))
-
     print(f"\n{len(runs)} coupled runs through the window (e_coupling [%]: drag, lift amplitude, St)")
     for run in runs:
         flag = "" if run["image backend"] == "cupy_cuda" and run["memory fallbacks"] == 0 else "  CHECK BACKEND"
@@ -721,7 +669,6 @@ def main():
                 "series": label,
                 "levels": len(chosen),
                 "runs": ";".join(run["name"] for run in sorted(chosen, key=lambda r: position(parameter, r[parameter]))),
-                "reference": summary["reference"] if summary else "",
                 **{
                     f"{name} {key}": (summary[name][key] if summary else np.nan)
                     for name in STATISTICS
@@ -737,7 +684,6 @@ def main():
     write_csv(
         TABLES / "interface_reference_values.csv",
         [{"statistic": name, **value} for name, value in exact.items()]
-        + [{"statistic": f"fine minus standard wake, dt {dt:g} s", **values} for dt, values in wake.items()]
         + [{"statistic": ref["name"], **ref["statistics"]} for ref in references.values()],
     )
     print(f"\nwrote {', '.join(p.name for p in sorted(TABLES.glob('interface_*.csv')))}")

@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 CASE_DIR = Path(__file__).resolve().parents[1]
+STUDY_DIR = CASE_DIR / "solution/sensitivity_analysis"
 DEVELOPED_START = 40.0  # s
 DEVELOPED_END = 55.0  # s
 CAP_FRACTION = 0.995
@@ -68,7 +69,7 @@ def main():
     """Print and save transfer statistics for every sensitivity run."""
     statistics = [
         (path.parents[1].name, developed_transfer_statistics(path))
-        for path in sorted(CASE_DIR.glob("sensitivity/box*/solution/coupler_diagnostics.jsonl"))
+        for path in sorted(STUDY_DIR.glob("box*/solution/coupler_diagnostics.jsonl"))
     ]
     # Runs that have not reached the developed window yet have no transfers to report.
     rows = [{"run": name, **values} for name, values in statistics if values["transfers"]]

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Plot force error, wake difference and cost for the cylinder sensitivity study.
 
-Each coupled run is compared with a reference at matching Reynolds number,
-cell size and FVM time step.
+Each coupled run (solution/sensitivity_analysis/<name>) is compared with the FVM-only reference
+(reference_flow/samples/<name>) on its cells and FVM step: the cell size from the reference name,
+h<cell size>_dt..., the step from the reference's own step record.
 """
 
 import json
@@ -33,6 +34,9 @@ from setup import REYNOLDS_NUMBER, TRANSFER_INSET, TRANSFER_REMOVAL_THRESHOLD, V
 from setup import VPM_INTEGRATOR
 
 CASE_DIR = Path(__file__).resolve().parents[1]
+STUDY_DIR = CASE_DIR / "solution/sensitivity_analysis"  # coupled runs: <name>/samples, solution
+REFERENCE_DIR = CASE_DIR / "reference_flow"  # FVM-only runs: samples/<name>, solution/<name>
+BASELINE_NAME = "box2.4_sub5_inset8.75"
 ERROR_BAND = 2.0  # %
 STATISTICS_LENGTH = 10.0  # s
 # Statistics window of the study, the same in every run and reference. Runs continued beyond
@@ -92,11 +96,8 @@ RUN_NAME = re.compile(
     r"(?:_k(?P<coupling_iterations>\d+))?(?:_re(?P<reynolds_number>[\d.]+))?"
     r"(?:_rep(?P<repeat>\d+))?"
 )
-REFERENCE_NAME = re.compile(
-    r"reference(?:_h(?P<cell_size>[^_]+))?(?:_dt(?P<time_step>[^_]+))?"
-    r"(?:_re(?P<reynolds_number>[\d.]+))?(?:_fw(?P<fine_wake_end>[\d.]+))?"
-    r"(?:_fb(?P<fine_box_margin>[\d.]+))?"
-)
+# Reference names (reference_flow/allrun.sh): h<cell size>_dt<step>, at the study's Reynolds number
+REFERENCE_NAME = re.compile(r"h(?P<cell_size>[\d.]+)_dt[\d.]+")
 
 
 def jsonl_records(path):
@@ -104,23 +105,46 @@ def jsonl_records(path):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
+def reference_key(cell_size, time_step):
+    """Key of the FVM-only reference with these cells and step."""
+    return (REYNOLDS_NUMBER, round(cell_size, 9), round(time_step, 9))
+
+
+def run_paths():
+    """Force histories of the coupled runs, solution/sensitivity_analysis/<name>/samples."""
+    return sorted(STUDY_DIR.glob("box*/samples/forces_history.csv"))
+
+
+def reference_paths():
+    """Force histories of the FVM-only references, reference_flow/samples/<name>."""
+    return sorted(REFERENCE_DIR.glob("samples/*/forces_history.csv"))
+
+
 def developed(forces):
     """Whether a force history covers the statistics window."""
     return forces["time"][-1] >= DEVELOPED_SHEDDING + STATISTICS_LENGTH
 
 
-def read_reference(directory, cell_size, time_step, reynolds_number):
-    """Forces, shedding phase, wake probes and cost of one FVM reference."""
-    steps = jsonl_records(directory / "solution/performance.jsonl")
+def read_reference(name):
+    """Forces, shedding phase, wake probes and cost of one FVM reference, or None.
+
+    None while the reference has not reached the end of the statistics window.
+    """
+    samples = REFERENCE_DIR / "samples" / name
+    forces_path = next(samples.glob("forces_history.csv"), None)
+    if forces_path is None or not developed(np.atleast_1d(read_forces(forces_path))):
+        return None
+    steps = jsonl_records(REFERENCE_DIR / "solution" / name / "performance.jsonl")
+    time_step = round(steps[0]["time_step_size"], 9)  # fixed: the step the reference ran with
     return {
-        "name": directory.name,
-        "cell_size": cell_size,
+        "name": name,
+        "cell_size": float(REFERENCE_NAME.fullmatch(name)["cell_size"]),
         "time_step": time_step,
-        "reynolds_number": reynolds_number,
-        "forces": read_forces(directory / "samples/forces_history.csv"),
-        "phase": shedding_phase(directory / "samples/forces_history.csv"),
+        "reynolds_number": REYNOLDS_NUMBER,
+        "forces": read_forces(forces_path),
+        "phase": shedding_phase(forces_path),
         "wake": [
-            np.genfromtxt(directory / f"samples/transverse_x{x}.csv", delimiter=",", names=True)
+            np.genfromtxt(samples / f"transverse_x{x}.csv", delimiter=",", names=True)
             for x in WAKE_STATIONS
         ],
         "cost": np.mean([step["step_seconds"]["max"] for step in steps]) / time_step,
@@ -128,25 +152,14 @@ def read_reference(directory, cell_size, time_step, reynolds_number):
 
 
 def read_references():
-    """Every developed reference, keyed by Reynolds number, cell size and FVM step."""
+    """Developed references, keyed by (Re, h, dt)."""
     references = {}
-    for path in [
-        CASE_DIR / "reference_flow/samples/forces_history.csv",
-        *sorted(CASE_DIR.glob("sensitivity/reference_*/samples/forces_history.csv")),
-    ]:
-        directory = path.parents[1]
-        if not developed(np.atleast_1d(read_forces(path))):
-            continue  # still developing
-        match = REFERENCE_NAME.fullmatch(directory.name.replace("reference_flow", "reference"))
-        if match is None or match["fine_wake_end"]:
-            continue  # the fine-wake reference is compared separately (read_fine_wake_reference)
-        # The step follows the cells at constant Courant number unless it is given
-        cell_size = float(match["cell_size"] or CELL_SIZE)
-        time_step = float(match["time_step"] or cell_size / CELL_SIZE * FVM_TIME_STEP)
-        reynolds_number = float(match["reynolds_number"] or REYNOLDS_NUMBER)
-        references[reynolds_number, cell_size, time_step] = read_reference(
-            directory, cell_size, time_step, reynolds_number
-        )
+    for path in reference_paths():
+        if REFERENCE_NAME.fullmatch(path.parent.name) is None:
+            continue
+        reference = read_reference(path.parent.name)
+        if reference is not None:
+            references[reference_key(reference["cell_size"], reference["time_step"])] = reference
     return references
 
 
@@ -239,14 +252,17 @@ def coupling_step_statistics(path):
 
 
 def read_runs(references):
-    """Parameters, errors and cost of every developed run in sensitivity/."""
-    # The finest-step reference on the baseline cells, for each Reynolds number
+    """Parameters, errors and cost of every developed run in solution/sensitivity_analysis/.
+
+    Each run is compared with the reference on its cells and step, and also with the
+    finest-step reference on the baseline cells.
+    """
     finest = {}
     for reynolds_number, cell_size, time_step in sorted(references, reverse=True):
         if cell_size == CELL_SIZE:
             finest[reynolds_number] = references[reynolds_number, cell_size, time_step]
     runs = []
-    for path in sorted(CASE_DIR.glob("sensitivity/box*/samples/forces_history.csv")):
+    for path in run_paths():
         directory = path.parents[1]
         forces = np.atleast_1d(read_forces(path))
         if not developed(forces):
@@ -269,7 +285,7 @@ def read_runs(references):
             parameters["box_downstream"] = parameters["box_margin"] + 2.0  # setup.py default
         particle_time_step = parameters["fvm_substeps"] * parameters["fvm_time_step"]
         reference = references.get(
-            (parameters["reynolds_number"], parameters["cell_size"], parameters["fvm_time_step"])
+            reference_key(parameters["cell_size"], parameters["fvm_time_step"])
         )
         finest_reference = finest.get(parameters["reynolds_number"])
         phase = shedding_phase(path)
@@ -441,20 +457,6 @@ def write_tables(runs, references):
             f"{run['cost']:.6g}," + ",".join(f"{run[name]:.6g}" for name in ERRORS)
         )
     (CASE_DIR / "figures/auxiliary/sensitivity_references.csv").write_text("\n".join(lines) + "\n")
-
-
-def read_fine_wake_reference():
-    """The FVM-only reference with h cells over the baseline FVM domain (section g), or None."""
-    for directory in sorted(CASE_DIR.glob("sensitivity/reference_fw*")):
-        match = REFERENCE_NAME.fullmatch(directory.name)
-        for path in directory.glob("samples/forces_history.csv"):
-            if (
-                match
-                and not match["fine_box_margin"]
-                and developed(np.atleast_1d(read_forces(path)))
-            ):
-                return read_reference(directory, CELL_SIZE, FVM_TIME_STEP, REYNOLDS_NUMBER)
-    return None
 
 
 def reference_changes(references):

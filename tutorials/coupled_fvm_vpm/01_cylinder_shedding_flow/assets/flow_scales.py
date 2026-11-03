@@ -2,9 +2,12 @@
 """Measure wake scales from the developed FVM reference solutions.
 
 The study reports recirculation and vortex-formation length, shear-layer
-thickness, wall strain rate, Strouhal number and wake width.
+thickness, wall strain rate, Strouhal number and wake width, from the references that write
+their flow fields (reference_flow/allrun.sh, --fields): the refinement at a constant Courant
+number.
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -19,24 +22,31 @@ from assets.plot_fields import saved_frames
 from assets.plot_forces import read_forces, shedding_statistics
 
 CASE_DIR = Path(__file__).resolve().parents[1]
+REFERENCE_DIR = CASE_DIR / "reference_flow"  # samples/<name>, solution/<name>
 DIAMETER = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 WINDOW = (40.0, 55.0)  # s
+REYNOLDS_NUMBER = 150.0
 
-# Reference data: Reynolds number, body cell size [m] and time step [s].
-REFERENCES = {
-    "reference_flow": (150.0, 0.04, 0.008),
-    "sensitivity/reference_re100": (100.0, 0.04, 0.008),
-    "sensitivity/reference_re250": (250.0, 0.04, 0.008),
-    "sensitivity/reference_h0.08": (150.0, 0.08, 0.016),
-    "sensitivity/reference_h0.056569": (150.0, 0.056569, 0.0113138),
-    "sensitivity/reference_h0.028284": (150.0, 0.028284, 0.0056568),
-}
-FIGURE_COLORS = {
-    "sensitivity/reference_re100": COLORS["blue"],
-    "reference_flow": COLORS["teal"],
-    "sensitivity/reference_re250": COLORS["amber"],
-}
+# Colours of the grids, coarsest first
+GRID_COLORS = (COLORS["amber"], COLORS["blue"], COLORS["teal"], COLORS["gray"], COLORS["vpm"])
+
+
+def references_with_fields():
+    """Reynolds number, cell size [m] and step [s] of every reference with flow fields, by name.
+
+    The cell size is that of the name, h<cell size>_dt..., and the step the reference's own; the
+    coarsest grid comes first.
+    """
+    references = {}
+    for path in REFERENCE_DIR.glob("solution/*/fvm.pvd"):
+        name = path.parent.name
+        steps = (REFERENCE_DIR / "solution" / name / "performance.jsonl").read_text()
+        time_step = json.loads(steps.splitlines()[0])["time_step_size"]
+        cell_size = float(name.split("_")[0][1:])
+        references[name] = (REYNOLDS_NUMBER, cell_size, time_step)
+    return dict(sorted(references.items(), key=lambda item: -item[1][1]))
+
 
 # Centreline, base-plane and transverse sampling lines.
 SPACING = 0.01  # m
@@ -70,7 +80,7 @@ def line_interpolation(cell_centres, points):
 
 def run_statistics(directory, cell_size, end_time):
     """Mean and rms velocity on the sample lines and the largest wall strain rate per frame."""
-    times, paths = saved_frames(CASE_DIR / directory / "solution/fvm.pvd")
+    times, paths = saved_frames(REFERENCE_DIR / "solution" / directory / "fvm.pvd")
     frames = [path for time, path in zip(times, paths) if WINDOW[0] <= round(time, 6) < end_time]
 
     # The static mesh uses one interpolation stencil for every frame.
@@ -135,7 +145,7 @@ def wake_half_width(y, mean_u):
 def flow_scales(directory, reynolds_number, cell_size):
     """Flow scales of one reference, lengths in D and strain rates in 1/s, and the centreline
     mean and rms streamwise velocity."""
-    forces = read_forces(CASE_DIR / directory / "samples/forces_history.csv")
+    forces = read_forces(REFERENCE_DIR / "samples" / directory / "forces_history.csv")
     strouhal_number = shedding_statistics(forces[forces["time"] <= WINDOW[1]])["Strouhal number"]
 
     # Average over whole shedding periods, so that no phase is weighted more than another
@@ -164,14 +174,14 @@ def flow_scales(directory, reynolds_number, cell_size):
     return scales, centreline_mean[:, 0] / FREESTREAM_SPEED, centreline_rms[:, 0] / FREESTREAM_SPEED
 
 
-def centreline_figure(profiles, measured):
+def centreline_figure(references, profiles, measured):
     """Mean and rms streamwise velocity on the wake centreline, with L_r and L_f marked."""
     figure, axes = validation_subplots(2, sharex=True, height_cm=9.2, top_padding_cm=1.6)
     x = CENTRELINE / DIAMETER
-    for directory, color in FIGURE_COLORS.items():
+    for directory, color in zip(references, GRID_COLORS):
         mean_u, rms_u = profiles[directory]
         scales = measured[directory]
-        label = f"$Re={REFERENCES[directory][0]:g}$"
+        label = f"$h/D={references[directory][1] / DIAMETER:g}$"
         axes[0].plot(x, mean_u, color=color, linewidth=LINE_WIDTH, label=label)
         axes[1].plot(x, rms_u, color=color, linewidth=LINE_WIDTH, label=label)
 
@@ -195,12 +205,11 @@ def centreline_figure(profiles, measured):
     axes[1].set_xlim(0.5, 6.0)
     axes[1].margins(y=0.1)  # room for the formation-point markers
 
-    # Reynolds numbers in the first legend row, the two markers below them
+    # Cell sizes in the first legend row, the two markers in the second
     handles, labels = axes[0].get_legend_handles_labels()
-    order = (0, 3, 1, 4, 2)
     figure.legend(
-        [handles[i] for i in order],
-        [labels[i] for i in order],
+        handles,
+        labels,
         loc="upper center",
         ncol=3,
         frameon=False,
@@ -212,8 +221,9 @@ def centreline_figure(profiles, measured):
 
 
 def main():
+    references = references_with_fields()
     measured, profiles = {}, {}
-    for directory, (reynolds_number, cell_size, _) in REFERENCES.items():
+    for directory, (reynolds_number, cell_size, _) in references.items():
         measured[directory], *profiles[directory] = flow_scales(
             directory, reynolds_number, cell_size
         )
@@ -221,8 +231,8 @@ def main():
     # One row per reference
     names = list(next(iter(measured.values())))
     lines = [",".join(["name", "reynolds_number", "cell_size", "time_step", *names])]
-    for directory, (reynolds_number, cell_size, time_step) in REFERENCES.items():
-        row = [Path(directory).name, f"{reynolds_number:g}", f"{cell_size:g}", f"{time_step:g}"]
+    for directory, (reynolds_number, cell_size, time_step) in references.items():
+        row = [directory, f"{reynolds_number:g}", f"{cell_size:g}", f"{time_step:g}"]
         row += [f"{measured[directory][name]:.5g}" for name in names]
         lines.append(",".join(row))
     (CASE_DIR / "figures/auxiliary").mkdir(parents=True, exist_ok=True)
@@ -230,14 +240,14 @@ def main():
 
     print(f"Flow scales over whole shedding periods in {WINDOW[0]:g}-{WINDOW[1]:g} s, lengths in D")
     print(
-        f"  {'reference':18s} {'Re':>5s} {'h':>8s} {'L_r':>6s} {'L_f':>6s} {'v_rms':>6s}"
+        f"  {'reference':22s} {'Re':>5s} {'h':>8s} {'L_r':>6s} {'L_f':>6s} {'v_rms':>6s}"
         f" {'d_w':>6s} {'d_w√Re':>7s} {'|S|mean':>8s} {'|S|peak':>8s} {'St':>7s}"
         f" {'b(2D)':>6s} {'b(4D)':>6s}"
     )
-    for directory, (reynolds_number, cell_size, _) in REFERENCES.items():
+    for directory, (reynolds_number, cell_size, _) in references.items():
         s = measured[directory]
         print(
-            f"  {Path(directory).name:18s} {reynolds_number:5g} {cell_size:8.6g}"
+            f"  {directory:22s} {reynolds_number:5g} {cell_size:8.6g}"
             f" {s['recirculation_length']:6.3f} {s['formation_length']:6.3f}"
             f" {s['transverse_rms_peak']:6.3f} {s['vorticity_thickness']:6.3f}"
             f" {s['vorticity_thickness_sqrt_re']:7.3f} {s['strain_rate_mean']:8.2f}"
@@ -245,7 +255,7 @@ def main():
             f" {s['half_width_x2']:6.3f} {s['half_width_x4']:6.3f}"
         )
 
-    centreline_figure(profiles, measured)
+    centreline_figure(references, profiles, measured)
 
 
 if __name__ == "__main__":

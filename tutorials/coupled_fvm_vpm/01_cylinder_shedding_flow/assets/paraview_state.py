@@ -12,8 +12,15 @@ from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
-# Resolve input paths from the tutorial directory. ParaView readers use strings.
-CASE_DIR = Path(__file__).resolve().parent.parent
+# Read the data relative to this case, so the state loads on any machine and from any directory
+try:
+    CASE_DIR = Path(__file__).resolve().parent.parent
+except NameError:  # pasted into the Python shell: run it from the case directory
+    CASE_DIR = Path.cwd()
+
+missing = [name for name in ("assets/cylinder_long.stl", "solution/fvm.pvd", "solution/vpm.pvd") if not (CASE_DIR / name).is_file()]
+if missing:
+    raise FileNotFoundError(f"Run ./allrun.sh first, {CASE_DIR} has no {', '.join(missing)}")
 
 # ----------------------------------------------------------------
 # setup views used in the visualization

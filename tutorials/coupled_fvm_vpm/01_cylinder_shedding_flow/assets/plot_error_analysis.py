@@ -23,14 +23,13 @@ from assets.error_analysis import coupled_families, decompose, discretization_un
 from assets.error_analysis import driver_fit, drivers, exact_values, factorial_effects
 from assets.error_analysis import interface_indicators, logged_keys, reference_families
 from assets.error_analysis import space_time_fit, statistics_of, term_model, wake_scales
-from assets.plot_sensitivity import BASELINE, CASE_DIR, ERRORS, LATE_WINDOW, STATISTICS
-from assets.plot_sensitivity import STATISTICS_WINDOW, errors_against, read_fine_wake_reference
+from assets.plot_sensitivity import BASELINE, BASELINE_NAME, CASE_DIR, ERRORS, LATE_WINDOW
+from assets.plot_sensitivity import STATISTICS, STATISTICS_WINDOW, STUDY_DIR, errors_against
 from assets.plot_sensitivity import read_references, read_runs
 from setup import DIAMETER, FREESTREAM_VELOCITY, REYNOLDS_NUMBER
 
 SPEED = FREESTREAM_VELOCITY[0]
 FIGURES = CASE_DIR / "figures"
-BASELINE_NAME = "box2.4_sub5_inset8.75"
 TABLES = CASE_DIR / "figures/auxiliary"
 
 # Refinement variables in flow scales.
@@ -471,7 +470,7 @@ def indicator_analysis(runs, decomposition):
     rows = []
     for run in runs:
         means = interface_indicators(
-            CASE_DIR / f"sensitivity/{run['name']}/solution/coupler_diagnostics.jsonl"
+            STUDY_DIR / run["name"] / "solution/coupler_diagnostics.jsonl"
         )
         rows.append(
             {
@@ -585,12 +584,10 @@ def transfer_limit_summary(runs, decomposition):
 
 
 def window_and_reference_checks(runs, references):
-    """The 40-55 s window against 55-100 s, and the coarse against the fine-wake reference.
+    """The 40-55 s window against 55-100 s.
 
-    Runs continued to 100 s (section h) are compared with the reference of their cells and step
-    over both windows. The baseline is also compared with the reference that keeps the coupled
-    cells over the whole coupled FVM domain (section g), which removes the near-wake resolution
-    difference from e_coupling.
+    Runs continued to 100 s are compared with the reference of their cells and step over both
+    windows. Every reference keeps the coupled cells over the coupled FVM domain.
     """
     rows = []
     for run in runs:
@@ -602,16 +599,8 @@ def window_and_reference_checks(runs, references):
         for window in (STATISTICS_WINDOW, LATE_WINDOW):
             errors = errors_against(run["forces"], run["phase"], run["wake"], reference, window)
             rows.append({"run": run["name"], "reference": reference["name"], "window": window, **errors})
-    fine = read_fine_wake_reference()
-    if fine is not None:
-        for run in runs:
-            if run["name"] in (BASELINE_NAME, BASELINE_NAME.replace("sub5", "sub2")):
-                errors = errors_against(run["forces"], run["phase"], run["wake"], fine)
-                rows.append(
-                    {"run": run["name"], "reference": fine["name"], "window": STATISTICS_WINDOW, **errors}
-                )
     if rows:
-        print("Statistics window and near-wake reference: e_coupling [% of the same-window reference]")
+        print("Statistics windows: e_coupling [% of the same-window reference]")
         for row in rows:
             print(
                 f"  {row['run']:36s} vs {row['reference']:22s} {row['window'][0]:g}-{row['window'][1]:g} s"
@@ -792,7 +781,7 @@ def main():
             "Logged interface keys:",
             ", ".join(
                 logged_keys(
-                    CASE_DIR / f"sensitivity/{runs[0]['name']}/solution/coupler_diagnostics.jsonl"
+                    STUDY_DIR / runs[0]["name"] / "solution/coupler_diagnostics.jsonl"
                 )
             ),
         )

@@ -3,15 +3,16 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Remove previous output and simulate every case from t = 0 (--continue: resume them instead).
-[[ ${1:-} == --continue ]] || ./allclean.sh
+# The solver of the campaign, as the coupled runs (allrun.sh one level up): the frozen export of
+# commit 3f771630
+export PYTHONPATH=${STUDY_SOLVER:-$HOME/openonda_runs/study_2026-11/solver_3f771630}
 
-# Flow configurations at the baseline cells
-python setup.py --reynolds-number 100 --cell-size 0.04 --name re100_h0.04
-python setup.py --reynolds-number 150 --cell-size 0.04 --name re150_h0.04
+# Remove previous output and simulate every case from t = 0.
+./allclean.sh
 
-# Grid sensitivity at the highest Reynolds number, cells refined by sqrt(2)
-python setup.py --reynolds-number 250 --cell-size 0.08 --name re250_h0.08
-python setup.py --reynolds-number 250 --cell-size 0.056569 --name re250_h0.056569
-python setup.py --reynolds-number 250 --cell-size 0.04 --name re250_h0.04
-python setup.py --reynolds-number 250 --cell-size 0.028284 --name re250_h0.028284
+# Grid independence at Re = 150: four cell sizes, the step refined with them
+# (dt = 0.008 s h / 0.04 m). h = 0.04 m is the coupled baseline.
+python setup.py --cell-size 0.08 --name h0.08_dt0.016
+python setup.py --cell-size 0.06 --name h0.06_dt0.012
+python setup.py --cell-size 0.04 --name h0.04_dt0.008
+python setup.py --cell-size 0.03 --name h0.03_dt0.006
