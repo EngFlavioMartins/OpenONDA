@@ -64,7 +64,7 @@ Queue order: `k`, `n_interval`, `inset`, `a`, `p`, `c`, `g` (CPU, in parallel fr
 | Section | Group | Run directory under `sensitivity/` | Varied quantity | Status |
 | --- | --- | --- | --- | --- |
 | anchor | – | `box2.4_sub5_inset8.75` | baseline, to $t=100$ s (sampling floor) | ok |
-| `k` | I | `box2.4_sub5_inset8.75_k1` | coupling iterations $M=1$ | running |
+| `k` | I | `box2.4_sub5_inset8.75_k1` | coupling iterations $M=1$ | ok |
 | `k` | I | `box2.4_sub5_inset8.75_k2` | $M=2$ | running |
 | `k` | I | `box2.4_sub5_inset8.75_k4` | $M=4$ | running |
 | `n_interval` | T | `box2.4_sub1_inset8.75` | $N=1$ ($\Delta t_\mathrm{VPM}=0.008$ s) | queued (resumes from 36.0 s) |

@@ -8,7 +8,7 @@ I,$\kappa_{\max}$ ($N$=2),max_strength_ratio,$N=2$,1,box2.4_sub2_inset8.75,fine 
 I,$\tau_{\rm transfer}$ ($N$=5),transfer_removal_threshold,$N=5$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
 I,$\tau_{\rm transfer}$ ($N$=2),transfer_removal_threshold,$N=2$,1,box2.4_sub2_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
 I,moment cap,moment_correction_fraction,$N=5$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
-I,iterations,coupling_iterations,$N=5$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
+I,iterations,coupling_iterations,$N=5$,2,box2.4_sub5_inset8.75;box2.4_sub5_inset8.75_k1,fine wake,3.17023,nan,True,0.0813435,3.46858,nan,True,0.0417233,0.00992641,nan,False,0.0634344
 I,$\delta_0$,blend_start,$N=5$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
 I,$\delta_1$,blend_end,$N=5$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
 I,inset,transfer_inset,$N=5$,1,box2.4_sub5_inset8.75,fine wake,nan,nan,False,0.0813435,nan,nan,False,0.0417233,nan,nan,False,0.0634344
