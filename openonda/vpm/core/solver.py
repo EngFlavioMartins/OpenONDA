@@ -1311,7 +1311,6 @@ class VPMSolver:
             self._diagnostics_history,
             self.particle_position,
             self.particle_vortex_strength,
-            event_observer=LoggingPhysicsEventObserver(),
         )
 
     def _record_time_history(self) -> None:

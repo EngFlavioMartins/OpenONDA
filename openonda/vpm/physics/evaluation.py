@@ -557,7 +557,6 @@ class ParticleFieldEvaluation:
         diagnostics_history: dict,
         position: np.ndarray,
         vortex_strength: np.ndarray,
-        event_observer: PhysicsEventObserver | None = None,
     ) -> None:
         """Append the vortex-strength-magnitude-weighted particle vortex_centroid.
 
@@ -568,23 +567,18 @@ class ParticleFieldEvaluation:
         """
         if "vortex_centroid" not in diagnostics_history:
             return
-        try:
-            if position.size == 0 or vortex_strength.size == 0:
-                vortex_centroid = np.array([0.0, 0.0, 0.0])
+        if position.size == 0 or vortex_strength.size == 0:
+            vortex_centroid = np.array([0.0, 0.0, 0.0])
+        else:
+            vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
+            total_magnitude = vortex_strength_magnitude.sum()
+            if total_magnitude > 0:
+                vortex_centroid = (position * vortex_strength_magnitude[:, np.newaxis]).sum(
+                    axis=0
+                ) / total_magnitude
             else:
-                vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
-                total_magnitude = vortex_strength_magnitude.sum()
-                if total_magnitude > 0:
-                    vortex_centroid = (position * vortex_strength_magnitude[:, np.newaxis]).sum(
-                        axis=0
-                    ) / total_magnitude
-                else:
-                    vortex_centroid = np.array([0.0, 0.0, 0.0])
-            diagnostics_history["vortex_centroid"].append(tuple(vortex_centroid.tolist()))
-        except Exception as exc:
-            (event_observer or NullPhysicsEventObserver()).warning(
-                f"Vortex-strength centroid could not be evaluated: {exc}"
-            )
+                vortex_centroid = np.array([0.0, 0.0, 0.0])
+        diagnostics_history["vortex_centroid"].append(tuple(vortex_centroid.tolist()))
 
     def compute_vortex_centroid(self, particles: "Particles") -> np.ndarray:
         """

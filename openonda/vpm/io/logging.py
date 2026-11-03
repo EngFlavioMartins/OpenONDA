@@ -591,28 +591,21 @@ class Logging:
         Args:
             system: Solver instance with VLM solver
         """
-        try:
-            vlm = system.vlm_solver
-            if vlm is None or not vlm._solved:
-                return
-            if vlm._last_forces is None:
-                return
-
-            forces = vlm._last_forces
-            force_components = ", ".join(f"{forces[f'force_{axis}']:.4e}" for axis in "xyz")
-            Logging.section(
-                "VORTEX-LATTICE LOADS",
-                ("Force (x, y, z)", force_components, "N"),
-                ("Lift coefficient", f"{forces['lift_coefficient']:.3e}"),
-                ("Drag coefficient", f"{forces['drag_coefficient']:.3e}"),
-                ("Coefficient reference pressure", f"{forces['dynamic_pressure']:.4e}", "Pa"),
-                ("Coefficient reference area", f"{forces['reference_area']:.4e}", "m^2"),
-                ("Active particles", f"{system.particles.n_particles_total:,}"),
-                flush=True,
-            )
-
-        except Exception as error:
-            Logging.warning(f"vlm force logging failed, {error}", flush=True)
+        vlm = system.vlm_solver
+        if vlm is None or not vlm._solved or vlm._last_forces is None:
+            return
+        forces = vlm._last_forces
+        force_components = ", ".join(f"{forces[f'force_{axis}']:.4e}" for axis in "xyz")
+        Logging.section(
+            "VORTEX-LATTICE LOADS",
+            ("Force (x, y, z)", force_components, "N"),
+            ("Lift coefficient", f"{forces['lift_coefficient']:.3e}"),
+            ("Drag coefficient", f"{forces['drag_coefficient']:.3e}"),
+            ("Coefficient reference pressure", f"{forces['dynamic_pressure']:.4e}", "Pa"),
+            ("Coefficient reference area", f"{forces['reference_area']:.4e}", "m^2"),
+            ("Active particles", f"{system.particles.n_particles_total:,}"),
+            flush=True,
+        )
 
     @staticmethod
     def particle_cleanup(
