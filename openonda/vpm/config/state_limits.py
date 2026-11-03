@@ -62,7 +62,7 @@ class LagrangianCFLLimit:
 
 @dataclass(frozen=True, slots=True)
 class ParticleStrengthLimit:
-    """Limit the largest particle strength (vector circulation) magnitude.
+    """Limit the largest particle vortex-strength magnitude.
 
     Parameters
     ----------
@@ -158,7 +158,7 @@ class ParticleStateLimits:
     lagrangian_cfl : LagrangianCFLLimit
         Dimensionless material-deformation bound.
     maximum_particle_strength : ParticleStrengthLimit
-        Optional vector-circulation bound in m³/s.
+        Optional vortex-strength bound in m³/s.
     divergence : DivergenceLimit
         Optional normalized vorticity-divergence bound.
     misalignment : MisalignmentLimit

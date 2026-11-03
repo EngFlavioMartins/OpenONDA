@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import taichi as ti
 
-# Import VPM constants
 from ..config.constants import (
     DEFAULT_CUTOFF_RADIUS_FACTOR,
     EPSILON,
@@ -62,10 +61,8 @@ class ParticleFieldEvaluation:
         self.accumulator_dtype = accumulator_dtype
         self._event_observer = event_observer or NullPhysicsEventObserver()
 
-        # Initialize GPU fields for storing results
         self._initialize_result_fields()
 
-        # Initialize time tracking for energy dissipation rate
         # Store (time, energy, measurement) triples
         self._energy_history: list[tuple[float, float, str]] = []
         # Retain a short audit trail.  dE/dt uses only the latest interval so
@@ -76,7 +73,6 @@ class ParticleFieldEvaluation:
         # a tight grid at every output makes the same particle field acquire a
         # different energy solely because the FFT box moved or changed shape.
         self._fourier_grid: CartesianGrid | None = None
-        # Define Taichi kernels
         self._define_taichi_kernels()
 
     def _initialize_result_fields(self) -> None:
@@ -129,7 +125,7 @@ class ParticleFieldEvaluation:
         )
         return "\n".join(lines)
 
-    # TAICHI KERNEL DEFINITIONS
+    # Taichi kernels
 
     def _define_taichi_kernels(self) -> None:
         """Define Taichi kernels based on the selected kernel type."""
@@ -138,14 +134,12 @@ class ParticleFieldEvaluation:
 
         kernel_dict = make_device_vortex_kernels(self.particle_kernel, self.accumulator_dtype)
 
-        # Extract kernel functions from dictionary
         kernel_functions = {
             "q_sigma": kernel_dict["q_"],
             "zeta_sigma": kernel_dict["zeta_"],
             "g_sigma": kernel_dict["g_"],
         }
 
-        # Define all kernels
         self._define_flow_integral_kernels(kernel_functions, kernel_dict)
         self._define_vortex_centroid_kernels(kernel_functions)
 
@@ -158,7 +152,6 @@ class ParticleFieldEvaluation:
         q_ = kernel_functions["q_sigma"]
         zeta_ = kernel_functions["zeta_sigma"]
 
-        # Get angular impulse correction constant from kernel
         angular_correction_func = kernel_dict["angular_impulse_correction_constant_"]
         use_physical_gaussian_energy = self.particle_kernel == "gaussian"
         gaussian_tensor_origin = 1.0 / (np.pi**1.5)
@@ -387,9 +380,9 @@ class ParticleFieldEvaluation:
                             )
                         else:
                             # Non-Gaussian kernels do not expose an exact
-                            # transverse pair convolution; retain their
-                            # historical regularized potential diagnostic
-                            # instead of applying the Gaussian identity.
+                            # transverse pair convolution; they use the
+                            # regularized potential diagnostic instead of
+                            # the Gaussian identity.
                             local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
                         if r_mag > EPSILON:
                             local_helicity += ti.cast(
@@ -504,7 +497,6 @@ class ParticleFieldEvaluation:
                 ti.atomic_add(results[None].test_filtered_enstrophy, local_enstrophy_test)
                 ti.atomic_add(results[None].viscous_kinetic_energy_rate, local_dissipation)
 
-        # Store kernel as instance method
         self.compute_flow_integrals_kernel = compute_flow_integrals_kernel
 
     def _define_global_vortex_centroid_kernel(self) -> None:
@@ -547,8 +539,6 @@ class ParticleFieldEvaluation:
     def _define_vortex_centroid_kernels(self, kernel_functions: dict[str, Callable]) -> None:
         """Define kernels for vortex-strength-magnitude-weighted vortex_centroids."""
         self._define_global_vortex_centroid_kernel()
-
-    # PUBLIC API METHODS
 
     @staticmethod
     def record_vortex_centroid_history(
@@ -594,7 +584,6 @@ class ParticleFieldEvaluation:
         # Reset the reusable result field.
         self._vortex_centroid_result.fill(0)
 
-        # Call kernel
         self.compute_global_vortex_centroid_kernel(
             particles.position,
             particles.vortex_strength,
@@ -602,7 +591,6 @@ class ParticleFieldEvaluation:
             self._vortex_centroid_result,
         )
 
-        # Extract result
         vortex_centroid = self._vortex_centroid_result.to_numpy()
         return vortex_centroid
 
@@ -612,7 +600,7 @@ class ParticleFieldEvaluation:
         Parameters
         ----------
         particles : Particles
-            Active particle fields. Position is m, vector circulation ``Gamma``
+            Active particle fields. Position is m, vortex strength ``Gamma``
             is m³/s, core radius is m, and effective viscosity is m²/s.
         time : float
             Physical time of this accepted or explicitly requested state in s.
@@ -643,17 +631,14 @@ class ParticleFieldEvaluation:
         """
         N = len(particles)
         if N == 0:
-            # Return zero values for empty particle system
             return self._get_zero_results()
         if _DIRECT_INTEGRAL_PARTICLE_LIMIT < N and self.particle_kernel == "gaussian":
             return self._compute_fourier_flow_integrals(particles, time)
 
         self._resize_fields(N)
 
-        # Initialize results struct to zero before kernel call
         self.total_quantities_results.fill(0)
 
-        # Call the combined kernel
         self.compute_flow_integrals_kernel(
             particles.position,
             particles.vortex_strength,
@@ -664,7 +649,6 @@ class ParticleFieldEvaluation:
             N,
         )
 
-        # Extract results from Taichi struct field
         r = self.total_quantities_results[None]
         total_kinetic_energy = float(r.total_kinetic_energy)
         self._update_energy_history(time, total_kinetic_energy, "unbounded_energy")
@@ -918,7 +902,7 @@ class ParticleFieldEvaluation:
         # bridge; the reported energy itself remains the raw new-grid value.
         return new_spectral, False, old_spectral
 
-    # ENERGY DISSIPATION RATE COMPUTATION
+    # Energy dissipation rate
 
     def _update_energy_history(
         self,
@@ -941,7 +925,6 @@ class ParticleFieldEvaluation:
             self._energy_history[-1] = (time, total_kinetic_energy, measurement)
             return
 
-        # Add new entry
         self._energy_history.append((time, total_kinetic_energy, measurement))
 
         # Keep only the last N entries
@@ -1002,7 +985,5 @@ class ParticleFieldEvaluation:
             "angular_impulse": np.array([0.0, 0.0, 0.0]),
         }
 
-
-# PUBLIC API EXPORTS
 
 __all__ = ["ParticleFieldEvaluation"]

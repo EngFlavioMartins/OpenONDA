@@ -11,7 +11,7 @@ def p2m(
     """Build monopole and first moment coefficients for one leaf."""
     displacement = position - centre
     return {
-        "circulation": vortex_strength.sum(axis=0),
+        "vortex_strength": vortex_strength.sum(axis=0),
         "first_moment": np.einsum("ni,nj->ij", displacement, vortex_strength),
         "second_moment": np.einsum("na,nc,nb->acb", displacement, displacement, vortex_strength),
     }
@@ -23,7 +23,7 @@ def m2m(
     centre: np.ndarray,
 ) -> dict[str, np.ndarray]:
     """Translate child monopoles and first moments to a parent centre."""
-    circulation = sum((item["circulation"] for item in child_multipoles), start=np.zeros(3))
+    total_strength = sum((item["vortex_strength"] for item in child_multipoles), start=np.zeros(3))
     first_moment = sum((item["first_moment"] for item in child_multipoles), start=np.zeros((3, 3)))
     second_moment = sum(
         (item["second_moment"] for item in child_multipoles),
@@ -31,14 +31,14 @@ def m2m(
     )
     for item, child_centre in zip(child_multipoles, child_centres, strict=True):
         offset = np.asarray(child_centre) - centre
-        first_moment += np.outer(offset, item["circulation"])
+        first_moment += np.outer(offset, item["vortex_strength"])
         second_moment += (
             np.einsum("a,cb->acb", offset, item["first_moment"])
             + np.einsum("c,ab->acb", offset, item["first_moment"])
-            + np.einsum("a,c,b->acb", offset, offset, item["circulation"])
+            + np.einsum("a,c,b->acb", offset, offset, item["vortex_strength"])
         )
     return {
-        "circulation": circulation,
+        "vortex_strength": total_strength,
         "first_moment": first_moment,
         "second_moment": second_moment,
     }
@@ -50,14 +50,14 @@ def multipole_velocity(multipole: dict[str, np.ndarray], displacement: np.ndarra
     radius = float(np.linalg.norm(displacement))
     if radius == 0.0:
         return np.zeros(3, dtype=np.float64)
-    circulation = np.asarray(multipole["circulation"], dtype=np.float64)
+    total_strength = np.asarray(multipole["vortex_strength"], dtype=np.float64)
     first_moment = np.asarray(multipole["first_moment"], dtype=np.float64)
     second_moment = np.asarray(
         multipole.get("second_moment", np.zeros((3, 3, 3))), dtype=np.float64
     )
     q_infinity = 1.0 / (4.0 * np.pi)
     inverse_r3 = q_infinity / radius**3
-    velocity = inverse_r3 * np.cross(circulation, displacement)
+    velocity = inverse_r3 * np.cross(total_strength, displacement)
 
     # First-order Taylor expansion of the singular Biot--Savart field.
     # For a source at ``centre + d``, the target displacement is ``R - d``:

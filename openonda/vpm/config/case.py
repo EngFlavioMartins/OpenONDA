@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class Numerics:
     """Immutable numerical and physical controls for a VPM case.
 
-    Runtime clock values and output destinations are intentionally absent.
+    Runtime clock values and output destinations are absent.
     ``time_step_size`` is the accepted-step duration in seconds and must be
     positive.  ``precision`` selects the particle compute dtype (``"f32"`` or
     ``"f64"``).  ``integrator`` advances position and vortex strength together,

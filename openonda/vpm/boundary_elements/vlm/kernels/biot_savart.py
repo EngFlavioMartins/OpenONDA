@@ -5,7 +5,6 @@ vortex-ring induced velocity.
 
 import taichi as ti
 
-# Import VLM constants from centralized config
 from ....config.constants import VLM_EPSILON
 
 # Local aliases used in @ti.func kernels

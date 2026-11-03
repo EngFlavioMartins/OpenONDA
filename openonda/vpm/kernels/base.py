@@ -1,4 +1,4 @@
-"""Shared radial vortex-blob kernel conditions for all induction methods."""
+"""Shared radial vortex-blob kernel definitions for all induction methods."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
 @dataclass(frozen=True, slots=True)
 class RadialVortexKernel:
-    """Numerical conditions for an isotropic regularized Biot--Savart kernel.
+    """Numerical definition of an isotropic regularized Biot--Savart kernel.
 
     ``q`` includes the ``1/(4π)`` Biot--Savart constant and ``zeta`` is the
     normalized radial vorticity profile.  Particle-to-particle operators use
@@ -113,7 +113,7 @@ class RadialVortexKernel:
         displacement : numpy.ndarray
             Target-minus-source displacement with shape ``(..., 3)`` in m.
         source_strength : numpy.ndarray
-            Source circulation vector(s), shape ``(..., 3)`` in m³/s.
+            Source vortex strength(s), shape ``(..., 3)`` in m³/s.
         target_core, source_core : float or numpy.ndarray
             Pair core radii in m, broadcastable to the displacement batch.
 
@@ -154,7 +154,7 @@ class RadialVortexKernel:
         displacement : numpy.ndarray
             Target-minus-source displacement, shape ``(..., 3)``, in m.
         source_strength : numpy.ndarray
-            Source circulation vector(s), shape ``(..., 3)``, in m³/s.
+            Source vortex strength(s), shape ``(..., 3)``, in m³/s.
         target_core, source_core : float or numpy.ndarray
             Pair core radii in m.
 
@@ -220,7 +220,7 @@ class RadialVortexKernel:
         displacement : numpy.ndarray
             Target-minus-source displacement, shape ``(..., 3)``, in m.
         target_strength, source_strength : numpy.ndarray
-            Target/source circulation vectors, shape ``(..., 3)``, in m³/s.
+            Target/source vortex strengths, shape ``(..., 3)``, in m³/s.
         target_core, source_core : float or numpy.ndarray
             Pair core radii in m.
 
@@ -401,7 +401,7 @@ def _cached_dimensionless_tail_cutoff(
 
 
 def make_vortex_kernel(name: str) -> RadialVortexKernel:
-    """Construct the host conditions of a registered radial vortex kernel.
+    """Construct the host definition of a registered radial vortex kernel.
 
     Parameters
     ----------
@@ -411,7 +411,7 @@ def make_vortex_kernel(name: str) -> RadialVortexKernel:
     Returns
     -------
     RadialVortexKernel
-        Immutable host-side kernel conditions with the NumPy functions of the
+        Immutable host-side kernel definition with the NumPy functions of the
         kernel's definition. Equal names give equal objects.
 
     Raises

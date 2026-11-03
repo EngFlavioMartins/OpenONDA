@@ -2,7 +2,7 @@
 
 No process-global allocator or FFT-plan-cache settings are changed. Explicit
 PlanNd objects avoid get_fft_plan's possible borrowing from the global cache.
-This small adapter deliberately supports only dense C-order three-axis FFTs.
+This small adapter supports only dense C-order three-axis FFTs.
 CuPy's PlanNd constructor itself may evict its DEFAULT unused memory pool on
 an internal cuFFT planning allocation failure; that upstream failure-path
 behaviour cannot be disabled through its public plan API. Normal execution,

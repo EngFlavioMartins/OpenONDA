@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 class VLMLoadingDistribution:
     """Static helpers for extracting and exporting chord/span loading distributions."""
 
-    # TOP-LEVEL RECORD HOOK (called from core/solver.py)
+    # Record hook called by the solver
 
     @staticmethod
     def record_loading_distributions(
@@ -68,7 +68,7 @@ class VLMLoadingDistribution:
                 samples_dir,
             )
 
-    # GRID INDEX
+    # Grid index
 
     @staticmethod
     def build_surface_grid_index(vlm_solver: VLMSolver, surface_name: str) -> list[dict]:
@@ -154,7 +154,7 @@ class VLMLoadingDistribution:
 
         return surface_blocks
 
-    # EXTRACT
+    # Extraction
 
     @staticmethod
     def extract_distributions(

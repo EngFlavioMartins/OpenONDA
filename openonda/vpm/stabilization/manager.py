@@ -7,7 +7,7 @@ master.  It owns the schedule, dispatches the workers in a fixed order, and
 judges the outcome of each event against one small set of criteria that is the
 same for every mechanism.
 
-The master's criteria are deliberately global, cheap, and physical.  They are
+The master's criteria are global, cheap, and physical.  They are
 formed from :class:`ParticleStrengthMetrics`, an O(N) snapshot of the particle
 cloud taken from arrays the solver already holds:
 

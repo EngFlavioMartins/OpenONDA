@@ -6,7 +6,7 @@ provided that its source snapshot, query AABB, image list and cutoff match the
 actual call. The source epoch still requires exact-value validation by the
 session; a source hash is source information, not that validation.
 
-The distance check is intentionally conservative. Let e=2**-52 and let G>=1 bound
+The distance check is conservative. Let e=2**-52 and let G>=1 bound
 the absolute original coordinates, origins, supplied world shifts and cutoff.
 Require G<=2**250 and an outward loss D=1024*e*G+shift_error < cutoff/8.
 The floor/index operations are binary64 RN, with correctly rounded floor,

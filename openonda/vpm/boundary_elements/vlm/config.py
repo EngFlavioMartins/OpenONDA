@@ -159,8 +159,8 @@ class VLMConfig:
         row length, for both trailing and transverse wake elements.
         Positive values above one provide overlapping blobs.
     boundary_response : {'lagged', 'responsive'}, default='lagged'
-        Coupled VPM boundary-response settings. ``'lagged'`` preserves the
-        historical accepted-step solve. ``'responsive'`` solves a pure
+        Coupled VPM boundary-response settings. ``'lagged'`` solves the
+        lattice once per accepted step. ``'responsive'`` solves a pure
         temporary VLM system at every particle RK stage from that stage's
         incident wake and prescribed surface geometry; only the accepted
         solve emits the wake row and publishes history.

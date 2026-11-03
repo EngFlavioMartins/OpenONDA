@@ -9,7 +9,7 @@ class PhysicsEventObserver(Protocol):
     """Optional observer for numerical-kernel diagnostics.
 
     Implementations receive human-readable messages only; the observer is
-    deliberately independent of logging, files, and solver state.
+    independent of logging, files, and solver state.
     """
 
     def warning(self, message: str) -> None:

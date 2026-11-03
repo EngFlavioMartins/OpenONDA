@@ -11,7 +11,7 @@ where ``B`` reconstructs the Gaussian blob field on the grid, ``G`` is its
 exact-transpose gather, and ``K = G B`` is the symmetric particle-space
 operator.
 
-The inverse is deliberately regularized: strongly overlapping Gaussian blobs
+The inverse is regularized: strongly overlapping Gaussian blobs
 make the unregularized interpolation matrix ill-conditioned, and fitting its
 near-null modes creates large, non-physical strength oscillations.  A
 minimum-norm particular correction first restores the reference vector

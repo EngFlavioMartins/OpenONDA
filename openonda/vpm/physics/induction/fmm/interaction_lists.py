@@ -45,7 +45,7 @@ def interaction_lists(
 ) -> tuple:
     """Return deterministic ``(target, source, far)`` cell relationships.
 
-    The optional kernel is deliberately forwarded to :func:`well_separated`.
+    The optional kernel is forwarded to :func:`well_separated`.
     Callers that omit it receive the geometric-only classification used by
     structural tooling; production FMM callers must provide the configured
     kernel so its regularization tail and core-radius bound participate in the

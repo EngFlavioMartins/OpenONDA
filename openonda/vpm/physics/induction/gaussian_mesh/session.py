@@ -224,7 +224,7 @@ def _classification(
     cutoff: float,
     images: tuple[tuple[int, bool], ...],
 ) -> "CorrectionClassificationBound":
-    # The classifier proof is deliberately separate from the mathematical
+    # The classifier proof is separate from the mathematical
     # correction envelope. No unproven assumption r >= configured cutoff.
     from .correction_distance import correction_classification_bound
 

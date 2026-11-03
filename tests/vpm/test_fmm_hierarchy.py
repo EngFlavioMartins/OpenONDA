@@ -70,7 +70,7 @@ def test_multipole_and_local_translations_preserve_leading_coefficients():
     child_b = p2m(position[1:], strength[1:], np.array([0.2, -0.1, 0.3]))
     parent = m2m([child_a, child_b], [np.zeros(3), np.array([0.2, -0.1, 0.3])], np.zeros(3))
 
-    np.testing.assert_allclose(parent["circulation"], strength.sum(axis=0))
+    np.testing.assert_allclose(parent["vortex_strength"], strength.sum(axis=0))
     local = m2l(parent, np.array([1.0, 2.0, 3.0]))
     translated = l2l(local, np.array([0.1, 0.0, 0.0]))
     np.testing.assert_allclose(

@@ -479,7 +479,6 @@ def initialize_taichi_backend(
               (``'metal'``, ``'vulkan'``, ``'cuda'``, or ``'cpu'``).
     """
     global _BACKEND_CONFIGURATION
-    # Check if Taichi is already initialized
     if ti.lang.impl.get_runtime().prog is not None:
         cached = getattr(constants_module, "TAICHI_BACKEND", None)
         if cached in {"cpu", "vulkan", "cuda", "metal"}:

@@ -131,8 +131,8 @@ class VLMSolver:
         self.wake_core_overlap = config.wake_core_overlap
         # The present source representation uses one point/trace radius for
         # the bound operator.  It is named separately from particle radii in
-        # the field conditions so a future distributed sheet can change it
-        # deliberately without changing the transport rule.
+        # the field definition so a future distributed sheet can change it
+        # without changing the transport rule.
         self.bound_source_radius = float(VLM_EPSILON)
         self.boundary_response = config.boundary_response
         self.field_settings = BoundSurfaceFieldSettings(
@@ -628,9 +628,7 @@ class VLMSolver:
             combined = Aircraft(uid="combined")
             for name, (aircraft, _) in self.surfaces.items():
                 for wing_uid, wing in aircraft.wings.items():
-                    # Create unique wing name
                     combined_uid = f"{name}_{wing_uid}"
-                    # Copy wing with new uid
                     new_wing = Wing(
                         uid=combined_uid, segments=wing.segments.copy(), symmetry=wing.symmetry
                     )

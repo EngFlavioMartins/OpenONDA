@@ -251,7 +251,7 @@ class TaichiTreecode:
         # Particle-to-leaf mapping (contiguous sorted indices)
         self.leaf_particles = fields.scalar(dtype=ti.i32, shape=max_n_particles)
 
-        # LBVH BUILD FIELDS
+        # LBVH build fields
         self.morton_codes = fields.scalar(dtype=ti.u32, shape=max_n_particles)
         # Radix-sort scratch: the particle permutation alternates between
         # sorted_indices and its swap buffer from one digit pass to the next.
@@ -272,15 +272,15 @@ class TaichiTreecode:
         self._node_aabb_min = fields.vector(3, dtype=ti.f32, shape=max_nodes)
         self._node_aabb_max = fields.vector(3, dtype=ti.f32, shape=max_nodes)
 
-        # OUTPUT VELOCITIES
+        # Output velocities
         particle_output_capacity = 1 if self.hierarchy_only else max_n_particles
         self.velocity = fields.vector(3, dtype=ti.f32, shape=particle_output_capacity)
 
-        # OUTPUT VELOCITY GRADIENTS AND STRAIN RATES
+        # Output velocity gradients and strain rates
         self.velocity_gradient = fields.matrix(3, 3, dtype=ti.f32, shape=particle_output_capacity)
         self.strain_rate = fields.matrix(3, 3, dtype=ti.f32, shape=particle_output_capacity)
 
-        # TARGET POINT FIELDS
+        # Target-point fields
         target_field_capacity = 1 if self.hierarchy_only else evaluation_capacity
         self.target_position = fields.vector(3, dtype=ti.f32, shape=target_field_capacity)
         self.target_velocity = fields.vector(3, dtype=ti.f32, shape=target_field_capacity)
@@ -293,13 +293,13 @@ class TaichiTreecode:
         self.multipole_order = fields.scalar(dtype=ti.i32, shape=())
         self.sort_particle_targets = fields.scalar(dtype=ti.i32, shape=())
 
-        # TREE TRAVERSAL STACK
+        # Tree traversal stack
         self.max_stack_depth = 48
         particle_stack_capacity = 1 if self.hierarchy_only else max_n_particles
         self.traversal_stack = fields.scalar(dtype=ti.i32, shape=(particle_stack_capacity, 48))
         self.target_traversal_stack = fields.scalar(dtype=ti.i32, shape=(evaluation_capacity, 48))
 
-        # COUNTERS
+        # Counters
         self.n_particles_total = fields.scalar(dtype=ti.i32, shape=())
         self.n_nodes = fields.scalar(dtype=ti.i32, shape=())
         self._root = fields.scalar(dtype=ti.i32, shape=())
@@ -1363,7 +1363,7 @@ class TaichiTreecode:
                 )
         return gradu
 
-    # LEAF SUMMATION FUNCTIONS
+    # Leaf summation
 
     @ti.func
     def _leaf_radial_coefficients(
@@ -1645,7 +1645,7 @@ class TaichiTreecode:
                 stack_ptr = self._push_children_target(i, node, stack_ptr)
         return gradu
 
-    # COMPUTE KERNELS
+    # Evaluation kernels
 
     @ti.kernel
     def compute_velocities_kernel(self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32):
@@ -1811,7 +1811,7 @@ class TaichiTreecode:
             self.compute_velocity_and_gradient_kernel(self.theta * self.theta, start, count)
             ti.sync()
 
-    # TARGET POINT EVALUATIONS
+    # Target-point evaluation
 
     @ti.kernel
     def compute_target_velocity_kernel(

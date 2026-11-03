@@ -1254,7 +1254,7 @@ class FMMInduction:
 
     The backend performs P2M, M2M, M2L, L2L, L2P, and kernel-specific near-field
     P2P passes on device-resident particle fields. It computes a velocity
-    gradient from the same expansion and conditions that gradient into the
+    gradient from the same expansion and contracts that gradient into the
     requested particle-strength rate. The stretching formulation is
     independent of the FMM approximation.
 
@@ -1539,7 +1539,7 @@ class FMMInduction:
         output_bytes = capacity * (3 + 9 + 3) * 4
         # ``hierarchy_only`` retains only source-tree state plus the target
         # traversal stack.  The unused particle stack and target outputs are
-        # one-element stubs, so they are intentionally not capacity-scaled.
+        # one-element stubs, so they are not capacity-scaled.
         source_particle_bytes = capacity * (3 + 3 + 1) * 4
         node_metadata_bytes = node_count * (3 + 1 + 3 + 3 + 3 + 6 + 2 + 6) * 4
         sort_capacity = 1 << (capacity - 1).bit_length()
@@ -1599,7 +1599,7 @@ class FMMInduction:
             Copy the FMM stretching rate when true; otherwise explicitly zero
             the output rate.
         stage_time : float, default=0.0
-            Stage time in seconds, accepted for the common conditions and unused
+            Stage time in seconds, accepted for the common interface and unused
             by this autonomous backend.
 
         Raises

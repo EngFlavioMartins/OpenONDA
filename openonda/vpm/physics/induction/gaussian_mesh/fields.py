@@ -404,7 +404,7 @@ class GaussianImageFields:
     Sources are immutable private host snapshots with no replacement API.
     Queries must fit the retained initial-query stencil window inside the
     original logical grid; there is no extrapolation.
-    Dimensional tau, spacing and cutoff are deliberately explicit here.
+    Dimensional tau, spacing and cutoff are explicit here.
     """
 
     def __init__(

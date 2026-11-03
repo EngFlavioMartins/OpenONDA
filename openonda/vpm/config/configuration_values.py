@@ -1,6 +1,6 @@
 """Internal, deterministic values for VPM numerical configurations.
 
-This module deliberately produces a restart configuration, not a user-facing case
+This module produces a restart configuration, not a user-facing case
 serialization format. Live output handlers, VLM surfaces, and
 kinematics are not reconstructible configuration data and must never be
 silently represented as such.
@@ -68,7 +68,7 @@ def _configuration_value(value: Any) -> Any:
 def numerical_configuration(setup: Numerics) -> dict[str, Any]:
     """Return the resolved settings that determine VPM particle evolution.
 
-    The mapping is internal restart evidence only. It intentionally
+    The mapping is internal restart evidence only. It
     excludes clocks, output plans, and live coupled objects; callers cannot use
     it to recreate a solver configuration. Infinite bounds are represented by
     the JSON strings ``Infinity`` and ``-Infinity``.

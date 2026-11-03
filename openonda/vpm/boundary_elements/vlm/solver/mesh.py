@@ -424,10 +424,9 @@ def _mirror_vertices(
     """
     Mirror vertex_position across symmetry plane.
 
-    NOTE: This function NO LONGER swaps vertex order. The normal negation
-    for mirrored panels is now handled in _generate_segment_to_numpy.
-    This preserves consistent spanwise ordering (root→tip) for both
-    original and mirrored panels, which is critical for wake shedding.
+    Vertex order is kept; ``_generate_segment_to_numpy`` negates the normal
+    of mirrored panels. Original and mirrored panels so share the root→tip
+    spanwise order that wake shedding relies on.
 
     Args:
         a, b, c, d: Original vertex_position
@@ -466,7 +465,7 @@ def _mirror_vertices(
     return a, b, c, d
 
 
-# TAICHI KERNELS FOR TRAILING DIRECTION UPDATES
+# Taichi kernels updating the trailing direction
 
 
 @ti.kernel
@@ -484,7 +483,6 @@ def _update_trailing_uniform_kernel(
     trail_dir = ti.Vector([trail_dir_x, trail_dir_y, trail_dir_z])
 
     for i in range(n_panels):
-        # Set trailing directions
         trailing_direction[i, 0] = trail_dir
         trailing_direction[i, 1] = trail_dir
 
@@ -521,16 +519,13 @@ def _update_trailing_local_kernel(
 ):
     """Taichi kernel for local (per-panel) trailing direction update."""
     for i in range(n_panels):
-        # Get local velocity for this panel
         V = V_local[i]
         V_mag = V.norm()
 
-        # Compute trailing direction
         trail_dir = ti.Vector([1.0, 0.0, 0.0])  # Default
         if V_mag > epsilon:
             trail_dir = V / V_mag
 
-        # Set trailing directions
         trailing_direction[i, ti.i32(0)] = trail_dir
         trailing_direction[i, ti.i32(1)] = trail_dir
 

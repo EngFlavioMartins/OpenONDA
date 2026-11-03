@@ -226,7 +226,7 @@ class BodyGridGeometryCache:
             reused = np.zeros(shape, dtype=bool)
             if old is not None:
                 matches = [_matching_axis(a, b) for a, b in zip(old.axes64, axes64, strict=True)]
-                # The old final grid node never evaluated its outward edge.
+                # The previous grid's last node has no evaluated outward edge.
                 current, prior = matches[axis]
                 valid = (current + 1 < shape[axis]) & (prior + 1 < old.mask.shape[axis])
                 matches[axis] = current[valid], prior[valid]
@@ -242,7 +242,7 @@ class BodyGridGeometryCache:
             for missing in _query_chunks(eligible & ~reused):
                 starts = np.column_stack([axes64[d][missing[:, d]] for d in range(3)])
                 ends = starts.copy()
-                # Deliberately not axes64[axis][i+1]: original endpoint is
+                # Not axes64[axis][i+1]: original endpoint is
                 # formed by adding h to the already-rounded start.
                 ends[:, axis] += spacing
                 values = np.asarray(segments_cross_wall(starts, ends), dtype=bool).reshape(-1)

@@ -13,7 +13,6 @@ import scipy.linalg
 # Taichi imports
 import taichi as ti
 
-# Import constants from central config
 from ....config.constants import (
     EPSILON,
     NP_FLOAT,
@@ -118,7 +117,6 @@ class ScipySolver(VLMLinearSolver):
             else:
                 dtype = aerodynamic_influence_coefficient.dtype
 
-        # Extract numpy arrays from Taichi fields and cast to inferred dtype
         if hasattr(aerodynamic_influence_coefficient, "to_numpy"):
             AIC_np = aerodynamic_influence_coefficient.to_numpy()[:n_panels, :n_panels].astype(
                 dtype
@@ -202,7 +200,6 @@ class TaichiBiCGSTABSolver(VLMLinearSolver):
     def _ensure_workspace(self, dtype: Any = TI_FLOAT) -> None:
         """Lazily initialize workspace fields."""
         if self._workspace_initialized:
-            # Check if existing workspace matches requested dtype
             if self.r.dtype != dtype:
                 # Reallocate if dtype changed
                 self._workspace_initialized = False

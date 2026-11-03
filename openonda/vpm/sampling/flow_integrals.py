@@ -30,7 +30,7 @@ _RESOLUTION_COLUMNS = (
 def flow_integral_row(solver: VPMSolver) -> dict[str, Any]:
     """Return the flow integrals and particle statistics of the current state.
 
-    Circulation is in m³/s, impulses per density in m⁴/s and m⁵/s, energy
+    Vortex strength is in m³/s, impulses per density in m⁴/s and m⁵/s, energy
     per density in m⁵/s², helicity in m⁴/s², enstrophy in m³/s² and
     viscosities in m²/s.
     """
@@ -118,7 +118,7 @@ class FlowIntegralsSampler(Sampler):
     """Append the flow integrals of each sampled state to ``flow_integrals.csv``.
 
     The table holds kinetic energy, enstrophy and helicity, their rates,
-    circulation, linear and angular impulse, particle statistics,
+    total vortex strength, linear and angular impulse, particle statistics,
     resolution metrics and stabilization diagnostics; an attached vortex
     lattice adds its bound circulation and impulse.
 

@@ -189,7 +189,7 @@ def gaussian_defect_upper(
     gap2, sigma2 = mul(gap, gap), mul(sigma, sigma)
     gap3, sigma3 = mul(gap2, gap), mul(sigma2, sigma)
     gap4 = mul(gap2, gap2)
-    # pi**1.5>5 and sqrt(5)<3 give deliberately loose rational constants.
+    # pi**1.5>5 and sqrt(5)<3 give loose rational constants.
     cu = div_positive(
         add(div_positive(sigma, gap3), div_positive(point(2.0), mul(sigma, gap))), point(20.0)
     )

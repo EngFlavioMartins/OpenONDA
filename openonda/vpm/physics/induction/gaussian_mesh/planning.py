@@ -9,7 +9,7 @@ spectra, a temporary spectrum and two spare spectra, K partially fused radial
 grids and one inverse grid. All plans for a given source/query job retain the
 same twelve channels and use the same assignment and convolution geometry.
 
-The particle/stencil estimate deliberately remains conservative, including
+The particle/stencil estimate remains conservative, including
 both source families and all checked initial queries even when temporaries
 are not simultaneously live. Plan workspaces have a separate unchanged cap.
 Pool fragmentation and cuFFT/context allocations still need runtime guards;

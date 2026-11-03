@@ -614,7 +614,7 @@ class _BackupIO:
     ) -> tuple[dict[str, Any], ...]:
         """Validate a restart file before it is allowed to mutate a solver.
 
-        This is deliberately strict: a numerical restart must not silently
+        This is strict: a numerical restart must not silently
         coerce precision, truncate identifiers, or proceed with non-physical
         particle geometry.
         """

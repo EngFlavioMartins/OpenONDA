@@ -70,7 +70,7 @@ class RK2(RKTableau):
 
     Construct without arguments. The VPM integrator evaluates rates at
     ``t`` and ``t + dt`` and combines them with equal weights. Position and
-    vector circulation are advanced together; construction has no side effects.
+    vortex strength are advanced together; construction has no side effects.
     """
 
     def __init__(self) -> None:
@@ -89,7 +89,7 @@ class SSPRK3(RKTableau):
 
     Construct without arguments. Stage times are ``0``, ``dt``, and
     ``0.5 * dt``; the final weights are ``(1/6, 1/6, 2/3)``. The tableau is
-    shared by VPM position and vector-circulation integration.
+    shared by VPM position and vortex-strength integration.
     """
 
     def __init__(self) -> None:
@@ -108,7 +108,7 @@ class RK4(RKTableau):
 
     Construct without arguments. It evaluates two midpoint stages and one
     endpoint stage before the classical ``(1, 2, 2, 1) / 6`` combination.
-    Position and vector circulation use the same temporary stage state.
+    Position and vortex strength use the same temporary stage state.
     """
 
     def __init__(self) -> None:

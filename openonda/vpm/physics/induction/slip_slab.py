@@ -231,7 +231,7 @@ class SlipSlabInduction:
     """Full-3D induction between two free-slip span planes.
 
     The planes are ``z_min`` and ``z_max``. For an odd reflection the
-    circulation vector, an axial vector, transforms as ``(-Gx,-Gy,Gz)``.
+    vortex strength, an axial vector, transforms as ``(-Gx,-Gy,Gz)``.
     The images of every particle kernel use one field mesh: a broad Gaussian
     on the mesh, the kernel's own core restored within a local correction
     radius, and the image rows beyond the summed shells added in closed form.
@@ -724,7 +724,7 @@ class SlipSlabInduction:
             target_count,
             source_only=True,
         )
-        # Coherent SOURCE-ONLY primary+images: deliberately no base target
+        # Coherent SOURCE-ONLY primary+images: no base target
         # call, which would double count primary and spoil wall cancellation.
         _publish_mesh_results(
             self._bound_physics,

@@ -187,7 +187,6 @@ class OfflineFlowDiagnostics:
         core_radius_field = ti.field(ti.f32, shape=n)
         visc_field = ti.field(ti.f32, shape=n)
 
-        # Copy data to Taichi
         position_field.from_numpy(data["position"].astype(np.float32))
         str_field.from_numpy(data["vortex_strength"].astype(np.float32))
         core_radius_field.from_numpy(data["core_radius"].astype(np.float32))

@@ -26,7 +26,7 @@ class VLMForceEvaluator:
     the solver (no solver reference is held here).
     """
 
-    # KUTTA-JOUKOWSKI METHOD
+    # Kutta-Joukowski forces
 
     @staticmethod
     def compute_kutta_joukowski(

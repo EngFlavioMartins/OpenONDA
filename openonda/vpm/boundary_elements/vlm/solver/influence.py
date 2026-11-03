@@ -54,7 +54,6 @@ def compute_aerodynamic_influence_coefficient_matrix(
         coupled_mode: If 1, use bound-only induction (coupled VLM-VPM)
     """
     for i, j in ti.ndrange(n_panels, n_panels):
-        # Get horseshoe vertices
         v1 = vortex_point_position[j, ti.i32(0)]
         v2 = vortex_point_position[j, ti.i32(1)]
         v3 = vortex_point_position[j, ti.i32(2)]

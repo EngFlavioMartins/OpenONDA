@@ -54,8 +54,8 @@ class TurbulenceConfig:
     Notes
     -----
     LES updates per-particle eddy viscosity from the accepted velocity-gradient
-    field. With core-spreading transport it does not modify circulation
-    directly; strength exchange conserves the total strength exactly.
+    field. With core-spreading transport it does not modify vortex
+    strength directly; strength exchange conserves the total strength exactly.
     """
 
     model: Literal["dns", "smagorinsky", "sigma", "inviscid"] = "dns"

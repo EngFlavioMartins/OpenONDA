@@ -55,7 +55,7 @@ class StabilizationConfig:
     outflow_fringe_depth : tuple[float, ...] or None, optional
         Inward fringe depth in m at each keep-box face, ordered as the bounds.
         Vortex strength decays smoothly through a fringe before particles reach
-        the face. Abrupt removal of a shed vortex changes the circulation and
+        the face. Abrupt removal of a shed vortex changes the vortex strength and
         impulse left in the domain, and induces a spurious velocity at the body.
         A fringe spanning at least two wake wavelengths removes that forcing.
         Zero disables a face; leave faces on slip planes at zero.
@@ -66,7 +66,7 @@ class StabilizationConfig:
     regularization_grid_spacing : float or None
         Positive standard remeshing lattice spacing in m when enabled.
     regularization_tail_budget : float, default=3e-3
-        Fractional circulation-magnitude budget in ``(0, 1)`` available to weak-strength removal.
+        Fractional vortex-strength-magnitude budget in ``(0, 1)`` available to weak-strength removal.
     regularization_solenoidal_remesh : bool, default=False
         Project the remeshed lattice toward a divergence-free field.
     regularization_transfer_only : bool, default=False

@@ -57,7 +57,6 @@ class WingSegment:
                 f"Segment {self.uid} missing vertex_position. Required: {required_vertices}"
             )
 
-        # Convert to numpy arrays if needed
         for key in self.vertex_position:
             if not isinstance(self.vertex_position[key], np.ndarray):
                 self.vertex_position[key] = np.array(self.vertex_position[key], dtype=float)
@@ -135,7 +134,6 @@ class Wing:
         if not self.segments:
             return 0.0
 
-        # Get all y-coordinates
         y_coords = []
         for seg in self.segments.values():
             for key in ["a", "b", "c", "d"]:
@@ -209,7 +207,6 @@ class Aircraft:
             total_area += wing_area
             max_span = max(max_span, wing_span)
 
-        # Compute geometry centre
         total_vol = 0.0
         weighted_centre = np.zeros(3)
         for wing in self.wings.values():

@@ -6,7 +6,6 @@ import numpy as np
 import pyvista as pv
 import taichi as ti
 
-# Import VPM constants
 from openonda.core import log_style
 from openonda.core.vtk_output import write_vtk_dataset
 from openonda.core.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write
@@ -136,7 +135,6 @@ class Particles:
         # (for example a vortex strength download returning position).  Give each
         # field and transfer direction its own fixed-shape staging array.
         self._host_staging = HostStagingBuffers(self._COPY_CHUNK_SIZE)
-        # Initialize Taichi fields for particle properties
         self._init_taichi_fields()
 
     @property
@@ -421,7 +419,7 @@ class Particles:
             self._subset_vortex_strength[None] += self.vortex_strength[i]
 
     def net_vortex_strength(self) -> np.ndarray:
-        """Return the sum of active circulation vectors, shape ``(3,)`` in m³/s."""
+        """Return the sum of active vortex strengths, shape ``(3,)`` in m³/s."""
         n = self.n_particles_total
         if n == 0:
             return np.zeros(3, dtype=self._np_float_dtype)
@@ -536,7 +534,6 @@ class Particles:
         N = position.shape[0]
         start_idx = self.n_particles_total
 
-        # Check if we have enough space
         if start_idx + N > self._max_particles:
             return False
 
@@ -546,18 +543,15 @@ class Particles:
         self._copy_vectors_chunked(vortex_strength, self.vortex_strength, start_idx, N)
         self._copy_vectors_chunked(vorticity, self.vorticity, start_idx, N)
 
-        # Copy scalars directly
         self._copy_scalars_chunked(core_radius, self.core_radius, start_idx, N)
         self._copy_scalars_chunked(particle_volume, self.particle_volume, start_idx, N)
         self._copy_scalars_chunked(kinematic_viscosity, self.kinematic_viscosity, start_idx, N)
         self._copy_scalars_chunked(eddy_viscosity, self.eddy_viscosity, start_idx, N)
         self._copy_scalars_chunked(effective_viscosity, self.effective_viscosity, start_idx, N)
 
-        # Copy integer fields
         self._copy_ints_chunked(group_id, self.group_id, start_idx, N)
         self._copy_ints_chunked(zone_id, self.zone_id, start_idx, N)
 
-        # Copy matrices directly
         self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
         self._copy_matrices_chunked(strain_rate, self.strain_rate, start_idx, N)
 
@@ -622,7 +616,6 @@ class Particles:
                 f"{name} array must have shape (N, {', '.join(map(str, expected_shape_suffix))}), got {arr.shape}"
             )
 
-        # Convert to appropriate dtype for Taichi compatibility
         if arr.dtype.kind == "f":  # floating point
             return np.ascontiguousarray(arr, dtype=self._np_float_dtype)
         elif arr.dtype.kind == "i":  # integer
@@ -705,7 +698,7 @@ class Particles:
 
     @cached_particle_property
     def vortex_strength_cpu(self) -> np.ndarray:
-        """Return active circulation vectors as a CPU copy, shape ``(N, 3)`` in m³/s."""
+        """Return active vortex strengths as a CPU copy, shape ``(N, 3)`` in m³/s."""
         return self._extract_vector(self.vortex_strength, self.n_particles_total)
 
     @cached_particle_property
@@ -880,7 +873,7 @@ class Particles:
         Returns
         -------
         dict[str, numpy.ndarray]
-            Position, velocity, circulation, geometry, viscosity, labels, and
+            Position, velocity, vortex strength, geometry, viscosity, labels, and
             diagnostic tensor values. Returned arrays are CPU copies.
         """
         return {
@@ -981,7 +974,6 @@ class Particles:
         if velocity_gradient is not None:
             _validate_finite_array(velocity_gradient, "velocity_gradient")
 
-        # CONTINUE WITH NORMAL PROCESSING
         # Honor the configured float precision: the Taichi fields are created
         # with self._taichi_dtype, so feeding them self._np_float_dtype arrays
         # keeps the transfer exact (no f32←f64 / f64←f32 precision warnings)
@@ -1000,20 +992,17 @@ class Particles:
         if not (core_radius.shape[0] == N):
             raise ValueError("core_radius must match the number of position")
 
-        # Ensure all arrays are contiguous and have the correct shape
         if eddy_viscosity is None:
             eddy_viscosity = np.zeros(N, dtype=float_dtype)
         else:
             eddy_viscosity = np.ascontiguousarray(eddy_viscosity, dtype=float_dtype)
 
-        # Calculate effective viscosity
         effective_viscosity = kinematic_viscosity + eddy_viscosity
 
         # Prepare other fields
         group_id = _coerce_int_id_array(group_id, N)
         zone_id = _coerce_int_id_array(zone_id, N)
 
-        # Ensure velocity_gradient and strain_rate are properly initialized
         if velocity_gradient is None:
             velocity_gradient = np.zeros((N, 3, 3), dtype=float_dtype)
         else:
@@ -1025,11 +1014,9 @@ class Particles:
         # Initialize vorticity field: vorticity = vortex strength / particle_volume
         vorticity = (vortex_strength / particle_volume[:, None]).astype(float_dtype)
 
-        # Ensure we have enough space for all particles
         total_particles = self.n_particles_total + N
         self._grow_capacity(total_particles)
 
-        # Copy all data to Taichi fields at once
         start_idx = self.n_particles_total
 
         # Try fast batch add first (for initial particle loading)
@@ -1063,7 +1050,6 @@ class Particles:
             self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
             self._copy_matrices_chunked(strain_rate, self.strain_rate, start_idx, N)
 
-        # Update particle count
         self.n_particles_total = total_particles
 
         self.touch_state()
@@ -1196,7 +1182,7 @@ class Particles:
         self.touch_state()
         self._log_particles_replaced(previous)
 
-    # GPU-TO-GPU DATA TRANSFER
+    # GPU-to-GPU data transfer
 
     def save_vortex_particles(
         self,
@@ -1321,7 +1307,7 @@ class Particles:
         ----------
         percent : float, default=0.0
             Percentage threshold relative to the cloud-wide maximum
-            circulation magnitude, in the range 0--100.
+            vortex-strength magnitude, in the range 0--100.
 
         Returns
         -------
@@ -1387,10 +1373,8 @@ class Particles:
         if remove_all:
             self.n_particles_total = 0
         else:
-            # Get current data
             current_data = self._extract_cpu_data(self.n_particles_total)
 
-            # Create mask for particles to keep
             mask = np.ones(self.n_particles_total, dtype=bool)
             mask[indices] = False
 
@@ -1550,7 +1534,6 @@ class Particles:
         """
         start_idx = self.n_particles_total
 
-        # Check if we have space
         if start_idx + count > self._max_particles:
             return False
 

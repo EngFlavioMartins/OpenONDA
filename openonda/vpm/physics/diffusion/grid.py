@@ -432,7 +432,7 @@ class _GridDiffusionMixin:
     _ALLOC_HEADROOM = 1.5
     _REALLOC_HEADROOM = 2.0
 
-    # Retained nodes preserve the diffused field's circulation and impulse.
+    # Retained nodes preserve the diffused field's total vortex strength and impulse.
     conserve_removed_moments: bool = True
     _body_link_grid: TaichiField = None
     _body_segment_classifier: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None
@@ -3112,9 +3112,8 @@ class _GridDiffusionMixin:
 
         # Keep the configured support radius as a floor, but enlarge it when
         # the requested physical interval would otherwise truncate the heat
-        # kernel.  R_d is a support/performance choice; it no longer defines
-        # the variance.  The 3.6 factor retains approximately the historical
-        # beta≈0.077 tail level.
+        # kernel.  R_d is a support and cost choice, not the variance; the
+        # factor 3.6 keeps the truncated tail near beta ≈ 0.077.
         base_radius = float(rd_ratio * particle_spacing)
         max_heat_radius = 3.6 * float(np.sqrt(np.max(widths))) if N else 0.0
         R_d = max(base_radius, max_heat_radius)
@@ -3418,7 +3417,7 @@ class _GridDiffusionMixin:
         Gaussian heat-kernel Green's function, then replaces all particles with
         surviving grid nodes. No finite-difference solve is used.
 
-        The operator is intentionally narrower than a general
+        The operator is narrower than a general
         variable-coefficient diffusion operator: the effective viscosity must
         be spatially uniform, the accepted interval must be resolved by the
         configured lattice, and the incoming core radius must be finite,

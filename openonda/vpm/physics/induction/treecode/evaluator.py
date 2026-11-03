@@ -1,4 +1,4 @@
-"""Barnes--Hut induction evaluator behind the common VPM stage conditions."""
+"""Barnes--Hut induction evaluator behind the common VPM stage interface."""
 
 from typing import TYPE_CHECKING, Self, TypedDict
 
@@ -60,7 +60,7 @@ class TreecodeInduction:
     supports_gradient = True
     supports_variable_core_radius = True
     supports_target_fields = True
-    # The LBVH fields are intentionally f32 to keep the device workspace
+    # The LBVH fields are f32 to keep the device workspace
     # bounded; reject a nominal f64 case at the immutable configuration edge.
     supports_f64 = False
     device_resident = True
@@ -272,7 +272,7 @@ class TreecodeInduction:
             If true, contract the same hierarchical gradient used by the
             backend. If false, explicitly zero the rate field.
         stage_time : float, default=0.0
-            Stage time in seconds; accepted for the common conditions and not
+            Stage time in seconds; accepted for the common interface and not
             used by the autonomous treecode.
 
         Raises

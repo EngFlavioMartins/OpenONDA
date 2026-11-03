@@ -543,7 +543,7 @@ def _accumulate_stage_array(
 class ParticleExternalStageContribution:
     """Apply stage-time external velocities to a particle RHS.
 
-    The provider is intentionally small: self-induced induction belongs to the
+    The provider is small: self-induced induction belongs to the
     selected induction object, while freestream, body and overlap corrections
     are explicit stage contributions.  Python callbacks are given the supplied
     stage positions, never the accepted particle field.

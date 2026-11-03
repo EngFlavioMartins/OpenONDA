@@ -74,22 +74,19 @@ _TREECODE_MIN_CAPACITY = 8192
 # at this shape and pass the active count separately.
 _HOST_TRANSFER_CHUNK_SIZE = 65536
 
-# Fraction of a particle's circulation its core may leave beyond the image reach
+# Fraction of a particle's vortex strength its core may leave beyond the image reach
 _VORTICITY_TAIL = 1.0e-4
 
 
 def _kernel_reach(kernel: str) -> float:
-    """Core radii beyond which a kernel misses at most ``_VORTICITY_TAIL`` of its circulation.
+    """Core radii beyond which a kernel misses at most ``_VORTICITY_TAIL`` of its vortex strength.
 
-    The enclosed circulation of a high-order core overshoots before it settles,
+    The enclosed vortex strength of a high-order core overshoots before it settles,
     so the reach is the last radius where the defect still exceeds the tail.
     """
     radius = np.linspace(0.0, 64.0, 64001)
     defect = np.abs(1.0 - 4.0 * np.pi * kernel_definition(kernel).q(radius))
     return float(radius[np.flatnonzero(defect > _VORTICITY_TAIL)[-1] + 1])
-
-
-# PHYSICS BASE CLASS
 
 
 @ti.data_oriented
@@ -104,7 +101,7 @@ class PhysicsBase:
     - Field evaluation methods (velocity, vorticity, gradients)
 
     The concrete PhysicsEngine provides shared fields and physical operators;
-    coupled inviscid rates are selected through the induction conditions.
+    coupled inviscid rates are selected through the induction method.
     """
 
     # Taichi kernels bound for the particle kernel by _define_taichi_kernels.
@@ -181,8 +178,8 @@ class PhysicsBase:
         self.treecode_traversal_block_dim = 128
 
         # The solver binds the selected induction backend here after all
-        # device fields are initialized.  Target queries use this same
-        # conditions when available; standalone PhysicsEngine users retain the
+        # device fields are initialized.  Target queries use the same
+        # backend when available; standalone PhysicsEngine users retain the
         # direct-kernel fallback below.
         self.induction: InductionMethod | None = None
 
@@ -210,14 +207,13 @@ class PhysicsBase:
             self.particle_kernel
         ).angular_core_coefficient
 
-        # Initialize Taichi fields
         self._initialize_temp_fields()
         self._initialize_target_fields(self.max_evaluation_points)
 
         # Bind kernel functions based on particle kernel type
         self._define_taichi_kernels()
 
-    # TEMPORARY FIELD MANAGEMENT
+    # Temporary fields
 
     def _initialize_temp_fields(self) -> None:
         """
@@ -645,7 +641,7 @@ class PhysicsBase:
 
         return self._treecode
 
-    # KERNEL INITIALIZATION
+    # Kernel initialization
 
     def _define_taichi_kernels(self) -> None:
         """
@@ -669,14 +665,13 @@ class PhysicsBase:
         # kernels below; this private registry avoids a second q/zeta selector.
         self._kernel_functions = kernel_functions
 
-        # Create all kernels from factory
         self.kernels = create_kernels(kernel_functions)
 
         # Bind kernels as instance methods for easy access
         for name, fn in self.kernels.items():
             setattr(self, name, fn)
 
-    # UNIFIED SELF-INDUCED VELOCITY OPERATOR
+    # Self-induced velocity
 
     def configure_velocity(
         self,
@@ -747,7 +742,7 @@ class PhysicsBase:
 
         ``Particles.state_revision`` changes only when a Biot--Savart source
         field (position, vortex strength, radius, or particle count) changes.  A
-        missing revision deliberately disables reuse so lightweight external
+        missing revision disables reuse so lightweight external
         particle adapters cannot accidentally observe a stale hierarchy.
         """
         N = len(particles)
@@ -759,7 +754,7 @@ class PhysicsBase:
             self._target_tree_key = key
         return tree
 
-    # FIELD EVALUATION METHODS
+    # Field evaluation
 
     @overload
     def compute_target_velocity(
@@ -1125,7 +1120,6 @@ class PhysicsBase:
         Returns:
             Velocities at target position (M, 3)
         """
-        # Ensure numpy input
         if not isinstance(target_position, np.ndarray):
             target_position = target_position.to_numpy()
 
@@ -1235,7 +1229,7 @@ class PhysicsBase:
 
         Images whose centres lie within the kernel reach of the slab are summed
         directly with the particles; beyond that reach a core encloses all but
-        ``_VORTICITY_TAIL`` of its circulation.
+        ``_VORTICITY_TAIL`` of its vortex strength.
         """
         N = len(particles)
         position = np.asarray(particles.position_cpu()[:N], dtype=np.float64)

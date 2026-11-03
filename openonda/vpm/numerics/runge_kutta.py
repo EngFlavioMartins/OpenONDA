@@ -217,7 +217,7 @@ class RungeKutta:
             Persistent particle positions, logical shape ``(count, 3)``, in m.
             Updated in place only after every stage succeeds.
         vortex_strength : object
-            Persistent circulation vectors, shape ``(count, 3)``, in m³/s.
+            Persistent vortex strengths, shape ``(count, 3)``, in m³/s.
             Updated in place with the same tableau.
         core_radius : object
             Source core radii, shape ``(count,)``, in m. This implementation

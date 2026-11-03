@@ -97,7 +97,7 @@ def loading_station_keys(
     """Validate native station keys, retaining chordwise panel identity.
 
     Spanwise histories have one row per ``(time, station_id)``.  Chordwise
-    histories intentionally have several rows for that same station, so their
+    histories have several rows for that same station, so their
     unique row key is ``(time, station_id, chord_index)``.  The grouped
     station keys returned for the span/chord merge are only produced after
     every station has the complete panel set.
@@ -136,7 +136,7 @@ def loading_station_keys(
 
 
 def chord_panel_indices(surface: dict[str, object]) -> tuple[int, ...] | None:
-    """Read a uniform chord-panel conditions from the native VLM surface mesh."""
+    """Read the uniform chord-panel layout from the native VLM surface mesh."""
     segments = [segment for wing in surface["geometry"]["wings"] for segment in wing["segments"]]
     counts = {int(segment["n_chordwise_panels"]) for segment in segments}
     if len(counts) != 1:

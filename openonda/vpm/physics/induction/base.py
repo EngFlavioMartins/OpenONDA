@@ -1,6 +1,6 @@
-"""interface shared by VPM induction backends.
+"""Interface shared by VPM induction backends.
 
-The conditions deliberately describes rates rather than a particular numerical
+The interface describes rates rather than a particular numerical
 algorithm.  A caller supplies the complete temporary RK stage state and owns
 the output fields.  Implementations must read only that supplied state.
 """
@@ -71,7 +71,7 @@ class StageState:
     stage_index : int or None, default=None
         Explicit zero-based RK stage identity within the current trial.  The
         value is ``None`` for ad-hoc field queries outside an integrator.  It
-        is intentionally separate from physical time because equal-time RK
+        is separate from physical time because equal-time RK
         stages may carry different temporary particle states.
     accepted_revision : int or None, default=None
         ``Particles.state_revision`` when these sources are exactly the

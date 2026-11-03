@@ -28,7 +28,6 @@ def surface_to_dict(aircraft: Aircraft) -> dict[str, Any]:
             )
         wings.append({"uid": wing.uid, "symmetry": wing.symmetry, "segments": segments})
 
-    # Add reference values
     refs = aircraft.refs
     return {
         "uid": aircraft.uid,

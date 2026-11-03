@@ -139,7 +139,7 @@ class VortexParticleSet:
     Parameters
     ----------
     position, velocity, vortex_strength : array-like, shape (N, 3)
-        Cartesian position in m, velocity in m/s, and circulation vector
+        Cartesian position in m, velocity in m/s, and vortex strength
         ``Gamma=omega*particle_volume`` in m³/s.
     core_radius, particle_volume, kinematic_viscosity : array-like, shape (N,)
         Positive core radius in m, positive quadrature volume in m³, and
@@ -153,7 +153,7 @@ class VortexParticleSet:
     ----------
     position, velocity, vortex_strength : numpy.ndarray
         ``(N, 3)`` fields in m, m/s, and m³/s. `vortex_strength` is the vector
-        circulation/strength ``Gamma = omega * particle_volume``.
+        vortex strength ``Gamma = omega * particle_volume``.
     core_radius, particle_volume, kinematic_viscosity : numpy.ndarray
         ``(N,)`` fields in m, m³, and m²/s.
     spacing : float

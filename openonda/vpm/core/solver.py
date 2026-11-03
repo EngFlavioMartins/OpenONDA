@@ -368,7 +368,7 @@ class VPMSolver:
                 kernel=make_vortex_kernel(self.particle_kernel),
             )
         # Target diagnostics and coupling queries must use the same selected
-        # induction conditions as RK particle stages.  PhysicsBase keeps a
+        # induction method as RK particle stages.  PhysicsBase keeps a
         # direct fallback for standalone users, but a solver-owned backend is
         # used here (including FMM).
         self.physics.induction = self.induction
@@ -1338,7 +1338,7 @@ class VPMSolver:
 
     @property
     def net_vortex_strength(self) -> np.ndarray:
-        """Return the net circulation vector, shape ``(3,)`` in m³/s."""
+        """Return the total vortex strength, shape ``(3,)`` in m³/s."""
         return self._flow_integrals.get("net_vortex_strength", np.array([0.0, 0.0, 0.0]))
 
     @property
@@ -1694,7 +1694,7 @@ class VPMSolver:
         Side Effects
         ------------
         Compacts device particle fields, resets the stabilization refinement
-        reference, and stores the removed count and circulation for diagnostics.
+        reference, and stores the removed count and vortex strength for diagnostics.
         """
         self._particles_removed_this_step = len(self.particles)
         self._vortex_strength_removed_this_step = self.particles.net_vortex_strength()

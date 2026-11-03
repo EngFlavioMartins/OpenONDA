@@ -439,7 +439,6 @@ class VLMLattice:
                 n = min(kinematic_velocity.shape[0], self.n_panels)
                 kinematic_velocity = kinematic_velocity[:n]
 
-        # Ensure correct shape (N, 3)
         if kinematic_velocity.ndim == 1:
             kinematic_velocity = kinematic_velocity.reshape(-1, 3)
 
@@ -470,7 +469,6 @@ class VLMLattice:
                 f"Expected at least {self.n_panels} velocity, got {external_velocity.shape[0]}"
             )
 
-        # Ensure correct shape and dtype
         external_velocity = np.ascontiguousarray(
             external_velocity[: self.n_panels], dtype=self.np_dtype
         )

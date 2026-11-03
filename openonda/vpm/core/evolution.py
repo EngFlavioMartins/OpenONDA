@@ -68,7 +68,7 @@ class EvolutionStepper:
         self._staged_step: int | None = None
         self._staged_time: float | None = None
 
-    # Deliberately explicit: this execution boundary must not become a
+    # Explicit: this execution boundary must not become a
     # second, forwarding view of VPMSolver's entire mutable surface.
     @property
     def step(self) -> int:
@@ -187,7 +187,7 @@ class EvolutionStepper:
 
     @property
     def source_strength(self) -> ti.Field:
-        """Return the current source circulation vectors in m³/s."""
+        """Return the current source vortex strengths in m³/s."""
         return self.solver.source_strength
 
     @property
@@ -369,7 +369,7 @@ class EvolutionStepper:
         self._staged_time = None
 
     def _update_velocity_and_gradients(self, announce: bool = False) -> None:
-        """Refresh derived particle velocity and gradient through the stage conditions."""
+        """Refresh derived particle velocity and gradient through the stage interface."""
         del announce
         count = len(self.particles)
         if count == 0:
@@ -424,10 +424,8 @@ class EvolutionStepper:
             self.solver, "_axisymmetric_orbits_validated", False
         ):
             return
-        # Read the particle container directly.  The stepper intentionally exposes
-        # no forwarding view of all solver fields; using the old forwarding
-        # properties here made standalone stepper validation inspect the wrong
-        # particle container and allowed malformed orbits through.
+        # Read the stepper's own particle container; the stepper has no
+        # forwarding view of the solver fields.
         position = self.particles.position_cpu(use_cache=False).astype(np.float64)
         orbit_id = self.particles.zone_id_cpu(use_cache=False).astype(np.int64)
         group_id = self.particles.group_id_cpu(use_cache=False).astype(np.int64)
@@ -663,7 +661,7 @@ class EvolutionStepper:
                     group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
                     report_removal=False,
                 )
-                # Velocity is intentionally left stale; it is recomputed before the next consumer.
+                # Velocity is left stale; it is recomputed before the next consumer.
             if self.viscous_scheme == "dvh":
                 # Commit the accepted-step counter only after validation and
                 # regeneration succeed; a failed transfer must not discard

@@ -96,7 +96,7 @@ def apply_random_walk(
         )
 
     physics._resize_temp_fields(N)
-    # No temp field is touched, so the temp-field zeroing is deliberately skipped.
+    # No temp field is touched, so the temp-field zeroing is skipped.
     physics.update_position_rwm_kernel(
         particles.position,
         particles.effective_viscosity,

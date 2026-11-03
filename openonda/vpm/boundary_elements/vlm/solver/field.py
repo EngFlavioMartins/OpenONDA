@@ -1,6 +1,6 @@
-"""The numerical conditions for the coupled VLM bound-surface field.
+"""Numerical definition of the coupled VLM bound-surface field.
 
-The VLM and VPM operators intentionally use different target filters.  A
+The VLM and VPM operators use different target filters.  A
 bound filament is a singular geometric source and therefore needs a small
 numerical regularization length at a point/trace target, while a VPM particle is a finite
 volume target and carries its own core radius.  Keeping those scales explicit
@@ -29,17 +29,17 @@ class BoundSurfaceFieldSettings:
         Radius used for point/probe and boundary-trace evaluation of the
         bound source. It may equal ``numerical_epsilon`` for the
         point-trace model, but is named separately so a resolved study can
-        change it deliberately.
+        set it on its own.
     particle_core_rule : str
         Human-readable description of the finite-target rule. The current
         coupled model uses ``max(particle_core_radius,
         numerical_epsilon)`` for particle-centre transport and stretching.
     free_wake_operator : str
         The configured VPM source/target backend. It is part of the complete
-        transport conditions even though this object owns only the bound field.
+        transport definition even though this object owns only the bound field.
     bound_representation, bound_trace_operator, jacobian_operator : str
         Explicit names for the geometric source and its point/Jacobian
-        evaluation.  They are persisted as part of the coupling conditions so
+        evaluation.  They are persisted as part of the coupling record so
         a restart cannot silently mix a different source representation.
     transport_target_operator : str
         Name of the finite-target transport rule used for the free wake.

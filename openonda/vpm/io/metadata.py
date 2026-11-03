@@ -51,9 +51,7 @@ def write_vpm_metadata(solver: VPMSolver, path: Path, *, status: RunStatus) -> P
             "initial_time": float(solver._run_initial_time),
             "step": int(solver.step),
             "time": float(solver.time),
-            "target_step": (
-                None if solver._external_clock else int(solver.case.n_steps)
-            ),
+            "target_step": (None if solver._external_clock else int(solver.case.n_steps)),
             "target_time": float(solver.case.run.end_time),
             "n_initial_particles": int(solver._n_initial_particles),
             "n_particles": int(particle_count),
