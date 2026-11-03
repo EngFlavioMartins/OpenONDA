@@ -15,9 +15,7 @@ the first stage that disagrees.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Sequence
-import math
-from typing import cast
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -34,6 +32,7 @@ from ..triangulated_surface import SurfaceBounds, TriangulatedSurface
 from .cfmesh_automatic_refinement import AutomaticSurface, automatic_refinement
 from .cfmesh_octree import (
     LeafLookup,
+    _find_leaf,
     balance_leaves,
     object_additional_level,
     refine_near_data,
@@ -49,8 +48,6 @@ from .cfmesh_surface_optimisation import (
 )
 from .config import BoxRefinement, PatchRefinement
 
-OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
-
 
 def _additional_level(max_cell_size: float, requested: float) -> int:
     """Return cfMesh's first dyadic level whose size does not exceed a request."""
@@ -58,46 +55,6 @@ def _additional_level(max_cell_size: float, requested: float) -> int:
     while max_cell_size / (2**level) > requested:
         level += 1
     return level
-
-
-def _quad_signature(values: Sequence[int] | np.ndarray) -> tuple[int, int, int, int]:
-    """Return the sorted fixed-width key for one Cartesian quad."""
-    ordered = sorted(map(int, values))
-    if len(ordered) != 4:
-        raise ValueError(f"Expected four Cartesian face vertices, received {len(ordered)}")
-    return ordered[0], ordered[1], ordered[2], ordered[3]
-
-
-_FACE_LOOKUP_CHUNK_SIZE = 16_384
-
-
-def _matching_face_id_chunks(
-    encoded_faces: np.ndarray,
-    ordered_octree_faces: Sequence[tuple[tuple[int, int, int, int], bool, tuple[int, ...]]],
-) -> Iterator[np.ndarray]:
-    """Match octree signatures with compact keys, retaining last-face-wins."""
-    key_dtype = np.dtype([(f"vertex_{index}", np.int64) for index in range(4)])
-    face_keys = (
-        np.ascontiguousarray(np.sort(encoded_faces.astype(np.int64, copy=False), axis=1))
-        .view(key_dtype)
-        .reshape(-1)
-    )
-    # Stable sorting makes searchsorted(right) select the final face ID
-    # when signatures repeat.
-    permutation = np.argsort(face_keys, kind="stable")
-    sorted_keys = face_keys[permutation]
-    for start in range(0, len(ordered_octree_faces), _FACE_LOOKUP_CHUNK_SIZE):
-        records = ordered_octree_faces[start : start + _FACE_LOOKUP_CHUNK_SIZE]
-        signatures = np.fromiter(
-            (vertex for signature, _internal, _cells in records for vertex in signature),
-            dtype=np.int64,
-            count=4 * len(records),
-        ).reshape(-1, 4)
-        query_keys = np.sort(signatures, axis=1).view(key_dtype).reshape(-1)
-        positions = np.searchsorted(sorted_keys, query_keys, side="right") - 1
-        if np.any(positions < 0) or not np.array_equal(sorted_keys[positions], query_keys):
-            raise RuntimeError("cfMesh cell-face ordering references an absent octree face")
-        yield permutation[positions]
 
 
 def _root_cube(
@@ -164,292 +121,395 @@ def _box_surface_intersects_arrays(
     return False
 
 
-class _TemplateTopologyExtractor:
-    """Extract native faces from already-classified octree leaves."""
+def _boxes_touch_domain_sides(
+    lower: np.ndarray,
+    upper: np.ndarray,
+    domain_lower: np.ndarray,
+    domain_upper: np.ndarray,
+) -> np.ndarray:
+    """Row form of :func:`_box_surface_intersects_arrays` for boxes ``(n, 3)``."""
+    result = np.zeros(len(lower), dtype=bool)
+    for axis in range(3):
+        touches = (
+            (lower[:, axis] <= domain_lower[axis]) & (domain_lower[axis] <= upper[:, axis])
+        ) | ((lower[:, axis] <= domain_upper[axis]) & (domain_upper[axis] <= upper[:, axis]))
+        for other in range(3):
+            if other != axis:
+                touches &= (upper[:, other] >= domain_lower[other]) & (
+                    lower[:, other] <= domain_upper[other]
+                )
+        result |= touches
+    return result
 
-    def __init__(self, root_bounds: SurfaceBounds) -> None:
-        # The template is extracted in cfMesh's root cube, not the requested
-        # fluid box.  Its outer sides and the faces towards excluded surface
-        # leaves all form the one temporary ``defaultFaces`` patch.
-        self.domain = root_bounds
-        self.merge_outer_patch = "defaultFaces"
-        self.preserve_outer_patches: tuple[str, ...] = ()
-        self.surface = cast(TriangulatedSurface, object())
-        self.wall_patch_name = "defaultFaces"
-        self._wall_patch_type = "patch"
 
-    @staticmethod
-    def _face_codes(
-        axis: int,
-        coordinate: int,
-        a0: int,
-        a1: int,
-        b0: int,
-        b1: int,
-        strides: tuple[int, int],
-        positive: bool,
-    ) -> tuple[int, int, int, int]:
-        """Encode one axis-aligned face ring with outward orientation."""
-        sx, sy = strides
+def _classify_leaves(
+    children: np.ndarray,
+    *,
+    root_lower: np.ndarray,
+    finest_size: float,
+    domain_lower: np.ndarray,
+    domain_upper: np.ndarray,
+    surface_indices: Sequence[SurfaceIndex],
+) -> np.ndarray:
+    """Append the kind to new leaves ``(x, y, z, width, level)``.
 
-        def code(x: int, y: int, z: int) -> int:
-            return x + sx * (y + sy * z)
+    A leaf touching a domain side or an input surface carries surface data
+    (2); otherwise it is a mesh leaf (1) if its centre lies inside the domain
+    and outside every surface, and an outside leaf (0) if not. The tests are
+    those of one leaf at a time, applied to all leaves at once.
+    """
+    xyz = children[:, :3]
+    lower = root_lower + finest_size * xyz.astype(np.float64)
+    upper = root_lower + finest_size * (xyz + children[:, 3:4]).astype(np.float64)
+    intersects = _boxes_touch_domain_sides(lower, upper, domain_lower, domain_upper)
+    for index in surface_indices:
+        pending = np.flatnonzero(~intersects)
+        intersects[pending] = index.boxes_intersect_surface(lower[pending], upper[pending])
+    centre = 0.5 * (lower + upper)
+    in_domain = np.all(centre > domain_lower, axis=1) & np.all(centre < domain_upper, axis=1)
+    in_object = np.zeros(len(children), dtype=bool)
+    for index in surface_indices:
+        pending = np.flatnonzero(~intersects & in_domain & ~in_object)
+        parity = index.single_ray_parity(centre[pending])
+        in_object[pending[parity == 1]] = True
+        # A degenerate first ray needs the full retry over every direction.
+        for leaf in pending[parity < 0]:
+            in_object[leaf] = bool(index.is_inside(centre[leaf][None, :])[0])
+    kind = np.where(intersects, 2, np.where(in_domain & ~in_object, 1, 0))
+    return np.column_stack((children, kind)).astype(np.int64)
 
-        if axis == 0:
-            ring = (
-                code(coordinate, a0, b0),
-                code(coordinate, a1, b0),
-                code(coordinate, a1, b1),
-                code(coordinate, a0, b1),
-            )
-        elif axis == 1:
-            ring = (
-                code(a0, coordinate, b0),
-                code(a0, coordinate, b1),
-                code(a1, coordinate, b1),
-                code(a1, coordinate, b0),
-            )
-        else:
-            ring = (
-                code(a0, b0, coordinate),
-                code(a1, b0, coordinate),
-                code(a1, b1, coordinate),
-                code(a0, b1, coordinate),
-            )
-        # cfMesh reverses a negative face while retaining its first cube
-        # vertex.  The starting vertex matters to its finite-iteration surface
-        # optimizer even though cyclic rotations are topologically equivalent.
-        return ring if positive else (ring[0], ring[3], ring[2], ring[1])
 
-    def _extract_topology(
-        self,
-        leaves: np.ndarray,
-        max_level: int,
-        limits: tuple[int, int, int],
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[BoundaryPatchData], np.ndarray]:
-        n_cells = len(leaves)
-        nx, ny, nz = limits
-        max_point_code = (nx + 1) * (ny + 1) * (nz + 1) - 1
-        code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
-        point_strides = (nx + 1, ny + 1)
-        cell_stride_x, cell_stride_y = nx, ny
+@njit(cache=True, fastmath=False)
+def _write_face_ring(
+    rings: np.ndarray,
+    row: int,
+    axis: int,
+    coordinate: int,
+    a0: int,
+    a1: int,
+    b0: int,
+    b1: int,
+    stride: int,
+    positive: bool,
+) -> None:
+    """Encode one axis-aligned face ring with outward orientation into ``rings[row]``.
 
-        level_maps: list[dict[int, int]] = [{} for _ in range(max_level + 1)]
-        for cell_id, (x0, y0, z0, _width, level) in enumerate(leaves):
-            key = int(x0) + cell_stride_x * (int(y0) + cell_stride_y * int(z0))
-            level_maps[int(level)][key] = cell_id
+    Lattice points are coded ``x + stride * (y + stride * z)``. cfMesh
+    reverses a negative face while retaining its first cube vertex. The
+    starting vertex matters to its finite-iteration surface optimizer even
+    though cyclic rotations are topologically equivalent.
+    """
+    if axis == 0:
+        r0 = coordinate + stride * (a0 + stride * b0)
+        r1 = coordinate + stride * (a1 + stride * b0)
+        r2 = coordinate + stride * (a1 + stride * b1)
+        r3 = coordinate + stride * (a0 + stride * b1)
+    elif axis == 1:
+        r0 = a0 + stride * (coordinate + stride * b0)
+        r1 = a0 + stride * (coordinate + stride * b1)
+        r2 = a1 + stride * (coordinate + stride * b1)
+        r3 = a1 + stride * (coordinate + stride * b0)
+    else:
+        r0 = a0 + stride * (b0 + stride * coordinate)
+        r1 = a1 + stride * (b0 + stride * coordinate)
+        r2 = a1 + stride * (b1 + stride * coordinate)
+        r3 = a0 + stride * (b1 + stride * coordinate)
+    rings[row, 0] = r0
+    rings[row, 2] = r2
+    if positive:
+        rings[row, 1] = r1
+        rings[row, 3] = r3
+    else:
+        rings[row, 1] = r3
+        rings[row, 3] = r1
 
-        levels = np.asarray(leaves[:, 4], dtype=np.int8)
 
-        def find_cell(x: int, y: int, z: int) -> int:
-            if x < 0 or y < 0 or z < 0 or x >= nx or y >= ny or z >= nz:
-                return -1
-            for level in range(max_level, -1, -1):
-                width = 2 ** (max_level - level)
-                ox, oy, oz = (x // width) * width, (y // width) * width, (z // width) * width
-                key = ox + cell_stride_x * (oy + cell_stride_y * oz)
-                found = level_maps[level].get(key)
-                if found is not None:
-                    return found
-            return -1
+@njit(cache=True, fastmath=False)
+def _face_neighbours(
+    lookup: dict,
+    axis: int,
+    coordinate: int,
+    a0: int,
+    b0: int,
+    width: int,
+    max_level: int,
+    found: np.ndarray,
+) -> int:
+    """Distinct leaves across a face, sampled at its quarter points; their count.
 
-        # A conforming Cartesian volume has about three internal faces per
-        # cell.  The allowance covers 2:1 transition subfaces without building
-        # millions of Python tuples.
-        capacity = max(16, int(math.ceil(3.35 * n_cells)))
-        interior_codes = np.empty((capacity, 4), dtype=code_dtype)
-        interior_owners = np.empty(capacity, dtype=np.int32)
-        interior_neighbours = np.empty(capacity, dtype=np.int32)
-        n_interior = 0
+    The leaves are stored in ``found`` in sampling order.
+    """
+    count = 0
+    samples = 1 if width == 1 else 2
+    for i in range(samples):
+        a = a0 if width == 1 else (a0 + width // 4 if i == 0 else a0 + (3 * width) // 4)
+        for j in range(samples):
+            b = b0 if width == 1 else (b0 + width // 4 if j == 0 else b0 + (3 * width) // 4)
+            if axis == 0:
+                leaf = _find_leaf(lookup, coordinate, a, b, max_level, max_level)
+            elif axis == 1:
+                leaf = _find_leaf(lookup, a, coordinate, b, max_level, max_level)
+            else:
+                leaf = _find_leaf(lookup, a, b, coordinate, max_level, max_level)
+            if leaf < 0:
+                continue
+            duplicate = False
+            for k in range(count):
+                if found[k] == leaf:
+                    duplicate = True
+            if not duplicate:
+                found[count] = leaf
+                count += 1
+    return count
 
-        boundary_names = (
-            (self.merge_outer_patch, *self.preserve_outer_patches)
-            if self.merge_outer_patch
-            else OUTER_PATCH_NAMES
+
+@njit(cache=True, fastmath=False)
+def _face_frame(
+    x0: int, y0: int, z0: int, width: int, axis: int
+) -> tuple[int, int, int, int, int, int]:
+    """Lower and upper face coordinates along ``axis`` and the tangential extents."""
+    if axis == 0:
+        return x0, x0 + width, y0, y0 + width, z0, z0 + width
+    if axis == 1:
+        return y0, y0 + width, x0, x0 + width, z0, z0 + width
+    return z0, z0 + width, x0, x0 + width, y0, y0 + width
+
+
+@njit(cache=True, fastmath=False)
+def _grown(array: np.ndarray) -> np.ndarray:
+    """A copy of ``array`` with more rows."""
+    result = np.empty((2 * len(array) + 16,) + array.shape[1:], dtype=array.dtype)
+    result[: len(array)] = array
+    return result
+
+
+@njit(cache=True, fastmath=False)
+def _template_faces_kernel(
+    leaves: np.ndarray, max_level: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Interior and boundary faces of the fluid leaves, in cfMesh's visiting order.
+
+    Each leaf visits its xmin, xmax, ymin, ymax, zmin, zmax sides. A side with
+    no fluid leaf across is a boundary face; the upper side of a leaf gives an
+    interior face towards every leaf across, in increasing leaf order, each
+    clipped to the smaller of the two leaves. The last array names the first
+    leaf pair more than one level apart, or holds -1.
+    """
+    n_cells = len(leaves)
+    lookup = {(leaves[i, 4], leaves[i, 0], leaves[i, 1], leaves[i, 2]): i for i in range(n_cells)}
+    stride = (1 << max_level) + 1
+    interior = np.empty((4 * n_cells + 16, 4), dtype=np.int64)
+    owners = np.empty(len(interior), dtype=np.int64)
+    neighbours = np.empty(len(interior), dtype=np.int64)
+    boundary = np.empty((n_cells + 16, 4), dtype=np.int64)
+    boundary_owners = np.empty(len(boundary), dtype=np.int64)
+    unbalanced = np.full(2, -1, dtype=np.int64)
+    found = np.empty(4, dtype=np.int64)
+    n_interior = 0
+    n_boundary = 0
+    for owner in range(n_cells):
+        x0, y0, z0, width, level = leaves[owner, :5]
+        for axis in range(3):
+            lower, upper, a0, a1, b0, b1 = _face_frame(x0, y0, z0, width, axis)
+            if _face_neighbours(lookup, axis, lower - 1, a0, b0, width, max_level, found) == 0:
+                if n_boundary == len(boundary):
+                    boundary = _grown(boundary)
+                    boundary_owners = _grown(boundary_owners)
+                _write_face_ring(boundary, n_boundary, axis, lower, a0, a1, b0, b1, stride, False)
+                boundary_owners[n_boundary] = owner
+                n_boundary += 1
+            count = _face_neighbours(lookup, axis, upper, a0, b0, width, max_level, found)
+            if count == 0:
+                if n_boundary == len(boundary):
+                    boundary = _grown(boundary)
+                    boundary_owners = _grown(boundary_owners)
+                _write_face_ring(boundary, n_boundary, axis, upper, a0, a1, b0, b1, stride, True)
+                boundary_owners[n_boundary] = owner
+                n_boundary += 1
+                continue
+            ordered = np.sort(found[:count])
+            for neighbour in ordered:
+                nx0, ny0, nz0, n_width, n_level = leaves[neighbour, :5]
+                if abs(level - n_level) > 1:
+                    unbalanced[0] = owner
+                    unbalanced[1] = neighbour
+                    return (
+                        interior[:n_interior],
+                        owners[:n_interior],
+                        neighbours[:n_interior],
+                        boundary[:n_boundary],
+                        boundary_owners[:n_boundary],
+                        unbalanced,
+                    )
+                _n_lower, _n_upper, c0, c1, d0, d1 = _face_frame(nx0, ny0, nz0, n_width, axis)
+                if n_interior == len(interior):
+                    interior = _grown(interior)
+                    owners = _grown(owners)
+                    neighbours = _grown(neighbours)
+                _write_face_ring(
+                    interior,
+                    n_interior,
+                    axis,
+                    upper,
+                    max(a0, c0),
+                    min(a1, c1),
+                    max(b0, d0),
+                    min(b1, d1),
+                    stride,
+                    True,
+                )
+                owners[n_interior] = owner
+                neighbours[n_interior] = neighbour
+                n_interior += 1
+    return (
+        interior[:n_interior],
+        owners[:n_interior],
+        neighbours[:n_interior],
+        boundary[:n_boundary],
+        boundary_owners[:n_boundary],
+        unbalanced,
+    )
+
+
+def _extract_topology(
+    leaves: np.ndarray, max_level: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[BoundaryPatchData], np.ndarray]:
+    """Native faces of the already-classified fluid leaves.
+
+    cfMesh extracts the template in its root cube, not the requested fluid
+    box: its outer sides and the faces towards excluded surface leaves all
+    form the one temporary ``defaultFaces`` patch.
+    """
+    limit = 2**max_level
+    max_point_code = (limit + 1) ** 3 - 1
+    code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
+    records = np.ascontiguousarray(leaves, dtype=np.int64)
+    interior, owners, neighbours, boundary_faces, boundary_owners, unbalanced = (
+        _template_faces_kernel(records, max_level)
+    )
+    if unbalanced[0] >= 0:
+        owner, neighbour = (int(value) for value in unbalanced)
+        raise RuntimeError(
+            "Refinement transition is not 2:1 balanced between cells "
+            f"{owner} (level {int(records[owner, 4])}) and {neighbour} "
+            f"(level {int(records[neighbour, 4])})"
         )
-        patch_codes: dict[str, list[tuple[int, int, int, int]]] = {
-            name: [] for name in boundary_names
+    boundary: list[BoundaryPatchData] = [
+        {
+            "name": "defaultFaces",
+            "start_face": len(interior),
+            "n_faces": len(boundary_faces),
+            "type": "patch",
         }
-        patch_owners: dict[str, list[int]] = {name: [] for name in boundary_names}
-        if self.surface is not None:
-            patch_codes[self.wall_patch_name] = []
-            patch_owners[self.wall_patch_name] = []
+    ]
+    return (
+        np.ascontiguousarray(np.vstack((interior, boundary_faces)), dtype=code_dtype),
+        np.ascontiguousarray(np.concatenate((owners, boundary_owners)), dtype=np.int32),
+        np.ascontiguousarray(neighbours, dtype=np.int32),
+        boundary,
+        np.asarray(records[:, 4], dtype=np.int8),
+    )
 
-        def grow() -> None:
-            nonlocal capacity, interior_codes, interior_owners, interior_neighbours
-            new_capacity = int(capacity * 1.35) + 1
-            new_codes = np.empty((new_capacity, 4), dtype=code_dtype)
-            new_codes[:capacity] = interior_codes
-            interior_codes = new_codes
-            new_owners = np.empty(new_capacity, dtype=np.int32)
-            new_owners[:capacity] = interior_owners
-            interior_owners = new_owners
-            new_neighbours = np.empty(new_capacity, dtype=np.int32)
-            new_neighbours[:capacity] = interior_neighbours
-            interior_neighbours = new_neighbours
-            capacity = new_capacity
 
-        def emit_interior(
-            owner: int,
-            neighbour: int,
-            axis: int,
-            coordinate: int,
-            a0: int,
-            a1: int,
-            b0: int,
-            b1: int,
-        ) -> None:
-            nonlocal n_interior
-            if n_interior == capacity:
-                grow()
-            interior_codes[n_interior] = self._face_codes(
-                axis, coordinate, a0, a1, b0, b1, point_strides, True
-            )
-            interior_owners[n_interior] = owner
-            interior_neighbours[n_interior] = neighbour
-            n_interior += 1
+@njit(cache=True, fastmath=False)
+def _octree_face_order_kernel(
+    octree_leaves: np.ndarray, max_level: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Faces in the order cfMesh creates them while visiting every octree leaf.
 
-        def patch_for(axis: int, positive: bool, coordinate: int) -> str:
-            limit = limits[axis] if positive else 0
-            if coordinate == limit:
-                outer_name = OUTER_PATCH_NAMES[2 * axis + int(positive)]
-                if outer_name in self.preserve_outer_patches:
-                    return outer_name
-                if self.merge_outer_patch:
-                    return self.merge_outer_patch
-                return outer_name
-            if self.surface is None:
-                raise RuntimeError("Adaptive mesh contains an unexplained internal boundary")
-            return self.wall_patch_name
-
-        def samples(lo: int, width: int) -> tuple[int, ...]:
-            if width == 1:
-                return (lo,)
-            return (lo + width // 4, lo + (3 * width) // 4)
-
-        for owner, (x0v, y0v, z0v, widthv, levelv) in enumerate(leaves):
-            x0, y0, z0, width, level = map(int, (x0v, y0v, z0v, widthv, levelv))
-            x1, y1, z1 = x0 + width, y0 + width, z0 + width
-            origins = (x0, y0, z0)
-            ends = (x1, y1, z1)
-            tangential = ((y0, y1, z0, z1), (x0, x1, z0, z1), (x0, x1, y0, y1))
-
-            for axis in range(3):
-                a0, a1, b0, b1 = tangential[axis]
-                # cfMesh visits cube faces in xmin, xmax, ymin, ymax, zmin,
-                # zmax order.  Preserve that order because its surface
-                # optimizer builds each local simplex from face insertion
-                # order and intentionally stops at a finite tolerance.
-                query = [x0, y0, z0]
-                query[axis] = origins[axis] - 1
-                negative_neighbours: set[int] = set()
-                for a in samples(a0, width):
-                    for b in samples(b0, width):
-                        if axis == 0:
-                            candidate = find_cell(query[0], a, b)
-                        elif axis == 1:
-                            candidate = find_cell(a, query[1], b)
-                        else:
-                            candidate = find_cell(a, b, query[2])
-                        if candidate >= 0:
-                            negative_neighbours.add(candidate)
-                if not negative_neighbours:
-                    name = patch_for(axis, False, origins[axis])
-                    patch_codes[name].append(
-                        self._face_codes(axis, origins[axis], a0, a1, b0, b1, point_strides, False)
-                    )
-                    patch_owners[name].append(owner)
-
-                query = [x0, y0, z0]
-                query[axis] = ends[axis]
-                neighbour_ids: set[int] = set()
-                for a in samples(a0, width):
-                    for b in samples(b0, width):
-                        if axis == 0:
-                            candidate = find_cell(query[0], a, b)
-                        elif axis == 1:
-                            candidate = find_cell(a, query[1], b)
-                        else:
-                            candidate = find_cell(a, b, query[2])
-                        if candidate >= 0:
-                            neighbour_ids.add(candidate)
-
-                if neighbour_ids:
-                    for neighbour in sorted(neighbour_ids):
-                        nx0, ny0, nz0, nw, neighbour_level = map(int, leaves[neighbour])
-                        if abs(level - neighbour_level) > 1:
-                            raise RuntimeError(
-                                "Refinement transition is not 2:1 balanced between cells "
-                                f"{owner} (level {level}) and {neighbour} "
-                                f"(level {neighbour_level})"
-                            )
-                        if axis == 0:
-                            emit_interior(
-                                owner,
-                                neighbour,
-                                axis,
-                                x1,
-                                max(y0, ny0),
-                                min(y1, ny0 + nw),
-                                max(z0, nz0),
-                                min(z1, nz0 + nw),
-                            )
-                        elif axis == 1:
-                            emit_interior(
-                                owner,
-                                neighbour,
-                                axis,
-                                y1,
-                                max(x0, nx0),
-                                min(x1, nx0 + nw),
-                                max(z0, nz0),
-                                min(z1, nz0 + nw),
-                            )
-                        else:
-                            emit_interior(
-                                owner,
-                                neighbour,
-                                axis,
-                                z1,
-                                max(x0, nx0),
-                                min(x1, nx0 + nw),
-                                max(y0, ny0),
-                                min(y1, ny0 + nw),
-                            )
+    A face is created across a side with exactly one leaf of the same or a
+    coarser level: between two fluid leaves once, and between a fluid leaf
+    and a finer or equal surface-data leaf as a boundary face. Returns the
+    sorted vertex codes of each face, whether it is internal, its one or two
+    fluid cells (else -1), and the leaves that own octree vertices: every
+    fluid leaf and every leaf across one of its sides.
+    """
+    n_leaves = len(octree_leaves)
+    lookup = {
+        (octree_leaves[i, 4], octree_leaves[i, 0], octree_leaves[i, 1], octree_leaves[i, 2]): i
+        for i in range(n_leaves)
+    }
+    cell_ids = np.full(n_leaves, -1, dtype=np.int64)
+    next_cell = 0
+    for leaf_id in range(n_leaves):
+        if octree_leaves[leaf_id, 5] == 1:
+            cell_ids[leaf_id] = next_cell
+            next_cell += 1
+    participating = octree_leaves[:, 5] == 1
+    stride = (1 << max_level) + 1
+    signatures = np.empty((3 * n_leaves + 16, 4), dtype=np.int64)
+    internal = np.empty(len(signatures), dtype=np.bool_)
+    attached = np.empty((len(signatures), 2), dtype=np.int64)
+    ring = np.empty((1, 4), dtype=np.int64)
+    found = np.empty(4, dtype=np.int64)
+    n_faces = 0
+    for leaf_id in range(n_leaves):
+        x0, y0, z0, width, level, kind = octree_leaves[leaf_id]
+        for axis in range(3):
+            lower, upper, a0, a1, b0, b1 = _face_frame(x0, y0, z0, width, axis)
+            for positive in (False, True):
+                query = upper if positive else lower - 1
+                count = _face_neighbours(lookup, axis, query, a0, b0, width, max_level, found)
+                if kind == 1:
+                    for k in range(count):
+                        participating[found[k]] = True
+                if count != 1:
+                    continue
+                neighbour = found[0]
+                neighbour_level = octree_leaves[neighbour, 4]
+                neighbour_kind = octree_leaves[neighbour, 5]
+                emitted_boundary = (kind == 1 and neighbour_kind == 2) or (
+                    kind == 2 and neighbour_kind == 1 and neighbour_level < level
+                )
+                emitted_internal = (
+                    kind == 1
+                    and neighbour_kind == 1
+                    and (neighbour > leaf_id or neighbour_level < level)
+                )
+                if not emitted_boundary and not emitted_internal:
+                    continue
+                if n_faces == len(signatures):
+                    signatures = _grown(signatures)
+                    internal = _grown(internal)
+                    attached = _grown(attached)
+                coordinate = upper if positive else lower
+                _write_face_ring(ring, 0, axis, coordinate, a0, a1, b0, b1, stride, positive)
+                signatures[n_faces] = np.sort(ring[0])
+                internal[n_faces] = emitted_internal
+                if emitted_internal:
+                    attached[n_faces, 0] = cell_ids[leaf_id]
+                    attached[n_faces, 1] = cell_ids[neighbour]
+                elif kind == 1:
+                    attached[n_faces, 0] = cell_ids[leaf_id]
+                    attached[n_faces, 1] = -1
                 else:
-                    name = patch_for(axis, True, ends[axis])
-                    patch_codes[name].append(
-                        self._face_codes(axis, ends[axis], a0, a1, b0, b1, point_strides, True)
-                    )
-                    patch_owners[name].append(owner)
+                    attached[n_faces, 0] = cell_ids[neighbour]
+                    attached[n_faces, 1] = -1
+                n_faces += 1
+    return signatures[:n_faces], internal[:n_faces], attached[:n_faces], participating
 
-        face_blocks = [interior_codes[:n_interior]]
-        owner_blocks = [interior_owners[:n_interior]]
-        boundary: list[BoundaryPatchData] = []
-        start = n_interior
-        ordered_names = list(boundary_names)
-        if self.surface is not None:
-            ordered_names.append(self.wall_patch_name)
-        ordered_names = list(dict.fromkeys(ordered_names))
-        for name in ordered_names:
-            codes = np.asarray(patch_codes[name], dtype=code_dtype).reshape(-1, 4)
-            owners = np.asarray(patch_owners[name], dtype=np.int32)
-            face_blocks.append(codes)
-            owner_blocks.append(owners)
-            boundary.append(
-                {
-                    "name": name,
-                    "start_face": start,
-                    "n_faces": len(codes),
-                    "type": (self._wall_patch_type if name == self.wall_patch_name else "patch"),
-                }
-            )
-            start += len(codes)
 
-        encoded_faces = np.ascontiguousarray(np.vstack(face_blocks), dtype=code_dtype)
-        owners = np.ascontiguousarray(np.concatenate(owner_blocks), dtype=np.int32)
-        neighbour_array = np.ascontiguousarray(interior_neighbours[:n_interior], dtype=np.int32)
-        return encoded_faces, owners, neighbour_array, boundary, levels
+_QUAD_KEY = np.dtype([(f"vertex_{index}", np.int64) for index in range(4)])
+
+
+def _quad_keys(faces: np.ndarray) -> np.ndarray:
+    """One sortable key per quad, its sorted vertex codes."""
+    return (
+        np.ascontiguousarray(np.sort(np.asarray(faces, dtype=np.int64), axis=1))
+        .view(_QUAD_KEY)
+        .reshape(-1)
+    )
+
+
+def _last_matches(keys: np.ndarray, queries: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Index of the last equal key for each query, and whether there is one."""
+    order = np.argsort(keys, kind="stable")
+    ordered = keys[order]
+    positions = np.searchsorted(ordered, queries, side="right") - 1
+    if not len(ordered):
+        return np.zeros(len(queries), dtype=np.int64), np.zeros(len(queries), dtype=bool)
+    clipped = np.maximum(positions, 0)
+    return order[clipped], (positions >= 0) & (ordered[clipped] == queries)
 
 
 @njit(cache=True)
@@ -496,193 +556,60 @@ def _extract_mesh(
     boundary_level: int,
 ) -> MeshData:
     limits = (2**max_level, 2**max_level, 2**max_level)
-    extractor = _TemplateTopologyExtractor(root_bounds)
-    encoded_faces, owners, neighbours, boundary, levels = extractor._extract_topology(
-        leaves, max_level, limits
-    )
+    encoded_faces, owners, neighbours, boundary, levels = _extract_topology(leaves, max_level)
 
     # cfMesh creates octree faces while visiting every Morton-ordered leaf,
     # including excluded surface-data leaves.  A fine excluded leaf therefore
     # emits the boundary face towards a coarser fluid leaf at its own position
     # in that traversal.  Reproduce that ordering: its finite-iteration
     # surface optimiser constructs local triangle simplexes in face order.
-    level_maps: list[dict[int, int]] = [{} for _ in range(max_level + 1)]
-    cell_stride_x = limits[0]
-    cell_stride_y = limits[1]
-    for leaf_id, (x0, y0, z0, _width, level, _kind) in enumerate(octree_leaves):
-        key = int(x0) + cell_stride_x * (int(y0) + cell_stride_y * int(z0))
-        level_maps[int(level)][key] = leaf_id
-
-    def find_leaf(x: int, y: int, z: int) -> int:
-        if x < 0 or y < 0 or z < 0 or x >= limits[0] or y >= limits[1] or z >= limits[2]:
-            return -1
-        for level in range(max_level, -1, -1):
-            width = 2 ** (max_level - level)
-            origin_x = (x // width) * width
-            origin_y = (y // width) * width
-            origin_z = (z // width) * width
-            key = origin_x + cell_stride_x * (origin_y + cell_stride_y * origin_z)
-            found = level_maps[level].get(key)
-            if found is not None:
-                return found
-        return -1
-
-    def samples(lower: int, width: int) -> tuple[int, ...]:
-        if width == 1:
-            return (lower,)
-        return (lower + width // 4, lower + (3 * width) // 4)
-
-    mesh_cell = 1
-    surface_data_cell = 2
-    leaf_cell_ids = np.full(len(octree_leaves), -1, dtype=np.int32)
-    next_cell_id = 0
-    for leaf_id, record in enumerate(octree_leaves):
-        if int(record[5]) == mesh_cell:
-            leaf_cell_ids[leaf_id] = next_cell_id
-            next_cell_id += 1
-    ordered_octree_faces: list[tuple[tuple[int, int, int, int], bool, tuple[int, ...]]] = []
-    node_leaves = set(map(int, np.flatnonzero(leaf_cell_ids >= 0)))
-    for leaf_id, record in enumerate(octree_leaves):
-        x0, y0, z0, width, level, kind = map(int, record)
-        x1, y1, z1 = x0 + width, y0 + width, z0 + width
-        origins = (x0, y0, z0)
-        ends = (x1, y1, z1)
-        tangential = ((y0, y1, z0, z1), (x0, x1, z0, z1), (x0, x1, y0, y1))
-        for axis in range(3):
-            a0, a1, b0, b1 = tangential[axis]
-            for positive in (False, True):
-                query = [x0, y0, z0]
-                query[axis] = ends[axis] if positive else origins[axis] - 1
-                neighbour_ids: set[int] = set()
-                for a in samples(a0, width):
-                    for b in samples(b0, width):
-                        if axis == 0:
-                            candidate = find_leaf(query[0], a, b)
-                        elif axis == 1:
-                            candidate = find_leaf(a, query[1], b)
-                        else:
-                            candidate = find_leaf(a, b, query[2])
-                        if candidate >= 0:
-                            neighbour_ids.add(candidate)
-                if kind == mesh_cell:
-                    # findUsedBoxes marks face-neighbours BOUNDARY; diagonal
-                    # surface-data neighbours alone have no nodeLabels row.
-                    node_leaves.update(neighbour_ids)
-                if len(neighbour_ids) != 1:
-                    continue
-                neighbour_id = next(iter(neighbour_ids))
-                neighbour_level = int(octree_leaves[neighbour_id, 4])
-                neighbour_kind = int(octree_leaves[neighbour_id, 5])
-                emitted_boundary = kind == mesh_cell and neighbour_kind == surface_data_cell
-                emitted_boundary = emitted_boundary or (
-                    kind == surface_data_cell
-                    and neighbour_kind == mesh_cell
-                    and neighbour_level < level
-                )
-                emitted_internal = (
-                    kind == mesh_cell
-                    and neighbour_kind == mesh_cell
-                    and (neighbour_id > leaf_id or neighbour_level < level)
-                )
-                if not emitted_boundary and not emitted_internal:
-                    continue
-                coordinate = ends[axis] if positive else origins[axis]
-                codes = extractor._face_codes(
-                    axis,
-                    coordinate,
-                    a0,
-                    a1,
-                    b0,
-                    b1,
-                    (limits[0] + 1, limits[1] + 1),
-                    positive,
-                )
-                attached_cells: tuple[int, ...]
-                if emitted_internal:
-                    attached_cells = (
-                        int(leaf_cell_ids[leaf_id]),
-                        int(leaf_cell_ids[neighbour_id]),
-                    )
-                elif kind == mesh_cell:
-                    attached_cells = (int(leaf_cell_ids[leaf_id]),)
-                else:
-                    attached_cells = (int(leaf_cell_ids[neighbour_id]),)
-                ordered_codes = sorted(codes)
-                signature = (
-                    ordered_codes[0],
-                    ordered_codes[1],
-                    ordered_codes[2],
-                    ordered_codes[3],
-                )
-                ordered_octree_faces.append((signature, emitted_internal, attached_cells))
+    signatures, internal, attached, participating = _octree_face_order_kernel(
+        np.ascontiguousarray(octree_leaves, dtype=np.int64), max_level
+    )
 
     # ``reorderBoundaryFaces`` swaps misplaced boundary and internal faces in
     # pairs; it is intentionally not a stable partition.  Simulating those
     # swaps recovers the boundary order seen by all later cfMesh stages.
-    expected_internal = len(neighbours)
-    reordered_octree_faces = ordered_octree_faces.copy()
-    internal_to_change = [
-        face_id
-        for face_id, (_key, internal, _cells) in enumerate(
-            reordered_octree_faces[:expected_internal]
-        )
-        if not internal
-    ]
-    boundary_to_change = [
-        face_id
-        for face_id, (_key, internal, _cells) in enumerate(
-            reordered_octree_faces[expected_internal:], start=expected_internal
-        )
-        if internal
-    ]
+    n_internal = len(neighbours)
+    internal_to_change = np.flatnonzero(~internal[:n_internal])
+    boundary_to_change = n_internal + np.flatnonzero(internal[n_internal:])
     if len(internal_to_change) != len(boundary_to_change):
         raise RuntimeError("cfMesh octree face-order reconstruction is inconsistent")
-    for internal_face, boundary_face in zip(internal_to_change, boundary_to_change, strict=True):
-        reordered_octree_faces[internal_face], reordered_octree_faces[boundary_face] = (
-            reordered_octree_faces[boundary_face],
-            reordered_octree_faces[internal_face],
-        )
-    final_boundary_keys = [
-        key for key, internal, _cells in reordered_octree_faces[expected_internal:] if not internal
-    ]
-    face_order = {key: order for order, key in enumerate(final_boundary_keys)}
-
-    n_internal = len(neighbours)
+    reordered = np.arange(len(signatures))
+    reordered[internal_to_change] = boundary_to_change
+    reordered[boundary_to_change] = internal_to_change
+    final_boundary = reordered[n_internal:]
+    final_boundary = final_boundary[~internal[final_boundary]]
+    # Each boundary signature takes the position of its last occurrence there.
+    face_order_keys = _quad_keys(signatures[final_boundary])
+    face_order_entries = len(np.unique(face_order_keys))
     matched_boundary_order = 0
     if len(encoded_faces) > n_internal:
-        matched_boundary_order = sum(
-            _quad_signature(face) in face_order for face in encoded_faces[n_internal:]
-        )
-        boundary_order = np.asarray(
-            [
-                face_order.get(_quad_signature(face), len(face_order) + face_id)
-                for face_id, face in enumerate(encoded_faces[n_internal:])
-            ],
-            dtype=np.int64,
+        position, matched = _last_matches(face_order_keys, _quad_keys(encoded_faces[n_internal:]))
+        matched_boundary_order = int(np.count_nonzero(matched))
+        boundary_order = np.where(
+            matched, position, face_order_entries + np.arange(len(matched), dtype=np.int64)
         )
         permutation = np.argsort(boundary_order, kind="stable")
         encoded_faces[n_internal:] = encoded_faces[n_internal:][permutation]
         owners[n_internal:] = owners[n_internal:][permutation]
-        del boundary_order, permutation
 
-    face_order_entries = len(face_order)
-    del internal_to_change, boundary_to_change, reordered_octree_faces
-    del final_boundary_keys, face_order
-    cfmesh_cell_face_order: list[list[int]] = [[] for _cell in leaves]
-    face_records: list[tuple[tuple[int, int, int, int], bool, tuple[int, ...]]] = []
-    for chunk_index, face_ids in enumerate(
-        _matching_face_id_chunks(encoded_faces, ordered_octree_faces)
-    ):
-        start = chunk_index * _FACE_LOOKUP_CHUNK_SIZE
-        face_records = ordered_octree_faces[start : start + len(face_ids)]
-        for face_id, (_signature, _internal, attached_cells) in zip(
-            face_ids, face_records, strict=True
-        ):
-            for cell_id in attached_cells:
-                cfmesh_cell_face_order[cell_id].append(int(face_id))
-    del face_records, ordered_octree_faces
-    if any(not face_ids for face_ids in cfmesh_cell_face_order):
+    # Each cell lists its octree faces in creation order; a signature repeated
+    # by several faces names the last of them.
+    face_ids, matched = _last_matches(_quad_keys(encoded_faces), _quad_keys(signatures))
+    if not np.all(matched):
+        raise RuntimeError("cfMesh cell-face ordering references an absent octree face")
+    cells = attached.reshape(-1)
+    cell_faces = np.repeat(face_ids, 2)[cells >= 0]
+    cells = cells[cells >= 0]
+    counts = np.bincount(cells, minlength=len(leaves))
+    if np.any(counts == 0):
         raise RuntimeError("cfMesh cell-face ordering left an empty mesh cell")
+    flat_cell_faces = cell_faces[np.argsort(cells, kind="stable")].tolist()
+    offsets = np.concatenate(([0], np.cumsum(counts))).tolist()
+    cfmesh_cell_face_order = [
+        flat_cell_faces[start:stop] for start, stop in zip(offsets[:-1], offsets[1:], strict=True)
+    ]
 
     sx = limits[0] + 1
     sy = limits[1] + 1
@@ -692,15 +619,14 @@ def _extract_mesh(
     )
     point_codes = np.unique(flat_face_codes)
     flat_face_indices = np.searchsorted(point_codes, flat_face_codes).astype(np.int32)
-    indexed_faces = [
-        flat_face_indices[start:stop]
-        for start, stop in zip(face_offsets[:-1], face_offsets[1:], strict=True)
-    ]
-    face_widths = {len(face) for face in indexed_faces}
+    face_widths = np.diff(face_offsets)
     faces: list[np.ndarray] | np.ndarray = (
-        np.ascontiguousarray(indexed_faces, dtype=np.int32)
-        if len(face_widths) == 1
-        else indexed_faces
+        np.ascontiguousarray(flat_face_indices.reshape(-1, int(face_widths[0])), dtype=np.int32)
+        if len(face_widths) and np.all(face_widths == face_widths[0])
+        else [
+            flat_face_indices[start:stop]
+            for start, stop in zip(face_offsets[:-1], face_offsets[1:], strict=True)
+        ]
     )
     px = point_codes % sx
     yz = point_codes // sx
@@ -717,8 +643,6 @@ def _extract_mesh(
     root_lower = np.asarray(root_bounds[::2], dtype=np.float64)
     root_span = np.asarray(root_bounds[1::2], dtype=np.float64) - root_lower
     vertex_tolerance = 1.0e-15 * root_span
-    participating = np.zeros(len(octree_leaves), dtype=bool)
-    participating[np.fromiter(node_leaves, dtype=np.int64)] = True
     records = np.asarray(octree_leaves, dtype=np.int64)[participating]
     lower_lattice = records[:, :3]
     widths = records[:, 3]
@@ -956,25 +880,19 @@ def build_cfmesh_template(
         progress.details(leaves=len(octree_leaves), maximum_level=max_level)
     if box_refinements or patch_refinements or needs_automatic:
 
-        def classify(x: int, y: int, z: int, width: int, level: int):
-            lower = root_lower + finest_size * np.asarray((x, y, z), dtype=np.float64)
-            upper = root_lower + finest_size * np.asarray(
-                (x + width, y + width, z + width), dtype=np.float64
+        def classify(children: np.ndarray) -> np.ndarray:
+            return _classify_leaves(
+                children,
+                root_lower=root_lower,
+                finest_size=finest_size,
+                domain_lower=domain_lower,
+                domain_upper=domain_upper,
+                surface_indices=surface_indices,
             )
-            if intersects_input_surface(lower, upper):
-                kind = surface_data_cell
-            else:
-                centre = 0.5 * (lower + upper)
-                in_domain = bool(np.all(centre > domain_lower) and np.all(centre < domain_upper))
-                in_object = in_domain and any(
-                    bool(index.is_inside(centre[None, :])[0]) for index in surface_indices
-                )
-                kind = mesh_cell if in_domain and not in_object else other_cell
-            return (x, y, z, width, level, kind)
 
         with mesh_stage("octree balancing") as progress:
-            octree_leaves = balance_leaves(octree_leaves, max_level, classify)
-            progress.details(leaves=len(octree_leaves))
+            records = balance_leaves(octree_leaves, max_level, classify)
+            progress.details(leaves=len(records))
         automatic_diagnostics: dict[str, list[int]] = {}
         if needs_automatic:
             groups: dict[str, list[np.ndarray]] = defaultdict(list)
@@ -992,8 +910,8 @@ def build_cfmesh_template(
                 _cfmesh_nearest_points_on_triangles,
             )
             with mesh_stage("automatic surface refinement") as progress:
-                octree_leaves, automatic_diagnostics = automatic_refinement(
-                    octree_leaves,
+                records, automatic_diagnostics = automatic_refinement(
+                    records,
                     automatic_surface,
                     root_lower=root_lower,
                     root_size=root_size,
@@ -1001,10 +919,10 @@ def build_cfmesh_template(
                     automatic_level=automatic_level,
                     classify=classify,
                 )
-                progress.details(leaves=len(octree_leaves))
+                progress.details(leaves=len(records))
         with mesh_stage("object refinement") as progress:
-            octree_leaves = refine_objects(
-                octree_leaves,
+            records = refine_objects(
+                records,
                 box_refinements,
                 root_lower=root_lower,
                 root_size=root_size,
@@ -1014,19 +932,19 @@ def build_cfmesh_template(
                 exact_cell_sizes=exact_cell_sizes,
                 classify=classify,
             )
-            progress.details(leaves=len(octree_leaves))
+            progress.details(leaves=len(records))
         with mesh_stage("near-surface refinement") as progress:
-            octree_leaves, near_data_refined = refine_near_data(octree_leaves, max_level, classify)
-            progress.details(leaves=len(octree_leaves), refined=near_data_refined)
-        leaves = [record[:5] for record in octree_leaves if record[5] == mesh_cell]
-        if not leaves:
+            records, near_data_refined = refine_near_data(records, max_level, classify)
+            progress.details(leaves=len(records), refined=near_data_refined)
+        leaves = records[records[:, 5] == mesh_cell, :5]
+        if not len(leaves):
             raise ValueError("cfMesh template classification removed every fluid leaf")
         with mesh_stage("template topology extraction") as progress:
             mesh_data = _extract_mesh(
                 root_bounds,
                 root_size,
                 np.ascontiguousarray(leaves, dtype=np.int32),
-                np.ascontiguousarray(octree_leaves, dtype=np.int32),
+                np.ascontiguousarray(records, dtype=np.int32),
                 max_level,
                 global_level,
                 boundary_level,
@@ -1036,7 +954,7 @@ def build_cfmesh_template(
                 faces=mesh_data.get("n_faces"),
                 points=mesh_data.get("n_points"),
             )
-        mesh_data["_cfmesh_octree_leaves"] = np.ascontiguousarray(octree_leaves, dtype=np.int32)
+        mesh_data["_cfmesh_octree_leaves"] = np.ascontiguousarray(records, dtype=np.int32)
         mesh_data["mesh_generation"]["near_data_coarse_leaves_refined"] = near_data_refined
         mesh_data["mesh_generation"]["automatic_refinement"] = automatic_diagnostics
         mesh_data["mesh_generation"]["surface_patch_refinement_levels"] = dict(patch_levels)

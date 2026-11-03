@@ -9,7 +9,7 @@ of geometric primitive names: all decisions use the supplied triangles.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from itertools import combinations
 
 import numpy as np
@@ -17,7 +17,13 @@ import numpy as np
 from openonda.core._numba import cacheable_njit as njit
 
 from ..surface_classification import SurfaceIndex, triangle_box_overlap
-from .cfmesh_octree import Leaf, LeafLookup, refine_selected_leaves
+from .cfmesh_octree import (
+    Leaf,
+    LeafClassifier,
+    LeafLookup,
+    leaf_records,
+    refine_selected_leaves,
+)
 
 
 @njit(cache=True)
@@ -468,16 +474,17 @@ class AutomaticSurface:
 
 
 def automatic_refinement(
-    leaves: list[Leaf],
+    leaves: Sequence[Leaf] | np.ndarray,
     surface: AutomaticSurface,
     *,
     root_lower: np.ndarray,
     root_size: float,
     max_level: int,
     automatic_level: int,
-    classify: Callable[[int, int, int, int, int], Leaf],
-) -> tuple[list[Leaf], dict[str, list[int]]]:
+    classify: LeafClassifier,
+) -> tuple[np.ndarray, dict[str, list[int]]]:
     """Apply curvature, corners, partitions, proximity, each with one extra layer."""
+    leaves = leaf_records(leaves)
     finest = root_size / 2**max_level
     tolerance = 1.0e-15 * root_size
     diagnostics: dict[str, list[int]] = {}
@@ -501,10 +508,10 @@ def automatic_refinement(
                         selected.add(leaf_id)
                     else:
                         corner_in_leaf[leaf_id] = point_id
-            for leaf_id, leaf in enumerate(leaves):
-                x, y, z, width, level, kind = leaf
-                if level >= automatic_level or kind != 2:
-                    continue
+            candidates = np.flatnonzero((leaves[:, 4] < automatic_level) & (leaves[:, 5] == 2))
+            for leaf_id_value in candidates:
+                leaf_id = int(leaf_id_value)
+                x, y, z, width, level, kind = map(int, leaves[leaf_id])
                 lower = root_lower + finest * np.asarray((x, y, z))
                 size = width * finest
                 upper = lower + size
@@ -544,7 +551,7 @@ def automatic_refinement(
             additional: set[int] = set()
             for leaf_id in selected:
                 leaf = leaves[leaf_id]
-                origin = np.asarray(leaf[:3])
+                origin = leaf[:3]
                 additional.update(map(int, lookup.in_box(origin - 1, origin + leaf[3])))
             selected.update(additional)
             leaves = refine_selected_leaves(leaves, selected, max_level, classify)

@@ -8,7 +8,7 @@ coarser face, edge and corner neighbours before splitting any selected leaf.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from itertools import product
 
 import numpy as np
@@ -19,7 +19,16 @@ from ..progress import mesh_event
 from .config import BoxRefinement
 
 Leaf = tuple[int, int, int, int, int, int]
+# Classifies new leaves: rows (x, y, z, width, level) to rows with their kind
+LeafClassifier = Callable[[np.ndarray], np.ndarray]
 _NEIGHBOURS = tuple(offset for offset in product((-1, 0, 1), repeat=3) if any(offset))
+# Child corner offsets in cfMesh's z, y, x nesting order, x fastest
+_CHILD_CORNERS = (np.arange(8)[:, None] >> np.arange(3)) & 1
+
+
+def leaf_records(leaves: Sequence[Leaf] | np.ndarray) -> np.ndarray:
+    """Leaves as contiguous int64 rows ``(x, y, z, width, level, kind)``."""
+    return np.ascontiguousarray(np.asarray(leaves, dtype=np.int64).reshape(-1, 6))
 
 
 def object_additional_level(max_cell_size: float, requested: float) -> int:
@@ -113,42 +122,116 @@ class LeafLookup:
         return np.asarray(result, dtype=np.int64)
 
 
-def refine_selected_leaves(
-    leaves: list[Leaf],
-    selected: set[int],
-    max_level: int,
-    classify: Callable[[int, int, int, int, int], Leaf],
-) -> list[Leaf]:
-    """Ensure 1-irregularity, split selected leaves, retain Morton order."""
-    if not selected:
-        return leaves
-    lookup = LeafLookup(leaves, max_level)
-    front = list(selected)
-    while front:
+@njit(cache=True, fastmath=False)
+def _find_leaf(lookup: dict, x: int, y: int, z: int, level: int, max_level: int) -> int:
+    """Leaf of ``level`` or coarser containing lattice cell ``(x, y, z)``, else -1."""
+    if min(x, y, z) < 0 or max(x, y, z) >= 1 << max_level:
+        return -1
+    for current in range(level, -1, -1):
+        width = 1 << (max_level - current)
+        key = (current, (x // width) * width, (y // width) * width, (z // width) * width)
+        if key in lookup:
+            return lookup[key]
+    return -1
+
+
+@njit(cache=True, fastmath=False)
+def _regularity_closure_kernel(
+    leaves: np.ndarray, selected: np.ndarray, max_level: int
+) -> np.ndarray:
+    """Add every coarser face, edge and corner neighbour of a selected leaf, recursively.
+
+    The closure is a reachability set, so it does not depend on visit order.
+    """
+    lookup = {(row[4], row[0], row[1], row[2]): index for index, row in enumerate(leaves)}
+    closed = selected.copy()
+    front = list(np.flatnonzero(closed))
+    while len(front) > 0:
         leaf_id = front.pop()
-        leaf = leaves[leaf_id]
-        for neighbour in lookup.neighbours(leaf):
-            if leaves[neighbour][4] < leaf[4] and neighbour not in selected:
-                selected.add(neighbour)
-                front.append(neighbour)
-    refined: list[Leaf] = []
-    for leaf_id, leaf in enumerate(leaves):
-        if leaf_id not in selected:
-            refined.append(leaf)
-            continue
-        x, y, z, width, level, _kind = leaf
-        child = width // 2
-        if child < 1:
-            raise ValueError("cfMesh refinement exceeded the configured finest lattice")
-        for dz in (0, child):
-            for dy in (0, child):
-                for dx in (0, child):
-                    refined.append(classify(x + dx, y + dy, z + dz, child, level + 1))
+        x, y, z, width, level = leaves[leaf_id, :5]
+        for dz in range(-1, 2):
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dx == 0 and dy == 0 and dz == 0:
+                        continue
+                    neighbour = _find_leaf(
+                        lookup, x + dx * width, y + dy * width, z + dz * width, level, max_level
+                    )
+                    if neighbour >= 0 and leaves[neighbour, 4] < level and not closed[neighbour]:
+                        closed[neighbour] = True
+                        front.append(neighbour)
+    return closed
+
+
+def refine_selected_leaves(
+    leaves: Sequence[Leaf] | np.ndarray,
+    selected: Collection[int] | np.ndarray,
+    max_level: int,
+    classify: LeafClassifier,
+) -> np.ndarray:
+    """Ensure 1-irregularity, split selected leaves, retain Morton order."""
+    records = leaf_records(leaves)
+    if not len(selected):
+        return records
+    mask = np.zeros(len(records), dtype=np.bool_)
+    mask[np.fromiter(selected, dtype=np.int64, count=len(selected))] = True
+    mask = _regularity_closure_kernel(records, mask, max_level)
+    parents = records[mask]
+    child = parents[:, 3] // 2
+    if np.any(child < 1):
+        raise ValueError("cfMesh refinement exceeded the configured finest lattice")
+    children = np.empty((len(parents), 8, 5), dtype=np.int64)
+    children[:, :, :3] = parents[:, None, :3] + _CHILD_CORNERS[None] * child[:, None, None]
+    children[:, :, 3] = child[:, None]
+    children[:, :, 4] = parents[:, None, 4] + 1
+    # Each leaf keeps its position, a split leaf giving way to its 8 children.
+    counts = np.where(mask, 8, 1)
+    starts = np.cumsum(counts) - counts
+    refined = np.empty((int(counts.sum()), 6), dtype=np.int64)
+    refined[starts[~mask]] = records[~mask]
+    refined[(starts[mask][:, None] + np.arange(8)).ravel()] = classify(children.reshape(-1, 5))
     return refined
 
 
+@njit(cache=True, fastmath=False)
+def _object_selection_kernel(
+    leaves: np.ndarray,
+    root_lower: np.ndarray,
+    finest: float,
+    tolerance: float,
+    lows: np.ndarray,
+    highs: np.ndarray,
+    targets: np.ndarray,
+) -> np.ndarray:
+    """Non-outside leaves below the level of a box they touch, closed bounds."""
+    selected = np.zeros(len(leaves), dtype=np.bool_)
+    for leaf_id in range(len(leaves)):
+        x, y, z, width, level, kind = leaves[leaf_id]
+        if kind == 0:
+            continue
+        lower_x = root_lower[0] + finest * x - tolerance
+        lower_y = root_lower[1] + finest * y - tolerance
+        lower_z = root_lower[2] + finest * z - tolerance
+        upper_x = root_lower[0] + finest * (x + width) + tolerance
+        upper_y = root_lower[1] + finest * (y + width) + tolerance
+        upper_z = root_lower[2] + finest * (z + width) + tolerance
+        for control in range(len(targets)):
+            if (
+                level < targets[control]
+                and lower_x <= highs[control, 0]
+                and lower_y <= highs[control, 1]
+                and lower_z <= highs[control, 2]
+                and upper_x >= lows[control, 0]
+                and upper_y >= lows[control, 1]
+                and upper_z >= lows[control, 2]
+            ):
+                selected[leaf_id] = True
+                break
+    return selected
+
+
 def refine_objects(
-    leaves: list[Leaf],
+    leaves: Sequence[Leaf] | np.ndarray,
     requests: Sequence[BoxRefinement],
     *,
     root_lower: np.ndarray,
@@ -157,44 +240,43 @@ def refine_objects(
     global_level: int,
     max_level: int,
     exact_cell_sizes: bool,
-    classify: Callable[[int, int, int, int, int], Leaf],
-) -> list[Leaf]:
+    classify: LeafClassifier,
+) -> np.ndarray:
     """Apply box refinement using strict cfMesh or exact lattice levels."""
     finest = root_size / (2**max_level)
     tolerance = 1.0e-15 * root_size
     level_for_size = _inclusive_additional_level if exact_cell_sizes else object_additional_level
-    controls = [
-        (
-            np.asarray(request.bounds[::2]),
-            np.asarray(request.bounds[1::2]),
-            global_level + level_for_size(max_cell_size, request.cell_size),
-        )
-        for request in requests
-    ]
+    lows = np.asarray([request.bounds[::2] for request in requests], dtype=np.float64)
+    highs = np.asarray([request.bounds[1::2] for request in requests], dtype=np.float64)
+    targets = np.asarray(
+        [global_level + level_for_size(max_cell_size, request.cell_size) for request in requests],
+        dtype=np.int64,
+    )
+    records = leaf_records(leaves)
+    root_lower = np.asarray(root_lower, dtype=np.float64)
     pass_number = 0
     while True:
         pass_number += 1
-        selected: set[int] = set()
-        for leaf_id, leaf in enumerate(leaves):
-            x, y, z, width, level, kind = leaf
-            if kind == 0:
-                continue
-            lower = root_lower + finest * np.asarray((x, y, z)) - tolerance
-            upper = root_lower + finest * (np.asarray((x, y, z)) + width) + tolerance
-            if any(
-                level < target and np.all(lower <= high) and np.all(upper >= low)
-                for low, high, target in controls
-            ):
-                selected.add(leaf_id)
+        selected = np.flatnonzero(
+            _object_selection_kernel(
+                records,
+                root_lower,
+                finest,
+                tolerance,
+                lows.reshape(-1, 3),
+                highs.reshape(-1, 3),
+                targets,
+            )
+        )
         mesh_event(
             "object refinement pass",
             pass_number=pass_number,
-            leaves=len(leaves),
+            leaves=len(records),
             selected=len(selected),
         )
-        if not selected:
-            return leaves
-        leaves = refine_selected_leaves(leaves, selected, max_level, classify)
+        if not len(selected):
+            return records
+        records = refine_selected_leaves(records, selected, max_level, classify)
 
 
 def _inclusive_additional_level(max_cell_size: float, requested: float) -> int:
@@ -244,41 +326,59 @@ def _balance_selection_kernel(leaves: np.ndarray, max_level: int) -> np.ndarray:
 
 
 def balance_leaves(
-    leaves: list[Leaf],
+    leaves: Sequence[Leaf] | np.ndarray,
     max_level: int,
-    classify: Callable[[int, int, int, int, int], Leaf],
-) -> list[Leaf]:
+    classify: LeafClassifier,
+) -> np.ndarray:
     """Close 2:1 gaps with a cached, CPU-compiled neighbour scan."""
+    records = leaf_records(leaves)
     pass_number = 0
     while True:
         pass_number += 1
-        records = np.asarray(leaves, dtype=np.int64).reshape(-1, 6)
-        selected = set(map(int, _balance_selection_kernel(records, max_level)))
+        selected = _balance_selection_kernel(records, max_level)
         mesh_event(
             "octree balance pass",
             pass_number=pass_number,
-            leaves=len(leaves),
+            leaves=len(records),
             selected=len(selected),
         )
-        if not selected:
-            return leaves
-        leaves = refine_selected_leaves(leaves, selected, max_level, classify)
+        if not len(selected):
+            return records
+        records = refine_selected_leaves(records, selected, max_level, classify)
+
+
+@njit(cache=True, fastmath=False)
+def _near_data_selection_kernel(leaves: np.ndarray, max_level: int) -> np.ndarray:
+    """Non-outside same-level-or-coarser neighbours, of another level, of every DATA leaf."""
+    lookup = {(row[4], row[0], row[1], row[2]): index for index, row in enumerate(leaves)}
+    selected = np.zeros(len(leaves), dtype=np.bool_)
+    for leaf_id in range(len(leaves)):
+        x, y, z, width, level, kind = leaves[leaf_id]
+        if kind != 2:
+            continue
+        for dz in range(-1, 2):
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dx == 0 and dy == 0 and dz == 0:
+                        continue
+                    neighbour = _find_leaf(
+                        lookup, x + dx * width, y + dy * width, z + dz * width, level, max_level
+                    )
+                    if (
+                        neighbour >= 0
+                        and leaves[neighbour, 5] != 0
+                        and leaves[neighbour, 4] != level
+                    ):
+                        selected[neighbour] = True
+    return selected
 
 
 def refine_near_data(
-    leaves: list[Leaf],
+    leaves: Sequence[Leaf] | np.ndarray,
     max_level: int,
-    classify: Callable[[int, int, int, int, int], Leaf],
-) -> tuple[list[Leaf], int]:
+    classify: LeafClassifier,
+) -> tuple[np.ndarray, int]:
     """One native near-DATA layer, followed by the regularity closure."""
-    lookup = LeafLookup(leaves, max_level)
-    selected: set[int] = set()
-    for leaf in leaves:
-        if leaf[5] != 2:
-            continue
-        for neighbour in lookup.neighbours(leaf):
-            candidate = leaves[neighbour]
-            if candidate[5] != 0 and candidate[4] != leaf[4]:
-                selected.add(neighbour)
-    requested_count = len(selected)
-    return refine_selected_leaves(leaves, selected, max_level, classify), requested_count
+    records = leaf_records(leaves)
+    selected = np.flatnonzero(_near_data_selection_kernel(records, max_level))
+    return refine_selected_leaves(records, selected, max_level, classify), len(selected)
