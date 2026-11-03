@@ -490,6 +490,16 @@ class CoupledSolver:
         vpm = self.vpm_solver
         transfer = self.vorticity_transfer
         boundary = transfer.solid_boundary
+        viscous = vpm.numerics.viscous
+        if (
+            boundary is not None
+            and viscous.scheme == "gbd"
+            and viscous.gbd_remeshing_kernel != "m4_prime"
+        ):
+            raise ValueError(
+                "GBD next to the FVM walls needs gbd_remeshing_kernel='m4_prime' "
+                f"(got {viscous.gbd_remeshing_kernel!r})"
+            )
         if boundary is not None and self.frame.rotates:
             self._place_vpm_walls(self.frame.pose_after(np.array([])), self.fvm_solver.time)
         elif boundary is not None:

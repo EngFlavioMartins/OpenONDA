@@ -1,10 +1,5 @@
 """
-VLM diagnostics module — recording and CSV export of force/vector-strength history.
-
-Owns all logic for:
-  - Appending per-step VLM scalars to the solver diagnostics history dict.
-  - Writing vlm_forces.csv.
-  - Appending time / observed_time_step_size history entries.
+VLM diagnostics module — per-step VLM loads and vector strengths in vlm_forces.csv.
 
 Nothing in this module should import from the top-level VPM Solver class; all
 required data is passed in explicitly so the solver itself stays a thin
@@ -27,33 +22,10 @@ class VLMDiagnostics:
     """Static helpers for recording VLM diagnostics and writing CSV output."""
 
     @staticmethod
-    def record_time(diagnostics_history: dict, time: float, observed_time_step_size: float) -> None:
-        """Append *time* and *observed_time_step_size* to diagnostics history.
-
-        Parameters
-        ----------
-        diagnostics_history:
-            The solver's ``_diagnostics_history`` dict (mutated in-place).
-        time:
-            Current simulation time [s].
-        observed_time_step_size:
-            Wall-clock or physical output interval observed for this step [s].
-        """
-        if "time" not in diagnostics_history:
-            return
-        ft_hist = diagnostics_history["time"]
-        if len(ft_hist) > 0 and ft_hist[-1] == time:
-            return
-        ft_hist.append(time)
-        if len(diagnostics_history["observed_time_step_size"]) < len(ft_hist):
-            diagnostics_history["observed_time_step_size"].append(float(observed_time_step_size))
-
-    @staticmethod
     def record_vlm_diagnostics(
         vlm_solver: VLMSolver,
         particles: Particles,
         particle_vortex_strength: np.ndarray,
-        diagnostics_history: dict,
         time: float,
         samples_dir: Path,
     ) -> None:
@@ -67,8 +39,6 @@ class VLMDiagnostics:
             Current ``Particles`` container (for particle count).
         particle_vortex_strength:
             Vortex-strength array (N, 3) for the current particles [m³/s].
-        diagnostics_history:
-            Solver's ``_diagnostics_history`` dict (mutated in-place).
         time:
             Current simulation time [s].
         samples_dir:
@@ -88,15 +58,6 @@ class VLMDiagnostics:
 
         lespnp = vlm_solver.lattice.leading_edge_suction_parameter.to_numpy()[:n_panels]
         max_leading_edge_suction_parameter = float(np.max(lespnp)) if n_panels > 0 else 0.0
-
-        diagnostics_history["vlm_lift_coefficient"].append(float(forces["lift_coefficient"]))
-        diagnostics_history["vlm_drag_coefficient"].append(float(forces["drag_coefficient"]))
-        diagnostics_history["vlm_bound_vortex_strength_y"].append(bound_vortex_strength_y)
-        diagnostics_history["vlm_wake_vortex_strength_y"].append(wake_vortex_strength_y)
-        diagnostics_history["vlm_max_leading_edge_suction_parameter"].append(
-            max_leading_edge_suction_parameter
-        )
-        diagnostics_history["vlm_n_particles_total"].append(float(n_p))
 
         # Coupled VLM is an owned VPM component.  The caller reaches this
         # method only after an accepted VPM step, so every row belongs to the

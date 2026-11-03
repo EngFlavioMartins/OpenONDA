@@ -32,6 +32,7 @@ from ....kernels.base import make_vortex_kernel
 from ....kernels.gaussian import create_gaussian_kernels
 from ....kernels.registry import kernel_definition, treecode_kernel_names
 from ....kernels.winckelmans import create_winckelmans_kernels
+from ....runtime.host_staging import HostStagingBuffers
 from ..base import TaichiDataType, TaichiField
 
 _HOST_TRANSFER_CHUNK_SIZE = 65536
@@ -318,10 +319,7 @@ class TaichiTreecode:
 
         # Constants for gradient kernel
 
-        # Fixed host staging arrays keyed by (direction, field identity).
-        self._host_vector_chunks: dict[tuple[str, int], np.ndarray] = {}
-        self._host_scalar_chunks: dict[tuple[str, int], np.ndarray] = {}
-        self._host_matrix_chunks: dict[tuple[str, int], np.ndarray] = {}
+        self._host_staging = HostStagingBuffers(_HOST_TRANSFER_CHUNK_SIZE)
 
         # Topology-reuse state (see refit()): last built particle count and the
         # combine-level bound.  None until the first build().
@@ -502,26 +500,8 @@ class TaichiTreecode:
                     dst[i, j, k] = src[start_idx + i][j, k]
 
     def _host_transfer_buffer(self, family: str, field: TaichiField, direction: str) -> np.ndarray:
-        """Return a fixed staging array unique to a field and direction."""
-        key = (direction, id(field))
-        shape: tuple[int, ...]
-        if family == "vector":
-            buffers = self._host_vector_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3)
-            dtype = np.float32
-        elif family == "scalar":
-            buffers = self._host_scalar_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
-            dtype = np.float32
-        elif family == "matrix":
-            buffers = self._host_matrix_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3, 3)
-            dtype = np.float32
-        else:
-            raise ValueError(f"Unknown host transfer buffer family {family!r}")
-        if key not in buffers:
-            buffers[key] = np.empty(shape, dtype=dtype)
-        return buffers[key]
+        """Return a fixed binary32 staging array unique to a field and direction."""
+        return self._host_staging.get(family, field, direction, np.float32)
 
     def upload_vector_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
         arr = np.ascontiguousarray(src, dtype=np.float32)

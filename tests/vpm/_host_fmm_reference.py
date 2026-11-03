@@ -1,4 +1,4 @@
-"""Private host reference FMM with explicit upward/downward passes."""
+"""Host reference FMM with explicit upward/downward passes, for the FMM hierarchy tests."""
 
 from __future__ import annotations
 
@@ -7,18 +7,18 @@ from typing import TYPE_CHECKING, Self
 import numpy as np
 import taichi as ti
 
-from ....kernels.base import RadialVortexKernel, make_vortex_kernel
-from ....kernels.registry import kernel_names
-from ..base import TaichiField, normalize_stretching_scheme
-from .diagnostics import FMMDiagnostics
-from .interaction_lists import well_separated
-from .local_expansions import l2l, m2l
-from .multipoles import m2m, p2m
-from .near_field import p2p_velocity_gradient
-from .tree import FMMNode, FMMTree
+from openonda.vpm.kernels.base import RadialVortexKernel, make_vortex_kernel
+from openonda.vpm.kernels.registry import kernel_names
+from openonda.vpm.physics.induction.base import TaichiField, normalize_stretching_scheme
+from openonda.vpm.physics.induction.fmm.diagnostics import FMMDiagnostics
+from openonda.vpm.physics.induction.fmm.interaction_lists import well_separated
+from openonda.vpm.physics.induction.fmm.local_expansions import l2l, m2l
+from openonda.vpm.physics.induction.fmm.multipoles import m2m, p2m
+from openonda.vpm.physics.induction.fmm.near_field import p2p_velocity_gradient
+from openonda.vpm.physics.induction.fmm.tree import FMMNode, FMMTree
 
 if TYPE_CHECKING:
-    from ...base import PhysicsBase
+    from openonda.vpm.physics.base import PhysicsBase
 
 
 @ti.data_oriented
@@ -29,10 +29,8 @@ class HostFMMReference:
 
     ``P2M → M2M → M2L → L2L → L2P`` plus exact regularized near-field ``P2P``.
 
-    The reference backend intentionally keeps its source arrays on NumPy so
-    its translations can be independently inspected and tested. Production
-    GPU deployment remains a separate backend concern; this class no longer
-    hides a direct stretching or direct-gradient fallback behind the FMM name.
+    The source arrays stay in NumPy so each translation can be inspected and
+    tested against the device FMM.
     """
 
     supported_kernels = kernel_names()

@@ -20,6 +20,7 @@ from openonda.core.slip_slab_images import slab_image_particles
 
 from ..config.constants import MAX_N_PARTICLES
 from ..kernels.registry import kernel_definition
+from ..runtime.host_staging import HostStagingBuffers
 from .induction.base import InductionMethod, TaichiDataType, TaichiField
 
 if TYPE_CHECKING:
@@ -195,10 +196,7 @@ class PhysicsBase:
         )
         self._filtered_rad = ti.field(dtype=self.accumulator_dtype, shape=(self.max_n_particles,))
 
-        # Fixed host staging arrays keyed by (direction, field identity).
-        self._host_vector_chunks: dict[tuple[str, int], np.ndarray] = {}
-        self._host_scalar_chunks: dict[tuple[str, int], np.ndarray] = {}
-        self._host_matrix_chunks: dict[tuple[str, int], np.ndarray] = {}
+        self._host_staging = HostStagingBuffers(_HOST_TRANSFER_CHUNK_SIZE)
 
         self._axisymmetric_vector_sum_a = ti.Vector.field(
             3, dtype=compute_dtype, shape=(self.max_n_particles,)
@@ -231,9 +229,6 @@ class PhysicsBase:
         - Strength rate computations
         """
         # One shared strength-rate destination is required by the stage RHS.
-        # The old second position/velocity/strength buffers were never read;
-        # allocating them at the default 500k-particle capacity consumed tens
-        # of megabytes before an induction backend had allocated anything.
         self.dstr_dt_temp = ti.Vector.field(
             3, dtype=self.accumulator_dtype, shape=(self.max_n_particles,)
         )
@@ -484,25 +479,10 @@ class PhysicsBase:
 
     def _host_transfer_buffer(self, family: str, field: TaichiField, direction: str) -> np.ndarray:
         """Return a fixed staging array unique to a field and direction."""
-        key = (direction, id(field))
-        shape: tuple[int, ...]
-        if family == "vector":
-            buffers = self._host_vector_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3)
-        elif family == "scalar":
-            buffers = self._host_scalar_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE,)
-        elif family == "matrix":
-            buffers = self._host_matrix_chunks
-            shape = (_HOST_TRANSFER_CHUNK_SIZE, 3, 3)
-        else:
-            raise ValueError(f"Unknown host transfer buffer family {family!r}")
-        if key not in buffers:
-            dtype = self.np_dtype
-            if direction == "download":
-                dtype = np.float32 if field.dtype == ti.f32 else np.float64
-            buffers[key] = np.empty(shape, dtype=dtype)
-        return buffers[key]
+        dtype = self.np_dtype
+        if direction == "download":
+            dtype = np.float32 if field.dtype == ti.f32 else np.float64
+        return self._host_staging.get(family, field, direction, dtype)
 
     def upload_vector_array(self, src: np.ndarray, dst: TaichiField, n: int | None = None) -> None:
         """Upload a vec3 array through fixed-size ndarray chunks."""

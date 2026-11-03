@@ -161,7 +161,7 @@ def test_gaussian_reconstruction_is_not_silently_used_for_other_kernels():
     from openonda.vpm.config.case import Numerics
     from openonda.vpm.config.stabilization import StabilizationConfig
 
-    with pytest.raises(ValueError, match="require GAUSSIAN"):
+    with pytest.raises(ValueError, match="require particle_kernel=.gaussian."):
         Numerics(
             particle_kernel="winckelmans",
             stabilization=StabilizationConfig(

@@ -57,7 +57,6 @@ from .stabilization import (
     DivergenceRelaxationError,
     FilamentRefinementError,
     StabilizationError,
-    StabilizationManager,
 )
 
 __all__ = [
@@ -106,7 +105,6 @@ __all__ = [
     "SmoothRampMotion",
     "StabilizationConfig",
     "StabilizationError",
-    "StabilizationManager",
     "StaticMotion",
     "SurfaceSampler",
     "TranslatingMotion",

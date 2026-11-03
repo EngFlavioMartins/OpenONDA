@@ -8,6 +8,7 @@ from _flat_plate_geometry import (
     lifting_line_polar,
 )
 import numpy as np
+import pandas as pd
 import pytest
 import pyvista as pv
 import taichi as ti
@@ -259,23 +260,20 @@ def test_coupled_bound_strength_includes_the_on_wing_trailing_legs(tmp_path):
     closing_wake = np.sum(gamma[:, None] * (corners[te, 3] - corners[te, 2]), axis=0)
     np.testing.assert_allclose(closed + closing_wake, 0.0, atol=1e-13)
 
-    from collections import defaultdict
-
     from openonda.vpm.boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
 
-    history = defaultdict(list)
     solver._last_forces = {"lift_coefficient": 0.0, "drag_coefficient": 0.0}
     solver.logging_interval_steps = 2
     VLMDiagnostics.record_vlm_diagnostics(
         solver,
         SimpleNamespace(n_particles_total=1),
         closing_wake[None, :],
-        history,
         time=0.1,
         samples_dir=tmp_path,
     )
-    assert history["vlm_bound_vortex_strength_y"] == pytest.approx([closed[1]])
-    assert history["vlm_wake_vortex_strength_y"] == pytest.approx([-closed[1]])
+    row = pd.read_csv(tmp_path / "vlm_forces.csv").iloc[-1]
+    assert row["bound_vortex_strength_y"] == pytest.approx(closed[1])
+    assert row["wake_vortex_strength_y"] == pytest.approx(-closed[1])
 
 
 def test_lifting_line_reference_matches_independent_full_span_collocation():
@@ -654,4 +652,4 @@ def test_multisurface_loading_uses_wing_local_segment_ids_and_reports_output_fai
 
     monkeypatch.setattr(VLMLoadingDistribution, "export_distribution_csv", fail_write)
     with pytest.raises(OSError, match="sample write failed"):
-        VLMLoadingDistribution.record_loading_distributions(solver, {}, 0.0125, str(tmp_path))
+        VLMLoadingDistribution.record_loading_distributions(solver, 0.0125, str(tmp_path))

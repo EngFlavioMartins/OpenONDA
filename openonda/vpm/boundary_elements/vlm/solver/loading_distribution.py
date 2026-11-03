@@ -16,7 +16,7 @@ recorded unsteady contribution; it is not reconstructed pressure.
 
 Call pattern (mirrors VLMDiagnostics):
   VLMLoadingDistribution.record_loading_distributions(
-      vlm_solver, diagnostics_history, time, samples_dir)
+      vlm_solver, time, samples_dir)
 """
 
 from __future__ import annotations
@@ -40,7 +40,6 @@ class VLMLoadingDistribution:
     @staticmethod
     def record_loading_distributions(
         vlm_solver: VLMSolver,
-        diagnostics_history: dict,
         time: float,
         samples_dir: Path,
     ) -> None:

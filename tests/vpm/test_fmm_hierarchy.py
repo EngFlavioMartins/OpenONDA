@@ -10,8 +10,8 @@ from openonda.vpm.physics.induction.fmm import FMMInduction, FMMTree, interactio
 from openonda.vpm.physics.induction.fmm.local_expansions import l2l, l2p, m2l
 from openonda.vpm.physics.induction.fmm.multipoles import m2m, p2m
 from openonda.vpm.physics.induction.fmm.near_field import p2p_velocity
-from openonda.vpm.physics.induction.fmm.reference import HostFMMReference
 from openonda.vpm.physics.induction.treecode import TreecodeInduction
+from tests.vpm._host_fmm_reference import HostFMMReference
 
 
 class _Field:

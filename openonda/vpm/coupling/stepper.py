@@ -23,20 +23,19 @@ class CouplingStepper:
         if solver.vlm_solver is None:
             return
 
-        particles_before = getattr(solver.particles, "n_particles_total", None)
+        particles_before = solver.particles.n_particles_total
         wake_particles = solver.vlm_solver.advance_coupled(
             particles=solver.particles,
             physics=solver.physics,
             config=solver.numerics,
-            time_step_size=getattr(solver, "_release_interval", time_step_size),
+            time_step_size=time_step_size,
             step=solver.stepper.step,
             time=solver.stepper.time,
-            release_wake=getattr(solver, "_release_wake_particles", True),
         )
 
         if wake_particles is not None:
             solver.add_vortex_particles(**wake_particles)
-        elif particles_before is not None:
+        else:
             particles_added = solver.particles.n_particles_total - particles_before
             if particles_added > 0 and solver.stabilization.reference_vortex_strength is not None:
                 # VLM inserts on the device; read only its shed batch for refinement reference.

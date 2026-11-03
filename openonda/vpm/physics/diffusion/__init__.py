@@ -7,7 +7,8 @@ One module per scheme:
 - ``grid.py``            The stateful grid mixin shared by DVH and GBD (grid
                          allocation, body masking, M4' scattering, Laplacian
                          stepping, particle regeneration, transfers).
-- ``schemes.py``         DiffusionPhysics, the handler that composes them.
+
+:class:`~openonda.vpm.physics.engine.PhysicsEngine` composes them.
 
 DVH and GBD are driven from ``grid.py`` (``grid_based_diffusion`` /
 ``gbd_diffusion``) because they share one stateful grid; their dispatch from
@@ -23,14 +24,12 @@ from .grid import (
     _GridDiffusionMixin,
 )
 from .random_walk import apply_random_walk
-from .schemes import DiffusionPhysics
 
 __all__ = [
     "_DVH_BETA",
     "_GRID_TRANSFER_CHUNK",
     "_M4_SCATTER_BATCH_SIZE",
     "_REGEN_RADIUS_RATIO",
-    "DiffusionPhysics",
     "_GridDiffusionMixin",
     "apply_core_spreading",
     "apply_random_walk",

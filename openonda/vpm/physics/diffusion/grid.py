@@ -420,8 +420,8 @@ class _GridDiffusionMixin:
     """
     Mixin providing grid-based diffusion kernels and grid management.
 
-    This mixin is shared between DiffusionPhysics and PhysicsEngine to
-    ensure consistent grid-based viscous diffusion (DVH).
+    :class:`~openonda.vpm.physics.engine.PhysicsEngine` inherits it for DVH and
+    GBD diffusion.
     """
 
     # Concrete physics engines replace this with their configured observer.
@@ -2534,7 +2534,9 @@ class _GridDiffusionMixin:
         if remeshing_kernel not in {"m4_prime", "lagrange6"}:
             raise ValueError("unsupported GBD remeshing kernel")
         if remeshing_kernel == "lagrange6" and domain_padding < 4:
-            raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
+            raise ValueError(
+                "remeshing_kernel='lagrange6' needs at least four grid cells of padding"
+            )
         self._last_gbd_moment_correction = self._empty_gbd_moment_correction()
         self._last_gbd_wall_transfer = {
             "wall_adjacent_particles": 0,
@@ -2557,7 +2559,7 @@ class _GridDiffusionMixin:
             if np.any((pos_np[:, 2] < z_min - 1e-7) | (pos_np[:, 2] > z_max + 1e-7)):
                 raise RuntimeError("GBD received a physical particle outside the slip slab")
             if remeshing_kernel != "m4_prime":
-                raise ValueError("slip-slab GBD currently requires M4_PRIME remeshing")
+                raise ValueError("slip-slab GBD requires remeshing_kernel='m4_prime'")
 
         invalid = self._body_interior_at_particles(pos_np)
         if np.any(invalid):
@@ -2654,7 +2656,9 @@ class _GridDiffusionMixin:
             ti.sync()
         if getattr(self, "_body_mask_active", False):
             if remeshing_kernel != "m4_prime":
-                raise RuntimeError("solid-wall GBD redistribution requires M4_PRIME")
+                raise RuntimeError(
+                    "solid-wall GBD redistribution requires remeshing_kernel='m4_prime'"
+                )
             correction_nodes, correction_values, wall_budget = self.compute_m4_wall_corrections(
                 pos_np,
                 vortex_strength,

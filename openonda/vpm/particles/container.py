@@ -3,14 +3,7 @@
 from collections.abc import Sequence
 
 import numpy as np
-
-try:
-    import pyvista as pv
-
-    HAS_PYVISTA = True
-except ImportError:
-    HAS_PYVISTA = False
-    pv = None
+import pyvista as pv
 import taichi as ti
 
 # Import VPM constants
@@ -21,6 +14,7 @@ from openonda.core.write_precision import DEFAULT_WRITE_PRECISION, cast_for_writ
 from ..config.constants import MAX_N_PARTICLES
 from ..config.state import cached_particle_property
 from ..io.logging import Logging
+from ..runtime.host_staging import HostStagingBuffers
 
 
 def _validate_finite_array(arr: np.ndarray, name: str) -> None:
@@ -141,10 +135,7 @@ class Particles:
         # template fields can eventually alias those bindings in long runs
         # (for example a vortex strength download returning position).  Give each
         # field and transfer direction its own fixed-shape staging array.
-        self._host_vector_chunks = {}
-        self._host_scalar_chunks = {}
-        self._host_matrix_chunks = {}
-        self._host_int_chunks = {}
+        self._host_staging = HostStagingBuffers(self._COPY_CHUNK_SIZE)
         # Initialize Taichi fields for particle properties
         self._init_taichi_fields()
 
@@ -229,38 +220,12 @@ class Particles:
     # Prefix-extraction helpers (GPU → CPU, only active prefix)
 
     def _host_transfer_buffer(self, family: str, field: ti.Field, direction: str) -> np.ndarray:
-        """Return a field-specific fixed-shape external-array staging buffer.
+        """Return a fixed-shape staging array unique to a field and direction.
 
-        Taichi's Vulkan/Metal external-array staging can cache one device buffer
-        per distinct ndarray shape.  Long runs with particle counts changing at
-        every remeshing/regeneration step therefore leak cached staging buffers
-        if we pass arrays of shape ``(N, ...)`` or tail slices of varying size.
-        Keep all solver-loop transfers at one fixed chunk shape and pass the
-        live count as a scalar kernel argument instead.
+        See :mod:`openonda.vpm.runtime.host_staging` for why the shape is fixed.
         """
-        key = (direction, id(field))
-        chunk = self._COPY_CHUNK_SIZE
-        if family == "vector":
-            buffers = self._host_vector_chunks
-            shape = (chunk, 3)
-            dtype = self._np_float_dtype
-        elif family == "scalar":
-            buffers = self._host_scalar_chunks
-            shape = (chunk,)
-            dtype = self._np_float_dtype
-        elif family == "matrix":
-            buffers = self._host_matrix_chunks
-            shape = (chunk, 3, 3)
-            dtype = self._np_float_dtype
-        elif family == "int":
-            buffers = self._host_int_chunks
-            shape = (chunk,)
-            dtype = np.int32
-        else:
-            raise ValueError(f"Unknown host transfer buffer family {family!r}")
-        if key not in buffers:
-            buffers[key] = np.empty(shape, dtype=dtype)
-        return buffers[key]
+        dtype = np.int32 if family == "int" else self._np_float_dtype
+        return self._host_staging.get(family, field, direction, dtype)
 
     def _extract_scalar(self, field: ti.Field, n: int) -> np.ndarray:
         """Return a detached NumPy copy of the first ``n`` scalar entries.
@@ -1256,16 +1221,8 @@ class Particles:
         Side Effects
         ------------
         Downloads active fields to the CPU and writes a VTK PolyData file. It
-        does not mutate numerical fields. If PyVista is unavailable, the
-        export is skipped with a warning.
+        does not mutate numerical fields.
         """
-        if not HAS_PYVISTA:
-            Logging.warning_record(
-                "VTK export skipped: PyVista is unavailable",
-                ("output path", particle_file_name),
-            )
-            return
-
         n = int(self.n_particles_total)
         point_cloud = pv.PolyData(cast_for_write(self.position_cpu(), write_precision))
         fields = {
@@ -1306,8 +1263,6 @@ class Particles:
 
         Raises
         ------
-        ImportError
-            If PyVista is unavailable.
         KeyError
             If a required point-data field is missing.
 
@@ -1316,8 +1271,6 @@ class Particles:
         Reads the file, mutates the active device cloud, and records a load
         event. The loaded arrays are converted to the container precision.
         """
-        if not HAS_PYVISTA:
-            raise ImportError("pyvista is required for VTP file operations")
 
         if remove_current_particles:
             self.n_particles_total = 0

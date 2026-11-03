@@ -23,8 +23,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
     """Own reusable VPM fields and physical operators.
 
     Particle induction is supplied by an :class:`InductionMethod`; this class
-    no longer selects or advances an advection/stretching scheme.  It remains
-    the shared device workspace for field evaluation, diffusion and coupling
+    is the shared device workspace for field evaluation, diffusion and coupling
     helpers used by the solver and induction backends.
     """
 
@@ -70,8 +69,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         self.body_velocity = None
         self.body_velocity_gradient = None
 
-        self._diffusion = _DiffusionHandler(self)
-
     def report_rows(self) -> list:
         """Return the physics-model configuration as log detail rows."""
         return [
@@ -95,7 +92,7 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         This is a split operator called by the accepted-step integrator; it
         mutates particle device fields and does not return a new container.
         """
-        self._diffusion.core_spreading_diffusion(particles, time_step_size)
+        apply_core_spreading(self, particles, time_step_size)
 
     def random_walk_method_diffusion(
         self,
@@ -119,36 +116,8 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             Accepted-step index mixed into the seed so rejected/candidate RK
             stages do not consume a hidden random sequence.
         """
-        self._diffusion.random_walk_method_diffusion(
-            particles,
-            time_step_size,
-            random_seed=random_seed,
-            accepted_step=accepted_step,
-        )
-
-
-class _DiffusionHandler:
-    """Delegate split diffusion operators to the owning physics workspace."""
-
-    def __init__(self, parent: PhysicsEngine):
-        """Bind the handler to its owning :class:`PhysicsEngine`."""
-        self._parent = parent
-
-    def core_spreading_diffusion(self, particles: Particles, time_step_size: float) -> None:
-        """Run core spreading through the parent workspace."""
-        apply_core_spreading(self._parent, particles, time_step_size)
-
-    def random_walk_method_diffusion(
-        self,
-        particles: Particles,
-        time_step_size: float,
-        *,
-        random_seed: int,
-        accepted_step: int,
-    ) -> None:
-        """Run random-walk diffusion through the parent workspace."""
         apply_random_walk(
-            self._parent,
+            self,
             particles,
             time_step_size,
             random_seed=random_seed,

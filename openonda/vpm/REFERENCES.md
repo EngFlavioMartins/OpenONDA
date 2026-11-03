@@ -5,7 +5,7 @@ Physical models and numerical methods used by OpenONDA. See the [VPM guide](../.
 ## Particle approximation and regularization
 
 - **[CK2000]** Cottet, G.-H. & Koumoutsakos, P. (2000). *Vortex Methods: Theory and Practice.* Cambridge University Press. Particle quadrature, overlapping cores and divergence error in three-dimensional vortex methods.
-- **[BM1985]** Beale, J. T. & Majda, A. (1985). High order accurate vortex methods with explicit velocity kernels. *Journal of Computational Physics* 58(2), 188–208. Higher-order Gaussian kernels; the `HIGH_ORDER_GAUSSIAN` and `SUPER_GAUSSIAN` cores.
+- **[BM1985]** Beale, J. T. & Majda, A. (1985). High order accurate vortex methods with explicit velocity kernels. *Journal of Computational Physics* 58(2), 188–208. Higher-order Gaussian kernels; the `"high_order_gaussian"` and `"super_gaussian"` cores.
 - **[Beale1986]** Beale, J. T. (1986). A convergent 3-D vortex method with grid-free stretching. *Mathematics of Computation* 46(174), 401–424. Resolution error associated with $h/\sigma$.
 - **[WL1993]** Winckelmans, G. S. & Leonard, A. (1993). Contributions to vortex particle methods for the computation of three-dimensional incompressible unsteady flows. *Journal of Computational Physics* 109(2), 247–273. Algebraic regularization and direct/transposed/mixed stretching. Only the symmetric transposed pair formulation conserves total particle vector strength exactly.
 - **[DLMF7.6]** NIST, [Digital Library of Mathematical Functions, §7.6](https://dlmf.nist.gov/7.6). Error-function series for Gaussian regularization; see [coefficient attribution](kernels/THIRD_PARTY_NOTICES.md).

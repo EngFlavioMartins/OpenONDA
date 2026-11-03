@@ -203,7 +203,6 @@ class VPMSolver:
         self.run_status = RunStatus.not_started
         self.run_failure: BaseException | None = None
         self._evolution_failure: BaseException | None = None
-        self._configuration_logged = False
         try:
             self.solution_dir.mkdir(parents=True, exist_ok=True)
             self.samples_dir.mkdir(parents=True, exist_ok=True)
@@ -221,7 +220,6 @@ class VPMSolver:
             self._initialize_solvers(case.numerics)
             self._sampler_manager = SamplerManager(self)
             Logging.startup(self)
-            self._configuration_logged = True
             self.write_run_metadata(status=RunStatus.created)
             # Initial particles are added after construction. Keep those
             # mutations out of the event stream; the first requested
@@ -394,35 +392,29 @@ class VPMSolver:
                     self.axisymmetric_axis,
                 )
             )
-        _visc_cfg = getattr(final_setup, "viscous", None)
-        if _visc_cfg is not None and hasattr(self.physics, "core_radius_ratio"):
-            self.physics.core_radius_ratio = float(getattr(_visc_cfg, "core_radius_ratio", 2.5))
+        from ..physics.induction.slip_slab import SlipSlabInduction
+
+        viscous = final_setup.viscous
+        self.physics.core_radius_ratio = float(viscous.core_radius_ratio)
         # Grid diffusion on GPU uses a fixed workspace to avoid repeated allocation.
         vpm_bounds = final_setup.domain_bounds
-        vc = getattr(final_setup, "viscous", None)
-        scheme = getattr(vc, "scheme", "").lower() if vc is not None else ""
+        scheme = viscous.scheme
         is_grid_diffusion = scheme in {"dvh", "gbd"}
         fixed_grid_required = (
             self.compute_device in {"metal", "vulkan", "cuda"} and is_grid_diffusion
         )
         # The slip-slab image stencil fixes the z-plane phase even on CPU.
         # CPU may still grow the workspace; only its lattice origin is fixed.
-        slip_slab_grid = (
-            is_grid_diffusion
-            and hasattr(self.induction, "z_min")
-            and hasattr(self.induction, "z_max")
-        )
-        if fixed_grid_required and hasattr(self.physics, "require_fixed_grid_allocation"):
+        slip_slab_grid = is_grid_diffusion and isinstance(self.induction, SlipSlabInduction)
+        if fixed_grid_required:
             self.physics.require_fixed_grid_allocation(True)
-        if (fixed_grid_required or slip_slab_grid) and hasattr(
-            self.physics, "configure_max_grid_extent"
-        ):
+        if fixed_grid_required or slip_slab_grid:
             if scheme == "dvh":
-                _grid_h = getattr(vc, "dvh_grid_spacing", None)
-                _grid_pad = getattr(vc, "dvh_domain_padding", 3.0)
+                _grid_h = viscous.dvh_grid_spacing
+                _grid_pad = viscous.dvh_domain_padding
             else:
-                _grid_h = getattr(vc, "gbd_grid_spacing", None)
-                _grid_pad = getattr(vc, "gbd_domain_padding", 3.0)
+                _grid_h = viscous.gbd_grid_spacing
+                _grid_pad = viscous.gbd_domain_padding
 
             if vpm_bounds is None:
                 raise ValueError(
@@ -457,8 +449,8 @@ class VPMSolver:
                 final_setup.induction, SlipSlabInduction
             ):
                 raise ValueError(
-                    "STRENGTH_EXCHANGE sub-grid transport has no slip-plane images; "
-                    "use CORE_SPREADING between slip planes"
+                    "subgrid_transport='strength_exchange' has no slip-plane images; "
+                    "use 'core_spreading' between slip planes"
                 )
             self.turbulence_model = ParticleLES(
                 model_name=final_setup.turbulence.model,
@@ -492,26 +484,8 @@ class VPMSolver:
     def _initialize_solvers(self, final_setup: Numerics) -> None:
         """Initialize the stabilization master and the optional sub-solvers."""
 
-        # Time histories consumed by export_diagnostics_csv and the VLM report.
-        self._diagnostics_history: dict = {
-            "time": [],
-            "vpm_net_vortex_strength": [],
-            "vpm_vortex_strength_magnitude_sum": [],
-            "fvm_net_vortex_strength": [],
-            "fvm_vortex_strength_magnitude_sum": [],
-            "interpolated_net_vortex_strength": [],
-            "interpolated_vortex_strength_magnitude_sum": [],
-            "vortex_centroid": [],
-            "n_particles_injected": [],
-            "n_particle_candidates": [],
-            "observed_time_step_size": [],
-            "vlm_lift_coefficient": [],
-            "vlm_drag_coefficient": [],
-            "vlm_bound_vortex_strength_y": [],
-            "vlm_wake_vortex_strength_y": [],
-            "vlm_max_leading_edge_suction_parameter": [],
-            "vlm_n_particles_total": [],
-        }
+        # Accepted times and vortex centroids, read by the flow-integral log.
+        self._diagnostics_history: dict = {"time": [], "vortex_centroid": []}
         stabilization_state = StabilizationStepState(
             step=self.step,
             time=self.time,
@@ -687,7 +661,7 @@ class VPMSolver:
         self._ensure_evolution_usable()
         if not self._initial_conditions_built:
             self._build_initial_conditions()
-        self._log_configuration_once()
+        self._enable_routine_messages()
         if time is not None and not math.isclose(
             time,
             self.time + self.time_step_size,
@@ -842,7 +816,7 @@ class VPMSolver:
                 self.save_backup()
             self.run_status = RunStatus.running
             self.write_run_metadata(status=self.run_status)
-            self._log_configuration_once()
+            self._enable_routine_messages()
             state_limit_failure = None
             invalid_state_failure = None
             if self._restart_loaded:
@@ -924,7 +898,7 @@ class VPMSolver:
             return
         self._ensure_evolution_usable()
         self._build_initial_conditions()
-        self._log_configuration_once()
+        self._enable_routine_messages()
         with self._output_preparation():
             self._refresh_diagnostics_for_output()
             self.write_vtk()
@@ -1150,7 +1124,7 @@ class VPMSolver:
         ``defer_output=True``; a coupled driver calls it after exchanging the
         particle cloud.
         """
-        self._log_configuration_once()
+        self._enable_routine_messages()
         started = perf_counter()
         with self._output_preparation():
             self._check_accepted_particle_state()
@@ -1313,10 +1287,10 @@ class VPMSolver:
         )
 
     def _record_time_history(self) -> None:
-        """Delegate to VLMDiagnostics."""
-        ft_hist = self._diagnostics_history.get("time", [])
-        observed_time_step_size = self.time - ft_hist[-1] if len(ft_hist) >= 1 else 0.0
-        VLMDiagnostics.record_time(self._diagnostics_history, self.time, observed_time_step_size)
+        """Append the accepted time once per step."""
+        times = self._diagnostics_history["time"]
+        if not times or times[-1] != self.time:
+            times.append(self.time)
 
     def _record_vlm_diagnostics(self) -> None:
         """Record the lattice loads and loading distributions of the accepted state."""
@@ -1324,13 +1298,11 @@ class VPMSolver:
             self.vlm_solver,
             self.particles,
             self.particle_vortex_strength,
-            self._diagnostics_history,
             self.time,
             self.samples_dir,
         )
         VLMLoadingDistribution.record_loading_distributions(
             self.vlm_solver,
-            self._diagnostics_history,
             self.time,
             self.samples_dir,
         )
@@ -1711,18 +1683,9 @@ class VPMSolver:
         return np.asarray(complete_velocity, dtype=np.float64), tangential
 
     # Diagnostics
-    def _log_configuration_once(self) -> None:
-        """Ensure the complete static time-zero configuration is visible once."""
-        if self._configuration_logged:
-            Logging.set_routine_messages_enabled(True)
-            return
-        # Lightweight unit doubles created without a VPMCase have no reportable
-        # configuration and should retain the numerical facade conditions.
-        if not hasattr(self, "case") or not hasattr(self, "setup"):
-            return
+    def _enable_routine_messages(self) -> None:
+        """Enable per-step messages; the configuration was logged at construction."""
         Logging.set_routine_messages_enabled(True)
-        Logging.message(Logging.solver_info(self), flush=True)
-        self._configuration_logged = True
 
     # Particle management
     def remove_all_particles(self) -> None:

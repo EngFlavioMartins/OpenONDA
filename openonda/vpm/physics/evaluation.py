@@ -280,7 +280,7 @@ class ParticleFieldEvaluation:
                         # ν_eff, so the LES energy budget can be checked.
                         #
                         # ζ_σ * ζ_σ = ζ_{σ√2} is a *Gaussian* identity, so σ_e is
-                        # exact for GAUSSIAN and an approximation for the
+                        # exact for the Gaussian and an approximation for the
                         # algebraic kernels, whose double-mollified Green's
                         # function is not in their own family.  The enstrophy,
                         # E and H share this assumption for every kernel, so the

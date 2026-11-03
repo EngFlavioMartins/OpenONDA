@@ -308,7 +308,7 @@ def test_random_walk_continues_across_the_planes_as_the_image_walk():
 
     from openonda.vpm.particles.container import Particles
     from openonda.vpm.physics.diffusion.random_walk import apply_random_walk
-    from openonda.vpm.physics.diffusion.schemes import DiffusionPhysics
+    from openonda.vpm.physics.engine import PhysicsEngine
 
     ti.init(arch=ti.cpu, default_fp=ti.f64, offline_cache=False)
     try:
@@ -320,7 +320,7 @@ def test_random_walk_continues_across_the_planes_as_the_image_walk():
         strength = rng.normal(size=(count, 3))
         walks = []
         for slab in (None, PLANES):
-            physics = DiffusionPhysics(max_n_particles=count, accumulator_dtype=ti.f64)
+            physics = PhysicsEngine(max_n_particles=count, accumulator_dtype=ti.f64)
             physics._slip_slab_bounds = slab
             particles = Particles(max_n_particles=count, float_dtype="f64")
             particles.add_vortex_particles(
