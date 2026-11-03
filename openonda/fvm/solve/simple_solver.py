@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class PressureBoundaryLayout:
     """Immutable boundary-face indexing used by pressure assembly.
 
-    Patch values are intentionally excluded: coupling and freestream updates
+    Patch values are excluded: coupling and freestream updates
     may change them between correctors.  The layout only captures topology and
     resolved boundary behaviour, which are stable for an algorithm instance.
     """
@@ -355,12 +355,12 @@ def _compute_rhie_chow_coefficients(
     corrections: ``Δvelocity = −pressure_velocity_coefficient · ∇kinematic_pressure'``.
 
     Args:
-        volumes: Cell volumes ``(n_elements,)``.
+        volumes: Cell volumes ``(n_cells,)``.
         momentum_diagonal:     Diagonal coefficients from the momentum equation
-                 ``(n_elements, 3)`` (per component).
+                 ``(n_cells, 3)`` (per component).
 
     Returns:
-        pressure_velocity_coefficient array ``(n_elements, 3)``, with a small regulariser to avoid
+        pressure_velocity_coefficient array ``(n_cells, 3)``, with a small regulariser to avoid
         division by zero.
     """
     diagonal = np.asarray(momentum_diagonal, dtype=np.float64)
@@ -1611,12 +1611,12 @@ def _extend_kinematic_pressure_correction_bcs(
     the ghost cell inherits the owner cell value (zero-gradient).
 
     Args:
-        kinematic_pressure_correction:    Pressure correction for interior cells ``(n_elements,)``.
+        kinematic_pressure_correction:    Pressure correction for interior cells ``(n_cells,)``.
         mesh_data:  Mesh dictionary.
         boundaries: List of boundary patch dictionaries.
 
     Returns:
-        Extended ``kinematic_pressure_correction`` array ``(n_elements + n_boundary_faces,)``.
+        Extended ``kinematic_pressure_correction`` array ``(n_cells + n_boundary_faces,)``.
     """
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
@@ -1670,7 +1670,7 @@ def _correct_interior_fluxes(
 
     Args:
         volumetric_face_flux:      Face flux array ``(n_faces,)`` (mutated in place).
-        kinematic_pressure_correction:  Pressure correction ``(n_elements,)``.
+        kinematic_pressure_correction:  Pressure correction ``(n_cells,)``.
         mesh_data: Mesh dictionary.
         face_conductance: Shared pressure-face conductance array.
     """
@@ -1698,7 +1698,7 @@ def _correct_boundary_fluxes(
 
     Args:
         volumetric_face_flux:        Face flux array ``(n_faces,)`` (mutated in place).
-        kinematic_pressure_correction:    Pressure correction ``(n_elements,)``.
+        kinematic_pressure_correction:    Pressure correction ``(n_cells,)``.
         boundaries: List of boundary patch dictionaries.
         owners:     Owner index array.
         face_conductance: Shared pressure-face conductance array.
@@ -2158,7 +2158,7 @@ def update_scalar_boundaries(
     Update boundary values (ghost cells) for a scalar field.
 
     Args:
-        field_values: Scalar field (n_elements + n_boundary)
+        field_values: Scalar field (n_cells + n_boundary)
         mesh_data: Mesh connectivity
         boundaries: Boundary conditions
         field_name: Name of field (for example ``kinematic_pressure``) to check BC type
@@ -2183,7 +2183,6 @@ def update_scalar_boundaries(
             else np.asarray(volumetric_face_flux)[start : start + n_bfaces]
         )
 
-        # Get BC type
         boundary_type_key = (
             "pressure_type" if field_name == "kinematic_pressure" else f"{field_name}_type"
         )
@@ -2465,7 +2464,6 @@ class SIMPLESolver:
             self.params["pressure_relaxation"] * kinematic_pressure_correction
         )
 
-        # Update pressure boundaries
         update_scalar_boundaries(
             kinematic_pressure,
             self.mesh_data,
@@ -2568,7 +2566,6 @@ class SIMPLESolver:
                 ("pressure relaxation", self.params["pressure_relaxation"]),
             )
 
-        # Initialize Flux (volumetric_face_flux) if not provided
         from ..assemble import convection
 
         volumetric_face_flux = convection.compute_volumetric_face_flux(

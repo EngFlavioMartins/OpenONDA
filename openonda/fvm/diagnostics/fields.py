@@ -383,7 +383,7 @@ def _compute_face_viscous_forces(
 
     Args:
         velocity: Velocity field including boundary-face values.
-        velocity_gradient: Velocity gradient field ``(n_elements, 3, 3)``, or
+        velocity_gradient: Velocity gradient field ``(n_cells, 3, 3)``, or
             ``None`` (returns zero forces).
         owners_idx: Indices into *velocity_gradient* for the owner cells of the
             boundary faces ``(nf,)``.
@@ -392,7 +392,7 @@ def _compute_face_viscous_forces(
         mag_Sf: Face area magnitudes ``(nf,)``.
         wall_distance: Owner-cell-centre to face distance normal to the face.
         dynamic_viscosity: Dynamic viscosity — scalar ``float`` or per-element array
-            ``(n_elements,)``.
+            ``(n_cells,)``.
         nf: Number of boundary faces (``int``).
 
     Returns:

@@ -38,7 +38,7 @@ def assemble_convection_term_upwind(
     Upwind: φ_f = φ_upwind (first-order, stable)
 
     Args:
-        scalar_field: Field values (n_elements + n_boundary,)
+        scalar_field: Field values (n_cells + n_boundary,)
         advective_face_flux: Volumetric face flux [m³/s], shape (n_faces,)
         mesh_data: Mesh connectivity
 
@@ -586,7 +586,6 @@ def assemble_convection_term(
     n_faces = mesh_data["n_faces"]
     n_interior = mesh_data["n_interior_faces"]
 
-    # Initialize
     flux_cf = np.zeros(n_faces)
     flux_ff = np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)
@@ -697,7 +696,7 @@ def compute_volumetric_face_flux(
 ) -> np.ndarray:
     """Compute volumetric face flux through faces: ``volumetric_face_flux = velocity · Sf``.
 
-    Density is deliberately absent; callers that need mass flux must multiply
+    Density is absent; callers that need mass flux must multiply
     ``volumetric_face_flux`` by face-interpolated density.
 
     Args:

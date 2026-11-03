@@ -369,7 +369,7 @@ def assemble_matrix_from_fluxes_vectorized(
     flux_data : dict
         Dict with flux_cf (owner coeff), flux_ff (neighbour coeff).
     mesh_data : dict
-        Mesh connectivity (owners, neighbours, n_elements, n_interior_faces).
+        Mesh connectivity (owners, neighbours, n_cells, n_interior_faces).
     workspace : MatrixAssemblyWorkspace or None
         Reusable CSR pattern and data for repeated assembly on one mesh.
     """

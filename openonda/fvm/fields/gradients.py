@@ -254,7 +254,6 @@ def compute_gauss_gradient(
     face_interpolation_weight = geo_data["face_interpolation_weight"]
     cell_volume = geo_data["cell_volume"]
 
-    # Initialize gradient
     field_gradient = np.zeros((n_total, 3, n_components), dtype=np.float64)
 
     # --- INTERIOR FACES (Vectorized) ---

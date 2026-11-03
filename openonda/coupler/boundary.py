@@ -97,7 +97,7 @@ def report_coupling_patch_quality(
     """Log the outer patch's geometric quality and warn if it is not coupling-grade.
 
     A coupling-grade patch has planar faces and axis-aligned owner cells, so the
-    boundary closure does not extrapolate across a skewed cell and the
+    boundary condition does not extrapolate across a skewed cell and the
     particle-mesh transfer sees a planar interface. ``CartesianMesher`` produces
     one when the box faces are declared as coupling patches. Without it the mixed
     condition extrapolates across skewed cells, which destabilised the NACA 4412
@@ -649,7 +649,7 @@ def _check_boundary_mismatch(
             f"{ratio:.3g} times the reference speed {reference_speed:.4g} m/s (limit {limit:g}) "
             f"at t = {coupler.time:.6g} s: "
             + _mismatch_location(face_centre, face_normal, difference, index)
-            + ". The FVM boundary closure or the boundary data are unstable there; check the "
+            + ". The FVM boundary condition or the boundary data are unstable there; check the "
             "outer-patch cells (mesh the box with coupling patches) and the coupling interval."
         )
     warning = config.boundary_mismatch_warning

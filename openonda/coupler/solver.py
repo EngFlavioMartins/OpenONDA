@@ -115,14 +115,19 @@ def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig)
         raise TypeError("CoupledSolver requires a CouplerConfig")
     vpm_solution = Path(vpm_case.directory) / "solution" / (vpm_case.variant or "")
     if fvm_case.solution_directory.resolve() != vpm_solution.resolve():
-        raise ValueError("The FVM and VPM cases must share their directory and variant")
+        raise ValueError(
+            "The FVM and VPM cases must share their directory and variant; the FVM writes to "
+            f"{fvm_case.solution_directory} and the VPM to {vpm_solution}"
+        )
     if fvm_case.backup.schedule is not None or vpm_case.backup.schedule is not None:
         raise ValueError(
             "Coupled backups are set by CouplerConfig.backup; "
             "the FVM and VPM cases take no backup schedule"
         )
     if fvm_case.run.start_time != 0.0:
-        raise ValueError("Coupled runs start at time zero")
+        raise ValueError(
+            f"Coupled runs start at time zero (fvm_case.run.start_time is {fvm_case.run.start_time})"
+        )
     if not math.isclose(fvm_case.run.end_time, vpm_case.run.end_time, rel_tol=1.0e-12):
         raise ValueError(
             f"The FVM end time {fvm_case.run.end_time!r} s differs from the VPM end time "

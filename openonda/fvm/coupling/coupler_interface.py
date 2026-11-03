@@ -454,7 +454,7 @@ class CouplerInterfaceMixin:
         """Return the owner-centre-to-face-centre vectors ``(nFaces, 3)`` of a patch, in m.
 
         Their tangential part, relative to the normal distance, measures how far
-        a boundary closure must extrapolate across its owner cell.
+        a boundary condition must extrapolate across its owner cell.
         """
         if self.parallel.is_partitioned:
             _, _, face_slice = self._local_patch_face_ids(patch_name)
@@ -589,7 +589,7 @@ class CouplerInterfaceMixin:
         """Write a boundary-face-centred field into the velocity ghost layer.
 
         The FVM solver stores boundary values in a contiguous slab
-        ``velocity[n_elements : n_elements + n_boundary_faces]``, indexed by
+        ``velocity[n_cells : n_cells + n_boundary_faces]``, indexed by
         ``(startFace - n_interior_faces)``.  This helper writes the
         per-face *field* into the correct slice.
 

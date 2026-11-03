@@ -200,7 +200,7 @@ def deviation_norm_factor(A: np.ndarray | sparse.spmatrix, b: np.ndarray, x0: np
     # perturbations, but give its degenerate limit a scale-aware round-off
     # floor. The 1e-12 factor remains far below the 1e-4--1e-6 physical solve
     # tolerances and cannot hide the small-scale dynamics this normalization
-    # was introduced to protect.
+    # protects.
     algebraic_scale = max(
         float(np.linalg.norm(b)),
         float(np.linalg.norm(reference)),

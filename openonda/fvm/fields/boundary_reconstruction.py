@@ -221,7 +221,7 @@ def boundary_resolved_displacement(
 
     This makes missing directional information explicit. A caller may retain
     this real-cell reconstruction and separately supply a documented, lagged
-    boundary closure for the unresolved component. No fields are read and no
+    boundary condition for the unresolved component. No fields are read and no
     communication is performed.
     """
     faces = np.asarray(face_indices, dtype=np.int64)

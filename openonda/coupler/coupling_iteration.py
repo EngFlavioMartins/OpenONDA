@@ -57,8 +57,8 @@ def _first_estimate(coupler, predictor: BoundaryData, face_normal: np.ndarray) -
     """Add the previous interval's boundary-data correction to the VPM predictor data.
 
     The vorticity transfer and the FVM response change the boundary data by nearly
-    the same amount in consecutive coupling intervals, so this estimate usually
-    lies within the tolerances after one coupling iteration. The normal velocity is
+    the same amount in consecutive coupling intervals, so this estimate starts close
+    to the converged boundary data. The normal velocity is
     recomputed from the corrected face velocity.
     """
     correction = coupler.boundary_data_correction

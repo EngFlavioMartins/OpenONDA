@@ -82,9 +82,9 @@ def assemble_diffusion_term_interior(
     - Tf = Sf - Ef (explicit non-orthogonal correction)
 
     Args:
-        scalar_field: Field values (n_elements,)
-        scalar_field_gradient: Field gradient (n_elements, 3)
-        diffusivity: Diffusion coefficient (n_elements,)
+        scalar_field: Field values (n_cells,)
+        scalar_field_gradient: Field gradient (n_cells, 3)
+        diffusivity: Diffusion coefficient (n_cells,)
         mesh_data: Mesh connectivity
         geo_data: Geometric data
 
@@ -203,7 +203,6 @@ def assemble_diffusion_term_boundary_fixed_value(
     n_interior_faces = mesh_data["n_interior_faces"]
     n_cells = mesh_data["n_cells"]
 
-    # Get boundary patch info
     start_face = boundary_patch["start_face"]
     n_faces = boundary_patch["n_faces"]
     end_face = start_face + n_faces
@@ -216,11 +215,10 @@ def assemble_diffusion_term_boundary_fixed_value(
 
     # Boundary element indices
     # In uFVM: boundary elements are stored after interior elements
-    # Element index = n_elements + (face_index - n_interior_faces)
+    # Element index = n_cells + (face_index - n_interior_faces)
     b_elem_start = start_face - n_interior_faces
     b_elem_indices = np.arange(n_cells + b_elem_start, n_cells + b_elem_start + n_faces)
 
-    # Get geometric data for boundary faces
     sf_b = geo_data["face_area_vector"][b_face_indices]
     wall_distance = geo_data["wall_distance"][b_face_indices]
 
@@ -233,7 +231,6 @@ def assemble_diffusion_term_boundary_fixed_value(
     mag_sf_b = np.linalg.norm(sf_b, axis=1)
     geo_diff_b = mag_sf_b / wall_distance
 
-    # Get boundary and owner values
     scalar_field_b = scalar_field[b_elem_indices]
     scalar_field_c = scalar_field[owners_b]
 
@@ -279,9 +276,9 @@ def assemble_diffusion_term(
     Assemble complete diffusion term for all faces.
 
     Args:
-        scalar_field: Field values (n_elements + n_boundary_elements,)
-        scalar_field_gradient: Field gradient (n_elements, 3)
-        diffusivity: Diffusion coefficient (n_elements,)
+        scalar_field: Field values (n_cells + n_boundary_faces,)
+        scalar_field_gradient: Field gradient (n_cells, 3)
+        diffusivity: Diffusion coefficient (n_cells,)
         mesh_data: Mesh connectivity
         geo_data: Geometric data
         boundaries: List of boundary patch dictionaries.
@@ -308,7 +305,6 @@ def assemble_diffusion_term(
 
     n_faces = mesh_data["n_faces"]
 
-    # Initialize flux arrays
     flux_cf = np.zeros(n_faces)
     flux_ff = np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)

@@ -1,6 +1,6 @@
 """Smagorinsky turbulence models for the FVM solver.
 
-Two deliberately distinct formulations are provided:
+Two distinct formulations are provided:
 
 ``SmagorinskyModel``
     The familiar incompressible ``C_s`` form,
@@ -79,12 +79,12 @@ def _compute_filter_width(cell_volume: np.ndarray, mesh_data: dict, geo_data: di
     thickness from :func:`_compute_empty_bc_thickness`.
 
     Args:
-        cell_volume:      Cell volume array ``(n_elements,)``.
+        cell_volume:      Cell volume array ``(n_cells,)``.
         mesh_data: Mesh dictionary (used for 2-D detection).
         geo_data:  Geometry dictionary (used for thickness inference).
 
     Returns:
-        Per-cell filter width array ``(n_elements,)``.
+        Per-cell filter width array ``(n_cells,)``.
     """
     if _detect_2d_mesh(mesh_data):
         thickness = _compute_empty_bc_thickness(mesh_data, geo_data)
@@ -176,7 +176,7 @@ class SmagorinskyModel:
         _grad_fn = gradients._resolve_gradient_fn(geo_data)
         velocity_gradient = _grad_fn(velocity, mesh_data, geo_data)
 
-        # We are only interested in interior element gradients (first n_elements)
+        # We are only interested in interior element gradients (first n_cells)
         interior_velocity_gradient = velocity_gradient[:n_cells]
 
         # Interior velocity-gradient shape: (n_cells, 3, 3) for vector fields.

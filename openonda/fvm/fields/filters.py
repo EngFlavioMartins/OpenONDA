@@ -62,7 +62,7 @@ class CellBoxFilter:
         self._denom = 2.0 * neighbour_sum
 
     def __call__(self, f: np.ndarray) -> np.ndarray:
-        """Filter a cell field ``(n_elements, ...)``; shape is preserved.
+        """Filter a cell field ``(n_cells, ...)``; shape is preserved.
 
         Works for scalars ``(n,)``, vectors ``(n, 3)`` and tensors ``(n, 3, 3)``
         alike — the weights are reshaped to broadcast against whatever trailing

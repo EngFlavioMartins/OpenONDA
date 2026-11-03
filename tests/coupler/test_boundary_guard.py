@@ -1,6 +1,6 @@
 """Guards on the outer FVM boundary of the coupling.
 
-The 03_naca4412 case ran for 3.5 s after its boundary closure went unstable,
+The 03_naca4412 case ran for 3.5 s after its boundary condition went unstable,
 logging a tangential FVM-particle mismatch of 6.8 times the freestream speed.
 The coupler now stops such a run, names the face, and warns at start-up when
 the outer patch cells are not coupling-grade.

@@ -1,6 +1,6 @@
 """Standard on-disk layout and discovery for solver output files.
 
-The solution root is intentionally small: a user opens one ParaView collection
+The solution root is small: a user opens one ParaView collection
 per physical representation there, while immutable frame files live in a
 component directory. Numbered FVM and VPM backups accompany those frames;
 coupled restart files are saved separately.

@@ -1,4 +1,9 @@
-"""M4' remeshing kernel shared by the vorticity transfer and GBD diffusion."""
+"""M4' remeshing kernel of the vorticity transfer.
+
+GBD diffusion and the Fourier integrals of the VPM keep their own NumPy copies of the same
+weights, with their own result precision and evaluation order; merging them would change the
+last bits of every remeshed strength.
+"""
 
 import numpy as np
 

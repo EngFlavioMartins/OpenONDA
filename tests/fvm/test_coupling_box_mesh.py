@@ -1,7 +1,7 @@
 """Coupling boxes: exact Cartesian outer sides from the Cartesian mesher.
 
 The FVM–VPM coupling closes the outer FVM boundary with particle data. Its
-boundary closure and the particle-mesh transfer need planar sides and
+boundary condition and the particle-mesh transfer need planar sides and
 undistorted, axis-aligned cells at faces, edges and corners. The 03_naca4412
 case went unstable in thin, skewed corner cells that the cfMesh-style wrapper
 had produced at the box edges.

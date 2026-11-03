@@ -370,7 +370,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                 n_non_ortho = int(self.params["n_nonorthogonal_correctors"])
                 pressure_before_nonorthogonal_sweeps = kinematic_pressure[:n_elem].copy()
                 for non_ortho in range(n_non_ortho + 1):
-                    # Coupling can intentionally replace a patch type between
+                    # Coupling can replace a patch type between
                     # calls.  Keep cached indexing only while the patch
                     # layout is unchanged.
                     if (

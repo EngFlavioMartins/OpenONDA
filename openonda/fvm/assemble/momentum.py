@@ -55,7 +55,7 @@ def compute_dev2_stress_source(
             = \nu_f \left[ (G_f \cdot S_f)_j
                           - \tfrac{2}{3} S_{f,j} \,\mathrm{tr}(G_f) \right].
 
-    Returns an acceleration ``(n_elements, 3)`` in m/s², i.e. already divided by
+    Returns an acceleration ``(n_cells, 3)`` in m/s², i.e. already divided by
     the cell volume, ready to add to ``source_explicit``.  In a fully periodic
     constant-viscosity domain the transpose-stress divergence is identically
     zero in incompressible flow; the conservative face flux is the discrete
@@ -184,7 +184,7 @@ def _apply_empty_bc_ustar(
     velocity is removed, leaving only the tangential components.
 
     Args:
-        velocity_star: Predicted velocity field (n_elements + n_boundary, 3),
+        velocity_star: Predicted velocity field (n_cells + n_boundary, 3),
             modified in-place.
         b_elem_indices: Indices of boundary elements to update.
         owners_b: Owner element indices for each boundary face.
@@ -219,7 +219,7 @@ def _apply_ustar_bc(
     the boundary condition type specified in the boundary dictionary.
 
     Args:
-        velocity_star: Predicted velocity field (n_elements + n_boundary, 3),
+        velocity_star: Predicted velocity field (n_cells + n_boundary, 3),
             modified in-place.
         boundary: Boundary dictionary with keys ``start_face``, ``n_faces``,
             ``velocity_type``, and optionally ``velocity_value`` /
@@ -306,9 +306,9 @@ def assemble_momentum_equation(
     Returns coefficient matrix and RHS for each component separately.
 
     Args:
-        velocity: Velocity field (n_elements + n_boundary, 3)
+        velocity: Velocity field (n_cells + n_boundary, 3)
         kinematic_pressure: Kinematic pressure ``kinematic_pressure/ρ`` [m²/s²], shape
-            ``(n_elements + n_boundary,)``.
+            ``(n_cells + n_boundary,)``.
         density: Positive constant reference density [kg/m³]. It cancels from
             this kinematic-pressure formulation and is validated only.
         kinematic_viscosity: Kinematic viscosity (scalar or array)
@@ -320,10 +320,10 @@ def assemble_momentum_equation(
         velocity_old: Previous time step velocity (optional, for transient term)
         previous_time_step_size: Preceding accepted step size for variable-step BDF2.
         source_explicit: Optional acceleration source Su [m/s²], shape
-            ``(n_elements, 3)``. Added to the RHS as ``Su * V`` for each
+            ``(n_cells, 3)``. Added to the RHS as ``Su * V`` for each
             component (e.g. body acceleration or MMS forcing).
         source_implicit: Optional implicit volumetric source coefficient Sp
-            [1/s], shape ``(n_elements,)``. Added to the diagonal as ``Sp * V``
+            [1/s], shape ``(n_cells,)``. Added to the diagonal as ``Sp * V``
             Must be >= 0 to preserve diagonal dominance.
 
     Returns:
@@ -361,10 +361,8 @@ def assemble_momentum_equation(
     # Resolve gradient scheme
     _grad_fn = gradients._resolve_gradient_fn(geo_data)
 
-    # Compute velocity gradient
     velocity_gradient = _grad_fn(velocity, mesh_data, geo_data)
 
-    # Compute pressure gradient
     kinematic_pressure_gradient = _grad_fn(kinematic_pressure, mesh_data, geo_data)
     if kinematic_pressure_gradient.ndim == 3:
         kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)  # (n, 3, 1) -> (n, 3)
@@ -403,13 +401,11 @@ def assemble_momentum_equation(
 
     # Assemble for each component
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
-        # Get velocity component
         velocity_component = velocity[:, i_comp]
 
-        # Get gradient component
         velocity_gradient_component = (
             velocity_gradient[:, :, i_comp] if velocity_gradient.ndim == 3 else velocity_gradient
-        )  # (n_elements, 3) or full
+        )  # (n_cells, 3) or full
 
         momentum_boundaries = [_make_momentum_boundary(b, i_comp) for b in boundaries]
 
@@ -749,7 +745,7 @@ def solve_momentum_predictor(
         b = mom_eqs[comp_name]["b"]
 
         # Add source term to RHS to ensure consistency at convergence
-        # velocity[:n_elements, i_comp] is the old velocity value
+        # velocity[:n_cells, i_comp] is the previous-iterate velocity
         source_relax = (1.0 - under_relaxation) * diag_new * velocity[:n_cells, i_comp]
         b_relaxed = b + source_relax
 
@@ -787,7 +783,6 @@ def solve_momentum_predictor(
             "linear_result": linear_result,
         }
 
-        # Store results
         velocity_star[:n_cells, i_comp] = velocity_component_star
 
     if parallel_context is not None and parallel_context.is_partitioned:

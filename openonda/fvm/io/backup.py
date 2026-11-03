@@ -287,7 +287,7 @@ def validate_restart_state(
 ) -> FieldRestartState:
     """Validate a decoded backup without mutating *solver*.
 
-    This is intentionally shared by serial and partitioned validation.  A
+    This is shared by serial and partitioned validation.  A
     caller can collect validation errors from every rank before publishing any
     fields, which makes restart rejection validated at the solver boundary.
     """

@@ -14,12 +14,11 @@ from openonda.core.simulation.parallel import collective_phase
 
 
 def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
-    """Copy structured evidence into JSON types, rejecting every nonfinite leaf.
+    """Return a diagnostic record in JSON types, rejecting every non-finite value.
 
-    Counts, flags, optional values, ordered lists and nested mappings retain
-    their meaning. NumPy scalar/array values are supported without coercing
-    lists to scalars, dropping details, stringifying objects, or mutating the
-    producer. Non-string mapping keys and cycles are rejected explicitly.
+    Counts, flags, optional values, lists and nested mappings keep their meaning;
+    NumPy scalars and arrays become numbers and lists. Non-string mapping keys and
+    cycles raise.
     """
     if value is None or isinstance(value, str):
         return value
@@ -167,7 +166,7 @@ def boundary_induction_summary(vpm_solver, *, target_count: int, wall_seconds: f
     """Capture scalar query evidence before another operation replaces it.
 
     Backend timings are nested parts of the measured query wall time. Image
-    descriptors, source arrays and allocator histories are deliberately omitted.
+    descriptors, source arrays and allocator histories are omitted.
     """
     induction = getattr(getattr(vpm_solver, "physics", None), "induction", None)
     tail = getattr(induction, "last_tail", None) or {}

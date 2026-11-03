@@ -795,16 +795,18 @@ class VorticityTransfer:
         self._slip_z = (float(induction.z_min), float(induction.z_max)) if self._slip_slab else None
         self.blend_start_depth, self.blend_end_depth = cfg.blend_depths(self.particle_spacing)
         self.strength_threshold = float(cfg.transfer_removal_threshold) * self.particle_spacing**3
-        if str(viscous.gbd_threshold_mode).lower() != "absolute":
+        if viscous.gbd_threshold_mode != "absolute":
             raise ValueError(
-                "the vorticity transfer requires GBD threshold_mode='absolute', so the "
-                "removal threshold at the transfer surface is a resolved physical value"
+                "the vorticity transfer requires ViscousConfig.gbd_threshold_mode='absolute' "
+                f"(got {viscous.gbd_threshold_mode!r}), so the removal threshold at the transfer "
+                "surface is a resolved physical value"
             )
         self.surface_strength_threshold = float(viscous.gbd_threshold)
         if self.surface_strength_threshold > self.strength_threshold:
             raise ValueError(
-                "the strength threshold h³ transfer_removal_threshold must be at least the "
-                "GBD removal threshold of the VPM"
+                f"the strength threshold h³ transfer_removal_threshold ({self.strength_threshold:.6g}"
+                f" m³/s) must be at least the GBD removal threshold of the VPM "
+                f"({self.surface_strength_threshold:.6g} m³/s)"
             )
         self.max_strength_ratio = float(cfg.max_strength_ratio)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)

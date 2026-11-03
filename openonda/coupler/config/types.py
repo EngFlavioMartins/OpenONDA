@@ -9,8 +9,8 @@ from openonda.core.simulation.forcing import VelocityRamp
 
 __all__ = ["Backup", "CouplerConfig"]
 
-# Interface depths in particle spacings, recommended by the cylinder error study
-# (docs/reports/2026-10-23-coupling-error-sources.md): the inset of the transfer surface from
+# Interface depths in particle spacings, from the interface sensitivity study of
+# tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow: the inset of the transfer surface from
 # the outer FVM boundary, and the depths below the transfer surface where the blending weight
 # starts to rise (end of the zero-weight layer) and reaches one (start of the replacement region).
 TRANSFER_INSET_SPACINGS = 8.75
@@ -58,7 +58,8 @@ class CouplerConfig:
     """
 
     freestream_velocity: tuple[float, float, float] = (1.0, 0.0, 0.0)
-    """Cartesian free-stream velocity in m/s; must match the VPM."""
+    """Cartesian free-stream velocity in m/s; must equal ``VPMCase.numerics.freestream_velocity``,
+    whose default is (0, 0, 0)."""
     freestream: VelocityRamp | None = None
     """Optional free-stream velocity history; part of the restart configuration."""
     transfer_region_bounds: tuple[float, float, float, float, float, float] | None = None
@@ -71,8 +72,8 @@ class CouplerConfig:
     """Transfer inset ``L_inset``, from the outer FVM boundary to the transfer surface, in particle
     spacings.
 
-    Used when ``transfer_region_bounds`` is ``None``; the default is the inset recommended by the
-    cylinder error study.
+    Used when ``transfer_region_bounds`` is ``None``; the default comes from the interface
+    sensitivity study of the cylinder case.
     """
     blend_start_depth: float | None = None
     """Depth ``δ_0`` below the transfer surface where the blending weight starts to rise, in m.
@@ -88,8 +89,8 @@ class CouplerConfig:
     vorticity replaces the particle vorticity everywhere inside the transfer surface.
     """
     transfer_removal_threshold: float = 0.05
-    """Removal threshold ``τ_transfer`` of the replacement region, in 1/s; at least the GBD
-    threshold ``τ_VPM``."""
+    """Removal threshold ``τ_transfer`` of the replacement region, in 1/s. The strength threshold
+    ``τ_transfer h³`` must be at least the absolute GBD threshold of the VPM, in m³/s."""
     max_strength_ratio: float = 1.8
     """Strength-ratio limit ``κ_max`` of the strength correction; at least one.
 
@@ -108,8 +109,8 @@ class CouplerConfig:
     """Largest number of coupling iterations at a fixed VPM predictor; above one, FVM output must
     fall on coupling times.
 
-    With the tolerances below the cylinder study converged in 1.8 coupling iterations on average;
-    a single iteration changed the drag by 3%.
+    The interface sensitivity study of the cylinder case compares a single iteration with
+    iterations converged to the tolerances below.
     """
     normal_velocity_tolerance: float = 1.0e-5
     """Tolerance of the area-weighted RMS normal-velocity residual, in m/s."""
@@ -123,7 +124,7 @@ class CouplerConfig:
     boundary_mismatch_limit: float | None = 1.0
     """Mismatch, in units of the reference speed, above which the run stops with an error
     naming the face. A mismatch of the order of the flow speed is not physical; it signals
-    an unstable boundary closure or corrupted boundary data. ``None`` disables the check."""
+    an unstable boundary condition or corrupted boundary data. ``None`` disables the check."""
     backup: Backup = field(default_factory=Backup)
     """Coupled restart backups."""
 

@@ -397,7 +397,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 raise ValueError(
                     "PETSc execution requires iterative momentum/pressure methods "
                     f"(bicgstab, gmres, cg, or pressure AMG); got {invalid!r}. Distributed "
-                    "direct factorization is intentionally not assumed."
+                    "direct factorization is not assumed."
                 )
 
         if (
@@ -977,7 +977,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
         Notes
         -----
-        This is intentionally narrower than backup loading: it supports
+        This is narrower than backup loading: it supports
         deterministic manufactured/replay starts while retaining the solver's
         own boundary reconstruction, flux construction, and time-history
         rank assignment.
