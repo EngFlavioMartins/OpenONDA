@@ -65,7 +65,7 @@ Queue order: `k`, `n_interval`, `inset`, `a`, `p`, `c`, `g` (CPU, in parallel fr
 | --- | --- | --- | --- | --- |
 | anchor | – | `box2.4_sub5_inset8.75` | baseline, to $t=100$ s (sampling floor) | ok |
 | `k` | I | `box2.4_sub5_inset8.75_k1` | coupling iterations $M=1$ | ok |
-| `k` | I | `box2.4_sub5_inset8.75_k2` | $M=2$ | running |
+| `k` | I | `box2.4_sub5_inset8.75_k2` | $M=2$ | ok |
 | `k` | I | `box2.4_sub5_inset8.75_k4` | $M=4$ | running |
 | `n_interval` | T | `box2.4_sub1_inset8.75` | $N=1$ ($\Delta t_\mathrm{VPM}=0.008$ s) | queued (resumes from 36.0 s) |
 | `n_interval` | T | `box2.4_sub2_inset8.75` | $N=2$ ($\Delta t_\mathrm{VPM}=0.016$ s) | ok |
@@ -101,9 +101,9 @@ Queue order: `k`, `n_interval`, `inset`, `a`, `p`, `c`, `g` (CPU, in parallel fr
 | `g` | R | `reference_fw4.4` | $h$ cells over the $y_\mathrm{box}=2.4$ m domain | ok |
 | `g` | R | `reference_dt0.004_fw4.4` | same, $\Delta t_\mathrm{FVM}=0.004$ s | ok |
 | `g` | R | `reference_fw5.2_fb3.2` | $h$ cells over the $y_\mathrm{box}=3.2$ m domain | ok |
-| `g` | R | `reference_fw4.0_fb2.0` | $h$ cells over the $y_\mathrm{box}=2.0$ m domain | running |
-| `g` | R | `reference_fw3.6_fb1.6` | $h$ cells over the $y_\mathrm{box}=1.6$ m domain | running |
-| `g` | R | `reference_fw6.0_fb4.0` | $h$ cells over the $y_\mathrm{box}=4.0$ m domain | running |
+| `g` | R | `reference_fw4.0_fb2.0` | $h$ cells over the $y_\mathrm{box}=2.0$ m domain | ok |
+| `g` | R | `reference_fw3.6_fb1.6` | $h$ cells over the $y_\mathrm{box}=1.6$ m domain | ok |
+| `g` | R | `reference_fw6.0_fb4.0` | $h$ cells over the $y_\mathrm{box}=4.0$ m domain | stopped by the author at $t=23.9$ s |
 | $Q_\mathrm{ext}$ | R | `reference_h0.08`, `reference_h0.056569`, `reference_flow`, `reference_h0.028284` | $h=0.08$ to 0.0283 m at $\Delta t_\mathrm{FVM}=0.008$ s | ok |
 | $Q_\mathrm{ext}$ | R | `reference_h{0.08,0.056569,0.028284}_dt0.004`, `reference_dt0.004` | $h=0.08$ to 0.0283 m at $\Delta t_\mathrm{FVM}=0.004$ s | ok |
 | $Q_\mathrm{ext}$ | R | `reference_dt0.016`, `reference_flow`, `reference_dt0.004`, `reference_dt0.002` | $\Delta t_\mathrm{FVM}=0.016$ to 0.002 s at $h=0.04$ m | ok |
