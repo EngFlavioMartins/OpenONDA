@@ -958,9 +958,12 @@ class SurfaceIndex:
         doubles its radius until the nearest candidate lies within it, up to
         four surface spans; past that it takes every triangle.
         """
+        points = np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3)
+        if not np.all(np.isfinite(points)):
+            raise ValueError("point must contain three finite coordinates")
         span = float(np.max(self.surface_upper - self.surface_lower))
         return _indexed_nearest_kernel(
-            np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3),
+            points,
             self.triangles,
             self.grid_origin,
             float(self.cell_size),

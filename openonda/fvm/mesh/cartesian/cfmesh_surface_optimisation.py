@@ -776,13 +776,17 @@ def untangle_cfmesh_surface(
     mesh_data: MeshData,
     *,
     map_to_surface: Callable[[np.ndarray], np.ndarray],
+    map_points_to_surface: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> dict[str, Any]:
-    """Apply cfMesh's serial post-projection untangling loop in place."""
+    """Apply cfMesh's serial post-projection untangling loop in place.
+
+    ``map_points_to_surface``, if given, maps many points at once as
+    ``map_to_surface`` maps each.
+    """
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
     boundary_start = int(mesh_data["n_interior_faces"])
     point_neighbours: dict[int, set[int]] = defaultdict(set)
-    for face in faces[boundary_start:]:
+    for face in mesh_data["faces"][boundary_start:]:
         for first_value, second_value in zip(face, np.roll(face, -1), strict=True):
             first = int(first_value)
             second = int(second_value)
@@ -808,9 +812,13 @@ def untangle_cfmesh_surface(
         selected_points = tuple(sorted(selected))
         moved_union.update(selected_points)
         _smooth_partition_points(mesh_data, selected_points, iterations=1)
-        mapped = np.asarray(
-            [map_to_surface(points[point_id]) for point_id in selected_points],
-            dtype=np.float64,
+        mapped = (
+            np.asarray(
+                [map_to_surface(points[point_id]) for point_id in selected_points],
+                dtype=np.float64,
+            )
+            if map_points_to_surface is None
+            else map_points_to_surface(points[np.asarray(selected_points, dtype=np.int64)])
         )
         points[np.asarray(selected_points, dtype=np.int64)] = mapped
         iterations += 1
@@ -833,7 +841,7 @@ def optimise_cfmesh_surface(
 ) -> None:
     """Apply cfMesh's feature-edge and boundary-surface smoothing in place."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
+    faces = mesh_data["faces"]
     point_faces: dict[int, list[int]] = defaultdict(list)
     point_patches: dict[int, set[int]] = defaultdict(set)
     edge_patches: dict[tuple[int, int], set[int]] = defaultdict(set)

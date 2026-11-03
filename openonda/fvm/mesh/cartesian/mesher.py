@@ -415,16 +415,6 @@ def _project_to_feature_planes(
     return projected
 
 
-def _indexed_nearest_points(
-    index: SurfaceIndex, points: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """:meth:`SurfaceIndex.nearest_point` for many points at once."""
-    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-    if not np.all(np.isfinite(points)):
-        raise ValueError("point must contain three finite coordinates")
-    return index.indexed_nearest_points(points)
-
-
 def _quality_snapshot(mesh_data: MeshData) -> tuple[dict[str, Any], GeometryData]:
     """Compute the native geometry and mesh-quality measurements."""
     topology = validate_topology(mesh_data)
@@ -1398,7 +1388,7 @@ class CartesianMesher:
                 planar_wall_constraints.update(feature_constraints)
             surface_scale = max(float(np.ptp(surface.triangles, axis=(0, 1)).max()), 1.0)
             # Each wall vertex moves once, so its nearest point can be found up front.
-            nearest, nearest_distances = _indexed_nearest_points(index, candidate[point_ids])
+            nearest, nearest_distances = index.indexed_nearest_points(candidate[point_ids])
             mapped_points = []
             for position, point_id_value in enumerate(point_ids):
                 point_id = int(point_id_value)
@@ -1436,7 +1426,7 @@ class CartesianMesher:
                 inner_displacements.setdefault(int(inner_id), []).append(displacement)
                 mapped_points.append(mapped)
             if mapped_points:
-                for distance in _indexed_nearest_points(index, np.asarray(mapped_points))[1]:
+                for distance in index.indexed_nearest_points(np.asarray(mapped_points))[1]:
                     max_after = max(max_after, float(distance))
 
         # Curved surfaces can share rim vertices with an outer plane.  Apply

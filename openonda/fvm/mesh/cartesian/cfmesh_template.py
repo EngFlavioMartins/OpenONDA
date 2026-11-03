@@ -2437,6 +2437,7 @@ def project_cfmesh_template(
     untangling = untangle_cfmesh_surface(
         mesh_data,
         map_to_surface=lambda point: global_index.nearest_point(point)[0],
+        map_points_to_surface=lambda values: global_index.indexed_nearest_points(values)[0],
     )
     mesh_data["mesh_generation"]["surface_projection"] = {
         "pre_map_iterations": 1,
@@ -2545,27 +2546,38 @@ def assign_cfmesh_patches(
             edge = (min(first_id, second_id), max(first_id, second_id))
             edge_faces[edge].append(local_face_id)
 
+    # The faces across each boundary face's edges, in edge order
+    edge_neighbour_faces: list[list[int]] = []
+    for local_face_id, face_id in enumerate(boundary_face_ids):
+        face = source_faces[face_id]
+        across: list[int] = []
+        for first_value, second_value in zip(face, np.roll(face, -1), strict=True):
+            first_id = int(first_value)
+            second_id = int(second_value)
+            edge = (min(first_id, second_id), max(first_id, second_id))
+            across.extend(
+                neighbour_face
+                for neighbour_face in edge_faces[edge]
+                if neighbour_face != local_face_id
+            )
+        edge_neighbour_faces.append(across)
+
     normal_alignment_changes = 0
     normal_alignment_history: list[list[int]] = []
     for _iteration in range(5):
         updated = face_patch_ids.copy()
         changed = 0
         changed_faces: list[int] = []
+        patch_list = face_patch_ids.tolist()
         for local_face_id, face_id in enumerate(boundary_face_ids):
-            face = source_faces[face_id]
             neighbour_patches: list[int] = []
-            for first_value, second_value in zip(face, np.roll(face, -1), strict=True):
-                first_id = int(first_value)
-                second_id = int(second_value)
-                edge = (min(first_id, second_id), max(first_id, second_id))
-                for neighbour_face in edge_faces[edge]:
-                    if neighbour_face == local_face_id:
-                        continue
-                    patch_id = int(face_patch_ids[neighbour_face])
-                    if patch_id not in neighbour_patches:
-                        neighbour_patches.append(patch_id)
+            for neighbour_face in edge_neighbour_faces[local_face_id]:
+                patch_id = patch_list[neighbour_face]
+                if patch_id not in neighbour_patches:
+                    neighbour_patches.append(patch_id)
             if len(neighbour_patches) <= 1:
                 continue
+            face = source_faces[face_id]
             centre = _foam_face_centre(points[face])
             face_normal = _face_area_vector_with_centre(points[face], centre)
             face_normal /= max(float(np.linalg.norm(face_normal)), np.finfo(np.float64).tiny)
