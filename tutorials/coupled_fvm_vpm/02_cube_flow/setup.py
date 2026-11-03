@@ -226,8 +226,8 @@ VPM_CASE = vpm.VPMCase(
 
 COUPLER_CONFIG = coupling.CouplerConfig(
     freestream_velocity=FREESTREAM_VELOCITY,
-    # One coupling iteration per interval: a declared choice for the run time (README)
-    max_coupling_iterations=1,
+    # Iterate each interval to the transfer tolerances, at most 6 times (README)
+    max_coupling_iterations=6,
     transfer_diagnostic_interval_steps=round(
         TRANSFER_DIAGNOSTIC_INTERVAL / VPM_MAX_COUPLING_INTERVAL
     ),

@@ -10,11 +10,11 @@ The FVM resolves separation from a no-slip unit cube and its near wake; vortex p
 | --- | --- |
 | Cube side; freestream | 1 m; 1 m/s in $+x$ |
 | Density; viscosity | 1 kg/m³; 0.001 m²/s |
-| FVM domain | $[-1.8,5.05]\times[-1.8,1.8]^2$ m |
+| FVM domain | $[-1.8,3.6]\times[-1.8,1.8]^2$ m |
 | VPM domain; outflow fringe | $[-4.5,24]\times[-3,3]^2$ m; $x\in[12,24]$ m |
 | Cell and particle spacing | 0.045 m |
 | FVM step; coupling interval | Courant number 0.9, at most 0.02 s; at most 0.1 s, held at 0.04 s by the force output |
-| Coupling iterations | 1 per interval (declared choice, below) |
+| Coupling iterations | Up to 6 per interval, ended by the transfer tolerances |
 | Statistics window | $30\le t\le60$ s |
 
 ## Physics and numerical model
@@ -23,7 +23,7 @@ The FVM resolves separation from a no-slip unit cube and its near wake; vortex p
 
 The particle wake uses Gaussian cores, RK2 transport, grid-based diffusion and FMM induction. With LES the particles also receive the [selective eddy viscosity](../../../docs/vpm.md#stabilization), which keeps stretched wake vortices above the particle spacing; without it a vortex at $x\approx10$ m collapsed to the spacing and ended a run at $t=33$ s. Vorticity fades through the outflow fringe rather than being removed at the downstream face. A tilted vortex behind the cube starts asymmetric shedding in both the coupled and reference cases.
 
-The coupler takes one coupling iteration per interval (`max_coupling_iterations=1`; the default is 6). This is a declared choice for run time, not a converged setting. In 65-minute screens on 8 FVM ranks and an RTX 3060 (solver `e97e0343`), up to 6 iterations converged in 2 or 3 and took 101 to 217 s of wall time per 0.04 s interval. One iteration took 33 to 45 s per interval near $t=2.4$ s (`coupler.log` of each screen). On the coupled cylinder a single iteration changed the drag by 3 % (`CouplerConfig.max_coupling_iterations`), which is the size of the differences this case measures.
+The coupler iterates each interval until the transfer tolerances are met, at most 6 times (`max_coupling_iterations=6`, the default). In 65-minute screens on 8 FVM ranks and an RTX 3060 (solver `e97e0343`), the iterations converged in 2 or 3 and took 101 to 217 s of wall time per 0.04 s interval. One iteration took 33 to 45 s per interval near $t=2.4$ s (`coupler.log` of each screen). On the coupled cylinder a single iteration changed the drag by 3 % (`CouplerConfig.max_coupling_iterations`), which is the size of the differences this case measures. A first run with one iteration per interval reached $t\approx12$ s and was stopped, because the coupled cylinder then showed a +3 % drag coupling error with one iteration (`../01_cylinder_shedding_flow/figures/auxiliary/interface_runs.csv`, run `k1`); it is kept as the cost comparison.
 
 ## Run
 
