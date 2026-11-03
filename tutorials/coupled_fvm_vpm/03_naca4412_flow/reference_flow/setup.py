@@ -18,7 +18,7 @@ CASE_DIR = Path(__file__).resolve().parent
 # Wing geometry
 NACA_CODE = "4412"
 CHORD = 1.0  # m
-SPAN = 5.0  # m
+SPAN = 4.88  # m, tips at the lattice position that meshes the round trailing edge
 N_SECTION_POINTS = 161
 WING_STL = CASE_DIR / "assets/naca4412_wing.stl"
 
@@ -36,7 +36,9 @@ DOMAIN = (-10.24, 30.72, -12.8, 12.8, -12.8, 12.8)  # m
 
 # Mesh refinement from the wing into the wake
 CELL_SIZE = 0.04  # m
-NEAR_BODY = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m, finest spacing
+# The round trailing edge in cells of half the wing cell size, so its 20 mm base spans a cell
+TRAILING_EDGE_BOX = (0.32, 0.52, -0.16, 0.04, -0.5 * SPAN - CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m
+NEAR_BODY = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m, wing cells
 NEAR_WAKE = (-2.0, 6.0, -1.84, 1.84, -4.0, 4.0)  # m, cells of 2 CELL_SIZE
 WAKE = (-2.4, 14.0, -3.2, 3.2, -4.8, 4.8)  # m, cells of 4 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
@@ -73,8 +75,9 @@ MESH = msh.CartesianMesher(
     ),
     surfaces=(msh.STLSurface(WING_STL, patch="wing"),),
     max_cell_size=BACKGROUND * CELL_SIZE,
-    cell_size_anchor=CELL_SIZE,
+    cell_size_anchor=0.5 * CELL_SIZE,
     refinements=(
+        msh.BoxRefinement("trailingEdge", TRAILING_EDGE_BOX, 0.5 * CELL_SIZE),
         msh.BoxRefinement("nearBody", NEAR_BODY, CELL_SIZE),
         msh.BoxRefinement("nearWake", NEAR_WAKE, 2 * CELL_SIZE),
         msh.BoxRefinement("wake", WAKE, 4 * CELL_SIZE),

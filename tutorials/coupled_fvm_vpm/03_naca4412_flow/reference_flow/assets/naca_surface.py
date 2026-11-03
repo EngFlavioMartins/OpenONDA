@@ -4,17 +4,23 @@ import numpy as np
 
 from openonda.core.file_output import write_text_atomic
 
+# The section is cut at this chord fraction and closed by a round trailing edge. The mesher
+# leaves fluid-cell centres inside any trailing edge thinner than its wall cells, sharp or round:
+# the cut leaves a 20 mm base, one cell of the trailing-edge refinement of the setups
+TRAILING_EDGE_CUT = 0.927
+TRAILING_EDGE_ARC_POINTS = 8  # outline points on the round trailing edge, its ends excluded
+
 
 def naca4_section(code, chord, n_points):
     """Lower and upper surface points (x, y) from the leading to the trailing edge.
 
     The chord lies along x, centred on the origin. Cosine spacing clusters the
-    points at both edges, and the thickness polynomial closes the trailing edge.
+    points at both edges; the surfaces end at ``TRAILING_EDGE_CUT`` of the chord.
     """
     camber = int(code[0]) / 100.0
     camber_position = int(code[1]) / 10.0
     thickness = int(code[2:]) / 100.0
-    x = 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, n_points)))
+    x = TRAILING_EDGE_CUT * 0.5 * (1.0 - np.cos(np.linspace(0.0, np.pi, n_points)))
 
     half_thickness = (
         5.0
@@ -48,15 +54,21 @@ def naca4_section(code, chord, n_points):
 
 
 def section_outline(code, chord, n_points, angle_of_attack):
-    """Counter-clockwise outline: lower surface to the trailing edge, upper surface back.
+    """Counter-clockwise outline: lower surface, round trailing edge, upper surface back.
 
-    The leading and trailing edges appear once, so both surfaces share them. The
-    section is pitched nose-up by ``angle_of_attack`` (degrees) about the mid-chord.
+    The leading edge appears once. The trailing edge is a half circle on the segment between
+    the two cut points, which meets both surfaces almost tangentially. The section is
+    pitched nose-up by ``angle_of_attack`` (degrees) about the mid-chord.
     """
     lower, upper = naca4_section(code, chord, n_points)
+    centre = 0.5 * (lower[-1] + upper[-1])
+    radial = lower[-1] - centre
+    aft = np.array([-radial[1], radial[0]])  # radial turned a quarter turn towards +x
+    theta = np.linspace(0.0, np.pi, TRAILING_EDGE_ARC_POINTS + 2)[1:-1]
+    arc = centre + np.outer(np.cos(theta), radial) + np.outer(np.sin(theta), aft)
     alpha = np.radians(angle_of_attack)
     rotation = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
-    return np.vstack((lower[:-1], upper[:0:-1])) @ rotation
+    return np.vstack((lower, arc, upper[:0:-1])) @ rotation
 
 
 def write_wing_stl(path, code, chord, span, n_points, n_span_segments, angle_of_attack):
@@ -67,7 +79,7 @@ def write_wing_stl(path, code, chord, span, n_points, n_span_segments, angle_of_
     """
     outline = section_outline(code, chord, n_points, angle_of_attack)
     n_outline = len(outline)
-    n_chord = n_outline // 2  # outline index of the trailing edge
+    n_chord = n_points  # points of the lower surface, its trailing-edge point included
     stations = np.linspace(-0.5 * span, 0.5 * span, n_span_segments + 1)
 
     # One outline ring of vertices per spanwise station
@@ -80,7 +92,8 @@ def write_wing_stl(path, code, chord, span, n_points, n_span_segments, angle_of_
             j = (i + 1) % n_outline
             triangles += [(root + i, root + j, tip + j), (root + i, tip + j, tip + i)]
 
-    # Tip caps: strips between lower point i and upper point i at equal chord position
+    # Tip caps: strips between lower point i and upper point i at equal chord position, then a
+    # fan from the lower trailing-edge point over the round trailing edge
     def lower_point(i):
         return i
 
@@ -88,7 +101,8 @@ def write_wing_stl(path, code, chord, span, n_points, n_span_segments, angle_of_
         return (n_outline - i) % n_outline
 
     cap = [(lower_point(i), lower_point(i + 1), upper_point(i + 1)) for i in range(n_chord - 1)]
-    cap += [(lower_point(i), upper_point(i + 1), upper_point(i)) for i in range(1, n_chord)]
+    cap += [(lower_point(i), upper_point(i + 1), upper_point(i)) for i in range(1, n_chord - 1)]
+    cap += [(n_chord - 1, n_chord + k, n_chord + k + 1) for k in range(TRAILING_EDGE_ARC_POINTS)]
     tip = n_span_segments * n_outline
     triangles += [(tip + a, tip + b, tip + c) for a, b, c in cap]
     triangles += [(a, c, b) for a, b, c in cap]

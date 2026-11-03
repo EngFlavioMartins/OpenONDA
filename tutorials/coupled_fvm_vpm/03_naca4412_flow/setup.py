@@ -11,7 +11,7 @@ outer FVM faces normally or not at all.
 import math
 from pathlib import Path
 
-import openonda.coupler as coupling
+import openonda.coupler as coupler
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
@@ -24,7 +24,7 @@ CASE_NAME = "coupled_naca4412_flow"
 # Wing geometry
 NACA_CODE = "4412"
 CHORD = 1.0  # m
-SPAN = 5.0  # m
+SPAN = 4.88  # m, tips at the lattice position that meshes the round trailing edge
 N_SECTION_POINTS = 161  # per surface
 WING_STL = CASE_DIR / "assets/naca4412_wing.stl"
 
@@ -39,10 +39,11 @@ FREESTREAM_VELOCITY = (FREESTREAM_SPEED, 0.0, 0.0)
 
 # FVM mesh and particle spacing
 CELL_SIZE = 0.04  # m, 25 cells per chord
-# The FVM box contains the wing, near wake and particle-transfer interface.
-FVM_DOMAIN_BOUNDS = (-1.6, 2.52, -1.28, 1.24, -3.6, 3.6)  # m
+FVM_DOMAIN_BOUNDS = (-1.6, 2.52, -1.28, 1.24, -3.6, 3.6)  # m, wing, tips and near wake
+# The round trailing edge in cells of half the wing cell size, so its 20 mm base spans a cell
+TRAILING_EDGE_BOX = (0.32, 0.52, -0.16, 0.04, -0.5 * SPAN - CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m
 FVM_INITIAL_TIME_STEP = 0.008  # s
-FVM_MAX_TIME_STEP = 0.04  # s, upper bound used by the CFL controller
+FVM_MAX_TIME_STEP = 0.04  # s, the FVM step adapts to a Courant number of 0.9
 VPM_MAX_COUPLING_INTERVAL = 0.015  # s, reduced by particle strain and output events
 FVM_CORES = 8
 
@@ -57,7 +58,7 @@ PARTICLE_LIMIT = 2_000_000
 STATISTICS_START = 12.0  # s
 END_TIME = 24.0  # s
 
-# Output and restart events occur at fixed physical-time intervals.
+# Output
 FORCE_INTERVAL = 0.03  # s
 PROFILE_INTERVAL = 0.2  # s, wake profiles over the whole run
 SLICE_INTERVAL = 0.2  # s, planar slices over the statistics window
@@ -74,7 +75,7 @@ VPM_SLICE_Z0 = (-1.6, 8.0, -2.4, 2.4)  # m, x and y bounds of the mid-span plane
 VPM_SLICE_CROSS = (-2.4, 2.4, -4.0, 4.0)  # m, y and z bounds of the cross-flow planes
 
 
-# Write the analytical wing surface used by the mesher.
+# The wing surface for the mesher
 write_wing_stl(WING_STL, NACA_CODE, CHORD, SPAN, N_SECTION_POINTS, 1, ANGLE_OF_ATTACK)
 
 FVM_MESH = msh.CartesianMesher(
@@ -85,7 +86,8 @@ FVM_MESH = msh.CartesianMesher(
     ),
     surfaces=(msh.STLSurface(WING_STL, patch="wing"),),
     max_cell_size=CELL_SIZE,
-    cell_size_anchor=CELL_SIZE,
+    cell_size_anchor=0.5 * CELL_SIZE,
+    refinements=(msh.BoxRefinement("trailingEdge", TRAILING_EDGE_BOX, 0.5 * CELL_SIZE),),
 )
 
 profiles = fvm.EveryTime(PROFILE_INTERVAL)
@@ -274,12 +276,12 @@ VPM_CASE = vpm.VPMCase(
     logging=vpm.LoggingConfig(console=False),
 )
 
-COUPLER_CONFIG = coupling.CouplerConfig(
+COUPLER_CONFIG = coupler.CouplerConfig(
     freestream_velocity=FREESTREAM_VELOCITY,
     transfer_diagnostic_interval_steps=TRANSFER_DIAGNOSTIC_INTERVAL_STEPS,
-    backup=coupling.Backup(schedule=coupling.EveryTime(BACKUP_INTERVAL)),
+    backup=coupler.Backup(schedule=coupler.EveryTime(BACKUP_INTERVAL)),
 )
 
 if __name__ == "__main__":
-    with coupling.CoupledSolver(FVM_CASE, VPM_CASE, COUPLER_CONFIG) as solver:
+    with coupler.CoupledSolver(FVM_CASE, VPM_CASE, COUPLER_CONFIG) as solver:
         solver.run(start_from="latest")

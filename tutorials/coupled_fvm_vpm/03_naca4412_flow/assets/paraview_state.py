@@ -1,4 +1,6 @@
 # state file generated using paraview version 6.2.0
+from pathlib import Path
+
 import paraview
 paraview.compatibility.major = 6
 paraview.compatibility.minor = 2
@@ -7,6 +9,16 @@ paraview.compatibility.minor = 2
 from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
+
+# Read the data relative to this case, so the state loads on any machine and from any directory
+try:
+    CASE_DIR = Path(__file__).resolve().parent.parent
+except NameError:  # pasted into the Python shell: run it from the case directory
+    CASE_DIR = Path.cwd()
+
+missing = [name for name in ("solution/vpm.pvd", "assets/naca4412_wing.stl", "solution/fvm.pvd") if not (CASE_DIR / name).is_file()]
+if missing:
+    raise FileNotFoundError(f"Run ./allrun.sh first, {CASE_DIR} has no {', '.join(missing)}")
 
 # ----------------------------------------------------------------
 # setup views used in the visualization
@@ -43,14 +55,14 @@ SetActiveView(renderView1)
 # ----------------------------------------------------------------
 
 # create a new 'PVD Reader'
-vpmpvd = PVDReader(registrationName='vpm.pvd', FileName='/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/03_naca4412_flow/solution/vpm.pvd')
+vpmpvd = PVDReader(registrationName='vpm.pvd', FileName=str(CASE_DIR / "solution" / "vpm.pvd"))
 vpmpvd.PointArrays = ['velocity', 'vortex_strength', 'vorticity', 'core_radius', 'particle_volume', 'kinematic_viscosity', 'eddy_viscosity', 'effective_viscosity', 'group_id', 'zone_id']
 
 # create a new 'STL Reader'
-naca4412_wingstl = STLReader(registrationName='naca4412_wing.stl', FileNames=['/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/03_naca4412_flow/assets/naca4412_wing.stl'])
+naca4412_wingstl = STLReader(registrationName='naca4412_wing.stl', FileNames=[str(CASE_DIR / "assets" / "naca4412_wing.stl")])
 
 # create a new 'PVD Reader'
-fvmpvd = PVDReader(registrationName='fvm.pvd', FileName='/home/flavio-martins/Projects/OpenONDA/tutorials/coupled_fvm_vpm/03_naca4412_flow/solution/fvm.pvd')
+fvmpvd = PVDReader(registrationName='fvm.pvd', FileName=str(CASE_DIR / "solution" / "fvm.pvd"))
 fvmpvd.CellArrays = ['velocity', 'kinematic_pressure', 'courant_number', 'vorticity', 'cell_size', 'refinement_level', 'boundary_layer_index', 'cell_volume', 'cell_equivalent_size', 'global_cell_id']
 
 # create a new 'Slice'
