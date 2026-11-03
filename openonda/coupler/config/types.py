@@ -118,7 +118,8 @@ class CouplerConfig:
     boundary_mismatch_warning: float | None = 0.2
     """Tangential FVM–particle velocity mismatch on the outer FVM boundary, in units of the
     reference speed, above which the coupler logs a warning with the face location; ``None``
-    disables it. Inflow faces take the particle velocity, so mismatch arises on outflow faces."""
+    disables it. The mixed condition prescribes the normal velocity on every face, so the mismatch
+    is the tangential velocity that the condition leaves to the FVM."""
     boundary_mismatch_limit: float | None = 1.0
     """Mismatch, in units of the reference speed, above which the run stops with an error
     naming the face. A mismatch of the order of the flow speed is not physical; it signals
