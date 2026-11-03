@@ -292,12 +292,18 @@ def _planar_feature_constraints(
     # tessellated curved wall is no feature, and pulling vertices onto a
     # distant edge collapses the wall faces between them. Such a vertex keeps
     # its closest facets that do form a nearby feature.
-    for point_id, applied in constraints.items():
-        if box_wall or len(applied) < 2:
+    for point_id, applied in list(constraints.items()):
+        if box_wall:
             continue
         point = points[point_id]
         reach = 0.5 * local_face_size[point_id]
         ranked = sorted(applied, key=lambda plane: plane[2].nearest_point(point)[1])
+        # A cap narrower than the face beside it, as at a thin trailing edge,
+        # still matches that face; its nearest facet then lies across the
+        # face and pulling the vertex there inverts the cell under it
+        if ranked[0][2].nearest_point(point)[1] > reach:
+            del constraints[point_id]
+            continue
         kept = ranked[:1]
         for plane in ranked[1:]:
             if any(abs(float(np.dot(plane[0], other[0]))) >= _SHARP_RIM_COSINE for other in kept):
