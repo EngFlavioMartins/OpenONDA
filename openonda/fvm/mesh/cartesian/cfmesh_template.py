@@ -25,9 +25,12 @@ from ..data import BoundaryPatchData, MeshData
 from ..progress import mesh_stage
 from ..surface_classification import (
     SurfaceIndex,
+    _closest_point_on_triangle,
+    _triangle_box_overlap_mask_kernel,
     closest_point_on_triangles,
     triangle_box_overlap,
 )
+from ..topology import face_vertex_keys, last_key_matches, renumbered_rows
 from ..triangulated_surface import SurfaceBounds, TriangulatedSurface
 from .cfmesh_automatic_refinement import AutomaticSurface, automatic_refinement
 from .cfmesh_octree import (
@@ -501,17 +504,6 @@ def _quad_keys(faces: np.ndarray) -> np.ndarray:
     )
 
 
-def _last_matches(keys: np.ndarray, queries: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Index of the last equal key for each query, and whether there is one."""
-    order = np.argsort(keys, kind="stable")
-    ordered = keys[order]
-    positions = np.searchsorted(ordered, queries, side="right") - 1
-    if not len(ordered):
-        return np.zeros(len(queries), dtype=np.int64), np.zeros(len(queries), dtype=bool)
-    clipped = np.maximum(positions, 0)
-    return order[clipped], (positions >= 0) & (ordered[clipped] == queries)
-
-
 @njit(cache=True)
 def _expand_lattice_faces(
     encoded_faces: np.ndarray, sx: int, sy: int
@@ -585,7 +577,9 @@ def _extract_mesh(
     face_order_entries = len(np.unique(face_order_keys))
     matched_boundary_order = 0
     if len(encoded_faces) > n_internal:
-        position, matched = _last_matches(face_order_keys, _quad_keys(encoded_faces[n_internal:]))
+        position, matched = last_key_matches(
+            face_order_keys, _quad_keys(encoded_faces[n_internal:])
+        )
         matched_boundary_order = int(np.count_nonzero(matched))
         boundary_order = np.where(
             matched, position, face_order_entries + np.arange(len(matched), dtype=np.int64)
@@ -596,7 +590,7 @@ def _extract_mesh(
 
     # Each cell lists its octree faces in creation order; a signature repeated
     # by several faces names the last of them.
-    face_ids, matched = _last_matches(_quad_keys(encoded_faces), _quad_keys(signatures))
+    face_ids, matched = last_key_matches(_quad_keys(encoded_faces), _quad_keys(signatures))
     if not np.all(matched):
         raise RuntimeError("cfMesh cell-face ordering references an absent octree face")
     cells = attached.reshape(-1)
@@ -1128,6 +1122,656 @@ def _cfmesh_nearest_points_on_triangles(point: np.ndarray, triangles: np.ndarray
     return result
 
 
+@njit(cache=True, fastmath=False)
+def _cfmesh_closest_point(
+    point: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray, out: np.ndarray
+) -> None:
+    """One triangle of :func:`_cfmesh_nearest_points_on_triangles`, same arithmetic."""
+    v0 = b - a
+    v1 = c - a
+    v2 = point - a
+    dot_00 = v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2]
+    dot_01 = v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v1[2]
+    dot_02 = v0[0] * v2[0] + v0[1] * v2[1] + v0[2] * v2[2]
+    dot_11 = v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2]
+    dot_12 = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]
+    determinant = dot_00 * dot_11 - dot_01 * dot_01
+    if abs(determinant) < 1.0e-300:
+        _closest_point_on_triangle(point, a, b, c, out)
+        return
+    u = (dot_11 * dot_02 - dot_01 * dot_12) / determinant
+    v = (dot_00 * dot_12 - dot_01 * dot_02) / determinant
+    projected = (a + u * v0) + v * v1
+    if u >= -1.0e-15 and v >= -1.0e-15 and u + v <= 1.0 + 1.0e-15:
+        out[:] = projected
+        return
+    if u < -1.0e-15:
+        start, direction, end = a, v1, c
+    elif v < -1.0e-15:
+        start, direction, end = a, v0, b
+    else:
+        start, direction, end = c, b - c, b
+    offset = projected - start
+    fraction = (offset[0] * direction[0] + offset[1] * direction[1] + offset[2] * direction[2]) / (
+        (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2])
+        + 1.0e-300
+    )
+    if fraction < 0.0:
+        out[:] = start
+    elif fraction > 1.0:
+        out[:] = end
+    else:
+        out[:] = start + fraction * direction
+
+
+@njit(cache=True, fastmath=False)
+def _grid_candidates(
+    lower: np.ndarray,
+    upper: np.ndarray,
+    n_triangles: int,
+    grid_origin: np.ndarray,
+    cell_size: float,
+    grid_shape: np.ndarray,
+    grid_keys: np.ndarray,
+    grid_offsets: np.ndarray,
+    grid_triangles: np.ndarray,
+    oversized: np.ndarray,
+    stamp: np.ndarray,
+    buffer: np.ndarray,
+    search: int,
+) -> np.ndarray:
+    """Sorted ids of :meth:`SurfaceIndex.candidate_triangles`; ``search`` must be new per call."""
+    first = np.empty(3, dtype=np.int64)
+    last = np.empty(3, dtype=np.int64)
+    count = 1
+    for axis in range(3):
+        first[axis] = np.int64(np.floor((lower[axis] - grid_origin[axis]) / cell_size))
+        last[axis] = np.int64(np.floor((upper[axis] - grid_origin[axis]) / cell_size))
+        count *= last[axis] - first[axis] + 1
+    if count > max(4096, 4 * n_triangles):
+        return np.arange(n_triangles)
+    n_ids = 0
+    for triangle in oversized:
+        if stamp[triangle] != search:
+            stamp[triangle] = search
+            buffer[n_ids] = triangle
+            n_ids += 1
+    for iz in range(max(first[2], 0), min(last[2], grid_shape[2] - 1) + 1):
+        for iy in range(max(first[1], 0), min(last[1], grid_shape[1] - 1) + 1):
+            for ix in range(max(first[0], 0), min(last[0], grid_shape[0] - 1) + 1):
+                key = ix + grid_shape[0] * (iy + grid_shape[1] * iz)
+                position = np.searchsorted(grid_keys, key)
+                if position == len(grid_keys) or grid_keys[position] != key:
+                    continue
+                for entry in range(grid_offsets[position], grid_offsets[position + 1]):
+                    triangle = grid_triangles[entry]
+                    if stamp[triangle] != search:
+                        stamp[triangle] = search
+                        buffer[n_ids] = triangle
+                        n_ids += 1
+    return np.sort(buffer[:n_ids])
+
+
+@njit(cache=True, fastmath=False)
+def _level_leaf(
+    level_codes: np.ndarray,
+    level_ids: np.ndarray,
+    level_starts: np.ndarray,
+    level: int,
+    x: int,
+    y: int,
+    z: int,
+    limit: int,
+) -> int:
+    """The leaf of ``level`` with origin ``(x, y, z)``, else -1."""
+    code = x + limit * (y + limit * z)
+    start, stop = level_starts[level], level_starts[level + 1]
+    position = start + np.searchsorted(level_codes[start:stop], code)
+    if position < stop and level_codes[position] == code:
+        return level_ids[position]
+    return -1
+
+
+@njit(cache=True, fastmath=False)
+def _morton_leaves_in_box(
+    first: np.ndarray,
+    last: np.ndarray,
+    max_level: int,
+    level_codes: np.ndarray,
+    level_ids: np.ndarray,
+    level_starts: np.ndarray,
+    stack: np.ndarray,
+    found: np.ndarray,
+) -> int:
+    """Leaves meeting the inclusive lattice box, in Morton order, into ``found``; their count.
+
+    ``stack`` needs ``8 * (max_level + 1) + 8`` rows of five entries.
+    """
+    limit = 1 << max_level
+    count = 0
+    stack[0, 0], stack[0, 1], stack[0, 2], stack[0, 3], stack[0, 4] = 0, 0, 0, limit, 0
+    depth = 1
+    while depth > 0:
+        depth -= 1
+        x, y, z, width, level = stack[depth]
+        if (
+            x > last[0]
+            or y > last[1]
+            or z > last[2]
+            or x + width <= first[0]
+            or y + width <= first[1]
+            or z + width <= first[2]
+        ):
+            continue
+        leaf = _level_leaf(level_codes, level_ids, level_starts, level, x, y, z, limit)
+        if leaf >= 0:
+            found[count] = leaf
+            count += 1
+            continue
+        if level == max_level:
+            continue
+        child = width // 2
+        for corner in range(7, -1, -1):
+            stack[depth, 0] = x + (corner & 1) * child
+            stack[depth, 1] = y + ((corner >> 1) & 1) * child
+            stack[depth, 2] = z + ((corner >> 2) & 1) * child
+            stack[depth, 3] = child
+            stack[depth, 4] = level + 1
+            depth += 1
+    return count
+
+
+@njit(cache=True, fastmath=False)
+def _segment_meets_box(
+    start: np.ndarray, end: np.ndarray, lower: np.ndarray, upper: np.ndarray, tol: float
+) -> bool:
+    """:meth:`_SurfaceFeatureLocator._intersects_leaf` for one segment and expanded box."""
+    direction = end - start
+    for axis in range(3):
+        if abs(direction[axis]) <= tol:
+            continue
+        for side in range(2):
+            plane = lower[axis] if side == 0 else upper[axis]
+            fraction = (plane - start[axis]) / direction[axis]
+            if not (-tol < fraction < 1.0 + tol):
+                continue
+            inside = True
+            for other in range(3):
+                if other == axis:
+                    continue
+                coordinate = start[other] + fraction * direction[other]
+                if not (coordinate - lower[other] > -tol and coordinate - upper[other] < tol):
+                    inside = False
+            if inside:
+                return True
+    for axis in range(3):  # noqa: SIM110 - Numba compiles no generators
+        if not (start[axis] >= lower[axis] and start[axis] <= upper[axis]):
+            return False
+    return True
+
+
+@njit(cache=True, fastmath=False)
+def _nearest_feature_edges_kernel(
+    points: np.ndarray,
+    selected_masks: np.ndarray,
+    root_lower: np.ndarray,
+    finest: float,
+    max_level: int,
+    widths: np.ndarray,
+    leaf_lower: np.ndarray,
+    leaf_upper: np.ndarray,
+    tolerance: float,
+    level_codes: np.ndarray,
+    level_ids: np.ndarray,
+    level_starts: np.ndarray,
+    vertices: np.ndarray,
+    triangle_vertices: np.ndarray,
+    triangles: np.ndarray,
+    patch_starts: np.ndarray,
+    grid_origins: np.ndarray,
+    cell_sizes: np.ndarray,
+    grid_shapes: np.ndarray,
+    keys: np.ndarray,
+    key_starts: np.ndarray,
+    offsets: np.ndarray,
+    offset_starts: np.ndarray,
+    members: np.ndarray,
+    member_starts: np.ndarray,
+    oversized: np.ndarray,
+    oversized_starts: np.ndarray,
+    edge_first: np.ndarray,
+    edge_second: np.ndarray,
+    edge_masks: np.ndarray,
+    cache_start: np.ndarray,
+    cache_count: np.ndarray,
+    cache_values: np.ndarray,
+    cache_used: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """:meth:`_SurfaceFeatureLocator.nearest_edge` for each point and patch set.
+
+    A leaf's feature edges are those of its patch triangles, patch by patch
+    and in each triangle's cyclic order, that cross the leaf; each leaf's
+    list is cached in ``cache_values`` by leaf.
+    """
+    limit = 1 << max_level
+    edge_index = {(edge_first[0], edge_second[0]): 0}
+    edge_index.clear()
+    for edge in range(len(edge_first)):
+        edge_index[(edge_first[edge], edge_second[edge])] = edge
+    n_patches = len(patch_starts) - 1
+    stamp = np.full(len(triangles), -1, dtype=np.int64)
+    buffer = np.empty(len(triangles), dtype=np.int64)
+    edge_seen = np.full(len(edge_first), -1, dtype=np.int64)
+    leaf_edges = np.empty(len(edge_first) + 1, dtype=np.int64)
+    found = np.empty(len(widths), dtype=np.int64)
+    stack = np.empty((8 * (max_level + 1) + 8, 5), dtype=np.int64)
+    first = np.empty(3, dtype=np.int64)
+    last = np.empty(3, dtype=np.int64)
+    nearest = np.empty((len(points), 3), dtype=np.float64)
+    distances = np.empty(len(points), dtype=np.float64)
+    search = 0
+    visit = 0
+    for index in range(len(points)):
+        point = points[index]
+        cell = np.empty(3, dtype=np.int64)
+        for axis in range(3):
+            cell[axis] = min(
+                max(np.int64(np.floor((point[axis] - root_lower[axis]) / finest)), 0), limit - 1
+            )
+        containing = -1
+        for level in range(max_level, -1, -1):
+            width = 1 << (max_level - level)
+            containing = _level_leaf(
+                level_codes,
+                level_ids,
+                level_starts,
+                level,
+                (cell[0] // width) * width,
+                (cell[1] // width) * width,
+                (cell[2] // width) * width,
+                limit,
+            )
+            if containing >= 0:
+                break
+        # As an array index, -1 takes the last leaf
+        size = 0.75 * widths[containing if containing >= 0 else len(widths) - 1] * finest
+        best = point.copy()
+        distance_squared = 1.0e300
+        for _iteration in range(3):
+            for axis in range(3):
+                first[axis] = min(
+                    max(np.int64(np.floor(((point[axis] - size) - root_lower[axis]) / finest)), 0),
+                    limit - 1,
+                )
+                last[axis] = min(
+                    max(
+                        np.int64(np.ceil(((point[axis] + size) - root_lower[axis]) / finest)) - 1,
+                        0,
+                    ),
+                    limit - 1,
+                )
+            n_found = _morton_leaves_in_box(
+                first, last, max_level, level_codes, level_ids, level_starts, stack, found
+            )
+            for leaf_position in range(n_found):
+                leaf = found[leaf_position]
+                if cache_start[leaf] >= 0:
+                    n_edges = cache_count[leaf]
+                    leaf_edges[:n_edges] = cache_values[
+                        cache_start[leaf] : cache_start[leaf] + n_edges
+                    ]
+                    patches_left = 0
+                else:
+                    patches_left = n_patches
+                lower = leaf_lower[leaf] - tolerance
+                upper = leaf_upper[leaf] + tolerance
+                visit += 1
+                if patches_left:
+                    n_edges = 0
+                for patch in range(patches_left):
+                    start, stop = patch_starts[patch], patch_starts[patch + 1]
+                    search += 1
+                    local = _grid_candidates(
+                        lower,
+                        upper,
+                        stop - start,
+                        grid_origins[patch],
+                        cell_sizes[patch],
+                        grid_shapes[patch],
+                        keys[key_starts[patch] : key_starts[patch + 1]],
+                        offsets[offset_starts[patch] : offset_starts[patch + 1]],
+                        members[member_starts[patch] : member_starts[patch + 1]],
+                        oversized[oversized_starts[patch] : oversized_starts[patch + 1]],
+                        stamp,
+                        buffer,
+                        search,
+                    )
+                    if not len(local):
+                        continue
+                    v0 = np.empty((len(local), 3), dtype=np.float64)
+                    v1 = np.empty((len(local), 3), dtype=np.float64)
+                    v2 = np.empty((len(local), 3), dtype=np.float64)
+                    for k in range(len(local)):
+                        v0[k] = triangles[start + local[k], 0]
+                        v1[k] = triangles[start + local[k], 1]
+                        v2[k] = triangles[start + local[k], 2]
+                    overlap = _triangle_box_overlap_mask_kernel(
+                        0.5 * (lower + upper), 0.5 * (upper - lower), v0, v1, v2
+                    )
+                    for k in range(len(local)):
+                        if not overlap[k]:
+                            continue
+                        corner_ids = triangle_vertices[start + local[k]]
+                        for i in range(3):
+                            a, b = corner_ids[i], corner_ids[(i + 1) % 3]
+                            key = (min(a, b), max(a, b))
+                            if key not in edge_index:
+                                continue
+                            edge = edge_index[key]
+                            if edge_seen[edge] == visit:
+                                continue
+                            if _segment_meets_box(
+                                vertices[key[0]], vertices[key[1]], lower, upper, tolerance
+                            ):
+                                edge_seen[edge] = visit
+                                leaf_edges[n_edges] = edge
+                                n_edges += 1
+                if patches_left:
+                    if cache_used + n_edges > len(cache_values):
+                        grown = np.empty(2 * (cache_used + n_edges) + 16, dtype=np.int64)
+                        grown[:cache_used] = cache_values[:cache_used]
+                        cache_values = grown
+                    cache_values[cache_used : cache_used + n_edges] = leaf_edges[:n_edges]
+                    cache_start[leaf] = cache_used
+                    cache_count[leaf] = n_edges
+                    cache_used += n_edges
+                for position in range(n_edges):
+                    edge = leaf_edges[position]
+                    if edge_masks[edge] & ~selected_masks[index]:
+                        continue
+                    start_point = vertices[edge_first[edge]]
+                    end_point = vertices[edge_second[edge]]
+                    direction = end_point - start_point
+                    length_squared = (
+                        direction[0] * direction[0] + direction[1] * direction[1]
+                    ) + direction[2] * direction[2]
+                    offset = point - start_point
+                    fraction = (
+                        (direction[0] * offset[0] + direction[1] * offset[1])
+                        + direction[2] * offset[2]
+                    ) / (length_squared + 1.0e-300)
+                    if fraction < 0.0 or length_squared < 1.0e-300:
+                        candidate = start_point
+                    elif fraction > 1.0:
+                        candidate = end_point
+                    else:
+                        candidate = start_point + direction * fraction
+                    gap = candidate - point
+                    candidate_distance = (gap[0] * gap[0] + gap[1] * gap[1]) + gap[2] * gap[2]
+                    if candidate_distance < distance_squared:
+                        best = candidate.copy()
+                        distance_squared = candidate_distance
+            if distance_squared < 1.0e300:
+                break
+            size *= 2.0
+        nearest[index] = best
+        distances[index] = distance_squared
+    return nearest, distances, cache_values, cache_used
+
+
+@njit(cache=True, fastmath=False)
+def _cached_leaf_triangles(
+    leaf: int,
+    leaf_lower: np.ndarray,
+    leaf_upper: np.ndarray,
+    tolerance: float,
+    triangles: np.ndarray,
+    grid_origin: np.ndarray,
+    cell_size: float,
+    grid_shape: np.ndarray,
+    grid_keys: np.ndarray,
+    grid_offsets: np.ndarray,
+    grid_triangles: np.ndarray,
+    oversized: np.ndarray,
+    stamp: np.ndarray,
+    buffer: np.ndarray,
+    search: int,
+    cache_start: np.ndarray,
+    cache_count: np.ndarray,
+    cache_values: np.ndarray,
+    cache_used: int,
+) -> tuple[np.ndarray, int]:
+    """Cache the triangles meeting a tolerance-expanded leaf, as :meth:`_triangles_in_leaf`.
+
+    The leaf's sorted triangle ids are appended to ``cache_values``; returns
+    that array, grown when full, and its used length.
+    """
+    if cache_start[leaf] >= 0:
+        return cache_values, cache_used
+    lower = leaf_lower[leaf] - tolerance
+    upper = leaf_upper[leaf] + tolerance
+    broad = _grid_candidates(
+        lower,
+        upper,
+        len(triangles),
+        grid_origin,
+        cell_size,
+        grid_shape,
+        grid_keys,
+        grid_offsets,
+        grid_triangles,
+        oversized,
+        stamp,
+        buffer,
+        search,
+    )
+    count = 0
+    if len(broad):
+        v0 = np.empty((len(broad), 3), dtype=np.float64)
+        v1 = np.empty((len(broad), 3), dtype=np.float64)
+        v2 = np.empty((len(broad), 3), dtype=np.float64)
+        for k in range(len(broad)):
+            v0[k] = triangles[broad[k], 0]
+            v1[k] = triangles[broad[k], 1]
+            v2[k] = triangles[broad[k], 2]
+        overlap = _triangle_box_overlap_mask_kernel(
+            0.5 * (lower + upper), 0.5 * (upper - lower), v0, v1, v2
+        )
+        if cache_used + len(broad) > len(cache_values):
+            grown = np.empty(2 * (cache_used + len(broad)), dtype=np.int64)
+            grown[:cache_used] = cache_values[:cache_used]
+            cache_values = grown
+        for k in range(len(broad)):
+            if overlap[k]:
+                cache_values[cache_used + count] = broad[k]
+                count += 1
+    cache_start[leaf] = cache_used
+    cache_count[leaf] = count
+    return cache_values, cache_used + count
+
+
+@njit(cache=True, fastmath=False)
+def _locator_nearest_kernel(
+    points: np.ndarray,
+    max_search_iterations: int,
+    root_lower: np.ndarray,
+    finest: float,
+    max_level: int,
+    widths: np.ndarray,
+    leaf_lower: np.ndarray,
+    leaf_upper: np.ndarray,
+    tolerance: float,
+    level_codes: np.ndarray,
+    level_ids: np.ndarray,
+    level_starts: np.ndarray,
+    triangles: np.ndarray,
+    grid_origin: np.ndarray,
+    cell_size: float,
+    grid_shape: np.ndarray,
+    grid_keys: np.ndarray,
+    grid_offsets: np.ndarray,
+    grid_triangles: np.ndarray,
+    oversized: np.ndarray,
+    cache_start: np.ndarray,
+    cache_count: np.ndarray,
+    cache_values: np.ndarray,
+    cache_used: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    """:meth:`_OctreeSurfaceLocator.nearest_triangle` for each point.
+
+    Leaves meeting the search box are visited in Morton order and their
+    triangles taken in that order, each once; the first nearest candidate
+    wins, as ``argmin`` picks it.
+    """
+    limit = 1 << max_level
+    n_triangles = len(triangles)
+    stamp = np.full(n_triangles, -1, dtype=np.int64)
+    seen = np.full(n_triangles, -1, dtype=np.int64)
+    buffer = np.empty(n_triangles, dtype=np.int64)
+    candidates = np.empty(n_triangles, dtype=np.int64)
+    candidate = np.empty(3, dtype=np.float64)
+    nearest = np.empty((len(points), 3), dtype=np.float64)
+    distances = np.empty(len(points), dtype=np.float64)
+    nearest_ids = np.empty(len(points), dtype=np.int64)
+    first = np.empty(3, dtype=np.int64)
+    last = np.empty(3, dtype=np.int64)
+    stack = np.empty((8 * (max_level + 1) + 8, 5), dtype=np.int64)
+    walked = np.empty(len(widths), dtype=np.int64)
+    search = 0
+    walk = 0
+    cell = np.empty(3, dtype=np.int64)
+    for index in range(len(points)):
+        value = points[index]
+        for axis in range(3):
+            cell[axis] = min(
+                max(np.int64(np.floor((value[axis] - root_lower[axis]) / finest)), 0), limit - 1
+            )
+        containing = -1
+        for level in range(max_level, -1, -1):
+            width = 1 << (max_level - level)
+            containing = _level_leaf(
+                level_codes,
+                level_ids,
+                level_starts,
+                level,
+                (cell[0] // width) * width,
+                (cell[1] // width) * width,
+                (cell[2] // width) * width,
+                limit,
+            )
+            if containing >= 0:
+                break
+        search_size = 0.75 * float(widths[containing]) * finest if containing >= 0 else finest
+        found = False
+        for _iteration in range(max_search_iterations + 1):
+            for axis in range(3):
+                first[axis] = min(
+                    max(
+                        np.int64(
+                            np.floor(((value[axis] - search_size) - root_lower[axis]) / finest)
+                        ),
+                        0,
+                    ),
+                    limit - 1,
+                )
+                last[axis] = min(
+                    max(
+                        np.int64(np.ceil(((value[axis] + search_size) - root_lower[axis]) / finest))
+                        - 1,
+                        0,
+                    ),
+                    limit - 1,
+                )
+            n_candidates = 0
+            walk += 1
+            n_found = _morton_leaves_in_box(
+                first, last, max_level, level_codes, level_ids, level_starts, stack, walked
+            )
+            for leaf_position in range(n_found):
+                leaf = walked[leaf_position]
+                search += 1
+                cache_values, cache_used = _cached_leaf_triangles(
+                    leaf,
+                    leaf_lower,
+                    leaf_upper,
+                    tolerance,
+                    triangles,
+                    grid_origin,
+                    cell_size,
+                    grid_shape,
+                    grid_keys,
+                    grid_offsets,
+                    grid_triangles,
+                    oversized,
+                    stamp,
+                    buffer,
+                    search,
+                    cache_start,
+                    cache_count,
+                    cache_values,
+                    cache_used,
+                )
+                for entry in range(cache_start[leaf], cache_start[leaf] + cache_count[leaf]):
+                    triangle = cache_values[entry]
+                    if seen[triangle] != walk:
+                        seen[triangle] = walk
+                        candidates[n_candidates] = triangle
+                        n_candidates += 1
+            if n_candidates:
+                best = -1
+                best_distance = 0.0
+                for k in range(n_candidates):
+                    triangle = candidates[k]
+                    _cfmesh_closest_point(
+                        value,
+                        triangles[triangle, 0],
+                        triangles[triangle, 1],
+                        triangles[triangle, 2],
+                        candidate,
+                    )
+                    dx = candidate[0] - value[0]
+                    dy = candidate[1] - value[1]
+                    dz = candidate[2] - value[2]
+                    distance_squared = dx * dx + dy * dy + dz * dz
+                    if np.isnan(distance_squared):
+                        best, best_distance = k, distance_squared
+                        nearest[index] = candidate
+                        break
+                    if best < 0 or distance_squared < best_distance:
+                        best, best_distance = k, distance_squared
+                        nearest[index] = candidate
+                distances[index] = np.sqrt(best_distance)
+                nearest_ids[index] = candidates[best]
+                found = True
+                break
+            search_size *= 2.0
+        if not found:
+            best = -1
+            best_distance = 0.0
+            for triangle in range(n_triangles):
+                _cfmesh_closest_point(
+                    value,
+                    triangles[triangle, 0],
+                    triangles[triangle, 1],
+                    triangles[triangle, 2],
+                    candidate,
+                )
+                dx = candidate[0] - value[0]
+                dy = candidate[1] - value[1]
+                dz = candidate[2] - value[2]
+                distance_squared = dx * dx + dy * dy + dz * dz
+                if np.isnan(distance_squared):
+                    best, best_distance = triangle, distance_squared
+                    nearest[index] = candidate
+                    break
+                if best < 0 or distance_squared < best_distance:
+                    best, best_distance = triangle, distance_squared
+                    nearest[index] = candidate
+            distances[index] = np.sqrt(best_distance)
+            nearest_ids[index] = best
+    return nearest, distances, nearest_ids, cache_values, cache_used
+
+
 class _OctreeSurfaceLocator:
     """Cached replica of cfMesh's deliberately local surface search."""
 
@@ -1152,6 +1796,23 @@ class _OctreeSurfaceLocator:
         self.tolerance = 1.0e-15 * float(root_bounds[1] - root_bounds[0])
         self._leaf_triangles: dict[int, np.ndarray] = {}
         self._nearest_cache: dict[tuple[int, bytes], tuple[np.ndarray, float, int]] = {}
+        # Leaf origins per level as sorted lattice codes, for compiled lookups
+        limit = self.leaf_lookup.limit
+        records = np.asarray(leaves, dtype=np.int64)
+        codes = records[:, 0] + limit * (records[:, 1] + limit * records[:, 2])
+        order = np.lexsort((codes, records[:, 4]))
+        self._level_codes = np.ascontiguousarray(codes[order])
+        self._level_ids = order.astype(np.int64)
+        self._level_starts = np.searchsorted(
+            records[order, 4], np.arange(self.leaf_lookup.max_level + 2)
+        ).astype(np.int64)
+        # Triangle ids of each leaf the compiled search has visited, by leaf
+        self._leaf_triangle_cache = (
+            np.full(len(records), -1, dtype=np.int64),
+            np.zeros(len(records), dtype=np.int64),
+            np.empty(1024, dtype=np.int64),
+            0,
+        )
 
     def leaves_in_box(self, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
         """Return octree leaves with positive-volume overlap with a box."""
@@ -1160,7 +1821,19 @@ class _OctreeSurfaceLocator:
         last = np.ceil((upper - self.root_lower) / self.finest_cell_size).astype(np.int64) - 1
         first = np.clip(first, 0, lattice_limit - 1)
         last = np.clip(last, 0, lattice_limit - 1)
-        return self.leaf_lookup.in_box(first, last)
+        max_level = self.leaf_lookup.max_level
+        found = np.empty(len(self.widths), dtype=np.int64)
+        count = _morton_leaves_in_box(
+            first,
+            last,
+            max_level,
+            self._level_codes,
+            self._level_ids,
+            self._level_starts,
+            np.empty((8 * (max_level + 1) + 8, 5), dtype=np.int64),
+            found,
+        )
+        return found[:count]
 
     def _triangles_in_leaf(self, leaf_id: int) -> np.ndarray:
         cached = self._leaf_triangles.get(leaf_id)
@@ -1194,61 +1867,49 @@ class _OctreeSurfaceLocator:
         cached = self._nearest_cache.get(cache_key)
         if cached is not None:
             return cached
-        # Query with the actual vertex, including any leaf-corner perturbation.
-        # Native findNearestSurfacePointInRegion does not shift the search box.
-        search_value = value
-        lattice = np.floor((search_value - self.root_lower) / self.finest_cell_size).astype(
-            np.int64
+        nearest, distances, triangle_ids = self.nearest_triangles(
+            value[None, :], max_search_iterations=max_search_iterations
         )
-        lattice = np.clip(lattice, 0, self.leaf_lookup.limit - 1)
-        containing = self.leaf_lookup.find(*map(int, lattice))
-        search_size = (
-            0.75 * float(self.widths[containing]) * self.finest_cell_size
-            if containing >= 0
-            else self.finest_cell_size
-        )
-        for _iteration in range(max_search_iterations + 1):
-            selected = self.leaves_in_box(search_value - search_size, search_value + search_size)
-            candidate_ids: list[int] = []
-            seen_candidates: set[int] = set()
-            for leaf_id_value in selected[selected >= 0]:
-                for triangle_id_value in self._triangles_in_leaf(int(leaf_id_value)):
-                    triangle_id = int(triangle_id_value)
-                    if triangle_id in seen_candidates:
-                        continue
-                    seen_candidates.add(triangle_id)
-                    candidate_ids.append(triangle_id)
-            if candidate_ids:
-                ids = np.asarray(candidate_ids, dtype=np.int64)
-                triangles = self.index.triangles[ids]
-                candidates = _cfmesh_nearest_points_on_triangles(value, triangles)
-                offsets = candidates - value
-                distance_squared = (
-                    offsets[:, 0] * offsets[:, 0]
-                    + offsets[:, 1] * offsets[:, 1]
-                    + offsets[:, 2] * offsets[:, 2]
-                )
-                best = int(np.argmin(distance_squared))
-                result = (
-                    candidates[best],
-                    float(np.sqrt(distance_squared[best])),
-                    int(ids[best]),
-                )
-                self._nearest_cache[cache_key] = result
-                return result
-            search_size *= 2.0
-        triangles = self.index.triangles
-        candidates = _cfmesh_nearest_points_on_triangles(value, triangles)
-        offsets = candidates - value
-        distance_squared = (
-            offsets[:, 0] * offsets[:, 0]
-            + offsets[:, 1] * offsets[:, 1]
-            + offsets[:, 2] * offsets[:, 2]
-        )
-        best = int(np.argmin(distance_squared))
-        result = (candidates[best], float(np.sqrt(distance_squared[best])), best)
+        result = (nearest[0], float(distances[0]), int(triangle_ids[0]))
         self._nearest_cache[cache_key] = result
         return result
+
+    def nearest_triangles(
+        self, points: np.ndarray, *, max_search_iterations: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Nearest surface points, distances and triangles, the local search for each point.
+
+        Each search starts in the leaves within 0.75 leaf widths of the point,
+        including any leaf-corner perturbation of the vertex, as native
+        findNearestSurfacePointInRegion does, and doubles that reach until
+        some leaf holds triangles; past ``max_search_iterations`` doublings it
+        takes every triangle.
+        """
+        cache_start, cache_count, cache_values, cache_used = self._leaf_triangle_cache
+        nearest, distances, triangle_ids, cache_values, cache_used = _locator_nearest_kernel(
+            np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3),
+            max_search_iterations,
+            self.root_lower,
+            float(self.finest_cell_size),
+            self.leaf_lookup.max_level,
+            self.widths,
+            self.leaf_lower,
+            self.leaf_upper,
+            float(self.tolerance),
+            self._level_codes,
+            self._level_ids,
+            self._level_starts,
+            self.index.triangles,
+            self.index.grid_origin,
+            float(self.index.cell_size),
+            *self.index.packed_grid(),
+            cache_start,
+            cache_count,
+            cache_values,
+            cache_used,
+        )
+        self._leaf_triangle_cache = (cache_start, cache_count, cache_values, cache_used)
+        return nearest, distances, triangle_ids
 
     def nearest(self, point: np.ndarray, *, max_search_iterations: int) -> tuple[np.ndarray, float]:
         """Return the local nearest point and distance without its triangle id."""
@@ -1302,6 +1963,8 @@ class _SurfaceFeatureLocator:
         )
         self.patch_locators = patch_locators
         self._leaf_edges: dict[int, list[tuple[int, int]]] = {}
+        self._packed_arrays: tuple[np.ndarray, ...] | None = None
+        self._edge_cache: tuple[np.ndarray, np.ndarray, np.ndarray, int] | None = None
 
     def _intersects_leaf(self, edge: tuple[int, int], leaf_id: int) -> bool:
         locator = self.locator
@@ -1347,39 +2010,98 @@ class _SurfaceFeatureLocator:
         return self._leaf_edges[leaf_id]
 
     def nearest_edge(self, point: np.ndarray, patches: Sequence[int]) -> tuple[np.ndarray, float]:
+        """Nearest point on a feature edge of exactly these patches, and its squared distance."""
+        nearest, distances = self.nearest_edges(np.asarray(point)[None, :], [patches])
+        return nearest[0], float(distances[0])
+
+    def nearest_edges(
+        self, points: np.ndarray, patch_sets: Sequence[Sequence[int]]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """:meth:`nearest_edge` of each point with its patch set.
+
+        The search covers the leaves within 0.75 leaf widths of the point,
+        doubling that reach up to twice until a feature edge of only those
+        patches crosses one of them.
+        """
+        points = np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3)
+        if not self.feature_patches:
+            return points.copy(), np.full(len(points), 1.0e300)
+        if len(self.patch_locators) > 62:
+            raise ValueError("Feature-edge search supports at most 62 patches")
+        masks = np.asarray(
+            [sum(1 << int(patch) for patch in set(patches)) for patches in patch_sets],
+            dtype=np.int64,
+        )
         locator = self.locator
-        lattice = np.floor((point - locator.root_lower) / locator.finest_cell_size).astype(int)
-        lattice = np.clip(lattice, 0, locator.leaf_lookup.limit - 1)
-        containing = locator.leaf_lookup.find(*map(int, lattice))
-        size = 0.75 * locator.widths[containing] * locator.finest_cell_size
-        best = point.copy()
-        distance_squared = 1.0e300
-        selected_patches = set(patches)
-        for _iteration in range(3):
-            for leaf_id in locator.leaves_in_box(point - size, point + size):
-                if leaf_id < 0:
-                    continue
-                for edge in self._edges_in_leaf(int(leaf_id)):
-                    if not self.feature_patches[edge].issubset(selected_patches):
-                        continue
-                    start, end = self.points[list(edge)]
-                    direction = end - start
-                    length_squared = _mag_squared(direction)
-                    fraction = _dot(direction, point - start) / (length_squared + 1.0e-300)
-                    candidate = (
-                        start
-                        if fraction < 0.0 or length_squared < 1.0e-300
-                        else end
-                        if fraction > 1.0
-                        else start + direction * fraction
-                    )
-                    candidate_distance = _mag_squared(candidate - point)
-                    if candidate_distance < distance_squared:
-                        best, distance_squared = candidate, candidate_distance
-            if distance_squared < 1.0e300:
-                break
-            size *= 2.0
-        return best, distance_squared
+        if self._edge_cache is None:
+            self._edge_cache = (
+                np.full(len(locator.widths), -1, dtype=np.int64),
+                np.zeros(len(locator.widths), dtype=np.int64),
+                np.empty(1024, dtype=np.int64),
+                0,
+            )
+        cache_start, cache_count, cache_values, cache_used = self._edge_cache
+        nearest, distances, cache_values, cache_used = _nearest_feature_edges_kernel(
+            points,
+            masks,
+            locator.root_lower,
+            float(locator.finest_cell_size),
+            locator.leaf_lookup.max_level,
+            locator.widths,
+            locator.leaf_lower,
+            locator.leaf_upper,
+            float(locator.tolerance),
+            locator._level_codes,
+            locator._level_ids,
+            locator._level_starts,
+            *self._packed(),
+            cache_start,
+            cache_count,
+            cache_values,
+            cache_used,
+        )
+        self._edge_cache = (cache_start, cache_count, cache_values, cache_used)
+        return nearest, distances
+
+    def _packed(self) -> tuple[np.ndarray, ...]:
+        """Vertices, triangles, per-patch grids and feature edges for the compiled search."""
+        if self._packed_arrays is None:
+            grids = [patch.index.packed_grid() for patch in self.patch_locators]
+            indices = [patch.index for patch in self.patch_locators]
+
+            def starts(arrays: Sequence[np.ndarray]) -> np.ndarray:
+                return np.concatenate(([0], np.cumsum([len(array) for array in arrays]))).astype(
+                    np.int64
+                )
+
+            edges = np.asarray(list(self.feature_patches), dtype=np.int64).reshape(-1, 2)
+            self._packed_arrays = (
+                np.ascontiguousarray(self.points, dtype=np.float64),
+                np.asarray(self.triangles, dtype=np.int64).reshape(-1, 3),
+                np.ascontiguousarray(np.concatenate([index.triangles for index in indices])),
+                starts([index.triangles for index in indices]),
+                np.asarray([index.grid_origin for index in indices], dtype=np.float64),
+                np.asarray([index.cell_size for index in indices], dtype=np.float64),
+                np.asarray([grid[0] for grid in grids], dtype=np.int64),
+                np.concatenate([grid[1] for grid in grids]).astype(np.int64),
+                starts([grid[1] for grid in grids]),
+                np.concatenate([grid[2] for grid in grids]).astype(np.int64),
+                starts([grid[2] for grid in grids]),
+                np.concatenate([grid[3] for grid in grids]).astype(np.int64),
+                starts([grid[3] for grid in grids]),
+                np.concatenate([grid[4] for grid in grids]).astype(np.int64),
+                starts([grid[4] for grid in grids]),
+                np.ascontiguousarray(edges[:, 0]),
+                np.ascontiguousarray(edges[:, 1]),
+                np.asarray(
+                    [
+                        sum(1 << int(patch) for patch in self.feature_patches[(int(a), int(b))])
+                        for a, b in edges
+                    ],
+                    dtype=np.int64,
+                ),
+            )
+        return self._packed_arrays
 
     def nearest_corner(
         self, point: np.ndarray, patches: Sequence[int], maximum_distance_squared: float
@@ -1406,66 +2128,111 @@ def _map_assigned_patch_points(
 ) -> dict[int, set[int]]:
     """Map partition, edge, and corner points to their assigned patches."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
     boundary_start = int(mesh_data["n_interior_faces"])
+    boundary_faces = [
+        np.asarray(face, dtype=np.int32) for face in mesh_data["faces"][boundary_start:]
+    ]
     point_faces: dict[int, list[int]] = defaultdict(list)
     point_patches: dict[int, set[int]] = defaultdict(set)
-    for local_face_id, face_id in enumerate(range(boundary_start, len(faces))):
+    for local_face_id, face in enumerate(boundary_faces):
         patch_id = int(face_patch_ids[local_face_id])
-        for point_id_value in faces[face_id]:
+        for point_id_value in face:
             point_id = int(point_id_value)
-            point_faces[point_id].append(face_id)
+            point_faces[point_id].append(boundary_start + local_face_id)
             point_patches[point_id].add(patch_id)
 
-    partition_updates: dict[int, np.ndarray] = {}
+    # Partition points map onto their one patch, all from their unmapped positions.
+    partition_points: dict[int, list[int]] = defaultdict(list)
     for point_id, patches in point_patches.items():
         if selected_points is not None and point_id not in selected_points:
             continue
-        ordered_patches = tuple(sorted(patches))
-        if len(ordered_patches) == 1:
-            partition_updates[point_id] = patch_locators[ordered_patches[0]].nearest(
-                points[point_id], max_search_iterations=5
-            )[0]
-    for point_id, value in partition_updates.items():
-        points[point_id] = value
+        if len(patches) == 1:
+            partition_points[next(iter(patches))].append(point_id)
+    for patch_id, point_ids in partition_points.items():
+        nearest, _distances, _triangles = patch_locators[patch_id].nearest_triangles(
+            points[point_ids], max_search_iterations=5
+        )
+        points[point_ids] = nearest
 
     # cfMesh updates face geometry after mapping partition points and only
     # then computes the mapping range used by edge/corner convergence.
-    face_centres = {
-        face_id: _foam_face_centre(points[faces[face_id]])
-        for face_id in range(boundary_start, len(faces))
-    }
+    face_centres: dict[int, np.ndarray] = {}
+
+    def face_centre(face_id: int) -> np.ndarray:
+        if face_id not in face_centres:
+            face = boundary_faces[face_id - boundary_start]
+            face_centres[face_id] = _foam_face_centre(points[face])
+        return face_centres[face_id]
+
     if feature_locator is None:
         feature_locator = _SurfaceFeatureLocator(patch_locators)
-    feature_updates: dict[int, np.ndarray] = {}
+    feature_points: list[int] = []
+    feature_patches: list[tuple[int, ...]] = []
     for point_id, patches in point_patches.items():
         if selected_points is not None and point_id not in selected_points:
             continue
-        ordered_patches = tuple(sorted(patches))
-        if len(ordered_patches) == 1:
-            continue
+        if len(patches) > 1:
+            feature_points.append(point_id)
+            feature_patches.append(tuple(sorted(patches)))
+    originals = points[feature_points].copy()
 
-        original = points[point_id]
-        approximate = original.copy()
-        maximum_distance_squared = 4.0 * max(
-            float(_dot(face_centres[face_id] - original, face_centres[face_id] - original))
-            for face_id in point_faces[point_id]
+    # Each point averages its patches' nearest points until that average
+    # settles, all points stepping together with one search per patch.
+    approximates = originals.copy()
+    active = list(range(len(feature_points)))
+    ranges: list[float] = []
+    for point_id, original in zip(feature_points, originals, strict=True):
+        ranges.append(
+            4.0
+            * max(
+                float(_dot(face_centre(face_id) - original, face_centre(face_id) - original))
+                for face_id in point_faces[point_id]
+            )
         )
-        for _iteration in range(20):
+    for _iteration in range(20):
+        if not active:
+            break
+        mapped_by_patch: dict[int, dict[int, np.ndarray]] = {}
+        for patch_id in sorted({patch for item in active for patch in feature_patches[item]}):
+            members = [item for item in active if patch_id in feature_patches[item]]
+            nearest, _distances, _triangles = patch_locators[patch_id].nearest_triangles(
+                approximates[members], max_search_iterations=5
+            )
+            mapped_by_patch[patch_id] = dict(zip(members, nearest, strict=True))
+        still_active = []
+        for item in active:
+            approximate = approximates[item]
             mapped = np.asarray(
-                [
-                    patch_locators[patch_id].nearest(approximate, max_search_iterations=5)[0]
-                    for patch_id in ordered_patches
-                ]
+                [mapped_by_patch[patch_id][item] for patch_id in feature_patches[item]]
             ).mean(axis=0)
-            if float(_dot(mapped - approximate, mapped - approximate)) < (
-                1.0e-8 * maximum_distance_squared
-            ):
-                break
-            approximate = mapped
+            if float(_dot(mapped - approximate, mapped - approximate)) < 1.0e-8 * ranges[item]:
+                continue
+            approximates[item] = mapped
+            still_active.append(item)
+        active = still_active
+
+    edge_items = [item for item, patches in enumerate(feature_patches) if len(patches) == 2]
+    edge_nearest, edge_distances = (
+        feature_locator.nearest_edges(
+            originals[edge_items], [feature_patches[item] for item in edge_items]
+        )
+        if edge_items
+        else (np.empty((0, 3)), np.empty(0))
+    )
+    edge_results = {
+        item: (edge_nearest[position], float(edge_distances[position]))
+        for position, item in enumerate(edge_items)
+    }
+    feature_updates: dict[int, np.ndarray] = {}
+    for item, (point_id, ordered_patches) in enumerate(
+        zip(feature_points, feature_patches, strict=True)
+    ):
+        original = originals[item]
+        approximate = approximates[item]
+        maximum_distance_squared = ranges[item]
         approximate_distance = _mag_squared(approximate - original)
         mapped, distance_squared = (
-            feature_locator.nearest_edge(original, ordered_patches)
+            edge_results[item]
             if len(ordered_patches) == 2
             else feature_locator.nearest_corner(original, ordered_patches, maximum_distance_squared)
         )
@@ -2002,13 +2769,13 @@ def assign_cfmesh_patches(
     mesh_data["owners"] = np.ascontiguousarray(owners, dtype=np.int32)
     mesh_data["boundary"] = boundary
     if "_cfmesh_cell_face_order" in mesh_data:
-        face_by_signature = {
-            tuple(sorted(map(int, face))): face_id for face_id, face in enumerate(faces)
-        }
-        mesh_data["_cfmesh_cell_face_order"] = [
-            [face_by_signature[tuple(sorted(map(int, source_faces[face_id])))] for face_id in cell]
-            for cell in mesh_data["_cfmesh_cell_face_order"]
-        ]
+        # A face takes the id of the last regrouped face with its vertex set.
+        new_ids, matched = last_key_matches(face_vertex_keys(faces), face_vertex_keys(source_faces))
+        if not np.all(matched):
+            raise KeyError("A cfMesh cell face has no regrouped face")
+        mesh_data["_cfmesh_cell_face_order"] = renumbered_rows(
+            mesh_data["_cfmesh_cell_face_order"], new_ids
+        )
     mesh_data["mesh_generation"]["workflow_checkpoint"] = "patchAssignment"
     mesh_data["mesh_generation"]["patch_assignment"] = {
         "patch_names": patch_names,

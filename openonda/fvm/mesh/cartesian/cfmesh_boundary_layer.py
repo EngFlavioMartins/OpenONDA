@@ -21,7 +21,7 @@ import numpy as np
 from openonda.core._numba import cacheable_njit as njit
 
 from ..data import BoundaryPatchData, MeshData
-from ..topology import pack_face_nodes
+from ..topology import face_vertex_keys, last_key_matches, pack_face_nodes, renumbered_rows
 from .cfmesh_surface_optimisation import (
     _dot,
     _face_area_vector,
@@ -582,7 +582,7 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
     # Existing core faces already obey OpenFOAM's owner-to-neighbour
     # orientation. Re-estimating that orientation from cell references is
     # unstable for the very small pyramids created during edge extraction.
-    internal_faces = [face.copy() for face in source_faces[:n_internal]]
+    internal_faces = source_faces[:n_internal]
     internal_owners = list(map(int, source_owners[:n_internal]))
     internal_neighbours = list(map(int, source_neighbours))
     for face_id, layer_cell in interface_cells:
@@ -655,9 +655,25 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
     old_levels = np.asarray(mesh_data.get("cell_levels", np.zeros(n_core_cells)), dtype=np.int8)
     old_sizes = np.asarray(mesh_data.get("cell_sizes", np.ones(n_core_cells)), dtype=np.float32)
     source_ids = np.asarray(source_cell_for_new, dtype=np.int32)
-    face_by_signature = {
-        tuple(sorted(map(int, face))): face_id for face_id, face in enumerate(combined_faces)
-    }
+    # Faces are found by vertex set, the last combined face of a set winning
+    new_cell_faces: list[np.ndarray] = []
+    for local_cell, entries in enumerate(new_cells):
+        if local_cell < len(interface_cells):
+            new_cell_faces.append(source_faces[interface_cells[local_cell][0]])
+        new_cell_faces.extend(face for face, _boundary_patch in entries)
+    width = max(
+        max(map(len, combined_faces), default=0),
+        max(map(len, source_faces), default=0),
+        max(map(len, new_cell_faces), default=0),
+    )
+    combined_keys = face_vertex_keys(combined_faces, width)
+
+    def combined_ids(faces: list[np.ndarray]) -> np.ndarray:
+        ids, matched = last_key_matches(combined_keys, face_vertex_keys(faces, width))
+        if not np.all(matched):
+            raise KeyError("A cfMesh wrapper cell face is missing from the combined faces")
+        return ids
+
     source_order = mesh_data.get("_cfmesh_cell_face_order")
     if source_order is None:
         source_order = [[] for _cell in range(n_core_cells)]
@@ -665,26 +681,22 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
             source_order[int(owner_value)].append(face_id)
             if face_id < n_internal:
                 source_order[int(source_neighbours[face_id])].append(face_id)
-    source_face_map = [face_by_signature[tuple(sorted(map(int, face)))] for face in source_faces]
-    cfmesh_cell_face_order = [[source_face_map[face] for face in cell] for cell in source_order]
+    cfmesh_cell_face_order = renumbered_rows(source_order, combined_ids(source_faces))
+    new_ids = combined_ids(new_cell_faces).tolist() if new_cell_faces else []
+    position = 0
     for local_cell, entries in enumerate(new_cells):
-        ordered_faces: list[np.ndarray] = []
-        if local_cell < len(interface_cells):
-            ordered_faces.append(source_faces[interface_cells[local_cell][0]])
-        ordered_faces.extend(face for face, _boundary_patch in entries)
+        first = position
+        position += int(local_cell < len(interface_cells))
+        entry_ids = new_ids[position : position + len(entries)]
+        position += len(entries)
         cfmesh_cell_face_order.append(
-            [
-                face_id
-                for face in ordered_faces
-                for face_id in (face_by_signature[tuple(sorted(map(int, face)))],)
-                if face_id < len(internal_faces)
-            ]
+            [face_id for face_id in new_ids[first:position] if face_id < len(internal_faces)]
         )
         # Native replaceBoundary appends these in the new-boundary input
         # order (cell construction order), not the later patch-grouped order.
         cfmesh_cell_face_order[-1].extend(
-            face_by_signature[tuple(sorted(map(int, face)))]
-            for face, boundary_patch in entries
+            face_id
+            for face_id, (_face, boundary_patch) in zip(entry_ids, entries, strict=True)
             if boundary_patch is not None
         )
     mesh_data.update(

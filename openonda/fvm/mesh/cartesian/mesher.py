@@ -239,14 +239,21 @@ def _planar_feature_constraints(
     surface_index = SurfaceIndex.build(triangles)
     constraints: FeaturePlaneConstraints = {}
     local_face_size: dict[int, float] = {}
+    shaped_faces = []
     for face in faces:
         vertices = points[np.asarray(face, dtype=np.int64)]
         centre = vertices.mean(axis=0)
         relative = vertices - centre
         area = 0.5 * np.cross(relative, np.roll(relative, -1, axis=0)).sum(axis=0)
         area_norm = float(np.linalg.norm(area))
-        if area_norm <= 0.0:
-            continue
+        if area_norm > 0.0:
+            shaped_faces.append((face, vertices, centre, area, area_norm))
+    # The wall under every face centre, in one locator query
+    if shaped_faces and not box_wall:
+        _wall_points, wall_distances, wall_triangles = surface_index.nearest_points(
+            np.asarray([centre for _face, _vertices, centre, _area, _norm in shaped_faces])
+        )
+    for position, (face, vertices, centre, area, area_norm) in enumerate(shaped_faces):
         face_size = float(np.linalg.norm(vertices[:, None, :] - vertices[None, :, :], axis=2).max())
         for point_id in face:
             local_face_size[int(point_id)] = min(
@@ -255,8 +262,8 @@ def _planar_feature_constraints(
         if box_wall:
             wall_distance, wall_normal = math.inf, None
         else:
-            _wall_point, distances, triangle_ids = surface_index.nearest_points(centre[None])
-            wall_distance, wall_normal = float(distances[0]), normals[int(triangle_ids[0])]
+            wall_distance = float(wall_distances[position])
+            wall_normal = normals[int(wall_triangles[position])]
         candidates = []
         for normal, offset, width, plane_index in planes:
             if width < face_size:
@@ -406,6 +413,16 @@ def _project_to_feature_planes(
     ):
         return None
     return projected
+
+
+def _indexed_nearest_points(
+    index: SurfaceIndex, points: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """:meth:`SurfaceIndex.nearest_point` for many points at once."""
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if not np.all(np.isfinite(points)):
+        raise ValueError("point must contain three finite coordinates")
+    return index.indexed_nearest_points(points)
 
 
 def _quality_snapshot(mesh_data: MeshData) -> tuple[dict[str, Any], GeometryData]:
@@ -1380,7 +1397,10 @@ class CartesianMesher:
             if surface.kind != "box":
                 planar_wall_constraints.update(feature_constraints)
             surface_scale = max(float(np.ptp(surface.triangles, axis=(0, 1)).max()), 1.0)
-            for point_id_value in point_ids:
+            # Each wall vertex moves once, so its nearest point can be found up front.
+            nearest, nearest_distances = _indexed_nearest_points(index, candidate[point_ids])
+            mapped_points = []
+            for position, point_id_value in enumerate(point_ids):
                 point_id = int(point_id_value)
                 previous = assigned_points.get(point_id)
                 if previous is not None and previous != surface.patch:
@@ -1389,7 +1409,7 @@ class CartesianMesher:
                         f"surface patches {previous!r} and {surface.patch!r}"
                     )
                 assigned_points[point_id] = surface.patch
-                mapped, distance = index.nearest_point(candidate[point_id])
+                mapped, distance = nearest[position].copy(), float(nearest_distances[position])
                 for axis, bound in surface_constraints.get(point_id, {}).items():
                     mapped[axis] = bound
                 incident_features = (
@@ -1414,7 +1434,10 @@ class CartesianMesher:
                         f"{point_id} on patch {surface.patch!r}"
                     )
                 inner_displacements.setdefault(int(inner_id), []).append(displacement)
-                max_after = max(max_after, float(index.nearest_point(mapped)[1]))
+                mapped_points.append(mapped)
+            if mapped_points:
+                for distance in _indexed_nearest_points(index, np.asarray(mapped_points))[1]:
+                    max_after = max(max_after, float(distance))
 
         # Curved surfaces can share rim vertices with an outer plane.  Apply
         # the compatible planar component last and propagate that final small

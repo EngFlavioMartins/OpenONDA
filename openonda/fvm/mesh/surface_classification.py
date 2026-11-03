@@ -563,6 +563,176 @@ def _ray_parity_kernel(
     return inside, resolved
 
 
+@njit(cache=True, fastmath=False)
+def _closest_point_on_triangle(
+    point: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray, out: np.ndarray
+) -> None:
+    """Closest point of one triangle, with the arithmetic of :func:`closest_point_on_triangles`.
+
+    Dot products are summed as NumPy's ``einsum`` sums them, (0 + 2) + 1.
+    """
+    ab0, ab1, ab2 = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+    ac0, ac1, ac2 = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+    ap0, ap1, ap2 = point[0] - a[0], point[1] - a[1], point[2] - a[2]
+    d1 = (ab0 * ap0 + ab2 * ap2) + ab1 * ap1
+    d2 = (ac0 * ap0 + ac2 * ap2) + ac1 * ap1
+    if d1 <= 0.0 and d2 <= 0.0:
+        out[:] = a
+        return
+    bp0, bp1, bp2 = point[0] - b[0], point[1] - b[1], point[2] - b[2]
+    d3 = (ab0 * bp0 + ab2 * bp2) + ab1 * bp1
+    d4 = (ac0 * bp0 + ac2 * bp2) + ac1 * bp1
+    if d3 >= 0.0 and d4 <= d3:
+        out[:] = b
+        return
+    cp0, cp1, cp2 = point[0] - c[0], point[1] - c[1], point[2] - c[2]
+    d5 = (ab0 * cp0 + ab2 * cp2) + ab1 * cp1
+    d6 = (ac0 * cp0 + ac2 * cp2) + ac1 * cp1
+    if d6 >= 0.0 and d5 <= d6:
+        out[:] = c
+        return
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+        denom = d1 - d3
+        v = d1 / (denom if denom != 0.0 else 1.0)
+        out[0], out[1], out[2] = a[0] + v * ab0, a[1] + v * ab1, a[2] + v * ab2
+        return
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+        denom = d2 - d6
+        w = d2 / (denom if denom != 0.0 else 1.0)
+        out[0], out[1], out[2] = a[0] + w * ac0, a[1] + w * ac1, a[2] + w * ac2
+        return
+    va = d3 * d6 - d5 * d4
+    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+        denom = (d4 - d3) + (d5 - d6)
+        w = (d4 - d3) / (denom if denom != 0.0 else 1.0)
+        for axis in range(3):
+            out[axis] = b[axis] + w * (c[axis] - b[axis])
+        return
+    denom = (va + vb) + vc
+    if denom == 0.0:
+        denom = 1.0
+    v = vb / denom
+    w = vc / denom
+    out[0] = (a[0] + v * ab0) + w * ac0
+    out[1] = (a[1] + v * ab1) + w * ac1
+    out[2] = (a[2] + v * ab2) + w * ac2
+
+
+@njit(cache=True, fastmath=False)
+def _nearest_of_triangles(
+    point: np.ndarray,
+    triangles: np.ndarray,
+    ids: np.ndarray,
+    candidate: np.ndarray,
+    nearest: np.ndarray,
+) -> float:
+    """Closest point among ``triangles[ids]`` into ``nearest``, first minimum as ``argmin``."""
+    best = np.inf
+    found = False
+    for triangle in ids:
+        _closest_point_on_triangle(
+            point, triangles[triangle, 0], triangles[triangle, 1], triangles[triangle, 2], candidate
+        )
+        dx = candidate[0] - point[0]
+        dy = candidate[1] - point[1]
+        dz = candidate[2] - point[2]
+        distance = np.sqrt((dx * dx + dy * dy) + dz * dz)
+        if np.isnan(distance):
+            nearest[:] = candidate
+            return distance
+        if not found or distance < best:
+            best = distance
+            nearest[:] = candidate
+            found = True
+    return best
+
+
+@njit(cache=True, fastmath=False)
+def _indexed_nearest_kernel(
+    points: np.ndarray,
+    triangles: np.ndarray,
+    grid_origin: np.ndarray,
+    cell_size: float,
+    grid_shape: np.ndarray,
+    grid_keys: np.ndarray,
+    grid_offsets: np.ndarray,
+    grid_triangles: np.ndarray,
+    oversized: np.ndarray,
+    initial_radius: float,
+    radius_limit: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Closest surface point by bucket searches of doubling radius, else every triangle.
+
+    A search succeeds once its nearest candidate lies within its radius.
+    Candidates are taken in increasing triangle order, as the sorted ids of
+    :meth:`SurfaceIndex.candidate_triangles`.
+    """
+    n_triangles = len(triangles)
+    all_ids = np.arange(n_triangles)
+    stamp = np.full(n_triangles, -1, dtype=np.int64)
+    buffer = np.empty(n_triangles, dtype=np.int64)
+    candidate = np.empty(3, dtype=np.float64)
+    nearest = np.empty((len(points), 3), dtype=np.float64)
+    distances = np.empty(len(points), dtype=np.float64)
+    lower = np.empty(3, dtype=np.int64)
+    upper = np.empty(3, dtype=np.int64)
+    search = 0
+    for index in range(len(points)):
+        point = points[index]
+        radius = initial_radius
+        done = False
+        for _iteration in range(32):
+            count = 1
+            for axis in range(3):
+                lower[axis] = np.int64(
+                    np.floor(((point[axis] - radius) - grid_origin[axis]) / cell_size)
+                )
+                upper[axis] = np.int64(
+                    np.floor(((point[axis] + radius) - grid_origin[axis]) / cell_size)
+                )
+                count *= upper[axis] - lower[axis] + 1
+            if count > max(4096, 4 * n_triangles):
+                ids = all_ids
+            else:
+                search += 1
+                n_ids = 0
+                for triangle in oversized:
+                    if stamp[triangle] != search:
+                        stamp[triangle] = search
+                        buffer[n_ids] = triangle
+                        n_ids += 1
+                for iz in range(max(lower[2], 0), min(upper[2], grid_shape[2] - 1) + 1):
+                    for iy in range(max(lower[1], 0), min(upper[1], grid_shape[1] - 1) + 1):
+                        for ix in range(max(lower[0], 0), min(upper[0], grid_shape[0] - 1) + 1):
+                            key = ix + grid_shape[0] * (iy + grid_shape[1] * iz)
+                            position = np.searchsorted(grid_keys, key)
+                            if position == len(grid_keys) or grid_keys[position] != key:
+                                continue
+                            for entry in range(grid_offsets[position], grid_offsets[position + 1]):
+                                triangle = grid_triangles[entry]
+                                if stamp[triangle] != search:
+                                    stamp[triangle] = search
+                                    buffer[n_ids] = triangle
+                                    n_ids += 1
+                ids = np.sort(buffer[:n_ids])
+            if len(ids):
+                distance = _nearest_of_triangles(point, triangles, ids, candidate, nearest[index])
+                if radius >= distance:
+                    distances[index] = distance
+                    done = True
+                    break
+            radius *= 2.0
+            if radius > radius_limit:
+                break
+        if not done:
+            distances[index] = _nearest_of_triangles(
+                point, triangles, all_ids, candidate, nearest[index]
+            )
+    return nearest, distances
+
+
 @dataclass
 class SurfaceIndex:
     """Broad-phase triangle grid plus exact geometric tests for one surface."""
@@ -576,15 +746,8 @@ class SurfaceIndex:
     triangle_max: np.ndarray = field(init=False, repr=False)
     surface_lower: np.ndarray = field(init=False, repr=False)
     surface_upper: np.ndarray = field(init=False, repr=False)
-    # The bucket grid packed for compiled queries: sorted linear bucket keys
-    # and, per key, an offset range into the bucket triangle ids.
-    grid_shape: np.ndarray = field(init=False, repr=False)
-    grid_keys: np.ndarray = field(init=False, repr=False)
-    grid_offsets: np.ndarray = field(init=False, repr=False)
-    grid_triangles: np.ndarray = field(init=False, repr=False)
-    # Origin-independent Moller-Trumbore terms per ray direction and triangle
-    ray_directions: np.ndarray = field(init=False, repr=False)
-    ray_terms: tuple[np.ndarray, ...] = field(init=False, repr=False)
+    _packed_grid: tuple[np.ndarray, ...] | None = field(default=None, init=False, repr=False)
+    _ray_terms: tuple[np.ndarray, ...] | None = field(default=None, init=False, repr=False)
     _locator_mesh: object = field(default=None, init=False, repr=False)
 
     @classmethod
@@ -657,28 +820,41 @@ class SurfaceIndex:
         result.triangle_max = tri_max
         result.surface_lower = tri_min.min(axis=0)
         result.surface_upper = tri_max.max(axis=0)
-        shape = hi[~oversized].max(axis=0, initial=0) + 1
-        keys = np.asarray(
-            [ix + shape[0] * (iy + shape[1] * iz) for ix, iy, iz in grid], dtype=np.int64
-        )
-        order = np.argsort(keys)
-        members = [grid[key] for key in grid]
-        result.grid_shape = shape.astype(np.int64)
-        result.grid_keys = keys[order]
-        result.grid_offsets = np.concatenate(
-            ([0], np.cumsum([len(members[i]) for i in order], dtype=np.int64))
-        ).astype(np.int64)
-        result.grid_triangles = (
-            np.concatenate([members[i] for i in order]).astype(np.int64)
-            if len(members)
-            else np.empty(0, dtype=np.int64)
-        )
-        result.oversized_triangles = result.oversized_triangles.astype(np.int64)
-        result.ray_directions = np.asarray(
-            [_normalize(direction) for direction in _DEFAULT_RAY_DIRECTIONS]
-        )
-        result.ray_terms = _ray_triangle_data(triangles, result.ray_directions)
         return result
+
+    def packed_grid(self) -> tuple[np.ndarray, ...]:
+        """The bucket grid for compiled queries, built on first use.
+
+        Returns the grid shape in buckets, the sorted linear bucket keys, the
+        offsets of each bucket's triangle ids, those ids, and the oversized
+        triangles that every query tests.
+        """
+        if self._packed_grid is None:
+            corners = np.asarray(list(self.grid), dtype=np.int64).reshape(-1, 3)
+            shape = corners.max(axis=0, initial=0) + 1
+            keys = corners[:, 0] + shape[0] * (corners[:, 1] + shape[1] * corners[:, 2])
+            order = np.argsort(keys)
+            members = list(self.grid.values())
+            sizes = np.asarray([len(members[i]) for i in order], dtype=np.int64)
+            self._packed_grid = (
+                shape,
+                keys[order],
+                np.concatenate(([0], np.cumsum(sizes))).astype(np.int64),
+                np.concatenate([members[i] for i in order]).astype(np.int64)
+                if len(members)
+                else np.empty(0, dtype=np.int64),
+                self.oversized_triangles.astype(np.int64),
+            )
+        return self._packed_grid
+
+    def ray_terms(self) -> tuple[np.ndarray, ...]:
+        """Normalised ray directions and their per-triangle terms, built on first use."""
+        if self._ray_terms is None:
+            directions = np.asarray(
+                [_normalize(direction) for direction in _DEFAULT_RAY_DIRECTIONS]
+            )
+            self._ray_terms = (directions, *_ray_triangle_data(self.triangles, directions))
+        return self._ray_terms
 
     def boxes_intersect_surface(self, box_min: np.ndarray, box_max: np.ndarray) -> np.ndarray:
         """Whether each box ``[box_min[i], box_max[i]]`` has positive-area overlap with a triangle."""
@@ -692,11 +868,7 @@ class SurfaceIndex:
             self.surface_upper,
             self.grid_origin,
             float(self.cell_size),
-            self.grid_shape,
-            self.grid_keys,
-            self.grid_offsets,
-            self.grid_triangles,
-            self.oversized_triangles,
+            *self.packed_grid(),
         )
 
     def single_ray_parity(self, points: np.ndarray) -> np.ndarray:
@@ -705,7 +877,7 @@ class SurfaceIndex:
         This is the first trial of :meth:`is_inside` for one point; an
         undecided point needs its full multi-direction retry.
         """
-        edge1, edge2, h, inverse, parallel = self.ray_terms
+        directions, edge1, edge2, h, inverse, parallel = self.ray_terms()
         return _single_point_parity_kernel(
             np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3),
             self.triangles,
@@ -713,7 +885,7 @@ class SurfaceIndex:
             self.triangle_max,
             self.surface_lower,
             self.surface_upper,
-            self.ray_directions[0],
+            directions[0],
             edge1,
             edge2,
             h[0],
@@ -761,9 +933,8 @@ class SurfaceIndex:
             parity = int(self.single_ray_parity(points)[0])
             if parity >= 0:
                 return np.asarray([parity == 1])
-        result, resolved = _ray_parity_kernel(
-            points, self.ray_directions, self.triangles, *self.ray_terms
-        )
+        directions, *terms = self.ray_terms()
+        result, resolved = _ray_parity_kernel(points, directions, self.triangles, *terms)
         if not np.all(resolved):
             unresolved = int(np.count_nonzero(~resolved))
             raise RuntimeError(
@@ -777,28 +948,26 @@ class SurfaceIndex:
         point = np.asarray(point, dtype=np.float64)
         if point.shape != (3,) or not np.all(np.isfinite(point)):
             raise ValueError("point must contain three finite coordinates")
-        v0, v1, v2 = self.triangles[:, 0], self.triangles[:, 1], self.triangles[:, 2]
-        span = float(np.max(self.surface_upper - self.surface_lower))
-        radius = max(self.cell_size, np.finfo(np.float64).eps * max(span, 1.0))
-        for _ in range(32):
-            candidate_ids = self.candidate_triangles(point - radius, point + radius)
-            if candidate_ids.size:
-                candidates = closest_point_on_triangles(
-                    point, v0[candidate_ids], v1[candidate_ids], v2[candidate_ids]
-                )
-                distances = np.linalg.norm(candidates - point, axis=1)
-                best = int(np.argmin(distances))
-                distance = float(distances[best])
-                if radius >= distance:
-                    return candidates[best], distance
-            radius *= 2.0
-            if radius > 4.0 * max(span, self.cell_size):
-                break
+        nearest, distances = self.indexed_nearest_points(point[None, :])
+        return nearest[0], float(distances[0])
 
-        candidates = closest_point_on_triangles(point, v0, v1, v2)
-        distances = np.linalg.norm(candidates - point, axis=1)
-        best = int(np.argmin(distances))
-        return candidates[best], float(distances[best])
+    def indexed_nearest_points(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Closest surface points and distances, :meth:`nearest_point` for each point.
+
+        The search starts in the buckets within one bucket size of a point and
+        doubles its radius until the nearest candidate lies within it, up to
+        four surface spans; past that it takes every triangle.
+        """
+        span = float(np.max(self.surface_upper - self.surface_lower))
+        return _indexed_nearest_kernel(
+            np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3),
+            self.triangles,
+            self.grid_origin,
+            float(self.cell_size),
+            *self.packed_grid(),
+            max(self.cell_size, np.finfo(np.float64).eps * max(span, 1.0)),
+            4.0 * max(span, self.cell_size),
+        )
 
     def nearest_points(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Closest surface points, distances, and triangle ids for a batch.

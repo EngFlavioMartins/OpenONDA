@@ -14,6 +14,7 @@ import numpy as np
 from openonda.core._numba import cacheable_njit as njit
 
 from ..data import MeshData
+from ..topology import pack_face_nodes
 
 _SMALL = 1.0e-15
 _VSMALL = 1.0e-300
@@ -461,11 +462,19 @@ def _smooth_partition_points(
     boundary_start = int(mesh_data["n_interior_faces"])
     faces = mesh_data["faces"][boundary_start:]
     selected = np.asarray(partition_points, dtype=np.int32)
-    vertices, face_offsets = _pack_rows(faces)
+    vertices, face_offsets = pack_face_nodes(faces)
+    vertices = vertices.astype(np.int32)
+    active = np.zeros(len(points), dtype=np.bool_)
+    active[selected] = True
     point_faces: dict[int, list[int]] = defaultdict(list)
     point_triangles: dict[int, list[tuple[int, int, int]]] = defaultdict(list)
     n_points = len(points)
-    for face_id, face in enumerate(faces):
+    # A selected point's stencil comes only from the faces around it
+    face_rows = np.repeat(np.arange(len(faces)), np.diff(face_offsets))
+    touching = np.bincount(face_rows, weights=active[vertices], minlength=len(faces)) > 0
+    for face_value in np.flatnonzero(touching):
+        face_id = int(face_value)
+        face = faces[face_id]
         for point in face:
             point_faces[int(point)].append(face_id)
         auxiliary = n_points + face_id
@@ -506,8 +515,6 @@ def _smooth_partition_points(
     triangles, triangle_offsets = _pack_rows(triangle_rows)
     triangles = triangles.reshape((-1, 3))
     face_ids, point_face_offsets = _pack_rows([point_faces[int(p)] for p in selected])
-    active = np.zeros(n_points, dtype=np.bool_)
-    active[selected] = True
     optimise = (
         _surface_optimisation_updates
         if len(selected) >= 1000
@@ -555,12 +562,12 @@ def _inverted_boundary_points(
 ) -> set[int]:
     """Return the serial partition-point subset rejected by cfMesh's check."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
+    faces = mesh_data["faces"]
     boundary_start = int(mesh_data["n_interior_faces"])
     if len(faces) - boundary_start >= 128:
         return _inverted_boundary_points_vectorized(
             points,
-            faces[boundary_start:],
+            [np.asarray(face, dtype=np.int32) for face in faces[boundary_start:]],
             None if face_patch_ids is None else np.asarray(face_patch_ids),
             active_points,
         )

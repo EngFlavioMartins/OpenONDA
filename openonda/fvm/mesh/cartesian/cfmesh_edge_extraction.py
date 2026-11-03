@@ -10,10 +10,12 @@ topological apart from the inserted face and cell centres.
 from __future__ import annotations
 
 from collections import defaultdict
+from itertools import chain
 
 import numpy as np
 
 from ..data import BoundaryPatchData, MeshData
+from ..topology import last_key_matches, pack_face_nodes, sorted_vertex_keys
 from .cfmesh_surface_optimisation import (
     _face_centre,
     inverted_cfmesh_boundary_points,
@@ -60,9 +62,20 @@ def _ordered_edge_faces(
     return first, second
 
 
+def _faces_touching(
+    faces: list[np.ndarray] | np.ndarray, points: set[int], n_points: int
+) -> np.ndarray:
+    """Whether each face has a vertex among ``points``."""
+    mask = np.zeros(n_points, dtype=bool)
+    mask[np.fromiter(points, dtype=np.int64, count=len(points))] = True
+    nodes, offsets = pack_face_nodes(faces)
+    face_ids = np.repeat(np.arange(len(faces)), np.diff(offsets))
+    return np.bincount(face_ids, weights=mask[nodes], minlength=len(faces)) > 0
+
+
 def _topology_plan(mesh_data: MeshData) -> tuple[set[int], dict[int, int], set[int]]:
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
+    faces = mesh_data["faces"]
     owners = np.asarray(mesh_data["owners"], dtype=np.int32)
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
     n_internal = int(mesh_data["n_interior_faces"])
@@ -101,10 +114,10 @@ def _topology_plan(mesh_data: MeshData) -> tuple[set[int], dict[int, int], set[i
 
     split_internal: set[int] = set()
     marked_cells: set[int] = set()
-    for face_id in range(n_internal):
+    concave_faces = np.flatnonzero(_faces_touching(faces, concave_points, len(points)))
+    for face_value in concave_faces[concave_faces < n_internal]:
+        face_id = int(face_value)
         face = faces[face_id]
-        if not concave_points.intersection(map(int, face)):
-            continue
         boundary_edge_patches: list[int] = []
         for first, second in zip(face, np.roll(face, -1), strict=True):
             first_id = int(first)
@@ -121,7 +134,9 @@ def _topology_plan(mesh_data: MeshData) -> tuple[set[int], dict[int, int], set[i
 
     split_boundary: dict[int, int] = {}
     edge_points = {point_id for point_id, count in feature_count.items() if count == 2}
-    for face_id in range(n_internal, len(faces)):
+    edge_faces_found = np.flatnonzero(_faces_touching(faces, edge_points, len(points)))
+    for face_value in edge_faces_found[edge_faces_found >= n_internal]:
+        face_id = int(face_value)
         face = faces[face_id]
         for position, point_value in enumerate(face):
             point_id = int(point_value)
@@ -151,19 +166,20 @@ def _split_faces(
     list[np.ndarray],
     np.ndarray,
     np.ndarray,
-    dict[tuple[int, ...], int],
+    np.ndarray,
     list[list[int]],
 ]:
     source_points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
-    source_faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
+    source_faces = mesh_data["faces"]
     source_owners = np.asarray(mesh_data["owners"], dtype=np.int32)
     source_neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
     n_internal = int(mesh_data["n_interior_faces"])
-    point_values = [point.copy() for point in source_points]
+    point_values = [source_points]
+    n_points = len(source_points)
     faces: list[np.ndarray] = []
     owners: list[int] = []
     neighbours: list[int] = []
-    boundary_patch_by_signature: dict[tuple[int, ...], int] = {}
+    boundary_patch_ids: list[int] = []
     face_replacements: list[list[int]] = [[] for _face in source_faces]
 
     face_patch: dict[int, int] = {}
@@ -181,8 +197,9 @@ def _split_faces(
             owners.append(int(source_owners[face_id]))
             neighbours.append(int(source_neighbours[face_id]))
             continue
-        centre_id = len(point_values)
-        point_values.append(_face_centre(source_points[face]))
+        centre_id = n_points
+        n_points += 1
+        point_values.append(_face_centre(source_points[face])[None, :])
         for first, second in zip(face, np.roll(face, -1), strict=True):
             face_replacements[face_id].append(len(faces))
             faces.append(np.asarray((first, second, centre_id), dtype=np.int32))
@@ -193,8 +210,9 @@ def _split_faces(
         face = source_faces[face_id]
         patch_id = face_patch[face_id]
         if face_id in split_boundary and len(face) > 4:
-            centre_id = len(point_values)
-            point_values.append(_face_centre(source_points[face]))
+            centre_id = n_points
+            n_points += 1
+            point_values.append(_face_centre(source_points[face])[None, :])
             new_faces = tuple(
                 np.asarray((first, second, centre_id), dtype=np.int32)
                 for first, second in zip(face, np.roll(face, -1), strict=True)
@@ -224,50 +242,57 @@ def _split_faces(
             face_replacements[face_id].append(len(faces))
             faces.append(new_face)
             owners.append(int(source_owners[face_id]))
-            boundary_patch_by_signature[tuple(sorted(map(int, new_face)))] = patch_id
+            boundary_patch_ids.append(patch_id)
 
     return (
-        np.ascontiguousarray(point_values, dtype=np.float64),
+        np.ascontiguousarray(np.concatenate(point_values), dtype=np.float64),
         faces,
         np.ascontiguousarray(owners, dtype=np.int32),
         np.ascontiguousarray(neighbours, dtype=np.int32),
-        boundary_patch_by_signature,
+        np.asarray(boundary_patch_ids, dtype=np.int64),
         face_replacements,
     )
 
 
-def _cell_faces(
+def _cell_face_entries(
     n_cells: int,
-    faces: list[np.ndarray],
     owners: np.ndarray,
     neighbours: np.ndarray,
+    n_faces: int,
     *,
-    source_order: list[list[int]] | None = None,
-    face_replacements: list[list[int]] | None = None,
-    source_n_internal: int | None = None,
-) -> list[list[tuple[np.ndarray, bool]]]:
-    result: list[list[tuple[np.ndarray, bool]]] = [[] for _cell in range(n_cells)]
+    source_order: list[list[int]] | None,
+    face_replacements: list[list[int]],
+    source_n_internal: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each cell's faces in :func:`_cell_faces` order, as parallel cell and face arrays."""
     n_internal = len(neighbours)
-    if source_order is not None and face_replacements is not None:
-        if source_n_internal is None:
-            raise ValueError("source_n_internal is required with cfMesh cell order")
-        for cell_id, old_face_ids in enumerate(source_order):
-            for old_face_id in old_face_ids:
-                if old_face_id >= source_n_internal:
-                    continue
-                for face_id in face_replacements[old_face_id]:
-                    result[cell_id].append((faces[face_id], int(owners[face_id]) == cell_id))
-        # meshSurfaceEdgeExtractor removes every old boundary face and its
-        # boundaryFacesGenerator appends the replacements after the retained
-        # internal faces.  Preserve that per-cell insertion order.
-        for face_id in range(n_internal, len(faces)):
-            result[int(owners[face_id])].append((faces[face_id], True))
-        return result
-    for face_id, face in enumerate(faces):
-        result[int(owners[face_id])].append((face, True))
-        if face_id < n_internal:
-            result[int(neighbours[face_id])].append((face, False))
-    return result
+    boundary_faces = np.arange(n_internal, n_faces)
+    if source_order is not None:
+        counts = [len(row) for row in source_order]
+        old = np.fromiter(chain.from_iterable(source_order), dtype=np.int64, count=sum(counts))
+        cells = np.repeat(np.arange(n_cells), counts)
+        keep = old < source_n_internal
+        old, cells = old[keep], cells[keep]
+        replacement_counts = [len(row) for row in face_replacements]
+        replacements = np.fromiter(
+            chain.from_iterable(face_replacements), dtype=np.int64, count=sum(replacement_counts)
+        )
+        starts = np.concatenate(([0], np.cumsum(replacement_counts, dtype=np.int64)))
+        expanded = starts[old + 1] - starts[old]
+        within = np.arange(int(expanded.sum())) - np.repeat(
+            np.cumsum(expanded) - expanded, expanded
+        )
+        internal_faces = replacements[np.repeat(starts[old], expanded) + within]
+        entry_cells = np.concatenate((np.repeat(cells, expanded), owners[boundary_faces]))
+        entry_faces = np.concatenate((internal_faces, boundary_faces))
+    else:
+        interior = np.arange(n_internal)
+        entry_cells = np.concatenate(
+            (np.column_stack((owners[:n_internal], neighbours)).reshape(-1), owners[boundary_faces])
+        )
+        entry_faces = np.concatenate((np.repeat(interior, 2), boundary_faces))
+    order = np.argsort(entry_cells, kind="stable")
+    return entry_cells[order], entry_faces[order]
 
 
 def _rebuild_from_cells(
@@ -276,154 +301,195 @@ def _rebuild_from_cells(
     split_faces: list[np.ndarray],
     split_owners: np.ndarray,
     split_neighbours: np.ndarray,
-    boundary_patch_by_signature: dict[tuple[int, ...], int],
+    boundary_patch_ids: np.ndarray,
     marked_cells: set[int],
     face_replacements: list[list[int]],
 ) -> None:
+    """Rebuild the mesh with every marked cell replaced by one pyramid per face.
+
+    Unmarked cells keep their faces, outward and in stored cell order; the
+    pyramids follow, by marked cell. A vertex set met by two of these faces
+    becomes an internal face oriented as its first one, met by one a
+    boundary face of the split face it came from.
+    """
     n_source_cells = int(mesh_data["n_cells"])
-    source_order = mesh_data.get("_cfmesh_cell_face_order")
-    cell_faces = _cell_faces(
+    n_split_internal = len(split_neighbours)
+    entry_cells, entry_faces = _cell_face_entries(
         n_source_cells,
-        split_faces,
         split_owners,
         split_neighbours,
-        source_order=source_order,
+        len(split_faces),
+        source_order=mesh_data.get("_cfmesh_cell_face_order"),
         face_replacements=face_replacements,
         source_n_internal=int(mesh_data["n_interior_faces"]),
     )
-    point_values = [point.copy() for point in points]
-    output_cells: list[list[np.ndarray]] = []
-    source_cell_ids: list[int] = []
+    entry_owner = split_owners[entry_faces] == entry_cells
+    nodes, offsets = pack_face_nodes(split_faces)
+    marked = np.zeros(n_source_cells, dtype=bool)
+    marked[np.fromiter(marked_cells, dtype=np.int64, count=len(marked_cells))] = True
 
-    for cell_id, entries in enumerate(cell_faces):
-        if cell_id in marked_cells:
-            continue
-        output_cells.append(
-            [face.copy() if is_owner else _reverse_face(face) for face, is_owner in entries]
-        )
-        source_cell_ids.append(cell_id)
+    # Unmarked cells: their faces, reversed (first vertex kept) where they are the neighbour
+    kept = ~marked[entry_cells]
+    kept_faces, kept_owner = entry_faces[kept], entry_owner[kept]
+    lengths = offsets[kept_faces + 1] - offsets[kept_faces]
+    kept_offsets = np.concatenate(([0], np.cumsum(lengths)))
+    position = np.arange(int(lengths.sum())) - np.repeat(kept_offsets[:-1], lengths)
+    length = np.repeat(lengths, lengths)
+    position = np.where(np.repeat(kept_owner, lengths), position, (length - position) % length)
+    kept_nodes = nodes[np.repeat(offsets[kept_faces], lengths) + position]
+    kept_cell_ids = np.cumsum(~marked) - 1
+    kept_face_cells = kept_cell_ids[entry_cells[kept]]
 
+    # Marked cells: one pyramid per face, apex at the mean of the cell's vertices
+    n_kept_cells = int(np.count_nonzero(~marked))
+    point_values = [points]
+    pyramid_nodes: list[np.ndarray] = []
+    pyramid_lengths: list[int] = []
+    pyramid_cells: list[int] = []
+    source_cell_ids = [np.flatnonzero(~marked)]
+    output_cell = n_kept_cells
+    top_vertex = len(points)
+    entry_starts = np.searchsorted(entry_cells, np.arange(n_source_cells + 1))
     for cell_id in sorted(marked_cells):
-        entries = cell_faces[cell_id]
+        cell_entries = range(entry_starts[cell_id], entry_starts[cell_id + 1])
         # cell::labels preserves first occurrence in cell-face/cyclic-vertex
         # order. Sorting the labels changes the floating-point summation.
         unique_points = tuple(
-            dict.fromkeys(int(point_id) for face, _is_owner in entries for point_id in face)
+            dict.fromkeys(
+                int(point_id)
+                for entry in cell_entries
+                for point_id in split_faces[entry_faces[entry]]
+            )
         )
-        top_vertex = len(point_values)
         centre = np.zeros(3, dtype=np.float64)
         for point_id in unique_points:
             centre += points[point_id]
-        point_values.append(centre / len(unique_points))
-        for face, is_owner in entries:
-            outward_base = face.copy() if is_owner else _reverse_face(face)
-            pyramid_faces = [outward_base]
-            for position in range(len(face)):
-                following = int(face[(position + 1) % len(face)])
-                current = int(face[position])
+        point_values.append((centre / len(unique_points))[None, :])
+        for entry in cell_entries:
+            face = split_faces[entry_faces[entry]]
+            is_owner = bool(entry_owner[entry])
+            pyramid_nodes.append(face.copy() if is_owner else _reverse_face(face))
+            pyramid_lengths.append(len(face))
+            for local in range(len(face)):
+                following = int(face[(local + 1) % len(face)])
+                current = int(face[local])
                 side = (
-                    np.asarray((following, current, top_vertex), dtype=np.int32)
+                    (following, current, top_vertex)
                     if is_owner
-                    else np.asarray((following, top_vertex, current), dtype=np.int32)
+                    else (following, top_vertex, current)
                 )
-                pyramid_faces.append(side)
-            output_cells.append(pyramid_faces)
-            source_cell_ids.append(cell_id)
+                pyramid_nodes.append(np.asarray(side, dtype=np.int32))
+                pyramid_lengths.append(3)
+            pyramid_cells.extend([output_cell] * (len(face) + 1))
+            source_cell_ids.append(np.asarray([cell_id]))
+            output_cell += 1
+        top_vertex += 1
 
-    records: dict[tuple[int, ...], list[tuple[np.ndarray, int]]] = defaultdict(list)
-    for output_cell_id, output_faces in enumerate(output_cells):
-        for output_face in output_faces:
-            records[tuple(sorted(map(int, output_face)))].append((output_face, output_cell_id))
+    all_nodes = np.concatenate([kept_nodes.astype(np.int32), *pyramid_nodes]).astype(np.int64)
+    all_offsets = np.concatenate(
+        (kept_offsets, kept_offsets[-1] + np.cumsum(np.asarray(pyramid_lengths, dtype=np.int64)))
+    )
+    face_cells = np.concatenate((kept_face_cells, np.asarray(pyramid_cells, dtype=np.int64)))
 
-    internal_faces: list[np.ndarray] = []
-    internal_owners: list[int] = []
-    internal_neighbours: list[int] = []
-    patch_count = len(mesh_data["boundary"])
-    boundary_faces: list[list[np.ndarray]] = [[] for _patch in range(patch_count)]
-    boundary_owners: list[list[int]] = [[] for _patch in range(patch_count)]
-    for signature, face_records in records.items():
-        if len(face_records) == 2:
-            first, second = face_records
-            internal_faces.append(first[0])
-            internal_owners.append(first[1])
-            internal_neighbours.append(second[1])
-        elif len(face_records) == 1:
-            patch_id = boundary_patch_by_signature.get(signature)
-            if patch_id is None:
-                raise ValueError(
-                    f"cfMesh edge correction left an unmatched internal face: {signature}"
-                )
-            face, owner = face_records[0]
-            boundary_faces[patch_id].append(face)
-            boundary_owners[patch_id].append(owner)
-        else:
-            raise ValueError(f"cfMesh edge correction produced a non-manifold face: {signature}")
+    # Group equal vertex sets in order of first appearance
+    boundary_nodes, boundary_offsets = pack_face_nodes(split_faces[n_split_internal:])
+    width = int(max(np.diff(all_offsets).max(initial=0), np.diff(boundary_offsets).max(initial=0)))
+    keys = sorted_vertex_keys(all_nodes, all_offsets, width)
+    unique_keys, first, inverse, counts = np.unique(
+        keys, return_index=True, return_inverse=True, return_counts=True
+    )
+    group_order = np.argsort(first, kind="stable")
+    by_group = np.argsort(inverse, kind="stable")
+    group_starts = np.concatenate(([0], np.cumsum(counts)))
+    boundary_keys = sorted_vertex_keys(boundary_nodes, boundary_offsets, width)
+    split_position, from_split = last_key_matches(boundary_keys, unique_keys)
+    faulty = (counts > 2) | ((counts == 1) & ~from_split)
+    if np.any(faulty):
+        group = group_order[np.flatnonzero(faulty[group_order])[0]]
+        face = int(first[group])
+        signature = tuple(sorted(map(int, all_nodes[all_offsets[face] : all_offsets[face + 1]])))
+        if counts[group] == 1:
+            raise ValueError(f"cfMesh edge correction left an unmatched internal face: {signature}")
+        raise ValueError(f"cfMesh edge correction produced a non-manifold face: {signature}")
+    internal_groups = group_order[counts[group_order] == 2]
+    internal_first = first[internal_groups]
+    internal_second = by_group[group_starts[internal_groups] + 1]
 
-    combined_faces = internal_faces.copy()
-    combined_owners = internal_owners.copy()
-    combined_neighbours = internal_neighbours.copy()
-    boundary_order = {
-        tuple(sorted(map(int, face))): face_id
-        for face_id, face in enumerate(split_faces)
-        if face_id >= len(split_neighbours)
-    }
+    # Boundary faces by patch, each patch in the order of the faces it came from
+    boundary_groups = group_order[counts[group_order] == 1]
+    patches = boundary_patch_ids[split_position[boundary_groups]]
+    order = np.lexsort((split_position[boundary_groups], patches))
+    boundary_groups = boundary_groups[order]
+    patches = patches[order]
+
+    output_faces = np.concatenate((internal_first, first[boundary_groups]))
+    n_internal = len(internal_first)
+    combined_owners = face_cells[output_faces]
+    combined_neighbours = face_cells[internal_second]
+    face_lengths = all_offsets[output_faces + 1] - all_offsets[output_faces]
+    combined_nodes = all_nodes[
+        np.repeat(all_offsets[output_faces], face_lengths)
+        + np.arange(int(face_lengths.sum()))
+        - np.repeat(np.cumsum(face_lengths) - face_lengths, face_lengths)
+    ].astype(np.int32)
+    face_offsets = np.concatenate(([0], np.cumsum(face_lengths))).tolist()
+    combined_faces = [
+        combined_nodes[start:stop]
+        for start, stop in zip(face_offsets[:-1], face_offsets[1:], strict=True)
+    ]
+    patch_counts = np.bincount(patches, minlength=len(mesh_data["boundary"]))
     boundary: list[BoundaryPatchData] = []
-    start_face = len(internal_faces)
+    start_face = n_internal
     for patch_id, patch in enumerate(mesh_data["boundary"]):
-        # decomposeCells retains its pre-decomposition boundary list and
-        # resolves the new owners without changing the face order. Traversing
-        # newly built cells instead perturbs every boundary-point reduction.
-        ordered = sorted(
-            zip(boundary_faces[patch_id], boundary_owners[patch_id], strict=True),
-            key=lambda item: boundary_order[tuple(sorted(map(int, item[0])))],
-        )
-        boundary_faces[patch_id] = [face for face, _owner in ordered]
-        boundary_owners[patch_id] = [owner for _face, owner in ordered]
-        combined_faces.extend(boundary_faces[patch_id])
-        combined_owners.extend(boundary_owners[patch_id])
         boundary.append(
             {
                 "name": str(patch["name"]),
                 "start_face": start_face,
-                "n_faces": len(boundary_faces[patch_id]),
+                "n_faces": int(patch_counts[patch_id]),
                 "type": str(patch.get("type", "patch")),
             }
         )
-        start_face += len(boundary_faces[patch_id])
+        start_face += int(patch_counts[patch_id])
+
+    # Each cell lists its internal faces in its own face order, then its
+    # boundary faces: replaceBoundary removes old boundary references before
+    # appending the replacements, even when the face geometry did not change.
+    combined_ids = np.empty(len(unique_keys), dtype=np.int64)
+    combined_ids[np.concatenate((internal_groups, boundary_groups))] = np.arange(len(output_faces))
+    traversal_ids = combined_ids[inverse]
+    internal_entry = traversal_ids < n_internal
+    order_cells = np.concatenate((face_cells[internal_entry], combined_owners[n_internal:]))
+    order_faces = np.concatenate(
+        (traversal_ids[internal_entry], np.arange(n_internal, len(output_faces)))
+    )
+    order = np.argsort(order_cells, kind="stable")
+    n_output_cells = output_cell
+    order_counts = np.bincount(order_cells, minlength=n_output_cells)
+    flat_order = order_faces[order].tolist()
+    order_offsets = np.concatenate(([0], np.cumsum(order_counts))).tolist()
+    cfmesh_cell_face_order = [
+        flat_order[start:stop]
+        for start, stop in zip(order_offsets[:-1], order_offsets[1:], strict=True)
+    ]
 
     old_levels = np.asarray(mesh_data.get("cell_levels", np.zeros(n_source_cells)), dtype=np.int8)
     old_sizes = np.asarray(mesh_data.get("cell_sizes", np.ones(n_source_cells)), dtype=np.float32)
-    source_ids = np.asarray(source_cell_ids, dtype=np.int32)
-    face_by_signature = {
-        tuple(sorted(map(int, face))): face_id for face_id, face in enumerate(combined_faces)
-    }
-    cfmesh_cell_face_order = [
-        [
-            face_id
-            for face in entries
-            for face_id in (face_by_signature[tuple(sorted(map(int, face)))],)
-            if face_id < len(internal_faces)
-        ]
-        for entries in output_cells
-    ]
-    # replaceBoundary removes old boundary references before appending the
-    # replacements to each cell, even when the face geometry did not change.
-    for face_id in range(len(internal_faces), len(combined_faces)):
-        cfmesh_cell_face_order[combined_owners[face_id]].append(face_id)
+    source_ids = np.concatenate(source_cell_ids).astype(np.int32)
+    vertex_position = np.ascontiguousarray(np.concatenate(point_values), dtype=np.float64)
     mesh_data.update(
         {
-            "vertex_position": np.ascontiguousarray(point_values, dtype=np.float64),
+            "vertex_position": vertex_position,
             "faces": combined_faces,
             "owners": np.ascontiguousarray(combined_owners, dtype=np.int32),
             "neighbours": np.ascontiguousarray(combined_neighbours, dtype=np.int32),
             "boundary": boundary,
-            "n_cells": len(output_cells),
+            "n_cells": n_output_cells,
             "n_faces": len(combined_faces),
-            "n_interior_faces": len(internal_faces),
-            "n_points": len(point_values),
+            "n_interior_faces": n_internal,
+            "n_points": len(vertex_position),
             "cell_levels": old_levels[source_ids],
             "cell_sizes": old_sizes[source_ids],
-            "cell_type_code": np.full(len(output_cells), 5, dtype=np.int32),
+            "cell_type_code": np.full(n_output_cells, 5, dtype=np.int32),
             "_cfmesh_cell_face_order": cfmesh_cell_face_order,
         }
     )

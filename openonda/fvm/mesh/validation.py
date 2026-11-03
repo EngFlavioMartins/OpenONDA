@@ -63,6 +63,31 @@ def _require(condition: bool | np.bool_, message: str) -> None:
         raise MeshValidationError(message)
 
 
+def _require_valid_ragged_faces(faces: list[np.ndarray], n_points: int) -> None:
+    """Reject the first face, in face order, that is short, repeats a node or leaves the points.
+
+    Each face is checked for those three faults in that order, as one face at
+    a time would be.
+    """
+    nodes, offsets = pack_face_nodes(faces)
+    lengths = np.diff(offsets)
+    face_ids = np.repeat(np.arange(len(faces)), lengths)
+    order = np.lexsort((nodes, face_ids))
+    sorted_nodes, sorted_faces = nodes[order], face_ids[order]
+    repeats = sorted_faces[1:][
+        (sorted_nodes[1:] == sorted_nodes[:-1]) & (sorted_faces[1:] == sorted_faces[:-1])
+    ]
+    outside = face_ids[(nodes < 0) | (nodes >= n_points)]
+    short = np.flatnonzero(lengths < 3)
+    faulty = np.concatenate((short, repeats, outside))
+    if not faulty.size:
+        return
+    i = int(faulty.min())
+    _require(lengths[i] >= 3, f"Face {i} has fewer than three nodes")
+    _require(i not in set(repeats.tolist()), f"Face {i} repeats a node")
+    raise MeshValidationError(f"Face {i} contains a point index outside [0, {n_points})")
+
+
 def validate_topology(mesh_data: MeshData) -> dict[str, int]:
     """Validate the backend-neutral face-based mesh topology.
 
@@ -123,6 +148,8 @@ def validate_topology(mesh_data: MeshData) -> dict[str, int]:
         duplicate_faces = np.flatnonzero(repeated)
         if duplicate_faces.size:
             raise MeshValidationError(f"Face {int(duplicate_faces[0])} repeats a node")
+    elif all(isinstance(face, np.ndarray) and face.ndim == 1 for face in faces):
+        _require_valid_ragged_faces(faces, n_points)
     else:
         for i, face in enumerate(faces):
             nodes = np.asarray(face)
@@ -612,11 +639,9 @@ def cells_incident_to_points(mesh_data: MeshData, point_ids: list[int] | np.ndar
     if face_nodes is not None and face_nodes.ndim == 2:
         touched_faces = np.any(point_mask[face_nodes], axis=1)
     else:
-        touched_faces = np.fromiter(
-            (np.any(point_mask[np.asarray(face, dtype=np.int32)]) for face in faces),
-            dtype=np.bool_,
-            count=int(mesh_data["n_faces"]),
-        )
+        nodes, offsets = pack_face_nodes(faces)
+        face_ids = np.repeat(np.arange(len(faces)), np.diff(offsets))
+        touched_faces = np.bincount(face_ids, weights=point_mask[nodes], minlength=len(faces)) > 0
     owners = np.asarray(mesh_data["owners"], dtype=np.int32)
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
     n_internal = int(mesh_data["n_interior_faces"])

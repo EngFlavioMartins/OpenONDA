@@ -158,8 +158,10 @@ def mesh_hashes(mesh: dict[str, Any]) -> dict[str, str]:
     return result
 
 
-def run(stage: str, names: list[str], logs: Path | None) -> dict[str, Any]:
-    """Build every named case to ``stage`` and hash the result.
+def run(
+    stage: str, names: list[str], logs: Path | None, output: Path | None = None
+) -> dict[str, Any]:
+    """Build every named case to ``stage`` and hash the result, saved after each case.
 
     A build that raises is an outcome too: its error is hashed, with the
     generated mesh that ``on_generated`` received before the final checks.
@@ -192,6 +194,8 @@ def run(stage: str, names: list[str], logs: Path | None) -> dict[str, Any]:
             seconds = time.process_time() - start
             results[name] = {"cpu_seconds": seconds, "outcome": outcome, "hashes": hashes}
             print(f"{name}: {outcome}, {seconds:.1f} s CPU", flush=True)
+            if output is not None:
+                output.write_text(json.dumps(results, indent=1, sort_keys=True))
     return results
 
 
@@ -223,13 +227,13 @@ def main() -> int:
     )
     parser.add_argument("--cases", nargs="+", default=list(CASES), choices=list(CASES))
     parser.add_argument("--logs", type=Path, help="directory for one mesher log per case")
-    output = parser.add_mutually_exclusive_group(required=True)
-    output.add_argument("--output", type=Path, help="write the hashes to this JSON file")
-    output.add_argument("--compare", type=Path, help="compare against hashes written by --output")
+    parser.add_argument("--output", type=Path, help="write the hashes to this JSON file")
+    parser.add_argument("--compare", type=Path, help="compare against hashes written by --output")
     arguments = parser.parse_args()
-    results = run(arguments.stage, arguments.cases, arguments.logs)
-    if arguments.output is not None:
-        arguments.output.write_text(json.dumps(results, indent=1, sort_keys=True))
+    if arguments.output is None and arguments.compare is None:
+        parser.error("give --output, --compare or both")
+    results = run(arguments.stage, arguments.cases, arguments.logs, arguments.output)
+    if arguments.compare is None:
         return 0
     return int(compare(results, json.loads(arguments.compare.read_text())) > 0)
 

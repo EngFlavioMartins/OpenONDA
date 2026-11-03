@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import chain
 
 import numpy as np
 
@@ -71,6 +73,51 @@ def pack_face_nodes(faces: list[np.ndarray] | np.ndarray) -> tuple[np.ndarray, n
             else np.empty(0, dtype=np.int64)
         )
     return nodes, offsets
+
+
+def sorted_vertex_keys(nodes: np.ndarray, offsets: np.ndarray, width: int) -> np.ndarray:
+    """One sortable key per packed face: its sorted vertices, padded with -1 to ``width``.
+
+    Two faces have equal keys exactly when they have the same vertex set.
+    """
+    lengths = np.diff(offsets)
+    face_ids = np.repeat(np.arange(len(lengths)), lengths)
+    order = np.lexsort((nodes, face_ids))
+    rows = np.full((len(lengths), width), -1, dtype=np.int64)
+    rows[face_ids[order], np.arange(len(nodes)) - offsets[face_ids[order]]] = nodes[order]
+    key = np.dtype([(f"vertex_{index}", np.int64) for index in range(width)])
+    return np.ascontiguousarray(rows).view(key).reshape(-1)
+
+
+def face_vertex_keys(faces: list[np.ndarray] | np.ndarray, width: int | None = None) -> np.ndarray:
+    """:func:`sorted_vertex_keys` of faces, padded to the widest face by default."""
+    nodes, offsets = pack_face_nodes(faces)
+    if width is None:
+        width = int(np.diff(offsets).max(initial=0))
+    return sorted_vertex_keys(nodes, offsets, width)
+
+
+def last_key_matches(keys: np.ndarray, queries: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Index of the last key equal to each query, as a dict built from ``keys`` keeps it.
+
+    Returns the indices and whether each query has an equal key at all.
+    """
+    order = np.argsort(keys, kind="stable")
+    ordered = keys[order]
+    positions = np.searchsorted(ordered, queries, side="right") - 1
+    if not len(ordered):
+        return np.zeros(len(queries), dtype=np.int64), np.zeros(len(queries), dtype=bool)
+    clipped = np.maximum(positions, 0)
+    return order[clipped], (positions >= 0) & (ordered[clipped] == queries)
+
+
+def renumbered_rows(rows: Sequence[Sequence[int]], new_ids: np.ndarray) -> list[list[int]]:
+    """Rows of ids, each id replaced by ``new_ids[id]``."""
+    counts = [len(row) for row in rows]
+    flat = np.fromiter(chain.from_iterable(rows), dtype=np.int64, count=sum(counts))
+    renumbered = new_ids[flat].tolist()
+    offsets = np.concatenate(([0], np.cumsum(counts, dtype=np.int64))).tolist()
+    return [renumbered[start:stop] for start, stop in zip(offsets[:-1], offsets[1:], strict=True)]
 
 
 @dataclass(frozen=True)

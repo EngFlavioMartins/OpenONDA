@@ -64,10 +64,12 @@ class LeafLookup:
         """
         self.max_level = max_level
         self.limit = 2**max_level
-        self.maps: list[dict[tuple[int, int, int], int]] = [{} for _ in range(max_level + 1)]
-        for leaf_id, row in enumerate(leaves):
-            x, y, z, _width, level, _kind = map(int, row)
-            self.maps[level][(x, y, z)] = leaf_id
+        records = leaf_records(leaves)
+        self.maps: list[dict[tuple[int, int, int], int]] = []
+        for level in range(max_level + 1):
+            ids = np.flatnonzero(records[:, 4] == level)
+            origins = map(tuple, records[ids, :3].tolist())
+            self.maps.append(dict(zip(origins, ids.tolist(), strict=True)))
 
     def find(self, x: int, y: int, z: int, *, level: int | None = None) -> int:
         """Return a containing leaf; -1 also denotes a refined query cube."""
