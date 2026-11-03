@@ -157,7 +157,7 @@ _PHASE_SECTION_LABELS: dict[str, str] = {
 
 
 class StabilizationManager:
-    """Schedule the stabilization workers and audit what they did.
+    """Run each stabilization mechanism in its step phase and record what it changed.
 
     The solver owns one instance and the step loop calls :meth:`run_phase` at
     each run phase declared in :data:`PHASES`; no stabilization state or

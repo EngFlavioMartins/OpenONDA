@@ -84,10 +84,9 @@ def create_super_gaussian_kernels(dtype: object = ti.f32) -> dict[str, Callable]
         """Second moment m2 = ∫|q|² ζ(|q|) d³q of the regularization kernel.
 
         The (2.5 - ρ²/2) polynomial makes this kernel second-order accurate, so
-        its second moment vanishes identically -- as it does for
-        HIGH_ORDER_GAUSSIAN.  It was 1.875 here, described as "intermediate
-        between Gaussian and Winckelmans", which is not how the moment works:
-        a moment-cancelling polynomial gives 0, not an interpolated value.
+        its second moment vanishes identically, as it does for the
+        high-order Gaussian: a moment-cancelling polynomial gives 0, not a value
+        between the Gaussian and Winckelmans moments.
         """
         return ti.cast(SECOND_MOMENT, dtype)
 

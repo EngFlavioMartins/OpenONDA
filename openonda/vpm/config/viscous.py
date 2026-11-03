@@ -21,18 +21,20 @@ class ViscousConfig:
     ----------
     scheme : {'cs', 'rwm', 'none', 'dvh', 'gbd'}, default='cs'
         Core spreading, random walk, no diffusion, Diffused Vortex
-        Hydrodynamics, or Grid-Based Diffusion. Names are normalized uppercase.
+        Hydrodynamics, or Grid-Based Diffusion.
     core_radius_ratio : float, default=2.5
         Positive dimensionless regenerated-particle ratio ``sigma/h``.
     dvh_grid_spacing : float or None
         Positive DVH regeneration-grid spacing ``h`` in m. The factory defaults
         it to ``particle_spacing``.
     dvh_domain_padding, gbd_domain_padding : float, default=3.0
-        Number of grid cells padded beyond the active particle bounds.
+        Number of grid cells padded beyond the active particle bounds. The
+        :meth:`dvh` and :meth:`gbd` factories default to 20.
     dvh_threshold, gbd_threshold : float, default=0.01
         Weak-strength removal thresholds interpreted by the corresponding threshold mode.
         ``budget`` is the allowed discarded L1 fraction, ``relative_max`` is a
         fraction of peak node strength, and ``absolute`` is a threshold in m³/s.
+        The :meth:`dvh` and :meth:`gbd` factories default to 1e-5.
     dvh_threshold_mode, gbd_threshold_mode : {'budget', 'relative_max', 'absolute'}
         Interpretation of the associated threshold.
     gbd_remeshing_kernel : {'m4_prime', 'lagrange6'}, default='m4_prime'
@@ -102,7 +104,7 @@ class ViscousConfig:
     """GBD weak-strength removal mode."""
 
     gbd_remeshing_kernel: str = "m4_prime"
-    """Scatter kernel: M4_PRIME or experimental six-point LAGRANGE6."""
+    """Scatter kernel: ``'m4_prime'`` or the experimental six-point ``'lagrange6'``."""
 
     dvh_support_radius_ratio: int = 4
     """DVH compact-support radius ``R_d / h``; allowed values are 3, 4, and 5."""
@@ -115,20 +117,27 @@ class ViscousConfig:
 
     def __post_init__(self) -> None:
         if self.scheme not in {"cs", "rwm", "none", "dvh", "gbd"}:
-            raise ValueError(f"Invalid viscous scheme: {self.scheme!r}")
+            raise ValueError(
+                f"scheme must be 'cs', 'rwm', 'none', 'dvh' or 'gbd' (got {self.scheme!r})"
+            )
 
         if self.core_radius_ratio <= 0.0 or not math.isfinite(self.core_radius_ratio):
-            raise ValueError("core_radius_ratio must be finite and positive")
+            raise ValueError(
+                f"core_radius_ratio must be finite and positive (got {self.core_radius_ratio})"
+            )
 
         for name in ("particle_spacing", "dvh_grid_spacing", "gbd_grid_spacing"):
             value = getattr(self, name)
             if value is not None and (not math.isfinite(value) or value <= 0.0):
-                raise ValueError(f"{name} must be finite and positive when set")
+                raise ValueError(f"{name} must be finite and positive when set (got {value})")
 
         if self.kinematic_viscosity is not None and (
             not math.isfinite(self.kinematic_viscosity) or self.kinematic_viscosity < 0.0
         ):
-            raise ValueError("kinematic_viscosity must be finite and non-negative when set")
+            raise ValueError(
+                "kinematic_viscosity must be finite and non-negative when set "
+                f"(got {self.kinematic_viscosity})"
+            )
 
         if self.dvh_support_radius_ratio not in {3, 4, 5}:
             raise ValueError(
@@ -136,13 +145,25 @@ class ViscousConfig:
             )
 
         if self.dvh_threshold_mode not in _THRESHOLD_MODES:
-            raise ValueError(f"dvh_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
+            raise ValueError(
+                f"dvh_threshold_mode must be one of {sorted(_THRESHOLD_MODES)} "
+                f"(got {self.dvh_threshold_mode!r})"
+            )
         if self.gbd_threshold_mode not in _THRESHOLD_MODES:
-            raise ValueError(f"gbd_threshold_mode must be one of {sorted(_THRESHOLD_MODES)}")
+            raise ValueError(
+                f"gbd_threshold_mode must be one of {sorted(_THRESHOLD_MODES)} "
+                f"(got {self.gbd_threshold_mode!r})"
+            )
         if self.gbd_remeshing_kernel not in {"m4_prime", "lagrange6"}:
-            raise ValueError("gbd_remeshing_kernel must be M4_PRIME or LAGRANGE6")
+            raise ValueError(
+                "gbd_remeshing_kernel must be 'm4_prime' or 'lagrange6' "
+                f"(got {self.gbd_remeshing_kernel!r})"
+            )
         if self.gbd_remeshing_kernel == "lagrange6" and self.gbd_domain_padding < 4:
-            raise ValueError("LAGRANGE6 requires at least four grid cells of padding")
+            raise ValueError(
+                "gbd_remeshing_kernel='lagrange6' needs gbd_domain_padding of at least four "
+                f"grid cells (got {self.gbd_domain_padding})"
+            )
 
     def rwm_accuracy_time_step_size(self) -> float:
         """Return the RWM accuracy bound ``h²/(4*nu)`` in s.
@@ -277,12 +298,11 @@ class ViscousConfig:
     ) -> ViscousConfig:
         """Return Grid-Based Diffusion configuration.
 
-        ``LAGRANGE6`` is an experimental six-point, degree-five Lagrange
-        scatter added for the vortex-interaction core-transport controls.
-        It reduces remapping damping compared with M4' on those controls;
-        it is not positivity-preserving and still requires refinement.
-        The molecular Laplacian and viscosity coefficient are unchanged.
-        M4' remains the default. LAGRANGE6 needs at least four padding cells.
+        ``remeshing_kernel='lagrange6'`` selects an experimental six-point,
+        degree-five Lagrange scatter. On the vortex-interaction core-transport
+        controls it damps less in remapping than the default ``'m4_prime'``;
+        it does not preserve positivity and needs at least four padding cells.
+        The molecular Laplacian and viscosity coefficient are the same for both.
 
         ``gbd_grid_spacing`` defaults to ``particle_spacing``. It sets the
         diffusion and regeneration lattice resolution independently of the

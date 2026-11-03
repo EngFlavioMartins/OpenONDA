@@ -29,7 +29,13 @@ def select_backup(start_from, *, directory, kind):
     if start_from == "initial":
         return None
     if start_from != "latest":
-        return Path(start_from)
+        path = Path(start_from)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"start_from={str(start_from)!r} is not 'latest', 'initial' or an existing "
+                "backup path"
+            )
+        return path
     directory = Path(directory)
     if kind == "vpm":
         candidates = vpm_backup_files(directory)

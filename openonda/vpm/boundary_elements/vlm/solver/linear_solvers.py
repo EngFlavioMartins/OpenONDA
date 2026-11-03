@@ -358,10 +358,9 @@ def _dot_product(a: ti.Field, b: ti.Field, n: int, dtype: Any = TI_FLOAT) -> flo
     """
     Compute dot product a^T @ b.
 
-    For small vectors (n < 1000) the GPU atomic-reduction path suffers
-    from extreme thread contention (all threads hammer the same scalar).
-    The CPU fallback copies ~8 KiB of data and uses NumPy, which is
-    10-50× faster for n < 1000.
+    For short vectors (n < 1000) the GPU atomic reduction serializes on one
+    scalar, so the product is taken with NumPy on a host copy of the n values,
+    which needs no kernel launch.
     """
     if n < 1000:
         # Fast CPU path: negligible PCIe transfer, no kernel launch overhead

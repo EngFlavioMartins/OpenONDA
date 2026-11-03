@@ -7,7 +7,6 @@ import numpy as np
 from .divergence_relaxation import DivergenceRelaxationConfig
 from .filament_refinement import FilamentRefinementConfig
 
-
 # Winckelmans (1995) uses C_w = 0.5, so C = 2 C_w**2 = 0.5. With h**2 = V**(2/3)
 # this holds a vortex tube stretched at rate sigma at r**2 = 4 nu / sigma > h**2
 # once the eddy viscosity reaches 0.5 h**2 sigma, i.e. above the particle spacing.

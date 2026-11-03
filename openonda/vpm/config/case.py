@@ -61,9 +61,13 @@ class Numerics:
         Accepted-state validation settings.
     freestream_velocity : tuple[float, float, float]
         Uniform background velocity in m/s.
-    bodies, domain_bounds : tuple, tuple or None
-        Optional body and diffusion-domain configuration. Bounds use
-        ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in metres.
+    cutoff_radius_factor : float
+        Kernel cutoff ``r/sigma`` beyond which particle interactions are
+        skipped. The kernels use the fixed value 100, and no other value is
+        accepted.
+    domain_bounds : tuple or None
+        Optional diffusion-domain bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)``
+        in metres.
 
     """
 
@@ -104,25 +108,35 @@ class Numerics:
         if isinstance(self.time_step_size, bool) or not isinstance(self.time_step_size, Real):
             raise TypeError("time_step_size must be a real number")
         if not math.isfinite(float(self.time_step_size)) or self.time_step_size <= 0.0:
-            raise ValueError("time_step_size must be positive")
+            raise ValueError(f"time_step_size must be positive (got {self.time_step_size})")
         if self.max_n_particles < 1:
-            raise ValueError("max_n_particles must be at least one")
+            raise ValueError(f"max_n_particles must be at least one (got {self.max_n_particles})")
         valid_devices = {"auto", "cpu", "vulkan", "cuda", "metal"}
         if self.compute_device not in valid_devices:
-            raise ValueError(f"compute_device must be one of {sorted(valid_devices)}")
+            raise ValueError(
+                f"compute_device must be one of {sorted(valid_devices)} "
+                f"(got {self.compute_device!r})"
+            )
         if self.precision not in {"f32", "f64"}:
-            raise ValueError("precision must be 'f32' or 'f64'")
+            raise ValueError(f"precision must be 'f32' or 'f64' (got {self.precision!r})")
         kernel = self.particle_kernel
         if kernel not in kernel_names():
-            raise ValueError(f"particle_kernel must be one of {sorted(kernel_names())}")
+            raise ValueError(
+                f"particle_kernel must be one of {sorted(kernel_names())} (got {kernel!r})"
+            )
+        if self.cutoff_radius_factor != DEFAULT_CUTOFF_RADIUS_FACTOR:
+            raise ValueError(
+                f"cutoff_radius_factor is fixed at {DEFAULT_CUTOFF_RADIUS_FACTOR} by the kernels "
+                f"(got {self.cutoff_radius_factor})"
+            )
         if kernel != "gaussian" and (
             self.stabilization.regularization_interval_steps > 0
             or self.stabilization.divergence_relaxation.enabled
         ):
             raise ValueError(
-                "Conservative regularization and divergence relaxation currently "
-                "require GAUSSIAN particles; their reconstruction and invariants "
-                "must not be applied to another kernel."
+                "Conservative regularization and divergence relaxation require "
+                "particle_kernel='gaussian'; their reconstruction and invariants "
+                f"do not hold for {kernel!r}."
             )
         supported_kernels = getattr(self.induction, "supported_kernels", None)
         if supported_kernels is not None and kernel not in supported_kernels:
@@ -193,7 +207,10 @@ class Numerics:
                 f"({viscous.dvh_support_radius_ratio})"
             )
         if viscous.scheme == "gbd" and viscous.gbd_remeshing_kernel != "m4_prime":
-            raise ValueError("Slip-slab GBD requires M4_PRIME remeshing")
+            raise ValueError(
+                "Slip-slab GBD requires gbd_remeshing_kernel='m4_prime' "
+                f"(got {viscous.gbd_remeshing_kernel!r})"
+            )
         # Every lattice that carries slab images must map nodes onto nodes, so
         # the slip planes fall on its nodes or half nodes.
         stabilization = self.stabilization

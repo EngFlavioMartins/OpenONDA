@@ -56,7 +56,8 @@ def _positive_int(value: int, name: str, maximum: int | None = None) -> int:
         or value <= 0
         or (maximum is not None and value > maximum)
     ):
-        raise ValueError(f"{name} requires a bounded positive integer")
+        limit = "" if maximum is None else f" no larger than {maximum}"
+        raise ValueError(f"{name} must be a positive integer{limit} (got {value!r})")
     return int(value)
 
 
@@ -67,6 +68,29 @@ class GaussianSlabSettings:
     The enclosed whole-tail remainder test and mesh resolution belong in the
     numerical identity. Resource caps select bounded storage and never permit
     coarsening the field or loosening the truncation tolerance.
+
+    Parameters
+    ----------
+    mesh : GaussianMeshParameters
+        Broadening, spacing, correction radius and interpolation order of the
+        auxiliary Gaussian mesh.
+    tail_error_method : {'gaussian_interval_remainder_v1'}
+        Test that bounds the omitted image tail; one method exists.
+    backend : {'auto', 'cpu', 'cupy_cuda'}, default='auto'
+        Where the image fields run. ``'auto'`` follows the particles: CUDA
+        particles use CuPy on the GPU and stop if it is missing; particles on
+        another device use the CPU.
+    max_sources, max_query_points : int
+        Largest number of source particles (at most 1 000 000) and of
+        evaluation points (at most 2**30) in one field.
+    max_scratch_bytes : int, default=2 GiB
+        Memory for the smooth (FFT) field; larger fields are split into blocks.
+    max_correction_bytes : int, default=256 MiB
+        Memory for the local core correction.
+    max_plan_bytes : int, default=128 MiB
+        FFT plan reserve, taken from ``max_scratch_bytes``.
+    max_total_bytes : int, default=2.25 GiB
+        Limit on ``max_scratch_bytes + max_correction_bytes``.
     """
 
     mesh: GaussianMeshParameters = field(default_factory=GaussianMeshParameters)
@@ -87,7 +111,11 @@ class GaussianSlabSettings:
             "cpu",
             "cupy_cuda",
         }:
-            raise ValueError("unsupported Gaussian slab backend or tail conditions")
+            raise ValueError(
+                "GaussianSlabSettings needs tail_error_method='gaussian_interval_remainder_v1' "
+                "and backend 'auto', 'cpu' or 'cupy_cuda' (got "
+                f"{self.tail_error_method!r} and {self.backend!r})"
+            )
         for name in (
             "max_sources",
             "max_query_points",
@@ -105,9 +133,15 @@ class GaussianSlabSettings:
             )
             object.__setattr__(self, name, _positive_int(getattr(self, name), name, maximum))
         if self.max_plan_bytes >= self.max_scratch_bytes:
-            raise ValueError("plan reserve must be smaller than smooth-field cap")
+            raise ValueError(
+                f"max_plan_bytes ({self.max_plan_bytes}) must be smaller than "
+                f"max_scratch_bytes ({self.max_scratch_bytes})"
+            )
         if self.max_scratch_bytes + self.max_correction_bytes > self.max_total_bytes:
-            raise ValueError("array-pool limits exceed combined cap")
+            raise ValueError(
+                f"max_scratch_bytes + max_correction_bytes ({self.max_scratch_bytes} + "
+                f"{self.max_correction_bytes}) exceeds max_total_bytes ({self.max_total_bytes})"
+            )
 
 
 def _query_snapshot(targets: np.ndarray, maximum: int) -> np.ndarray:

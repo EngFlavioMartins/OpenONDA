@@ -84,12 +84,11 @@ _PRESSURE_HIERARCHICAL_OPENING = 0.3
 class VPMSolver:
     """Own and advance one complete Vortex Particle Method simulation.
 
-    The solver is the solver of the mutable particle fields, accepted clock,
-    induction backend, Runge--Kutta workspace, viscous/turbulence models,
-    optional VLM coupling, diagnostics, samplers, and restart I/O. A
-    particle's ``vortex_strength`` is the particle-strength/circulation vector
-    ``Gamma = omega * V`` in m³/s; it is distinct from vorticity ``omega`` in
-    1/s and from core radius ``sigma`` in m.
+    The solver holds the mutable particle fields, accepted clock, induction
+    backend, Runge--Kutta workspace, viscous/turbulence models, optional VLM
+    coupling, diagnostics, samplers, and restart I/O. A particle's
+    ``vortex_strength`` is ``Gamma = omega * V`` in m³/s; it is distinct from
+    vorticity ``omega`` in 1/s and from core radius ``sigma`` in m.
 
     Parameters
     ----------
@@ -1245,7 +1244,7 @@ class VPMSolver:
 
     @property
     def particle_vortex_strength(self) -> np.ndarray:
-        """Return circulation vectors, shape ``(N, 3)`` in m³/s."""
+        """Return particle vortex strengths ``Gamma = omega * V``, shape ``(N, 3)`` in m³/s."""
         return self._get_particle_field("vortex_strength")
 
     # Flow diagnostics

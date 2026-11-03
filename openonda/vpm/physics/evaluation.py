@@ -277,17 +277,15 @@ class ParticleFieldEvaluation:
                         # breaks the exact dE/dt = −ν∫|ω|² balance under core
                         # spreading.  With σ_e that identity closes to machine
                         # precision, including for unequal cores and per-particle
-                        # ν_eff — which is what makes the LES energy budget
-                        # auditable at all.
+                        # ν_eff, so the LES energy budget can be checked.
                         #
                         # ζ_σ * ζ_σ = ζ_{σ√2} is a *Gaussian* identity, so σ_e is
                         # exact for GAUSSIAN and an approximation for the
                         # algebraic kernels, whose double-mollified Green's
-                        # function is not in their own family.  The pre-existing
-                        # enstrophy kernel already assumed it for every kernel;
-                        # this extends the same assumption to E and H so the
-                        # three stay mutually consistent.  Deriving the true
-                        # factor for WINCKELMANS et al. is open work.
+                        # function is not in their own family.  The enstrophy,
+                        # E and H share this assumption for every kernel, so the
+                        # three stay consistent; the exact factor for the
+                        # Winckelmans and other algebraic kernels is not derived.
                         sigma_e = ti.sqrt(radii_i * radii_i + radii_j * radii_j)
                         r_sigma_e = r_mag / sigma_e
                         zeta_val = zeta_(r_sigma_e) / sigma_e**3
