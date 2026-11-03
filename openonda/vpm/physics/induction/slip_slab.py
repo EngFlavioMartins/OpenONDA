@@ -79,6 +79,29 @@ def _check_cpu_mesh_installation() -> dict[str, str]:
     return require_gaussian_host_runtime()
 
 
+def _mesh_execution_backend(backend: str) -> str:
+    """Return where the slab image fields run for the ``GaussianSlabSettings.backend``.
+
+    With ``"auto"`` they follow the particles: CUDA particles need the CUDA mesh
+    installation, and the CPU is used only for particles on another device or when
+    ``backend="cpu"`` asks for it.
+    """
+    if backend == "cpu" or not _mesh_runtime_is_cuda():
+        _check_cpu_mesh_installation()
+        return "cpu"
+    from .gaussian_mesh.availability import GaussianMeshUnavailableError
+
+    try:
+        _check_cuda_mesh_installation()
+    except GaussianMeshUnavailableError as error:
+        error.add_note(
+            "The particles run on CUDA, so the slab images do too. To evaluate them on "
+            "the CPU instead, pass gaussian_mesh_settings=GaussianSlabSettings(backend='cpu')."
+        )
+        raise
+    return "cupy_cuda"
+
+
 def _active_snapshots(
     physics: "PhysicsBase",
     requests: Sequence[tuple[TaichiField, int]],
@@ -328,22 +351,7 @@ class SlipSlabInduction:
         self._validate_mesh_runtime(physics, selected_kernel)
         # Dependency failure must precede base rebinding or any new
         # Taichi/mesh field allocation.
-        backend = self.gaussian_mesh_settings.backend
-        if backend == "cpu" or not _mesh_runtime_is_cuda():
-            _check_cpu_mesh_installation()
-            execution_backend = "cpu"
-        else:
-            from .gaussian_mesh.availability import GaussianMeshUnavailableError
-
-            try:
-                _check_cuda_mesh_installation()
-            except GaussianMeshUnavailableError:
-                if backend != "auto":
-                    raise
-                _check_cpu_mesh_installation()
-                execution_backend = "cpu"
-            else:
-                execution_backend = "cupy_cuda"
+        execution_backend = _mesh_execution_backend(self.gaussian_mesh_settings.backend)
         self.close_mesh_session()
         self._mesh_binding = None
         self.base.bind(physics, kernel=selected_kernel)

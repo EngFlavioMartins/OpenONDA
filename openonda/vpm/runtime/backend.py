@@ -293,7 +293,7 @@ def _resolve_gpu_backend() -> tuple:
 
 
 def _cpu_candidates() -> list[tuple]:
-    """Ordered list of CPU ``(arch, name)`` pairs to try as the final fallback."""
+    """Ordered CPU ``(arch, name)`` pairs for an explicit CPU request."""
     cands: list[tuple] = []
     if hasattr(ti, "cpu"):
         cands.append((ti.cpu, "cpu"))
@@ -508,8 +508,6 @@ def initialize_taichi_backend(
             f"No qualified Taichi backend remains for compute_device={preferred_backend!r}; "
             f"supported devices: {supported}"
         )
-    strict_gpu = preferred_backend in {"auto", "metal", "vulkan", "cuda"} and precision == "f32"
-
     # Adapt the automatic pool share to the backend's memory budget.
     device_memory_fraction = 0.5
 
@@ -573,9 +571,8 @@ def initialize_taichi_backend(
             with contextlib.suppress(Exception):
                 ti.reset()
 
-    if strict_gpu:
-        raise RuntimeError(
-            f"Requested Taichi backend {preferred_backend} failed to initialise"
-        ) from last_exc
-    Logging.error(f"All Taichi backends failed to initialise (last error: {last_exc})")
-    return getattr(constants_module, "TAICHI_BACKEND", "unknown")
+    tried = ", ".join(name for _, name in chain)
+    raise RuntimeError(
+        f"No Taichi backend could be initialised for compute_device={preferred_backend!r} "
+        f"at precision {precision} (tried {tried}); the last error is chained below"
+    ) from last_exc

@@ -84,8 +84,12 @@ pip install -e ".[gaussian-mesh-cuda12]"
 
 The CUDA 12 runtime headers are found in the CuPy toolkit packages, in a Conda
 environment, under `CUDA_PATH` or `CUDA_HOME`, or in a system toolkit such as
-`/usr/local/cuda` or `/usr`. Without the extension, these image sums fall back
-to a slower CPU evaluation.
+`/usr/local/cuda` or `/usr`. A slip-slab case whose particles run on CUDA
+evaluates its images on the GPU too, and stops with a message if the extension
+or the headers are missing. To evaluate the images on the CPU instead, pass
+`gaussian_mesh_settings=vpm.GaussianSlabSettings(backend="cpu")` to
+`SlipSlabInduction`. Particles on Vulkan, Metal or the CPU evaluate the images on
+the CPU.
 
 ## Check the installation
 

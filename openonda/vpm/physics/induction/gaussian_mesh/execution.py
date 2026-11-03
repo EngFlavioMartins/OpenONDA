@@ -1,13 +1,13 @@
 """Portable execution of one unchanged finite Gaussian field operator.
 
-CUDA allocation failures subdivide the same field into smaller FFT jobs before
-host execution is needed. No CUDA execution/cleanup fault is treated as memory
-pressure, and nothing is published until evaluation succeeds.
+A CUDA allocation failure subdivides the same field into smaller FFT jobs on the
+GPU; when no block fits, the evaluation stops rather than moving to the host. No
+CUDA execution/cleanup fault is treated as memory pressure, and nothing is
+published until evaluation succeeds.
 """
 
 from collections.abc import Callable, Sequence
 from functools import partial
-import logging
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class PortableGaussianImageFields:
-    """Image field that falls back from CUDA to CUDA blocks to the host on memory pressure."""
+    """Image field that subdivides into CUDA blocks on GPU memory pressure."""
 
     def __init__(self, *args, execution_backend: str = "cpu", **kwargs):
         self._implementation: ImageFields | None = None
@@ -31,7 +31,6 @@ class PortableGaussianImageFields:
         self._args, self._kwargs = args, kwargs
         self._images: tuple[tuple[int, bool], ...] | None = None
         self.closed = False
-        self.fallback_reason: str | None = None
         self.subdivision_reason: str | None = None
         self._using_cuda_blocks = False
         self.execution_backend = execution_backend
@@ -95,19 +94,20 @@ class PortableGaussianImageFields:
                 implementation.close()
             except BaseException as cleanup_error:
                 self._failed_implementation = implementation
-                error.add_note(f"Finite field fallback cleanup failed: {cleanup_error!r}")
+                error.add_note(
+                    f"Finite field cleanup after a GPU allocation failure failed: {cleanup_error!r}"
+                )
                 raise error from cleanup_error
         if not self._using_cuda_blocks:
             self._using_cuda_blocks = True
             self.subdivision_reason = str(error)
             return "cupy_cuda_blocked"
-        self.execution_backend = "cpu"
-        self.fallback_reason = str(error)
-        logging.getLogger("vpm").warning(
-            "Gaussian slab field cannot fit a CUDA block; evaluating on CPU: %s",
-            self.fallback_reason,
-        )
-        return "cpu"
+        raise MemoryError(
+            "The Gaussian slab field does not fit in GPU memory, even in CUDA blocks. Free "
+            "the memory other processes hold on the GPU and resume the run, or pass "
+            "gaussian_mesh_settings=GaussianSlabSettings(backend='cpu') to evaluate the "
+            "slab images on the CPU."
+        ) from error
 
     @property
     def _active(self) -> "ImageFields":
@@ -123,7 +123,7 @@ class PortableGaussianImageFields:
         return getattr(implementation, name)
 
     def prepare(self, images: Sequence[tuple[int, bool]]) -> Diagnostics:
-        """Prepare ``images`` on the current backend, falling back on memory pressure."""
+        """Prepare ``images`` on the current backend, in CUDA blocks under memory pressure."""
         self._images = tuple(images)
         while True:
             try:
@@ -133,7 +133,7 @@ class PortableGaussianImageFields:
             self._build_implementation(backend)
 
     def evaluate_prepared(self, targets: np.ndarray) -> tuple[Any, Any, Diagnostics]:
-        """Evaluate the prepared field at ``targets`` with the same fallback."""
+        """Evaluate the prepared field at ``targets``, in CUDA blocks under memory pressure."""
         while True:
             try:
                 velocity, gradient, diagnostics = self._active.evaluate_prepared(targets)
@@ -144,7 +144,8 @@ class PortableGaussianImageFields:
             if self._images is not None:
                 self.prepare(self._images)
         diagnostics["execution_backend"] = self.execution_backend
-        diagnostics["memory_fallback"] = self.fallback_reason
+        # No host fallback exists; the key stays for the readers in case 01's study assets.
+        diagnostics["memory_fallback"] = None
         diagnostics["memory_subdivision"] = self.subdivision_reason
         return velocity, gradient, diagnostics
 
