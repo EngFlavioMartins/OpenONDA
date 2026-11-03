@@ -9,12 +9,7 @@ import numpy as np
 _CACHE_DIR = Path(tempfile.gettempdir()) / f"openonda-taichi-{os.getpid()}"
 os.environ.setdefault("TI_OFFLINE_CACHE_FILE_PATH", str(_CACHE_DIR))
 
-try:
-    import taichi as ti
-except ImportError as error:  # pragma: no cover - validated by configuration tests
-    raise RuntimeError(
-        "operator_backend='taichi' requires the standard Taichi dependency"
-    ) from error
+import taichi as ti  # noqa: E402 - the cache path above must be set before Taichi loads
 
 
 def _ensure_cpu_runtime() -> None:

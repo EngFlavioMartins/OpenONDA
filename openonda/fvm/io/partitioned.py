@@ -281,9 +281,9 @@ def load_partitioned_solver_backup(
             raise ValueError("Partitioned backup communicator size does not match")
         if checkpoint_info.get("mesh_sha256") != solver.mesh_data.get("global_mesh_hash"):
             raise ValueError("Partitioned backup mesh hash does not match")
-        configuration_matches = checkpoint_info.get(
-            "configuration_sha256"
-        ) == configuration_digest(solver)
+        configuration_matches = checkpoint_info.get("configuration_sha256") == configuration_digest(
+            solver
+        )
         fixed_step_configuration_matches = (
             allow_time_step_control_change
             and solver._configuration.numerics.time_step_control is not None

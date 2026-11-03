@@ -3,12 +3,16 @@
 A case is one immutable :class:`FVMCase`; :class:`FVMSolver` constructs and
 runs it. Meshes are generated with :mod:`openonda.fvm.mesher`::
 
-    import openonda.fvm as fvm
-    import openonda.fvm.mesher as msh
+    import numpy as np
+    from openonda import fvm
 
-    case = fvm.FVMCase(name="box", run=fvm.RunPlan(end_time=1.0), mesh=msh.CartesianMesher(...))
+    x = np.linspace(0.0, 2.0, 17)
+    mesh = fvm.mesher.box_mesh_3d(x, x, np.array([0.0, 0.125]), empty_spanwise=True)
+    case = fvm.FVMCase(name="box", run=fvm.RunPlan(end_time=1.0), mesh=mesh, boundaries=...)
     with fvm.FVMSolver(case) as solver:
         solver.run()
+
+The first case of ``docs/fvm.md`` gives the boundaries and numerics in full.
 """
 
 from openonda.core.kinematics import (

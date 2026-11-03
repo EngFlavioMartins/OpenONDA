@@ -36,7 +36,8 @@ def _mean(time: np.ndarray, values: np.ndarray) -> float:
     return float(trapezoid(values, time) / (time[-1] - time[0]))
 
 
-def _strouhal(time: np.ndarray, lift: np.ndarray) -> float | None:
+def _lift_frequency(time: np.ndarray, lift: np.ndarray) -> float | None:
+    """Return the frequency of the lift spectrum peak in Hz, or None without oscillation."""
     lift = lift - _mean(time, lift)
     if len(lift) < 16 or np.max(np.abs(lift)) < 1.0e-10:
         return None
@@ -67,7 +68,7 @@ def _force_metrics(path: Path, start: float, end: float) -> dict[str, float | No
         "rms_drag": _mean(time, (drag - mean_drag) ** 2) ** 0.5,
         "rms_lift": _mean(time, (lift - mean_lift) ** 2) ** 0.5,
         "rms_side": _mean(time, (side - mean_side) ** 2) ** 0.5,
-        "strouhal": _strouhal(time, lift),
+        "lift_frequency": _lift_frequency(time, lift),
         "samples": int(len(time)),
     }
 
@@ -123,7 +124,7 @@ def _plot(report: dict[str, Any], destination: Path) -> None:
     specifications = (
         ("mean_drag", "Mean drag coefficient"),
         ("rms_lift", "Lift RMS"),
-        ("strouhal", "Strouhal number"),
+        ("lift_frequency", "Lift frequency [Hz]"),
     )
     for axis, (metric, label) in zip(axes.flat[:3], specifications, strict=True):
         values = [grid["forces"][metric] for grid in grids]

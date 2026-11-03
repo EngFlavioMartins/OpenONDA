@@ -422,7 +422,9 @@ class ComputeConfig:
         Mesh distribution: every rank holds the global mesh (replicated) or
         its owned cells plus a halo layer (partitioned).
     output_mode : {'synchronous', 'threaded'}, default='synchronous'
-        Write visualization frames inline or on a background thread.
+        ``'threaded'`` writes visualization frames on a background thread.
+        Frames are written inline only when this is ``'synchronous'`` and
+        :attr:`Output.asynchronous` is false; an MPI run always writes inline.
     """
 
     operator_backend: Literal["numpy", "numba", "taichi"] = "numpy"

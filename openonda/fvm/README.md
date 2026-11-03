@@ -14,9 +14,9 @@ The implementation is organized by numerical task:
 - `core/`: the solver, its state, time stepping, and parallel execution.
 - `diagnostics/`: derived fields (Courant number, vorticity, forces, y+) and
   step records.
-- `motion/`: rigid motion of the whole mesh (`MeshMotion`, `RigidMeshMotion`); the motion classes are the shared ones in `openonda.core.kinematics`.
+- `motion/`: motion of the whole mesh, prescribed (`MeshMotion` with a motion from `openonda.core.kinematics`) or elastically mounted (`ElasticMount`).
 - `sampling/`: force, y+, line and surface samplers.
 - `coupling/`: field gathers and boundary-condition setters for the FVM–VPM coupler.
 
-See [tests and limitations](../../docs/validation/fvm_qualification.md)
-before choosing a numerical backend or interpreting a new case.
+The [tests README](../../tests/README.md) lists what each test checks; read it before choosing a
+numerical backend or interpreting a new case.

@@ -1,10 +1,7 @@
-"""
-Cavity Flow Utilities for OpenONDA FVM Solver
+"""Pressure reference for a flow with no fixed-pressure boundary, such as a closed cavity.
 
-Handles special cases for closed cavity flows where pressure
-needs to be fixed at a reference point.
-
-Based on uFVM cavity handling logic.
+The pressure is then defined only up to a constant; fixing it in one cell makes the
+pressure-correction system non-singular. Follows uFVM.
 """
 
 import numpy as np

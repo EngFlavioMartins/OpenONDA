@@ -582,9 +582,7 @@ def _load_backup_local(
             )
         if metadata.get("mesh_sha256") != mesh_digest(solver.mesh_data):
             raise ValueError("FVM backup mesh hash does not match the active mesh")
-        configuration_matches = metadata.get("configuration_sha256") == configuration_digest(
-            solver
-        )
+        configuration_matches = metadata.get("configuration_sha256") == configuration_digest(solver)
         fixed_step_configuration_matches = (
             allow_time_step_control_change
             and solver._configuration.numerics.time_step_control is not None

@@ -7,6 +7,8 @@ import tempfile
 from typing import Any
 
 import numpy as np
+import pyvista as pv
+import vtk
 
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.vtk_output import configure_writer
@@ -14,18 +16,8 @@ from openonda.core.write_precision import cast_for_write
 
 from ..config.output import Output
 
-try:
-    import pyvista as pv
-    import vtk
-except ImportError:  # Optional visualization dependencies.
-    pv = None
-    vtk = None
-else:
-    # Suppress non-fatal VTK-m warnings (e.g., unsupported cell types in Viskores)
-    vtk.vtkObject.GlobalWarningDisplayOff()
-
-_pyvista: Any = pv
-_vtk: Any = vtk
+# Suppress non-fatal VTK-m warnings (e.g., unsupported cell types in Viskores)
+vtk.vtkObject.GlobalWarningDisplayOff()
 _CELL_GEOMETRY_FIELDS = frozenset(
     ("cell_size", "refinement_level", "boundary_layer_index", "cell_volume", "cell_equivalent_size")
 )
@@ -181,14 +173,10 @@ class VTKExporter:
         on construction.
 
         Args:
-            mesh_data: Mesh dictionary (needs ``points``, ``faces``,
-                       ``owners``, ``neighbours``, ``n_elements``,
+            mesh_data: Mesh dictionary (needs ``vertex_position``, ``faces``,
+                       ``owners``, ``neighbours``, ``n_cells``,
                        ``n_interior_faces``).
         """
-        if _pyvista is None or _vtk is None:
-            raise ImportError(
-                "VTK export requires the declared runtime dependency: pip install vtk"
-            )
         self.mesh_data = mesh_data
         self.output = output or Output()
         self._grid = self._initialize_grid()
@@ -215,7 +203,7 @@ class VTKExporter:
         )
         os.close(descriptor)
         try:
-            writer = _vtk.vtkXMLUnstructuredGridWriter()
+            writer = vtk.vtkXMLUnstructuredGridWriter()
             writer.SetFileName(temporary)
             writer.SetInputData(grid)
             configure_writer(writer, self.output.compression)
@@ -252,9 +240,9 @@ class VTKExporter:
             cells = np.empty((len(vertices), 9), dtype=np.int64)
             cells[:, 0] = 8
             cells[:, 1:] = vertices
-            return _pyvista.UnstructuredGrid(
+            return pv.UnstructuredGrid(
                 cells.ravel(),
-                np.full(len(vertices), _pyvista.CellType.HEXAHEDRON, dtype=np.uint8),
+                np.full(len(vertices), pv.CellType.HEXAHEDRON, dtype=np.uint8),
                 points,
             )
 
@@ -299,9 +287,9 @@ class VTKExporter:
                     cells = np.empty((n_cells, 9), dtype=np.int64)
                     cells[:, 0] = 8
                     cells[:, 1:] = vertices
-                    return _pyvista.UnstructuredGrid(
+                    return pv.UnstructuredGrid(
                         cells.ravel(),
-                        np.full(n_cells, _pyvista.CellType.HEXAHEDRON, dtype=np.uint8),
+                        np.full(n_cells, pv.CellType.HEXAHEDRON, dtype=np.uint8),
                         points,
                     )
 
@@ -374,7 +362,7 @@ class VTKExporter:
                     stream.append(8)
                     stream.extend(map(int, vtk_base))
                     stream.extend(vtk_top)
-                    cell_types[cell] = _pyvista.CellType.HEXAHEDRON
+                    cell_types[cell] = pv.CellType.HEXAHEDRON
                     continue
 
             candidates = point_values[candidate_ids]
@@ -419,10 +407,10 @@ class VTKExporter:
             for nodes in expanded_faces:
                 stream.append(len(nodes))
                 stream.extend(map(int, nodes))
-            cell_types[cell] = _pyvista.CellType.POLYHEDRON
+            cell_types[cell] = pv.CellType.POLYHEDRON
         cells = np.frombuffer(stream, dtype=np.int64)
 
-        grid = _pyvista.UnstructuredGrid(cells, cell_types, points)
+        grid = pv.UnstructuredGrid(cells, cell_types, points)
         return grid
 
     def _cell_vertex_incidence(self) -> tuple[np.ndarray, np.ndarray]:

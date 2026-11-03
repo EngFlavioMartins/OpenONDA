@@ -17,9 +17,9 @@ from ..fields.mixed_velocity_boundary import (
     update_mixed_velocity_boundary,
 )
 from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
-from ..utils import cavity_utils
 from ..utils.vector_algebra import vector_dot, vector_magnitude
 from .linear_interface import solve_linear_system
+from .pressure_reference import fix_pressure_reference
 
 if TYPE_CHECKING:
     from ..assemble.matrix_assembly import MatrixAssemblyWorkspace
@@ -1559,7 +1559,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.
     if _pressure_requires_constraint(boundaries, mesh_data, geo_data):
         if pressure_constraint == "reference":
-            pressure_matrix, pressure_right_hand_side = cavity_utils.fix_pressure_reference(
+            pressure_matrix, pressure_right_hand_side = fix_pressure_reference(
                 pressure_matrix, pressure_right_hand_side
             )
         elif pressure_constraint == "nullspace":

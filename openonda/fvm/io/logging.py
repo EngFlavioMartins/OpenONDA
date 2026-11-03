@@ -526,6 +526,12 @@ class Logging:
         linear_method = numerics.linear.linear_solver
         pressure_method = numerics.linear.pressure_solver or linear_method
         momentum_method = numerics.linear.momentum_solver or linear_method
+        authored = solver.case.numerics.linear
+        replaced = [
+            equation
+            for equation, method in (("momentum", momentum_method), ("pressure", pressure_method))
+            if (getattr(authored, f"{equation}_solver") or authored.linear_solver) != method
+        ]
         sections.append(
             (
                 "NUMERICS",
@@ -537,6 +543,11 @@ class Logging:
                     ("gradient scheme", str(numerics.schemes.gradient_scheme)),
                     ("momentum solver", str(momentum_method)),
                     ("pressure solver", str(pressure_method)),
+                    *(
+                        [("direct solves", f"{' and '.join(replaced)} by GMRES to 1e-10 under MPI")]
+                        if replaced
+                        else []
+                    ),
                     ("correctors", str(numerics.pimple.n_correctors)),
                     ("outer correctors", str(numerics.pimple.n_outer_correctors)),
                 ],

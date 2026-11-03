@@ -80,38 +80,16 @@ class ParallelContext:
             If backend, mode, output, or linear-solver combinations are
             unsupported.
         """
-        operator = str(execution.operator_backend).lower()
-        linear = str(execution.linear_backend).lower()
-        mode = str(execution.parallel_mode).lower()
-        output_mode = str(execution.output_mode).lower()
-
-        unsupported = []
-        if operator not in {"numpy", "numba", "taichi"}:
-            unsupported.append(f"operator_backend={operator!r}")
-        if linear not in {"scipy", "petsc"}:
-            unsupported.append(f"linear_backend={linear!r}")
-        if mode not in {"serial", "petsc_replicated", "petsc_partitioned"}:
-            unsupported.append(f"parallel_mode={mode!r}")
-        if output_mode not in {"synchronous", "threaded"}:
-            unsupported.append(f"output_mode={output_mode!r}")
-        if mode == "petsc_partitioned" and output_mode == "threaded":
-            unsupported.append("output_mode='threaded' with petsc_partitioned")
-        if unsupported:
-            raise ValueError("Unsupported FVM execution configuration: " + ", ".join(unsupported))
-
+        # ComputeConfig has already checked each choice and their combinations.
+        mode = execution.parallel_mode
         launcher_size = detected_world_size()
         if mode == "serial":
-            if linear != "scipy":
-                raise ValueError("parallel_mode='serial' currently requires linear_backend='scipy'")
             if launcher_size > 1:
                 raise RuntimeError(
                     f"FVM serial mode was launched with {launcher_size} MPI ranks. "
                     "Set FVMCase.cores to the number of MPI ranks."
                 )
             return cls()
-
-        if linear != "petsc":
-            raise ValueError(f"parallel_mode={mode!r} requires linear_backend='petsc'")
 
         if comm is None or mpi is None:
             try:

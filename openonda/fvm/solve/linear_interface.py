@@ -986,7 +986,8 @@ def _iterative_solve_with_M(
 ) -> tuple[np.ndarray, int, bool, str]:
     """Run an iterative solver (BiCGSTAB or GMRES) with a preconditioner.
 
-    Falls back to ``spsolve`` if the solver does not converge.
+    A solve that does not converge raises, or with
+    ``failure_action='direct_fallback'`` is repeated with ``spsolve``.
 
     Args:
         A:       Sparse matrix.

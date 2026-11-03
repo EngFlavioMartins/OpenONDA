@@ -168,6 +168,8 @@ class FVMSolver(CouplerInterfaceMixin):
         Number of accepted time steps.
     state : FieldState
         Synchronized view of the three primary fields.
+    auto_write : bool
+        Write the scheduled visualization frames; ``False`` runs without them.
 
     Notes
     -----
@@ -180,7 +182,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
     @property
     def topology(self) -> "MeshTopology":
-        """Return the lazily constructed immutable mesh-topology facade.
+        """Return the cell-face connectivity of the mesh, built on first use.
 
         Returns
         -------
@@ -751,7 +753,8 @@ class FVMSolver(CouplerInterfaceMixin):
                 global_names = self.mesh_data.get("global_boundary_names", ())
                 if not self.parallel.is_partitioned or b_cfg.name not in global_names:
                     raise ValueError(
-                        f"Configured boundary {b_cfg.name!r} was not found in the mesh"
+                        f"Configured boundary {b_cfg.name!r} was not found in the mesh; "
+                        f"its patches are {sorted(b['name'] for b in self.boundaries)}"
                     )
 
     def _initialize_fields(self) -> None:

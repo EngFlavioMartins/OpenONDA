@@ -190,7 +190,7 @@ class FVMCase:
             if not isinstance(getattr(self, name), cls):
                 raise TypeError(f"FVMCase.{name} must be a {cls.__name__} instance")
         if isinstance(self.cores, bool) or not isinstance(self.cores, int) or self.cores < 1:
-            raise ValueError("FVMCase.cores must be a positive integer")
+            raise ValueError(f"FVMCase.cores must be a positive integer (got {self.cores!r})")
         if self.mesh_motion is not None:
             if not isinstance(self.mesh_motion, MeshMotion):
                 raise TypeError("FVMCase.mesh_motion must be a MeshMotion or None")
@@ -211,8 +211,11 @@ class FVMCase:
         for condition in velocity_boundaries:
             if not isinstance(condition, VelocityBoundary):
                 raise TypeError("FVMCase.velocity_boundaries must contain VelocityBoundary objects")
-            if set(condition.patches) - set(names):
-                raise ValueError("FVMCase.velocity_boundaries refers to an unconfigured patch")
+            if unknown := sorted(set(condition.patches) - set(names)):
+                raise ValueError(
+                    f"FVMCase.velocity_boundaries refers to unconfigured patches {unknown}; "
+                    f"configured patches are {names}"
+                )
             bound_patches.extend(condition.patches)
         if len(set(bound_patches)) != len(bound_patches):
             raise ValueError("Each patch may have only one velocity history")

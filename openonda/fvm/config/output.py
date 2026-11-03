@@ -35,7 +35,7 @@ class Output:
         Compression of the appended VTK data.
     asynchronous : bool, default=True
         Write frames on a background thread; writer errors surface at
-        ``flush_output`` or ``close``.
+        ``flush_output`` or ``close``. An MPI run writes inline.
     ghost_layers : {0, 1}, default=1
         Boundary ghost layers included in a partitioned frame.
     point_interpolation : {'none', 'boundary_weighted'}, default='none'
