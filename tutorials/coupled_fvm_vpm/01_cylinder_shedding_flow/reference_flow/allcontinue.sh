@@ -3,5 +3,5 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Continue from the latest accepted FVM backup.
-python setup.py "$@"
+# Continue every case of allrun.sh from its latest accepted FVM backup.
+./allrun.sh --continue

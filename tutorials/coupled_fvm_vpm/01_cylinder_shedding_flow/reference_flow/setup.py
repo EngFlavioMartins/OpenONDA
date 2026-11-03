@@ -27,26 +27,28 @@ DISTURBANCE_AMPLITUDE = 5.0e-2  # m^2/s, streamfunction peak
 DISTURBANCE_RADIUS = 0.5  # m
 DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
-# Domain: walls and inlet far enough away that blockage stays small
-DOMAIN = (-40.0, 60.0, -60.0, 60.0)  # m, x and y bounds
+# Domain from the literature, not from a study of its own. Slip walls 16 D from the axis:
+# Behr et al. (1995, CMAME 123) find the Re = 100 lift amplitude and mean drag change by
+# under 0.2% between their two widest domains (A = 24 and 32) and recommend walls at least
+# 8 D away. Outlet 30 D downstream, twice the 14.5 D at which Tezduyar and Shih (1991, J. Eng.
+# Mech. 117) find no change of the solution; inlet 16 D upstream.
+DOMAIN = (-16.0, 30.0, -16.0, 16.0)  # m, x and y bounds
 
-# Mesh: octree cells of 0.04 m near the body, coarsening by two in each wake box
+# Mesh: octree cells of CELL_SIZE over the coupled FVM domain, as in the coupled case, then
+# cells of 2 CELL_SIZE along the wake all the way to the outlet
 CELL_SIZE = 0.04  # m
-NEAR_BODY = (-1.5, 1.5, -1.5, 1.5)  # m, cells of CELL_SIZE
-NEAR_WAKE = (-2.0, 6.0, -2.0, 2.0)  # m, cells of 2 CELL_SIZE
-WAKE = (-2.5, 12.0, -2.5, 2.5)  # m, cells of 4 CELL_SIZE
+FVM_DOMAIN = (-2.4, 4.4, -2.4, 2.4)  # m, cells of CELL_SIZE: the coupled FVM domain
+WAKE = (-3.0, DOMAIN[1], -3.0, 3.0)  # m, cells of 2 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
-# Time
-TIME_STEP = 0.008  # s
+# Time: the step adapts to a cell Courant number of at most MAX_COURANT
+TIME_STEP = 0.008  # s, first step at CELL_SIZE, scaled with the cell size
+MAX_COURANT = 0.9
 END_TIME = 100.0  # s
 
-# Observations, matching the coupled case
-FORCE_INTERVAL = 0.04  # s
-PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
-FIELD_INTERVAL = 0.2  # s, flow fields over developed shedding ...
-FIELD_START = 40.0  # s, ... from this time on
-BACKUP_INTERVAL = 1.0  # s
+# Forces, wake profiles and backups share one interval: 50 samples per shedding period
+# (about 5 s); flow fields are written only at the start and the end
+SAMPLE_INTERVAL = 0.1  # s
 
 
 def initial_velocity(position):
@@ -62,27 +64,14 @@ def initial_velocity(position):
     return velocity
 
 
-def build_case(
-    time_step=TIME_STEP,
-    reynolds_number=REYNOLDS_NUMBER,
-    end_time=END_TIME,
-    cell_size=CELL_SIZE,
-    fine_wake_end=None,
-    fine_box_margin=2.4,
-) -> fvm.FVMCase:
-    """Return the FVM case of the cylinder flow.
-
-    ``fine_wake_end`` [m] extends the cells of ``cell_size`` downstream to that x over
-    |y| <= ``fine_box_margin`` and upstream to -``fine_box_margin`` [m], the coupled FVM
-    domain, so that the reference resolves it as finely as the coupled FVM does.
-    """
+def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fvm.FVMCase:
+    """Return the FVM case of the cylinder flow, written under ``solution/<name>``."""
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     half_span = 0.5 * SPAN
 
-    # Requested sizes sit between octree levels, which then select 1, 2 and 4 CELL_SIZE
+    # Requested sizes sit between octree levels, which then select 1 and 2 CELL_SIZE
     request = 4.0 * cell_size / 3.0
     slab = 16 * request
-    coupled_domain = (-fine_box_margin, fine_wake_end, -fine_box_margin, fine_box_margin)
 
     # Mesh a slab around the long cylinder, then keep one periodic cell across the span
     patches = msh.BoxPatches(
@@ -94,14 +83,8 @@ def build_case(
             surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
             max_cell_size=BACKGROUND * cell_size,
             refinements=(
-                *(
-                    ()
-                    if fine_wake_end is None
-                    else (msh.BoxRefinement("coupledDomain", (*coupled_domain, -slab, slab), request),)
-                ),
-                msh.BoxRefinement("nearBody", (*NEAR_BODY, -slab, slab), request),
-                msh.BoxRefinement("nearWake", (*NEAR_WAKE, -slab, slab), 2 * request),
-                msh.BoxRefinement("wake", (*WAKE, -slab, slab), 4 * request),
+                msh.BoxRefinement("coupledDomain", (*FVM_DOMAIN, -slab, slab), request),
+                msh.BoxRefinement("wake", (*WAKE, -slab, slab), 2 * request),
             ),
             patch_refinements=(msh.PatchRefinement("cylinder", request),),
             surface_may_cross_domain_boundary=True,
@@ -110,7 +93,7 @@ def build_case(
         levels=(-half_span, half_span),
     )
 
-    sample_profiles = fvm.EveryTime(PROFILE_INTERVAL)
+    sample = fvm.EveryTime(SAMPLE_INTERVAL)
     samplers = (
         # Drag and lift coefficients per unit span
         fvm.ForceSampler(
@@ -118,7 +101,7 @@ def build_case(
             reference_velocity=FREESTREAM_VELOCITY[0],
             reference_area=DIAMETER * SPAN,
             reference_length=DIAMETER,
-            schedule=fvm.EveryTime(FORCE_INTERVAL),
+            schedule=sample,
         ),
         # Recirculation region on the wake centreline
         fvm.LineSampler(
@@ -128,7 +111,7 @@ def build_case(
             n_neighbours=12,
             reconstruction="affine",
             file_name="centreline",
-            schedule=sample_profiles,
+            schedule=sample,
         ),
         # Transverse wake profiles
         *(
@@ -139,13 +122,14 @@ def build_case(
                 n_neighbours=12,
                 reconstruction="affine",
                 file_name=f"transverse_x{x:g}",
-                schedule=sample_profiles,
+                schedule=sample,
             )
             for x in (2.0, 4.0)
         ),
     )
     numerics = fvm.Numerics(
-        time_step_size=time_step,
+        time_step_size=cell_size / CELL_SIZE * TIME_STEP,
+        time_step_control=fvm.MaximumCourantTimeStep(maximum=MAX_COURANT),
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
         schemes=fvm.DiscretizationConfig(time_scheme="backward"),
         linear=fvm.LinearSolverConfig(pressure_tolerance=1.0e-7, pressure_relative_tolerance=0.005),
@@ -155,14 +139,15 @@ def build_case(
         execution=fvm.ComputeConfig(operator_backend="numba"),
     )
     return fvm.FVMCase(
-        name="reference_cylinder_flow",
+        name=name,
         directory=CASE_DIR,
+        variant=name,
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
-        run=fvm.RunPlan(end_time=end_time),
-        output=fvm.Output(schedule=fvm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
+        run=fvm.RunPlan(end_time=END_TIME),
+        output=fvm.Output(schedule=None),
         samplers=fvm.Samplers(samplers),
-        backup=fvm.Backup(schedule=fvm.EveryTime(BACKUP_INTERVAL)),
+        backup=fvm.Backup(schedule=sample),
         logging=fvm.LoggingConfig(detailed_timing=True),  # wall time per step
         mesh=mesh,
         boundaries=(
@@ -178,43 +163,18 @@ def build_case(
 
 
 if __name__ == "__main__":
-    # Reference variants of the sensitivity study; the defaults are the baseline reference
+    # One case per call; allrun.sh lists the cases
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--cell-size", type=float, default=CELL_SIZE, help="cell size near the body [m]"
-    )
-    parser.add_argument(
-        "--time-step", type=float, help="time step [s]; scales with the cell size by default"
-    )
+    parser.add_argument("--name", required=True, help="case name: solution/<name>, samples/<name>")
     parser.add_argument(
         "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
     )
-    parser.add_argument("--end-time", type=float, default=END_TIME, help="end time [s]")
     parser.add_argument(
-        "--fine-wake-end",
-        type=float,
-        help="x [m] to which the near-body cells extend over the coupled FVM domain; by"
-        " default the cells coarsen to 2h beyond x = 1.5 m",
-    )
-    parser.add_argument(
-        "--fine-box-margin",
-        type=float,
-        default=2.4,
-        help="upstream and lateral extent [m] of the near-body cells with --fine-wake-end:"
-        " the margin of the coupled FVM domain",
+        "--cell-size", type=float, default=CELL_SIZE, help="cell size near the body [m]"
     )
     arguments = parser.parse_args()
 
-    # Refining the cells refines the step at constant Courant number
-    time_step = arguments.time_step or arguments.cell_size / CELL_SIZE * TIME_STEP
-    case = build_case(
-        time_step,
-        arguments.reynolds_number,
-        arguments.end_time,
-        arguments.cell_size,
-        arguments.fine_wake_end,
-        arguments.fine_box_margin,
-    )
+    case = build_case(arguments.name, arguments.reynolds_number, arguments.cell_size)
     with fvm.FVMSolver(case) as solver:
         cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
         solver.set_initial_velocity(initial_velocity(cell_centres))
