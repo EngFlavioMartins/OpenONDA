@@ -28,10 +28,9 @@ CASE_DIR = Path(__file__).resolve().parent
 DIAMETER = 1.0  # m
 FREESTREAM_VELOCITY = (1.0, 0.0, 0.0)  # m/s
 DENSITY = 1.0  # kg/m^3
-# Martins and Avila (2019), Int. J. Mech. Sci. 156, 235-249: points B1 (Re = 6400) and B2
-# (Re = 8300) of table 5, in the medium-Reynolds set of table 4 (Re = 2500-12000 at a fixed
-# natural frequency, so Re = 2500 f_n V* with f_n = 1/3 Hz gives V* = 7.68 and 9.96)
-CASE_B1 = (6400.0, 7.68)  # Re, V*; the default of a single run
+# Points B1 and B2 of Martins and Avila (2019), Int. J. Mech. Sci. 156, 235-249, table 5;
+# their fixed natural frequency gives Re = 2500 V* / 3
+CASE_B1 = (6400.0, 7.68)  # Re, V*; the default
 
 # Structure, as the paper: equal springs in x and y, natural frequency in water from the
 # ideal added mass, damping ratio relative to the vacuum critical damping
@@ -46,13 +45,9 @@ DISTURBANCE_CENTRE = 0.65  # m, downstream of the cylinder axis
 
 # FVM mesh and near wake
 CELL_SIZE = 0.04  # m, at the coupling interface; also the particle spacing
-# m, three octree levels finer at the cylinder wall: the laminar boundary layer is about
-# 3 D / sqrt(Re) = 0.033 m thick at Re = 8300
-WALL_CELL_SIZE = 0.005
+WALL_CELL_SIZE = 0.005  # m, three levels finer, resolves the 0.033 m boundary layer at Re = 8300
 BOX_MARGIN = 2.4  # D upstream and sideways; 2 D farther downstream
-# Half depth of the meshing slab in cells: the long cylinder crosses its span faces, and a
-# thin slab keeps the refined wall band small (the slab of 14 cells needed over 3 GB to mesh)
-SLAB_HALF_CELLS = 6
+SLAB_HALF_CELLS = 6  # half depth of the meshing slab [cells]; a thin slab meshes faster
 FVM_TIME_STEP = 0.0025  # s
 
 # VPM outer wake, relative to the moving box
@@ -127,7 +122,7 @@ def build_case(reynolds_number, reduced_velocity, end_time=None, compute_device=
     fourier_number = kinematic_viscosity * coupling_time_step_size / CELL_SIZE**2
     diffusion_stages = math.floor(12.0 * fourier_number) + 1
 
-    # Mesh a slab that the cylinder crosses, then retain one periodic spanwise cell.
+    # Mesh a slab through the long cylinder, then keep one periodic cell across the span
     patches = msh.BoxPatches(
         xmin="numericalBoundary",
         xmax="numericalBoundary",

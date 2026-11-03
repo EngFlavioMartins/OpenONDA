@@ -35,7 +35,7 @@ Run commands from this directory.
 ./allplot.sh
 ```
 
-`./allplot.sh` writes the comparison figures and updates the animation; `./allplot_fields.sh` repeats the field comparison alone. Both sample the saved fine-grid reference onto the coupled mid-plane lattice. `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup.
+`./allplot.sh` writes the comparison figures and updates the animation; the field comparison samples the saved fine-grid reference onto the coupled mid-plane lattice. `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup.
 
 ## Results
 

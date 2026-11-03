@@ -4,7 +4,7 @@
 The rotor is the one of the VLM tutorial ``tutorials/vpm/06_rotor_flow``: the
 same blade planform, twist, radius, wind speed, tip-speed ratio, time step,
 end time and output cadence, so that power and blade forces compare blade for
-blade. The blades carry a NACA 0012 thickness and are meshed inside a flat box,
+blade. The blades carry a NACA 0018 thickness and are meshed inside a flat box,
 a disk normal to the rotor axis, which turns with the rotor; the vortex
 particles carry the wake in the inertial frame.
 """
@@ -34,9 +34,7 @@ KINEMATIC_VISCOSITY = 1.5e-5  # m^2/s
 AIR_DENSITY = 1.225  # kg/m^3
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS  # rad/s
 BLADE_AZIMUTHS = (0.0, 120.0, 240.0)  # degrees about the rotor axis
-# NACA 0018: the 12 % section's tip, 0.042 m thick, collapsed cells in the mesher's wall
-# projection; the 18 % section keeps the tip more than two cells thick
-BLADE_THICKNESS = 0.18  # chord fraction
+BLADE_THICKNESS = 0.18  # chord fraction (NACA 0018), keeps the tip over two cells thick
 N_SECTION_POINTS = 61  # per surface of a blade section
 
 # Time, as the VLM rotor: the coupling interval is its particle step

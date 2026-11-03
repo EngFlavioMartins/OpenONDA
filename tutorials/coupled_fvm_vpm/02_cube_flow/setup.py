@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-import openonda.coupler as coupling
+import openonda.coupler as coupler
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
@@ -35,9 +35,9 @@ DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 # FVM mesh and particle spacing
 CELL_SIZE = 0.045  # m
 BOX_MARGIN = 1.8  # m, clearance around the cube and separated shear layers
-BOX_DOWNSTREAM = 3.6  # m: transfer surface at 1.5 formation lengths (wake reach R = 0.5)
-MAX_COURANT_NUMBER = 0.9  # the FVM step follows the maximum cell Courant number
-FVM_MAX_TIME_STEP = 0.02  # s, also the first step; the controller reduces it before the step
+BOX_DOWNSTREAM = 3.6  # m, downstream FVM boundary
+MAX_COURANT_NUMBER = 0.9  # the FVM step adapts to this Courant number
+FVM_MAX_TIME_STEP = 0.02  # s, also the first step
 FVM_CORES = 8
 
 # VPM: particles in the outer wake
@@ -62,7 +62,6 @@ TRANSFER_DIAGNOSTIC_INTERVAL = 2.4  # s
 OFFAXIS_Y = 0.75 * CUBE_SIDE  # m
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
 
-# Geometry derived from the inputs above
 FVM_DOMAIN_BOUNDS = (-BOX_MARGIN, BOX_DOWNSTREAM, -BOX_MARGIN, BOX_MARGIN, -BOX_MARGIN, BOX_MARGIN)
 CUBE_BOUNDS = (-0.5, 0.5, -0.5, 0.5, -0.5, 0.5)
 # Maximum particle step; the coupler lowers it with the FVM Courant step and output times
@@ -224,19 +223,19 @@ VPM_CASE = vpm.VPMCase(
     logging=vpm.LoggingConfig(console=False),
 )
 
-COUPLER_CONFIG = coupling.CouplerConfig(
+COUPLER_CONFIG = coupler.CouplerConfig(
     freestream_velocity=FREESTREAM_VELOCITY,
     # Iterate each interval to the transfer tolerances, at most 6 times (README)
     max_coupling_iterations=6,
     transfer_diagnostic_interval_steps=round(
         TRANSFER_DIAGNOSTIC_INTERVAL / VPM_MAX_COUPLING_INTERVAL
     ),
-    backup=coupling.Backup(schedule=coupling.EveryTime(BACKUP_INTERVAL)),
+    backup=coupler.Backup(schedule=coupler.EveryTime(BACKUP_INTERVAL)),
 )
 
 
 if __name__ == "__main__":
-    with coupling.CoupledSolver(FVM_CASE, VPM_CASE, COUPLER_CONFIG) as solver:
+    with coupler.CoupledSolver(FVM_CASE, VPM_CASE, COUPLER_CONFIG) as solver:
         # The startup vortex behind the cube; a restart replaces it with the backup
         fvm_solver = solver.fvm_solver
         cell_centres = fvm_solver.geo_data["cell_centre"][: fvm_solver.mesh_data["n_cells"]]
