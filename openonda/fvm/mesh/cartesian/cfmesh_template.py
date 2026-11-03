@@ -287,19 +287,58 @@ def _grown(array: np.ndarray) -> np.ndarray:
 
 
 @njit(cache=True, fastmath=False)
+def _finer_data_leaves(
+    octree_lookup: dict,
+    octree_leaves: np.ndarray,
+    axis: int,
+    coordinate: int,
+    a0: int,
+    b0: int,
+    width: int,
+    level: int,
+    fluid_count: int,
+    fluid_level: int,
+    max_level: int,
+    found: np.ndarray,
+) -> int:
+    """Surface-data leaves finer than a fluid leaf's side, across it; their count.
+
+    cfMesh creates a boundary face from each of them towards the coarser fluid
+    leaf, so the side is covered by their faces, not by one face of its own.
+    ``fluid_count`` fluid leaves were found across, the first of ``fluid_level``.
+    """
+    if width == 1 or fluid_count == 4 or (fluid_count == 1 and fluid_level <= level):
+        return 0
+    count = _face_neighbours(octree_lookup, axis, coordinate, a0, b0, width, max_level, found)
+    n_data = 0
+    for k in range(count):
+        leaf = found[k]
+        if octree_leaves[leaf, 4] > level and octree_leaves[leaf, 5] == 2:
+            found[n_data] = leaf
+            n_data += 1
+    return n_data
+
+
+@njit(cache=True, fastmath=False)
 def _template_faces_kernel(
-    leaves: np.ndarray, max_level: int
+    leaves: np.ndarray, octree_leaves: np.ndarray, max_level: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Interior and boundary faces of the fluid leaves, in cfMesh's visiting order.
 
     Each leaf visits its xmin, xmax, ymin, ymax, zmin, zmax sides. A side with
     no fluid leaf across is a boundary face; the upper side of a leaf gives an
     interior face towards every leaf across, in increasing leaf order, each
-    clipped to the smaller of the two leaves. The last array names the first
-    leaf pair more than one level apart, or holds -1.
+    clipped to the smaller of the two leaves. Where finer surface-data leaves of
+    ``octree_leaves`` lie across a side, each gives the boundary face clipped to
+    it instead. The last array names the first leaf pair more than one level
+    apart, or holds -1.
     """
     n_cells = len(leaves)
     lookup = {(leaves[i, 4], leaves[i, 0], leaves[i, 1], leaves[i, 2]): i for i in range(n_cells)}
+    octree_lookup = {
+        (octree_leaves[i, 4], octree_leaves[i, 0], octree_leaves[i, 1], octree_leaves[i, 2]): i
+        for i in range(len(octree_leaves))
+    }
     stride = (1 << max_level) + 1
     interior = np.empty((4 * n_cells + 16, 4), dtype=np.int64)
     owners = np.empty(len(interior), dtype=np.int64)
@@ -308,27 +347,53 @@ def _template_faces_kernel(
     boundary_owners = np.empty(len(boundary), dtype=np.int64)
     unbalanced = np.full(2, -1, dtype=np.int64)
     found = np.empty(4, dtype=np.int64)
+    across = np.empty(4, dtype=np.int64)
     n_interior = 0
     n_boundary = 0
     for owner in range(n_cells):
         x0, y0, z0, width, level = leaves[owner, :5]
         for axis in range(3):
             lower, upper, a0, a1, b0, b1 = _face_frame(x0, y0, z0, width, axis)
-            if _face_neighbours(lookup, axis, lower - 1, a0, b0, width, max_level, found) == 0:
-                if n_boundary == len(boundary):
-                    boundary = _grown(boundary)
-                    boundary_owners = _grown(boundary_owners)
-                _write_face_ring(boundary, n_boundary, axis, lower, a0, a1, b0, b1, stride, False)
-                boundary_owners[n_boundary] = owner
-                n_boundary += 1
-            count = _face_neighbours(lookup, axis, upper, a0, b0, width, max_level, found)
+            for positive in (False, True):
+                side = upper if positive else lower
+                query = upper if positive else lower - 1
+                count = _face_neighbours(lookup, axis, query, a0, b0, width, max_level, found)
+                n_data = _finer_data_leaves(
+                    octree_lookup,
+                    octree_leaves,
+                    axis,
+                    query,
+                    a0,
+                    b0,
+                    width,
+                    level,
+                    count,
+                    leaves[found[0], 4] if count else level,
+                    max_level,
+                    across,
+                )
+                for k in range(n_data):
+                    nx0, ny0, nz0, n_width = octree_leaves[across[k], :4]
+                    _n_lower, _n_upper, c0, c1, d0, d1 = _face_frame(nx0, ny0, nz0, n_width, axis)
+                    if n_boundary == len(boundary):
+                        boundary = _grown(boundary)
+                        boundary_owners = _grown(boundary_owners)
+                    _write_face_ring(
+                        boundary, n_boundary, axis, side, c0, c1, d0, d1, stride, positive
+                    )
+                    boundary_owners[n_boundary] = owner
+                    n_boundary += 1
+                if count == 0 and n_data == 0:
+                    if n_boundary == len(boundary):
+                        boundary = _grown(boundary)
+                        boundary_owners = _grown(boundary_owners)
+                    _write_face_ring(
+                        boundary, n_boundary, axis, side, a0, a1, b0, b1, stride, positive
+                    )
+                    boundary_owners[n_boundary] = owner
+                    n_boundary += 1
+            # ``count`` and ``found`` still hold the fluid leaves across the upper side.
             if count == 0:
-                if n_boundary == len(boundary):
-                    boundary = _grown(boundary)
-                    boundary_owners = _grown(boundary_owners)
-                _write_face_ring(boundary, n_boundary, axis, upper, a0, a1, b0, b1, stride, True)
-                boundary_owners[n_boundary] = owner
-                n_boundary += 1
                 continue
             ordered = np.sort(found[:count])
             for neighbour in ordered:
@@ -375,20 +440,24 @@ def _template_faces_kernel(
 
 
 def _extract_topology(
-    leaves: np.ndarray, max_level: int
+    leaves: np.ndarray, octree_leaves: np.ndarray, max_level: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[BoundaryPatchData], np.ndarray]:
     """Native faces of the already-classified fluid leaves.
 
     cfMesh extracts the template in its root cube, not the requested fluid
     box: its outer sides and the faces towards excluded surface leaves all
-    form the one temporary ``defaultFaces`` patch.
+    form the one temporary ``defaultFaces`` patch. ``octree_leaves`` holds every
+    classified leaf, so that finer surface-data leaves across a fluid side
+    give their own faces.
     """
     limit = 2**max_level
     max_point_code = (limit + 1) ** 3 - 1
     code_dtype = np.int32 if max_point_code <= np.iinfo(np.int32).max else np.int64
     records = np.ascontiguousarray(leaves, dtype=np.int64)
     interior, owners, neighbours, boundary_faces, boundary_owners, unbalanced = (
-        _template_faces_kernel(records, max_level)
+        _template_faces_kernel(
+            records, np.ascontiguousarray(octree_leaves, dtype=np.int64), max_level
+        )
     )
     if unbalanced[0] >= 0:
         owner, neighbour = (int(value) for value in unbalanced)
@@ -548,7 +617,9 @@ def _extract_mesh(
     boundary_level: int,
 ) -> MeshData:
     limits = (2**max_level, 2**max_level, 2**max_level)
-    encoded_faces, owners, neighbours, boundary, levels = _extract_topology(leaves, max_level)
+    encoded_faces, owners, neighbours, boundary, levels = _extract_topology(
+        leaves, octree_leaves, max_level
+    )
 
     # cfMesh creates octree faces while visiting every Morton-ordered leaf,
     # including excluded surface-data leaves.  A fine excluded leaf therefore
