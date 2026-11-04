@@ -18,7 +18,7 @@ CASE_DIR = Path(__file__).resolve().parent
 # Wing geometry
 NACA_CODE = "4412"
 CHORD = 1.0  # m
-SPAN = 4.88  # m, tips at the lattice position that meshes the round trailing edge
+SPAN = 5.0  # m
 N_SECTION_POINTS = 161
 WING_STL = CASE_DIR / "assets/naca4412_wing.stl"
 
@@ -38,23 +38,29 @@ DOMAIN = (-10.24, 30.72, -12.8, 12.8, -12.8, 12.8)  # m
 CELL_SIZE = 0.04  # m
 # The round trailing edge in cells of half the wing cell size, so its 20 mm base spans a cell
 TRAILING_EDGE_BOX = (0.32, 0.52, -0.16, 0.04, -0.5 * SPAN - CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m
+# Its corners with the flat tip caps in cells of a quarter of the wing cell size: in half-size
+# cells one wall face there spans the trailing edge and leaves its cell centre inside the wing
+TIP_CORNER = (0.38, 0.47, -0.11, -0.02)  # m, x and y bounds around the round trailing edge
+TIP_CORNER_SPAN = (0.5 * SPAN - 2 * CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m, |z| bounds
 NEAR_BODY = (-1.6, 2.72, -1.28, 1.24, -3.6, 3.6)  # m, wing cells
 NEAR_WAKE = (-2.0, 6.0, -1.84, 1.84, -4.0, 4.0)  # m, cells of 2 CELL_SIZE
 WAKE = (-2.4, 14.0, -3.2, 3.2, -4.8, 4.8)  # m, cells of 4 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
-# Time integration
-TIME_STEP = 0.008  # s
+# Time integration, as the FVM of the coupled case (setup.py one level up): the step adapts to a
+# Courant number of 0.9
+FVM_INITIAL_TIME_STEP = 0.008  # s
+FVM_MAX_TIME_STEP = 0.04  # s
 STATISTICS_START = 12.0  # s
 END_TIME = 24.0  # s
 CORES = 4
 
-# Output
-FORCE_INTERVAL = 0.032  # s
-PROFILE_INTERVAL = 0.192  # s
-SLICE_INTERVAL = 0.192  # s
-FIELD_INTERVAL = 1.92  # s
-BACKUP_INTERVAL = 0.96  # s
+# Output at the times of the coupled case, on which the adaptive step lands
+FORCE_INTERVAL = 0.03  # s
+PROFILE_INTERVAL = 0.2  # s
+SLICE_INTERVAL = 0.2  # s
+FIELD_INTERVAL = 1.0  # s
+BACKUP_INTERVAL = 0.48  # s
 WAKE_STATIONS = (2.0, 5.0)  # m
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
 # Trailing-edge height and the force moment centre
@@ -75,9 +81,16 @@ MESH = msh.CartesianMesher(
     ),
     surfaces=(msh.STLSurface(WING_STL, patch="wing"),),
     max_cell_size=BACKGROUND * CELL_SIZE,
-    cell_size_anchor=0.5 * CELL_SIZE,
+    cell_size_anchor=0.25 * CELL_SIZE,
     refinements=(
         msh.BoxRefinement("trailingEdge", TRAILING_EDGE_BOX, 0.5 * CELL_SIZE),
+        *(
+            msh.BoxRefinement(f"tipCorner{side}", (*TIP_CORNER, *bounds), 0.25 * CELL_SIZE)
+            for side, bounds in (
+                ("Min", (-TIP_CORNER_SPAN[1], -TIP_CORNER_SPAN[0])),
+                ("Max", TIP_CORNER_SPAN),
+            )
+        ),
         msh.BoxRefinement("nearBody", NEAR_BODY, CELL_SIZE),
         msh.BoxRefinement("nearWake", NEAR_WAKE, 2 * CELL_SIZE),
         msh.BoxRefinement("wake", WAKE, 4 * CELL_SIZE),
@@ -144,7 +157,11 @@ CASE = fvm.FVMCase(
     name="reference_naca4412_flow",
     directory=CASE_DIR,
     numerics=fvm.Numerics(
-        time_step_size=TIME_STEP,
+        time_step_size=FVM_INITIAL_TIME_STEP,
+        time_step_control=fvm.MaximumCourantTimeStep(
+            maximum=0.9,
+            maximum_time_step_size=FVM_MAX_TIME_STEP,
+        ),
         transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
         schemes=fvm.DiscretizationConfig(
             convection_scheme="linear_upwind", gradient_scheme="gauss", time_scheme="backward"

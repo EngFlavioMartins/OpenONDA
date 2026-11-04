@@ -24,7 +24,7 @@ CASE_NAME = "coupled_naca4412_flow"
 # Wing geometry
 NACA_CODE = "4412"
 CHORD = 1.0  # m
-SPAN = 4.88  # m, tips at the lattice position that meshes the round trailing edge
+SPAN = 5.0  # m
 N_SECTION_POINTS = 161  # per surface
 WING_STL = CASE_DIR / "assets/naca4412_wing.stl"
 
@@ -39,9 +39,15 @@ FREESTREAM_VELOCITY = (FREESTREAM_SPEED, 0.0, 0.0)
 
 # FVM mesh and particle spacing
 CELL_SIZE = 0.04  # m, 25 cells per chord
-FVM_DOMAIN_BOUNDS = (-1.6, 2.52, -1.28, 1.24, -3.6, 3.6)  # m, wing, tips and near wake
+# Wing, tips and near wake; the box is centred on a plane of the 0.04 m lattice, so its cells
+# lie on those of the reference mesh
+FVM_DOMAIN_BOUNDS = (-1.6, 2.56, -1.32, 1.24, -3.6, 3.6)  # m
 # The round trailing edge in cells of half the wing cell size, so its 20 mm base spans a cell
 TRAILING_EDGE_BOX = (0.32, 0.52, -0.16, 0.04, -0.5 * SPAN - CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m
+# Its corners with the flat tip caps in cells of a quarter of the wing cell size: in half-size
+# cells one wall face there spans the trailing edge and leaves its cell centre inside the wing
+TIP_CORNER = (0.38, 0.47, -0.11, -0.02)  # m, x and y bounds around the round trailing edge
+TIP_CORNER_SPAN = (0.5 * SPAN - 2 * CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m, |z| bounds
 FVM_INITIAL_TIME_STEP = 0.008  # s
 FVM_MAX_TIME_STEP = 0.04  # s, the FVM step adapts to a Courant number of 0.9
 VPM_MAX_COUPLING_INTERVAL = 0.015  # s, reduced by particle strain and output events
@@ -86,8 +92,17 @@ FVM_MESH = msh.CartesianMesher(
     ),
     surfaces=(msh.STLSurface(WING_STL, patch="wing"),),
     max_cell_size=CELL_SIZE,
-    cell_size_anchor=0.5 * CELL_SIZE,
-    refinements=(msh.BoxRefinement("trailingEdge", TRAILING_EDGE_BOX, 0.5 * CELL_SIZE),),
+    cell_size_anchor=0.25 * CELL_SIZE,
+    refinements=(
+        msh.BoxRefinement("trailingEdge", TRAILING_EDGE_BOX, 0.5 * CELL_SIZE),
+        *(
+            msh.BoxRefinement(f"tipCorner{side}", (*TIP_CORNER, *bounds), 0.25 * CELL_SIZE)
+            for side, bounds in (
+                ("Min", (-TIP_CORNER_SPAN[1], -TIP_CORNER_SPAN[0])),
+                ("Max", TIP_CORNER_SPAN),
+            )
+        ),
+    ),
 )
 
 profiles = fvm.EveryTime(PROFILE_INTERVAL)
