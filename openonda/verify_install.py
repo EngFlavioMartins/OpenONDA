@@ -431,7 +431,10 @@ def _verify_environment() -> dict[str, object]:
     executables = {command: shutil.which(command) for command in commands}
     missing = [command for command, path in executables.items() if path is None]
     if missing:
-        raise RuntimeError(f"OpenONDA environment is missing commands: {', '.join(missing)}")
+        raise RuntimeError(
+            f"The OpenONDA environment is missing commands: {', '.join(missing)}. Only "
+            "--with-environment needs them; re-run 'source install.sh' to install them."
+        )
     outside = [
         command
         for command, path in executables.items()
@@ -439,7 +442,8 @@ def _verify_environment() -> dict[str, object]:
     ]
     if outside:
         raise RuntimeError(
-            f"Commands resolve outside the OpenONDA environment: {', '.join(outside)}"
+            f"Commands resolve outside the OpenONDA environment: {', '.join(outside)}. "
+            "Run 'conda activate OpenONDA', or put its bin directory first on PATH."
         )
     with tempfile.TemporaryDirectory(prefix="openonda-environment-") as directory:
         workspace = Path(directory)
@@ -586,6 +590,7 @@ def main() -> int:
     numba.config.reload_config()
     report["numba"] = {"version": numba.__version__, "active_threads": numba.get_num_threads()}
     print(json.dumps(report, indent=2, sort_keys=True))
+    print(f"OpenONDA {openonda.__version__}: every installation check passed", file=sys.stderr)
     return 0
 
 

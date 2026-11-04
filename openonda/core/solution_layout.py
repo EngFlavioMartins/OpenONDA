@@ -55,10 +55,9 @@ def vpm_backup_files(directory: str | Path) -> list[Path]:
     """
     directory = Path(directory)
     component = component_directory(directory, "vpm")
-    frames = component
     pattern = re.compile(r"^vpm_(\d{6,})\.h5$")
     records = []
-    for path in frames.glob("vpm_*.h5"):
+    for path in component.glob("vpm_*.h5"):
         match = pattern.fullmatch(path.name)
         if match and path.is_file():
             records.append((int(match[1]), path))

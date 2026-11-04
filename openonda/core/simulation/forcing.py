@@ -5,19 +5,6 @@ import math
 
 import numpy as np
 
-from openonda.core.simulation.parallel import collective_phase
-
-
-def apply_initial_velocity(solver, field) -> None:
-    """Validate every local physical field before entering native halo exchange."""
-    with collective_phase(solver.parallel.comm, "initial velocity field validation"):
-        count = solver.mesh_data["n_cells"]
-        values = np.asarray(field(solver.geo_data["cell_centre"][:count]), dtype=float)
-        if values.shape != (count, 3) or not np.isfinite(values).all():
-            raise ValueError(f"Initial velocity field must be finite with shape ({count}, 3)")
-    with collective_phase(solver.parallel.comm, "initial velocity field installation"):
-        solver.set_initial_velocity(values)
-
 
 @dataclass(frozen=True)
 class VelocityRamp:

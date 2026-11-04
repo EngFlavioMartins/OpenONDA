@@ -11,6 +11,8 @@ From this directory:
 ./allplot.sh
 ```
 
+The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`, which never falls back to the CPU; without a GPU the run stops with a message. The scene figures of `allplot.sh` also use ParaView's `pvpython` and `pdflatex`, both in the OpenONDA environment.
+
 `allrun.sh` removes previous generated output and runs all four variants. `./allcontinue.sh` resumes saved native checkpoints. To run one variant, use `python setup.py --variant dns_transposed`; alternatives are `dns_direct`, `dns_mixed` and `les_transposed`. `./allplot.sh pdf` exports PDF.
 
 ## Inputs and interpretation

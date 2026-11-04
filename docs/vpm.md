@@ -6,7 +6,7 @@ The vortex-particle method (VPM) follows vorticity instead of velocity. Each par
 | --- | --- |
 | Building particle fields; the four diffusion schemes | [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md) |
 | Vortex stretching formulations; LES | [Vortex ring](../tutorials/vpm/02_vortex_ring/README.md) |
-| Stabilization and particle regularization | [Leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) |
+| Stabilization and particle regularization | [Leapfrogging rings](../tutorials/vpm/03_vortex_interactions/README.md) |
 | Lifting surfaces, startup loads and wakes | [Flat plate](../tutorials/vpm/04_flat_plate/README.md) |
 | Prescribed wing motion | [Heaving delta wings](../tutorials/vpm/05_delta_wing/README.md) |
 | Rotating blades, wake refinement | [Wind turbine](../tutorials/vpm/06_rotor_flow/README.md), [quadcopter](../tutorials/vpm/07_quadcopter/README.md) |
@@ -40,7 +40,7 @@ A filament or ring circulation (m²/s) and its physical core radius belong to th
 
 ## Particle distributions
 
-`VPMCase.initial_conditions` holds objects whose `build()` returns a `vpm.VortexParticleSet`: positions, volumes, core radii, strengths $\boldsymbol{\omega}V_p$, viscosity, the nominal spacing and optional `group_id` labels that tag each vortex in diagnostics. The tutorials build theirs in `assets/initial_conditions.py`: Gaussian filaments on a triangular lattice for the [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md), and Gaussian rings on a toroidal lattice with Widnall disturbances for the [single](../tutorials/vpm/02_vortex_ring/README.md) and [leapfrogging](../tutorials/vpm/03_vortex_interactions/readme.md) rings. Copy one as a template; the [run example](#run-and-inspect) builds a vortex column in a few lines.
+`VPMCase.initial_conditions` holds objects whose `build()` returns a `vpm.VortexParticleSet`: positions, volumes, core radii, strengths $\boldsymbol{\omega}V_p$, viscosity, the nominal spacing and optional `group_id` labels that tag each vortex in diagnostics. The tutorials build theirs in `assets/initial_conditions.py`: Gaussian filaments on a triangular lattice for the [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md), and Gaussian rings on a toroidal lattice with Widnall disturbances for the [single](../tutorials/vpm/02_vortex_ring/README.md) and [leapfrogging](../tutorials/vpm/03_vortex_interactions/README.md) rings. Copy one as a template; the [run example](#run-and-inspect) builds a vortex column in a few lines.
 
 Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above one so that neighbouring blobs overlap; `core_radius_ratio` in the viscous settings sets it (default 2.5; the recipe for long runs below uses 1.5). Large cores smooth small structures; small cores leave holes between particles. Because the blobs themselves smooth the field, a Gaussian vortex of radius $a$ is sampled with the remaining width $\sqrt{a^2-\sigma^2}$, which needs $a>\sigma$. Refine $h$ and $\sigma$ together and compare physical observables.
 
@@ -85,11 +85,11 @@ $$
 s=\frac{\sin^2\theta}{\sin^2\theta+\sin^2\theta_0},
 $$
 
-with $\sigma_i$ the singular values of $\nabla\mathbf{u}$ and $C_\sigma=1.35$. The switch $s$ uses the angle $\theta$ between a particle's strength and the resolved vorticity $\nabla\times\mathbf{u}$ at the particle. It stays near zero while the particles represent the vorticity ($\theta\ll\theta_0=3^\circ$) and approaches one where the particle scale is no longer resolved. `subgrid_transport="strength_exchange"`, the default here, applies $\nu_t$ by particle strength exchange after each step. This conserves the total strength and leaves every core to the molecular viscosity: core spreading with a varying $\nu_t$ would grow neighbouring cores unevenly and spoil the overlap where the model acts. Strength exchange is not available between slip planes. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) compare DNS, this LES and stabilization.
+with $\sigma_i$ the singular values of $\nabla\mathbf{u}$ and $C_\sigma=1.35$. The switch $s$ uses the angle $\theta$ between a particle's strength and the resolved vorticity $\nabla\times\mathbf{u}$ at the particle. It stays near zero while the particles represent the vorticity ($\theta\ll\theta_0=3^\circ$) and approaches one where the particle scale is no longer resolved. `subgrid_transport="strength_exchange"`, the default here, applies $\nu_t$ by particle strength exchange after each step. This conserves the total strength and leaves every core to the molecular viscosity: core spreading with a varying $\nu_t$ would grow neighbouring cores unevenly and spoil the overlap where the model acts. Strength exchange is not available between slip planes. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/README.md) compare DNS, this LES and stabilization.
 
 ## Stabilization
 
-Particles drift apart and stretch, so a long run gradually loses resolution. `StabilizationConfig` gathers the remedies. Each changes the numerical evolution, so compare with a baseline as the [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) do.
+Particles drift apart and stretch, so a long run gradually loses resolution. `StabilizationConfig` gathers the remedies. Each changes the numerical evolution, so compare with a baseline as the [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/README.md) do.
 
 | Mechanism | Effect |
 | --- | --- |
@@ -115,7 +115,7 @@ With an LES `TurbulenceConfig`, the selective eddy viscosity is on by default wi
 
 ### Long runs
 
-A particle run usually ends because the particles stop representing a solenoidal vorticity field, not because the physics changes. Noise from the lattice and the fast induction misaligns strengths with the vorticity they induce; stretching then amplifies the divergent part until the divergence limit stops the run. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/readme.md) measure each remedy against the DNS while the DNS is still valid:
+A particle run usually ends because the particles stop representing a solenoidal vorticity field, not because the physics changes. Noise from the lattice and the fast induction misaligns strengths with the vorticity they induce; stretching then amplifies the divergent part until the divergence limit stops the run. The [leapfrogging rings](../tutorials/vpm/03_vortex_interactions/README.md) measure each remedy against the DNS while the DNS is still valid:
 
 1. Overlap the cores, $\sigma/h=1.5$. Against $\sigma=h$ it adds about a third to the lifetime without extra dissipation.
 2. Remesh only when core spreading has grown the cores (`regularization_core_radius_trigger`). Every regeneration on the lattice seeds lattice-symmetric modes, so remeshing at fixed short intervals shortens the run.

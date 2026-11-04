@@ -259,7 +259,7 @@ These words and symbols do not appear in coupling text, code or figures.
 | Lagrangian–Eulerian transfer | vorticity transfer |
 | buffered lattice | transfer lattice extended by `L_remesh` |
 
-## Stored data written before 26 October 2026
+## Stored data written before 28 October 2026
 
 Diagnostics keys were renamed without aliases. Keys of `coupler_diagnostics.jsonl`:
 

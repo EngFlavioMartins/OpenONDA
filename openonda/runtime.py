@@ -123,7 +123,10 @@ def _mpi_executable() -> str:
     discovered = shutil.which("mpiexec")
     if discovered:
         return discovered
-    raise RuntimeError("Parallel execution requires mpiexec in the active environment")
+    raise RuntimeError(
+        "Parallel execution requires mpiexec in the active environment; activate the OpenONDA "
+        f"environment or set {_MPIEXEC_VARIABLE} to the MPI launcher"
+    )
 
 
 @dataclass(frozen=True)
@@ -212,7 +215,11 @@ class RunConfig:
         if not self.is_parallel:
             return
         if os.environ.get(_MPI_CHILD) == "1":
-            raise RuntimeError("mpiexec did not create the requested MPI communicator")
+            raise RuntimeError(
+                "mpiexec did not create the requested MPI communicator; mpi4py may be built "
+                "for another MPI than this mpiexec (check 'python -c \"import mpi4py; "
+                "print(mpi4py.get_config())\"')"
+            )
 
         environment = os.environ.copy()
         environment[_MPI_CHILD] = "1"

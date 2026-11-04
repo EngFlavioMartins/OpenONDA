@@ -9,6 +9,8 @@ cd tutorials/fvm/cartesian_mesher
 ./allrun.sh
 ```
 
+The case runs serially on the CPU (one MPI rank).
+
 The run advances twenty steps of $\Delta t=0.01$ s. Open `solution/fvm.pvd` to inspect velocity and pressure. `./allcontinue.sh` resumes existing results; `./allrun.sh` clears them.
 
 ## Physical setup

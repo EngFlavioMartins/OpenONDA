@@ -25,7 +25,9 @@ def main(arguments=None) -> int:
     args = parser.parse_args(arguments)
     if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 11):
         parser.error(
-            "OpenONDA requires CPython 3.11; all 3.11 security patch updates are supported"
+            f"OpenONDA requires CPython 3.11 (this is {sys.implementation.name} "
+            f"{'.'.join(map(str, sys.version_info[:3]))}); run 'source install.sh' to create a "
+            "3.11 environment"
         )
     root = Path(__file__).resolve().parent
     install = [sys.executable, "-m", "pip", "install"]
@@ -48,7 +50,7 @@ def main(arguments=None) -> int:
             if result.returncode:
                 return result.returncode
     print(f"OpenONDA is installed and verified for {sys.executable}.")
-    print("Run your case with this environment's python: python setup.py")
+    print("Run a first case: cd tutorials/fvm/taylor_green && ./allrun.sh && ./allplot.sh")
     return 0
 
 

@@ -28,7 +28,7 @@ The [Lamb–Oseen tutorial](../../tutorials/vpm/01_lamb_oseen_vortex/README.md) 
 
 ## LES
 
-The [ring](../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [rotor](../../tutorials/vpm/06_rotor_flow/README.md) uses an LES wake; the [leapfrogging rings](../../tutorials/vpm/03_vortex_interactions/readme.md) use the switched sigma model.
+The [ring](../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [rotor](../../tutorials/vpm/06_rotor_flow/README.md) uses an LES wake; the [leapfrogging rings](../../tutorials/vpm/03_vortex_interactions/README.md) use the switched sigma model.
 
 - **[Smagorinsky1963]** Smagorinsky, J. (1963). General circulation experiments with the primitive equations. *Monthly Weather Review* 91(3), 99–164. Strain-based eddy viscosity.
 - **[Lilly1966]** Lilly, D. K. (1966). On the application of the eddy viscosity concept in the inertial subrange of turbulence. NCAR Manuscript 123. Coefficient scaling.
@@ -43,7 +43,7 @@ The [ring](../../tutorials/vpm/02_vortex_ring/README.md) compares DNS/LES; the [
 
 ## Redistribution and stabilization
 
-The [leapfrogging tutorial](../../tutorials/vpm/03_vortex_interactions/readme.md) compares stabilization models separately.
+The [leapfrogging tutorial](../../tutorials/vpm/03_vortex_interactions/README.md) compares stabilization models separately.
 
 - **[Pedrizzetti1992]** Pedrizzetti, G. (1992). Insight into singular vortex flows. *Fluid Dynamics Research* 10, 101–115. Strength alignment toward local vorticity. OpenONDA's optional global moment restoration is an additional correction.
 - **[vR2011]** van Rees, W. M., Leonard, A., Pullin, D. I. & Koumoutsakos, P. (2011). [A comparison of vortex and pseudo-spectral methods for the simulation of periodic vortical flows at high Reynolds numbers](https://doi.org/10.1016/j.jcp.2010.11.031). *Journal of Computational Physics* 230, 2794–2805. Remeshing and solenoidal reprojection; OpenONDA's padded-grid adaptation remains experimental.

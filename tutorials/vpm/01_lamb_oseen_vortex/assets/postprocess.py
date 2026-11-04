@@ -1,9 +1,8 @@
 """Post-processing for the Lamb--Oseen VPM tutorial.
 
-This module owns sampled-field reading, physical feature definitions, RWM
-ensemble reconstruction and uncertainty, theory/reference transformations,
-and plot-ready data preparation. Plot scripts are
-deliberately presentation-only.
+Reads the sampled fields, defines the physical features, rebuilds the RWM
+ensemble and its uncertainty, transforms the theory and references, and
+prepares the data the plot scripts draw.
 
   * vortex centres   — geometric centres of the connected areas enclosed by
     the 80%-of-peak vorticity contours, following Cerretelli--Williamson;
@@ -30,6 +29,15 @@ from scipy import ndimage, signal, stats
 from scipy.special import expi
 
 from openonda import plotting as theme
+from setup import (
+    BETA_RMAX,
+    CIRCULATION_REYNOLDS_NUMBER,
+    CORE_RADIUS,
+    FIELD_SPACING,
+    GAUSSIAN_CORE_RADIUS,
+    SEPARATION,
+    TOTAL_TIME,
+)
 from assets.output_files import (
     read_csv_table,
     read_history_table,
@@ -72,16 +80,8 @@ ENERGY_CASES = (
     ("dipole", "Vortex dipole", 2),
     ("merging", "Co-rotating", 2),
 )
-BETA_RMAX = 1.12
 REFERENCE_CIRCULATION = 1.0
-REYNOLDS_NUMBER = 530.0
-CORE_RADIUS = 0.125
-GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX
-SEPARATION = 1.0
-COLUMN_LENGTH = 40.0 * CORE_RADIUS
-FIELD_SPACING = 0.15 * CORE_RADIUS
-TOTAL_TIME = 30.0
-SPACING = 0.6 * CORE_RADIUS
+REYNOLDS_NUMBER = CIRCULATION_REYNOLDS_NUMBER
 VTS_STEP_RE = re.compile("_(\\d+)\\.vts$")
 FIELD_CSV_COLUMNS = [
     "time",

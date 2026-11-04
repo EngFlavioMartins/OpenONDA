@@ -10,6 +10,8 @@ cd tutorials/fvm/airfoil_flow
 ./allplot.sh
 ```
 
+The case runs serially on the CPU (one MPI rank).
+
 `./allrun.sh` clears previous results; `./allcontinue.sh` resumes them. Edit [setup.py](setup.py) to change:
 
 | Parameter | Default and meaning |

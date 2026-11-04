@@ -52,7 +52,6 @@ def main(arguments: list[str] | None = None) -> int:
         return int(parsed.handler(parsed))
     except ValueError as error:
         parser.error(str(error))
-    return 2
 
 
 if __name__ == "__main__":

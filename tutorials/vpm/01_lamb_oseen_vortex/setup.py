@@ -29,7 +29,7 @@ START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CIRCULATION_REYNOLDS_NUMBER = 530.0  # Re_Γ = |Γ|/ν — sets the vortex Reynolds number
 BETA_RMAX = 1.12  # r(u_θ,max)/a — velocity-peak radius / Gaussian core radius
-CORE_RADIUS = 0.125  # a₀ — initial velocity-peak radius [m] (defines the analytic profile)
+CORE_RADIUS = 0.125  # a_c,0 — initial velocity-peak radius [m] (defines the analytic profile)
 GAUSSIAN_CORE_RADIUS = CORE_RADIUS / BETA_RMAX  # Gaussian 1/e vorticity radius [m]
 SEPARATION = 1.0  # distance between the two vortex centres [m]
 COLUMN_LENGTH = 40.0 * CORE_RADIUS  # finite vortex column length along z [m]

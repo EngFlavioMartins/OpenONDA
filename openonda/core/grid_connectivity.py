@@ -50,8 +50,8 @@ def connected_grid_components(magnitude, groups, links):
                     while parents[second] != second:
                         parents[second] = parents[parents[second]]
                         second = parents[second]
-                    # Root order makes component labels deterministic in the
-                    # same first-node order as the previous graph traversal.
+                    # Keeping the smaller root makes component labels follow the
+                    # order of each component's first node.
                     if first < second:
                         parents[second] = first
                     else:

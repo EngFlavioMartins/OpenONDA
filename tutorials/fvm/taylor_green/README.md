@@ -10,6 +10,8 @@ cd tutorials/fvm/taylor_green
 ./allplot.sh
 ```
 
+The case runs serially on the CPU (one MPI rank).
+
 `./allrun.sh` clears previous results; `./allcontinue.sh` resumes them. Parameters are at the top of [setup.py](setup.py).
 
 ## Physical setup

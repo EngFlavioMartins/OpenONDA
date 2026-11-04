@@ -1,6 +1,6 @@
 # Leapfrogging reference
 
-`leapfrogging_lbm_trajectory.csv` contains digitized vortex-core trajectories from Fig. 5(b) of Cheng, M., Lou, J. & Lim, T. T. (2015), [Leapfrogging of multiple coaxial viscous vortex rings](https://doi.org/10.1063/1.4915890), *Physics of Fluids* 27, 031702. See the [case comparison](../../readme.md).
+`leapfrogging_lbm_trajectory.csv` contains digitized vortex-core trajectories from Fig. 5(b) of Cheng, M., Lou, J. & Lim, T. T. (2015), [Leapfrogging of multiple coaxial viscous vortex rings](https://doi.org/10.1063/1.4915890), *Physics of Fluids* 27, 031702. See the [case comparison](../../README.md).
 
 The paper's axial coordinate $Z$ is the simulation's $x$. CSV coordinates are `x_over_R0` and `r_over_R0`; subtracting the reference midpoint 2.5 aligns its initial centres at $Z/R_0=2,3$ with $x/R_0=-0.5,0.5$. Only the origin changes.
 
