@@ -84,6 +84,9 @@ or the headers are missing. To evaluate the images on the CPU instead, pass
 `SlipSlabInduction`. Particles on Vulkan, Metal or the CPU evaluate the images on
 the CPU.
 
+Check the GPU before a long run: `nvidia-smi` lists an NVIDIA card and its driver, and
+`python -c "import taichi as ti; ti.init(arch=ti.cuda)"` starts Taichi on it.
+
 ## Check the installation
 
 ```bash
@@ -93,8 +96,22 @@ openonda-verify-install
 
 `openonda info` prints the installed version and location;
 `openonda-verify-install` meshes, solves and restarts a tiny case with every
-solver. `openonda api <name>` shows the documentation of any public class or
+solver; it prints a JSON report and ends with "every installation check passed". `openonda api <name>` shows the documentation of any public class or
 function, for example `openonda api openonda.vpm.ViscousConfig`.
+
+## Troubleshooting
+
+- `conda: command not found` right after the installation: open a new terminal, or run
+  `source ~/miniforge3/etc/profile.d/conda.sh`, then `conda activate OpenONDA`.
+- "Commands resolve outside the OpenONDA environment": another installation comes first on
+  `PATH`; run `conda activate OpenONDA`.
+- "mpiexec did not create the requested MPI communicator": mpi4py was built for another MPI
+  than this `mpiexec`; re-run `source install.sh` to rebuild the environment.
+- A slip-slab case stops with "Gaussian mesh requires …" while the particles run on CUDA:
+  install the CUDA extension above, or evaluate the images on the CPU with
+  `GaussianSlabSettings(backend="cpu")`.
+- A particle case stops with "No Taichi backend could be initialised": no GPU driver answered;
+  check the GPU as above, or set `compute_device="cpu"` in the case.
 
 ## For maintainers: building release packages
 

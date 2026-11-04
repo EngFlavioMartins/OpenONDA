@@ -171,7 +171,8 @@ In the order of the operation:
 
 | Field | Meaning | Default |
 | --- | --- | --- |
-| `freestream_velocity` | Free-stream velocity in m/s | (1, 0, 0) |
+| `freestream_velocity` | Free-stream velocity in m/s; equal to the VPM case's | (1, 0, 0) |
+| `freestream` | Optional free-stream velocity history (`VelocityRamp`) | None |
 | `transfer_region_bounds` | Transfer-region bounds in m, or None for the inset | None |
 | `transfer_inset_spacings` | `L_inset / h` | 8.75 |
 | `blend_start_depth` | `δ_0` in m, or None for `2h` (zero when `blend_end_depth` is zero) | None |
@@ -184,6 +185,9 @@ In the order of the operation:
 | `max_coupling_iterations` | `M` | 6 |
 | `normal_velocity_tolerance` | `ε_{u_n}` in m/s | 1e-5 |
 | `normal_gradient_tolerance` | `ε_{g_t}` in 1/s | 1e-5 |
+| `boundary_mismatch_warning` | tangential FVM–particle mismatch on `Σ_FVM`, in units of the reference speed, above which a warning names the face; None disables it | 0.2 |
+| `boundary_mismatch_limit` | mismatch above which the run stops naming the face; None disables it | 1.0 |
+| `backup` | coupled restart backups (`Backup(schedule, write_at_end)`) | `Backup()` |
 
 Constants: `TRANSFER_INSET_SPACINGS = 8.75`, `BLEND_START_SPACINGS = 2`,
 `BLEND_END_SPACINGS = 6`. `CouplerConfig.blend_depths(h)` returns `(δ_0, δ_1)` in m.

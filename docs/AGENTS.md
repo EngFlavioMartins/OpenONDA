@@ -1,4 +1,4 @@
-# Tutorial authoring
+# Authoring rules for tutorials, solver code and docs
 
 Tutorial cases and user-facing scripts are physics-focused. Keep them minimal,
 clear, well-spaced, and briefly commented. Show the physical inputs, geometry,

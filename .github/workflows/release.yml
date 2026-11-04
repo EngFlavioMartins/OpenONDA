@@ -27,8 +27,8 @@ jobs:
 
   wheels:
     # The floating-point environment helper is compiled, so PyPI needs one
-    # manylinux/macOS wheel per platform. Each wheel is installed and solved
-    # with outside the checkout before it can be published.
+    # manylinux/macOS wheel per platform. Each wheel is installed outside the
+    # checkout and solves a case before it can be published.
     name: Wheel for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:

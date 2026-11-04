@@ -1,4 +1,4 @@
-"""Source-preserving numerical comparisons for solver validation workflows."""
+"""Numerical comparisons of solver results with references, keeping the source data unchanged."""
 
 import numpy as np
 from scipy.integrate import trapezoid

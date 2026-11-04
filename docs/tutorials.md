@@ -1,6 +1,6 @@
 # Learning with the tutorials
 
-The tutorials are the main way to learn OpenONDA. As in OpenFOAM, each case is a small, self-contained directory that sets up one physical problem. Run it as it is, compare with the reference it ships, then change it. Work through them roughly in the order below; each step adds a few new solver features. The case directories are under `tutorials/fvm`, `tutorials/vpm` and `tutorials/coupled_fvm_vpm`.
+The tutorials are the main way to learn OpenONDA. As in OpenFOAM, each case is a small, self-contained directory that sets up one physical problem. Run it as it is, compare its figures with those in its README (`allrun.sh` clears the local `figures/` until `allplot.sh` draws them again), then change it. Work through them roughly in the order below; each step adds a few new solver features. The case directories are under `tutorials/fvm`, `tutorials/vpm` and `tutorials/coupled_fvm_vpm`.
 
 ## Anatomy of a case
 
