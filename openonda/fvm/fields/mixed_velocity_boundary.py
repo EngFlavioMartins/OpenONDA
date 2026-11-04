@@ -3,11 +3,8 @@
 The same condition, ``U_b . n = u_e . n`` and ``P_t dU/dn = g_t``, holds on every
 face of a coupling patch whatever the flow direction, so flow may enter, leave
 or reverse on any face. Prescribing the full external velocity on inflow faces
-instead (tried 31 October 2026 for the NACA 4412 instability) puts the sampling
-error of the particle velocity into the boundary cells as a vorticity sheet
-that the FVM convects inwards; on the coupled cylinder at Re = 150 it raised the
-transfer corrections 4-8 times from the first coupling interval and lowered the
-mean drag by 4 %, with the upstream face alone responsible. Stability on skewed
+instead puts the sampling error of the particle velocity into the boundary cells
+as a vorticity sheet that the FVM convects inwards from the upstream face. Stability on skewed
 outer cells is the mesh's task (``coupling_box``), and the coupler stops a run
 whose boundary mismatch grows (``boundary_mismatch_limit``).
 """

@@ -13,7 +13,7 @@ From this directory with OpenONDA installed:
 
 The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`, which never falls back to the CPU; without a GPU the run stops with a message.
 
-`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes saved native backups. For one case, use `python setup.py vortex cs`; physical choices are `vortex`, `dipole`, `merging`, and methods are `cs`, `rwm`, `dvh`, `gbd`. A single RWM run is one realization; use `python -m assets.rwm_ensemble vortex --number-of-realizations 10` for the ensemble comparison. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes the saved backups. For one case, use `python setup.py vortex cs`; physical choices are `vortex`, `dipole`, `merging`, and methods are `cs`, `rwm`, `dvh`, `gbd`. A single RWM run is one realization; use `python -m assets.rwm_ensemble vortex --number-of-realizations 10` for the ensemble comparison. `./allplot.sh pdf` exports PDF.
 
 ## Physical and numerical inputs
 

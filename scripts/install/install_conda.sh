@@ -110,6 +110,7 @@ source "$CONDA_PREFIX/etc/conda/activate.d/openonda.sh"
 "$CONDA_PREFIX/bin/python" "$REPO_ROOT/install.py" --with-environment "$@"
 
 if [[ -z "$CONDA_IN_SHELL" ]]; then
+    echo "Adding Conda to your shell start-up file (conda init); undo with 'conda init --reverse'."
     case "${SHELL:-/bin/bash}" in
         */zsh) "$CONDA_COMMAND" init --quiet zsh ;;
         *) "$CONDA_COMMAND" init --quiet bash ;;

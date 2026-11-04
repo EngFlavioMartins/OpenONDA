@@ -1,9 +1,10 @@
 # Test suite index
 
 The suite proves that the solvers compute the right physics and that an
-installation works. Each test compares against an analytic result, an
-independent reference, a conservation law or a complete solver run. Regression
-checks for individual past defects are not kept.
+installation works. Each solver test compares against an analytic result, an
+independent reference, a conservation law or a complete solver run; the tests of
+the installers replace the external commands they would run. Regression checks
+for individual past defects are not kept.
 
 | Location | Coverage |
 | --- | --- |

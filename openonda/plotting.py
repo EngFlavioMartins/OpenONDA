@@ -53,7 +53,7 @@ MARK_EVERY = {
     "trajectory": 5,
 }
 
-# Approved Thesis/thesis_visuals palette (2026-10-02).
+# Colour palette of the thesis figures.
 PALETTE = {
     "dark": "#0D3D45",
     "teal": "#156074",

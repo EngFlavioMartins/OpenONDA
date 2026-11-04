@@ -1,4 +1,4 @@
-"""Regression tests for compact, ParaView-readable VTK and sampler output."""
+"""Compact, ParaView-readable VTK and sampler output."""
 
 from __future__ import annotations
 

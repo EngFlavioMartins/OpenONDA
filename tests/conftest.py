@@ -1,6 +1,6 @@
-"""Repository-wide scientific test taxonomy.
+"""Repository-wide test markers.
 
-Every collected test receives exactly one primary tier.  Cross-cutting markers
+Every collected test receives exactly one primary marker.  Cross-cutting markers
 (``slow``, ``gpu``, and ``stochastic``) remain additive.  Keeping the mapping
 here makes CI selection inspectable without scattering path rules through the
 individual numerical tests.
@@ -28,7 +28,7 @@ QUALIFICATION_MODULES = frozenset(
 INTEGRATION_MODULES = frozenset(
     {
         "test_arbitrary_wall_run_stages.py",
-        "test_fvm_vpm_smoke.py",
+        "test_coupled_stepping_and_restart.py",
         "test_moving_mesh_coupling.py",
         "test_physical_coupling.py",
         "test_transfer_lattice.py",
@@ -61,7 +61,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Apply the declared primary tier and orthogonal execution properties."""
+    """Apply the primary marker and the execution markers of each test."""
     for item in items:
         path = Path(str(item.path))
         module = path.name

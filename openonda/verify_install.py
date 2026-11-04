@@ -169,7 +169,7 @@ def _verify_cartesian_mesher() -> dict[str, str | int]:
             "Cartesian octree acceleration is inactive; check that NUMBA_DISABLE_JIT is unset"
         )
     if mesh["n_cells"] <= 0 or not np.all(np.isfinite(mesh["vertex_position"])):
-        raise RuntimeError("Cartesian mesher installation smoke produced an invalid template")
+        raise RuntimeError("Cartesian mesher installation check produced an invalid template")
     return {
         "balancing_backend": "numba",
         "n_cells": int(mesh["n_cells"]),
@@ -216,13 +216,13 @@ def _verify_native_fvm() -> dict[str, float | int]:
             diagnostics = solver.last_diagnostics
 
     if not np.all(np.isfinite(velocity)) or not np.all(np.isfinite(pressure)):
-        raise RuntimeError("Native FVM installation smoke produced non-finite fields")
+        raise RuntimeError("Native FVM installation check produced non-finite fields")
     if diagnostics is None or diagnostics.n_nonfinite_values:
-        raise RuntimeError("Native FVM installation smoke did not produce finite diagnostics")
+        raise RuntimeError("Native FVM installation check did not produce finite diagnostics")
     if not diagnostics.linear_solves or not all(
         result.converged for result in diagnostics.linear_solves
     ):
-        raise RuntimeError("Native FVM installation smoke had an unconverged linear solve")
+        raise RuntimeError("Native FVM installation check had an unconverged linear solve")
     return {
         "n_cells": int(mesh["n_cells"]),
         "max_courant_number": float(diagnostics.max_courant_number),
@@ -270,24 +270,24 @@ def _verify_native_vpm() -> dict[str, object]:
             )
             solver.run()
             if solver.run_status != "completed":
-                raise RuntimeError(f"VPM installation smoke stopped: {solver.run_status}")
+                raise RuntimeError(f"VPM installation check stopped: {solver.run_status}")
         finally:
             solver.close()
 
         solution = Path(case.directory) / "solution"
         checkpoints = vpm_backup_files(solution)
         if len(checkpoints) != 1:
-            raise RuntimeError(f"VPM installation smoke expected one checkpoint: {checkpoints}")
+            raise RuntimeError(f"VPM installation check expected one checkpoint: {checkpoints}")
         checkpoint = checkpoints[0]
         with h5py.File(checkpoint, "r") as archive:
             positions = archive["particles/position"][:]
             step = int(archive["solver"].attrs["step"])
             time = float(archive["solver"].attrs["time"])
         if step != 1 or not np.isclose(time, 0.01) or not np.isfinite(positions).all():
-            raise RuntimeError("VPM installation smoke saved an invalid state")
+            raise RuntimeError("VPM installation check saved an invalid state")
         reader = pv.get_reader(solution / "vpm.pvd")
         if reader.read()[0].n_points != 2:
-            raise RuntimeError("VPM installation smoke has invalid ParaView output")
+            raise RuntimeError("VPM installation check has invalid ParaView output")
 
         resumed = vpm.VPMSolver(replace(case, directory=Path(directory) / "resumed"))
         try:
@@ -400,10 +400,10 @@ def _verify_distribution_resources() -> dict[str, object]:
         axes.set_xlabel(r"$x$")
         theme.centered_subplots_adjust(figure, outer=0.18, bottom=0.28, top=0.94)
         theme.fit_thesis_y_label_margins(figure, (axes,))
-        figure_path = workspace / "plot-smoke.png"
+        figure_path = workspace / "plot-check.png"
         theme.save_fig(figure, figure_path, dpi=72)
         if not figure_path.is_file() or figure_path.stat().st_size == 0:
-            raise RuntimeError("Matplotlib installation smoke did not create a figure")
+            raise RuntimeError("Matplotlib installation check did not create a figure")
 
         if previous_matplotlib_cache is None:
             os.environ.pop("MPLCONFIGDIR", None)

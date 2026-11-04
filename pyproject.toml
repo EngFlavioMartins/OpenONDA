@@ -225,7 +225,7 @@ unsupported-operator = "ignore"
 invalid-return-type = "ignore"
 missing-argument = "ignore"
 
-# ── Pyrefly (fast type checker, used in the agentic type-check loop) ──────────
+# ── Pyrefly (fast type checker) ──────────
 # `pyrefly check` at the repo root type-checks the actively-maintained Python:
 # the FVM solver and the coupler. The VPM subtree is
 # intentionally excluded because its Taichi DSL is not statically typeable — the
