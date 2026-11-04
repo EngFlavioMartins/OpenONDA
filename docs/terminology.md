@@ -53,13 +53,13 @@ region. From the wall outward:
 | Body wall | `Σ_wall` | wall |
 | Outer FVM boundary | `Σ_FVM` | `outer_boundary_patch` (mesh patch label `numericalBoundary`) |
 | Transfer region | `Ω_transfer` | `transfer_region` |
-| Transfer surface | `Σ_transfer = ∂Ω_transfer \ Σ_wall` | `transfer_surface` |
+| Transfer surface | `Σ_transfer = ∂Ω_transfer \ Σ_wall` | none |
 | Transfer inset (distance from `Σ_FVM` to `Σ_transfer`) | `L_inset` | `transfer_inset_spacings` (in `h`) |
-| Inset band (between `Σ_transfer` and `Σ_FVM`; free particles, no FVM vorticity) | none | `inset_band` |
-| Transfer-surface distance | `d` | `transfer_surface_distance` |
+| Inset band (between `Σ_transfer` and `Σ_FVM`; free particles, no FVM vorticity) | none | none |
+| Transfer-surface distance | `d` | none |
 | Zero-weight layer, `0 < d ≤ δ_0`, `η = 0` | `δ_0` | `blend_start_depth` |
 | Blending ramp, `δ_0 < d < δ_1` | `δ_1` (depth where `η` reaches 1) | `blend_end_depth` |
-| Replacement region, `d ≥ δ_1`, `η = 1` (FVM vorticity replaces particle vorticity) | none | `replacement_region` |
+| Replacement region, `d ≥ δ_1`, `η = 1` (FVM vorticity replaces particle vorticity) | none | none |
 | Remeshing region (`Ω_transfer` extended outward by `L_remesh`) | `L_remesh` | `remeshing_extension_length` |
 | Signed wall distance (positive in fluid); wall normal into the fluid | `d_wall`; `n_wall` | `wall_distance` |
 | Smallest extent of the FVM domain | `L_FVM` | none |
@@ -107,7 +107,7 @@ Defaults: `L_inset = 8.75h`, `δ_0 = 2h`, `δ_1 = 6h`, so the ramp width
 | Net volume flux through `Σ_FVM` | `q_net` | none |
 | Flux-corrected normal velocity | `u^VPM_{corr,n,f}` | none |
 | Net-flux tolerance | `(h/L_FVM)²` | `boundary_flux_tolerance` |
-| Flux-consistent pressure: normal pressure gradient at face `f`; pressure-free flux; coefficient | `(∂p/∂n)_f`; `φ^H_f`; `D_{n,f}` | `fixedFluxPressure` |
+| Flux-consistent pressure: normal pressure gradient at face `f`; pressure-free flux; coefficient | `(∂p/∂n)_f`; `φ^H_f`; `D_{n,f}` | `fixed_flux_pressure` |
 
 `g_t` is the normal gradient of the tangential velocity, never a "tangential
 gradient" (a derivative along the surface).
@@ -118,14 +118,14 @@ In the order of the operation:
 
 | Term | Symbol | Code |
 | --- | --- | --- |
-| Vorticity transfer (the whole operation) | `𝒯` | `VorticityTransfer`, `transfer_vorticity` |
+| Vorticity transfer (the whole operation) | `𝒯` | `VorticityTransfer`, `transfer_vorticity_to_particles` |
 | Transfer lattice: spacing, node, lattice cube | `h`, `x_j`, `Ω_j` | `TransferLattice` |
-| Transfer-lattice particles | none | `transfer_lattice_particles` |
+| Transfer-lattice particles | none | none |
 | Blending weight | `η(x)` | `blending_weight` |
-| Remeshed strengths | `Γ^VPM_j` | `remeshed_strength` |
+| Remeshed strengths | `Γ^VPM_j` | none |
 | Representation operator; particle-represented vorticity | `ℳ_σ`; `ℳ_σ[Γ^VPM]` | `gaussian_representation` |
 | FVM target strength (Stokes integral) | `Γ^FVM_j` | `fvm_target_strength` |
-| Reconstructed FVM velocity; interpolation stencil; stencil cell | `ũ^FVM`; `𝒮(x)`; `i` | `interpolation_stencil` |
+| Reconstructed FVM velocity; interpolation stencil; stencil cell | `ũ^FVM`; `𝒮(x)`; `i` | none |
 | No-slip extension | `s(ξ)` | none |
 | Blended target | `Γ_blend` | `blended_target` |
 | Weighted mismatch | `Γ_mis` | `weighted_mismatch` |
@@ -136,7 +136,7 @@ In the order of the operation:
 | Removal threshold (a vorticity): local, interior, GBD | `τ(x)`, `τ_transfer`, `τ_VPM` | `transfer_removal_threshold` |
 | Strength threshold | `Γ_{τ,j} = h³ τ(x_j)` | none |
 | Weak-strength removal (smooth thresholding) | none | `remove_weak_strengths` |
-| Retained strengths | `Γ_{ret,j}` | `retained_strength` |
+| Retained strengths | `Γ_{ret,j}` | `retained_vortex_strength` |
 | Moment correction (restores total strength and linear impulse); its limit | `δΓ_{mom,j}`; 8 % of the transferred L1 norm | `max_moment_correction_fraction` |
 | Total vortex strength; linear and angular impulse per unit density | `Γ_tot`; `I`, `A` | `total_vortex_strength`, `linear_impulse`, `angular_impulse` |
 
@@ -144,11 +144,11 @@ In the order of the operation:
 
 | Term | Symbol | Code |
 | --- | --- | --- |
-| Wall projection (of a particle that crosses the wall) | `δx_p` | `wall_projection` |
-| Fluid-side remeshing stencil of particle `p` (fluid nodes reached without crossing the wall) | `𝒮_p` | `fluid_side_stencil` |
+| Wall projection (of a particle that crosses the wall) | `δx_p` | `WallProjection` |
+| Fluid-side remeshing stencil of particle `p` (fluid nodes reached without crossing the wall) | `𝒮_p` | none |
 | Deposition weights | `w_{jp}` | none |
-| Diffusion-flux mask (1 for a fluid link, 0 when the link touches the solid or crosses the wall) | `𝟙_{jk}` | `diffusion_flux_mask` |
-| Nodes connected through the fluid (support of the GBD moment correction) | none | `fluid_connected_nodes` |
+| Diffusion-flux mask (1 for a fluid link, 0 when the link touches the solid or crosses the wall) | `𝟙_{jk}` | none |
+| Nodes connected through the fluid (support of the GBD moment correction) | none | none |
 
 ## Particles, errors and flow scales
 
@@ -308,7 +308,7 @@ substeps per coupling interval`, `stability number` → `Lagrangian CFL number`,
 `--interface-iterations`, `--interface-tolerance` became `--coupling-iterations`,
 `--coupling-tolerance`.
 
-Coupled backups are at `BACKUP_FORMAT_VERSION` 15 and boundary schema 5; the
+Coupled backups are at `BACKUP_FORMAT_VERSION` 18 and boundary schema 5; the
 boundary-data keys `tangential_gradient`, `has_tangential_gradient` became
 `normal_gradient`, `has_normal_gradient`.
 

@@ -59,8 +59,8 @@ When checking convergence, refine the spacing and the time step together. Result
 | [Pitching airfoil](../tutorials/coupled_fvm_vpm/05_pitching_airfoil/README.md) | NACA 0012 pitching about its quarter chord at $Re=1000$ | A turning FVM domain, coupling geometry in body coordinates |
 | [Wind turbine with meshed blades](../tutorials/coupled_fvm_vpm/06_rotor_flow/README.md) | The VLM turbine with resolved blades | A rotating FVM disk, blade surfaces lofted from the VLM blade, power and blade forces against the VLM rotor |
 
-Each coupled case has a `reference_flow/` subdirectory that solves the same flow with the FVM alone on a large domain; the cube reference also shows a grid-convergence study and MPI parallel runs.
+Each coupled case except the wind turbine has a `reference_flow/` subdirectory that solves the same flow with the FVM alone on a large domain; the cube reference also shows a grid-convergence study and MPI parallel runs.
 
 ## Variants
 
-Several cases run variants from one `setup.py`, listed one per line in `allrun.sh`: diffusion schemes (`python setup.py vortex gbd`), stretching schemes (`--variant dns_transposed`), stabilization mechanisms (`python setup.py baseline`), plate angles (`--angle -5`), grid levels (`--name grid_h0045 -h 0.045`), or coupling parameters (`--box-margin 1.4`). Run a single variant by copying its line. Each variant writes and resumes its own results.
+Several cases run variants from one `setup.py`, listed one per line in `allrun.sh`: diffusion schemes (`python setup.py vortex gbd`), stretching schemes (`--variant dns_transposed`), stabilization mechanisms (`python setup.py les_stabilized`), plate angles (`--angle -5`), grid levels (`--name grid_h0045 -h 0.045`), or coupling parameters (`--box-margin 1.4`). Run a single variant by copying its line. Each variant writes and resumes its own results.

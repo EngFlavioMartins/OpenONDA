@@ -4,9 +4,11 @@ Each tutorial plots its own results:
 
 ```bash
 ./allplot.sh          # PNG and PDF
-./allplot.sh png      # PNG only
-./allplot.sh pdf      # PDF only
+./allplot.sh png      # PNG only (VPM and FVM cases)
+./allplot.sh pdf      # PDF only (VPM and FVM cases)
 ```
+
+The coupled cases write both formats and ignore the argument.
 
 The plot scripts in `assets/` read `samples/` and `solution/` directly; edit them to change a comparison. For fields, open `solution/fvm.pvd`, `solution/vpm.pvd` or `solution/vlm.pvd` in ParaView; several cases provide `assets/paraview_state.py` with a ready-made view. Perceptually uniform colour maps for ParaView are in `docs/assets/scientific_colour_maps/`.
 
@@ -22,4 +24,4 @@ The plot scripts in `assets/` read `samples/` and `solution/` directly; edit the
 
 When comparing runs, keep the colour limits, physical times, normalization and averaging windows the same. Use a sequential colour map for magnitudes and a diverging map centred on zero for signed fields. A smooth-looking wake does not prove accuracy: compare forces, profiles or vortex trajectories while refining the resolution and time step.
 
-Your own plots can share the tutorial style through `openonda.plotting` (`set_style()`, `export_figure()`).
+Your own plots can share the tutorial style: call `openonda.plotting.set_thesis_style()` before the figure and `export_figure()` to save it, as the tutorial scripts do ([figure style](tutorial-figure-style.md)).

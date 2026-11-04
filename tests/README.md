@@ -26,10 +26,10 @@ python -m pytest tests/vpm/test_core_numerical_qualification.py
 
 Markers are declared in [pyproject.toml](../pyproject.toml) and assigned in
 [conftest.py](conftest.py): `unit`, `integration`, `qualification`,
-`tutorial`, `slow`, `gpu` and `stochastic`. GPU tests need a CUDA device
-(set `CUDA_PATH=/usr` for the Gaussian image mesh); MPI tests need `mpiexec`.
+`tutorial`, `slow`, `gpu` and `stochastic`. GPU tests need a CUDA device and,
+for the Gaussian image mesh, the CUDA 12 headers that
+[GPU acceleration](../docs/installation.md#gpu-acceleration) describes; MPI tests need `mpiexec`.
 Numerical qualifications can write a report with
 `--numerical-report=numerical-results.json`.
 
-For FVM capability evidence, see the
-[qualification reference](../docs/validation/fvm_qualification.md).
+The FVM qualification tests are those marked `qualification` under `tests/fvm/`.

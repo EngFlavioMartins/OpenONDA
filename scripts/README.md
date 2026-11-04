@@ -9,5 +9,3 @@ plotting dependencies. Add `--dev` for the test, lint and packaging tools, and
 The helpers under `install/` are called by the root installer; they are not
 separate user installation steps. See [installation](../docs/installation.md).
 
-Maintainers can repeat a fresh Ubuntu installation using the
-[VirtualBox baseline](../docs/development/verification/clean_install_vm.md).

@@ -18,7 +18,7 @@
 OpenONDA, the *Operator for Numerical Design and Aerodynamics* (*onda* is Portuguese for "wave"), provides three numerical methods:
 
 - **Finite Volume Method (FVM)** OpenFOAM-inspired finite-volume solver with meshing capabilities.
-- **Vortex Particle Method (VPM)** A 3D vortex particle solver written purely in Python, GPU-accelerated and with LES-modelling capabilities.
+- **Vortex Particle Method (VPM)** A 3D vortex particle solver written in Python with Taichi kernels, GPU-accelerated and with LES-modelling capabilities.
 - **Vortex Lattice Method (VLM)** solver for simple, lifting surfaces.
 
 <p align="center">
@@ -36,10 +36,10 @@ cd OpenONDA
 source install.sh
 ```
 
-The installer creates an `OpenONDA` Conda environment, installs the package, and runs a short solve-and-restart case for each solver. 
+The installer creates an `OpenONDA` Conda environment, installs the package, and runs a short solve-and-restart case for each solver. If Conda is absent it first installs Miniforge into `~/miniforge3`; the environment brings MPI, PETSc, ParaView and LaTeX for the tutorial figures.
 
 Activate the environment in later sessions with
-`conda activate OpenONDA`. The [installation guide](docs/installation.md) covers optional CUDA dependencies.
+`conda activate OpenONDA`, and check it with `openonda-verify-install`. The [installation guide](docs/installation.md) says what the installer changes and covers the optional CUDA dependencies.
 
 ## The first simulation
 
@@ -51,7 +51,7 @@ cd tutorials/fvm/taylor_green
 ./allplot.sh    # make the figures
 ```
 
-By default, results are written to `solution/*.pvd`, which are ParaView-friendly.
+The run writes its fields to `solution/fvm.pvd` for ParaView and its kinetic-energy history to `solution/history.csv`; `./allplot.sh` draws that decay against the exact solution in `figures/taylor_green_decay.png` and `.pdf`. Each case directory holds its launchers (`allrun.sh`, `allplot.sh`, ...) and a README with its physics and parameters.
 
 ## Writing your own case
 
@@ -99,7 +99,7 @@ case = vpm.VPMCase(
 vpm.VPMSolver(case).run()
 ```
 
-Running a FVM tutorial case:
+A uniform flow through an FVM box:
 
 ```python
 import numpy as np
@@ -149,16 +149,16 @@ with fvm.FVMSolver(case) as solver:
   </tr>
   <tr>
     <td width="50%"><a href="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md"><img src="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_shedding.gif" alt="Coupled FVM and VPM vorticity fields and force coefficients for cylinder flow at Re = 150"></a><br><sub><b>Cylinder shedding</b>: coupled FVM and VPM simulation.</sub></td>
-    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube_flow.gif" alt="Coupled FVM and VPM vorticity fields around a cube, with drag coefficient history"></a><br><sub><b>Flow past a cube</b>: the FVM resolves the near-body flow, the VPM transports downstream vorticity.</sub></td>
   </tr>
-  
 </table>
 
 ## Learn more
 
+- [Installation](docs/installation.md): requirements, GPU set-up and the installation check.
 - [Tutorials](docs/tutorials.md): runnable examples grouped by solver and flow problem.
 - [Finite volumes](docs/fvm.md), [vortex particles and lifting surfaces](docs/vpm.md) and [FVM–VPM coupling](docs/coupling.md): the models and their settings.
 - [Continuing runs](docs/continuation.md), [saved results](docs/solution_layout.md) and [visualization](docs/visualization.md).
+- [Terminology](docs/terminology.md) of the FVM–VPM coupling: names, symbols and code identifiers.
 - The full manual as one PDF: [`docs/OpenONDA_manual.pdf`](docs/OpenONDA_manual.pdf).
 
 ## Citing OpenONDA

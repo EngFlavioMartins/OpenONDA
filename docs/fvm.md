@@ -148,7 +148,7 @@ motion = fvm.MeshMotion(
 
 `translation` and `rotation_centre`, the pivot of `rotation_degrees` in mesh coordinates, complete the optional initial placement.
 
-The motion classes live in `openonda.core.kinematics` and are the same objects the VLM surfaces use (`fvm.HeavingMotion is vpm.HeavingMotion`); times are in s, angles of the initial placement in degrees, angular velocities in rad/s:
+The prescribed motion classes live in `openonda.core.kinematics` and are the same objects the VLM surfaces use (`fvm.HeavingMotion is vpm.HeavingMotion`); `ElasticMount` is in `openonda.fvm`; times are in s, angles of the initial placement in degrees, angular velocities in rad/s:
 
 | Class | Motion |
 | --- | --- |

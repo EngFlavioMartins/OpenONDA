@@ -13,7 +13,9 @@ source install.sh
 ```
 
 The installer creates and activates an **OpenONDA** Conda environment,
-installing Miniforge first if Conda is absent. The environment holds Python
+installing Miniforge into `~/miniforge3` first if Conda is absent; when Conda was
+not active in the shell, it runs `conda init`, which adds Conda to `~/.bashrc`
+(or `~/.zshrc`). The environment holds Python
 3.11, the FVM, VPM and coupling dependencies, MPI with PETSc for parallel runs,
 ParaView and LaTeX for the tutorial figures. OpenONDA is installed in editable
 mode, so edits to the code take effect immediately. The installer finishes by
@@ -36,17 +38,8 @@ for the development tools, for example `pip install -e ".[parallel,meshing]"`.
 
 ## Released packages
 
-A published release installs without cloning, from PyPI or the `openonda`
-Conda channel:
-
-```bash
-pip install openonda
-conda create -n openonda -c conda-forge -c openonda openonda
-```
-
-The Conda package brings MPI with PETSc; Taichi comes from the `openonda`
-channel, which repackages its official wheels, and everything else from
-conda-forge.
+OpenONDA is not yet published on PyPI or on a Conda channel; install it from a
+clone as above.
 
 ## First simulation
 
@@ -103,7 +96,7 @@ openonda-verify-install
 solver. `openonda api <name>` shows the documentation of any public class or
 function, for example `openonda api openonda.vpm.ViscousConfig`.
 
-## Release packages
+## For maintainers: building release packages
 
 A published GitHub release builds and tests the PyPI wheels
 (`.github/workflows/release.yml`) and the Conda packages

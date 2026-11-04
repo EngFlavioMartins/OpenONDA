@@ -42,7 +42,7 @@ A filament or ring circulation (m²/s) and its physical core radius belong to th
 
 `VPMCase.initial_conditions` holds objects whose `build()` returns a `vpm.VortexParticleSet`: positions, volumes, core radii, strengths $\boldsymbol{\omega}V_p$, viscosity, the nominal spacing and optional `group_id` labels that tag each vortex in diagnostics. The tutorials build theirs in `assets/initial_conditions.py`: Gaussian filaments on a triangular lattice for the [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md), and Gaussian rings on a toroidal lattice with Widnall disturbances for the [single](../tutorials/vpm/02_vortex_ring/README.md) and [leapfrogging](../tutorials/vpm/03_vortex_interactions/readme.md) rings. Copy one as a template; the [run example](#run-and-inspect) builds a vortex column in a few lines.
 
-Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above one so that neighbouring blobs overlap; `core_radius_ratio` in the viscous settings sets it (default 2.5). Large cores smooth small structures; small cores leave holes between particles. Because the blobs themselves smooth the field, a Gaussian vortex of radius $a$ is sampled with the remaining width $\sqrt{a^2-\sigma^2}$, which needs $a>\sigma$. Refine $h$ and $\sigma$ together and compare physical observables.
+Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above one so that neighbouring blobs overlap; `core_radius_ratio` in the viscous settings sets it (default 2.5; the recipe for long runs below uses 1.5). Large cores smooth small structures; small cores leave holes between particles. Because the blobs themselves smooth the field, a Gaussian vortex of radius $a$ is sampled with the remaining width $\sqrt{a^2-\sigma^2}$, which needs $a>\sigma$. Refine $h$ and $\sigma$ together and compare physical observables.
 
 ## Induction and stretching
 
@@ -54,7 +54,7 @@ Choose $h$ fine enough to resolve the smallest vortex core, and $\sigma/h$ above
 | `integrator` | `RK2()`, `SSPRK3()` or `RK4()`, advancing positions and strengths together. |
 | `compute_device`, `precision` | `auto`, `cpu`, `cuda`, `vulkan` or `metal`; `f32` or `f64`. |
 
-Choose the induction backend by particle count. On a CUDA GPU, `DirectInduction` is the fastest up to about 50k particles and `FMMInduction()` above that; at 81k particles FMM took 0.6 s per step against 0.9 s for direct summation and 2.8 s for the treecode (core spreading, RTX 3060 Laptop). FMM keeps the velocity within $3\times10^{-4}$ and its gradient within $1.4\times10^{-3}$ of direct summation (relative $L_2$ error on an 81k-particle vortex ring). `TreecodeInduction()` is more accurate, within $3\times10^{-4}$ and $7\times10^{-4}$, about fifty times below the particle discretization error of the 8.8k-particle ring, but slower on GPUs; second-order multipoles are cheaper and more than ten times less accurate. On a CPU the fast methods pay off below 10k particles, and FMM was about twice as fast as the treecode at 81k particles.
+Choose the induction backend by particle count. On a CUDA GPU, `DirectInduction` is the fastest for small clouds and `FMMInduction()` for large ones; `TreecodeInduction()` is the slowest of the three on a GPU. FMM and the treecode both keep the velocity and its gradient well below the particle discretization error of direct summation; the treecode is the more accurate of the two, and its second-order multipoles are cheaper and much less accurate. On a CPU the fast methods pay off for smaller clouds, and FMM is faster than the treecode. Time a few steps of your own case with each backend before a long run.
 
 Check the fast methods against `DirectInduction` on a small case before trusting forces or instability growth. `freestream_velocity` adds a uniform background flow.
 
@@ -95,7 +95,7 @@ Particles drift apart and stretch, so a long run gradually loses resolution. `St
 | --- | --- |
 | `bounded_domain(bounds)` | Removes particles that leave a keep box; `outflow_fringe_depth` fades them out first (below). |
 | `selective_eddy_viscosity(coefficient)` | Adds $\nu_s=C\,h^2\max(\boldsymbol{\omega}\cdot\mathbf{S}\boldsymbol{\omega}/|\boldsymbol{\omega}|^2,0)$ (Winckelmans, 1995) where the strain stretches the vorticity. On by default with an LES model (below). |
-| `pedrizzetti_relaxation(factor, interval_steps)` | Aligns strengths with the local vorticity. |
+| `pedrizzetti_relaxation(factor=..., interval_steps=...)` | Aligns strengths with the local vorticity. |
 | `conservative_filter(...)` | Regenerates the particles on a regular lattice at intervals, conserving total strength and impulse within energy and enstrophy loss limits. |
 | `filament_refinement` | Splits over-stretched particles along their vortex lines: `FilamentRefinementConfig.adaptive(interval_steps=...)`. |
 | `divergence_relaxation` | Reduces the divergence of the particle vorticity field: `DivergenceRelaxationConfig(...)`. |
@@ -120,7 +120,7 @@ A particle run usually ends because the particles stop representing a solenoidal
 1. Overlap the cores, $\sigma/h=1.5$. Against $\sigma=h$ it adds about a third to the lifetime without extra dissipation.
 2. Remesh only when core spreading has grown the cores (`regularization_core_radius_trigger`). Every regeneration on the lattice seeds lattice-symmetric modes, so remeshing at fixed short intervals shortens the run.
 3. If a sub-grid model is needed, use `sigma()`. It stays off laminar vortices that the particles resolve, so it does not lower the Reynolds number the way Smagorinsky does. It does not by itself stop a field from degrading: in the leapfrogging rings the LES and the DNS ended at the same time at both $Re_\Gamma=3000$ and $3\times10^4$.
-4. Add Pedrizzetti relaxation with moment restoration: `pedrizzetti_relaxation(factor, preserve_vortex_strength=False, preserve_moments=True)`. Choose the rate $f/\Delta t$ above the physical growth rates (about 1 s⁻¹ here) and well below the core vorticity. At $f/\Delta t\approx5$ s⁻¹ the rings ran to the end of the 12 s run, twice the DNS lifetime, with the same energy, enstrophy and paths. At 1.3 s⁻¹ the run nearly reached the divergence limit during the merger; at 13 s⁻¹ three-dimensional growth was delayed by about three seconds against the DNS.
+4. Add Pedrizzetti relaxation with moment restoration: `pedrizzetti_relaxation(factor=..., preserve_vortex_strength=False, preserve_moments=True)`. Choose the rate $f/\Delta t$ above the physical growth rates (about 1 s⁻¹ here) and well below the core vorticity. At $f/\Delta t\approx5$ s⁻¹ the rings ran to the end of the 12 s run, twice the DNS lifetime, with the same energy, enstrophy and paths. At 1.3 s⁻¹ the run nearly reached the divergence limit during the merger; at 13 s⁻¹ three-dimensional growth was delayed by about three seconds against the DNS.
 5. Judge every change by the energy, enstrophy, mode and path histories against the DNS over the time the DNS remains valid. A longer run with a different history is no longer the same flow.
 
 Fast induction adds noise: with `FMMInduction` the rings' DNS ended at 6.0 s, against 7.8 s with direct summation.
