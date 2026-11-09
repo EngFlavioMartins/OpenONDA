@@ -1,45 +1,33 @@
 # Terminology of the FVM–VPM coupling
 
-This file is the single source of the names, symbols and code identifiers of the
-OpenONDA coupler. The thesis (Chapter 4 and every coupling passage), Paper 1 and
-the code use exactly these. The two LaTeX projects share the macro file
-`coupling_notation.tex`, which defines the symbols below. Approved 26 October 2026.
+The names, symbols and code identifiers of the OpenONDA coupler. The code, its
+messages, the coupled tutorials and the publications on the method use these.
 
-## Rules
+## Notation
 
-1. One object has one name, one symbol and one code identifier, identical in the
-   thesis, the paper and OpenONDA.
-2. The solver labels are FVM and VPM, upright. A subscript names the solver that
+1. The solver labels are FVM and VPM, upright. A subscript names the solver that
    owns a domain, surface, step, parameter or operator (`Ω_FVM`, `Δt_VPM`,
    `τ_VPM`). A superscript names the solver that computed a field value
    (`u^VPM`, `ω^FVM`, `Γ^FVM_j`).
-3. The superscript slot holds only that solver label, a time level `n`, a
+2. The superscript slot holds only that solver label, a time level `n`, a
    coupling iteration `(m)`, a Runge–Kutta stage `(r)`, the predictor `*`, or a
    transpose. Stage names, limits and tolerances are never superscripts.
-4. Other labels are words or plain abbreviations, upright, in the subscript:
+3. Other labels are words or plain abbreviations, upright, in the subscript:
    transfer, wall, inset, remesh, blend, mis, corr, lim, ret, mom, tot. A
    combined subscript lists stage, then component, then index:
    `u^VPM_{corr,n,f}`, `Γ_{lim,j}`.
-5. Indices are italic and keep one meaning: `p` particle (`q` the source
+4. Indices are italic and keep one meaning: `p` particle (`q` the source
    particle in pair sums), `j` lattice node, `f` boundary face, `C` FVM cell,
    `i` stencil cell, `n` coupling time, `m` coupling iteration, `k` FVM
    substep, `ℓ` diffusion substep.
-6. A name says what the object is or what the operation changes: the quantity,
-   its new value, and where.
-7. Circulation is only a line integral of velocity (bound circulation, a planar
+5. Circulation is only a line integral of velocity (bound circulation, a planar
    shed vortex). The volume integral of three-dimensional vorticity is the total
    vortex strength `Γ_tot`.
-8. Remeshing is the `M4′` scatter onto a lattice; regeneration is the creation
+6. Remeshing is the `M4′` scatter onto a lattice; regeneration is the creation
    of particles at lattice nodes after GBD diffusion; vorticity transfer is the
    whole FVM-to-particle operation. "GBD remeshing" is not used.
-9. The interface is the outer FVM boundary and the transfer region together,
+7. The interface is the outer FVM boundary and the transfer region together,
    never one of them alone.
-10. First use in each section gives name and symbol; captions name every symbol
-    they show; table headers carry units; values are normalised groups
-    (`Δt_VPM U∞/D`).
-11. Every name, parameter and symbol is immediately meaningful to a CFD reader:
-    stencil, flux, moment, threshold, mask. Closure means only a turbulence
-    closure.
 
 ## Domains, surfaces and zones
 
@@ -214,109 +202,3 @@ is their complement). Strength thresholds: `strength_threshold = h³ τ_transfer
 the replacement region and `surface_strength_threshold`, the absolute GBD strength
 threshold, at the transfer surface.
 The VPM GBD diagnostic is `last_gbd_moment_correction`.
-
-## Retired terms
-
-These words and symbols do not appear in coupling text, code or figures.
-
-| Retired | Use |
-| --- | --- |
-| renewal, renew, renewed particles | vorticity transfer; transfer-lattice particles |
-| exchange interval, exchange step, exchange (for one interval) | coupling interval, coupling step |
-| trace, boundary trace, interface trace, velocity trace | boundary data; reconstructed FVM velocity |
-| sweep, pass, interface iteration | coupling iteration |
-| endpoint estimate, candidate | end-of-interval estimate |
-| final (for the accepted state) | accepted |
-| coupling boundary, numerical boundary (in prose), box faces | outer FVM boundary `Σ_FVM` |
-| FVM core, full-FVM region, unblended region | replacement region |
-| particle-only layer, free-particle band, VPM-only width, dead zone | zero-weight layer, `δ_0` |
-| `δ_buf`, `δ_blend`, blend width | `δ_1` |
-| transfer box, renewal buffer, renewal belt, release buffer, `L_buf` | remeshing region, `L_remesh` |
-| `L_T` | `L_inset` |
-| `Ω_F`, `Ω_P`, `Ω_T`, `Σ_F`, `Σ_T`, `Σ_b`, `Δt_F`, `Δt_P`, `A_F`, `L_F`, `L_box` | `Ω_FVM`, `Ω_VPM`, `Ω_transfer`, `Σ_FVM`, `Σ_transfer`, `Σ_wall`, `Δt_FVM`, `Δt_VPM`, `A_FVM`, `L_FVM`, `L_FVM` |
-| `u^P`, `u^F`, `G^P`, `Γ^P`, `Γ^F`, `𝒜_F`, `ℬ_F`, `ℬ_FVM`, `𝒞_F`, `𝒞_FVM`, `ℛ` | `u^VPM`, `u^FVM`, `G^VPM`, `Γ^VPM`, `Γ^FVM`, `𝒜_FVM`, `ℬ`, `ℬ`, `𝒞`, `𝒞`, `𝒯` |
-| `a_cap`, amplification cap, strength correction factor | `κ_max`, strength-ratio limit; `κ`, strength ratio |
-| `Γ_phys`, physical target | `Γ_blend`, blended target |
-| `Γ_R` | `Γ_mis` |
-| `δΓ_T` | `δΓ_corr` |
-| `Γ_A`, `Γ^new`, bounded coefficients | `Γ_lim`, limited strengths |
-| `Γ′_j` | `Γ_{ret,j}` |
-| `T_j` | `Γ_{τ,j}` |
-| `τ_T`, `τ_P`, transfer vorticity cutoff | `τ_transfer`, `τ_VPM`, removal threshold |
-| `r_n`, `r_g`, `r_{∂u_t}`, `ε_n`, `ε_g`, `r^max` | `r_{u_n}`, `r_{g_t}`, `ε_{u_n}`, `ε_{g_t}` |
-| tangential gradient (for `g_t`), tangential Neumann data | normal gradient of the tangential velocity |
-| `e_F`, `e_C`, `ε_FVM`, `ε_coupling` | `e_FVM`, `e_coupling` |
-| `L_form` | `L_f` |
-| `n_R`, `N_x` | `D/(U∞ Δt_VPM)` |
-| Lagrangian step number (for the coupling limit) | Lagrangian CFL number `Λ` |
-| donor, donor cell, donor set `𝒟(x)` | interpolation stencil `𝒮(x)`, stencil cell |
-| visible node set `𝒱_p`, visible support, wall-visible support | fluid-side remeshing stencil `𝒮_p`; nodes connected through the fluid |
-| open-link indicator, blocked link | diffusion-flux mask `𝟙_{jk}`; zero diffusive flux across the wall |
-| represented field, Gaussian-represented field | particle-represented vorticity |
-| pruning, soft pruning, garrote shrinkage | weak-strength removal, smooth thresholding |
-| closure correction, budget closure, moment recovery, circulation and impulse restoration, vortex invariants | moment correction `δΓ_mom`; total vortex strength and impulse |
-| released (to the VPM), release | evolve under the VPM alone; left free |
-| authority, owned, hand-off, handoff | state which strengths change and where |
-| safeguard | name the check |
-| provenance | which solver computed the value |
-| population (of particles) | particle set |
-| Lagrangian–Eulerian transfer | vorticity transfer |
-| buffered lattice | transfer lattice extended by `L_remesh` |
-
-## Stored data written before 28 October 2026
-
-Diagnostics keys were renamed without aliases. Keys of `coupler_diagnostics.jsonl`:
-
-| Old | New |
-| --- | --- |
-| `fvm_boundary_trace` | `fvm_boundary_data` |
-| `boundary_normal_velocity` | `transfer_surface_normal_velocity` |
-| `vortex_line_closure` | `transfer_surface_normal_vorticity` |
-| `gbd_moment_recovery` (with `pruned_node_count`) | `gbd_moment_correction` (with `removed_node_count`) |
-| `interface_iteration` | `coupling_iteration` |
-| `interface_iteration.sweeps` | `coupling_iteration.iterations` |
-| `interface_iteration.initial_guess` (`vpm_trace`, `previous_correction`) | `coupling_iteration.first_estimate` (`vpm_predictor`, `previous_correction`) |
-| rows `sweep`, `normal_residual_rms`, `gradient_residual_rms` | `iteration`, `normal_velocity_residual`, `normal_gradient_residual` |
-| `timing_seconds.last_sweep_donor_gather` | `timing_seconds.last_transfer_fvm_gather` |
-| `transfer.transfer_method` | dropped |
-| `transfer.eta_blending_enabled` | `transfer.blending_enabled` |
-| `transfer.maximum_transfer_amplification` | `transfer.strength_ratio` |
-| `transfer.representation_residual_{before,after}_prune` | `transfer.representation_residual_{before,after}_removal` |
-| `transfer.population_renewal_*` | `transfer.particle_set_transfer_*` |
-| `transfer.population_pruned_*` | `transfer.particle_set_removed_*` |
-| `transfer.renewal_*`, `transfer.renewed_*` | `transfer.transfer_*` |
-| `transfer.pruned_*` | `transfer.removed_*` |
-
-Keys of `coupler_metadata.json`: the `configuration` fields follow the
-`CouplerConfig` table (`coupling_patch` → `outer_boundary_patch`, `eta_blend_width` →
-`blend_end_depth`, `vpm_only_width` → `blend_start_depth`, `interface_iterations` →
-`max_coupling_iterations`, `interface_normal_tolerance` → `normal_velocity_tolerance`,
-`interface_gradient_tolerance` → `normal_gradient_tolerance`,
-`transfer_amplification_cap` → `max_strength_ratio`,
-`transfer_discretization_error_limit` → `max_moment_correction_fraction`,
-`transfer_vorticity_cutoff` → `transfer_removal_threshold`), and `coupling.fvm_box`
-became `coupling.fvm_domain_bounds`.
-
-Columns written by the cylinder tutorial's `assets/error_analysis.py` and
-`assets/plot_error_analysis.py` (`figures/auxiliary/*.csv`): `exchanges per convective
-time` → `coupling intervals per convective time`, `FVM steps per exchange` → `FVM
-substeps per coupling interval`, `stability number` → `Lagrangian CFL number`,
-`interface sweeps` → `coupling iterations`, `trace velocity mismatch mean|max` →
-`boundary velocity mismatch mean|max`, `first-sweep normal residual` →
-`first-iteration normal-velocity residual`, `first-sweep gradient residual` →
-`first-iteration normal-gradient residual`, `last-sweep gradient residual` →
-`last-iteration normal-gradient residual`, `e_c <quantity> [%]` → `e_coupling
-<quantity> [%]`, `|e_c| <quantity> [%]` → `|e_coupling| <quantity> [%]`; run parameters
-`interface_sweeps` → `coupling_iterations`, `mean sweeps` → `mean coupling iterations`,
-`stability_number` → `lagrangian_cfl`. The tutorial command-line flags
-`--interface-iterations`, `--interface-tolerance` became `--coupling-iterations`,
-`--coupling-tolerance`.
-
-Coupled backups are at `BACKUP_FORMAT_VERSION` 18 and boundary schema 5; the
-boundary-data keys `tangential_gradient`, `has_tangential_gradient` became
-`normal_gradient`, `has_normal_gradient`.
-
-`python scripts/convert_coupler_diagnostics.py <case>/solution [...]` converts an older
-run in place: it renames the keys of `coupler_diagnostics.jsonl` and
-`coupler_metadata.json`, and renames the boundary data and the configuration of every
-coupled backup and renews its digests, so that the run restarts with the current coupler.

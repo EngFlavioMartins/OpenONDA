@@ -1,6 +1,6 @@
 # Elastically mounted cylinder with two degrees of freedom
 
-A no-slip cylinder on equal springs and dampers in the streamwise and cross-flow directions vibrates in a uniform stream. The structure and the operating points are those of the fully meshed study of Martins and Avila (2019), *Int. J. Mech. Sci.* 156, 235–249 (`../two_cylinders.pdf`): mass ratio $m^*=2.4$, ideal added mass $C_A=1$, damping ratio $\zeta=0.5\,\%$, and its points B1 and B2 of table 5 in the medium-Reynolds set of table 4. The fluid force on the wall drives the cylinder (`fvm.ElasticMount`); the FVM box and mesh ride with it and one particle layer carries the outer wake. The [reference flow](reference_flow/README.md) solves the same problem with the FVM alone.
+A no-slip cylinder on equal springs and dampers in the streamwise and cross-flow directions vibrates in a uniform stream. The structure and the operating points are those of the fully meshed study of Martins and Avila (2019), *Int. J. Mech. Sci.* 156, 235–249 ([doi:10.1016/j.ijmecsci.2019.03.024](https://doi.org/10.1016/j.ijmecsci.2019.03.024)): mass ratio $m^*=2.4$, ideal added mass $C_A=1$, damping ratio $\zeta=0.5\,\%$, and its points B1 and B2 of table 5 in the medium-Reynolds set of table 4. The fluid force on the wall drives the cylinder (`fvm.ElasticMount`); the FVM box and mesh ride with it and one particle layer carries the outer wake. The [reference flow](reference_flow/README.md) solves the same problem with the FVM alone.
 
 | Quantity | Value |
 | --- | --- |

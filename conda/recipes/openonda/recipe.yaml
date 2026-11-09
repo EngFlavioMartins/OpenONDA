@@ -19,7 +19,6 @@ source:
     exclude:
       - tutorials/**
       - docs/**
-      - tests/**
       - conda/**
 
 build:

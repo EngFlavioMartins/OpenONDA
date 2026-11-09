@@ -16,8 +16,7 @@ Every module follows the same upstream source: the OpenFOAM.com cfMesh
 integration, [`Community/integration-cfmesh`](https://develop.openfoam.com/Community/integration-cfmesh),
 commit [`3ff8555514827646c34cacfe5f0f691e49cdbc96`](https://develop.openfoam.com/Community/integration-cfmesh/-/commit/3ff8555514827646c34cacfe5f0f691e49cdbc96)
 (2024-12-18), the cfMesh of OpenFOAM-v2412 and the head of its `main` branch
-when checked on 2026-10-13. The mesh-parity fixtures in `tests/mesh_parity`
-were generated with that build. Paths are relative to `meshLibrary/`.
+when checked on 2026-10-13. Paths are relative to `meshLibrary/`.
 
 | Module | cfMesh counterpart | Source directory |
 | --- | --- | --- |

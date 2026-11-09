@@ -3,7 +3,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/EngFlavioMartins/OpenONDA/actions/workflows/ci.yml"><img src="https://github.com/EngFlavioMartins/OpenONDA/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a>
   <a href="https://doi.org/10.5281/zenodo.15111460"><img src="https://zenodo.org/badge/947793258.svg" alt="DOI"></a>
   <img src="https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white" alt="Python 3.11">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-555555" alt="Linux and macOS">

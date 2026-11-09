@@ -2,7 +2,7 @@
 
 Use `source install.sh` at the repository root. It creates and activates the
 `OpenONDA` environment and installs the checkout editably with the solver and
-plotting dependencies. Add `--dev` for the test, lint and packaging tools, and
+plotting dependencies. Add `--dev` for the lint and packaging tools, and
 `--gaussian-mesh-cuda12` for the optional CUDA Gaussian image mesh.
 
 `environment/environment.yml` defines the shared Conda dependencies.

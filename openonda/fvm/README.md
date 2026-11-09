@@ -17,6 +17,3 @@ The implementation is organized by numerical task:
 - `motion/`: motion of the whole mesh, prescribed (`MeshMotion` with a motion from `openonda.core.kinematics`) or elastically mounted (`ElasticMount`).
 - `sampling/`: force, y+, line and surface samplers.
 - `coupling/`: field gathers and boundary-condition setters for the FVM–VPM coupler.
-
-The [tests README](../../tests/README.md) lists what each test checks; read it before choosing a
-numerical backend or interpreting a new case.

@@ -24,4 +24,4 @@ The plot scripts in `assets/` read `samples/` and `solution/` directly; edit the
 
 When comparing runs, keep the colour limits, physical times, normalization and averaging windows the same. Use a sequential colour map for magnitudes and a diverging map centred on zero for signed fields. A smooth-looking wake does not prove accuracy: compare forces, profiles or vortex trajectories while refining the resolution and time step.
 
-Your own plots can share the tutorial style: call `openonda.plotting.set_thesis_style()` before the figure and `export_figure()` to save it, as the tutorial scripts do ([figure style](tutorial-figure-style.md)).
+Your own plots can share the tutorial style: call `openonda.plotting.set_thesis_style()` before the figure and `export_figure()` to save it, as the tutorial scripts do.

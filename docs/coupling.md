@@ -83,7 +83,7 @@ The FVM keeps inertial-frame velocities on its moving mesh; the boundary data ar
 
 An elastically mounted body (`fvm.ElasticMount`) moves with the fluid force, so its displacement over a coupling interval is known only after the FVM substeps. The particle drift of the interval uses the trajectory predicted from the accepted state with the force at the interval start; the FVM substeps update the force, and the mesh ends the interval a distance of order $\dot F\,\Delta t^2/m$ from the predicted position, which only shifts the outer wake by that distance. The remeshing extension is sized without the structural velocity; keep the particle step short enough that the body moves well under one particle spacing per step.
 
-A planar coupled flow, one particle layer between slip planes normal to z, accepts rotations about z only. `tests/coupler/test_moving_mesh_coupling.py` compares the rotating frame on a 3-D coupled box (these comparisons do not all pass yet): a mesh placed a quarter turn about z couples as the unturned mesh, its forces, cell velocities and particle impulse and angular impulse turned with it to within $10^{-4}$ of their scale, and a box pitching by 10° at 2 Hz couples as an FVM domain 1.5 times larger, with mean force differences under 7 % of the largest reference force and mean cell-velocity differences under 6 % of the stream.
+A planar coupled flow, one particle layer between slip planes normal to z, accepts rotations about z only.
 
 ## Configuration
 

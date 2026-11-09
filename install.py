@@ -19,7 +19,7 @@ def main(arguments=None) -> int:
         help="install the optional CUDA 12 Gaussian mesh backend and verify its GPU runtime",
     )
     parser.add_argument(
-        "--dev", action="store_true", help="also install the test, lint and packaging tools"
+        "--dev", action="store_true", help="also install the lint and packaging tools"
     )
     parser.add_argument("--with-environment", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(arguments)

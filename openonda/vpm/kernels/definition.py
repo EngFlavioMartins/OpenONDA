@@ -24,9 +24,6 @@ Write a module next to ``gaussian.py`` that provides:
 Register the definition in ``kernels/registry.py``. If its residual belongs to
 a new family, add that family to ``residual_family`` dispatch in
 ``physics/induction/gaussian_mesh/correction.py``.
-``tests/vpm/test_kernel_conformance.py`` checks every registered kernel: host
-against device functions, normalization, far field, second moment, residual
-against the kernel minus its partner, and the envelopes against the defect.
 """
 
 from collections.abc import Callable

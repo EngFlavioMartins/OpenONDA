@@ -75,11 +75,6 @@ meshing = [
     "numpy-stl>=3.2",
 ]
 
-# Minimal solver-test runner.
-test = [
-    "pytest>=8.0.0",
-]
-
 # Collective FVM sparse solves. The Conda environment is the recommended way
 # to obtain mpi4py, PETSc, and petsc4py against one MPI implementation.
 parallel = [
@@ -87,31 +82,12 @@ parallel = [
     "petsc4py>=3.21.0",
 ]
 
-# Development dependencies.
+# Lint and packaging tools for contributors.
 dev = [
-    "pytest>=8.0.0",
     "ruff>=0.9.0",
-    "mypy>=1.0.0",
-    "pyrefly>=1.1.0",
-    "complexipy>=0.1.0",
-    "vulture>=2.0.0",
-    "tach>=0.1.0",
-    "interrogate>=1.5.0",
-    "bandit[toml]>=1.7.0",
-    "pip-audit>=2.0.0",
-    "scalene>=1.5.0",
-    "pre-commit>=2.10.0",
     "build>=1.2.0",
     "twine>=5.0.0",
-    "pygit2>=1.13.0",
 ]
-
-[tool.vulture]
-# Minimum confidence for reporting unused code (0-100).
-min_confidence = 80
-# b_vec: mutated in-place with numpy +=; vulture cannot track writes as reads.
-# op: mpi4py's allreduce keyword, mirrored by the MPI communicator Protocol.
-ignore_names = ["b_vec", "op"]
 
 [project.urls]
 Homepage = "https://github.com/EngFlavioMartins/OpenONDA"
@@ -126,7 +102,7 @@ version = {attr = "openonda.core.version.__version__"}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["openonda*"]
-exclude = ["tests*", "*.__pycache__*"]
+exclude = ["*.__pycache__*"]
 
 [tool.setuptools]
 include-package-data = false
@@ -137,12 +113,10 @@ include-package-data = false
 [tool.setuptools.exclude-package-data]
 "*" = ["**/__pycache__/*"]
 
-# Development tools configuration
+# Lint and format settings
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-# Explicit first-party roots so ruff's import sorting agrees across the pinned
-# pre-commit ruff (v0.9.10) and newer local ruff builds.
 src = ["."]
 exclude = [
     ".git",
@@ -156,14 +130,14 @@ exclude = [
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
 ignore = [
-    "E501",   # line too long — handled by formatter
-    "N803",   # argument name should be lowercase — scientific notation (A, N, U, …)
-    "N806",   # variable in function should be lowercase — scientific notation
-    "N802",   # function name should be lowercase — physics conventions
-    "N815",   # mixed-case variable in class — scientific conventions
-    "N999",   # module name invalid — tutorial/script names
-    "E402",   # module-level import not at top — intentional conditional imports
-    "B008",   # function call in default argument — Taichi patterns
+    "E501",   # line too long: the formatter wraps lines
+    "N803",   # argument name should be lowercase: scientific notation (A, N, U)
+    "N806",   # variable in function should be lowercase: scientific notation
+    "N802",   # function name should be lowercase: physics conventions
+    "N815",   # mixed-case variable in class: scientific conventions
+    "N999",   # module name invalid: tutorial and script names
+    "E402",   # module-level import not at top: conditional imports
+    "B008",   # function call in default argument: Taichi patterns
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -177,116 +151,3 @@ force-sort-within-sections = true
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
-
-[tool.mypy]
-python_version = "3.11"
-ignore_missing_imports = true
-implicit_optional = true
-warn_unused_ignores = false
-warn_return_any = false
-warn_unused_configs = false
-show_error_codes = true
-
-# Taichi DSL uses invalid Python type syntax (ti.template(), etc.)
-# Suppress globally because it appears across many VPM files.
-disable_error_code = ["valid-type"]
-
-# VPM and FVM have legacy type debt that is being fixed incrementally.
-# When running mypy on coupler/, ignore errors in imported solver code
-# so that only genuine coupler/ issues are reported.
-[[tool.mypy.overrides]]
-module = "openonda.fvm.*"
-ignore_errors = true
-
-[tool.ty]
-
-[tool.ty.environment]
-python-version = "3.11"
-root = ["."]
-
-[tool.ty.rules]
-unresolved-import = "ignore"
-# Taichi DSL uses invalid Python type syntax (ti.template(), ti.types.vector() etc.)
-# Equivalent to mypy's disable_error_code = ["valid-type"] for the VPM module.
-invalid-type-form = "ignore"
-# Dynamic attributes: Taichi field members and sys._vpm_* stdout redirect helpers
-unresolved-attribute = "ignore"
-# Legacy: many parameters use `= None` as default on typed params; fixing incrementally
-invalid-parameter-default = "ignore"
-# Legacy: class fields typed as ndarray/module but assigned None at class level
-invalid-assignment = "ignore"
-# Taichi types are subscriptable at runtime but not visible to static analysis
-not-subscriptable = "ignore"
-# Taichi-aware function calls and duck-typed VPM API; fixing incrementally
-invalid-argument-type = "ignore"
-call-top-callable = "ignore"
-unknown-argument = "ignore"
-unsupported-operator = "ignore"
-invalid-return-type = "ignore"
-missing-argument = "ignore"
-
-# ── Pyrefly (fast type checker) ──────────
-# `pyrefly check` at the repo root type-checks the actively-maintained Python:
-# the FVM solver and the coupler. The VPM subtree is
-# intentionally excluded because its Taichi DSL is not statically typeable — the
-# same reason [tool.ty] / [tool.mypy] suppress it.
-[tool.pyrefly]
-project-includes = [
-    "openonda/fvm",
-    "openonda/coupler",
-]
-project-excludes = [
-    "**/__pycache__",
-    "**/*.pyx",
-]
-search-path = ["."]
-python-version = "3.11"
-
-[tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q"
-testpaths = ["tests"]
-markers = [
-    "unit: fast, isolated numerical or solver-interface check",
-    "integration: interaction between real solver subsystems",
-    "qualification: independent analytical, manufactured, or convergence evidence",
-    "tutorial: executable case setup and output-format check",
-    "slow: test whose normal runtime is unsuitable for the fast feedback loop",
-    "gpu: test that requires or qualifies a GPU backend",
-    "stochastic: seeded ensemble or random-process qualification",
-]
-
-[tool.coverage.run]
-source = ["openonda"]
-omit = [
-    "*/tests/*",
-    "*/examples/*",
-    "setup.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
-
-[tool.complexipy]
-max_complexity = 15
-exclude = ["tests/*", "tutorials/*", "scripts/*"]
-
-[tool.skylos]
-include = ["openonda/"]
-exclude = ["tests/", "tutorials/", "scripts/", "**/__pycache__/"]
-min_confidence = 80
-
-[tool.bandit]
-exclude_dirs = ["tests", "tutorials"]
-skips = ["B101"]  # Skip assert_used warnings (needed for unit tests)
