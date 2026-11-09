@@ -9,4 +9,4 @@ python -m assets.plot_delta_wing_force_cycles --format "${1:-both}"
 python -m assets.plot_delta_wing_circulation_history --format "${1:-both}"
 python -m assets.plot_delta_wing_wake_streamwise --format "${1:-both}"
 python -m assets.plot_delta_wing_wake_vertical --format "${1:-both}"
-python -m assets.postprocess render-gif
+python -m assets.render_delta_wing_animation

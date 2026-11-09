@@ -35,7 +35,7 @@ KINEMATIC_VISCOSITY = 1.0e-3  # [m^2/s]
 ROOT_CHORD = 0.5
 TIP_CHORD = 0.1
 HALF_SPAN = 0.5
-ANGLE_OF_ATTACK = 15.0
+ANGLE_OF_ATTACK = 8.0
 SWEEP_ANGLE = 45.0
 CHORDWISE_PANELS = 8
 SPANWISE_PANELS = 18
@@ -43,15 +43,19 @@ AIR_DENSITY = 1.225  # [kg/m^3]
 WING_SEPARATION = 5.0 * HALF_SPAN
 
 # Prescribed motion
-HEAVE_AMPLITUDE = 0.2
-HEAVE_FREQUENCY = 1.0
+HEAVE_AMPLITUDE = 0.25
+HEAVE_FREQUENCY = 2.0
 PITCH_PIVOT = ROOT_CHORD / 3.0
+PITCH_FEATHERING = 0.6
 ANGULAR_FREQUENCY = 2.0 * np.pi * HEAVE_FREQUENCY
 
 # Resolution
-END_TIME = 20.0  # [s]
-TIME_STEP_SIZE = 0.0025  # [s]
-SAMPLE_INTERVAL_TIME = 0.025  # 40 coupled VPM/VLM backups per heave cycle; >=30 fps
+END_TIME = 6.0  # [s]
+TIME_STEP_SIZE = 0.005  # [s]
+SAMPLE_INTERVAL_TIME = 0.025  # 20 wake-plane samples per heave cycle
+FRAME_INTERVAL_TIME = 0.05
+INTEGRAL_INTERVAL_TIME = 0.25
+BACKUP_INTERVAL_TIME = 1.0
 
 
 TUTORIAL_DIR = Path(__file__).resolve().parent
@@ -70,8 +74,10 @@ def pitch_velocity(phase: float):
         argument = ANGULAR_FREQUENCY * time + phase
         vertical = HEAVE_AMPLITUDE * ANGULAR_FREQUENCY * np.sin(argument)
         acceleration = HEAVE_AMPLITUDE * ANGULAR_FREQUENCY**2 * np.cos(argument)
-        pitch_rate = (acceleration / FREESTREAM_VELOCITY) / (
-            1.0 + (vertical / FREESTREAM_VELOCITY) ** 2
+        pitch_rate = (
+            PITCH_FEATHERING
+            * (acceleration / FREESTREAM_VELOCITY)
+            / (1.0 + (vertical / FREESTREAM_VELOCITY) ** 2)
         )
         return np.array([0.0, -pitch_rate, 0.0])
 
@@ -98,6 +104,7 @@ def _write_surface() -> Path:
 def build_case() -> vpm.VPMCase:
     """Build the owner-clocked Delta case."""
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
+    integral_steps = round(INTEGRAL_INTERVAL_TIME / TIME_STEP_SIZE)
     surface_file = _write_surface()
 
     wings = (
@@ -125,6 +132,7 @@ def build_case() -> vpm.VPMCase:
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         wake_core_overlap=2.5,
+        force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
     )
 
     samplers = tuple(
@@ -145,34 +153,35 @@ def build_case() -> vpm.VPMCase:
         variant=CASE_NAME,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
-            compute_device="cpu",
             vlm=vlm_setup,
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.FMMInduction(stretching_scheme="transposed"),
+            induction=vpm.DirectInduction(stretching_scheme="transposed"),
+            turbulence=vpm.TurbulenceConfig.smagorinsky(),
             freestream_velocity=[-FREESTREAM_VELOCITY, 0, 0],
             stabilization=vpm.StabilizationConfig(
                 remove_particles_by_bounds=[
-                    -8.0,
+                    -7.0,
                     WING_SEPARATION + 1.0,
                     -2.0,
                     2.0,
                     -1.5,
                     1.5,
-                ]
+                ],
+                outflow_fringe_depth=[1.5, 0.0, 0.0, 0.0, 0.0, 0.0],
             ),
-            max_n_particles=250_000,
+            max_n_particles=150_000,
         ),
-        run=vpm.RunPlan(end_time=END_TIME),
-        output=vpm.Output(schedule=vpm.EverySteps(sample_steps)),
+        run=vpm.RunPlan(end_time=END_TIME, state_limit_action="stop"),
+        output=vpm.Output(schedule=vpm.EveryTime(FRAME_INTERVAL_TIME)),
         samplers=vpm.Samplers(
             samples=(
-                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
+                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(integral_steps)),
                 *samplers,
             ),
         ),
-        backup=vpm.Backup(schedule=vpm.EverySteps(sample_steps)),
+        backup=vpm.Backup(schedule=vpm.EveryTime(BACKUP_INTERVAL_TIME)),
     )
     return case
 

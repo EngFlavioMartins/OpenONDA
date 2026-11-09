@@ -1,27 +1,20 @@
-"""Forces, measured heave cycles, period-mean wakes and native particle scenes."""
+"""Forces, measured heave cycles and period-mean wakes."""
 
-import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.collections import PolyCollection
-from matplotlib.colors import Normalize
 from scipy.signal import find_peaks
 
 from openonda import plotting as _theme
 from assets.output_files import read_csv_table, read_json, read_pvd_frames
-from assets.scenes import export_animation, figure_frame
-from openonda.vpm.io.postprocess import backup_frames, surface_mean, vlm_surface
+from openonda.vpm.io.postprocess import surface_mean
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution/delta_wing"
 SAMPLES_DIR = CASE_DIR / "samples/delta_wing"
 FIGURES_DIR = CASE_DIR / "figures"
-DEFAULT_GIF_OUTPUT = FIGURES_DIR / "delta_wing_30fps.gif"
-GIF_FPS = 30
-OBLIQUE_PROJECTION = np.array([[1.0, 0.28, 0.0], [0.0, 0.72, 1.0]])
 
 
 def _directories(value):
@@ -42,6 +35,19 @@ def flow_integrals(samples_dirs=None):
         [pd.DataFrame(read_csv_table(path / "flow_integrals.csv")) for path in paths],
         ignore_index=True,
     ).sort_values("time")
+
+
+def lift_and_thrust(data, solution_dir=SOLUTION_DIR):
+    """Add each wing's lift and thrust coefficients on its own reference area."""
+    vlm = read_json(Path(solution_dir) / "vpm_metadata.json")["configuration"]["numerics"]["vlm"]
+    velocity = _read_freestream_velocity([Path(solution_dir)])
+    speed = np.linalg.norm(velocity)
+    area = {surface["name"]: surface["geometry"]["refs"]["area"] for surface in vlm["surfaces"]}
+    reference = 0.5 * vlm["density"] * speed**2 * data.surface.map(area)
+    thrust = -data[["force_x", "force_y", "force_z"]].to_numpy() @ (velocity / speed)
+    return data.assign(
+        lift_coefficient=data.force_z / reference, thrust_coefficient=thrust / reference
+    )
 
 
 def motion_period(data):
@@ -76,11 +82,6 @@ def _wake_average(collections, end, period):
         )
         for frames in collections
     ]
-
-
-def oblique_projection(points: np.ndarray) -> np.ndarray:
-    """Project native x/y/z points to fixed oblique screen coordinates."""
-    return np.asarray(points) @ OBLIQUE_PROJECTION.T
 
 
 def _wake_frames(samples_dirs, plane_name):
@@ -164,93 +165,3 @@ def _plot_wake_field(
     )
     print(title)
     _save_figure(fig, destination / f"delta_wing_wake_{field_name}.png", figure_format)
-
-
-def render(output: Path, solution_dir=None, fps: int = GIF_FPS) -> None:
-    paths = _directories(solution_dir) if solution_dir is not None else [SOLUTION_DIR]
-    records = sorted(
-        (
-            (time, path, directory.name)
-            for directory in paths
-            for time, path in backup_frames(directory)
-        )
-    )
-    native_times = np.asarray([time for time, _, _ in records])
-    target_times = np.arange(native_times[0], native_times[-1] + 0.5 / fps, 1.0 / fps)
-    selected = [records[np.argmin(abs(native_times - time))] for time in target_times]
-    native_frames = [(time, path, segment, *vlm_surface(path)) for time, path, segment in selected]
-    vertices = np.concatenate(
-        [oblique_projection(corners) for _, _, _, corners, _ in native_frames]
-    ).reshape(-1, 2)
-    circulation = np.concatenate([values for _, _, _, _, values in native_frames])
-    horizontal_limits = (vertices[:, 0].min() - 0.15, vertices[:, 0].max() + 0.15)
-    vertical_limits = (vertices[:, 1].min() - 0.15, vertices[:, 1].max() + 0.15)
-    scale = max(float(np.max(np.abs(circulation))), 1e-12)
-    norm = Normalize(-scale, scale)
-    _theme.set_thesis_style()
-    cmap = plt.get_cmap(_theme.COLORMAPS["vorticity"])
-    frames = []
-    for _target_time, (source_time, _, _source_segment), (
-        _,
-        _path,
-        _segment,
-        corners,
-        values,
-    ) in zip(target_times, selected, native_frames, strict=True):
-        fig, ax = plt.subplots(figsize=(12.5 * _theme.CM, 7.5 * _theme.CM), dpi=160)
-        polygons = oblique_projection(corners)
-        ax.add_collection(
-            PolyCollection(
-                polygons,
-                array=values,
-                cmap=cmap,
-                norm=norm,
-                edgecolors=_theme.COLORS["text"],
-                linewidths=0.6,
-            )
-        )
-        ax.set(
-            xlim=horizontal_limits,
-            ylim=vertical_limits,
-            xlabel="$s$ [m]",
-            ylabel="$h$ [m]",
-            title=f"$t = {source_time:.2g}$ s",
-        )
-        ax.grid(False)
-        ax.locator_params(axis="y", nbins=3)
-        _theme.centered_subplots_adjust(fig, outer=0.15, bottom=0.3, top=0.87)
-        outer = 0.115
-        _theme.centered_subplots_adjust(fig, outer=outer)
-        height_cm = (1 - 2 * outer) * 12.5 * np.ptp(vertical_limits) / np.ptp(
-            horizontal_limits
-        ) + 3.8
-        fig.set_size_inches(12.5 * _theme.CM, height_cm * _theme.CM, forward=False)
-        fig.subplots_adjust(bottom=2.8 / height_cm, top=1 - 1.0 / height_cm)
-        ax.set_aspect("equal")
-        cax = fig.add_axes([outer, 1.3 / height_cm, 1 - 2 * outer, 0.22 / height_cm])
-        fig.colorbar(
-            plt.cm.ScalarMappable(norm=norm, cmap=cmap),
-            cax=cax,
-            orientation="horizontal",
-            ticks=[-scale, 0, scale],
-            format="%.2g",
-            label="$\\Gamma$ [m$^2$/s]",
-        )
-        frames.append(figure_frame(fig))
-        plt.close(fig)
-    export_animation(frames, output, fps=fps)
-    print(f"wrote {output} ({len(frames)} frames at {fps} fps)")
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("render-gif",))
-    parser.add_argument("--solution", type=Path, action="append")
-    parser.add_argument("--output", type=Path, default=DEFAULT_GIF_OUTPUT)
-    parser.add_argument("--fps", type=int, default=GIF_FPS)
-    args = parser.parse_args()
-    render(args.output, args.solution, args.fps)
-
-
-if __name__ == "__main__":
-    main()
