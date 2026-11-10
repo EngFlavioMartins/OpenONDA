@@ -137,7 +137,7 @@ with fvm.FVMSolver(case) as solver:
 
 <table>
   <tr>
-    <td width="50%"><a href="tutorials/vpm/02_vortex_ring/README.md"><img src="tutorials/vpm/02_vortex_ring/assets/vortex_ring.gif" alt="Vortex ring developing an azimuthal instability"></a><br><sub><b>Vortex ring</b>: an initially axisymmetric vortex ring develops an azimuthal instability and breaks up.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/02_vortex_ring/README.md"><img src="tutorials/vpm/02_vortex_ring/assets/vortex_ring.gif" alt="Vortex ring developing an azimuthal instability"></a><br><sub><b>Vortex ring</b>: azimuthal instability and breaks up.</sub></td>
     <td width="50%"><a href="tutorials/vpm/01_lamb_oseen_vortex/README.md"><img src="tutorials/vpm/01_lamb_oseen_vortex/assets/vortex_merging.gif" alt="Two co-rotating Lamb–Oseen vortices merging"></a><br><sub><b>Vortex merging</b>: two co-rotating Lamb–Oseen vortices orbit, diffuse and merge.</sub></td>
   </tr>
   <tr>
@@ -145,7 +145,7 @@ with fvm.FVMSolver(case) as solver:
     <td width="50%"><a href="tutorials/vpm/06_rotor_flow/README.md"><img src="tutorials/vpm/06_rotor_flow/assets/rotor_flow.gif" alt="Three-bladed rotor and vortex-particle wake with thrust and power coefficients"></a><br><sub><b>Rotor</b>: a three-bladed VLM rotor produces a helical vortex-particle wake.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="tutorials/vpm/07_quadcopter/README.md"><img src="tutorials/vpm/07_quadcopter/assets/quadcopter_flow.gif" alt="Four rotor wakes, coloured by rotor, during quadcopter climb"></a><br><sub><b>Quadcopter</b>: four two-bladed rotors shed helical wakes, coloured by rotor, during a 5 m/s climb.</sub></td>
+    <td width="50%"><a href="tutorials/vpm/07_quadcopter/README.md"><img src="tutorials/vpm/07_quadcopter/assets/quadcopter_flow.gif" alt="Four rotor wakes, coloured by rotor, during quadcopter climb"></a><br><sub><b>Quadcopter</b>: four two-bladed rotors shedding helical wakes during a 5 m/s climb.</sub></td>
   </tr>
 </table>
 
@@ -153,8 +153,8 @@ with fvm.FVMSolver(case) as solver:
 
 <table>
   <tr>
-    <td width="50%"><a href="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md"><img src="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_shedding.gif" alt="Coupled FVM and VPM vorticity fields and force coefficients for cylinder flow at Re = 150"></a><br><sub><b>Cylinder shedding</b>: coupled FVM and VPM simulation.</sub></td>
-    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube_flow.gif" alt="Coupled FVM and VPM vorticity fields around a cube, with drag coefficient history"></a><br><sub><b>Flow past a cube</b>: the FVM resolves the near-body flow, the VPM transports downstream vorticity.</sub></td>
+    <td width="50%"><a href="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md"><img src="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_shedding.gif" alt="Coupled FVM and VPM vorticity fields and force coefficients for cylinder flow at Re = 150"></a><br><sub><b>Cylinder shedding</b>: coupled FVM and VPM simulation of a flow past a circular cylinder.</sub></td>
+    <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube_flow.gif" alt="Coupled FVM and VPM vorticity fields around a cube, with drag coefficient history"></a><br><sub><b>Flow past a cube</b>: coupled FVM and VPM simulation of a flow past a cube.</sub></td>
   </tr>
 </table>
 
