@@ -26,9 +26,9 @@ OUTPUT = CASE_DIR / "figures" / "quadcopter_flow.gif"
 
 IMAGE_SIZE = (800, 500)  # [px], as the other gallery animations
 RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
-VIEW_DIRECTION = (-0.45, -1.0, 0.35)  # toward the camera
-VIEW_DISTANCE = 1.48  # camera distance per extent of the final wake
-FOCAL_DROP = 0.14  # focal point below the wake centre, per extent of the final wake
+VIEW_DIRECTION = (-0.45, -1.0, 0.55)  # toward the camera
+VIEW_DISTANCE = 2.9  # camera distance per height of the final wake
+SCREEN_SHIFT = 0.17  # wake left of the frame centre, per height of the final wake
 
 # README gallery style: white DejaVu Serif text on black, a stepped blue vorticity scale
 GALLERY_STYLE = {
@@ -65,20 +65,20 @@ def read_series(collection: Path) -> list[tuple[float, pv.DataSet]]:
 
 
 def camera(bounds: np.ndarray) -> dict[str, np.ndarray]:
-    """A fixed view from above one side, with the vehicle centred in the top of the frame."""
+    """A fixed view from above one side, with the vehicle at the top and its wake below."""
     lower, upper = bounds[::2], bounds[1::2]
     centre = 0.5 * (lower + upper)
-    length = float(np.max(upper - lower))
+    height = float(upper[2] - lower[2])
     toward_camera = np.asarray(VIEW_DIRECTION, dtype=float)
     toward_camera /= np.linalg.norm(toward_camera)
     view_up = np.array([0.0, 0.0, 1.0])
-    screen_up = view_up - (view_up @ toward_camera) * toward_camera
-    screen_up /= np.linalg.norm(screen_up)
-    # Aim below the vehicle, so it fills the top above the colour bar and the force inset
-    focal_point = centre - FOCAL_DROP * length * screen_up
+    screen_right = np.cross(view_up, toward_camera)
+    screen_right /= np.linalg.norm(screen_right)
+    # Aim right of the wake, so it clears the force inset
+    focal_point = centre + SCREEN_SHIFT * height * screen_right
     return {
         "focal_point": focal_point,
-        "position": focal_point + VIEW_DISTANCE * length * toward_camera,
+        "position": focal_point + VIEW_DISTANCE * height * toward_camera,
         "view_up": view_up,
     }
 
@@ -119,20 +119,19 @@ def compose(image, time, coefficients, period, omega_max):
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
-        # Vorticity magnitude, bottom left: its two end values, the title above the bar
-        bar = figure.add_axes((0.06, 0.17, 0.3, 0.045))
+        # Vorticity magnitude, left: its two end values, the title above the bar
+        bar = figure.add_axes((0.05, 0.15, 0.035, 0.32))
         figure.colorbar(
             plt.cm.ScalarMappable(Normalize(0.0, omega_max), VORTICITY_COLORMAP),
             cax=bar,
-            orientation="horizontal",
             ticks=(0.0, omega_max),
         )
-        bar.set_xticklabels(["0", f"{omega_max:g}"])
+        bar.set_yticklabels(["0", f"{omega_max:g}"])
         bar.tick_params(direction="out", length=10, width=1.5)
-        bar.set_title(r"$|\omega|$ [1/s]", pad=10)
+        bar.set_title(r"$|\omega|$ [1/s]", pad=14, loc="left")
 
         # Thrust and power up to this time; the rest of the history stays faint
-        inset = figure.add_axes((0.64, 0.15, 0.32, 0.22))
+        inset = figure.add_axes((0.64, 0.6, 0.32, 0.22))
         inset.set_facecolor("none")
         revolutions = coefficients.index.to_numpy() / period
         now = coefficients.index.to_numpy() <= time + 1e-9
@@ -153,10 +152,11 @@ def compose(image, time, coefficients, period, omega_max):
                     markersize=8,
                     clip_on=False,
                 )
-        inset.set_xlim(0.0, 3.0)
-        inset.set_ylim(0.0, 9.0)
-        inset.set_xticks((0, 1, 2, 3))
-        inset.set_yticks((0, 4, 8))
+        inset.set_xlim(0.0, np.ceil(revolutions.max()))
+        peak = max(1.0e3 * coefficients["CT"].max(), 1.0e4 * coefficients["CP"].max())
+        inset.set_ylim(0.0, np.ceil(peak / 4.0) * 4.0)
+        inset.locator_params(axis="x", nbins=3)
+        inset.locator_params(axis="y", nbins=3)
         inset.set_xlabel("revolutions")
         inset.legend(
             loc="lower center",
@@ -186,10 +186,14 @@ def main() -> None:
     rotor = rotor_inputs()
     coefficients = performance(rotor.samples_dir, rotor).groupby("time")[["CT", "CP"]].mean()
 
-    # One colour scale and one view for every frame, set by the final wake
+    # One colour scale for every frame, the median of their vorticity peaks, and one view
+    peaks = [
+        np.percentile(np.linalg.norm(cloud["vorticity"], axis=1), 99.5)
+        for _, cloud in particles
+        if cloud.n_points
+    ]
+    omega_max = float(f"{np.median(peaks):.1g}")
     final = particles[-1][1]
-    omega = np.linalg.norm(final["vorticity"], axis=1)
-    omega_max = float(f"{np.percentile(omega, 99.5):.1g}")
     bounds = np.array(final.bounds)
     view = camera(bounds)
 

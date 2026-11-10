@@ -35,17 +35,18 @@ HUB_RADIUS = 0.03  # [m]
 AIR_DENSITY = 1.225  # [kg/m^3]
 KINEMATIC_VISCOSITY = 1.5e-5  # [m^2/s]
 NUMBER_OF_BLADES = 2
-CLIMB_SPEED = 0.8
-ARM_LENGTH = 0.16
+CLIMB_SPEED = 5.0
+ARM_LENGTH = 0.18
 
 # Time resolution
-DEGREES_PER_STEP = 3.75
+DEGREES_PER_STEP = 5.0
 TIME_STEP_SIZE = np.deg2rad(DEGREES_PER_STEP) / ANGULAR_VELOCITY  # [s]
 STEPS_PER_REVOLUTION = round(360.0 / DEGREES_PER_STEP)
-NUMBER_OF_REVOLUTIONS = 24
+NUMBER_OF_REVOLUTIONS = 20
 END_TIME = NUMBER_OF_REVOLUTIONS * STEPS_PER_REVOLUTION * TIME_STEP_SIZE  # [s]
-SAMPLE_INTERVAL_TIME = 12 * TIME_STEP_SIZE  # eight field snapshots per revolution
-BACKUP_INTERVAL_TIME = 3 * TIME_STEP_SIZE  # 32 VPM/VLM backups per revolution
+SAMPLE_INTERVAL_TIME = 12 * TIME_STEP_SIZE  # six field snapshots per revolution
+INTEGRAL_INTERVAL_TIME = STEPS_PER_REVOLUTION * TIME_STEP_SIZE
+BACKUP_INTERVAL_TIME = 2 * STEPS_PER_REVOLUTION * TIME_STEP_SIZE
 
 WAKE_PLANES = (("sampled_zplane", -0.35), ("sampled_zplane_deep", -0.70))
 
@@ -61,8 +62,8 @@ def run() -> None:
         "R_tip": TIP_RADIUS,
         "chord_root": 0.025,
         "chord_tip": 0.015,
-        "pitch_root_deg": 12.0,
-        "pitch_tip_deg": 6.0,
+        "pitch_root_deg": 28.0,
+        "pitch_tip_deg": 12.0,
         "n_chord": 4,
         "n_span": 12,
     }
@@ -104,6 +105,7 @@ def run() -> None:
     )
 
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
+    integral_steps = round(INTEGRAL_INTERVAL_TIME / TIME_STEP_SIZE)
     backup_schedule = vpm.EverySteps(round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE))
     case = vpm.VPMCase(
         name=CASE_NAME,
@@ -116,20 +118,22 @@ def run() -> None:
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             induction=vpm.FMMInduction(stretching_scheme="transposed"),
-            turbulence=vpm.TurbulenceConfig.smagorinsky(),
-            particle_kernel="winckelmans",
+            turbulence=vpm.TurbulenceConfig.smagorinsky(smagorinsky_coefficient=0.3),
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
             stabilization=vpm.StabilizationConfig(
-                filament_refinement=vpm.FilamentRefinementConfig.adaptive(interval_steps=1),
-                remove_particles_by_bounds=[-1.5, 1.5, -1.5, 1.5, -3.0, 1.0],
+                selective_eddy_viscosity_coefficient=2.0,
+                pedrizzetti_relaxation_factor=0.1,
+                pedrizzetti_relaxation_preserve_vortex_strength=False,
+                pedrizzetti_relaxation_preserve_moments=True,
+                remove_particles_by_bounds=[-1.0, 1.0, -1.0, 1.0, -1.0, 0.3],
             ),
             max_n_particles=500_000,
         ),
         run=vpm.RunPlan(end_time=END_TIME, state_limit_action="stop"),
-        output=vpm.Output(schedule=backup_schedule),
+        output=vpm.Output(schedule=vpm.EverySteps(sample_steps)),
         samplers=vpm.Samplers(
             samples=(
-                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(sample_steps)),
+                vpm.FlowIntegralsSampler(schedule=vpm.EverySteps(integral_steps)),
                 *(
                     vpm.SurfaceSampler(
                         point=[0.0, 0.0, height],

@@ -86,7 +86,7 @@ def rotor_inputs(metadata_path: Path | None = None):
         n_rotors=len(groups),
         n_blades=len(vlm["surfaces"]) / len(groups),
         climb=np.linalg.norm(config["numerics"]["freestream_velocity"]),
-        samples_dir=CASE_DIR / "samples" / config["samplers"]["directory"],
+        samples_dir=CASE_DIR / "samples" / config["variant"],
     )
 
 
@@ -150,12 +150,12 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
             "markevery": 60,
             "ms": 2.5,
         }
-        axes[0, 0].plot(rows.revolutions, rows.CT, label=rotor.replace("_", " "), **style)
-        axes[1, 0].plot(rows.revolutions, rows.CP, **style)
-    axes[0, 0].axhline(ct_bem, color=_COLORS["reference"], ls="--", label="BEM")
-    axes[1, 0].axhline(cp_bem, color=_COLORS["reference"], ls="--")
-    axes[0, 0].set(ylabel="$C_T$")
-    axes[1, 0].set(xlabel="Nominal revolutions", ylabel="$C_P$")
+        axes[0, 0].plot(rows.revolutions, 1e3 * rows.CT, label=rotor.replace("_", " "), **style)
+        axes[1, 0].plot(rows.revolutions, 1e4 * rows.CP, **style)
+    axes[0, 0].axhline(1e3 * ct_bem, color=_COLORS["reference"], ls="--", label="BEM")
+    axes[1, 0].axhline(1e4 * cp_bem, color=_COLORS["reference"], ls="--")
+    axes[0, 0].set(ylabel="$10^3\\,C_T$")
+    axes[1, 0].set(xlabel="Nominal revolutions", ylabel="$10^4\\,C_P$")
     axes[0, 0].legend(ncol=2, loc="upper right", handlelength=1.2, columnspacing=0.7)
     tail = data[data.time > data.time.max() - 6 * p.period]
     start, end = tail.revolutions.agg(["min", "max"])
@@ -164,11 +164,13 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     ct = np.linspace(0, ct_max, 150)
     advance = p.climb / (p.omega * p.radius)
     ideal = ct * 0.5 * (advance + np.sqrt(advance**2 + 2 * ct))
-    axes[0, 1].plot(ct, ideal, color=_COLORS["reference"], ls=":", label="Axial momentum")
+    axes[0, 1].plot(
+        1e3 * ct, 1e4 * ideal, color=_COLORS["reference"], ls=":", label="Axial momentum"
+    )
     for _rotor, rows in tail.groupby("rotor"):
-        axes[0, 1].plot(rows.CT.mean(), rows.CP.mean(), "o", ms=4)
-    axes[0, 1].plot(ct_bem, cp_bem, "x", color=_COLORS["reference"], label="BEM")
-    axes[0, 1].set(xlabel="$C_T$", ylabel="$C_P$")
+        axes[0, 1].plot(1e3 * rows.CT.mean(), 1e4 * rows.CP.mean(), "o", ms=4)
+    axes[0, 1].plot(1e3 * ct_bem, 1e4 * cp_bem, "x", color=_COLORS["reference"], label="BEM")
+    axes[0, 1].set(xlabel="$10^3\\,C_T$", ylabel="$10^4\\,C_P$")
     axes[0, 1].legend()
     total = (
         data.groupby("time")
@@ -180,11 +182,16 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     )
     power_axis = axes[1, 1].twinx()
     power_axis.plot(
-        total.time / p.period, total.power, color=_COLORS["vpm"], ls="-", label="Total shaft input"
+        total.time / p.period,
+        total.power / p.n_rotors,
+        color=_COLORS["vpm"],
+        ls="-",
+        label="Shaft input per rotor",
     )
     axes[1, 1].set(xlabel="Nominal revolutions", ylabel="Thrust [N]")
-    power_axis.set_ylabel("Power [W]", color=_COLORS["vpm"])
-    _theme.centered_subplots_adjust(fig, outer=0.092, top=0.966)
+    power_axis.set_ylabel("Power per rotor [W]", color=_COLORS["vpm"], labelpad=1)
+    fig.subplots_adjust(top=0.966)
+    _theme.fit_thesis_y_label_margins(fig, fig.axes)
     _theme.export_figure(
         fig, figures_dir / "quadcopter_performance.png", figure_format=figure_format
     )
@@ -215,7 +222,7 @@ def plot_wake(samples_dir, figures_dir, figure_format="png"):
 
     _theme.set_thesis_style()
     p = rotor_inputs()
-    planes = wake_windows(samples_dir, p.period)
+    planes = wake_windows(samples_dir, p.period, revolutions=4)
     fig, axes = plt.subplots(
         1, len(planes), figsize=(12.5 * _theme.CM, 7.4 * _theme.CM), sharey=True, squeeze=False
     )
