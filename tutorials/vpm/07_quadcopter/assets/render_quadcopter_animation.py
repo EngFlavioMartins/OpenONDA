@@ -1,8 +1,9 @@
 """Animate the particle wakes of the four rotors, with their thrust and power.
 
 Each frame shows the particles and blade surfaces written at one output time,
-coloured by the vorticity magnitude. The inset traces the thrust and power
-coefficients, averaged over the four rotors, up to that time.
+coloured by the rotor that shed them and brightened by their vorticity. The
+inset traces the thrust and power coefficients, averaged over the four rotors,
+up to that time.
 ``assets/quadcopter_flow.gif``, shown in the README gallery, is a copy of the
 result.
 """
@@ -12,7 +13,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.colors import LinearSegmentedColormap, to_rgb
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -49,8 +50,12 @@ GALLERY_STYLE = {
     "ytick.right": False,
     "legend.frameon": False,
 }
-VORTICITY_COLORMAP = LinearSegmentedColormap.from_list(
-    "gallery_vorticity", ["#031a3c", "#0d58b7", "#3791ed", "#73c0ff", "#c9e6fd"], N=16
+ROTOR_COLOURS = ("#3d9bff", "#ff4fa3", "#ffd23f", "#3fe0b8")  # rotors 0 to 3
+ROTOR_COLORMAPS = tuple(
+    LinearSegmentedColormap.from_list(
+        f"rotor_{index}", [to_rgb(colour) * np.array(0.45), colour, "#ffffff"], N=16
+    )
+    for index, colour in enumerate(ROTOR_COLOURS)
 )
 
 
@@ -88,19 +93,26 @@ def render_scene(plotter, particles, blades, view, omega_max):
     plotter.clear()
     # The rotors start from rest, before they have shed any particle
     if particles.n_points:
-        cloud = pv.PolyData(np.asarray(particles.points))
-        cloud["vorticity magnitude"] = np.linalg.norm(np.asarray(particles["vorticity"]), axis=1)
-        plotter.add_mesh(
-            cloud,
-            scalars="vorticity magnitude",
-            cmap=VORTICITY_COLORMAP,
-            clim=(0.0, omega_max),
-            # Weak vorticity fades out, so the tip vortices stand out
-            opacity=np.linspace(0.2, 1.0, 16),
-            render_points_as_spheres=True,
-            point_size=2.0 * RENDER_SCALE,
-            show_scalar_bar=False,
-        )
+        points = np.asarray(particles.points)
+        vorticity = np.linalg.norm(np.asarray(particles["vorticity"]), axis=1)
+        rotor = np.asarray(particles["group_id"]) - 1
+        # One hue per rotor; weak vorticity fades out, so the tip vortices stand out
+        for index, colormap in enumerate(ROTOR_COLORMAPS):
+            shed = rotor == index
+            if not np.any(shed):
+                continue
+            cloud = pv.PolyData(points[shed])
+            cloud["vorticity magnitude"] = vorticity[shed]
+            plotter.add_mesh(
+                cloud,
+                scalars="vorticity magnitude",
+                cmap=colormap,
+                clim=(0.0, omega_max),
+                opacity=np.linspace(0.2, 1.0, 16),
+                render_points_as_spheres=True,
+                point_size=2.0 * RENDER_SCALE,
+                show_scalar_bar=False,
+            )
     plotter.add_mesh(blades, color="#9c9c9c", smooth_shading=True)
     plotter.camera.position = view["position"]
     plotter.camera.focal_point = view["focal_point"]
@@ -110,25 +122,14 @@ def render_scene(plotter, particles, blades, view, omega_max):
     return plotter.screenshot(return_img=True)
 
 
-def compose(image, time, coefficients, period, omega_max):
-    """Lay the rendered scene, the colour bar and the force inset on one frame."""
+def compose(image, time, coefficients, period):
+    """Lay the rendered scene and the force inset on one frame."""
     with plt.rc_context(GALLERY_STYLE):
         figure = plt.figure(figsize=(IMAGE_SIZE[0] / 100, IMAGE_SIZE[1] / 100), dpi=100)
         figure.patch.set_facecolor("black")
         scene = figure.add_axes((0.0, 0.0, 1.0, 1.0))
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
-
-        # Vorticity magnitude, left: its two end values, the title above the bar
-        bar = figure.add_axes((0.05, 0.15, 0.035, 0.32))
-        figure.colorbar(
-            plt.cm.ScalarMappable(Normalize(0.0, omega_max), VORTICITY_COLORMAP),
-            cax=bar,
-            ticks=(0.0, omega_max),
-        )
-        bar.set_yticklabels(["0", f"{omega_max:g}"])
-        bar.tick_params(direction="out", length=10, width=1.5)
-        bar.set_title(r"$|\omega|$ [1/s]", pad=14, loc="left")
 
         # Thrust and power up to this time; the rest of the history stays faint
         inset = figure.add_axes((0.64, 0.6, 0.32, 0.22))
@@ -153,8 +154,14 @@ def compose(image, time, coefficients, period, omega_max):
                     clip_on=False,
                 )
         inset.set_xlim(0.0, np.ceil(revolutions.max()))
-        peak = max(1.0e3 * coefficients["CT"].max(), 1.0e4 * coefficients["CP"].max())
-        inset.set_ylim(0.0, np.ceil(peak / 4.0) * 4.0)
+        settled = revolutions > 1.0
+        low = min(
+            1.0e3 * coefficients["CT"][settled].min(), 1.0e4 * coefficients["CP"][settled].min()
+        )
+        high = max(
+            1.0e3 * coefficients["CT"][settled].max(), 1.0e4 * coefficients["CP"][settled].max()
+        )
+        inset.set_ylim(np.floor(low - 0.5), np.ceil(high + 0.5))
         inset.locator_params(axis="x", nbins=3)
         inset.locator_params(axis="y", nbins=3)
         inset.set_xlabel("revolutions")
@@ -186,7 +193,7 @@ def main() -> None:
     rotor = rotor_inputs()
     coefficients = performance(rotor.samples_dir, rotor).groupby("time")[["CT", "CP"]].mean()
 
-    # One colour scale for every frame, the median of their vorticity peaks, and one view
+    # One brightness scale for every frame, the median of their vorticity peaks, and one view
     peaks = [
         np.percentile(np.linalg.norm(cloud["vorticity"], axis=1), 99.5)
         for _, cloud in particles
@@ -202,7 +209,7 @@ def main() -> None:
     frames = []
     for (time, cloud), (_, surface) in zip(particles, blades, strict=True):
         image = render_scene(plotter, cloud, surface, view, omega_max)
-        frames.append(compose(image, time, coefficients, rotor.period, omega_max))
+        frames.append(compose(image, time, coefficients, rotor.period))
     plotter.close()
 
     # One palette for every frame, from four frames across the animation, keeps the GIF small

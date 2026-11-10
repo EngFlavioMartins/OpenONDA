@@ -140,9 +140,8 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
     reference = p.density * np.pi * p.radius**2 * (p.omega * p.radius) ** 2
     ct_bem = bem.attrs["thrust"] / reference
     cp_bem = bem.attrs["power"] / (reference * p.omega * p.radius)
-    fig, rows = plt.subplots(4, 1, figsize=(12.5 * _theme.CM, 16 * _theme.CM))
-    _theme.centered_subplots_adjust(fig, outer=0.21, bottom=0.09, top=0.955, hspace=0.55)
-    axes = np.array([[rows[0], rows[2]], [rows[1], rows[3]]])
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(12.5 * _theme.CM, 12.5 * _theme.CM))
+    _theme.centered_subplots_adjust(fig, outer=0.21, bottom=0.1, top=0.91, hspace=0.15)
     for index, (rotor, rows) in enumerate(data.groupby("rotor")):
         style = {
             "color": _theme.COLOR_CYCLE[index],
@@ -150,37 +149,29 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
             "markevery": 60,
             "ms": 2.5,
         }
-        axes[0, 0].plot(rows.revolutions, 1e3 * rows.CT, label=rotor.replace("_", " "), **style)
-        axes[1, 0].plot(rows.revolutions, 1e4 * rows.CP, **style)
-    axes[0, 0].axhline(1e3 * ct_bem, color=_COLORS["reference"], ls="--", label="BEM")
-    axes[1, 0].axhline(1e4 * cp_bem, color=_COLORS["reference"], ls="--")
-    axes[0, 0].set(ylabel="$10^3\\,C_T$")
-    axes[1, 0].set(xlabel="Nominal revolutions", ylabel="$10^4\\,C_P$")
-    axes[0, 0].legend(ncol=2, loc="upper right", handlelength=1.2, columnspacing=0.7)
+        axes[0].plot(rows.revolutions, 1e3 * rows.CT, label=rotor.replace("_", " "), **style)
+        axes[1].plot(rows.revolutions, 1e4 * rows.CP, **style)
+    axes[0].axhline(1e3 * ct_bem, color=_COLORS["reference"], ls="--", label="BEM")
+    axes[1].axhline(1e4 * cp_bem, color=_COLORS["reference"], ls="--")
+    axes[0].set(ylabel="$10^3\\,C_T$")
+    axes[1].set(ylabel="$10^4\\,C_P$")
+    fig.legend(
+        *axes[0].get_legend_handles_labels(),
+        loc="upper center",
+        ncol=5,
+        handlelength=1.2,
+        columnspacing=0.7,
+    )
     tail = data[data.time > data.time.max() - 6 * p.period]
     start, end = tail.revolutions.agg(["min", "max"])
     print(f"Performance mean: revolutions {start:.1f}–{end:.1f}")
-    ct_max = max(ct_bem, tail.CT.max()) * 1.15
-    ct = np.linspace(0, ct_max, 150)
-    advance = p.climb / (p.omega * p.radius)
-    ideal = ct * 0.5 * (advance + np.sqrt(advance**2 + 2 * ct))
-    axes[0, 1].plot(
-        1e3 * ct, 1e4 * ideal, color=_COLORS["reference"], ls=":", label="Axial momentum"
-    )
-    for _rotor, rows in tail.groupby("rotor"):
-        axes[0, 1].plot(1e3 * rows.CT.mean(), 1e4 * rows.CP.mean(), "o", ms=4)
-    axes[0, 1].plot(1e3 * ct_bem, 1e4 * cp_bem, "x", color=_COLORS["reference"], label="BEM")
-    axes[0, 1].set(xlabel="$10^3\\,C_T$", ylabel="$10^4\\,C_P$")
-    axes[0, 1].legend()
     total = (
         data.groupby("time")
         .agg(thrust=("thrust", "sum"), power=("input_power", "sum"))
         .reset_index()
     )
-    axes[1, 1].plot(
-        total.time / p.period, total.thrust, color=_COLORS["teal"], label="Total thrust"
-    )
-    power_axis = axes[1, 1].twinx()
+    axes[2].plot(total.time / p.period, total.thrust, color=_COLORS["teal"], label="Total thrust")
+    power_axis = axes[2].twinx()
     power_axis.plot(
         total.time / p.period,
         total.power / p.n_rotors,
@@ -188,9 +179,8 @@ def plot_performance(samples_dir, figures_dir, figure_format="png", metadata_pat
         ls="-",
         label="Shaft input per rotor",
     )
-    axes[1, 1].set(xlabel="Nominal revolutions", ylabel="Thrust [N]")
+    axes[2].set(xlabel="Nominal revolutions", ylabel="Thrust [N]")
     power_axis.set_ylabel("Power per rotor [W]", color=_COLORS["vpm"], labelpad=1)
-    fig.subplots_adjust(top=0.966)
     _theme.fit_thesis_y_label_margins(fig, fig.axes)
     _theme.export_figure(
         fig, figures_dir / "quadcopter_performance.png", figure_format=figure_format
