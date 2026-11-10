@@ -1,7 +1,0 @@
-run,families,boundary velocity mismatch mean,boundary velocity mismatch max,outflow mismatch mean,first-iteration normal-velocity residual,first-iteration normal-gradient residual,last-iteration normal-gradient residual,|e_coupling| mean drag [%],|e_coupling| lift amplitude [%],|e_coupling| Strouhal number [%],|e_coupling| wake velocity [%]
-box1.6_sub5_inset8.75,B,0.00494514,0.0167673,0.00293808,1.31129e-05,1.86273e-05,1.16641e-06,0.329929,2.04089,0.69662,1.94271
-box2.0_sub5_inset8.75,B,0.00356566,0.0127769,0.00344118,1.18537e-05,1.73152e-05,5.77225e-07,0.121318,1.37479,0.473715,2.37548
-box2.4_sub2_inset8.75,C T2 E KAPPA S F,0.00385015,0.0276244,0.00798823,5.83103e-06,9.4654e-06,4.66662e-06,0.61348,2.62652,0.39247,2.80676
-box2.4_sub5_inset8.75,P E KAPPA BL K S R B F,0.00277858,0.0126598,0.00357182,9.52977e-06,1.41813e-05,1.89444e-06,0.082304,1.31569,0.353905,1.4321
-box3.2_sub5_inset8.75,B,0.00202974,0.0155713,0.00394365,9.48945e-06,1.35551e-05,2.54235e-06,0.281662,2.78145,0.134047,2.74699
-box4.0_sub5_inset8.75,B,0.00167294,0.0181747,0.00409808,9.01403e-06,1.31505e-05,2.06148e-06,0.335675,2.01382,0.169288,2.92179

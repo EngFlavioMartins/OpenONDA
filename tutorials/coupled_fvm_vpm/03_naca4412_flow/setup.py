@@ -48,16 +48,18 @@ TRAILING_EDGE_BOX = (0.32, 0.52, -0.16, 0.04, -0.5 * SPAN - CELL_SIZE, 0.5 * SPA
 # cells one wall face there spans the trailing edge and leaves its cell centre inside the wing
 TIP_CORNER = (0.38, 0.47, -0.11, -0.02)  # m, x and y bounds around the round trailing edge
 TIP_CORNER_SPAN = (0.5 * SPAN - 2 * CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m, |z| bounds
-FVM_INITIAL_TIME_STEP = 0.008  # s
+FVM_INITIAL_TIME_STEP = 0.004  # s, about the CFL step of the 0.01 m trailing-edge cells
 FVM_MAX_TIME_STEP = 0.04  # s, the FVM step adapts to a Courant number of 0.9
-VPM_MAX_COUPLING_INTERVAL = 0.015  # s, reduced by particle strain and output events
+VPM_MAX_COUPLING_INTERVAL = 0.08  # s; at most 20 FVM substeps per particle step at the first step,
+# so the 0.04 s output spacing or the particle strain (CFL 0.9) sets the interval, not the FVM CFL
 FVM_CORES = 8
 
 # VPM: particles in the outer wake
 VPM_DOMAIN = (-3.2, 24.0, -4.0, 3.2, -4.8, 4.8)  # m
 OUTFLOW_FRINGE = 12.0  # m, smooth vorticity removal near the downstream boundary
-VORTICITY_FLOOR = 0.003  # 1/s, remove weak diffused particles
+VORTICITY_FLOOR = 0.01  # 1/s, remove weak diffused particles (cylinder study: 1e-3 moved the forces, 1e-2 did not)
 CORE_RADIUS_RATIO = 1.05
+WALL_FALLBACK_LIMIT = 0.01  # largest strength fraction per step deposited without first moments
 PARTICLE_LIMIT = 2_000_000
 
 # Time window
@@ -65,14 +67,14 @@ STATISTICS_START = 12.0  # s
 END_TIME = 24.0  # s
 
 # Output
-FORCE_INTERVAL = 0.03  # s
+FORCE_INTERVAL = 0.04  # s; all output intervals are multiples of it, so none shortens a step
 PROFILE_INTERVAL = 0.2  # s, wake profiles over the whole run
 SLICE_INTERVAL = 0.2  # s, planar slices over the statistics window
 FIELD_INTERVAL = 1.0  # s, FVM fields and particles over the statistics window
 BACKUP_INTERVAL = 0.48  # s, coupled restart states
 WAKE_STATIONS = (2.0, 5.0)  # m, inside the replacement region and in the particle wake
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
-TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 300  # accepted shared steps
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 60  # accepted shared steps, 2.4 s at 0.04 s
 
 # Trailing-edge height and the force moment centre
 WAKE_HEIGHT = -0.5 * CHORD * math.sin(ALPHA)  # m
@@ -228,6 +230,10 @@ VPM_CASE = vpm.VPMCase(
             threshold_mode="absolute",
             threshold=VORTICITY_FLOOR * CELL_SIZE**3,
             core_radius_ratio=CORE_RADIUS_RATIO,
+            # The 20 mm trailing edge is thinner than the 0.04 m lattice: particles at it can
+            # have no bounded moment-conserving wall stencil. They keep their strength; the run
+            # stops if they carry more than 1 % of the total in one step (first run: t = 0.16 s).
+            wall_fallback_limit=WALL_FALLBACK_LIMIT,
         ),
         turbulence=vpm.TurbulenceConfig.smagorinsky(),
         stabilization=vpm.StabilizationConfig.bounded_domain(

@@ -1,3 +1,0 @@
-run,N,coupling intervals per convective time,kappa_max,delta_0 [cells],delta_1 [cells],kappa median,fraction of transfers at kappa_max,boundary mismatch mean [U],e_coupling mean drag [%],e_coupling lift amplitude [%],e_coupling Strouhal number [%]
-box2.4_sub2_inset8.75,2,62.5,1.8,2,6,1.77554,0,0.0038499,-0.61348,-2.62652,-0.39247
-box2.4_sub5_inset8.75,5,25,1.8,2,6,1.48401,0,0.00276739,-0.082304,-1.31569,0.353905

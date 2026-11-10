@@ -718,4 +718,5 @@ class EvolutionStepper:
                 regen_threshold_mode=vc.gbd_threshold_mode,
                 effective_viscosity=effective_viscosity,
                 remeshing_kernel=vc.gbd_remeshing_kernel,
+                wall_fallback_limit=vc.gbd_wall_fallback_limit,
             )

@@ -5,11 +5,11 @@ This FVM-only case provides the reference for the [coupled cylinder](../README.m
 | Quantity | Value |
 | --- | --- |
 | Domain | $[-16,30]\times[-16,16]$ m |
-| Mesh | 0.04 m over the coupled FVM domain $[-2.4,4.4]\times[-2.4,2.4]$ m, 0.08 m over $|y|\le3$ m from there to the outlet, 0.64 m elsewhere |
+| Mesh | $h$ over the coupled FVM domain $[-2.4,4.4]\times[-2.4,2.4]$ m, $2h$ over $|y|\le3$ m from there to the outlet, $16h$ elsewhere; $h=0.04$ m for the coupled baseline |
 | Boundaries | Velocity inlet, zero-pressure outlet, slip sides and no-slip cylinder |
-| Time step; end time | adaptive, cell Courant number at most 0.9; 100 s |
+| Time step; end time | fixed, $U_\infty\Delta t/h=0.2$ (0.008 s at $h=0.04$ m); 100 s |
 
-The domain follows the literature rather than a study of its own: slip walls 16 D from the axis, where Behr et al. (1995, Comput. Methods Appl. Mech. Engrg. 123) find the lift amplitude and mean drag at $Re=100$ within 0.2% of their widest domain, and an outlet 30 D downstream, twice the 14.5 D at which Tezduyar and Shih (1991, J. Eng. Mech. 117) find no change of the solution. `allrun.sh` lists every case: $Re=100$ and 150 at 0.04 m, and the grid sensitivity at the highest Reynolds number, $Re=250$, at 0.08, 0.0566, 0.04 and 0.0283 m. Forces, wake profiles and backups are written every 0.1 s.
+The domain follows the literature rather than a study of its own: slip walls 16 D from the axis, where Behr et al. (1995, Comput. Methods Appl. Mech. Engrg. 123) find the lift amplitude and mean drag at $Re=100$ within 0.2% of their widest domain, and an outlet 30 D downstream, twice the 14.5 D at which Tezduyar and Shih (1991, J. Eng. Mech. 117) find no change of the solution. `allrun.sh` runs the grid series at $Re=150$ with $h=0.08$, 0.06, 0.04 and 0.03 m, the time step refined with the cells. Forces, wake profiles and backups are written every 0.1 s.
 
 ## Run
 

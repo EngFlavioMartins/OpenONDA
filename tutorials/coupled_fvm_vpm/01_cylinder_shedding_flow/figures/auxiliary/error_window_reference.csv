@@ -1,5 +1,0 @@
-run,reference,window,mean drag,lift amplitude,Strouhal number,wake velocity
-box2.4_sub5_inset8.75,reference_flow,40-55,-0.0817526,-1.35794,0.358281,1.4321
-box2.4_sub5_inset8.75,reference_flow,55-100,-0.0288351,-1.37774,0.402258,1.17506
-box2.4_sub2_inset8.75,reference_fw4.4,40-55,-0.670203,-2.24778,-0.806139,2.97004
-box2.4_sub5_inset8.75,reference_fw4.4,40-55,-0.142909,-0.888416,-0.0536369,2.41746

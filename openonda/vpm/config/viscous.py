@@ -106,6 +106,11 @@ class ViscousConfig:
     gbd_remeshing_kernel: str = "m4_prime"
     """Scatter kernel: ``'m4_prime'`` or the experimental six-point ``'lagrange6'``."""
 
+    gbd_wall_fallback_limit: float = 0.0
+    """Largest fraction of the total vortex strength per GBD step that may be deposited at a wall
+    without first-moment conservation, where the wall is thinner than the lattice spacing. Zero
+    stops the run at the first such particle."""
+
     dvh_support_radius_ratio: int = 4
     """DVH compact-support radius ``R_d / h``; allowed values are 3, 4, and 5."""
 
@@ -154,6 +159,8 @@ class ViscousConfig:
                 f"gbd_threshold_mode must be one of {sorted(_THRESHOLD_MODES)} "
                 f"(got {self.gbd_threshold_mode!r})"
             )
+        if not 0.0 <= self.gbd_wall_fallback_limit < 1.0:
+            raise ValueError("gbd_wall_fallback_limit must be in [0, 1)")
         if self.gbd_remeshing_kernel not in {"m4_prime", "lagrange6"}:
             raise ValueError(
                 "gbd_remeshing_kernel must be 'm4_prime' or 'lagrange6' "
@@ -295,6 +302,7 @@ class ViscousConfig:
         core_radius_ratio: float = 2.5,
         remeshing_kernel: str = "m4_prime",
         gbd_grid_spacing: float | None = None,
+        wall_fallback_limit: float = 0.0,
     ) -> ViscousConfig:
         """Return Grid-Based Diffusion configuration.
 
@@ -307,6 +315,10 @@ class ViscousConfig:
         ``gbd_grid_spacing`` defaults to ``particle_spacing``. It sets the
         diffusion and regeneration lattice resolution independently of the
         representative particle spacing used by VPM accuracy checks.
+
+        ``wall_fallback_limit`` lets wall deposits that have no bounded moment-conserving
+        support (a wall thinner than the lattice spacing) keep their strength without their
+        first moments, up to this fraction of the total vortex strength per step.
         """
         if gbd_grid_spacing is None:
             gbd_grid_spacing = particle_spacing
@@ -319,5 +331,6 @@ class ViscousConfig:
             gbd_threshold_mode=threshold_mode,
             kinematic_viscosity=kinematic_viscosity,
             gbd_remeshing_kernel=remeshing_kernel,
+            gbd_wall_fallback_limit=wall_fallback_limit,
             core_radius_ratio=core_radius_ratio,
         )

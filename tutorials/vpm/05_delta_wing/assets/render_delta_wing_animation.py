@@ -2,7 +2,7 @@
 
 Each frame shows the particles and wing surfaces written at one output time,
 coloured by the vorticity magnitude. The inset traces the lift coefficient of
-each wing up to that time. ``assets/delta_wing_30fps.gif``, shown at the top of
+each wing up to that time. ``assets/delta_wing.gif``, shown at the top of
 the README, is a copy of the result.
 """
 
@@ -19,13 +19,13 @@ import pyvista as pv
 
 from assets.postprocess import SOLUTION_DIR, force_history, lift_and_thrust, motion_period
 
-OUTPUT = Path(__file__).resolve().parents[1] / "figures" / "delta_wing_30fps.gif"
+OUTPUT = Path(__file__).resolve().parents[1] / "figures" / "delta_wing.gif"
 
-IMAGE_SIZE = (1280, 576)  # [px], the README banner
+IMAGE_SIZE = (1280, 460)  # [px], the README banner
 RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
 VIEW_DIRECTION = (-0.15, 1.0, 0.9)  # toward the camera
-VIEW_DISTANCE = 2.2  # camera distance per streamwise extent of the wing pair
-WAKE_SHIFT = 0.5  # focal point downstream of the wing pair, per its streamwise extent
+VIEW_DISTANCE = 1.9  # camera distance per streamwise extent of the wing pair
+WAKE_SHIFT = 0.78  # focal point downstream of the wing pair, per its streamwise extent
 
 GALLERY_STYLE = {
     "font.family": "DejaVu Serif",
@@ -109,17 +109,18 @@ def compose(image, time, loads, frequency, omega_max):
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
-        bar = figure.add_axes((0.035, 0.1, 0.022, 0.3))
+        bar = figure.add_axes((0.03, 0.14, 0.17, 0.035))
         figure.colorbar(
             plt.cm.ScalarMappable(Normalize(0.0, omega_max), VORTICITY_COLORMAP),
             cax=bar,
+            orientation="horizontal",
             ticks=(0.0, omega_max),
         )
-        bar.set_yticklabels(["0", f"{omega_max:g}"], fontsize=26)
+        bar.set_xticklabels(["0", f"{omega_max:g}"], fontsize=24)
         bar.tick_params(direction="out", length=8, width=1.5)
-        bar.set_title(r"$|\omega|$ [1/s]", fontsize=26, pad=20, loc="left")
+        bar.set_title(r"$|\omega|$ [1/s]", fontsize=24, pad=10)
 
-        inset = figure.add_axes((0.735, 0.62, 0.235, 0.27))
+        inset = figure.add_axes((0.735, 0.6, 0.235, 0.27))
         inset.set_facecolor("none")
         for surface, rows in loads.groupby("surface"):
             cycles = rows["time"].to_numpy() * frequency
@@ -165,7 +166,7 @@ def compose(image, time, loads, frequency, omega_max):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fps", type=float, default=30.0)
+    parser.add_argument("--speed", type=float, default=1.0, help="playback speed; 1 is real time")
     parser.add_argument("--output", type=Path, default=OUTPUT)
     args = parser.parse_args()
 
@@ -193,7 +194,9 @@ def main() -> None:
     palette = sample.quantize(colors=256)
     frames = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
 
-    durations = [round(1000 / args.fps)] * (len(frames) - 1) + [1000]
+    # Each frame lasts its physical time step, so the wings heave at their real rate
+    times = np.array([time for time, _ in particles])
+    durations = [round(1000 * step / args.speed) for step in np.diff(times)] + [1000]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(args.output, save_all=True, append_images=frames[1:], duration=durations, loop=0)
     print(f"  Saved: {args.output}")

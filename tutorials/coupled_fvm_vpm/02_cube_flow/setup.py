@@ -35,7 +35,7 @@ DISTURBANCE_AXIS = (0.0, -1.0, 2.0)
 # FVM mesh and particle spacing
 CELL_SIZE = 0.045  # m
 BOX_MARGIN = 1.8  # m, clearance around the cube and separated shear layers
-BOX_DOWNSTREAM = 3.6  # m, downstream FVM boundary
+BOX_DOWNSTREAM = 5.05  # m, 1.5 formation lengths behind the cube; 3.6 m ended two runs (README)
 MAX_COURANT_NUMBER = 0.9  # the FVM step adapts to this Courant number
 FVM_MAX_TIME_STEP = 0.02  # s, also the first step
 FVM_CORES = 8
@@ -43,7 +43,7 @@ FVM_CORES = 8
 # VPM: particles in the outer wake
 VPM_DOMAIN = (-4.5, 24.0, -3.0, 3.0, -3.0, 3.0)  # m
 OUTFLOW_FRINGE = 12.0  # m, smooth vorticity removal near the downstream boundary
-VORTICITY_FLOOR = 0.003  # 1/s, remove weak diffused particles
+VORTICITY_FLOOR = 0.01  # 1/s, remove weak diffused particles (cylinder study: 1e-3 moved the forces, 1e-2 did not)
 CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000
 
@@ -52,8 +52,8 @@ FVM_SUBSTEPS = 5  # FVM steps per particle step at the maximum interval
 END_TIME = 60.0  # s
 
 # Output
-FORCE_INTERVAL = 0.04  # s
-PROFILE_INTERVAL = 0.24  # s, centreline and off-axis lines
+FORCE_INTERVAL = 0.1  # s, the maximum coupling interval: outputs must not shorten the interval
+PROFILE_INTERVAL = 0.2  # s, centreline and off-axis lines
 SLICE_INTERVAL = 1.0  # s, mid-plane slices, at the times of the reference slices
 SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, x and y bounds of the particle slice
 VOLUME_INTERVAL = 2.0  # s, FVM fields

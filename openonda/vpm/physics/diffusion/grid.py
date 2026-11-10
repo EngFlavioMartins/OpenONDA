@@ -1140,6 +1140,58 @@ class _GridDiffusionMixin:
             "conservation. Refine the particle spacing near the wall or narrow gap."
         )
 
+    def _wall_strength_fallback(
+        self,
+        point: np.ndarray,
+        indices: np.ndarray,
+        weights: np.ndarray,
+        fluid: np.ndarray,
+        origin: np.ndarray,
+        spacing: float,
+        shape: tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Deposit a particle's whole strength on fluid-connected nodes, without its first moments.
+
+        Used where :meth:`_wall_moment_correction` finds no bounded support, which happens at
+        a wall thinner than the lattice spacing (a sharp trailing edge). The fluid deposits are
+        rescaled to unit sum when they carry at least a quarter of the strength; otherwise the
+        strength moves to the nearest fluid-connected node. The returned values are corrections
+        to the M4' deposits already on ``indices[fluid]``.
+        """
+        own = weights[fluid]
+        total = float(np.sum(own))
+        if fluid.any() and total >= 0.25:
+            return indices[fluid], own * (1.0 / total - 1.0)
+        fractional = (point - origin) / spacing
+        base = np.floor(fractional).astype(np.int64)
+        for radius in range(1, 5):
+            offsets = np.stack(
+                np.meshgrid(*([np.arange(-radius, radius + 2)] * 3), indexing="ij"), axis=-1
+            ).reshape(-1, 3)
+            candidates = base + offsets
+            candidates = candidates[
+                np.all((candidates >= 0) & (candidates < np.asarray(shape)), axis=1)
+            ]
+            nodes = origin + spacing * candidates
+            open_nodes = ~self._body_interior_at_particles(nodes)
+            open_nodes[open_nodes] &= ~self._segments_cross_wall(
+                np.broadcast_to(point, nodes[open_nodes].shape),
+                nodes[open_nodes],
+            )
+            if open_nodes.any():
+                reachable = candidates[open_nodes]
+                nearest = reachable[
+                    np.argmin(np.sum((origin + spacing * reachable - point) ** 2, axis=1))
+                ]
+                return (
+                    np.vstack((indices[fluid], nearest[None, :])),
+                    np.concatenate((-own, [1.0])),
+                )
+        raise RuntimeError(
+            "GBD wall transfer found no fluid-connected lattice node within four spacings of a "
+            "particle at the wall."
+        )
+
     def compute_m4_wall_corrections(
         self,
         positions: np.ndarray,
@@ -1174,6 +1226,9 @@ class _GridDiffusionMixin:
         excluded_l1 = 0.0
         correction_l1 = 0.0
         expanded_support = 0
+        fallback_particles = 0
+        fallback_l1 = 0.0
+        fallback_limit = float(getattr(self, "_gbd_wall_fallback_limit", 0.0))
         grid_min = np.asarray(origin, dtype=np.float64)
         dimensions = np.asarray(shape)
         cached_mask = self._body_mask_host
@@ -1224,15 +1279,31 @@ class _GridDiffusionMixin:
                 touched += 1
                 weights = np.prod(_m4_prime_1d(fractions[row] - indices), axis=1)
                 fluid = ~unavailable_batch[row]
-                correction_indices, correction, radius = self._wall_moment_correction(
-                    points[particle],
-                    indices,
-                    weights,
-                    fluid,
-                    grid_min,
-                    float(spacing),
-                    shape,
-                )
+                try:
+                    correction_indices, correction, radius = self._wall_moment_correction(
+                        points[particle],
+                        indices,
+                        weights,
+                        fluid,
+                        grid_min,
+                        float(spacing),
+                        shape,
+                    )
+                except RuntimeError:
+                    if fallback_limit <= 0.0:
+                        raise
+                    correction_indices, correction = self._wall_strength_fallback(
+                        points[particle],
+                        indices,
+                        weights,
+                        fluid,
+                        grid_min,
+                        float(spacing),
+                        shape,
+                    )
+                    radius = 0
+                    fallback_particles += 1
+                    fallback_l1 += float(np.linalg.norm(gamma[particle]))
                 expanded_support += radius > 1
                 node_chunks.append(correction_indices.astype(np.int32))
                 value_chunks.append((correction[:, None] * gamma[particle]).astype(np.float32))
@@ -1248,11 +1319,25 @@ class _GridDiffusionMixin:
                 magnitude = float(np.linalg.norm(gamma[particle]))
                 excluded_l1 += float(np.sum(np.abs(weights[unavailable_batch[row]]))) * magnitude
                 correction_l1 += float(np.sum(np.abs(correction))) * magnitude
+        fallback_fraction = 0.0
+        if fallback_particles:
+            fallback_fraction = fallback_l1 / max(
+                float(np.sum(np.linalg.norm(gamma, axis=1))), 1e-300
+            )
+            if fallback_fraction > fallback_limit:
+                raise RuntimeError(
+                    f"GBD wall transfer without bounded moment support for {fallback_particles} "
+                    f"particles carrying {fallback_fraction:.3e} of the total vortex strength, "
+                    f"above the limit {fallback_limit:.3e}. Refine the particle spacing near the "
+                    "wall or narrow gap."
+                )
         diagnostics = {
             "wall_adjacent_particles": touched,
             "excluded_signed_weight_l1": excluded_l1,
             "fluid_correction_l1": correction_l1,
             "expanded_support_particles": expanded_support,
+            "fallback_particles": fallback_particles,
+            "fallback_strength_fraction": fallback_fraction,
         }
         if not node_chunks:
             return np.empty((0, 3), dtype=np.int32), np.empty((0, 3), dtype=np.float32), diagnostics
@@ -2987,6 +3072,7 @@ class _GridDiffusionMixin:
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
         remeshing_kernel: str = "m4_prime",
+        wall_fallback_limit: float = 0.0,
     ) -> dict[str, np.ndarray] | None:
         """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
 
@@ -2997,6 +3083,7 @@ class _GridDiffusionMixin:
         complete variable-viscosity stress/curl operator. Otherwise the scalar
         molecular Laplacian is used. Regenerated particles inherit pre-regen ν_t.
         """
+        self._gbd_wall_fallback_limit = float(wall_fallback_limit)
         return self._gbd_diffusion_impl(
             particles,
             time_step_size,

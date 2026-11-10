@@ -1,7 +1,0 @@
-run,families,particle step,Lagrangian CFL number,coupling intervals per convective time,FVM substeps per coupling interval,FVM step,particle Courant number,spacing ratio,coupling iterations,h/D,Re,mean drag total,mean drag FVM,mean drag coupling,lift amplitude total,lift amplitude FVM,lift amplitude coupling,Strouhal number total,Strouhal number FVM,Strouhal number coupling,wake velocity total,wake velocity FVM,wake velocity coupling
-box1.6_sub5_inset8.75,B,0.04,0.776,25,5,0.008,1,1,1.95745,0.04,150,0.344582,0.67451,-0.329929,-5.15243,-3.11154,-2.04089,-0.52466,-1.22128,0.69662,1.60303,2.12438,1.94271
-box2.0_sub5_inset8.75,B,0.04,0.776,25,5,0.008,1,1,1.97074,0.04,150,0.553192,0.67451,-0.121318,-4.48634,-3.11154,-1.37479,-0.747565,-1.22128,0.473715,1.85752,2.12438,2.37548
-box2.4_sub2_inset8.75,C T2 E KAPPA S F,0.016,0.3104,62.5,2,0.008,0.4,1,1.34968,0.04,150,0.0610307,0.67451,-0.61348,-5.73806,-3.11154,-2.62652,-1.61375,-1.22128,-0.39247,2.51558,2.12438,2.80676
-box2.4_sub5_inset8.75,P E KAPPA BL K S R B F,0.04,0.776,25,5,0.008,1,1,1.76596,0.04,150,0.592206,0.67451,-0.082304,-4.42723,-3.11154,-1.31569,-0.867375,-1.22128,0.353905,2.45776,2.12438,1.4321
-box3.2_sub5_inset8.75,B,0.04,0.776,25,5,0.008,1,1,1.67021,0.04,150,0.392849,0.67451,-0.281662,-5.89299,-3.11154,-2.78145,-1.08723,-1.22128,0.134047,1.80651,2.12438,2.74699
-box4.0_sub5_inset8.75,B,0.04,0.776,25,5,0.008,1,1,1.75,0.04,150,0.338835,0.67451,-0.335675,-5.12536,-3.11154,-2.01382,-1.05199,-1.22128,0.169288,1.49776,2.12438,2.92179

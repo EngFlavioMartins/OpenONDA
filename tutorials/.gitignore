@@ -10,5 +10,9 @@
 !**/figures/
 !**/figures/**
 
+# The delta-wing banner is regenerated from the run; its tracked copy is in assets/.
+vpm/05_delta_wing/figures/delta_wing.gif
+vpm/05_delta_wing/figures/delta_wing.json
+
 # Finder metadata is not a figure or a post-processing result.
 .DS_Store
