@@ -1,9 +1,10 @@
 """Animate the wakes shed by the two heaving wings, with their lift.
 
 Each frame shows the particles and wing surfaces written at one output time,
-coloured by the vorticity magnitude. The inset traces the lift coefficient of
-each wing up to that time. ``assets/delta_wing.gif``, shown at the top of
-the README, is a copy of the result.
+coloured by the wing that shed them and brightened by their vorticity. The
+inset traces the lift coefficient of each wing up to that time. By default the
+animation plays at half the physical speed. ``assets/delta_wing.gif``, shown at
+the top of the README, is a copy of the result.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.colors import LinearSegmentedColormap, to_rgb
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -45,10 +46,13 @@ GALLERY_STYLE = {
     "ytick.right": False,
     "legend.frameon": False,
 }
-VORTICITY_COLORMAP = LinearSegmentedColormap.from_list(
-    "gallery_vorticity", ["#031a3c", "#0d58b7", "#3791ed", "#73c0ff", "#c9e6fd"], N=16
-)
 WING_COLOURS = {"front_wing": "#f39c1f", "rear_wing": "#9bd75a"}
+WING_COLORMAPS = tuple(  # by group id: the front wing sheds group 0, the rear wing group 1
+    LinearSegmentedColormap.from_list(
+        name, [to_rgb(colour) * np.array(0.45), colour, "#ffffff"], N=16
+    )
+    for name, colour in WING_COLOURS.items()
+)
 
 
 def read_series(collection: Path) -> list[tuple[float, pv.DataSet]]:
@@ -79,18 +83,26 @@ def render_scene(plotter, particles, surface, view, omega_max):
     """Render one frame of particles and wings, returning its RGB image."""
     plotter.clear()
     if particles.n_points:
-        cloud = pv.PolyData(np.asarray(particles.points))
-        cloud["vorticity magnitude"] = np.linalg.norm(np.asarray(particles["vorticity"]), axis=1)
-        plotter.add_mesh(
-            cloud,
-            scalars="vorticity magnitude",
-            cmap=VORTICITY_COLORMAP,
-            clim=(0.0, omega_max),
-            opacity=np.linspace(0.15, 1.0, 16),
-            render_points_as_spheres=True,
-            point_size=2.5 * RENDER_SCALE,
-            show_scalar_bar=False,
-        )
+        points = np.asarray(particles.points)
+        vorticity = np.linalg.norm(np.asarray(particles["vorticity"]), axis=1)
+        wing = np.asarray(particles["group_id"])
+        # One hue per wing; weak vorticity fades out, so the tip vortices stand out
+        for index, colormap in enumerate(WING_COLORMAPS):
+            shed = wing == index
+            if not np.any(shed):
+                continue
+            cloud = pv.PolyData(points[shed])
+            cloud["vorticity magnitude"] = vorticity[shed]
+            plotter.add_mesh(
+                cloud,
+                scalars="vorticity magnitude",
+                cmap=colormap,
+                clim=(0.0, omega_max),
+                opacity=np.linspace(0.15, 1.0, 16),
+                render_points_as_spheres=True,
+                point_size=2.5 * RENDER_SCALE,
+                show_scalar_bar=False,
+            )
     plotter.add_mesh(surface, color="#9c9c9c", smooth_shading=True)
     plotter.camera.position = view["position"]
     plotter.camera.focal_point = view["focal_point"]
@@ -101,24 +113,13 @@ def render_scene(plotter, particles, surface, view, omega_max):
 
 
 def compose(image, time, loads, frequency, omega_max):
-    """Lay the rendered scene, the colour bar and the lift inset on one frame."""
+    """Lay the rendered scene and the lift inset on one frame."""
     with plt.rc_context(GALLERY_STYLE):
         figure = plt.figure(figsize=(IMAGE_SIZE[0] / 100, IMAGE_SIZE[1] / 100), dpi=100)
         figure.patch.set_facecolor("black")
         scene = figure.add_axes((0.0, 0.0, 1.0, 1.0))
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
-
-        bar = figure.add_axes((0.03, 0.14, 0.17, 0.035))
-        figure.colorbar(
-            plt.cm.ScalarMappable(Normalize(0.0, omega_max), VORTICITY_COLORMAP),
-            cax=bar,
-            orientation="horizontal",
-            ticks=(0.0, omega_max),
-        )
-        bar.set_xticklabels(["0", f"{omega_max:g}"], fontsize=24)
-        bar.tick_params(direction="out", length=8, width=1.5)
-        bar.set_title(r"$|\omega|$ [1/s]", fontsize=24, pad=10)
 
         inset = figure.add_axes((0.735, 0.6, 0.235, 0.27))
         inset.set_facecolor("none")
@@ -166,7 +167,7 @@ def compose(image, time, loads, frequency, omega_max):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--speed", type=float, default=1.0, help="playback speed; 1 is real time")
+    parser.add_argument("--speed", type=float, default=0.5, help="playback speed; 1 is real time")
     parser.add_argument("--output", type=Path, default=OUTPUT)
     args = parser.parse_args()
 
