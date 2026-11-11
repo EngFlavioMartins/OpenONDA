@@ -106,6 +106,15 @@ class CouplerConfig:
     """Largest difference between the total strength emitted in the replacement region and the
     FVM total strength there, as a fraction of the FVM strength L1 norm; above it the transfer
     stops before it changes the particles. ``None`` disables the check."""
+    wall_circulation_ratio_bounds: tuple[float, float] | None = (0.9, 1.1)
+    """Bounds of the near-wall circulation ratio, emitted over FVM total strength within three
+    particle spacings of a wall, checked where the net near-wall FVM circulation exceeds 5 % of its
+    L1 norm (a lifting body); outside them the transfer stops. ``None`` disables the check."""
+    particle_net_strength_warning: float | None = 1.0e-3
+    """Net vortex strength of the whole particle set, as a fraction of its L1 norm, above which each
+    transfer logs a warning. A healthy three-dimensional run stays near 1e-4. ``None`` disables it."""
+    particle_net_strength_limit: float | None = None
+    """The same fraction above which the run stops; ``None`` (default) only warns."""
     outer_boundary_patch: str = "numericalBoundary"
     """Mesh patch of the outer FVM boundary, which receives the normal velocity and the normal
     gradient of the tangential velocity."""
@@ -188,6 +197,8 @@ class CouplerConfig:
             "boundary_mismatch_warning",
             "boundary_mismatch_limit",
             "circulation_budget_limit",
+            "particle_net_strength_warning",
+            "particle_net_strength_limit",
         ):
             value = getattr(self, name)
             if value is not None and (not np.isfinite(value) or value <= 0.0):
@@ -198,6 +209,15 @@ class CouplerConfig:
             and self.boundary_mismatch_warning > self.boundary_mismatch_limit
         ):
             raise ValueError("boundary_mismatch_warning must not exceed boundary_mismatch_limit")
+        if self.wall_circulation_ratio_bounds is not None:
+            bounds = tuple(float(v) for v in self.wall_circulation_ratio_bounds)
+            if (
+                len(bounds) != 2
+                or not np.all(np.isfinite(bounds))
+                or not 0.0 < bounds[0] < 1.0 < bounds[1]
+            ):
+                raise ValueError("wall_circulation_ratio_bounds must hold 0 < lower < 1 < upper")
+            object.__setattr__(self, "wall_circulation_ratio_bounds", bounds)
         if not isinstance(self.backup, Backup):
             raise TypeError("backup must be a coupler Backup")
 

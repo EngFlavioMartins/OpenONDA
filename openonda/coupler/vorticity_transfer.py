@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import logging
 from typing import TYPE_CHECKING
 
@@ -19,6 +19,7 @@ from openonda.coupler.transfer_lattice import (
     TransferLattice,
     VortexMoments,
     build_transfer_lattice,
+    check_fvm_budget,
     transfer_on_lattice,
     vortex_moment_residual,
 )
@@ -98,6 +99,14 @@ class TransferResult:
     state_change_vortex_strength_net: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
+    particle_set_vortex_strength_net: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    particle_set_vortex_strength_l1: float = 0.0
+    fringe_removed_vortex_strength: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    particle_set_net_strength_fraction: float = 0.0
     blending_enabled: bool = False
     mapped_target_nodes: int = 0
     excluded_solid_target_nodes: int = 0
@@ -162,6 +171,11 @@ class TransferResult:
     fvm_budget_wall_circulation_ratio: float = 1.0
     relocated_shell_vortex_strength_l1: float = 0.0
     dropped_shell_vortex_strength_l1: float = 0.0
+    limited_vortex_strength_l1: float = 0.0
+    solid_particle_vortex_strength_l1: float = 0.0
+    tapered_vortex_strength_l1: float = 0.0
+    moment_fallback_component_count: int = 0
+    moment_fallback_vortex_strength_l1: float = 0.0
 
 
 def _validate_particle_sources(
@@ -227,6 +241,7 @@ class _AppliedParticleReductions:
     cast_correction_l1: float
     transfer_position_scale: float
     output_vortex_strength_net: np.ndarray
+    output_vortex_strength_l1: float
     maximum_output_vortex_strength: float
 
 
@@ -256,6 +271,7 @@ def _reduce_applied_particle_state(
     linear_impulse = np.zeros(3, dtype=np.float64)
     angular_impulse = np.zeros(3, dtype=np.float64)
     output_net = np.zeros(3, dtype=np.float64)
+    output_l1 = 0.0
     transfer_l1 = 0.0
     cast_correction_l1 = 0.0
     position_scale = 0.0
@@ -274,6 +290,7 @@ def _reduce_applied_particle_state(
             )
         magnitude = np.linalg.norm(strength_chunk, axis=1)
         output_net += strength_chunk.sum(axis=0, dtype=np.float64)
+        output_l1 += float(magnitude.sum(dtype=np.float64))
         maximum_strength = max(maximum_strength, float(magnitude.max(initial=0.0)))
 
         transfer_stop = min(stop, n_transfer)
@@ -311,6 +328,7 @@ def _reduce_applied_particle_state(
         cast_correction_l1=cast_correction_l1,
         transfer_position_scale=position_scale,
         output_vortex_strength_net=output_net,
+        output_vortex_strength_l1=output_l1,
         maximum_output_vortex_strength=maximum_strength,
     )
 
@@ -333,14 +351,16 @@ def transfer_vorticity_to_particles(
     surface_strength_threshold: float | None = None,
     frame: MeshFrame | None = None,
     circulation_budget_limit: float | None = None,
+    wall_circulation_ratio_bounds: tuple[float, float] | None = None,
 ) -> TransferResult:
     """Transfer the FVM vorticity to the particles of a GBD particle set in one step.
 
     :func:`transfer_on_lattice` builds the new particle state; it is checked for
     capacity, for conservation of the total strength and linear impulse in
     storage precision, and against the FVM circulation budget of the replacement
-    region (``circulation_budget_limit``, ``None`` disables it) before it replaces
-    the VPM particles. ``frame`` of a rotating mesh transfers in body coordinates,
+    region and next to the walls (``circulation_budget_limit`` and
+    ``wall_circulation_ratio_bounds``, see :func:`check_fvm_budget`) before it
+    replaces the VPM particles. ``frame`` of a rotating mesh transfers in body coordinates,
     where the lattice and the walls are fixed; ``None`` transfers in the VPM
     coordinates.
     """
@@ -392,16 +412,11 @@ def transfer_vorticity_to_particles(
             "or reduce the number of particles"
         )
     budget = result.fvm_budget
-    if (
-        circulation_budget_limit is not None
-        and budget is not None
-        and budget.relative_error > circulation_budget_limit
-    ):
-        raise RuntimeError(
-            "the vorticity transfer does not hold the FVM circulation of the replacement "
-            f"region: total-strength error {budget.relative_error:.3e} of the FVM L1 norm, "
-            f"limit {circulation_budget_limit:.3e}; near-wall circulation ratio "
-            f"{budget.wall_circulation_ratio:.4f}"
+    if budget is not None:
+        check_fvm_budget(
+            budget,
+            relative_limit=circulation_budget_limit,
+            wall_ratio_bounds=wall_circulation_ratio_bounds,
         )
     n_after = result.particle_count
     if n_after > int(particles.capacity):
@@ -550,6 +565,16 @@ def transfer_vorticity_to_particles(
         ),
         replaced_vortex_strength_net=replaced_strength.sum(axis=0, dtype=np.float64),
         state_change_vortex_strength_net=output_net - input_net,
+        particle_set_vortex_strength_net=output_net,
+        particle_set_vortex_strength_l1=reductions.output_vortex_strength_l1,
+        fringe_removed_vortex_strength=np.array(
+            getattr(
+                getattr(vpm, "stabilization", None),
+                "outflow_fringe_vortex_strength_removed",
+                np.zeros(3),
+            ),
+            dtype=np.float64,
+        ),
         blending_enabled=bool(
             np.any((lattice.blending_weight > 0.0) & (lattice.blending_weight < 1.0))
         ),
@@ -616,6 +641,11 @@ def transfer_vorticity_to_particles(
         representation_residual_before_removal=result.representation_residual_before_removal,
         representation_residual_after_removal=result.representation_residual_after_removal,
         strength_ratio=float(result.strength_ratio),
+        limited_vortex_strength_l1=float(result.limited_vortex_strength_l1),
+        solid_particle_vortex_strength_l1=float(result.solid_particle_vortex_strength_l1),
+        tapered_vortex_strength_l1=float(result.tapered_vortex_strength_l1),
+        moment_fallback_component_count=int(result.moment_fallback_component_count),
+        moment_fallback_vortex_strength_l1=float(result.moment_fallback_vortex_strength_l1),
         **_budget_fields(budget),
     )
 
@@ -684,6 +714,14 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
         ),
         ("fvm circulation budget, error", f"{result.fvm_budget_relative_error:.3e}"),
         ("near-wall circulation ratio", f"{result.fvm_budget_wall_circulation_ratio:.4f}"),
+        ("particle-set net strength, of L1", f"{result.particle_set_net_strength_fraction:.3e}"),
+        ("strength limited by kappa, l1", f"{result.limited_vortex_strength_l1:.3e}", "m^3/s"),
+        (
+            "particles in the solid, dropped l1",
+            f"{result.solid_particle_vortex_strength_l1:.3e}",
+            "m^3/s",
+        ),
+        ("wall taper, removed l1", f"{result.tapered_vortex_strength_l1:.3e}", "m^3/s"),
     ]
     rows.extend(
         (
@@ -886,6 +924,10 @@ class VorticityTransfer:
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
         self.max_moment_correction_fraction = float(cfg.max_moment_correction_fraction)
         self.circulation_budget_limit = cfg.circulation_budget_limit
+        self._net_strength_baseline: np.ndarray | None = None
+        self.wall_circulation_ratio_bounds = cfg.wall_circulation_ratio_bounds
+        self.particle_net_strength_warning = cfg.particle_net_strength_warning
+        self.particle_net_strength_limit = cfg.particle_net_strength_limit
         self._fvm_domain_bounds = np.asarray(coupler.fvm_domain_bounds, dtype=np.float64)
         self._transfer_region_bounds: np.ndarray | None = None
         self._cell_tree: cKDTree | None = None
@@ -1064,6 +1106,7 @@ class VorticityTransfer:
         fields, VPM particles, or either accepted clock.
         """
         self._target_stencils = None
+        self._net_strength_baseline = None
         # FVM cells and walls are kept in body coordinates, fixed in the mesh.
         frame = MeshFrame(fvm) if self._frame is None else self._frame
         self._transfer_region_bounds = self.config.transfer_region(
@@ -1394,6 +1437,7 @@ class VorticityTransfer:
             compute_diagnostics=(self.step == 1 or self.step % self.diagnostic_interval == 0),
             max_moment_correction_fraction=self.max_moment_correction_fraction,
             circulation_budget_limit=self.circulation_budget_limit,
+            wall_circulation_ratio_bounds=self.wall_circulation_ratio_bounds,
             frame=self._frame if self._frame is not None and self._frame.rotates else None,
         )
 
@@ -1466,7 +1510,68 @@ class VorticityTransfer:
         )
         if self.step % self.diagnostic_interval == 0:
             logger.info(_transfer_log_record(self.step, result))
+        result = self._with_net_strength_balance(result)
+        self._check_particle_net_strength(result)
+        if result.moment_fallback_component_count:
+            logger.warning(
+                format_coupler_log(
+                    "moment correction fallback",
+                    ("coupling step", self.step),
+                    (
+                        "fluid components without a correction",
+                        result.moment_fallback_component_count,
+                    ),
+                    (
+                        "their strength, l1",
+                        f"{result.moment_fallback_vortex_strength_l1:.3e}",
+                        "m^3/s",
+                    ),
+                )
+            )
         return result
+
+    def _with_net_strength_balance(self, result: TransferResult) -> TransferResult:
+        """Add the change of the particle-set strength balance since the first transfer.
+
+        The balance is the net strength of the particles plus the strength the
+        outflow fringe has removed; its change, over the particle L1 norm, is
+        ``particle_set_net_strength_fraction``.
+        """
+        balance = result.particle_set_vortex_strength_net + result.fringe_removed_vortex_strength
+        if self._net_strength_baseline is None:
+            self._net_strength_baseline = balance.copy()
+        fraction = float(
+            np.linalg.norm(balance - self._net_strength_baseline)
+            / (result.particle_set_vortex_strength_l1 + 1.0e-30)
+        )
+        return replace(result, particle_set_net_strength_fraction=fraction)
+
+    def _check_particle_net_strength(self, result: TransferResult) -> None:
+        """Warn, or stop, when the net strength of the whole particle set grows.
+
+        In three dimensions the strengths of a complete vorticity field sum to zero,
+        so the balance changes only through an unresolved transfer or particle
+        step. The check follows the particle state just written, so a stop leaves
+        the run at its last backup.
+        """
+        fraction = result.particle_set_net_strength_fraction
+        limit = self.particle_net_strength_limit
+        if limit is not None and fraction > limit:
+            raise RuntimeError(
+                "the net vortex strength of the particle set is "
+                f"{fraction:.3e} of its L1 norm, above the limit {limit:.3e}: the "
+                "transfer or the outflow fringe loses circulation"
+            )
+        warning = self.particle_net_strength_warning
+        if warning is not None and fraction > warning:
+            logger.warning(
+                format_coupler_log(
+                    "particle-set net strength",
+                    ("coupling step", self.step),
+                    ("net strength, of L1", f"{fraction:.3e}"),
+                    ("warning above", f"{warning:.3e}"),
+                )
+            )
 
 
 __all__ = [

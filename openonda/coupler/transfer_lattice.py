@@ -772,6 +772,7 @@ class StrengthCorrection:
     residual_before_correction: float
     residual_after_correction: float | None
     strength_ratio: float
+    limited_vortex_strength_l1: float = 0.0
 
 
 def correct_lattice_strength(
@@ -878,6 +879,7 @@ def correct_lattice_strength(
     )
     limited_strength = baseline + strength_correction
     exceeds_limit = np.einsum("ij,ij->i", limited_strength, limited_strength) > bound_squared
+    unlimited_exceeding = limited_strength[exceeds_limit].copy()
     if np.any(exceeds_limit):
         previous = baseline[exceeds_limit]
         delta = strength_correction[exceeds_limit]
@@ -897,6 +899,9 @@ def correct_lattice_strength(
         )
     strength_ratio = (
         float(np.linalg.norm(limited_strength, axis=1).max(initial=0.0)) / peak_target_strength
+    )
+    limiter_l1 = float(
+        np.linalg.norm(unlimited_exceeding - limited_strength[exceeds_limit], axis=1).sum()
     )
 
     represented_limited: np.ndarray | None = None
@@ -920,6 +925,7 @@ def correct_lattice_strength(
         residual_before_correction=residual_before,
         residual_after_correction=residual_after,
         strength_ratio=strength_ratio,
+        limited_vortex_strength_l1=limiter_l1,
     )
 
 
@@ -997,14 +1003,15 @@ def _correct_fluid_component_moments(lattice, original, redistributed, labels, c
     """Apply the moment correction to each fluid-connected component.
 
     A component whose retained strengths cannot carry the correction keeps its
-    limited strengths unchanged.
+    limited strengths unchanged; its count and strength L1 norm are returned.
     """
+    fallback_count, fallback_l1 = 0, 0.0
     raw = redistributed.copy()
     corrected = redistributed.copy()
     flat_labels = labels.reshape(-1)
     rows = np.flatnonzero(flat_labels >= 0)
     if not len(rows):
-        return raw, corrected
+        return raw, corrected, fallback_count, fallback_l1
     if np.any(flat_labels[rows] != flat_labels[rows[0]]):
         rows = rows[np.argsort(flat_labels[rows], kind="stable")]
     boundaries = np.r_[0, np.flatnonzero(np.diff(flat_labels[rows])) + 1, len(rows)]
@@ -1029,7 +1036,9 @@ def _correct_fluid_component_moments(lattice, original, redistributed, labels, c
             # into another fluid region. Keep its limited strengths instead.
             raw[component] = original[component]
             corrected[component] = original[component]
-    return raw, corrected
+            fallback_count += 1
+            fallback_l1 += float(np.linalg.norm(original[component], axis=1).sum())
+    return raw, corrected, fallback_count, fallback_l1
 
 
 @dataclass(frozen=True)
@@ -1075,6 +1084,11 @@ class LatticeTransferResult:
     strength_ratio: float = 0.0
     excluded_target_vortex_strength_l1: float = 0.0
     fvm_budget: FVMBudget | None = None
+    limited_vortex_strength_l1: float = 0.0
+    solid_particle_vortex_strength_l1: float = 0.0
+    tapered_vortex_strength_l1: float = 0.0
+    moment_fallback_component_count: int = 0
+    moment_fallback_vortex_strength_l1: float = 0.0
 
     @property
     def particle_count(self) -> int:
@@ -1281,9 +1295,12 @@ def transfer_on_lattice(
     )
     redistributed[lattice.solid_interior] = 0.0
     wall_corrected = None
+    fallback_count, fallback_l1 = 0, 0.0
     if labels is not None:
-        redistributed, wall_corrected = _correct_fluid_component_moments(
-            lattice, limited_strength, redistributed, labels, moment_correction
+        redistributed, wall_corrected, fallback_count, fallback_l1 = (
+            _correct_fluid_component_moments(
+                lattice, limited_strength, redistributed, labels, moment_correction
+            )
         )
     keep = np.linalg.norm(redistributed, axis=1) > 0.0
     removed_nodes = (magnitude_before > 0.0) & ~keep
@@ -1597,6 +1614,15 @@ def transfer_on_lattice(
         strength_ratio=correction.strength_ratio,
         excluded_target_vortex_strength_l1=excluded_target_l1,
         fvm_budget=budget,
+        limited_vortex_strength_l1=correction.limited_vortex_strength_l1,
+        solid_particle_vortex_strength_l1=float(
+            np.linalg.norm(strength[deep_solid], axis=1).sum(dtype=np.float64)
+        ),
+        tapered_vortex_strength_l1=float(
+            np.linalg.norm(strength[valid] - tapered_strength[valid], axis=1).sum(dtype=np.float64)
+        ),
+        moment_fallback_component_count=fallback_count,
+        moment_fallback_vortex_strength_l1=fallback_l1,
     )
 
 
@@ -1612,7 +1638,8 @@ class FVMBudget:
     the total-strength difference over the L1 norm of the FVM target there. The
     near-wall sums cover the nodes within ``WALL_BUDGET_SPACINGS`` spacings of a
     wall; ``wall_circulation_ratio`` projects the emitted total on the FVM total
-    (one when there is no wall or no net near-wall circulation).
+    (one when there is no wall or no net near-wall circulation), and
+    ``wall_fvm_vortex_strength_l1`` is the FVM L1 norm there.
     """
 
     fvm_total_vortex_strength: np.ndarray
@@ -1624,8 +1651,52 @@ class FVMBudget:
     wall_fvm_total_vortex_strength: np.ndarray
     wall_emitted_total_vortex_strength: np.ndarray
     wall_circulation_ratio: float
+    wall_fvm_vortex_strength_l1: float = 0.0
     relocated_shell_vortex_strength_l1: float = 0.0
     dropped_shell_vortex_strength_l1: float = 0.0
+
+
+WALL_NET_CIRCULATION_FRACTION = 0.05
+"""Net near-wall FVM circulation, as a fraction of its L1 norm, above which the wall ratio is checked.
+
+It is 16 % on the NACA 4412 wing, 9.5 % on a thin lifting ellipse and at most about 2 % on the
+shedding cylinder, where the ratio of two small totals is noise (0.66 to 1.47)."""
+
+
+def check_fvm_budget(
+    budget: FVMBudget,
+    *,
+    relative_limit: float | None,
+    wall_ratio_bounds: tuple[float, float] | None,
+) -> None:
+    """Raise RuntimeError when a transfer loses the FVM circulation.
+
+    ``relative_limit`` bounds the total-strength error of the replacement region,
+    as a fraction of the FVM L1 norm there. ``wall_ratio_bounds`` bounds the
+    near-wall circulation ratio wherever the net near-wall FVM circulation exceeds
+    ``WALL_NET_CIRCULATION_FRACTION`` of its L1 norm: the bound circulation of a
+    lifting body is far smaller than the L1 norm of its wall sheets, so the first
+    check alone cannot see it lost. ``None`` disables a check.
+    """
+    if relative_limit is not None and budget.relative_error > relative_limit:
+        raise RuntimeError(
+            "the vorticity transfer does not hold the FVM circulation of the replacement "
+            f"region: total-strength error {budget.relative_error:.3e} of the FVM L1 norm, "
+            f"limit {relative_limit:.3e}; near-wall circulation ratio "
+            f"{budget.wall_circulation_ratio:.4f}"
+        )
+    net = float(np.linalg.norm(budget.wall_fvm_total_vortex_strength))
+    if (
+        wall_ratio_bounds is not None
+        and net > WALL_NET_CIRCULATION_FRACTION * budget.wall_fvm_vortex_strength_l1
+        and not wall_ratio_bounds[0] <= budget.wall_circulation_ratio <= wall_ratio_bounds[1]
+    ):
+        raise RuntimeError(
+            "the vorticity transfer does not hold the FVM circulation next to the wall: "
+            f"near-wall circulation ratio {budget.wall_circulation_ratio:.4f}, bounds "
+            f"[{wall_ratio_bounds[0]:g}, {wall_ratio_bounds[1]:g}]; net near-wall FVM "
+            f"circulation {net:.3e} of L1 {budget.wall_fvm_vortex_strength_l1:.3e} m^3/s"
+        )
 
 
 def _fvm_budget(
@@ -1652,7 +1723,7 @@ def _fvm_budget(
         / (l1 + 1.0e-30)
     )
     zero = np.zeros(3, dtype=np.float64)
-    wall_fvm, wall_emitted, ratio = zero, zero, 1.0
+    wall_fvm, wall_emitted, ratio, wall_l1 = zero, zero, 1.0, 0.0
     if lattice.wall_distance is not None:
         near = region & (lattice.wall_distance < WALL_BUDGET_SPACINGS * lattice.particle_spacing)
         wall_fvm = target[near].sum(axis=0)
@@ -1671,6 +1742,7 @@ def _fvm_budget(
         wall_fvm_total_vortex_strength=wall_fvm,
         wall_emitted_total_vortex_strength=wall_emitted,
         wall_circulation_ratio=ratio,
+        wall_fvm_vortex_strength_l1=wall_l1,
         relocated_shell_vortex_strength_l1=relocated_shell_l1,
         dropped_shell_vortex_strength_l1=dropped_shell_l1,
     )
@@ -1756,6 +1828,7 @@ __all__ = [
     "VortexMoments",
     "blending_weight",
     "build_transfer_lattice",
+    "check_fvm_budget",
     "correct_lattice_strength",
     "correct_vortex_moments",
     "fvm_target_strength",
