@@ -763,31 +763,31 @@ def _record_root_boundary_data(
     logger.info(
         format_coupler_log(
             "fvm boundary data",
-            ("velocity mismatch, mean", f"{diagnostics['mean_velocity_mismatch']:.3e}", "U_inf"),
+            ("velocity mismatch, mean", f"{diagnostics['mean_velocity_mismatch']:.3e}", "U_ref"),
             (
                 "velocity mismatch, max",
                 f"{diagnostics['maximum_velocity_mismatch']:.3e}",
-                "U_inf",
+                "U_ref",
             ),
             (
                 "normal mismatch, max",
                 f"{diagnostics['maximum_normal_velocity_mismatch']:.3e}",
-                "U_inf",
+                "U_ref",
             ),
             (
                 "outflow mismatch, mean",
                 f"{diagnostics['mean_outflow_velocity_mismatch']:.3e}",
-                "U_inf",
+                "U_ref",
             ),
             (
                 "outflow mismatch, max",
                 f"{diagnostics['maximum_outflow_velocity_mismatch']:.3e}",
-                "U_inf",
+                "U_ref",
             ),
             (
                 "velocity mismatch, rms by face side",
                 " ".join(f"{side} {value:.2e}" for side, value in side_rms.items()),
-                "U_inf",
+                "U_ref",
             ),
         )
     )

@@ -157,12 +157,14 @@ class CouplerConfig:
     boundary_data_extrapolation: str = "linear"
     """First estimate of the end-of-interval boundary data: ``"linear"`` extrapolates the
     corrections of the last two intervals, ``"constant"`` reuses the last one."""
-    boundary_mismatch_rms_warning: float | None = 0.01
+    boundary_mismatch_rms_warning: float | None = 0.03
     """RMS tangential FVM–particle velocity mismatch over one side of the outer FVM boundary, in
     units of the reference speed, above which the coupler logs a warning. ``None`` disables it."""
-    boundary_mismatch_rms_limit: float | None = 0.03
-    """The same RMS above which the run stops with an error naming the side. A healthy coupled cube
-    keeps 0.001–0.007 on every side. ``None`` disables the check."""
+    boundary_mismatch_rms_limit: float | None = 0.1
+    """The same RMS above which the run stops with an error naming the side. Coupled runs keep
+    0.001–0.01 through their shedding, reach about 0.016 while an impulsively started wake leaves
+    the box, and up to 0.03 on a downstream side that a lifting wake crosses; the limit leaves a
+    factor of three above that. ``None`` disables the check."""
     boundary_mismatch_warning: float | None = 0.2
     """Tangential FVM–particle velocity mismatch on the outer FVM boundary, in units of the
     reference speed, above which the coupler logs a warning with the face location; ``None``
