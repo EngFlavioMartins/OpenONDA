@@ -300,6 +300,9 @@ class CoupledSolver:
         self.previous_boundary_data_correction: tuple[np.ndarray, np.ndarray, np.ndarray] | None = (
             None
         )
+        # Lengths in s of the coupling intervals of the two corrections above.
+        self.boundary_data_correction_interval = 0.0
+        self.previous_boundary_data_correction_interval = 0.0
         self.coupling_diagnostics: list[dict] = []
         self._closed = False
         self._run_started = False

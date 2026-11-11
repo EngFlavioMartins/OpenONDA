@@ -568,12 +568,7 @@ def transfer_vorticity_to_particles(
         particle_set_vortex_strength_net=output_net,
         particle_set_vortex_strength_l1=reductions.output_vortex_strength_l1,
         fringe_removed_vortex_strength=np.array(
-            getattr(
-                getattr(vpm, "stabilization", None),
-                "outflow_fringe_vortex_strength_removed",
-                np.zeros(3),
-            ),
-            dtype=np.float64,
+            vpm.stabilization.outflow_fringe_vortex_strength_removed, dtype=np.float64
         ),
         blending_enabled=bool(
             np.any((lattice.blending_weight > 0.0) & (lattice.blending_weight < 1.0))
@@ -925,6 +920,7 @@ class VorticityTransfer:
         self.max_moment_correction_fraction = float(cfg.max_moment_correction_fraction)
         self.circulation_budget_limit = cfg.circulation_budget_limit
         self._net_strength_baseline: np.ndarray | None = None
+        self._net_strength_above_warning = False
         self.wall_circulation_ratio_bounds = cfg.wall_circulation_ratio_bounds
         self.particle_net_strength_warning = cfg.particle_net_strength_warning
         self.particle_net_strength_limit = cfg.particle_net_strength_limit
@@ -1107,6 +1103,7 @@ class VorticityTransfer:
         """
         self._target_stencils = None
         self._net_strength_baseline = None
+        self._net_strength_above_warning = False
         # FVM cells and walls are kept in body coordinates, fixed in the mesh.
         frame = MeshFrame(fvm) if self._frame is None else self._frame
         self._transfer_region_bounds = self.config.transfer_region(
@@ -1558,17 +1555,20 @@ class VorticityTransfer:
         limit = self.particle_net_strength_limit
         if limit is not None and fraction > limit:
             raise RuntimeError(
-                "the net vortex strength of the particle set is "
-                f"{fraction:.3e} of its L1 norm, above the limit {limit:.3e}: the "
-                "transfer or the outflow fringe loses circulation"
+                "the particle-set strength balance (net strength plus the strength removed "
+                f"by the outflow fringe) changed by {fraction:.3e} of the particle L1 norm "
+                f"since the first transfer, above the limit {limit:.3e}"
             )
         warning = self.particle_net_strength_warning
-        if warning is not None and fraction > warning:
+        above = warning is not None and fraction > warning
+        crossed = above and not self._net_strength_above_warning
+        self._net_strength_above_warning = above
+        if above and (crossed or self.step % self.diagnostic_interval == 0):
             logger.warning(
                 format_coupler_log(
                     "particle-set net strength",
                     ("coupling step", self.step),
-                    ("net strength, of L1", f"{fraction:.3e}"),
+                    ("balance change, of L1", f"{fraction:.3e}"),
                     ("warning above", f"{warning:.3e}"),
                 )
             )

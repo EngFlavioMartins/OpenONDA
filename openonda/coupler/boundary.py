@@ -634,19 +634,19 @@ def _check_boundary_mismatch(
     face_normal: np.ndarray,
     difference: np.ndarray,
     magnitude: np.ndarray,
-    reference_speed: float,
+    speed: float,
 ) -> str | None:
     """Warn on, or report a stop for, an unphysical boundary mismatch."""
     config = coupler.config
     if not len(magnitude):
         return None
     index = int(np.argmax(magnitude))
-    ratio = float(magnitude[index] / reference_speed)
+    ratio = float(magnitude[index] / speed)
     limit = config.boundary_mismatch_limit
     if limit is not None and ratio > limit:
         return (
             f"The FVM velocity on the outer boundary differs from the particle velocity by "
-            f"{ratio:.3g} times the reference speed {reference_speed:.4g} m/s (limit {limit:g}) "
+            f"{ratio:.3g} times the reference speed {speed:.4g} m/s (limit {limit:g}) "
             f"at t = {coupler.time:.6g} s: "
             + _mismatch_location(face_centre, face_normal, difference, index)
             + ". The FVM boundary condition or the boundary data are unstable there; check the "
@@ -668,6 +668,18 @@ def _check_boundary_mismatch(
     return None
 
 
+def reference_speed(freestream_velocity: np.ndarray, face_velocity: np.ndarray) -> float:
+    """Return the reference speed of the coupled boundary in m/s.
+
+    It is the larger of the free-stream speed and the RMS speed of the particle
+    velocity on the outer FVM boundary, so a ramped or zero free stream still has
+    the scale of the flow through the boundary.
+    """
+    face = np.asarray(face_velocity, dtype=np.float64).reshape(-1, 3)
+    rms = float(np.sqrt(np.mean(np.einsum("ij,ij->i", face, face)))) if len(face) else 0.0
+    return max(float(np.linalg.norm(freestream_velocity)), rms, np.finfo(np.float64).tiny)
+
+
 def _record_root_boundary_data(
     coupler,
     face_centre: np.ndarray,
@@ -676,14 +688,8 @@ def _record_root_boundary_data(
     face_velocity: np.ndarray,
 ) -> str | None:
     difference = np.asarray(face_velocity) - np.asarray(vpm_target_velocity)
-    speed = float(np.linalg.norm(coupler.freestream_velocity)) + 1.0e-30
     magnitude = np.linalg.norm(difference, axis=1)
-    target = np.asarray(vpm_target_velocity, dtype=np.float64).reshape(-1, 3)
-    reference_speed = max(
-        float(np.linalg.norm(coupler.freestream_velocity)),
-        float(np.sqrt(np.mean(np.einsum("ij,ij->i", target, target)))) if len(target) else 0.0,
-        1.0e-12,
-    )
+    speed = reference_speed(coupler.freestream_velocity, vpm_target_velocity)
     normal_mismatch = np.abs(np.einsum("ij,ij->i", difference, face_normal))
     axis, sign = outflow_axis_sign(coupler.freestream_velocity)
     assert coupler.fvm_domain_bounds is not None
@@ -734,9 +740,7 @@ def _record_root_boundary_data(
             ),
         )
     )
-    return _check_boundary_mismatch(
-        coupler, face_centre, face_normal, difference, magnitude, reference_speed
-    )
+    return _check_boundary_mismatch(coupler, face_centre, face_normal, difference, magnitude, speed)
 
 
 def apply_fvm_boundary(
