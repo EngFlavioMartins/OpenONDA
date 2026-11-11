@@ -105,6 +105,7 @@ class TransferResult:
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
     particle_set_vortex_strength_l1: float = 0.0
+    input_vortex_strength_l1: float = 0.0
     fringe_removed_vortex_strength: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
@@ -581,6 +582,9 @@ def transfer_vorticity_to_particles(
         state_change_vortex_strength_net=output_net - input_net,
         particle_set_vortex_strength_net=output_net,
         particle_set_vortex_strength_l1=reductions.output_vortex_strength_l1,
+        input_vortex_strength_l1=float(
+            np.linalg.norm(existing_strength, axis=1).sum(dtype=np.float64)
+        ),
         fringe_removed_vortex_strength=np.array(
             vpm.stabilization.outflow_fringe_vortex_strength_removed, dtype=np.float64
         ),
@@ -1321,11 +1325,9 @@ class VorticityTransfer:
         has_solid = self.solid_boundary is not None
 
         def fluid_weight(points: np.ndarray) -> np.ndarray:
-            return _smoothstep(
-                self._signed_solid_distance(points),
-                -self.particle_spacing,
-                0.0,
-            )
+            # The weight is one at d >= 0, so only points near a wall need their distance.
+            distance = self.solid_boundary.signed_distance_near(points, self.particle_spacing)
+            return _smoothstep(distance, -self.particle_spacing, 0.0)
 
         def in_solid(points: np.ndarray) -> np.ndarray:
             return self._points_in_solid(points, include_boundary=False)

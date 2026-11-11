@@ -10,7 +10,7 @@ import numpy as np
 
 from openonda.vpm.wall_errors import WallCorrectionTooLargeError
 
-_DISTANCE_CACHE_MAX_BYTES = 8 * 1024 * 1024
+_DISTANCE_CACHE_MAX_BYTES = 256 * 1024 * 1024
 
 
 class TriangulatedWall:
@@ -76,6 +76,21 @@ class TriangulatedWall:
         )
         self._cache: OrderedDict[bytes, np.ndarray] = OrderedDict()
         self._cache_bytes = 0
+        # A closed surface (every edge shared by two triangles) encloses its solid,
+        # so no point outside its bounding box lies in the solid.
+        edges = np.sort(
+            np.stack(
+                [
+                    connectivity.reshape(-1, 3)[:, [0, 1]],
+                    connectivity.reshape(-1, 3)[:, [1, 2]],
+                    connectivity.reshape(-1, 3)[:, [2, 0]],
+                ],
+                axis=1,
+            ).reshape(-1, 2),
+            axis=1,
+        )
+        _, edge_count = np.unique(edges, axis=0, return_counts=True)
+        self.closed = bool(np.all(edge_count == 2))
 
     @classmethod
     def from_box(cls, bounds, domain_bounds):
@@ -196,13 +211,32 @@ class TriangulatedWall:
             self._cache_bytes -= evicted.nbytes
         return result.copy()
 
-    def contains(self, points: np.ndarray, *, include_boundary: bool = True) -> np.ndarray:
-        distance = self.signed_distance(points)
-        return (
-            distance <= self.interior_tolerance
-            if include_boundary
-            else distance < -self.interior_tolerance
+    def near_surface(self, points: np.ndarray, margin: float) -> np.ndarray:
+        """Return the points within ``margin`` (m) of the bounding box of a closed surface.
+
+        Every point of an open surface's domain counts as near it.
+        """
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        if not self.closed:
+            return np.ones(len(query), dtype=bool)
+        return np.all(
+            (query >= self.surface_bounds[::2] - margin)
+            & (query <= self.surface_bounds[1::2] + margin),
+            axis=1,
         )
+
+    def contains(self, points: np.ndarray, *, include_boundary: bool = True) -> np.ndarray:
+        query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        result = np.zeros(len(query), dtype=bool)
+        near = self.near_surface(query, 2.0 * self.interior_tolerance)
+        if np.any(near):
+            distance = self.signed_distance(query[near])
+            result[near] = (
+                distance <= self.interior_tolerance
+                if include_boundary
+                else distance < -self.interior_tolerance
+            )
+        return result
 
 
 class SolidBoundary:
@@ -229,6 +263,29 @@ class SolidBoundary:
         result = np.full(len(points), np.inf)
         for body in self.bodies:
             result = np.minimum(result, body.signed_distance(points))
+        return result
+
+    def signed_distance_near(self, points, margin):
+        """Return the signed distance where it is below ``margin`` (m), and +inf elsewhere.
+
+        Points farther than ``margin`` from the bounding box of a closed body are not
+        queried; their distance is known to exceed ``margin``.
+        """
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        result = np.full(len(points), np.inf)
+        for body in self.bodies:
+            near = body.near_surface(points, margin)
+            if np.any(near):
+                result[near] = np.minimum(result[near], body.signed_distance(points[near]))
+        result[result >= margin] = np.inf
+        return result
+
+    def near_surface(self, points, margin):
+        """Return the points within ``margin`` (m) of a body; see TriangulatedWall.near_surface."""
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        result = np.zeros(len(points), dtype=bool)
+        for body in self.bodies:
+            result |= body.near_surface(points, margin)
         return result
 
     def contains(self, points, *, include_boundary=False):
@@ -364,17 +421,24 @@ class SolidBoundary:
         """Whether a segment enters solid, even with two fluid endpoints."""
         return self.first_intersections(starts, ends)[0] < 1.0 - 1e-10
 
-    def constrain_motion(self, positions, spacing, *, starts=None):
+    def constrain_motion(self, positions, spacing, *, starts=None, coordinate_scale=None):
         """Project bounded wall crossings onto fluid, without changing strength.
 
         Segment queries stop tunnelling through thin walls. Successive local
         projections handle corners and multiple bodies; all corrected points
         and paths are verified against the complete geometry before return.
+        ``coordinate_scale`` (m) sets the storage-precision margin; by default the
+        largest coordinate of ``positions``.
         """
         original = np.asarray(positions)
         corrected = np.asarray(positions, dtype=np.float64).copy()
         reference = None if starts is None else np.asarray(starts, dtype=np.float64).copy()
-        scale = max(spacing, float(np.max(np.abs(corrected), initial=0.0)))
+        largest = (
+            float(np.max(np.abs(corrected), initial=0.0))
+            if coordinate_scale is None
+            else float(coordinate_scale)
+        )
+        scale = max(spacing, largest)
         margin = max(4 * self.tolerance, 32 * np.finfo(original.dtype).eps * scale, 1e-7 * spacing)
         for _ in range(12):
             hits = np.full(len(corrected), np.inf)

@@ -116,8 +116,9 @@ class CouplerConfig:
     by ``κ_max`` times the peak target strength. Larger existing strengths are kept when the FVM
     and particle vorticity already agree.
     """
-    transfer_diagnostic_interval_steps: int = 1
-    """Accepted transfers between full diagnostics; positive."""
+    transfer_diagnostic_interval_steps: int = 10
+    """Accepted transfers between full diagnostics (two extra Gaussian convolutions of the transfer
+    lattice and the transfer log); positive. The first transfer is always one of them."""
     max_moment_correction_fraction: float = 0.08
     """Largest moment correction, as a fraction of the transferred strength L1 norm, in (0, 1]."""
     circulation_budget_limit: float | None = 0.02

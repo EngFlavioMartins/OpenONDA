@@ -1205,27 +1205,14 @@ class CoupledSolver:
         transfer_result = None
         with collective_phase(self._comm, "vorticity transfer"):
             if self._is_root:
-                vpm = self.vpm_solver
-                n_before = vpm.particles.n_particles_total
-                sum_before = (
-                    float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
-                    if n_before > 0
-                    else 0.0
-                )
                 transfer_result = self.vorticity_transfer.transfer(
-                    vpm, velocity=velocity, velocity_gradient=gradient
-                )
-                n_after = vpm.particles.n_particles_total
-                sum_after = (
-                    float(np.sum(np.linalg.norm(np.asarray(vpm.particle_vortex_strength), axis=1)))
-                    if n_after > 0
-                    else 0.0
+                    self.vpm_solver, velocity=velocity, velocity_gradient=gradient
                 )
                 self._step_transfer_stats = {
-                    "n_before": n_before,
-                    "n_after": n_after,
-                    "sum_before": sum_before,
-                    "sum_after": sum_after,
+                    "n_before": transfer_result.n_particles_before,
+                    "n_after": transfer_result.n_particles_after,
+                    "sum_before": transfer_result.input_vortex_strength_l1,
+                    "sum_after": transfer_result.particle_set_vortex_strength_l1,
                     "face_count": len(face_centre),
                     "fvm_gather_seconds": gather_seconds,
                 }

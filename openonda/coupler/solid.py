@@ -37,16 +37,19 @@ class PlacedSolidBoundary:
     def contains(self, points, *, include_boundary=False):
         return self._boundary.contains(self._to_body(points), include_boundary=include_boundary)
 
+    def near_surface(self, points, margin):
+        return self._boundary.near_surface(self._to_body(points), margin)
+
     def segments_cross_wall(self, starts, ends):
         return self._boundary.segments_cross_wall(self._to_body(starts), self._to_body(ends))
 
-    def constrain_motion(self, positions, spacing, *, starts=None):
+    def constrain_motion(self, positions, spacing, *, starts=None, coordinate_scale=None):
         """Project wall crossings in body coordinates, at the storage precision."""
         original = np.asarray(positions)
         body = self._to_body(original).astype(original.dtype)
         body_starts = None if starts is None else self._to_body(starts)
         corrected, changed, _, maximum = self._boundary.constrain_motion(
-            body, spacing, starts=body_starts
+            body, spacing, starts=body_starts, coordinate_scale=coordinate_scale
         )
         result = original.copy()
         result[changed] = self._frame.from_body(corrected[changed], self._pose)
@@ -88,13 +91,29 @@ class WallProjection:
         positions = self.physics.download_vector_field(position, count)
         if count == 0:
             return positions, False
-        corrected, changed, delta, maximum = self.boundary.constrain_motion(
-            positions,
-            self.spacing,
-            starts=starts,
-        )
-        if not np.any(changed):
+        # Only particles within reach of a wall can be inside it or cross it: a
+        # correction is at most a quarter spacing, a path at most its own length.
+        reach = 0.25 * self.spacing
+        if starts is not None:
+            reach += float(np.max(np.linalg.norm(positions - starts, axis=1), initial=0.0))
+        near = self.boundary.near_surface(positions, reach)
+        if starts is not None:
+            near |= self.boundary.near_surface(starts, reach)
+        rows = np.flatnonzero(near)
+        if not len(rows):
             return positions, False
+        corrected_rows, changed_rows, delta, maximum = self.boundary.constrain_motion(
+            positions[rows],
+            self.spacing,
+            starts=None if starts is None else starts[rows],
+            coordinate_scale=float(np.max(np.abs(positions), initial=0.0)),
+        )
+        if not np.any(changed_rows):
+            return positions, False
+        corrected = positions.copy()
+        corrected[rows] = corrected_rows
+        changed = np.zeros(count, dtype=bool)
+        changed[rows[changed_rows]] = True
         strengths = self.physics.download_vector_field(strength, count)[changed]
         self.physics.upload_vector_array(corrected, position, count)
         impulse_change = 0.5 * np.cross(delta, strengths).sum(axis=0)
