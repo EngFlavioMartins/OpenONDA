@@ -58,11 +58,7 @@ PARTICLE_LIMIT = 1_000_000
 
 # FVM–VPM transfer
 TRANSFER_INSET = 8.75  # cells between the outer FVM boundary and the transfer surface
-BLEND_START = 2  # cells below the transfer surface
-BLEND_END = 6  # cells below the transfer surface
 FVM_SUBSTEPS = 16  # per particle step
-COUPLING_ITERATIONS = 6  # maximum FVM solves per particle step
-COUPLING_TOLERANCE = 1.0e-5  # boundary velocity and tangential-gradient tolerance
 END_PERIODS = 25  # natural periods in water; the paper's 20 start from a developed flow
 
 # Output
@@ -253,11 +249,6 @@ def build_case(reynolds_number, reduced_velocity, end_time=None, compute_device=
     coupling = coupler.CouplerConfig(
         freestream_velocity=FREESTREAM_VELOCITY,
         transfer_region_bounds=(*transfer_region, -half_span, half_span),
-        blend_start_depth=BLEND_START * CELL_SIZE,
-        blend_end_depth=BLEND_END * CELL_SIZE,
-        max_coupling_iterations=COUPLING_ITERATIONS,
-        normal_velocity_tolerance=COUPLING_TOLERANCE,
-        normal_gradient_tolerance=COUPLING_TOLERANCE,
         transfer_diagnostic_interval_steps=round(
             TRANSFER_DIAGNOSTIC_INTERVAL / coupling_time_step_size
         ),
