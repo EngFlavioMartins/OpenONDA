@@ -297,6 +297,9 @@ class CoupledSolver:
         self.run_status = RunStatus.not_started
         self.run_failure: BaseException | None = None
         self.boundary_data_correction: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self.previous_boundary_data_correction: tuple[np.ndarray, np.ndarray, np.ndarray] | None = (
+            None
+        )
         self.coupling_diagnostics: list[dict] = []
         self._closed = False
         self._run_started = False
@@ -767,6 +770,7 @@ class CoupledSolver:
         if self._started:
             return
         self.boundary_data_correction = None
+        self.previous_boundary_data_correction = None
         fvm = self.fvm_solver
         fvm.apply_velocity_boundaries(fvm.time)
         with collective_phase(self._comm, "initial freestream"):
@@ -917,6 +921,7 @@ class CoupledSolver:
         rewound to the restored time. Collective under MPI.
         """
         self.boundary_data_correction = None
+        self.previous_boundary_data_correction = None
         step = load_coupled_backup(
             self,
             Path(path),

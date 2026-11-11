@@ -117,9 +117,14 @@ class CouplerConfig:
     iterations converged to the tolerances below.
     """
     normal_velocity_tolerance: float = 1.0e-5
-    """Tolerance of the area-weighted RMS normal-velocity residual, in m/s."""
+    """Tolerance of the area-weighted RMS normal-velocity residual, relative to the free-stream
+    speed U."""
     normal_gradient_tolerance: float = 1.0e-5
-    """Tolerance of the area-weighted RMS normal-gradient residual, in 1/s."""
+    """Tolerance of the area-weighted RMS normal-gradient residual, relative to U/h with h the
+    particle spacing."""
+    boundary_data_extrapolation: str = "linear"
+    """First estimate of the end-of-interval boundary data: ``"linear"`` extrapolates the
+    corrections of the last two intervals, ``"constant"`` reuses the last one."""
     boundary_mismatch_warning: float | None = 0.2
     """Tangential FVM–particle velocity mismatch on the outer FVM boundary, in units of the
     reference speed, above which the coupler logs a warning with the face location; ``None``
@@ -152,6 +157,8 @@ class CouplerConfig:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
+        if self.boundary_data_extrapolation not in ("linear", "constant"):
+            raise ValueError("boundary_data_extrapolation must be 'linear' or 'constant'")
         for name in ("normal_velocity_tolerance", "normal_gradient_tolerance"):
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0.0:

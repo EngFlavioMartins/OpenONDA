@@ -54,18 +54,36 @@ def _write_boundary_data(coupler, values: BoundaryData, *, old=False) -> None:
 
 
 def _first_estimate(coupler, predictor: BoundaryData, face_normal: np.ndarray) -> BoundaryData:
-    """Add the previous interval's boundary-data correction to the VPM predictor data.
+    """Add the expected boundary-data correction of this interval to the VPM predictor data.
 
     The vorticity transfer and the FVM response change the boundary data by nearly
-    the same amount in consecutive coupling intervals, so this estimate starts close
-    to the converged boundary data. The normal velocity is
-    recomputed from the corrected face velocity.
+    the same amount in consecutive coupling intervals. With
+    ``boundary_data_extrapolation="linear"`` and two accepted corrections the
+    estimate extrapolates them, ``2 c_k - c_(k-1)``; otherwise it reuses the last
+    one. The normal velocity is recomputed from the corrected face velocity.
     """
     correction = coupler.boundary_data_correction
     if correction is None:
         return predictor
+    previous = getattr(coupler, "previous_boundary_data_correction", None)
+    if coupler.config.boundary_data_extrapolation == "linear" and previous is not None:
+        correction = tuple(2.0 * c - p for c, p in zip(correction, previous, strict=True))
     velocity = predictor[0] + correction[0]
     return velocity, np.einsum("ij,ij->i", velocity, face_normal), predictor[2] + correction[2]
+
+
+def coupling_tolerances(coupler) -> tuple[float, float]:
+    """Return the absolute tolerances of the normal-velocity (m/s) and normal-gradient (1/s) residuals.
+
+    The configured tolerances are relative: to the free-stream speed ``U`` and to
+    ``U / h`` with ``h`` the particle spacing, so one value fits every case.
+    """
+    speed = max(float(np.linalg.norm(coupler.config.freestream_velocity_vector)), 1.0e-12)
+    spacing = float(coupler.vpm_particle_spacing)
+    return (
+        coupler.config.normal_velocity_tolerance * speed,
+        coupler.config.normal_gradient_tolerance * speed / spacing,
+    )
 
 
 def advance_coupling_iterations(coupler, geometry, next_velocity):
@@ -107,10 +125,7 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
     }
     fvm_seconds = transfer_seconds = 0.0
     rows: list[CouplingIterationRow] = []
-    tolerance = (
-        coupler.config.normal_velocity_tolerance,
-        coupler.config.normal_gradient_tolerance,
-    )
+    tolerance = coupling_tolerances(coupler)
     for iteration in range(1, coupler.config.max_coupling_iterations + 1):
         started = perf_counter()
         if iteration > 1:
@@ -153,6 +168,9 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
             break
     converged = rows[-1]["converged"]
     # The accepted end-of-interval data are those evaluated in the last iteration.
+    coupler.previous_boundary_data_correction = (
+        coupler.boundary_data_correction if converged else None
+    )
     coupler.boundary_data_correction = (
         tuple(accepted - first for accepted, first in zip(estimate, predictor, strict=True))
         if converged

@@ -353,7 +353,7 @@ if __name__ == "__main__":
         "--coupling-tolerance",
         type=float,
         default=COUPLING_TOLERANCE,
-        help="boundary-data tolerance [m/s, 1/s]; 1e-30 forces every iteration",
+        help="boundary-data tolerance, relative to U and U/h; 1e-30 forces every iteration",
     )
     parser.add_argument(
         "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
