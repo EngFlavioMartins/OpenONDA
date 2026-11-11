@@ -901,6 +901,8 @@ class VorticityTransfer:
         self.circulation_budget_limit = cfg.circulation_budget_limit
         self._net_strength_baseline: np.ndarray | None = None
         self._net_strength_above_warning = False
+        # Set by the coupler before each transfer from the boundary data.
+        self.reference_speed = float(np.linalg.norm(cfg.freestream_velocity_vector))
         self.wall_circulation_ratio_bounds = cfg.wall_circulation_ratio_bounds
         self.particle_net_strength_warning = cfg.particle_net_strength_warning
         self.particle_net_strength_limit = cfg.particle_net_strength_limit
@@ -1424,12 +1426,15 @@ class VorticityTransfer:
         """Return the strength threshold of the replacement region for the current interval, m³/s.
 
         With ``transfer_removal_scaling="convective"`` it is ``τ_transfer h³ √(U Δt / h)``,
-        at least the GBD threshold at the transfer surface.
+        at least the GBD threshold at the transfer surface. ``U`` is the coupler's
+        reference speed of the outer boundary (:func:`boundary.reference_speed`), the
+        free-stream speed or the RMS particle speed there, whichever is larger.
         """
         if self.config.transfer_removal_scaling == "per_transfer":
             return self.strength_threshold
-        speed = float(np.linalg.norm(self.config.freestream_velocity_vector))
-        factor = np.sqrt(speed * self.coupling_time_step_size / self.particle_spacing)
+        factor = np.sqrt(
+            self.reference_speed * self.coupling_time_step_size / self.particle_spacing
+        )
         return max(self.strength_threshold * float(factor), self.surface_strength_threshold)
 
     def transfer(

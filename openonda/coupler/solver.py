@@ -26,6 +26,7 @@ from .boundary import (
     advance_fvm,
     evaluate_vpm_boundary,
     initialize_vpm_boundary_history,
+    reference_speed,
     report_coupling_patch_quality,
     update_boundary_history_after_replacement,
 )
@@ -801,8 +802,6 @@ class CoupledSolver:
         """
         if self._started:
             return
-        self.boundary_data_correction = None
-        self.previous_boundary_data_correction = None
         fvm = self.fvm_solver
         fvm.apply_velocity_boundaries(fvm.time)
         with collective_phase(self._comm, "initial freestream"):
@@ -1205,6 +1204,9 @@ class CoupledSolver:
         transfer_result = None
         with collective_phase(self._comm, "vorticity transfer"):
             if self._is_root:
+                self.vorticity_transfer.reference_speed = reference_speed(
+                    self.freestream_velocity, self._velocity_boundary_condition_old
+                )
                 transfer_result = self.vorticity_transfer.transfer(
                     self.vpm_solver, velocity=velocity, velocity_gradient=gradient
                 )

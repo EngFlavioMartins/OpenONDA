@@ -25,15 +25,21 @@ from openonda.vpm.config.restart_changes import validate_exact_configuration_cha
 
 from .reporting import format_coupler_log
 
-BACKUP_FORMAT_VERSION = 18
-BOUNDARY_SCHEMA_VERSION = 5
+BACKUP_FORMAT_VERSION = 19
+BOUNDARY_SCHEMA_VERSION = 6
+_BOUNDARY_FIELDS = ("velocity", "normal_velocity", "normal_gradient")
+_CORRECTIONS = ("boundary_data_correction", "previous_boundary_data_correction")
 _BOUNDARY_KEYS = (
-    "has_velocity",
-    "velocity",
-    "has_normal_velocity",
-    "normal_velocity",
-    "has_normal_gradient",
-    "normal_gradient",
+    *(key for name in _BOUNDARY_FIELDS for key in (f"has_{name}", name)),
+    *(
+        key
+        for correction in _CORRECTIONS
+        for key in (
+            f"has_{correction}",
+            f"{correction}_interval",
+            *(f"{correction}_{name}" for name in _BOUNDARY_FIELDS),
+        )
+    ),
 )
 _INFO_KEYS = frozenset(
     (
@@ -153,6 +159,18 @@ def save_coupled_backup(coupler, path: Path) -> Path:
             for name, (values, empty_shape) in boundary_data.items():
                 state[f"has_{name}"] = np.asarray(values is not None)
                 state[name] = np.empty(empty_shape) if values is None else values
+            # The first estimate of the next interval extrapolates these corrections.
+            for correction in _CORRECTIONS:
+                values = getattr(coupler, correction)
+                state[f"has_{correction}"] = np.asarray(values is not None)
+                state[f"{correction}_interval"] = np.asarray(
+                    float(getattr(coupler, f"{correction}_interval"))
+                )
+                for name, (_, empty_shape) in boundary_data.items():
+                    stored = None if values is None else values[_BOUNDARY_FIELDS.index(name)]
+                    state[f"{correction}_{name}"] = (
+                        np.empty(empty_shape) if stored is None else stored
+                    )
             with (staging / files["boundary_condition"]).open("wb") as stream:
                 np.savez_compressed(stream, **encode_state(state))
             configuration = restart_configuration(coupler)
@@ -233,17 +251,30 @@ def _read_checkpoint_info(path: Path) -> dict:
 
 
 def _load_boundary_data(path: Path) -> tuple:
-    """Return the stored boundary data: velocity, normal velocity, normal gradient of u_t."""
+    """Return the stored boundary data and the two boundary-data corrections.
+
+    The boundary data are the velocity, normal velocity and normal gradient of u_t;
+    each correction is ``(values or None, interval length in s)``.
+    """
     with np.load(path, allow_pickle=False) as stored:
         state = decode_state({name: np.array(stored[name], copy=True) for name in stored.files})
     if int(state.get("boundary_schema_version", -1)) != BOUNDARY_SCHEMA_VERSION or any(
         name not in state for name in _BOUNDARY_KEYS
     ):
         raise ValueError(f"Unsupported coupled boundary backup {path}")
-    return tuple(
-        state[name].copy() if bool(state[f"has_{name}"]) else None
-        for name in ("velocity", "normal_velocity", "normal_gradient")
+    data = tuple(
+        state[name].copy() if bool(state[f"has_{name}"]) else None for name in _BOUNDARY_FIELDS
     )
+    corrections = tuple(
+        (
+            tuple(state[f"{correction}_{name}"].copy() for name in _BOUNDARY_FIELDS)
+            if bool(state[f"has_{correction}"])
+            else None,
+            float(state[f"{correction}_interval"]),
+        )
+        for correction in _CORRECTIONS
+    )
+    return data, corrections
 
 
 def load_coupled_backup(
@@ -332,11 +363,15 @@ def load_coupled_backup(
             coupler.vpm_solver.time_step_size = coupler.vpm_time_step_size
         coupler._coupling_step = step
         if coupler._is_root:
+            data, corrections = _load_boundary_data(path / info["files"]["boundary_condition"])
             (
                 coupler._velocity_boundary_condition_old,
                 coupler._normal_velocity_boundary_condition_old,
                 coupler._normal_gradient_boundary_condition_old,
-            ) = _load_boundary_data(path / info["files"]["boundary_condition"])
+            ) = data
+            for correction, (values, interval) in zip(_CORRECTIONS, corrections, strict=True):
+                setattr(coupler, correction, values)
+                setattr(coupler, f"{correction}_interval", interval)
             coupler._normal_velocity_boundary_condition = None
             coupler._normal_gradient_boundary_condition = None
             rewind_jsonl(coupler.solution_dir / "coupler_diagnostics.jsonl", coupling_time)

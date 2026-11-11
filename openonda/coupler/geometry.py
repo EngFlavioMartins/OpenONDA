@@ -76,8 +76,10 @@ class TriangulatedWall:
         )
         self._cache: OrderedDict[bytes, np.ndarray] = OrderedDict()
         self._cache_bytes = 0
-        # A closed surface (every edge shared by two triangles) encloses its solid,
-        # so no point outside its bounding box lies in the solid.
+        # A closed surface (every edge shared by two triangles) whose native normals
+        # point inward encloses a negative volume: its solid lies inside it, so no
+        # point outside its bounding box is in the solid. Walls around the fluid
+        # enclose a positive volume and keep the full query.
         edges = np.sort(
             np.stack(
                 [
@@ -90,7 +92,11 @@ class TriangulatedWall:
             axis=1,
         )
         _, edge_count = np.unique(edges, axis=0, return_counts=True)
-        self.closed = bool(np.all(edge_count == 2))
+        enclosed_volume = float(
+            np.einsum("ij,ij->i", triangles[:, 0], np.cross(triangles[:, 1], triangles[:, 2])).sum()
+            / 6.0
+        )
+        self.encloses_solid = bool(np.all(edge_count == 2)) and enclosed_volume < 0.0
 
     @classmethod
     def from_box(cls, bounds, domain_bounds):
@@ -212,12 +218,12 @@ class TriangulatedWall:
         return result.copy()
 
     def near_surface(self, points: np.ndarray, margin: float) -> np.ndarray:
-        """Return the points within ``margin`` (m) of the bounding box of a closed surface.
+        """Return the points within ``margin`` (m) of the bounding box of an enclosed solid.
 
-        Every point of an open surface's domain counts as near it.
+        Every point counts as near an open surface or walls around the fluid.
         """
         query = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-        if not self.closed:
+        if not self.encloses_solid:
             return np.ones(len(query), dtype=bool)
         return np.all(
             (query >= self.surface_bounds[::2] - margin)
