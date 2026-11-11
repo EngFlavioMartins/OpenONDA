@@ -101,6 +101,14 @@ class CouplerConfig:
     transfer_removal_threshold: float = 0.05
     """Removal threshold ``τ_transfer`` of the replacement region, in 1/s. The strength threshold
     ``τ_transfer h³`` must be at least the absolute GBD threshold of the VPM, in m³/s."""
+    transfer_removal_scaling: str = "convective"
+    """How the removal threshold depends on the coupling interval Δt. The smooth threshold removes
+    the same fraction of a node's strength at every transfer, so per unit time its removal grows
+    with the number of transfers. ``"convective"`` scales the threshold by ``√(U Δt / h)``, which
+    removes the same fraction per convective time ``h / U`` at any interval (never below the GBD
+    threshold); ``"per_transfer"`` applies ``τ_transfer`` at every transfer."""
+    transfer_correction_steps: int = 1
+    """Van Cittert steps of the strength correction at each transfer, at least one."""
     max_strength_ratio: float = 1.8
     """Strength-ratio limit ``κ_max`` of the strength correction; at least one.
 
@@ -180,6 +188,14 @@ class CouplerConfig:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
+        if self.transfer_removal_scaling not in ("convective", "per_transfer"):
+            raise ValueError("transfer_removal_scaling must be 'convective' or 'per_transfer'")
+        if (
+            isinstance(self.transfer_correction_steps, bool)
+            or not isinstance(self.transfer_correction_steps, int)
+            or self.transfer_correction_steps < 1
+        ):
+            raise ValueError("transfer_correction_steps must be a positive integer")
         if self.boundary_data_extrapolation not in ("linear", "constant"):
             raise ValueError("boundary_data_extrapolation must be 'linear' or 'constant'")
         for name in ("normal_velocity_tolerance", "normal_gradient_tolerance"):

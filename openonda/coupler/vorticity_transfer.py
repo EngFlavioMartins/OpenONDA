@@ -344,6 +344,7 @@ def transfer_vorticity_to_particles(
     frame: MeshFrame | None = None,
     circulation_budget_limit: float | None = None,
     wall_circulation_ratio_bounds: tuple[float, float] | None = None,
+    correction_steps: int = 1,
 ) -> TransferResult:
     """Transfer the FVM vorticity to the particles of a GBD particle set in one step.
 
@@ -395,6 +396,7 @@ def transfer_vorticity_to_particles(
         freestream_speed=freestream_speed,
         time_step_size=time_step_size,
         compute_diagnostics=compute_diagnostics,
+        correction_steps=correction_steps,
     )
     if result.transfer_cfl > 1.0:
         raise RuntimeError(
@@ -1401,7 +1403,7 @@ class VorticityTransfer:
             fvm_target_strength_at_node=fvm_target_at_node,
             particle_fluid_weight=fluid_weight if has_solid else None,
             particle_in_solid=in_solid if has_solid else None,
-            strength_threshold=self.strength_threshold,
+            strength_threshold=self.interval_strength_threshold(),
             surface_strength_threshold=self.surface_strength_threshold,
             core_radius_ratio=self.core_radius_ratio,
             max_strength_ratio=self.max_strength_ratio,
@@ -1412,8 +1414,21 @@ class VorticityTransfer:
             max_moment_correction_fraction=self.max_moment_correction_fraction,
             circulation_budget_limit=self.circulation_budget_limit,
             wall_circulation_ratio_bounds=self.wall_circulation_ratio_bounds,
+            correction_steps=int(self.config.transfer_correction_steps),
             frame=self._frame if self._frame is not None and self._frame.rotates else None,
         )
+
+    def interval_strength_threshold(self) -> float:
+        """Return the strength threshold of the replacement region for the current interval, m³/s.
+
+        With ``transfer_removal_scaling="convective"`` it is ``τ_transfer h³ √(U Δt / h)``,
+        at least the GBD threshold at the transfer surface.
+        """
+        if self.config.transfer_removal_scaling == "per_transfer":
+            return self.strength_threshold
+        speed = float(np.linalg.norm(self.config.freestream_velocity_vector))
+        factor = np.sqrt(speed * self.coupling_time_step_size / self.particle_spacing)
+        return max(self.strength_threshold * float(factor), self.surface_strength_threshold)
 
     def transfer(
         self,

@@ -1090,6 +1090,7 @@ def transfer_on_lattice(
     freestream_speed: float = 0.0,
     time_step_size: float = 0.0,
     compute_diagnostics: bool = True,
+    correction_steps: int = 1,
 ) -> LatticeTransferResult:
     """Transfer the FVM vorticity on the lattice and keep the particles outside it.
 
@@ -1205,19 +1206,26 @@ def transfer_on_lattice(
         vpm_lattice_strength[wall_band] = 0.0
 
     base_core_radius = ratio * spacing
-    correction = correct_lattice_strength(
-        vpm_lattice_strength,
-        fvm_target,
-        lattice.blending_weight,
-        lattice.shape,
-        spacing,
-        core_radius=base_core_radius,
-        max_strength_ratio=max_strength_ratio,
-        output_weight=output_weight,
-        compute_final_representation=compute_diagnostics,
-        slip_slab_bounds=tuple(lattice.transfer_region_bounds[4:6]) if lattice.slip_slab else None,
-        lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
-    )
+    if correction_steps < 1:
+        raise ValueError("correction_steps must be at least one")
+    corrected_strength = vpm_lattice_strength
+    for step in range(correction_steps):
+        correction = correct_lattice_strength(
+            corrected_strength,
+            fvm_target,
+            lattice.blending_weight,
+            lattice.shape,
+            spacing,
+            core_radius=base_core_radius,
+            max_strength_ratio=max_strength_ratio,
+            output_weight=output_weight,
+            compute_final_representation=compute_diagnostics and step == correction_steps - 1,
+            slip_slab_bounds=(
+                tuple(lattice.transfer_region_bounds[4:6]) if lattice.slip_slab else None
+            ),
+            lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
+        )
+        corrected_strength = correction.limited_strength
     comparison_weight = output_weight * lattice.mesh_weight
     residual_before_removal: float | None = None
     if compute_diagnostics:
