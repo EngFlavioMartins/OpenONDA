@@ -1204,8 +1204,11 @@ class CoupledSolver:
         transfer_result = None
         with collective_phase(self._comm, "vorticity transfer"):
             if self._is_root:
+                # The first transfer at the start precedes any boundary data.
+                boundary_velocity = self._velocity_boundary_condition_old
                 self.vorticity_transfer.reference_speed = reference_speed(
-                    self.freestream_velocity, self._velocity_boundary_condition_old
+                    self.freestream_velocity,
+                    np.empty((0, 3)) if boundary_velocity is None else boundary_velocity,
                 )
                 transfer_result = self.vorticity_transfer.transfer(
                     self.vpm_solver, velocity=velocity, velocity_gradient=gradient
