@@ -12,6 +12,8 @@ from openonda.core import log_style
 from openonda.core.file_output import append_jsonl
 from openonda.core.simulation.parallel import collective_phase
 
+from .clock import time_tolerance
+
 
 def _diagnostic_json_value(value, path="diagnostic", *, _active=None):
     """Return a diagnostic record in JSON types, rejecting every non-finite value.
@@ -461,7 +463,7 @@ def record_step(
             )
             finish_coupling_step(
                 logger,
-                final=time_end >= coupler.end_time - max(1.0e-14, abs(coupler.end_time) * 1.0e-12),
+                final=time_end >= coupler.end_time - time_tolerance(coupler.end_time),
             )
             flush_log(logger)
 

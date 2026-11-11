@@ -52,10 +52,6 @@ _INFO_KEYS = frozenset(
         "file_sha256",
     )
 )
-_VERSION_17_INFO_KEYS = frozenset(_INFO_KEYS - {"fvm_time_step_size", "vpm_time_step_size"}) | {
-    "time_step_size"
-}
-_VERSION_16_INFO_KEYS = frozenset(_VERSION_17_INFO_KEYS - {"time_step_size"}) | {"n_fvm_substeps"}
 
 logger = logging.getLogger("openonda.coupler")
 
@@ -199,13 +195,7 @@ def _read_checkpoint_info(path: Path) -> dict:
     info = json.loads((path / "checkpoint_info.json").read_text(encoding="utf-8"))
     if not isinstance(info, dict):
         raise ValueError(f"{path} is not a coupled backup")
-    version = info.get("format_version")
-    expected_keys = {
-        16: _VERSION_16_INFO_KEYS,
-        17: _VERSION_17_INFO_KEYS,
-        BACKUP_FORMAT_VERSION: _INFO_KEYS,
-    }.get(version)
-    if expected_keys is None or set(info) != expected_keys:
+    if info.get("format_version") != BACKUP_FORMAT_VERSION or set(info) != _INFO_KEYS:
         raise ValueError(f"{path} is not a supported coupled backup")
     if info["kind"] != "openonda.coupled_backup":
         raise ValueError(f"Unsupported coupled backup format in {path}")
@@ -228,19 +218,7 @@ def _read_checkpoint_info(path: Path) -> dict:
             raise ValueError(f"Invalid coupled backup clock {name!r}")
     if info["vpm_step"] != info["step"]:
         raise ValueError("The coupled backup steps do not match")
-    if version == 16:
-        if type(info["n_fvm_substeps"]) is not int or info["n_fvm_substeps"] < 1:
-            raise ValueError("Invalid legacy coupled backup substep count")
-        if info["fvm_step"] != info["step"] * info["n_fvm_substeps"]:
-            raise ValueError("The legacy coupled backup steps do not match")
-    time_step_sizes = (
-        ("fvm_time_step_size", "vpm_time_step_size")
-        if version == BACKUP_FORMAT_VERSION
-        else ("time_step_size",)
-        if version == 17
-        else ()
-    )
-    for name in time_step_sizes:
+    for name in ("fvm_time_step_size", "vpm_time_step_size"):
         value = info[name]
         if (
             isinstance(value, bool)
@@ -277,9 +255,7 @@ def load_coupled_backup(
 ) -> int:
     """Restore both solvers and the boundary data; return the coupling step.
 
-    Version 16 backups used fixed FVM steps and a longer VPM step. They can be
-    continued with the current shared-step setup when the remaining case
-    configuration matches. Configuration differences are refused unless
+    Configuration differences are refused unless
     listed. Paths starting with ``vpm.`` are passed to the VPM backup reader
     without the prefix; the others name coupling settings. The VPM is restored
     and validated before the FVM. Collective under MPI.
@@ -303,12 +279,8 @@ def load_coupled_backup(
                     p: v for p, v in expected.items() if not p.startswith("vpm.")
                 },
             )
-            legacy_backup = info["format_version"] == 16
             coupler.vpm_solver.load_backup(
                 path / info["files"]["vpm"],
-                time_step_size=(
-                    coupler.vpm_case.numerics.time_step_size if legacy_backup else None
-                ),
                 allowed_config_differences=tuple(p[4:] for p in allowed if p.startswith("vpm.")),
                 expected_config_differences={
                     p[4:]: v for p, v in expected.items() if p.startswith("vpm.")
@@ -323,10 +295,7 @@ def load_coupled_backup(
                 )
     if comm is not None and comm.Get_size() > 1:
         info = comm.bcast(info, root=0)
-    legacy_backup = info["format_version"] == 16
-    coupler.fvm_solver.load_backup(
-        path / info["files"]["fvm"], allow_time_step_control_change=legacy_backup
-    )
+    coupler.fvm_solver.load_backup(path / info["files"]["fvm"])
     step = int(info["step"])
     coupling_time = float(info["time"])
     with collective_phase(comm, "coupled backup clock and boundary-data restore"):
@@ -342,40 +311,23 @@ def load_coupled_backup(
             coupler.vpm_solver.time, coupling_time, rtol=0.0, atol=tolerance
         ):
             raise ValueError("The VPM time differs from the coupled backup time")
-        version = info["format_version"]
-        if version in {17, BACKUP_FORMAT_VERSION}:
-            fvm_time_step_size = float(
-                info["fvm_time_step_size"]
-                if version == BACKUP_FORMAT_VERSION
-                else info["time_step_size"]
-            )
-            vpm_time_step_size = float(
-                info["vpm_time_step_size"]
-                if version == BACKUP_FORMAT_VERSION
-                else info["time_step_size"]
-            )
-            if not np.isclose(
-                coupler.fvm_solver.time_step_size,
-                fvm_time_step_size,
-                rtol=0.0,
-                atol=1.0e-14,
-            ):
-                raise ValueError("The FVM time-step size differs from the coupled backup")
-            if coupler._is_root and not np.isclose(
-                coupler.vpm_solver.time_step_size,
-                vpm_time_step_size,
-                rtol=0.0,
-                atol=1.0e-14,
-            ):
-                raise ValueError("The VPM time-step size differs from the coupled backup")
+        if not np.isclose(
+            coupler.fvm_solver.time_step_size,
+            float(info["fvm_time_step_size"]),
+            rtol=0.0,
+            atol=1.0e-14,
+        ):
+            raise ValueError("The FVM time-step size differs from the coupled backup")
+        if coupler._is_root and not np.isclose(
+            coupler.vpm_solver.time_step_size,
+            float(info["vpm_time_step_size"]),
+            rtol=0.0,
+            atol=1.0e-14,
+        ):
+            raise ValueError("The VPM time-step size differs from the coupled backup")
         coupler.fvm_time_step_size = coupler.fvm_solver.time_step_size
         coupler._selected_interval_end = None
-        if version == BACKUP_FORMAT_VERSION:
-            coupler.vpm_time_step_size = float(info["vpm_time_step_size"])
-        elif version == 17:
-            coupler.vpm_time_step_size = float(info["time_step_size"])
-        else:
-            coupler.vpm_time_step_size = float(coupler.vpm_case.numerics.time_step_size)
+        coupler.vpm_time_step_size = float(info["vpm_time_step_size"])
         if coupler._is_root:
             coupler.vpm_solver.time_step_size = coupler.vpm_time_step_size
         coupler._coupling_step = step

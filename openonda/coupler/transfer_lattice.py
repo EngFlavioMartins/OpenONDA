@@ -18,8 +18,7 @@ from scipy.ndimage import convolve1d
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.grid_connectivity import connected_grid_components
 from openonda.core.slip_slab_images import add_slab_images
-
-from .m4_kernel import _m4_prime_scalar, m4_prime
+from openonda.vpm.numerics.m4_kernel import m4_prime, m4_prime_scalar
 
 ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
@@ -33,6 +32,9 @@ WALL_BUDGET_SPACINGS = 3.0
 _SHELL_SEARCH_CELLS = 2
 _SHELL_TIE_TOLERANCE_CELLS = 1.0e-9
 _ALIGNMENT_TOLERANCE_CELLS = 1.0e-5
+MOMENT_MATRIX_CONDITION_LIMIT = 1.0e12
+"""Largest condition number of the six-by-six moment-correction matrix; beyond it the particles
+cannot carry the correction of the total strength and the linear impulse."""
 
 
 @njit(cache=True, fastmath=False)
@@ -46,67 +48,18 @@ def _scatter_unaligned_m4_prime(
     for particle in range(len(relative_position)):
         for offset_x in range(4):
             index_x = lower_stencil_index[particle, 0] + offset_x
-            weight_x = _m4_prime_scalar(relative_position[particle, 0] - index_x)
+            weight_x = m4_prime_scalar(relative_position[particle, 0] - index_x)
             for offset_y in range(4):
                 index_y = lower_stencil_index[particle, 1] + offset_y
-                weight_y = _m4_prime_scalar(relative_position[particle, 1] - index_y)
+                weight_y = m4_prime_scalar(relative_position[particle, 1] - index_y)
                 for offset_z in range(4):
                     index_z = lower_stencil_index[particle, 2] + offset_z
-                    weight_z = _m4_prime_scalar(relative_position[particle, 2] - index_z)
+                    weight_z = m4_prime_scalar(relative_position[particle, 2] - index_z)
                     weight = weight_x * weight_y * weight_z
                     result[index_x, index_y, index_z, 0] += weight * vortex_strength[particle, 0]
                     result[index_x, index_y, index_z, 1] += weight * vortex_strength[particle, 1]
                     result[index_x, index_y, index_z, 2] += weight * vortex_strength[particle, 2]
     return result
-
-
-def fvm_target_strength(
-    positions: np.ndarray,
-    particle_spacing: float,
-    velocity_at: ArrayFunction,
-) -> np.ndarray:
-    """Return the FVM target strength: the Stokes integral over the faces of a lattice cube.
-
-    Parameters
-    ----------
-    positions : array_like, shape (N, 3)
-        World-frame control-cell centres in m.
-    particle_spacing : float
-        Positive cell width h in m.
-    velocity_at : callable
-        Maps query points (N,3) in m to synchronized fluid velocities (N,3)
-        in m/s. The coupler supplies the FVM reconstruction.
-
-    Returns
-    -------
-    numpy.ndarray, shape (N, 3)
-        Independent float64 strengths Gamma = omega*h³ in m³/s.
-
-    Raises
-    ------
-    ValueError
-        If positions/velocities are invalid, lengths differ, or spacing
-        is nonpositive or nonfinite. Inputs are not mutated.
-
-    Notes
-    -----
-    Face midpoint quadrature uses outward normals and n cross u.
-    """
-    position = _vectors("positions", positions)
-    spacing = _positive_finite("particle_spacing", particle_spacing)
-    strength = np.zeros_like(position)
-    offset = np.zeros(3, dtype=np.float64)
-    for axis in range(3):
-        offset.fill(0.0)
-        offset[axis] = 0.5 * spacing
-        upper_velocity = _vectors("velocity_at", velocity_at(position + offset))
-        lower_velocity = _vectors("velocity_at", velocity_at(position - offset))
-        if len(upper_velocity) != len(position) or len(lower_velocity) != len(position):
-            raise ValueError("velocity_at must return one velocity per query point")
-        normal = np.zeros(3, dtype=np.float64)
-        normal[axis] = 1.0
-        strength += spacing**2 * np.cross(normal, upper_velocity - lower_velocity)
-    return strength
 
 
 def blending_weight(
@@ -253,7 +206,7 @@ def correct_vortex_moments(
         matrix[:3, column] = delta.sum(axis=0, dtype=np.float64)
         matrix[3:, column] = 0.5 * np.cross(relative, delta).sum(axis=0, dtype=np.float64)
     condition = float(np.linalg.cond(matrix))
-    if not np.isfinite(condition) or condition > 1.0e12:
+    if not np.isfinite(condition) or condition > MOMENT_MATRIX_CONDITION_LIMIT:
         raise np.linalg.LinAlgError(
             f"moment-correction matrix is ill-conditioned ({condition:.3e})"
         )
@@ -422,7 +375,8 @@ def build_transfer_lattice(
     fluid_weight = _evaluate_weight("fluid_weight_at_node", fluid_weight_at_node, positions)
     if slip_slab:
         fluid_weight[
-            (positions[:, 2] < bounds[4] - 1e-10) | (positions[:, 2] > bounds[5] + 1e-10)
+            (positions[:, 2] < bounds[4] - 1.0e-8 * spacing)
+            | (positions[:, 2] > bounds[5] + 1.0e-8 * spacing)
         ] = 0.0
     solid_interior = (
         np.zeros(count, dtype=bool)
@@ -1046,8 +1000,7 @@ class LatticeTransferResult:
     """Particle state after one vorticity transfer on the lattice, with its diagnostics.
 
     The particles hold the transfer-lattice particles first, then the kept
-    particles outside the remeshing region. The ``particle_set_*`` fields describe
-    the removal of the weakest particles when the particle capacity is reached.
+    particles outside the remeshing region.
     """
 
     position: np.ndarray
@@ -1061,12 +1014,12 @@ class LatticeTransferResult:
     coalesced_outer_input_indices: np.ndarray = field(
         default_factory=lambda: np.empty(0, dtype=np.int64)
     )
+    preserved_outer_input_indices: np.ndarray = field(
+        default_factory=lambda: np.empty(0, dtype=np.int64)
+    )
     removed_node_count: int = 0
     removed_vortex_strength_l1: float = 0.0
     removed_vortex_strength_fraction: float = 0.0
-    particle_set_removed_count: int = 0
-    particle_set_removed_vortex_strength_fraction: float = 0.0
-    particle_set_removed_velocity_bound: float = 0.0
     transfer_cfl: float = 0.0
     conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
     conservation_applied_correction: dict[str, float] = field(default_factory=dict)
@@ -1075,10 +1028,6 @@ class LatticeTransferResult:
     conservation_target_moments: VortexMoments | None = None
     conservation_raw_moments: VortexMoments | None = None
     conservation_reference_strength_l1: float = 0.0
-    particle_set_conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
-    particle_set_conservation_applied_correction: dict[str, float] = field(default_factory=dict)
-    particle_set_conservation_residual: dict[str, float] = field(default_factory=dict)
-    particle_set_conservation_applied_particle_strength_fraction: float = 0.0
     representation_residual_before_removal: float | None = None
     representation_residual_after_removal: float | None = None
     strength_ratio: float = 0.0
@@ -1108,7 +1057,6 @@ def transfer_on_lattice(
     surface_strength_threshold: float | None = None,
     core_radius_ratio: float = CORE_RADIUS_RATIO,
     max_strength_ratio: float = DEFAULT_MAX_STRENGTH_RATIO,
-    maximum_particle_count: int | None = None,
     freestream_speed: float = 0.0,
     time_step_size: float = 0.0,
     compute_diagnostics: bool = True,
@@ -1143,8 +1091,6 @@ def transfer_on_lattice(
     )
     if surface_threshold > threshold:
         raise ValueError("surface_strength_threshold must not exceed strength_threshold")
-    if maximum_particle_count is not None and maximum_particle_count < 2:
-        raise ValueError("maximum_particle_count must be at least two")
 
     count = len(position)
     input_fluid = _evaluate_weight("particle_fluid_weight", particle_fluid_weight, position)
@@ -1476,105 +1422,9 @@ def transfer_on_lattice(
         output_volume = transfer_volume
         output_radius = transfer_radius
 
-    particle_set_removed_count = 0
-    particle_set_removed_fraction = 0.0
-    particle_set_velocity_bound = 0.0
-    particle_set_conservation_raw_mismatch: dict[str, float] = {}
-    particle_set_conservation_applied_correction: dict[str, float] = {}
-    particle_set_conservation_residual: dict[str, float] = {}
-    particle_set_applied_particle_strength_fraction = 0.0
     final_transfer_count = len(transfer_position)
     final_outer_count = int(np.count_nonzero(preserved_for_append))
-    if maximum_particle_count is not None and len(output_position) > maximum_particle_count:
-        if lattice.wall_crossing_links is not None:
-            raise RuntimeError(
-                "The vorticity transfer next to a wall exceeds the particle capacity after "
-                "weak-strength removal; increase the capacity rather than correcting the "
-                "moments across the wall"
-            )
-        target_count = int(maximum_particle_count)
-        combined_moments = vortex_moments(output_position, output_strength)
-        combined_magnitude = np.linalg.norm(output_strength, axis=1)
-        transfer_count = len(transfer_position)
-        outer_count = len(output_position) - transfer_count
-        if outer_count < target_count:
-            transfer_budget = target_count - outer_count
-            transfer_keep = np.argpartition(combined_magnitude[:transfer_count], -transfer_budget)[
-                -transfer_budget:
-            ]
-            keep_indices = np.concatenate(
-                (
-                    transfer_keep,
-                    np.arange(transfer_count, len(output_position), dtype=np.int64),
-                )
-            )
-        elif outer_count == target_count:
-            keep_indices = np.arange(transfer_count, len(output_position), dtype=np.int64)
-        else:
-            outer_keep = np.argpartition(combined_magnitude[transfer_count:], -target_count)[
-                -target_count:
-            ]
-            keep_indices = outer_keep + transfer_count
-        keep_indices = np.sort(keep_indices)
-        particle_set_keep = np.zeros(len(output_position), dtype=bool)
-        particle_set_keep[keep_indices] = True
-        discarded_l1 = float(combined_magnitude[~particle_set_keep].sum())
-        delta = np.maximum(
-            np.maximum(
-                lattice.transfer_region_bounds[::2] - output_position,
-                output_position - lattice.transfer_region_bounds[1::2],
-            ),
-            0.0,
-        )
-        distance_squared = np.einsum("ij,ij->i", delta, delta)
-        particle_set_velocity_bound = float(
-            np.sum(
-                combined_magnitude[~particle_set_keep]
-                / (
-                    4.0
-                    * np.pi
-                    * np.maximum(
-                        distance_squared[~particle_set_keep]
-                        + output_radius[~particle_set_keep] ** 2,
-                        1.0e-30,
-                    )
-                )
-            )
-        )
-        particle_set_removed_fraction = discarded_l1 / (float(combined_magnitude.sum()) + 1.0e-30)
-        particle_set_removed_count = int(np.count_nonzero(~particle_set_keep))
-        final_transfer_count = int(np.count_nonzero(keep_indices < transfer_count))
-        final_outer_count = int(len(keep_indices) - final_transfer_count)
-        output_position = output_position[keep_indices]
-        raw_particle_set_strength = output_strength[keep_indices]
-        output_volume = output_volume[keep_indices]
-        output_radius = output_radius[keep_indices]
-        raw_particle_set_moments = vortex_moments(output_position, raw_particle_set_strength)
-        particle_set_conservation_raw_mismatch = vortex_moment_residual(
-            combined_moments,
-            raw_particle_set_moments,
-        )
-        output_strength = moment_correction(
-            output_position,
-            raw_particle_set_strength,
-            combined_moments,
-            volumes=output_volume,
-        )
-        corrected_particle_set_moments = vortex_moments(output_position, output_strength)
-        particle_set_conservation_applied_correction = vortex_moment_residual(
-            raw_particle_set_moments,
-            corrected_particle_set_moments,
-        )
-        particle_set_conservation_residual = vortex_moment_residual(
-            combined_moments,
-            corrected_particle_set_moments,
-        )
-        particle_set_applied_particle_strength_fraction = float(
-            np.linalg.norm(output_strength - raw_particle_set_strength, axis=1).sum(
-                dtype=np.float64
-            )
-            / (float(combined_magnitude.sum(dtype=np.float64)) + 1.0e-30)
-        )
+    outer_input_indices = np.flatnonzero(preserved_for_append)
 
     speed = _nonnegative_finite("freestream_speed", abs(float(freestream_speed)))
     time_step = _nonnegative_finite("time_step_size", abs(float(time_step_size)))
@@ -1589,12 +1439,10 @@ def transfer_on_lattice(
         preserved_outer_count=final_outer_count,
         coalesced_outer_count=coalesced_outer_count,
         coalesced_outer_input_indices=coalesced_outer_input_indices,
+        preserved_outer_input_indices=outer_input_indices,
         removed_node_count=int(np.count_nonzero(removed_nodes)),
         removed_vortex_strength_l1=removed_l1,
         removed_vortex_strength_fraction=removed_l1 / (active_l1 + 1.0e-30),
-        particle_set_removed_count=particle_set_removed_count,
-        particle_set_removed_vortex_strength_fraction=particle_set_removed_fraction,
-        particle_set_removed_velocity_bound=particle_set_velocity_bound,
         transfer_cfl=float(transfer_cfl),
         conservation_raw_mismatch=conservation_raw_mismatch,
         conservation_applied_correction=conservation_applied_correction,
@@ -1603,12 +1451,6 @@ def transfer_on_lattice(
         conservation_target_moments=conservation_target_moments,
         conservation_raw_moments=conservation_raw_moments,
         conservation_reference_strength_l1=conservation_reference_strength_l1,
-        particle_set_conservation_raw_mismatch=particle_set_conservation_raw_mismatch,
-        particle_set_conservation_applied_correction=particle_set_conservation_applied_correction,
-        particle_set_conservation_residual=particle_set_conservation_residual,
-        particle_set_conservation_applied_particle_strength_fraction=(
-            particle_set_applied_particle_strength_fraction
-        ),
         representation_residual_before_removal=residual_before_removal,
         representation_residual_after_removal=residual_after_removal,
         strength_ratio=correction.strength_ratio,
@@ -1831,7 +1673,6 @@ __all__ = [
     "check_fvm_budget",
     "correct_lattice_strength",
     "correct_vortex_moments",
-    "fvm_target_strength",
     "gaussian_representation",
     "m4_prime",
     "redistribute_removed_strength",

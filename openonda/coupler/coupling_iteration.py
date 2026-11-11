@@ -151,12 +151,13 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
         phase_seconds["state_restore"] += perf_counter() - started
         fvm_seconds += advance_fvm(coupler, *geometry, estimate[0])
         started = perf_counter()
-        result, _ = coupler._transfer_vorticity_to_vpm(*geometry)
+        result, _ = coupler._transfer_vorticity_to_vpm(geometry[0])
         transfer_seconds += perf_counter() - started
         started = perf_counter()
         update_boundary_history_after_replacement(coupler, *geometry)
         phase_seconds["boundary_refresh"] += perf_counter() - started
         row: CouplingIterationRow | None = None
+        imposed = estimate
         if coupler._is_root:
             updated = _read_boundary_data(coupler, old=True)
             normal = float(np.sqrt(np.average((updated[1] - estimate[1]) ** 2, weights=face_area)))
@@ -180,6 +181,19 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
         if row["converged"]:
             break
     converged = rows[-1]["converged"]
+    if not converged:
+        if coupler.config.stop_on_unconverged_coupling:
+            raise RuntimeError(
+                f"the coupling iterations did not converge in {len(rows)} iterations at "
+                f"t = {fvm.time:.6g} s: normal-velocity residual "
+                f"{rows[-1]['normal_velocity_residual']:.3e} m/s (tolerance {tolerance[0]:.3e}), "
+                f"normal-gradient residual {rows[-1]['normal_gradient_residual']:.3e} 1/s "
+                f"(tolerance {tolerance[1]:.3e})"
+            )
+        if coupler._is_root:
+            # The FVM ended the interval on the data it was given, so the next interval
+            # starts from them rather than from the newer evaluation.
+            _write_boundary_data(coupler, imposed, old=True)
     # The accepted end-of-interval data are those evaluated in the last iteration.
     coupler.previous_boundary_data_correction = (
         coupler.boundary_data_correction if converged else None

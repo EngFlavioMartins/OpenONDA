@@ -2238,12 +2238,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.logger.output(f"Restart backup written: {saved}")
         return saved
 
-    def load_backup(
-        self,
-        path: str | Path,
-        *,
-        allow_time_step_control_change: bool = False,
-    ) -> None:
+    def load_backup(self, path: str | Path) -> None:
         """Restore a backup of this case and rewind the output histories.
 
         Parameters
@@ -2251,10 +2246,6 @@ class FVMSolver(CouplerInterfaceMixin):
         path : str or pathlib.Path
             Backup written by :meth:`save_backup` with the same mesh and
             numerical configuration.
-        allow_time_step_control_change : bool, default=False
-            Allow a fixed-step coupled backup to continue with an adaptive
-            FVM time-step controller, provided every other restart setting
-            matches the legacy backup digest.
 
         Raises
         ------
@@ -2271,13 +2262,11 @@ class FVMSolver(CouplerInterfaceMixin):
         if self.parallel.is_partitioned:
             from ..io.partitioned import load_partitioned_solver_backup
 
-            load_partitioned_solver_backup(
-                self, path, allow_time_step_control_change=allow_time_step_control_change
-            )
+            load_partitioned_solver_backup(self, path)
         else:
             from ..io.backup import load_backup
 
-            load_backup(self, path, allow_time_step_control_change=allow_time_step_control_change)
+            load_backup(self, path)
 
         rewind_error = None
         if self.parallel.is_root:

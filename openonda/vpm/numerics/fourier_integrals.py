@@ -11,6 +11,8 @@ from scipy.special import erf
 
 from openonda.core.slip_slab_images import slab_period_images, slab_period_lattice
 
+from .m4_kernel import m4_prime
+
 
 @dataclass(frozen=True)
 class FourierIntegrals:
@@ -66,16 +68,6 @@ class CartesianGrid:
     slip_slab: tuple[float, float] | None = None
 
 
-def _m4_prime(distance: np.ndarray) -> np.ndarray:
-    distance = np.abs(np.asarray(distance))
-    weight = np.zeros_like(distance, dtype=np.result_type(distance, np.float64))
-    inner = distance <= 1.0
-    outer = (distance > 1.0) & (distance <= 2.0)
-    weight[inner] = 1.0 - 2.5 * distance[inner] ** 2 + 1.5 * distance[inner] ** 3
-    weight[outer] = 0.5 * (2.0 - distance[outer]) ** 2 * (1.0 - distance[outer])
-    return weight
-
-
 def _grid_for_particles(
     position: np.ndarray,
     spacing: float,
@@ -120,7 +112,7 @@ def _scatter_vortex_strength_m4(
     fractions = coordinates - base
     offsets = np.arange(-1, 3, dtype=np.int64)
     weights = tuple(
-        np.stack([_m4_prime(fractions[:, axis] - offset) for offset in offsets], axis=1)
+        np.stack([m4_prime(fractions[:, axis] - offset) for offset in offsets], axis=1)
         for axis in range(3)
     )
 

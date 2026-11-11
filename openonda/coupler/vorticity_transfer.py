@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger("openonda.coupler")
 
 _PARTICLE_REDUCTION_CHUNK_SIZE = 65_536
+REMESHING_TRAVEL_FACTOR = 1.5
+"""Remeshing-region extension over the free-stream travel of one coupling interval; it covers
+particles faster than the free stream in the wake."""
 
 
 def _smoothstep(values: np.ndarray | float, lower: float, upper: float) -> np.ndarray:
@@ -50,8 +53,8 @@ def remeshing_extension_length(
 ) -> float:
     """Return the outward extension ``L_remesh`` of the remeshing region, in m.
 
-    It holds the distance a particle travels in one coupling interval, with a
-    safety factor of 1.5, plus the two-spacing M4' support.
+    It holds the distance a particle travels in one coupling interval, times
+    ``REMESHING_TRAVEL_FACTOR``, plus the two-spacing M4' support.
     """
     velocity = np.asarray(freestream_velocity, dtype=np.float64).reshape(3)
     dt = float(coupling_time_step_size)
@@ -67,7 +70,7 @@ def remeshing_extension_length(
             "the free-stream velocity, coupling time step and particle spacing must be finite, "
             "with a non-negative time step and a positive spacing"
         )
-    return 1.5 * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
+    return REMESHING_TRAVEL_FACTOR * float(np.linalg.norm(velocity)) * dt + 2.0 * spacing
 
 
 @dataclass(frozen=True)
@@ -78,8 +81,7 @@ class TransferResult:
     relative errors are dimensionless. The ``transfer_*`` fields describe the
     transfer-lattice particles: the raw mismatch before the moment correction,
     the applied correction and the remaining error of the total strength and
-    impulse. The ``particle_set_*`` fields describe the removal of the weakest
-    particles when the particle capacity is reached.
+    impulse.
     """
 
     n_particles_before: int
@@ -123,9 +125,6 @@ class TransferResult:
     removed_lattice_nodes: int = 0
     removed_vortex_strength_l1: float = 0.0
     removed_vortex_strength_fraction: float = 0.0
-    particle_set_removed_particles: int = 0
-    particle_set_removed_vortex_strength_fraction: float = 0.0
-    particle_set_removed_velocity_bound: float = 0.0
     transfer_cfl: float = 0.0
     transfer_raw_vortex_strength_error: float = 0.0
     transfer_applied_vortex_strength_correction: float = 0.0
@@ -139,13 +138,6 @@ class TransferResult:
     transfer_applied_angular_impulse_correction: float = 0.0
     transfer_angular_impulse_error: float = 0.0
     transfer_applied_particle_strength_fraction: float = 0.0
-    particle_set_transfer_raw_vortex_strength_error: float = 0.0
-    particle_set_transfer_applied_vortex_strength_correction: float = 0.0
-    particle_set_transfer_conservation_error: float = 0.0
-    particle_set_transfer_raw_linear_impulse_error: float = 0.0
-    particle_set_transfer_applied_linear_impulse_correction: float = 0.0
-    particle_set_transfer_linear_impulse_error: float = 0.0
-    particle_set_transfer_applied_particle_strength_fraction: float = 0.0
     representation_residual_before_removal: float | None = None
     representation_residual_after_removal: float | None = None
     strength_ratio: float = 0.0
@@ -400,16 +392,15 @@ def transfer_vorticity_to_particles(
         surface_strength_threshold=surface_strength_threshold,
         core_radius_ratio=core_radius_ratio,
         max_strength_ratio=max_strength_ratio,
-        maximum_particle_count=int(particles.capacity),
         freestream_speed=freestream_speed,
         time_step_size=time_step_size,
         compute_diagnostics=compute_diagnostics,
     )
-    if result.particle_set_removed_count:
+    if result.transfer_cfl > 1.0:
         raise RuntimeError(
-            "the vorticity transfer reached the VPM particle capacity and would "
-            f"remove {result.particle_set_removed_count:,} particles; increase the capacity "
-            "or reduce the number of particles"
+            f"the free stream carries particles {result.transfer_cfl:.3g} remeshing-region "
+            "extensions in one coupling interval (transfer CFL U dt / L_remesh above 1); "
+            "particles would leave the remeshing region between two transfers"
         )
     budget = result.fvm_budget
     if budget is not None:
@@ -522,6 +513,30 @@ def transfer_vorticity_to_particles(
     replaced_strength = existing_strength[removed_mask]
     input_net = existing_strength.sum(axis=0, dtype=np.float64)
 
+    # The kept outer wake keeps its own state; the GBD set holds one core radius and
+    # one particle volume, so they must already equal the transfer's.
+    outer = np.asarray(result.preserved_outer_input_indices, dtype=np.int64)
+    eddy_viscosity = np.zeros(n_after, dtype=dtype)
+    group_id = np.zeros(n_after, dtype=np.int32)
+    zone_id = np.zeros(n_after, dtype=np.int32)
+    if len(outer):
+        rows = slice(transfer_output_count, n_after)
+        for name, existing, applied in (
+            ("core radius", particles.core_radius_cpu(), applied_core_radius),
+            ("particle volume", particles.particle_volume_cpu(), applied_particle_volume),
+        ):
+            kept = np.asarray(existing, dtype=np.float64).reshape(-1)[outer]
+            expected = np.asarray(applied[rows], dtype=np.float64)
+            deviation = float(np.max(np.abs(kept - expected) / expected))
+            if deviation > 64.0 * float(np.finfo(dtype).eps):
+                raise RuntimeError(
+                    f"the {name} of the kept outer-wake particles differs from the transfer "
+                    f"lattice value by up to {deviation:.3e} (relative); the vorticity transfer "
+                    "needs one GBD particle set"
+                )
+        eddy_viscosity[rows] = np.asarray(particles.eddy_viscosity_cpu()).reshape(-1)[outer]
+        group_id[rows] = np.asarray(particles.group_id_cpu()).reshape(-1)[outer]
+        zone_id[rows] = np.asarray(particles.zone_id_cpu()).reshape(-1)[outer]
     if frame is not None:
         applied_position = np.ascontiguousarray(frame.from_body(applied_position), dtype=dtype)
         applied_strength = np.ascontiguousarray(
@@ -534,9 +549,9 @@ def transfer_vorticity_to_particles(
         core_radius=applied_core_radius,
         particle_volume=applied_particle_volume,
         kinematic_viscosity=np.full(n_after, viscosity, dtype=dtype),
-        eddy_viscosity=np.zeros(n_after, dtype=dtype),
-        group_id=np.zeros(n_after, dtype=np.int32),
-        zone_id=np.zeros(n_after, dtype=np.int32),
+        eddy_viscosity=eddy_viscosity,
+        group_id=group_id,
+        zone_id=zone_id,
         report_removal=False,
     )
     if int(particles.n_particles_total) != n_after:
@@ -547,9 +562,6 @@ def transfer_vorticity_to_particles(
 
     injected_net = reductions.transfer_moments.total_vortex_strength
     output_net = reductions.output_vortex_strength_net
-    particle_set_raw_conservation = result.particle_set_conservation_raw_mismatch
-    particle_set_applied_conservation = result.particle_set_conservation_applied_correction
-    particle_set_conservation = result.particle_set_conservation_residual
     maximum_strength = reductions.maximum_output_vortex_strength
     return TransferResult(
         n_particles_before=n_before,
@@ -586,11 +598,6 @@ def transfer_vorticity_to_particles(
         removed_lattice_nodes=int(result.removed_node_count),
         removed_vortex_strength_l1=float(result.removed_vortex_strength_l1),
         removed_vortex_strength_fraction=float(result.removed_vortex_strength_fraction),
-        particle_set_removed_particles=int(result.particle_set_removed_count),
-        particle_set_removed_vortex_strength_fraction=float(
-            result.particle_set_removed_vortex_strength_fraction
-        ),
-        particle_set_removed_velocity_bound=float(result.particle_set_removed_velocity_bound),
         transfer_cfl=float(result.transfer_cfl),
         transfer_raw_vortex_strength_error=float(
             raw_conservation.get("total_vortex_strength", 0.0)
@@ -612,27 +619,6 @@ def transfer_vorticity_to_particles(
         ),
         transfer_angular_impulse_error=float(conservation.get("angular_impulse", 0.0)),
         transfer_applied_particle_strength_fraction=moment_correction_fraction,
-        particle_set_transfer_raw_vortex_strength_error=float(
-            particle_set_raw_conservation.get("total_vortex_strength", 0.0)
-        ),
-        particle_set_transfer_applied_vortex_strength_correction=float(
-            particle_set_applied_conservation.get("total_vortex_strength", 0.0)
-        ),
-        particle_set_transfer_conservation_error=float(
-            particle_set_conservation.get("total_vortex_strength", 0.0)
-        ),
-        particle_set_transfer_raw_linear_impulse_error=float(
-            particle_set_raw_conservation.get("linear_impulse", 0.0)
-        ),
-        particle_set_transfer_applied_linear_impulse_correction=float(
-            particle_set_applied_conservation.get("linear_impulse", 0.0)
-        ),
-        particle_set_transfer_linear_impulse_error=float(
-            particle_set_conservation.get("linear_impulse", 0.0)
-        ),
-        particle_set_transfer_applied_particle_strength_fraction=float(
-            result.particle_set_conservation_applied_particle_strength_fraction
-        ),
         representation_residual_before_removal=result.representation_residual_before_removal,
         representation_residual_after_removal=result.representation_residual_after_removal,
         strength_ratio=float(result.strength_ratio),
@@ -882,8 +868,6 @@ class VorticityTransfer:
         self._wall_scatter_correction = (
             None if vpm is None else vpm.physics.compute_m4_wall_corrections
         )
-        if viscous.scheme != "gbd":
-            raise ValueError("the vorticity transfer requires the GBD viscous scheme")
         if not np.isfinite(coupler.vpm_core_radius_ratio):
             raise RuntimeError("VorticityTransfer requires the resolved VPM core-radius ratio")
         self.core_radius_ratio = float(coupler.vpm_core_radius_ratio)
@@ -895,24 +879,12 @@ class VorticityTransfer:
         self._slip_z = (float(induction.z_min), float(induction.z_max)) if self._slip_slab else None
         self.blend_start_depth, self.blend_end_depth = cfg.blend_depths(self.particle_spacing)
         self.strength_threshold = float(cfg.transfer_removal_threshold) * self.particle_spacing**3
-        if viscous.gbd_threshold_mode != "absolute":
-            raise ValueError(
-                "the vorticity transfer requires ViscousConfig.gbd_threshold_mode='absolute' "
-                f"(got {viscous.gbd_threshold_mode!r}), so the removal threshold at the transfer "
-                "surface is a resolved physical value"
-            )
         self.surface_strength_threshold = float(viscous.gbd_threshold)
-        if self.surface_strength_threshold > self.strength_threshold:
-            raise ValueError(
-                f"the strength threshold h³ transfer_removal_threshold ({self.strength_threshold:.6g}"
-                f" m³/s) must be at least the GBD removal threshold of the VPM "
-                f"({self.surface_strength_threshold:.6g} m³/s)"
-            )
         self.max_strength_ratio = float(cfg.max_strength_ratio)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         self.coupling_time_step_size = float(coupler.maximum_coupling_time_step_size)
         self.remeshing_extension_length = remeshing_extension_length(
-            cfg.freestream_velocity,
+            [cfg.maximum_freestream_speed, 0.0, 0.0],
             self.coupling_time_step_size,
             self.particle_spacing,
         )
@@ -1357,8 +1329,9 @@ class VorticityTransfer:
         # Only the stencil geometry is cached: every coupling iteration supplies new fields.
         needed = (lattice.mesh_weight > 0.0) | (lattice.fluid_weight < 1.0)
         if slab_bounds is not None:
-            needed &= (lattice.positions[:, 2] >= slab_bounds[4] - 1e-10) & (
-                lattice.positions[:, 2] <= slab_bounds[5] + 1e-10
+            plane = 1.0e-8 * self.particle_spacing
+            needed &= (lattice.positions[:, 2] >= slab_bounds[4] - plane) & (
+                lattice.positions[:, 2] <= slab_bounds[5] + plane
             )
         if self._target_stencils is None:
             stencils = []
@@ -1389,8 +1362,8 @@ class VorticityTransfer:
             self._target_stencils = stencils
 
         def fvm_target_at_node(points: np.ndarray) -> np.ndarray:
-            # Integrate n x u on the six face midpoints of each lattice cube, as
-            # transfer_lattice.fvm_target_strength does. The velocity is zero in the solid.
+            # Stokes integral of n x u on the six face midpoints of each lattice cube.
+            # The velocity is zero in the solid.
             strength = np.zeros((np.count_nonzero(needed), 3), dtype=np.float64)
             for start in range(0, len(self._target_stencils), 2):
                 velocities = []

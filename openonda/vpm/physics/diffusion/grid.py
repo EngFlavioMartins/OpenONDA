@@ -28,6 +28,7 @@ from openonda.core.slip_slab_images import (
 )
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
+from ...numerics.m4_kernel import m4_prime
 from ..events import NullPhysicsEventObserver, PhysicsEventObserver
 from ..induction.base import TaichiField
 from .body_geometry import BodyGeometryKey, BodyGridGeometryCache, ImmutableBodyGeometryQueries
@@ -288,26 +289,6 @@ def _gbd_moment_gram_quality(gram: np.ndarray) -> tuple[int, float]:
     return rank, condition
 
 
-def _m4_prime_1d(r: np.ndarray) -> np.ndarray:
-    """Vectorized 1D M4' (Monaghan 1985) interpolation kernel.
-
-    Support: [-2, 2].  Satisfies partition of unity and reproduces
-    quadratic polynomials exactly: third-order local remapping accuracy,
-    compared to CIC's second-order accuracy. Repeated remapping can accumulate
-    dispersive and dissipative error even though low moments are preserved.
-
-    The kernel has negative lobes in (1, 2), which is essential for
-    anti-aliasing and high-order accuracy.
-    """
-    q = np.abs(r)
-    w = np.zeros_like(q)
-    m1 = q <= 1.0
-    m2 = (q > 1.0) & (q <= 2.0)
-    w[m1] = 1.0 - 2.5 * q[m1] ** 2 + 1.5 * q[m1] ** 3
-    w[m2] = 0.5 * (2.0 - q[m2]) ** 2 * (1.0 - q[m2])
-    return w
-
-
 @njit(cache=True, fastmath=False)
 def _dvh_scatter_numba(
     pos: np.ndarray,
@@ -405,7 +386,7 @@ def _dvh_scatter_numba(
 
 @ti.func
 def _m4_prime_1d_ti(q: ti.f32) -> ti.f32:
-    """Taichi 1D M4' kernel (Monaghan 1985).  Mirrors _m4_prime_1d."""
+    """Taichi form of :func:`openonda.vpm.numerics.m4_kernel.m4_prime`."""
     r = ti.abs(q)
     w = 0.0
     if r <= 1.0:
@@ -1122,7 +1103,7 @@ class _GridDiffusionMixin:
                     np.broadcast_to(point, nodes[fluid].shape),
                     nodes[fluid],
                 )
-                weights = np.prod(_m4_prime_1d(fractional - indices), axis=1)
+                weights = np.prod(m4_prime(fractional - indices), axis=1)
             relative = (origin + spacing * indices[fluid] - point) / spacing
             constraints = np.vstack((np.ones(fluid.sum()), relative.T))
             gram = constraints @ constraints.T
@@ -1277,7 +1258,7 @@ class _GridDiffusionMixin:
                     raise RuntimeError("GBD M4 support leaves the diffusion lattice near a solid")
                 solid = solid_batch[row]
                 touched += 1
-                weights = np.prod(_m4_prime_1d(fractions[row] - indices), axis=1)
+                weights = np.prod(m4_prime(fractions[row] - indices), axis=1)
                 fluid = ~unavailable_batch[row]
                 try:
                     correction_indices, correction, radius = self._wall_moment_correction(

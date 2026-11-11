@@ -125,6 +125,10 @@ class CouplerConfig:
     The interface sensitivity study of the cylinder case compares a single iteration with
     iterations converged to the tolerances below.
     """
+    stop_on_unconverged_coupling: bool = False
+    """Stop the run when the coupling iterations reach ``max_coupling_iterations`` without meeting
+    the tolerances; otherwise the interval is accepted with the last boundary data the FVM used,
+    and a warning is logged."""
     normal_velocity_tolerance: float = 1.0e-5
     """Tolerance of the area-weighted RMS normal-velocity residual, relative to the free-stream
     speed U."""
@@ -226,6 +230,21 @@ class CouplerConfig:
         """Return the Cartesian free-stream vector in m/s."""
         return np.asarray(self.freestream_velocity, dtype=np.float64)
 
+    @property
+    def maximum_freestream_speed(self) -> float:
+        """Return the largest free-stream speed of the run in m/s.
+
+        A velocity ramp blends its two end velocities monotonically, so the largest
+        speed is at one of them.
+        """
+        speeds = [float(np.linalg.norm(self.freestream_velocity_vector))]
+        if self.freestream is not None:
+            speeds += [
+                float(np.linalg.norm(self.freestream.initial)),
+                float(np.linalg.norm(self.freestream.final)),
+            ]
+        return max(speeds)
+
     def transfer_region(
         self, fvm_domain_bounds: tuple | np.ndarray, particle_spacing: float, slip_planes: bool
     ) -> np.ndarray:
@@ -270,11 +289,21 @@ class CouplerConfig:
         """Return the settings that change the solution, for restart validation.
 
         The backup schedule, the interval of the full transfer diagnostics and the
-        boundary-mismatch guard only select outputs or stop a run, and are left out.
+        warnings and stops only select outputs or stop a run, and are left out.
         """
         values = {item.name: getattr(self, item.name) for item in fields(self)}
-        del values["backup"], values["transfer_diagnostic_interval_steps"]
-        del values["boundary_mismatch_warning"], values["boundary_mismatch_limit"]
+        for name in (
+            "backup",
+            "transfer_diagnostic_interval_steps",
+            "boundary_mismatch_warning",
+            "boundary_mismatch_limit",
+            "circulation_budget_limit",
+            "wall_circulation_ratio_bounds",
+            "particle_net_strength_warning",
+            "particle_net_strength_limit",
+            "stop_on_unconverged_coupling",
+        ):
+            del values[name]
         values["freestream_velocity"] = list(self.freestream_velocity)
         values["freestream"] = None if self.freestream is None else asdict(self.freestream)
         if self.transfer_region_bounds is not None:

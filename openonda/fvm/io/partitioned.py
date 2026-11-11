@@ -233,13 +233,10 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
 def load_partitioned_solver_backup(
     solver: FVMSolver,
     directory: str | Path,
-    *,
-    allow_time_step_control_change: bool = False,
 ) -> None:
     """Collectively stage and restore a complete partitioned backup."""
     from .backup import (
         configuration_digest,
-        fixed_step_configuration_digest,
         mesh_pose_arrays,
         restore_restart_state,
         validate_restart_state,
@@ -281,16 +278,7 @@ def load_partitioned_solver_backup(
             raise ValueError("Partitioned backup communicator size does not match")
         if checkpoint_info.get("mesh_sha256") != solver.mesh_data.get("global_mesh_hash"):
             raise ValueError("Partitioned backup mesh hash does not match")
-        configuration_matches = checkpoint_info.get("configuration_sha256") == configuration_digest(
-            solver
-        )
-        fixed_step_configuration_matches = (
-            allow_time_step_control_change
-            and solver._configuration.numerics.time_step_control is not None
-            and checkpoint_info.get("configuration_sha256")
-            == fixed_step_configuration_digest(solver)
-        )
-        if not configuration_matches and not fixed_step_configuration_matches:
+        if checkpoint_info.get("configuration_sha256") != configuration_digest(solver):
             raise ValueError("Partitioned backup configuration hash does not match")
         archived_viscosity = checkpoint_info.get("kinematic_viscosity")
         if (

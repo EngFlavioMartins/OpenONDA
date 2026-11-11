@@ -29,6 +29,7 @@ from .boundary import (
     report_coupling_patch_quality,
     update_boundary_history_after_replacement,
 )
+from .clock import time_tolerance
 from .config import CouplerConfig
 from .frame import MeshFrame
 from .reporting import (
@@ -46,6 +47,12 @@ if TYPE_CHECKING:
     from openonda.vpm import VPMCase, VPMSolver
 
 logger = logging.getLogger("openonda.coupler")
+
+
+PARTICLE_STRAIN_CFL = 0.9
+"""Largest particle strain over one coupling interval, ``|∇u|_max Δt``."""
+GBD_MOMENT_RESIDUAL_LIMIT = 1.0e-5
+"""Largest normalized moment residual of the GBD weak-strength removal, single precision."""
 
 
 def _validate_gbd_moment_correction(
@@ -90,9 +97,10 @@ def _validate_gbd_moment_correction(
         values["normalized_linear_impulse_residual"],
         values["normalized_angular_impulse_residual"],
     )
-    if maximum_residual > 1.0e-5:
+    if maximum_residual > GBD_MOMENT_RESIDUAL_LIMIT:
         raise RuntimeError(
-            "the GBD moment correction exceeds its storage-precision residual tolerance"
+            f"the GBD moment correction leaves a normalized residual of {maximum_residual:.3e}, "
+            f"above its storage-precision tolerance {GBD_MOMENT_RESIDUAL_LIMIT:.0e}"
         )
     if values["correction_fraction"] > float(correction_limit):
         raise RuntimeError(
@@ -100,6 +108,15 @@ def _validate_gbd_moment_correction(
             f"fraction={values['correction_fraction']:.6e}, "
             f"limit={float(correction_limit):.6e}"
         )
+
+
+def nominal_fvm_substeps_per_vpm_step(vpm_time_step_size: float, fvm_time_step_size: float) -> int:
+    """Return the FVM substeps of one VPM step at the initial step sizes, at least one.
+
+    A ratio within roundoff of an integer counts as that integer.
+    """
+    ratio = float(vpm_time_step_size) / float(fvm_time_step_size)
+    return max(1, math.ceil(ratio - 1.0e-12 * max(1.0, ratio)))
 
 
 def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig) -> None:
@@ -139,6 +156,30 @@ def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig)
             "Coupled VPM runs require viscous.particle_spacing so the transferred FVM "
             "vorticity and the boundary derivatives use the VPM discretization"
         )
+    viscous = numerics.viscous
+    if viscous.scheme != "gbd":
+        raise ValueError(
+            f"The vorticity transfer requires the GBD viscous scheme (got {viscous.scheme!r})"
+        )
+    if viscous.gbd_threshold_mode != "absolute":
+        raise ValueError(
+            "The vorticity transfer requires ViscousConfig.gbd_threshold_mode='absolute' "
+            f"(got {viscous.gbd_threshold_mode!r}), so the removal threshold at the transfer "
+            "surface is a resolved physical value"
+        )
+    spacing = float(viscous.particle_spacing)
+    transfer_threshold = config.transfer_removal_threshold * spacing**3
+    if float(viscous.gbd_threshold) > transfer_threshold:
+        raise ValueError(
+            f"The strength threshold h³ transfer_removal_threshold ({transfer_threshold:.6g} m³/s) "
+            f"must be at least the GBD removal threshold of the VPM ({viscous.gbd_threshold:.6g} m³/s)"
+        )
+    has_walls = any(boundary.mesh_type == "wall" for boundary in fvm_case.boundaries)
+    if has_walls and viscous.gbd_remeshing_kernel != "m4_prime":
+        raise ValueError(
+            "GBD next to the FVM walls needs gbd_remeshing_kernel='m4_prime' "
+            f"(got {viscous.gbd_remeshing_kernel!r})"
+        )
     viscosity = numerics.viscous.kinematic_viscosity
     fvm_viscosity = fvm_case.numerics.transport.kinematic_viscosity
     if viscosity is not None and abs(float(viscosity) - fvm_viscosity) > 1.0e-12:
@@ -152,9 +193,8 @@ def _validate_cases(fvm_case: FVMCase, vpm_case: VPMCase, config: CouplerConfig)
             f"the coupling freestream velocity {tuple(config.freestream_velocity)}"
         )
 
-    initial_substep_ratio = numerics.time_step_size / fvm_case.numerics.time_step_size
-    nominal_fvm_substeps = max(
-        1, math.ceil(initial_substep_ratio - 1.0e-12 * max(1.0, initial_substep_ratio))
+    nominal_fvm_substeps = nominal_fvm_substeps_per_vpm_step(
+        numerics.time_step_size, fvm_case.numerics.time_step_size
     )
     if config.max_coupling_iterations > 1 and (
         nominal_fvm_substeps > 1 or fvm_case.numerics.time_step_control is not None
@@ -355,9 +395,8 @@ class CoupledSolver:
         viscous = numerics.viscous
         self.fvm_time_step_size = float(self.fvm_case.numerics.time_step_size)
         self.vpm_time_step_size = float(numerics.time_step_size)
-        initial_substep_ratio = self.vpm_time_step_size / self.fvm_time_step_size
-        self.nominal_fvm_substeps_per_vpm_step = max(
-            1, math.ceil(initial_substep_ratio - 1.0e-12 * max(1.0, initial_substep_ratio))
+        self.nominal_fvm_substeps_per_vpm_step = nominal_fvm_substeps_per_vpm_step(
+            self.vpm_time_step_size, self.fvm_time_step_size
         )
         self.n_fvm_substeps = 1
         control = self.fvm_case.numerics.time_step_control
@@ -501,16 +540,6 @@ class CoupledSolver:
         vpm = self.vpm_solver
         transfer = self.vorticity_transfer
         boundary = transfer.solid_boundary
-        viscous = vpm.numerics.viscous
-        if (
-            boundary is not None
-            and viscous.scheme == "gbd"
-            and viscous.gbd_remeshing_kernel != "m4_prime"
-        ):
-            raise ValueError(
-                "GBD next to the FVM walls needs gbd_remeshing_kernel='m4_prime' "
-                f"(got {viscous.gbd_remeshing_kernel!r})"
-            )
         if boundary is not None and self.frame.rotates:
             self._place_vpm_walls(self.frame.pose_after(np.array([])), self.fvm_solver.time)
         elif boundary is not None:
@@ -679,7 +708,7 @@ class CoupledSolver:
                 if start_from is not None:
                     self.save_backup()
             self.write_run_metadata(status=self.run_status)
-            while self.time < self.end_time - max(1.0e-14, abs(self.end_time) * 1.0e-12):
+            while self.time < self.end_time - time_tolerance(self.end_time):
                 self.advance()
             self._write_final_output()
             self.run_status = RunStatus.completed
@@ -709,7 +738,7 @@ class CoupledSolver:
             raise RuntimeError("The coupled solver is closed")
         self._start()
         step = self.step + 1
-        if self.time >= self.end_time - max(1.0e-14, abs(self.end_time) * 1.0e-12):
+        if self.time >= self.end_time - time_tolerance(self.end_time):
             raise RuntimeError("The coupled run has reached its end time")
         if not self._run_started:
             self.run_status = RunStatus.running
@@ -736,7 +765,7 @@ class CoupledSolver:
             ]
         else:
             fvm_seconds = advance_fvm(self, *face_geometry, next_velocity)
-            transfer_result, transfer_seconds = self._transfer_vorticity_to_vpm(*face_geometry)
+            transfer_result, transfer_seconds = self._transfer_vorticity_to_vpm(face_geometry[0])
             refresh_started = time.perf_counter()
             update_boundary_history_after_replacement(self, *face_geometry)
             boundary_seconds += time.perf_counter() - refresh_started
@@ -796,7 +825,7 @@ class CoupledSolver:
             np.asarray(fvm.gather_boundary_face_owner_offset(patch)).reshape(-1, 3),
         )
         if self.step == 0 and not self._restart_loaded:
-            self._last_transfer_result, _ = self._transfer_vorticity_to_vpm(*self._face_geometry)
+            self._last_transfer_result, _ = self._transfer_vorticity_to_vpm(self._face_geometry[0])
         initialize_vpm_boundary_history(self, *self._face_geometry)
         self._started = True
 
@@ -1003,7 +1032,7 @@ class CoupledSolver:
                 RunStatus.failed
                 if failure is not None
                 else RunStatus.completed
-                if self.time >= self.end_time - max(1.0e-14, abs(self.end_time) * 1.0e-12)
+                if self.time >= self.end_time - time_tolerance(self.end_time)
                 else RunStatus.partial
             )
             try:
@@ -1074,7 +1103,7 @@ class CoupledSolver:
             strain_rate = 0.0
         if strain_rate <= 0.0:
             return self.maximum_coupling_time_step_size
-        return 0.9 * maximum / strain_rate
+        return PARTICLE_STRAIN_CFL * maximum / strain_rate
 
     def _select_coupling_interval(self) -> float:
         """Select an event-aligned VPM interval from FVM CFL and VPM strain limits."""
@@ -1108,7 +1137,7 @@ class CoupledSolver:
         deadline = self.end_time if remaining <= next_event - self.time else float(next_event)
         event_distance = min(remaining, next_event - self.time)
         selected_interval = event_aligned_time_step_size(maximum_interval, event_distance)
-        lands = selected_interval >= event_distance - max(1.0e-14, abs(deadline) * 1.0e-12)
+        lands = selected_interval >= event_distance - time_tolerance(deadline)
         self._selected_interval_end = (float(self.time), deadline) if lands else None
         self.fvm_time_step_size = fvm_limit
         self.vpm_time_step_size = selected_interval
@@ -1158,12 +1187,7 @@ class CoupledSolver:
                     )
         return time.perf_counter() - started
 
-    def _transfer_vorticity_to_vpm(
-        self,
-        face_centre: np.ndarray,
-        _face_normals: np.ndarray,
-        _face_area: np.ndarray,
-    ):
+    def _transfer_vorticity_to_vpm(self, face_centre: np.ndarray):
         """Replace the FVM-derived part of the particle cloud."""
         started = time.perf_counter()
         velocity = self._gather_velocity_field()
