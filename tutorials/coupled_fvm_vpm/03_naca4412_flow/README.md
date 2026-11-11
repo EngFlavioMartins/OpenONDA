@@ -9,9 +9,9 @@ A finite NACA 4412 wing is pitched nose-up in a uniform stream. The FVM resolves
 | Density; viscosity | 1 kg/m³; 0.001 m²/s |
 | FVM domain | $[-1.6,2.56]\times[-1.32,1.24]\times[-3.6,3.6]$ m, on the lattice of the reference mesh |
 | Cell and particle spacing | 0.04 m, $c/25$; FVM cells of 0.02 m around the trailing edge and 0.01 m at its corners with the tips |
-| FVM time step | CFL target 0.9 (about 0.0037 s, set by the 0.01 m trailing-edge cells); 0.004 s initial |
-| VPM interval | 0.04 s, about 11 FVM substeps; shorter only where the particle CFL number would pass 0.9 |
-| Output; backup intervals | forces 0.04 s, profiles and slices 0.2 s, fields 1.0 s; backups 0.48 s, all multiples of the 0.04 s interval |
+| FVM time step | CFL target 0.9 (about 0.0037 s, set by the 0.01 m trailing-edge cells); 0.0035 s initial |
+| VPM interval | 0.08 or 0.04 s, 0.067 s on average, about 18 FVM substeps; shorter only where the particle CFL number would pass 0.9 |
+| Output; backup intervals | forces 0.08 s, profiles and slices 0.2 s, fields 1.0 s; backups 0.48 s |
 | Statistics window | $12\le t\le24$ s |
 
 ## Physics and numerical model
@@ -20,7 +20,7 @@ A finite NACA 4412 wing is pitched nose-up in a uniform stream. The FVM resolves
 
 The particle wake uses Gaussian cores, RK2 transport, grid-based diffusion and FMM induction. A 12 m outflow fringe fades trailing vorticity smoothly. The initial starting vortex leaves the near wake before the statistics window begins.
 
-The FVM selects a step from the maximum Courant number and recalculates it after each accepted substep. The particle step is taken as rarely as the coupling study of `01_cylinder_shedding_flow` allows: its error decreases as the interval grows, up to a particle CFL number of 0.9, at which the coupler caps the interval. The 0.08 s ceiling and the 0.004 s initial FVM step allow up to 20 FVM substeps per particle step, so the FVM CFL limit never shortens the interval; every output interval is a multiple of 0.04 s, so outputs do not shorten it either. The first run took a particle step every two FVM steps (0.006 s). Every VPM interval equals the sum of its FVM substep sizes, so sampling and backup intervals remain fixed in physical time even when they do not divide the current step sizes.
+The FVM selects a step from the maximum Courant number and recalculates it after each accepted substep. The particle step is taken as rarely as the coupling study of `01_cylinder_shedding_flow` allows: its error decreases as the interval grows, up to a particle CFL number of 0.9, at which the coupler caps the interval. The 0.08 s ceiling and the 0.0035 s initial FVM step allow up to 23 FVM substeps per particle step, so the FVM CFL limit never shortens the interval. Forces are sampled at the 0.08 s ceiling; the 0.2 s profiles and slices, kept at the sample times of the reference flow, add the output times that make some intervals 0.04 s. Until 10 Nov 2026 forces were sampled every 0.04 s and the 0.004 s initial step allowed 20 substeps (0.074 s at the CFL step), which held every interval at 0.04 s. The first run took a particle step every two FVM steps (0.006 s). Every VPM interval equals the sum of its FVM substep sizes, so sampling and backup intervals remain fixed in physical time even when they do not divide the current step sizes.
 
 ## Run
 

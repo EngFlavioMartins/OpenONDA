@@ -48,10 +48,10 @@ TRAILING_EDGE_BOX = (0.32, 0.52, -0.16, 0.04, -0.5 * SPAN - CELL_SIZE, 0.5 * SPA
 # cells one wall face there spans the trailing edge and leaves its cell centre inside the wing
 TIP_CORNER = (0.38, 0.47, -0.11, -0.02)  # m, x and y bounds around the round trailing edge
 TIP_CORNER_SPAN = (0.5 * SPAN - 2 * CELL_SIZE, 0.5 * SPAN + CELL_SIZE)  # m, |z| bounds
-FVM_INITIAL_TIME_STEP = 0.004  # s, about the CFL step of the 0.01 m trailing-edge cells
+FVM_INITIAL_TIME_STEP = 0.0035  # s, just below the CFL step of the 0.01 m trailing-edge cells
 FVM_MAX_TIME_STEP = 0.04  # s, the FVM step adapts to a Courant number of 0.9
-VPM_MAX_COUPLING_INTERVAL = 0.08  # s; at most 20 FVM substeps per particle step at the first step,
-# so the 0.04 s output spacing or the particle strain (CFL 0.9) sets the interval, not the FVM CFL
+VPM_MAX_COUPLING_INTERVAL = 0.08  # s; at most 23 FVM substeps per particle step (0.08/0.0035),
+# so the output times or the particle strain (CFL 0.9) set the interval, not the FVM CFL step
 FVM_CORES = 8
 
 # VPM: particles in the outer wake
@@ -67,14 +67,15 @@ STATISTICS_START = 12.0  # s
 END_TIME = 24.0  # s
 
 # Output
-FORCE_INTERVAL = 0.04  # s; all output intervals are multiples of it, so none shortens a step
+FORCE_INTERVAL = 0.08  # s, the interval ceiling; with the 0.2 s profiles and slices, kept on the
+# sample times of the reference flow, the intervals are 0.08 and 0.04 s, 0.067 s on average
 PROFILE_INTERVAL = 0.2  # s, wake profiles over the whole run
 SLICE_INTERVAL = 0.2  # s, planar slices over the statistics window
 FIELD_INTERVAL = 1.0  # s, FVM fields and particles over the statistics window
 BACKUP_INTERVAL = 0.48  # s, coupled restart states
 WAKE_STATIONS = (2.0, 5.0)  # m, inside the replacement region and in the particle wake
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
-TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 60  # accepted shared steps, 2.4 s at 0.04 s
+TRANSFER_DIAGNOSTIC_INTERVAL_STEPS = 36  # accepted shared steps, 2.4 s at 0.067 s
 
 # Trailing-edge height and the force moment centre
 WAKE_HEIGHT = -0.5 * CHORD * math.sin(ALPHA)  # m

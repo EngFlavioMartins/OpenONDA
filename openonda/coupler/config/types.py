@@ -102,6 +102,10 @@ class CouplerConfig:
     """Accepted transfers between full diagnostics; positive."""
     max_moment_correction_fraction: float = 0.08
     """Largest moment correction, as a fraction of the transferred strength L1 norm, in (0, 1]."""
+    circulation_budget_limit: float | None = 0.02
+    """Largest difference between the total strength emitted in the replacement region and the
+    FVM total strength there, as a fraction of the FVM strength L1 norm; above it the transfer
+    stops before it changes the particles. ``None`` disables the check."""
     outer_boundary_patch: str = "numericalBoundary"
     """Mesh patch of the outer FVM boundary, which receives the normal velocity and the normal
     gradient of the tangential velocity."""
@@ -173,7 +177,11 @@ class CouplerConfig:
             0.0 < self.max_moment_correction_fraction <= 1.0
         ):
             raise ValueError("max_moment_correction_fraction must lie in (0, 1]")
-        for name in ("boundary_mismatch_warning", "boundary_mismatch_limit"):
+        for name in (
+            "boundary_mismatch_warning",
+            "boundary_mismatch_limit",
+            "circulation_budget_limit",
+        ):
             value = getattr(self, name)
             if value is not None and (not np.isfinite(value) or value <= 0.0):
                 raise ValueError(f"{name} must be finite and positive, or None")

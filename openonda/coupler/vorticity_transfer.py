@@ -140,6 +140,28 @@ class TransferResult:
     representation_residual_before_removal: float | None = None
     representation_residual_after_removal: float | None = None
     strength_ratio: float = 0.0
+    fvm_budget_total_vortex_strength: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_budget_emitted_total_vortex_strength: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_budget_linear_impulse: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_budget_emitted_linear_impulse: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_budget_relative_error: float = 0.0
+    fvm_budget_wall_total_vortex_strength: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_budget_wall_emitted_total_vortex_strength: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64)
+    )
+    fvm_budget_wall_circulation_ratio: float = 1.0
+    relocated_shell_vortex_strength_l1: float = 0.0
+    dropped_shell_vortex_strength_l1: float = 0.0
 
 
 def _validate_particle_sources(
@@ -310,14 +332,17 @@ def transfer_vorticity_to_particles(
     max_moment_correction_fraction: float | None = None,
     surface_strength_threshold: float | None = None,
     frame: MeshFrame | None = None,
+    circulation_budget_limit: float | None = None,
 ) -> TransferResult:
     """Transfer the FVM vorticity to the particles of a GBD particle set in one step.
 
     :func:`transfer_on_lattice` builds the new particle state; it is checked for
-    capacity and for conservation of the total strength and linear impulse in
-    storage precision before it replaces the VPM particles. ``frame`` of a
-    rotating mesh transfers in body coordinates, where the lattice and the walls
-    are fixed; ``None`` transfers in the VPM coordinates.
+    capacity, for conservation of the total strength and linear impulse in
+    storage precision, and against the FVM circulation budget of the replacement
+    region (``circulation_budget_limit``, ``None`` disables it) before it replaces
+    the VPM particles. ``frame`` of a rotating mesh transfers in body coordinates,
+    where the lattice and the walls are fixed; ``None`` transfers in the VPM
+    coordinates.
     """
     if vpm.viscous_scheme != "gbd":
         raise ValueError("the vorticity transfer requires the GBD viscous scheme")
@@ -365,6 +390,18 @@ def transfer_vorticity_to_particles(
             "the vorticity transfer reached the VPM particle capacity and would "
             f"remove {result.particle_set_removed_count:,} particles; increase the capacity "
             "or reduce the number of particles"
+        )
+    budget = result.fvm_budget
+    if (
+        circulation_budget_limit is not None
+        and budget is not None
+        and budget.relative_error > circulation_budget_limit
+    ):
+        raise RuntimeError(
+            "the vorticity transfer does not hold the FVM circulation of the replacement "
+            f"region: total-strength error {budget.relative_error:.3e} of the FVM L1 norm, "
+            f"limit {circulation_budget_limit:.3e}; near-wall circulation ratio "
+            f"{budget.wall_circulation_ratio:.4f}"
         )
     n_after = result.particle_count
     if n_after > int(particles.capacity):
@@ -579,7 +616,30 @@ def transfer_vorticity_to_particles(
         representation_residual_before_removal=result.representation_residual_before_removal,
         representation_residual_after_removal=result.representation_residual_after_removal,
         strength_ratio=float(result.strength_ratio),
+        **_budget_fields(budget),
     )
+
+
+def _budget_fields(budget) -> dict[str, object]:
+    """Return the TransferResult fields of an FVM circulation budget."""
+    if budget is None:
+        return {}
+    return {
+        "fvm_budget_total_vortex_strength": np.asarray(budget.fvm_total_vortex_strength),
+        "fvm_budget_emitted_total_vortex_strength": np.asarray(
+            budget.emitted_total_vortex_strength
+        ),
+        "fvm_budget_linear_impulse": np.asarray(budget.fvm_linear_impulse),
+        "fvm_budget_emitted_linear_impulse": np.asarray(budget.emitted_linear_impulse),
+        "fvm_budget_relative_error": float(budget.relative_error),
+        "fvm_budget_wall_total_vortex_strength": np.asarray(budget.wall_fvm_total_vortex_strength),
+        "fvm_budget_wall_emitted_total_vortex_strength": np.asarray(
+            budget.wall_emitted_total_vortex_strength
+        ),
+        "fvm_budget_wall_circulation_ratio": float(budget.wall_circulation_ratio),
+        "relocated_shell_vortex_strength_l1": float(budget.relocated_shell_vortex_strength_l1),
+        "dropped_shell_vortex_strength_l1": float(budget.dropped_shell_vortex_strength_l1),
+    }
 
 
 def _transfer_log_record(step: int, result: TransferResult) -> log_style.Event:
@@ -617,6 +677,13 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
             f"{result.excluded_solid_vortex_strength_l1:.3e}",
             "m^3/s",
         ),
+        (
+            "shell strength moved to fluid, l1",
+            f"{result.relocated_shell_vortex_strength_l1:.3e}",
+            "m^3/s",
+        ),
+        ("fvm circulation budget, error", f"{result.fvm_budget_relative_error:.3e}"),
+        ("near-wall circulation ratio", f"{result.fvm_budget_wall_circulation_ratio:.4f}"),
     ]
     rows.extend(
         (
@@ -818,6 +885,7 @@ class VorticityTransfer:
         )
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
         self.max_moment_correction_fraction = float(cfg.max_moment_correction_fraction)
+        self.circulation_budget_limit = cfg.circulation_budget_limit
         self._fvm_domain_bounds = np.asarray(coupler.fvm_domain_bounds, dtype=np.float64)
         self._transfer_region_bounds: np.ndarray | None = None
         self._cell_tree: cKDTree | None = None
@@ -1325,6 +1393,7 @@ class VorticityTransfer:
             time_step_size=self.coupling_time_step_size,
             compute_diagnostics=(self.step == 1 or self.step % self.diagnostic_interval == 0),
             max_moment_correction_fraction=self.max_moment_correction_fraction,
+            circulation_budget_limit=self.circulation_budget_limit,
             frame=self._frame if self._frame is not None and self._frame.rotates else None,
         )
 

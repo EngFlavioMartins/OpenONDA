@@ -25,7 +25,13 @@ ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
 CORE_RADIUS_RATIO = 1.0
 M4_PRIME_SUPPORT_CELLS = 2.0
-DEFAULT_MAX_STRENGTH_RATIO = 2.0
+DEFAULT_MAX_STRENGTH_RATIO = 1.8
+WALL_BAND_SPACINGS = 2.0
+"""Depth of the wall band, in particle spacings, whose strengths each transfer rebuilds."""
+WALL_BUDGET_SPACINGS = 3.0
+"""Depth, in particle spacings, of the near-wall region of the circulation budget."""
+_SHELL_SEARCH_CELLS = 2
+_SHELL_TIE_TOLERANCE_CELLS = 1.0e-9
 _ALIGNMENT_TOLERANCE_CELLS = 1.0e-5
 
 
@@ -279,6 +285,10 @@ class TransferLattice:
     Lengths, bounds and positions are in m. ``shape`` is (nx,ny,nz), with
     positions flattened in C order. mesh_weight, fluid_weight, blending_weight
     and solid_interior each have one entry per node. Each particle has volume h³.
+    With a solid boundary, ``wall_distance`` holds the signed node distance from the
+    wall (m, positive in the fluid) and ``shell_destination`` the moves of the
+    strength of the shell nodes ``-h < d < 0`` onto fluid nodes, as source rows,
+    receiving rows and shares.
     The frozen dataclass prevents attribute reassignment but does not make its
     NumPy arrays immutable; callers must treat these shared arrays as read only.
     """
@@ -298,6 +308,15 @@ class TransferLattice:
     slip_slab: bool = False
     wall_crossing_links: np.ndarray | None = None
     wall_scatter_correction: Callable | None = None
+    wall_distance: np.ndarray | None = None
+    shell_destination: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+
+    @property
+    def shell(self) -> np.ndarray | None:
+        """Return the mask of the shell nodes ``-h < d < 0``, or None without a wall."""
+        if self.wall_distance is None:
+            return None
+        return self.solid_interior & (self.wall_distance > -self.particle_spacing)
 
     @property
     def particle_volume(self) -> float:
@@ -416,11 +435,23 @@ def build_transfer_lattice(
         blending_weight(positions, bounds, start_depth, end_depth, slip_slab=slip_slab)
         * mesh_weight
     )
-    wall_crossing_links = (
-        None
-        if solid_boundary is None
-        else _wall_crossing_links(positions, shape, solid_interior, solid_boundary)
-    )
+    wall_crossing_links = None
+    wall_distance = None
+    shell_destination = None
+    if solid_boundary is not None:
+        wall_crossing_links = _wall_crossing_links(positions, shape, solid_interior, solid_boundary)
+        wall_distance = np.asarray(
+            solid_boundary.signed_distance(positions), dtype=np.float64
+        ).reshape(-1)
+        receives = ~solid_interior & (fluid_weight > 0.0) & (mesh_weight > 0.0)
+        shell_destination = _shell_destinations(
+            positions,
+            shape,
+            spacing,
+            solid_interior & (wall_distance > -spacing),
+            receives,
+            solid_boundary,
+        )
     return TransferLattice(
         transfer_region_bounds=bounds,
         remeshing_region_bounds=remeshing_region_bounds,
@@ -437,7 +468,81 @@ def build_transfer_lattice(
         slip_slab=slip_slab,
         wall_crossing_links=wall_crossing_links,
         wall_scatter_correction=wall_scatter_correction,
+        wall_distance=wall_distance,
+        shell_destination=shell_destination,
     )
+
+
+def _shell_destinations(positions, shape, spacing, shell, receives, boundary):
+    """Return the moves of shell strength onto the receiving nodes nearest the wall.
+
+    Each shell node sends its strength to the nearest receiving node, in equal
+    shares to nodes at the same distance, so the move keeps the symmetries of the
+    wall and the lattice (a closest-wall-point rule picks one face at an edge).
+    The segment from the shell node to a receiving node leaves the solid without
+    entering it again, so strength never moves around a thin trailing edge into
+    another fluid region. Returns the source rows, the
+    receiving rows and the shares; a shell node without a receiving node within
+    ``_SHELL_SEARCH_CELLS`` cells is absent.
+    """
+    rows = np.flatnonzero(shell)
+    empty = np.empty(0, dtype=np.int64)
+    if not len(rows):
+        return empty, empty, np.empty(0, dtype=np.float64)
+    reach = np.arange(-_SHELL_SEARCH_CELLS, _SHELL_SEARCH_CELLS + 1)
+    offsets = np.stack(np.meshgrid(reach, reach, reach, indexing="ij"), axis=-1).reshape(-1, 3)
+    index = np.stack(np.unravel_index(rows, shape), axis=1)
+    candidate = index[:, None, :] + offsets[None, :, :]
+    inside = np.all((candidate >= 0) & (candidate < np.asarray(shape)), axis=2)
+    clipped = np.clip(candidate, 0, np.asarray(shape) - 1)
+    flat = (clipped[..., 0] * shape[1] + clipped[..., 1]) * shape[2] + clipped[..., 2]
+    valid = inside & receives[flat]
+    distance = np.linalg.norm(offsets, axis=1)[None, :] * spacing * np.ones((len(rows), 1))
+    start = positions[rows]
+    sources, receivers, shares = [], [], []
+    pending = np.arange(len(rows))
+    while len(pending):
+        cost = np.where(valid[pending], distance[pending], np.inf)
+        nearest = cost.min(axis=1)
+        reachable = np.isfinite(nearest)
+        pending, cost, nearest = pending[reachable], cost[reachable], nearest[reachable]
+        if not len(pending):
+            break
+        tied = cost <= nearest[:, None] + _SHELL_TIE_TOLERANCE_CELLS * spacing
+        row, column = np.nonzero(tied)
+        node = pending[row]
+        crosses = boundary.segments_cross_wall(start[node], positions[flat[node, column]])
+        valid[node[crosses], column[crosses]] = False
+        accepted = np.zeros((len(pending), offsets.shape[0]), dtype=bool)
+        accepted[row[~crosses], column[~crosses]] = True
+        count = accepted.sum(axis=1)
+        done = count > 0
+        row, column = np.nonzero(accepted[done])
+        node = pending[done][row]
+        sources.append(rows[node])
+        receivers.append(flat[node, column])
+        shares.append(1.0 / count[done][row])
+        pending = pending[~done]
+    if not sources:
+        return empty, empty, np.empty(0, dtype=np.float64)
+    return np.concatenate(sources), np.concatenate(receivers), np.concatenate(shares)
+
+
+def _move_shell_strength(lattice, strength):
+    """Move the shell strengths onto their receiving nodes and clear the solid nodes.
+
+    Returns the moved strengths and the L1 norms of the moved and the dropped
+    shell strength.
+    """
+    moved = strength.copy()
+    source, receiver, share = lattice.shell_destination
+    magnitude = np.linalg.norm(strength[lattice.shell], axis=1)
+    has_receiver = np.zeros(len(strength), dtype=bool)
+    has_receiver[source] = True
+    np.add.at(moved, receiver, share[:, None] * strength[source])
+    moved[lattice.solid_interior] = 0.0
+    kept = has_receiver[lattice.shell]
+    return moved, float(magnitude[kept].sum()), float(magnitude[~kept].sum())
 
 
 def _snap_grid_roundoff(coordinates: np.ndarray) -> np.ndarray:
@@ -695,7 +800,7 @@ def correct_lattice_strength(
     is limited along its update direction so its magnitude does not exceed the
     larger of its remeshed magnitude and ``κ_max`` times the peak target
     strength, which keeps repeated corrections of unresolved wall structure
-    bounded.
+    bounded. Nodes with zero blending weight keep their strengths.
     """
     max_ratio = float(max_strength_ratio)
     if not np.isfinite(max_ratio) or max_ratio < 1.0:
@@ -755,6 +860,10 @@ def correct_lattice_strength(
 
     correction_gain = min(max_ratio - 1.0, 1.0)
     strength_correction = weighted_mismatch + correction_gain * residual
+    # The residual of the Van Cittert step reaches about six cores beyond the
+    # mismatch. The zero-weight layer and the lattice nodes outside the transfer
+    # surface keep their particle strengths, so the correction stops at the ramp.
+    strength_correction[blend_weight <= 0.0] = 0.0
     baseline = vpm_strength.copy()
     if weight is not None:
         baseline *= weight[:, None]
@@ -965,6 +1074,7 @@ class LatticeTransferResult:
     representation_residual_after_removal: float | None = None
     strength_ratio: float = 0.0
     excluded_target_vortex_strength_l1: float = 0.0
+    fvm_budget: FVMBudget | None = None
 
     @property
     def particle_count(self) -> int:
@@ -1072,16 +1182,39 @@ def transfer_on_lattice(
     )
     if len(raw_target) != len(lattice.positions):
         raise ValueError("fvm_target_strength_at_node must return one vector per lattice node")
-    excluded_target_l1 = float(
-        np.linalg.norm(raw_target * (1.0 - lattice.fluid_weight)[:, None], axis=1).sum()
-    )
-    fvm_target = raw_target * (lattice.fluid_weight * lattice.mesh_weight)[:, None]
+    shell = lattice.shell
+    replacement = lattice.blending_weight >= 1.0
+    if shell is None:
+        excluded_target_l1 = float(
+            np.linalg.norm(raw_target * (1.0 - lattice.fluid_weight)[:, None], axis=1).sum()
+        )
+        fvm_target = raw_target * (lattice.fluid_weight * lattice.mesh_weight)[:, None]
+        # The fluid weight can be positive just inside the wall, but those nodes
+        # cannot hold particles. Exclude their mismatch before the strength
+        # correction spreads a solid-interior target into fluid strengths.
+        output_weight = lattice.fluid_weight * ~lattice.solid_interior
+        budget_nodes = replacement & (output_weight > 0.0) & (lattice.mesh_weight > 0.0)
+        wall_band = None
+    else:
+        # The Stokes integral over a wall-cut lattice cube already holds exactly the
+        # vorticity of its fluid part, so the whole target is kept. Part of the wall
+        # sheet falls on the shell -h < d < 0: it enters the strength solve and is
+        # moved onto a fluid node below, instead of being lost at every transfer.
+        output = (lattice.fluid_weight > 0.0) & (lattice.mesh_weight > 0.0)
+        output &= ~lattice.solid_interior | shell
+        excluded_target_l1 = float(np.linalg.norm(raw_target[~output], axis=1).sum())
+        fvm_target = raw_target * (lattice.mesh_weight * output)[:, None]
+        output_weight = output.astype(np.float64)
+        budget_nodes = replacement & output
+        # A wall sheet thinner than the Gaussian core cannot be deconvolved, and one
+        # Van Cittert step from the previous near-wall strengths drifts from transfer
+        # to transfer. The replaced wall band therefore starts from zero each time
+        # and follows the FVM target alone. It keeps the usual correction gain: on a
+        # thin lifting body the mismatch alone keeps only 91 % of the circulation.
+        wall_band = replacement & output & (lattice.wall_distance < WALL_BAND_SPACINGS * spacing)
+        vpm_lattice_strength[wall_band] = 0.0
 
     base_core_radius = ratio * spacing
-    # The fluid weight can be positive just inside the wall, but those nodes
-    # cannot hold particles. Exclude their mismatch before the strength
-    # correction spreads a solid-interior target into fluid strengths.
-    output_weight = lattice.fluid_weight * ~lattice.solid_interior
     correction = correct_lattice_strength(
         vpm_lattice_strength,
         fvm_target,
@@ -1114,7 +1247,13 @@ def transfer_on_lattice(
         )
 
     limited_strength = correction.limited_strength
-    if lattice.wall_crossing_links is not None:
+    relocated_shell_l1 = 0.0
+    dropped_shell_l1 = 0.0
+    if shell is not None:
+        limited_strength, relocated_shell_l1, dropped_shell_l1 = _move_shell_strength(
+            lattice, limited_strength
+        )
+    elif lattice.wall_crossing_links is not None:
         limited_strength = limited_strength.copy()
         limited_strength[lattice.solid_interior] = 0.0
     limited_moments = vortex_moments(lattice.positions, limited_strength)
@@ -1176,6 +1315,16 @@ def transfer_on_lattice(
     applied_particle_strength_fraction = float(
         np.linalg.norm(transfer_strength - raw_transfer_strength, axis=1).sum(dtype=np.float64)
         / (active_l1 + 1.0e-30)
+    )
+
+    budget = _fvm_budget(
+        lattice,
+        fvm_target,
+        keep,
+        transfer_strength,
+        budget_nodes,
+        relocated_shell_l1=relocated_shell_l1,
+        dropped_shell_l1=dropped_shell_l1,
     )
 
     residual_after_removal: float | None = None
@@ -1447,6 +1596,83 @@ def transfer_on_lattice(
         representation_residual_after_removal=residual_after_removal,
         strength_ratio=correction.strength_ratio,
         excluded_target_vortex_strength_l1=excluded_target_l1,
+        fvm_budget=budget,
+    )
+
+
+@dataclass(frozen=True)
+class FVMBudget:
+    """Circulation budget of one transfer against the raw FVM target.
+
+    The replacement region holds the lattice nodes with blending weight one. Its
+    FVM total strength (m³/s) and linear impulse (m⁴/s) come from the raw Stokes
+    target before the strength limit and the removal threshold, with the shell
+    strengths moved like the particle strengths; the emitted sums are those of the
+    transfer-lattice particles on the same nodes. ``relative_error`` is the norm of
+    the total-strength difference over the L1 norm of the FVM target there. The
+    near-wall sums cover the nodes within ``WALL_BUDGET_SPACINGS`` spacings of a
+    wall; ``wall_circulation_ratio`` projects the emitted total on the FVM total
+    (one when there is no wall or no net near-wall circulation).
+    """
+
+    fvm_total_vortex_strength: np.ndarray
+    emitted_total_vortex_strength: np.ndarray
+    fvm_linear_impulse: np.ndarray
+    emitted_linear_impulse: np.ndarray
+    fvm_vortex_strength_l1: float
+    relative_error: float
+    wall_fvm_total_vortex_strength: np.ndarray
+    wall_emitted_total_vortex_strength: np.ndarray
+    wall_circulation_ratio: float
+    relocated_shell_vortex_strength_l1: float = 0.0
+    dropped_shell_vortex_strength_l1: float = 0.0
+
+
+def _fvm_budget(
+    lattice,
+    fvm_target,
+    keep,
+    transfer_strength,
+    budget_nodes,
+    *,
+    relocated_shell_l1,
+    dropped_shell_l1,
+) -> FVMBudget:
+    target = fvm_target.copy()
+    if lattice.shell is not None:
+        target = _move_shell_strength(lattice, target)[0]
+    emitted = np.zeros_like(target)
+    emitted[keep] = transfer_strength
+    region = budget_nodes & ~lattice.solid_interior
+    fvm_moments = vortex_moments(lattice.positions[region], target[region])
+    emitted_moments = vortex_moments(lattice.positions[region], emitted[region])
+    l1 = float(np.linalg.norm(target[region], axis=1).sum())
+    error = float(
+        np.linalg.norm(emitted_moments.total_vortex_strength - fvm_moments.total_vortex_strength)
+        / (l1 + 1.0e-30)
+    )
+    zero = np.zeros(3, dtype=np.float64)
+    wall_fvm, wall_emitted, ratio = zero, zero, 1.0
+    if lattice.wall_distance is not None:
+        near = region & (lattice.wall_distance < WALL_BUDGET_SPACINGS * lattice.particle_spacing)
+        wall_fvm = target[near].sum(axis=0)
+        wall_emitted = emitted[near].sum(axis=0)
+        squared = float(wall_fvm @ wall_fvm)
+        wall_l1 = float(np.linalg.norm(target[near], axis=1).sum())
+        if squared > (1.0e-6 * wall_l1) ** 2 and squared > 0.0:
+            ratio = float(wall_emitted @ wall_fvm) / squared
+    return FVMBudget(
+        fvm_total_vortex_strength=fvm_moments.total_vortex_strength,
+        emitted_total_vortex_strength=emitted_moments.total_vortex_strength,
+        fvm_linear_impulse=fvm_moments.linear_impulse,
+        emitted_linear_impulse=emitted_moments.linear_impulse,
+        fvm_vortex_strength_l1=l1,
+        relative_error=error,
+        wall_fvm_total_vortex_strength=wall_fvm,
+        wall_emitted_total_vortex_strength=wall_emitted,
+        wall_circulation_ratio=ratio,
+        relocated_shell_vortex_strength_l1=relocated_shell_l1,
+        dropped_shell_vortex_strength_l1=dropped_shell_l1,
     )
 
 
