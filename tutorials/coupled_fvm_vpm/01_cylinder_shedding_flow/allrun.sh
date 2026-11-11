@@ -4,9 +4,10 @@ set -e
 cd "$(dirname "$0")"
 
 # The 23 coupled runs of the interface study, each written to solution/sensitivity_analysis/<name>
-# and resumed from its latest coupled backup. All import the frozen solver of the campaign (commit
-# 3f771630). The FVM-only references are in reference_flow/allrun.sh.
-export PYTHONPATH=${STUDY_SOLVER:-$HOME/openonda_runs/study_2026-11/solver_3f771630}
+# and resumed from its latest coupled backup. All import the frozen export of commit 1e02b236, the
+# conservative wall transfer of 11 Nov 2026 (the campaign of 2 to 8 Nov used 3f771630). The FVM-only
+# references are in reference_flow/allrun.sh.
+export PYTHONPATH=${STUDY_SOLVER:-$HOME/openonda_runs/solver_1e02b236}
 
 run() { python setup.py --box-margin 2.4 --transfer-inset 8.75 --end-time 55 "$@"; }
 

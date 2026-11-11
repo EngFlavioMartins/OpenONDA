@@ -3,9 +3,9 @@ set -e
 
 cd "$(dirname "$0")"
 
-# The solver of the wing comparison, the same for the coupled run and its reference: the frozen
-# export of commit 9a8eebc2
-export PYTHONPATH=${WING_SOLVER:-$HOME/openonda_runs/wing/solver_9a8eebc2}
+# The solver of the coupled wing run: the frozen export of commit 1e02b236, the conservative wall
+# transfer of 11 Nov 2026. The FVM-only reference was run with the export of 9a8eebc2.
+export PYTHONPATH=${WING_SOLVER:-$HOME/openonda_runs/solver_1e02b236}
 # MPI ranks keep the CPUs of this shell (Open MPI otherwise binds them from core 0 up, onto other
 # runs); WING_COUPLED_CPUS pins them to a CPU list
 export PRTE_MCA_hwloc_default_binding_policy=none
