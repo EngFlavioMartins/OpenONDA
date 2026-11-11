@@ -69,50 +69,67 @@ def blending_weight(
     blend_end_depth: float,
     *,
     slip_slab: bool = False,
+    band_weight: float = 0.0,
+    band_depth: float = 0.0,
 ) -> np.ndarray:
     """Return the blending weight ``η`` at each world-frame point.
 
     Positions have shape (N,3), and transfer_region_bounds contains
     (xmin,xmax,ymin,ymax,zmin,zmax), all in m. With ``d`` the depth below the
     transfer surface, the blending weight is zero in the zero-weight layer
-    ``d ≤ blend_start_depth``, rises with a cosine and reaches one at
-    ``d = blend_end_depth`` (both non-negative, in m). A zero blend_end_depth gives
-    a sharp mask, one everywhere inside the transfer surface.
+    ``d ≤ δ_0`` (``blend_start_depth``) and rises with a cosine to one at
+    ``d = δ_1`` (``blend_end_depth``). A zero ``δ_1`` gives a sharp mask, one
+    everywhere inside the transfer surface.
+
+    A positive ``band_weight`` ``w`` ties the particles of an outer band to the FVM
+    vorticity: ``η`` rises with a cosine from zero at ``d = δ_0`` to ``w`` at
+    ``d = δ_1``, holds ``w`` down to ``d = band_depth`` and rises with a cosine
+    from ``w`` to one over the next ``δ_1 − δ_0``.
+
     With slip_slab=True, z faces keep the full blending weight through the closed
-    physical span but points outside it have zero blending weight.
-    The returned independent float64 array has shape (N,) and values in [0,1].
-    Invalid bounds, vectors or depths raise ValueError; inputs are unchanged.
+    physical span but points outside it have zero blending weight. The returned
+    independent float64 array has shape (N,) and values in [0,1]. Invalid bounds,
+    vectors, depths or weights raise ValueError; inputs are unchanged.
     """
     position = _vectors("positions", positions)
     bounds = _bounds(transfer_region_bounds)
     start_depth = _nonnegative_finite("blend_start_depth", blend_start_depth)
-    width = _nonnegative_finite("blend_end_depth", blend_end_depth)
-    if width > 0.0 and start_depth >= width:
+    end_depth = _nonnegative_finite("blend_end_depth", blend_end_depth)
+    if end_depth > 0.0 and start_depth >= end_depth:
         raise ValueError("blend_start_depth must be smaller than blend_end_depth")
+    weight = float(band_weight)
+    if not 0.0 <= weight < 1.0:
+        raise ValueError("band_weight must lie in [0, 1)")
+    plateau_end = _nonnegative_finite("band_depth", band_depth)
+    if weight > 0.0 and (end_depth == 0.0 or plateau_end < end_depth):
+        raise ValueError("a band weight needs blending and band_depth >= blend_end_depth")
 
-    skip_z_ramp = slip_slab
+    no_face = np.full(len(position), np.inf)
     face_distance = np.minimum.reduce(
         [
             position[:, 0] - bounds[0],
             bounds[1] - position[:, 0],
             position[:, 1] - bounds[2],
             bounds[3] - position[:, 1],
-            np.full(len(position), np.inf) if skip_z_ramp else position[:, 2] - bounds[4],
-            np.full(len(position), np.inf) if skip_z_ramp else bounds[5] - position[:, 2],
+            no_face if slip_slab else position[:, 2] - bounds[4],
+            no_face if slip_slab else bounds[5] - position[:, 2],
         ]
     )
-    blend_weight = np.zeros(len(position), dtype=np.float64)
-    if width == 0.0:
-        blend_weight[face_distance > 0.0] = 1.0
-        if slip_slab:
-            blend_weight[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
-        return blend_weight
+    if end_depth == 0.0:
+        blend_weight = (face_distance > 0.0).astype(np.float64)
+    else:
+        width = end_depth - start_depth
 
-    blend_weight[face_distance >= width] = 1.0
-    ramp = (face_distance > start_depth) & (face_distance < width)
-    if np.any(ramp):
-        phase = (face_distance[ramp] - start_depth) / (width - start_depth)
-        blend_weight[ramp] = 0.5 * (1.0 - np.cos(np.pi * phase))
+        def cosine_ramp(lower):
+            phase = np.clip((face_distance - lower) / width, 0.0, 1.0)
+            return 0.5 * (1.0 - np.cos(np.pi * phase))
+
+        if weight == 0.0:
+            blend_weight = cosine_ramp(start_depth)
+        else:
+            blend_weight = weight * cosine_ramp(start_depth) + (1.0 - weight) * cosine_ramp(
+                plateau_end
+            )
     if slip_slab:
         blend_weight[(position[:, 2] < bounds[4]) | (position[:, 2] > bounds[5])] = 0.0
     return blend_weight
@@ -294,6 +311,8 @@ def build_transfer_lattice(
     slip_slab: bool = False,
     solid_boundary=None,
     wall_scatter_correction: Callable | None = None,
+    band_weight: float = 0.0,
+    band_depth: float = 0.0,
 ) -> TransferLattice:
     """Build the transfer lattice that covers the remeshing region and its M4' support.
 
@@ -320,6 +339,9 @@ def build_transfer_lattice(
         Static solid-query interface. Its segment queries mark the lattice links
         that cross the wall, so weak-strength removal and the moment correction
         act on each fluid-connected component separately.
+    band_weight, band_depth : float, optional
+        Blending weight of the outer band and the depth in m where it ends; see
+        :func:`blending_weight`.
     wall_scatter_correction : callable, optional
         GBD fluid-side M4' correction for off-lattice three-dimensional particles.
         Called with positions, strengths, origin, spacing and shape; returns
@@ -386,7 +408,15 @@ def build_transfer_lattice(
     if solid_interior.shape != (count,):
         raise ValueError(f"interior_at_node returned {solid_interior.shape}, expected ({count},)")
     blend_weight = (
-        blending_weight(positions, bounds, start_depth, end_depth, slip_slab=slip_slab)
+        blending_weight(
+            positions,
+            bounds,
+            start_depth,
+            end_depth,
+            slip_slab=slip_slab,
+            band_weight=band_weight,
+            band_depth=band_depth,
+        )
         * mesh_weight
     )
     wall_crossing_links = None

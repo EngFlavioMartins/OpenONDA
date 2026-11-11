@@ -88,6 +88,16 @@ class CouplerConfig:
     ``None`` uses ``BLEND_END_SPACINGS`` particle spacings; zero disables blending, so the FVM
     vorticity replaces the particle vorticity everywhere inside the transfer surface.
     """
+    band_blending_weight: float = 0.0
+    """Blending weight ``w`` of the outer band, in [0, 1). A positive value moves the transfer
+    surface out to ``band_inset_spacings`` from the outer FVM boundary and blends the particles of
+    the band between it and the replacement region toward the FVM vorticity with weight ``w``, so
+    the particles that supply the boundary data follow the FVM wake. Zero leaves the band to the
+    particles alone."""
+    band_inset_spacings: float = 3.0
+    """Inset of the transfer surface when ``band_blending_weight`` is positive, in particle
+    spacings: the zero-weight layer next to the outer FVM boundary, at least three spacings, so the
+    boundary data never return the FVM's own boundary cells."""
     transfer_removal_threshold: float = 0.05
     """Removal threshold ``τ_transfer`` of the replacement region, in 1/s. The strength threshold
     ``τ_transfer h³`` must be at least the absolute GBD threshold of the VPM, in m³/s."""
@@ -189,6 +199,14 @@ class CouplerConfig:
             and self.blend_start_depth >= self.blend_end_depth
         ):
             raise ValueError("blend_start_depth must be smaller than blend_end_depth")
+        if not np.isfinite(self.band_blending_weight) or not 0.0 <= self.band_blending_weight < 1.0:
+            raise ValueError("band_blending_weight must lie in [0, 1)")
+        if self.band_blending_weight > 0.0 and not (
+            3.0 <= self.band_inset_spacings < self.transfer_inset_spacings
+        ):
+            raise ValueError(
+                "band_inset_spacings must be at least 3 and smaller than transfer_inset_spacings"
+            )
         if not np.isfinite(self.transfer_inset_spacings) or self.transfer_inset_spacings < 0.0:
             raise ValueError("transfer_inset_spacings must be finite and non-negative")
         if not np.isfinite(self.max_strength_ratio) or self.max_strength_ratio < 1.0:
@@ -254,7 +272,12 @@ class CouplerConfig:
         """
         if self.transfer_region_bounds is not None:
             return np.asarray(self.transfer_region_bounds, dtype=np.float64)
-        inset = self.transfer_inset_spacings * float(particle_spacing)
+        spacings = (
+            self.band_inset_spacings
+            if self.band_blending_weight > 0.0
+            else self.transfer_inset_spacings
+        )
+        inset = spacings * float(particle_spacing)
         offsets = np.array([inset, -inset] * 3)
         if slip_planes:
             offsets[4:6] = 0.0
@@ -273,6 +296,18 @@ class CouplerConfig:
                 f"blend_start_depth {start:g} m must be smaller than blend_end_depth {end:g} m"
             )
         return float(start), float(end)
+
+    def band_depth(self, particle_spacing: float) -> float:
+        """Depth in m below the transfer surface where the band ends and the ramp to one begins.
+
+        It keeps the replacement region where ``transfer_inset_spacings`` places it.
+        """
+        start, _ = self.blend_depths(particle_spacing)
+        if self.band_blending_weight == 0.0:
+            return 0.0
+        return (self.transfer_inset_spacings - self.band_inset_spacings) * float(
+            particle_spacing
+        ) + start
 
     def validate_transfer_region(
         self, fvm_domain_bounds: tuple | np.ndarray, particle_spacing: float, slip_planes: bool

@@ -878,6 +878,8 @@ class VorticityTransfer:
         self._slip_slab = getattr(induction, "method", None) == "slip_slab"
         self._slip_z = (float(induction.z_min), float(induction.z_max)) if self._slip_slab else None
         self.blend_start_depth, self.blend_end_depth = cfg.blend_depths(self.particle_spacing)
+        self.band_weight = float(cfg.band_blending_weight)
+        self.band_depth = cfg.band_depth(self.particle_spacing)
         self.strength_threshold = float(cfg.transfer_removal_threshold) * self.particle_spacing**3
         self.surface_strength_threshold = float(viscous.gbd_threshold)
         self.max_strength_ratio = float(cfg.max_strength_ratio)
@@ -1168,6 +1170,8 @@ class VorticityTransfer:
                 remeshing_extension_length=self.remeshing_extension_length,
                 blend_start_depth=self.blend_start_depth,
                 blend_end_depth=self.blend_end_depth,
+                band_weight=self.band_weight,
+                band_depth=self.band_depth,
                 lattice_anchor=self._lattice_anchor,
                 mesh_weight_at_node=mesh_weight_at_node,
                 fluid_weight_at_node=fluid_weight_at_node if has_solid else None,
