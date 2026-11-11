@@ -628,6 +628,55 @@ def _mismatch_location(
     )
 
 
+FACE_SIDES = ("x-", "x+", "y-", "y+", "z-", "z+")
+
+
+def face_side_rms(face_normal: np.ndarray, values: np.ndarray) -> dict[str, float]:
+    """Return the RMS of a face value on each side of the outer FVM boundary that has faces.
+
+    A face belongs to the side of the axis its normal points along most.
+    """
+    normal = np.asarray(face_normal, dtype=np.float64).reshape(-1, 3)
+    axis = np.argmax(np.abs(normal), axis=1)
+    side = 2 * axis + (normal[np.arange(len(normal)), axis] > 0.0)
+    return {
+        FACE_SIDES[index]: float(np.sqrt(np.mean(np.square(values[side == index]))))
+        for index in range(6)
+        if np.any(side == index)
+    }
+
+
+def _check_side_rms_mismatch(coupler, side_rms: dict[str, float]) -> str | None:
+    """Warn on, or report a stop for, a boundary mismatch that grows over a whole face side.
+
+    The RMS over a side measures the difference of the FVM and particle wakes at the
+    boundary; a single face can reach the order of the flow speed while a turbulent
+    structure crosses it.
+    """
+    config = coupler.config
+    if not side_rms:
+        return None
+    side, value = max(side_rms.items(), key=lambda item: item[1])
+    limit = config.boundary_mismatch_rms_limit
+    if limit is not None and value > limit:
+        return (
+            f"The RMS difference of the FVM and particle velocities on the {side} side of the "
+            f"outer boundary is {value:.3g} times the reference speed (limit {limit:g}) at "
+            f"t = {coupler.time:.6g} s: the two wakes differ over the whole side"
+        )
+    warning = config.boundary_mismatch_rms_warning
+    if warning is not None and value > warning:
+        logger.warning(
+            format_coupler_log(
+                "boundary mismatch over a face side",
+                ("side", side),
+                ("rms mismatch", f"{value:.3e}", "U_ref"),
+                ("warning above", f"{warning:.3e}", "U_ref"),
+            )
+        )
+    return None
+
+
 def _check_boundary_mismatch(
     coupler,
     face_centre: np.ndarray,
@@ -695,6 +744,7 @@ def _record_root_boundary_data(
     face_centre = getattr(coupler, "face_centre_body", face_centre)
     outflow = outflow_faces(face_centre, coupler.freestream_velocity, coupler.fvm_domain_bounds)
     outflow_magnitude = magnitude[outflow]
+    side_rms = face_side_rms(face_normal, magnitude / speed)
     diagnostics = {
         "mean_velocity_mismatch": float(np.mean(magnitude) / speed) if len(magnitude) else 0.0,
         "maximum_velocity_mismatch": float(np.max(magnitude) / speed) if len(magnitude) else 0.0,
@@ -707,6 +757,7 @@ def _record_root_boundary_data(
         "maximum_outflow_velocity_mismatch": (
             float(np.max(outflow_magnitude) / speed) if len(outflow_magnitude) else 0.0
         ),
+        **{f"rms_velocity_mismatch_{side}": value for side, value in side_rms.items()},
     }
     coupler._last_fvm_boundary_data_diagnostics = diagnostics
     logger.info(
@@ -733,9 +784,16 @@ def _record_root_boundary_data(
                 f"{diagnostics['maximum_outflow_velocity_mismatch']:.3e}",
                 "U_inf",
             ),
+            (
+                "velocity mismatch, rms by face side",
+                " ".join(f"{side} {value:.2e}" for side, value in side_rms.items()),
+                "U_inf",
+            ),
         )
     )
-    return _check_boundary_mismatch(coupler, face_centre, face_normal, difference, magnitude, speed)
+    return _check_side_rms_mismatch(coupler, side_rms) or _check_boundary_mismatch(
+        coupler, face_centre, face_normal, difference, magnitude, speed
+    )
 
 
 def apply_fvm_boundary(

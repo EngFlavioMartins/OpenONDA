@@ -157,6 +157,12 @@ class CouplerConfig:
     boundary_data_extrapolation: str = "linear"
     """First estimate of the end-of-interval boundary data: ``"linear"`` extrapolates the
     corrections of the last two intervals, ``"constant"`` reuses the last one."""
+    boundary_mismatch_rms_warning: float | None = 0.01
+    """RMS tangential FVM–particle velocity mismatch over one side of the outer FVM boundary, in
+    units of the reference speed, above which the coupler logs a warning. ``None`` disables it."""
+    boundary_mismatch_rms_limit: float | None = 0.03
+    """The same RMS above which the run stops with an error naming the side. A healthy coupled cube
+    keeps 0.001–0.007 on every side. ``None`` disables the check."""
     boundary_mismatch_warning: float | None = 0.2
     """Tangential FVM–particle velocity mismatch on the outer FVM boundary, in units of the
     reference speed, above which the coupler logs a warning with the face location; ``None``
@@ -235,6 +241,8 @@ class CouplerConfig:
         for name in (
             "boundary_mismatch_warning",
             "boundary_mismatch_limit",
+            "boundary_mismatch_rms_warning",
+            "boundary_mismatch_rms_limit",
             "circulation_budget_limit",
             "particle_net_strength_warning",
             "particle_net_strength_limit",
@@ -242,6 +250,14 @@ class CouplerConfig:
             value = getattr(self, name)
             if value is not None and (not np.isfinite(value) or value <= 0.0):
                 raise ValueError(f"{name} must be finite and positive, or None")
+        if (
+            self.boundary_mismatch_rms_warning is not None
+            and self.boundary_mismatch_rms_limit is not None
+            and self.boundary_mismatch_rms_warning > self.boundary_mismatch_rms_limit
+        ):
+            raise ValueError(
+                "boundary_mismatch_rms_warning must not exceed boundary_mismatch_rms_limit"
+            )
         if (
             self.boundary_mismatch_warning is not None
             and self.boundary_mismatch_limit is not None
@@ -349,6 +365,8 @@ class CouplerConfig:
             "transfer_diagnostic_interval_steps",
             "boundary_mismatch_warning",
             "boundary_mismatch_limit",
+            "boundary_mismatch_rms_warning",
+            "boundary_mismatch_rms_limit",
             "circulation_budget_limit",
             "wall_circulation_ratio_bounds",
             "particle_net_strength_warning",
