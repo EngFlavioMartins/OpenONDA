@@ -34,6 +34,8 @@ Run commands from this directory.
 
 `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. The FVM uses eight MPI processes and the particles use the GPU.
 
+The forces are compared without a blockage correction. The reference domain is open in $y$, and its slip faces in $z$ lie 10.3 m beyond the tips: beyond the tips ($z=\pm4$ m, $x=2$ m) the mean streamwise velocity of the reference and of the coupled flow differ by under 0.01 %.
+
 ## Results
 
 | File | Content |

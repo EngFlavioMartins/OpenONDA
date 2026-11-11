@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Drag, side force and lift on the cube: coupled FVM–VPM against the FVM reference."""
+"""Drag, side force and lift on the cube: coupled FVM–VPM against the FVM reference.
+
+The reference domain is bounded by slip walls, the coupled one is not. The reference forces are
+divided by (U'/U)^2 and its Strouhal number by U'/U, U'/U being the blockage speed-up of the
+freestream between the walls.
+"""
 
 from pathlib import Path
 
@@ -15,6 +20,8 @@ STATISTICS_END = 60.0  # s, planned end of the coupled run
 CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 FLOW_TIME_SCALE = FREESTREAM_SPEED / CUBE_SIDE  # 1/s, convective-time scale
+REFERENCE_WIDTH = 12.96  # m, distance between opposite slip walls of the reference domain
+WAKE_BLOCKAGE_FACTOR = 2.5  # Maskell's factor for a bluff body with a separated wake
 COEFFICIENTS = {
     "drag_coefficient": "$C_D$",
     "side_force_coefficient": "$C_S$",
@@ -25,6 +32,25 @@ COEFFICIENTS = {
 def read_forces(path):
     """Force-coefficient history, one row per sampled time."""
     return np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
+
+
+def blockage_speed_up(drag):
+    """Freestream speed-up U'/U at the cube between the reference's slip walls (Maskell).
+
+    (U'/U)^2 = 1 + theta C_D S / C, with S the frontal area and C the cross-section between the
+    walls. The mean streamwise velocity beside the cube (y = +-2 m in the mid-plane) is 0.7-0.9 %
+    higher in the reference than in the unbounded coupled flow; the formula gives 0.78 %.
+    """
+    return np.sqrt(1.0 + WAKE_BLOCKAGE_FACTOR * drag * CUBE_SIDE**2 / REFERENCE_WIDTH**2)
+
+
+def unbounded(statistics):
+    """Reference statistics corrected for blockage: forces scale with U^2, St with U."""
+    factor = blockage_speed_up(statistics["mean drag"])
+    return {
+        name: value / (factor if name == "Strouhal number" else factor**2)
+        for name, value in statistics.items()
+    }
 
 
 def shedding_statistics(forces, end_time):
@@ -55,10 +81,10 @@ def main():
     coupled = coupled[coupled["time"] <= end_time]
 
     # Compare developed-shedding statistics.
-    expected = shedding_statistics(reference, end_time)
+    expected = unbounded(shedding_statistics(reference, end_time))
     measured = shedding_statistics(coupled, end_time)
     print(
-        "Developed shedding, "
+        "Developed shedding, reference corrected for blockage, "
         f"{DEVELOPED_SHEDDING * FLOW_TIME_SCALE:g} <= t U_inf / D <= "
         f"{end_time * FLOW_TIME_SCALE:g}"
     )
@@ -69,11 +95,12 @@ def main():
             f"coupled {measured[name]:.4f}  ({deviation:+.2f}%)"
         )
 
+    force_scale = blockage_speed_up(shedding_statistics(reference, end_time)["mean drag"]) ** -2
     figure, axes = validation_subplots(len(COEFFICIENTS), sharex=True)
     for axis, (name, label) in zip(axes, COEFFICIENTS.items()):
         axis.plot(
             reference["time"] * FLOW_TIME_SCALE,
-            reference[name],
+            reference[name] * force_scale,
             **REFERENCE_STYLE,
             label="Reference FVM",
         )

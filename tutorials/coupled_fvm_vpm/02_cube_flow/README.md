@@ -37,6 +37,8 @@ Run commands from this directory.
 
 `./allplot.sh` writes the comparison figures and updates the animation; the field comparison samples the saved fine-grid reference onto the coupled mid-plane lattice. `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup.
 
+The slip walls of the reference domain speed up the stream at the cube; the coupled flow is unbounded. The force comparison divides the reference forces by $(U'/U)^2$ and its Strouhal number by $U'/U$, with Maskell's wake-blockage speed-up $(U'/U)^2 = 1 + 2.5\,C_D S/C$ ($S$ the frontal area, $C$ the cross-section between the walls): $U'/U = 1.008$, forces $-1.6$ %. The mean streamwise velocity beside the cube ($y=\pm2$ m, mid-plane) is 0.7–0.9 % higher in the reference than in the coupled flow, which confirms the size of the correction.
+
 ## Results
 
 | File | Content |
