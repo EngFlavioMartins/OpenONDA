@@ -3,7 +3,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Calibration study of the coupling interface: 19 coupled runs, each written to
+# Calibration study of the coupling interface: 18 coupled runs, each written to
 # solution/sensitivity_analysis/<name> and resumed from its latest coupled backup. Every run holds
 # the baseline below and changes one group's setting: h = 0.04 m cells and particles,
 # dt_FVM = 0.008 s, FVM box margin 2.4 D, transfer inset 8.75 cells, coupling iterations to the
@@ -20,10 +20,9 @@ run() { python setup.py --box-margin 2.4 --transfer-inset 8.75 --end-time 55 "$@
 run --fvm-substeps 5 --end-time 100 --name box2.4_sub5_inset8.75
 
 # T. Coupling interval dt_VPM = N dt_FVM at the baseline FVM step: the error that each transfer
-# adds, from a transfer every FVM step (N = 1) to the interval that the particle strain admits.
-# The coupler shortens an interval whose particle strain would exceed its limit, so N = 10 also
-# shows where that limit takes over.
-for n in 1 2 3 6 10; do run --fvm-substeps $n --name box2.4_sub${n}_inset8.75; done
+# adds, from a transfer every FVM step (N = 1) to N = 6, near the interval at which the coupler's
+# particle-strain limit starts to shorten the interval.
+for n in 1 2 3 6; do run --fvm-substeps $n --name box2.4_sub${n}_inset8.75; done
 
 # M. Coupling iterations at N = 5: one pass, the tolerances 1e-3 and 1e-4 from the linear first
 # estimate, and the tolerance 1e-5 from the constant first estimate as the converged-coupling

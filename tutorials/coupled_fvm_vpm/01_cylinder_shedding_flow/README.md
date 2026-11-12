@@ -42,7 +42,7 @@ Run commands from this directory.
 
 ```bash
 (cd reference_flow && ./allrun.sh)   # the FVM-only references
-./allrun.sh                          # the 19 coupled runs of the study
+./allrun.sh                          # the 18 coupled runs of the study
 ./allplot.sh                         # statistics, errors and figures
 ```
 
@@ -55,7 +55,7 @@ Every run holds the baseline and changes the setting of one group. Apart from th
 | Group | Runs | What it measures |
 | --- | --- | --- |
 | Baseline | `box2.4_sub5_inset8.75` | the reference point of every group, and the uncertainty of the statistics window |
-| T, coupling interval | $N=1$, 2, 3, 6, 10 | the error added at each transfer, from a transfer every FVM step to the interval the particle strain admits. The coupler shortens an interval whose particle strain exceeds its limit, so $N=10$ also shows where that limit takes over |
+| T, coupling interval | $N=1$, 2, 3, 6 | the error added at each transfer, from a transfer every FVM step to $N=6$, near the interval at which the particle-strain limit starts to shorten the interval |
 | M, coupling iterations | one pass (`_k1`); tolerance $10^{-3}$ (`_tol1e-3`) and $10^{-4}$ (`_tol1e-4`), linear first estimate; tolerance $10^{-5}$, constant first estimate (`_const`) | the error of an unconverged coupling, against the converged-coupling limit |
 | D, FVM box margin | 1.6, 2.0, 3.2, 4.0 $D$ | how far from the body the particles can supply the boundary data |
 | I, transfer inset | 4, 14 cells | how close to the outer FVM boundary the FVM vorticity can be handed to the particles |

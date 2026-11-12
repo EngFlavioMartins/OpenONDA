@@ -2,7 +2,7 @@
 
 This note records what the calibration study of the [coupled cylinder tutorial](../README.md) measures and, once its runs are done, what it found. It is the evidence behind Paper I (section 8) and thesis Chapter 5. Terms follow [terminology](../../../../docs/terminology.md).
 
-The study is the matrix of `allrun.sh`: a baseline and five groups, 19 coupled runs, each changing one setting of the baseline. Every run uses the current transfer, in which each lattice node of the replacement region takes the FVM circulation of its lattice cube. Results of the earlier transfer are not used.
+The study is the matrix of `allrun.sh`: a baseline and five groups, 18 coupled runs, each changing one setting of the baseline. Every run uses the current transfer, in which each lattice node of the replacement region takes the FVM circulation of its lattice cube. Results of the earlier transfer are not used.
 
 ## Error measure
 
@@ -32,7 +32,7 @@ To be filled from the runs, group by group:
 
 | Group | Question |
 | --- | --- |
-| T, coupling interval ($N=1$, 2, 3, 5, 6, 10) | how the error per transfer accumulates, and from which interval the particle strain limit shortens the interval |
+| T, coupling interval ($N=1$, 2, 3, 5, 6) | how the error per transfer accumulates with the number of transfers |
 | M, coupling iterations (one pass, $10^{-3}$, $10^{-4}$, $10^{-5}$ linear, $10^{-5}$ constant) | the tolerance at which the error reaches the converged-coupling limit, and the iterations it costs |
 | D, FVM box margin (1.6, 2.0, 2.4, 3.2, 4.0 $D$) | the smallest box whose error is resolved from the widest |
 | I, transfer inset (4, 8.75, 14 cells) | whether the inset moves the error beyond the window uncertainty |
