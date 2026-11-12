@@ -33,7 +33,7 @@ DOMAIN = (-16.0, 30.0, -16.0, 16.0)  # m, x and y bounds
 # Mesh: octree cells of CELL_SIZE over the coupled FVM domain, as in the coupled case, then
 # cells of 2 CELL_SIZE along the wake all the way to the outlet
 CELL_SIZE = 0.04  # m
-FVM_DOMAIN = (-2.4, 4.4, -2.4, 2.4)  # m, cells of CELL_SIZE: the coupled FVM domain
+FINE_BOX_MARGIN = 2.4  # D upstream and sideways, 2 D more downstream: the coupled FVM domain
 WAKE = (-3.0, DOMAIN[1], -3.0, 3.0)  # m, cells of 2 CELL_SIZE
 BACKGROUND = 16  # background cells in units of CELL_SIZE
 
@@ -63,11 +63,22 @@ def initial_velocity(position):
     return velocity
 
 
-def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fvm.FVMCase:
-    """Return the FVM case of the cylinder flow, written under ``solution/<name>``."""
+def build_case(
+    name,
+    reynolds_number=REYNOLDS_NUMBER,
+    cell_size=CELL_SIZE,
+    fine_box_margin=FINE_BOX_MARGIN,
+    end_time=END_TIME,
+) -> fvm.FVMCase:
+    """Return the FVM case of the cylinder flow, written under ``solution/<name>``.
+
+    Cells of ``cell_size`` fill the coupled FVM domain of the box margin ``fine_box_margin``.
+    """
     kinematic_viscosity = FREESTREAM_VELOCITY[0] * DIAMETER / reynolds_number  # m^2/s
     half_span = 0.5 * SPAN
     time_step = cell_size / CELL_SIZE * TIME_STEP
+    margin = fine_box_margin * DIAMETER
+    fine_box = (-margin, margin + 2.0 * DIAMETER, -margin, margin)
 
     # Output times are whole steps (a fixed step is shortened to land on any other output time),
     # written with at most 3 decimals: every step of allrun.sh has 3 decimals, so are its multiples
@@ -90,7 +101,7 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
             surfaces=(msh.STLSurface(CASE_DIR / "assets/cylinder_long.stl", patch="cylinder"),),
             max_cell_size=BACKGROUND * cell_size,
             refinements=(
-                msh.BoxRefinement("coupledDomain", (*FVM_DOMAIN, -slab, slab), request),
+                msh.BoxRefinement("coupledDomain", (*fine_box, -slab, slab), request),
                 msh.BoxRefinement("wake", (*WAKE, -slab, slab), 2 * request),
             ),
             patch_refinements=(msh.PatchRefinement("cylinder", request),),
@@ -150,7 +161,7 @@ def build_case(name, reynolds_number=REYNOLDS_NUMBER, cell_size=CELL_SIZE) -> fv
         variant=name,
         numerics=numerics,
         initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
-        run=fvm.RunPlan(end_time=END_TIME),
+        run=fvm.RunPlan(end_time=end_time),
         output=fvm.Output(
             schedule=fvm.EveryTime(on_steps(FIELD_INTERVAL), start_time=on_steps(FIELD_START)),
             compression="lz4",
@@ -182,9 +193,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cell-size", type=float, default=CELL_SIZE, help="cell size near the body [m]"
     )
+    parser.add_argument(
+        "--fine-box-margin",
+        type=float,
+        default=FINE_BOX_MARGIN,
+        help="box margin of the coupled FVM domain that the cells of --cell-size fill [D]",
+    )
+    parser.add_argument("--end-time", type=float, default=END_TIME, help="end time [s]")
     arguments = parser.parse_args()
 
-    case = build_case(arguments.name, arguments.reynolds_number, arguments.cell_size)
+    case = build_case(
+        arguments.name,
+        arguments.reynolds_number,
+        arguments.cell_size,
+        arguments.fine_box_margin,
+        arguments.end_time,
+    )
     with fvm.FVMSolver(case) as solver:
         cell_centres = solver.geo_data["cell_centre"][: solver.mesh_data["n_cells"]]
         solver.set_initial_velocity(initial_velocity(cell_centres))

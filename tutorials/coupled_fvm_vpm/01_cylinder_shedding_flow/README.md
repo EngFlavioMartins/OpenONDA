@@ -1,6 +1,6 @@
 # Cylinder shedding at $Re=150$
 
-A no-slip cylinder sheds a planar vortex street. The FVM resolves the wall and the vortex-formation region; one layer of vortex particles carries the outer wake. The [reference flow](reference_flow/README.md) solves the same problem with the FVM alone. The case is also the sensitivity study of the coupling interface: which interface settings change the answer, by how much, and at what cost.
+A no-slip cylinder sheds a planar vortex street. The FVM resolves the wall and the vortex-formation region; one layer of vortex particles carries the outer wake. The [reference flow](reference_flow/README.md) solves the same problem with the FVM alone. The case is also the calibration study of the coupling interface: how much each interface setting changes the answer, and at what cost.
 
 | Quantity | Value |
 | --- | --- |
@@ -11,22 +11,22 @@ A no-slip cylinder sheds a planar vortex street. The FVM resolves the wall and t
 | Cell and particle spacing | 0.04 m |
 | FVM step; coupling interval | 0.008 s; 0.04 s ($N=5$ substeps) |
 
-## Recommended setup
+## Baseline
+
+The defaults of `setup.py` are the baseline of the study.
 
 | Setting | Value |
 | --- | --- |
 | Cell and particle spacing | $h=0.04D$ |
-| FVM step; coupling interval | 0.008 s; 0.04 s ($N=5$, particle CFL number 0.78) |
-| Coupling iterations | to the tolerance $10^{-5}$ |
+| FVM step; coupling interval | 0.008 s; 0.04 s ($N=5$) |
+| Coupling iterations | at most 6, to the tolerance $10^{-5}$ from a linear first estimate |
 | Transfer inset | 8.75 cells |
-| FVM box margin | $2.4D$ |
+| FVM box margin | $2.4D$ upstream and sideways, $4.4D$ downstream |
 | Particle integration; vorticity floor | RK2; $10^{-2}$ s$^{-1}$ |
 
 ```bash
 python setup.py --box-margin 2.4 --transfer-inset 8.75 --fvm-substeps 5 --end-time 100 --name box2.4_sub5_inset8.75
 ```
-
-The forces, profiles and field differences in `figures/` come from this run. The basis for each value is in "Rules for a user" below.
 
 ## Physics and numerical model
 
@@ -41,79 +41,65 @@ A compact vortex behind the cylinder starts asymmetric shedding.
 Run commands from this directory.
 
 ```bash
-(cd reference_flow && ./allrun.sh)   # four FVM-only grids, h = 0.08, 0.06, 0.04, 0.03 m, to 100 s
-./allrun.sh                          # the 23 coupled runs, to 55 s (recommended setup to 100 s)
-./allplot.sh                         # statistics and figures
+(cd reference_flow && ./allrun.sh)   # the FVM-only references
+./allrun.sh                          # the 19 coupled runs of the study
+./allplot.sh                         # statistics, errors and figures
 ```
 
-Every run imports the frozen solver export of commit `3f771630` (campaign of 2 to 8 November 2026). `assets/plot_study.py` is the only analysis script.
+`./allrun.sh` resumes each coupled run from its latest coupled backup. Each run writes to `solution/sensitivity_analysis/<name>`.
 
-## How the error is measured
+## The study
 
-- **Statistics**: mean drag $\bar C_D$, lift amplitude $\hat C_L$ (extremes at the vertex of a parabola through three samples) and Strouhal number $St$ (upward lift crossings), over whole shedding periods.
-- **Windows**: the comparison between runs uses $40\le tU_\infty/D\le55$, the window every run covers. The forces and profiles of the recommended setup use every whole period from $tU_\infty/D=55$, where the lift amplitude becomes steady, to the end of the run.
-- **Resolution**: the lift amplitude still grows between 40 and 55. The baseline's 40–55 values differ from its steady values by 0.09 % ($\bar C_D$), 0.25 % ($\hat C_L$) and 0.05 % ($St$). Smaller differences between runs are reported as unresolved and drawn inside the grey band.
-- **Coupling error**: $e = Q_\mathrm{FVM\text{-}VPM}/Q_\mathrm{FVM}(h,\Delta t_\mathrm{FVM}) - 1$, against the FVM run with the same cells and step. The FVM's own discretization error is measured separately, as the change from the finest grid.
-- **Blockage**: the FVM domain has slip walls at $y=\pm16D$ (blockage 3.1 %); the coupled domain has none. FVM results are corrected with the Allen–Vincenti freestream speed-up $U'/U = 1 + \tfrac14 C_D\,D/H + 0.82\,(D/H)^2$: forces by $(U/U')^2$ (−2.2 %), $St$, velocities and vorticity by $U/U'$ (−1.1 %). Without the correction the coupled drag reads 2.2 % low against the FVM.
+Every run holds the baseline and changes the setting of one group. Apart from the baseline, which runs to $tU_\infty/D=100$, every run ends at 55.
+
+| Group | Runs | What it measures |
+| --- | --- | --- |
+| Baseline | `box2.4_sub5_inset8.75` | the reference point of every group, and the uncertainty of the statistics window |
+| T, coupling interval | $N=1$, 2, 3, 6, 10 | the error added at each transfer, from a transfer every FVM step to the interval the particle strain admits. The coupler shortens an interval whose particle strain exceeds its limit, so $N=10$ also shows where that limit takes over |
+| M, coupling iterations | one pass (`_k1`); tolerance $10^{-3}$ (`_tol1e-3`) and $10^{-4}$ (`_tol1e-4`), linear first estimate; tolerance $10^{-5}$, constant first estimate (`_const`) | the error of an unconverged coupling, against the converged-coupling limit |
+| D, FVM box margin | 1.6, 2.0, 3.2, 4.0 $D$ | how far from the body the particles can supply the boundary data |
+| I, transfer inset | 4, 14 cells | how close to the outer FVM boundary the FVM vorticity can be handed to the particles |
+| S, spatial resolution | $h=0.08$ m at $N=3$ and $0.06$ m at $N=4$, against $h=0.04$ m at $N=6$; particle spacing 0.08 m (`_hp0.08`) | the spatial convergence of the coupling error at the fixed coupling interval 0.048 s. The FVM step, particle spacing and interface widths scale with the cells. The last run has particles twice as coarse as the cells |
+
+The names are `box<margin>_sub<N>_inset<cells>`, followed by one suffix for each setting that differs from the baseline.
+
+### Error
+
+Statistics, over whole shedding periods:
+- the mean drag $\bar C_D$;
+- the Strouhal number $St$, from upward lift crossings;
+- the rms lift $C_{L,\mathrm{rms}}$.
+
+The error of a run is the coupling error $e = Q_\mathrm{FVM\text{-}VPM}/Q_\mathrm{FVM}(h,\Delta t_\mathrm{FVM}) - 1$. It is measured against the FVM-only run with the same cells and FVM step ([reference flow](reference_flow/README.md)), so the FVM's own discretization error cancels. That error is measured separately, as the change between the reference grids.
+
+**Blockage.** The FVM-only domain has slip walls at $y=\pm16D$ (blockage $D/H=1/32$); the coupled domain has none. FVM-only values are corrected with the Allen–Vincenti freestream speed-up $U'/U = 1 + \tfrac14 C_D\,D/H + 0.82\,(D/H)^2$:
+- forces by $(U/U')^2$;
+- $St$, velocities and vorticity by $U/U'$.
+
+### Statistics window and its uncertainty
+
+Runs are compared over $40\le tU_\infty/D\le55$, the window every run covers. The lift amplitude still grows in this window, so a difference between two runs is resolved only when it exceeds the uncertainty of the window (`assets/window_uncertainty.py`). The uncertainty has two terms:
+- $\sigma_w$, the spread of a statistic between 15 s windows of the developed flow, slid in steps of 2.5 s from 55 s to the end of each run that reaches 95 s (the coupled baseline and the FVM-only references);
+- $s_d$, the spread between those runs of the drift of the 40–55 s value from the developed mean.
+
+An error is a difference of two runs over the same window, so its standard uncertainty is $\sigma=\sqrt{2\sigma_w^2+s_d^2}$. The figures draw $\pm2\sigma$; an error inside that bar is reported as not resolved. The forces and profiles of the baseline use every whole period from 55 s to the end of its run.
 
 ## Results
 
-The forces and profiles come from the recommended setup. The $N=6$ run has a slightly smaller error over 40–55 (lift amplitude −1.12 % against −1.25 %), within the resolution, at a particle CFL number of 0.93, close to the limit of 1 at which the solver stops.
+To be filled from the runs of the current transfer. `./allplot.sh` writes to `figures/`:
 
 | File | Content |
 | --- | --- |
-| `figures/forces.png` | Drag and lift of the recommended setup and of the FVM ($h=0.04$ m); dotted lines are the steady means |
-| `figures/velocity_profiles.png` | Mean and rms streamwise velocity at $x=2D$ and $4D$, with the FVM-VPM minus FVM difference |
-| `figures/vorticity_profiles.png` | Mean and rms vorticity at $x=2D$ and $4D$, with the difference |
-| `figures/error_convergence.png` | FVM grid error and coupling error against the cell size |
-| `figures/error_coupling_interval.png` | Coupling error and boundary mismatch against the coupling interval |
-| `figures/error_sensitivity.png` | Change of each statistic from the baseline, one setting at a time |
-| `figures/study_summary.csv` | Every statistic, error, mean coupling-iteration count and boundary mismatch |
-
-### Recommended setup, steady periods
-
-Seven periods, $tU_\infty/D$ from 59 to 98.
-
-| | $\bar C_D$ | $\hat C_L$ | $St$ |
-| --- | ---: | ---: | ---: |
-| FVM, $h=0.04$ m | 1.3101 | 0.5018 | 0.1829 |
-| FVM-VPM | 1.3103 | 0.4958 | 0.1823 |
-| Coupling error | +0.01 % | −1.19 % | −0.37 % |
-| FVM grid error, $h=0.04$ against $0.03$ m (40–55) | +0.14 % | −1.42 % | −0.25 % |
-
-The coupling adds no measurable drag error. Its lift-amplitude error is about the FVM's own error at this cell size. The FVM lift amplitude and Strouhal number are still changing at $h=0.03$ m, so no grid-converged value is quoted for them.
-
-At $x=2D$, inside the FVM domain, the profiles differ by less than 0.7 % of $U_\infty$ in mean velocity and 0.03 $U_\infty/D$ in vorticity. At $x=4D$ the particle wake has a 1.2 % lower centreline velocity and a nearly unchanged rms; the coupled wake recovers slightly more slowly.
-
-### Effect of each setting (coupling error of $\hat C_L$ unless stated)
-
-| Setting | Levels | Effect | Cost |
-| --- | --- | --- | --- |
-| Coupling interval $\Delta t_\mathrm{VPM}$ | 0.008–0.048 s ($N=1$–6) | −7.4 % at 0.008 s, −2.6 % at 0.016 s, −1.8 % at 0.024 s, −1.25 % at 0.040 s, −1.1 % at 0.048 s. Drag −2.6 % to +0.1 %, $St$ −3.6 % to −0.3 %. The error decreases as the interval grows | Particle steps per $D/U_\infty$: 125 at $N=1$, 25 at $N=5$ |
-| Coupling iterations $M$ | 1, 2, 4, tolerance $10^{-5}$ | $M=1$: drag +3.2 %, lift +2.3 % (+3.6 points from the tolerance run, of opposite sign). $M\ge2$ matches the tolerance run within the resolution | The tolerance needs 1.7 iterations on average |
-| FVM box margin | 1.6–4.0 $D$ | Within ±1.5 %, without a trend. The FVM run is refined only over the 2.4 $D$ box, so wider boxes are compared with coarser FVM cells outside it | Cells grow with the box |
-| Transfer inset | 4, 8.75, 14 cells | ±0.2 %, at the resolution | None |
-| Particle spacing | $2h$ instead of $h$ | Lift −0.9 %, drag −0.4 % | Fewer particles |
-| Particle integration | RK4 instead of RK2 | None | More induction evaluations |
-| Vorticity floor | $10^{-3}$ instead of $10^{-2}$ s$^{-1}$ | Lift −0.6 %, drag −0.4 %, $St$ −0.5 % | More particles |
-| Cell size at $\Delta t_\mathrm{VPM}=0.048$ s | $h=0.08$, 0.06, 0.04 m | −2.6 %, −3.2 %, −1.1 % | Cells and particles |
-
-### Why the interval matters
-
-A shorter interval gives a larger error, so the error is added at each transfer and is not a time-integration error. The mean FVM boundary-velocity mismatch grows with the transfer rate, from $2.6\times10^{-3}U_\infty$ at $N=6$ to $6.4\times10^{-3}U_\infty$ at $N=1$, together with the force error. The remeshing and thresholding applied at each transfer are the next candidates to test.
+| `forces`, `velocity_profiles`, `vorticity_profiles` | baseline against the FVM-only reference |
+| `error_overview` | error of every run, with the window uncertainty |
+| `error_coupling_interval` | group T: error against the coupling interval |
+| `error_coupling_iterations` | group M: error and mean iteration count against the tolerance |
+| `error_domain` | groups D and I: error against the box margin and the transfer inset |
+| `error_cell_size` | group S: error against the cell size and the particle spacing |
+| `interface_measures` | boundary mismatch per side, circulation-budget error, near-wall circulation ratio |
+| `cost_accuracy` | wall time per flow time against the error |
+| `study_summary.csv` | every statistic, error and uncertainty, one row per run |
 
 ## Rules for a user
 
-For laminar periodic shedding from a smooth body at this resolution:
-
-1. Use the longest coupling interval the particles allow, a particle CFL number $\Delta t_\mathrm{VPM}S_\mathrm{max}$ of 0.75 to 0.9. It gives the smallest error and the lowest cost. Below 0.5 the error grows quickly. Refine time with the FVM step inside the interval, not with a shorter interval.
-2. Do not run one coupling iteration. Converge to the tolerance $10^{-5}$; a fixed $M=2$ gives the same result here.
-3. Keep a transfer inset of 8.75 cells and RK2 particle integration. Changing them did not move the result beyond the resolution.
-4. A box margin of 1.6 to 2.4 $D$ is enough.
-5. Keep the particle spacing equal to the cell size and the vorticity floor at $10^{-2}$ s$^{-1}$.
-6. Expect a remaining coupling error near 1 % in lift amplitude and 0.3 % in $St$, about the FVM's error at $h=D/25$. To go lower, refine the FVM first.
-7. Before comparing with an FVM solution in a walled domain, correct it for blockage.
-
-## Not measured
-
-The interval series stops at a particle CFL number of 0.93 ($N=6$). The remeshing and thresholding at the transfer, the blending depths and the moment-correction limit were not varied. Apart from the baseline, runs end at 55, at the end of the lift-amplitude growth.
+To be drawn from the results above.

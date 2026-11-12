@@ -52,6 +52,7 @@ BLEND_END = 6  # cells below the transfer surface
 FVM_SUBSTEPS = 5  # per particle step
 COUPLING_ITERATIONS = 6  # maximum FVM solves per particle step
 COUPLING_TOLERANCE = 1.0e-5  # boundary velocity and tangential-gradient tolerance
+FIRST_ESTIMATE = "linear"  # boundary data at the end of an interval: "linear" or "constant"
 TRANSFER_REMOVAL_THRESHOLD = 0.05  # 1/s, removal threshold of the replacement region
 MOMENT_CORRECTION_FRACTION = 0.08  # largest moment correction, fraction of transferred strength
 END_TIME = 100.0  # s
@@ -92,6 +93,7 @@ def build_case(
     particle_spacing=CELL_SIZE,
     coupling_iterations=COUPLING_ITERATIONS,
     coupling_tolerance=COUPLING_TOLERANCE,
+    first_estimate=FIRST_ESTIMATE,
     reynolds_number=REYNOLDS_NUMBER,
     cell_size=CELL_SIZE,
     box_downstream=BOX_MARGIN + 2.0,
@@ -291,6 +293,7 @@ def build_case(
         max_coupling_iterations=coupling_iterations,
         normal_velocity_tolerance=coupling_tolerance,
         normal_gradient_tolerance=coupling_tolerance,
+        boundary_data_extrapolation=first_estimate,
         transfer_removal_threshold=transfer_removal_threshold,
         max_moment_correction_fraction=moment_correction_fraction,
         transfer_diagnostic_interval_steps=round(
@@ -351,6 +354,12 @@ if __name__ == "__main__":
         type=float,
         default=COUPLING_TOLERANCE,
         help="boundary-data tolerance, relative to U and U/h; 1e-30 forces every iteration",
+    )
+    parser.add_argument(
+        "--first-estimate",
+        choices=("linear", "constant"),
+        default=FIRST_ESTIMATE,
+        help="first estimate of the end-of-interval boundary data: extrapolated or the last value",
     )
     parser.add_argument(
         "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
@@ -427,6 +436,7 @@ if __name__ == "__main__":
         particle_spacing,
         arguments.coupling_iterations,
         arguments.coupling_tolerance,
+        arguments.first_estimate,
         arguments.reynolds_number,
         arguments.cell_size,
         box_downstream,
