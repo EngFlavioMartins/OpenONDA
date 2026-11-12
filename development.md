@@ -4,8 +4,11 @@ State of `development` on 12 November 2026. The baseline is commit `10ea19e2` (t
 work); `git diff 10ea19e2..HEAD -- openonda/coupler openonda/vpm docs` shows every change. Commit
 hashes below name where each change entered.
 
-Status: items 1–8 are tested (coupler and VPM suites). Items 2–8 were used in the cylinder runs.
-Item 1 is checked against saved wing start-up states (below); no case has run with it yet.
+Status: items 1–8 are tested (coupler and VPM suites) and are the code of the final runs of the
+cylinder, the cube and the wing, which started on commit `37d7d7e3` on 12 November 2026. The two
+commits after it (`ba514539`, `b50e86fd`) remove analysis scripts and the unused per-transfer
+threshold; the transfer they compute is bit-identical. Two settings are still being chosen by
+runs: the tolerance of the coupling iterations (item 5) and the outer-band weight (item 4).
 
 ## 1. Vorticity transfer: direct, conservative assignment (`92674846` and the commit after it)
 
@@ -140,9 +143,29 @@ cube failure at t ≈ 38 s). Not yet run on the cube.
 
 ## Results so far
 
-- Cylinder, revised code without item 1, `convective` threshold, one FVM step per transfer, window
-  t = 10–21.8 s (short): C_D +0.49 %, St −0.46 %, C_L rms −0.22 % against the blockage-corrected
-  FVM-only reference.
-- Wing: the run on the old transfer stopped at t = 0.44 s for the reason given in item 1. The new
-  transfer has not yet run on it.
-- Cube: not yet run on the revised code.
+All errors are against the FVM-only reference of the same case (cylinder and cube corrected for
+blockage). The final runs are in progress, so the windows are short and the numbers preliminary.
+
+Offline, same saved state through the old (Van Cittert) and the new (direct) transfer:
+
+- Wing start-up, t = 0.12 s: near-wall excess of circulation +2.7e-1 old, +3.8e-3 new; circulation
+  error of the replacement region 7.7e-4 old, 1.8e-6 new; particles 39,750 old, 33,496 new.
+- Cylinder, t = 22 s: near-wall ratio 1.024 old, 1.008 new; velocity mismatch at the outflow face
+  after the transfer 0.724 % old, 0.712 % new (rms, in free-stream speeds). The smoothing of
+  item 1 does not raise the boundary mismatch there.
+
+Final runs on `37d7d7e3`, state of 12 November 2026, 20:47:
+
+| Case | Flow time | Error against the reference (window) | Near-wall ratio |
+|---|---|---|---|
+| Cylinder, N = 5 | 43.4 of 100 s | C_D +0.36 %, St −0.33 %, C_L rms −0.64 % (28.4–43.4 s) | 0.998 |
+| Cube | 8.2 of 60 s | drag −0.09 % (3–6 s) | 0.996 |
+| Wing | 2.72 of 24 s | lift −0.46 %, drag −0.23 % (1–2 s) | 0.999 |
+
+The wing run with the old transfer stopped at t = 0.44 s (near-wall ratio 1.12); with the new
+transfer the ratio is 0.997 there. Before this work the particles next to the wing held about 30 %
+of the FVM bound circulation.
+
+Cost: with every core of the machine in use the wing takes about 9,200 wall seconds per flow second
+with two coupling iterations per interval (baseline 9,701), so the target of 30 % less wall time is
+not met yet; it depends on the tolerance of the coupling iterations.
