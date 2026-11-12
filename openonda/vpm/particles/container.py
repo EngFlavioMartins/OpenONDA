@@ -771,7 +771,7 @@ class Particles:
     def velocity_background_cpu(self) -> np.ndarray:
         """Return the uniform background velocity as a copy, shape ``(3,)`` in m/s."""
         v = self.velocity_background[None]
-        return np.array([v[0], v[1], v[2]], dtype=np.float32)
+        return np.array([v[0], v[1], v[2]], dtype=self._np_float_dtype)
 
     def set_freestream_velocity(self, velocity: np.ndarray) -> None:
         """Set the global background velocity stored with the particle cloud.
@@ -1476,7 +1476,7 @@ class Particles:
         src_rad: ti.template(),
         src_vol: ti.template(),
         src_gid: ti.template(),
-        p_viscosity: ti.f32,
+        p_viscosity: float,
     ):
         for i in range(src_count):
             dest_idx = dest_offset + i
