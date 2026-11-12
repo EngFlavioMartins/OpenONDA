@@ -785,18 +785,20 @@ def figure_interface(runs, figure_dir):
     markers = {"x-": "<", "x+": ">", "y-": "v", "y+": "^"}
     colors = {"x-": COLORS["teal"], "x+": COLORS["red"], "y-": COLORS["green"], "y+": COLORS["blue"]}
     for side in SIDES:
-        axes[0].plot(x, [r[f"mismatch_rms_{side}"] for r in runs], linestyle="none", marker=markers[side],
+        axes[0].plot(x, [1e3 * r[f"mismatch_rms_{side}"] for r in runs], linestyle="none", marker=markers[side],
                      markersize=3.5, color=colors[side], label=SIDE_NAMES[side])
     axes[0].set_yscale("log")
+    axes[0].yaxis.set_major_locator(LogLocator(subs=(1.0, 2.0, 5.0)))
+    axes[0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     axes[0].yaxis.set_minor_formatter(NullFormatter())
-    axes[0].set_ylabel(r"rms $|\Delta u|/U_\infty$")
+    axes[0].set_ylabel(r"rms $|\Delta u|/U_\infty$ $\times10^3$")
     axes[0].legend(loc="upper center", ncol=4, frameon=True, edgecolor="0.8",
                    bbox_to_anchor=(0.5, 1.32), handlelength=1.0)
     axes[1].plot(x, [1e4 * r["budget_error_median"] for r in runs], "o", markersize=3.5,
                  color=COLORS["teal"], label="median")
     axes[1].plot(x, [1e4 * r["budget_error_max"] for r in runs], "_", markersize=6, color=COLORS["teal"],
                  label="maximum")
-    axes[1].set_ylim(bottom=0)
+    axes[1].set_ylim(0, 1.6e4 * np.nanmax([r["budget_error_max"] for r in runs]))  # room for the legend
     axes[1].set_ylabel(r"budget error $\times10^4$")
     axes[1].legend(loc="upper right", frameon=True, edgecolor="0.8", ncol=2)
     median = np.array([r["wall_ratio_median"] for r in runs])
@@ -835,8 +837,11 @@ def figure_cost(runs, uncertainty, figure_dir):
             if not np.isnan(cost):
                 axis.axhline(cost, color=COLORS["reference"], linestyle=":", linewidth=LINE_WIDTH / 2)
         axis.set_xlabel(f"{STATISTIC_SYMBOLS[key]} $|$error$|$ ($\\%$)")
-        axis.set_xlim(left=0)
+        largest = max(100 * abs(run["error"][key]) for run in runs)
+        axis.set_xlim(0, 1.15 * max(largest, 0.0 if np.isnan(bar) else bar))
+    costs = [run["cost"] for run in runs] + [c for c in references.values() if not np.isnan(c)]
     axes[0].set_yscale("log")
+    axes[0].set_ylim(0.8 * min(costs), 1.25 * max(costs))
     axes[0].yaxis.set_major_locator(LogLocator(subs=(1.0, 2.0, 5.0)))
     axes[0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     axes[0].yaxis.set_minor_formatter(NullFormatter())
