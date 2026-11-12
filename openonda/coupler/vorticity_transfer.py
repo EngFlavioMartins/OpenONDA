@@ -1389,13 +1389,11 @@ class VorticityTransfer:
     def interval_strength_threshold(self) -> float:
         """Return the strength threshold of the replacement region for the current interval, m³/s.
 
-        With ``transfer_removal_scaling="convective"`` it is ``τ_transfer h³ √(U Δt / h)``,
-        at least the GBD threshold at the transfer surface. ``U`` is the coupler's
+        It is ``τ_transfer h³ √(U Δt / h)``, at least the GBD threshold at the transfer
+        surface, so the removal per convective time ``h / U`` does not depend on the interval. ``U`` is the coupler's
         reference speed of the outer boundary (:func:`boundary.reference_speed`), the
         free-stream speed or the RMS particle speed there, whichever is larger.
         """
-        if self.config.transfer_removal_scaling == "per_transfer":
-            return self.strength_threshold
         factor = np.sqrt(
             self.reference_speed * self.coupling_time_step_size / self.particle_spacing
         )

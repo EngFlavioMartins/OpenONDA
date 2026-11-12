@@ -96,8 +96,10 @@ the `κ` parts of the other study scripts) and its text (`README.md`, `coupling_
 
 - The threshold scales with a reference speed shared by the whole coupler, taken in the mesh frame
   (free stream minus frame velocity; free stream alone at the first transfer).
-- `transfer_removal_scaling` selects `convective` (threshold tied to the convective time) or
-  `per_transfer`. The cylinder runs so far favour `convective`; the other is to be deleted.
+- The threshold of a coupling interval Δt is `τ_transfer h³ √(U Δt / h)`, so the removal per
+  convective time does not depend on the interval. The F0 cylinders at one FVM step per interval
+  decided it against a fixed threshold per transfer, which is deleted (with its setting
+  `transfer_removal_scaling`).
 - The threshold falls linearly with the blending weight from the transfer value to the VPM value
   at the transfer surface.
 
