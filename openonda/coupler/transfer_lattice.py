@@ -1,8 +1,8 @@
 """Vorticity transfer on the fixed transfer lattice, compatible with GBD diffusion.
 
 The particles of the remeshing region are remeshed onto the transfer lattice,
-blended with the FVM target strengths, corrected, thresholded and returned as
-transfer-lattice particles; particles outside the remeshing region are kept.
+blended with the FVM circulation of each lattice cube, thresholded and returned
+as transfer-lattice particles; particles outside the remeshing region are kept.
 The operators return particle arrays and do not modify a solver. Transfer-lattice
 particles sit on the lattice nodes and carry the base core radius.
 """
@@ -13,7 +13,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.ndimage import convolve1d
 
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.grid_connectivity import connected_grid_components
@@ -24,9 +23,6 @@ ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
 CORE_RADIUS_RATIO = 1.0
 M4_PRIME_SUPPORT_CELLS = 2.0
-DEFAULT_MAX_STRENGTH_RATIO = 1.8
-WALL_BAND_SPACINGS = 2.0
-"""Depth of the wall band, in particle spacings, whose strengths each transfer rebuilds."""
 WALL_BUDGET_SPACINGS = 3.0
 """Depth, in particle spacings, of the near-wall region of the circulation budget."""
 _SHELL_SEARCH_CELLS = 2
@@ -656,261 +652,53 @@ def scatter_m4_prime_to_lattice(
     return field.reshape(-1, 3)
 
 
-def gaussian_representation(
-    lattice_vortex_strength: np.ndarray,
-    shape: tuple[int, int, int],
-    particle_spacing: float,
-    *,
-    core_radius: float,
-    slip_slab_bounds: tuple[float, float] | None = None,
-    lattice_origin_z: float | None = None,
-) -> np.ndarray:
-    """Return the particle-represented vorticity ``ℳ_σ[Γ]`` on a Cartesian lattice, as strengths.
-
-    lattice_vortex_strength has shape (prod(shape),3), in m³/s; shape is
-    (nx,ny,nz), particle_spacing is h in m, and core_radius is sigma in m.
-    The returned independent float64 array has the same shape and units.
-
-    Each source represents Gamma*exp(-r²/sigma²)/(pi**1.5*sigma³).
-    The sampled Gaussian weights are not renormalized: doing so would change
-    the Gaussian kernel. Truncation occurs beyond six core radii.
-    Invalid spacing, radius or lattice length raises ValueError. Inputs are read only.
-    """
-    spacing = _positive_finite("particle_spacing", particle_spacing)
-    radius = _positive_finite("core_radius", core_radius)
-    strength = _vectors("lattice_vortex_strength", lattice_vortex_strength)
-    expected = int(np.prod(shape))
-    if len(strength) != expected:
-        raise ValueError(f"lattice_vortex_strength has {len(strength)} rows, expected {expected}")
-    half_width = int(np.ceil(6.0 * radius / spacing))
-    distance = np.arange(-half_width, half_width + 1, dtype=np.float64) * spacing
-    weight = spacing / (np.sqrt(np.pi) * radius) * np.exp(-((distance / radius) ** 2))
-    represented = strength.reshape(*shape, 3)
-    if slip_slab_bounds is None:
-        for axis in range(3):
-            represented = convolve1d(represented, weight, axis=axis, mode="constant", cval=0.0)
-        return represented.reshape(-1, 3)
-    if lattice_origin_z is None or len(shape) != 3:
-        raise ValueError("slip-slab representation requires 3D lattice bounds and z origin")
-    z_min, z_max = map(float, slip_slab_bounds)
-    if not np.isfinite((z_min, z_max, lattice_origin_z)).all() or z_max <= z_min:
-        raise ValueError("slip-slab representation needs finite increasing z planes")
-    lower_twice = 2.0 * (z_min - lattice_origin_z) / spacing
-    upper_twice = 2.0 * (z_max - lattice_origin_z) / spacing
-    period = upper_twice - lower_twice
-    if (
-        abs(lower_twice - round(lower_twice)) > 1e-5
-        or abs(upper_twice - round(upper_twice)) > 1e-5
-        or abs(period - round(period)) > 1e-5
-    ):
-        raise ValueError("slip planes must align to lattice nodes or half nodes")
-    lower_twice = int(round(lower_twice))
-    period = int(round(period))
-    if period <= 0:
-        raise ValueError("slip-slab image translation must be positive")
-    z_nodes = lattice_origin_z + spacing * np.arange(shape[2])
-    physical_z = (z_nodes >= z_min - 1e-8 * spacing) & (z_nodes <= z_max + 1e-8 * spacing)
-    if not np.any(physical_z):
-        raise ValueError("slip-slab lattice has no physical z nodes")
-
-    # Convolution commutes with reflection in z. Smooth only physical sources
-    # in x/y, then place their full even/odd image family on a temporary z
-    # extension. Adding coincident odd images at node-aligned faces matches the
-    # particle induction convention (normal doubles; tangential cancels).
-    xy = represented.copy()
-    xy[:, :, ~physical_z, :] = 0.0
-    for axis in (0, 1):
-        xy = convolve1d(xy, weight, axis=axis, mode="constant", cval=0.0)
-    pad = half_width
-    extended = np.zeros((shape[0], shape[1], shape[2] + 2 * pad, 3), dtype=np.float64)
-    lo, hi = -pad, shape[2] - 1 + pad
-    for source_z in np.flatnonzero(physical_z):
-        source_plane = xy[:, :, source_z, :]
-        for base, odd in ((int(source_z), False), (lower_twice - int(source_z), True)):
-            first = int(np.ceil((lo - base) / period))
-            last = int(np.floor((hi - base) / period))
-            for image in range(first, last + 1):
-                target_z = base + image * period + pad
-                if odd:
-                    extended[:, :, target_z, :2] -= source_plane[:, :, :2]
-                    extended[:, :, target_z, 2] += source_plane[:, :, 2]
-                else:
-                    extended[:, :, target_z, :] += source_plane
-    represented = convolve1d(extended, weight, axis=2, mode="constant", cval=0.0)
-    return represented[:, :, pad : pad + shape[2], :].reshape(-1, 3)
-
-
-@dataclass(frozen=True)
-class StrengthCorrection:
-    """Limited lattice strengths of the strength correction and its residuals.
-
-    ``limited_strength`` holds ``Γ_lim``, ``blended_target`` ``Γ_blend`` and
-    ``represented_strength`` the particle-represented vorticity ``ℳ_σ[Γ_lim]``,
-    all as strengths in m³/s. The residuals are relative to ``Γ_blend`` and
-    ``strength_ratio`` is ``κ``.
-    """
-
-    limited_strength: np.ndarray
-    blended_target: np.ndarray
-    represented_strength: np.ndarray | None
-    residual_before_correction: float
-    residual_after_correction: float | None
-    strength_ratio: float
-    limited_vortex_strength_l1: float = 0.0
-
-
-def correct_lattice_strength(
+def blend_lattice_strength(
     vpm_vortex_strength: np.ndarray,
     fvm_target_vortex_strength: np.ndarray,
     blending_weight: np.ndarray,
-    shape: tuple[int, int, int],
-    particle_spacing: float,
     *,
-    core_radius: float,
-    max_strength_ratio: float = DEFAULT_MAX_STRENGTH_RATIO,
     output_weight: np.ndarray | None = None,
-    compute_final_representation: bool = True,
-    slip_slab_bounds: tuple[float, float] | None = None,
-    lattice_origin_z: float | None = None,
-) -> StrengthCorrection:
-    """Correct the remeshed strengths toward the blended target and limit them.
+    physical: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return the lattice strengths ``w (Γ^VPM + η (Γ^FVM − Γ^VPM))`` in m³/s.
 
-    The strength arrays contain volume-integrated vorticity ``Γ`` in m³/s, and the
-    particle-represented vorticity is their three-dimensional Gaussian
-    convolution ``ℳ_σ``. The weighted mismatch ``Γ_mis = η (Γ^FVM − ℳ_σ[Γ^VPM])``
-    receives one Van Cittert step, ``δΓ_corr = Γ_mis + γ (Γ_mis − ℳ_σ[Γ_mis])``
-    with gain ``γ = min(κ_max − 1, 1)``. Where the FVM and particle-represented
-    vorticity already agree the strengths are unchanged, also inside the blending
-    ramp; fractional output weights scale the strengths. Each corrected strength
-    is limited along its update direction so its magnitude does not exceed the
-    larger of its remeshed magnitude and ``κ_max`` times the peak target
-    strength, which keeps repeated corrections of unresolved wall structure
-    bounded. Nodes with zero blending weight keep their strengths.
+    ``Γ^FVM`` is the FVM circulation of each lattice cube and ``Γ^VPM`` the
+    M4'-remeshed particle strength of the node. Where the blending weight ``η``
+    is one a node holds the FVM circulation of its cube, so the transfer keeps
+    the FVM circulation of every part of the replacement region, next to a wall
+    as well; where ``η`` is zero it keeps its particle strength. ``output_weight``
+    ``w`` scales the strengths, and nodes outside ``physical`` (slip-slab images)
+    hold none.
     """
-    max_ratio = float(max_strength_ratio)
-    if not np.isfinite(max_ratio) or max_ratio < 1.0:
-        raise ValueError("max_strength_ratio must be finite and at least one")
     vpm_strength = _vectors("vpm_vortex_strength", vpm_vortex_strength)
     fvm_strength = _vectors("fvm_target_vortex_strength", fvm_target_vortex_strength)
     blend_weight = np.asarray(blending_weight, dtype=np.float64).reshape(-1)
     if vpm_strength.shape != fvm_strength.shape or blend_weight.shape != (len(vpm_strength),):
         raise ValueError("the remeshed, target and blending arrays must share one lattice shape")
-    weight: np.ndarray | None = None
+    # v + η (F − v) leaves a node whose strength already equals F unchanged; where η = 1
+    # the node takes F itself, so it holds the FVM circulation exactly.
+    strength = vpm_strength + blend_weight[:, None] * (fvm_strength - vpm_strength)
+    replaced = blend_weight >= 1.0
+    strength[replaced] = fvm_strength[replaced]
     if output_weight is not None:
         weight = np.asarray(output_weight, dtype=np.float64).reshape(-1)
         if weight.shape != (len(vpm_strength),):
             raise ValueError("output_weight must share the transfer lattice shape")
-    physical = np.ones(len(vpm_strength), dtype=bool)
-    if weight is not None:
-        physical &= weight > 0.0
-    if slip_slab_bounds is not None:
-        if lattice_origin_z is None:
-            raise ValueError("slip-slab representation requires a z lattice origin")
-        z_nodes = lattice_origin_z + particle_spacing * np.arange(shape[2])
-        z_min, z_max = slip_slab_bounds
-        physical_z = (z_nodes >= z_min - 1e-8 * particle_spacing) & (
-            z_nodes <= z_max + 1e-8 * particle_spacing
-        )
-        physical &= np.broadcast_to(physical_z, shape).reshape(-1)
+        strength *= weight[:, None]
+    if physical is not None:
+        strength[~np.asarray(physical, dtype=bool).reshape(-1)] = 0.0
+    return strength
 
-    represented_vpm = gaussian_representation(
-        vpm_strength,
-        shape,
-        particle_spacing,
-        core_radius=core_radius,
-        slip_slab_bounds=slip_slab_bounds,
-        lattice_origin_z=lattice_origin_z,
-    )
-    blended_target = represented_vpm + blend_weight[:, None] * (fvm_strength - represented_vpm)
-    blended_target[~physical] = 0.0
 
-    # FVM strengths sample the vorticity; particle strengths are Gaussian
-    # coefficients. Blending the two directly would damp even F = M(v). Instead
-    # correct only r = eta (F - M(v)), with eta inside the operator:
-    # v_new = v + [I + gamma (I - M)] r. This keeps the commutator of the blending
-    # ramp; multiplying a deconvolved difference by eta is not equivalent.
-    weighted_mismatch = blend_weight[:, None] * (fvm_strength - represented_vpm)
-    weighted_mismatch[~physical] = 0.0
-    represented_weighted_mismatch = gaussian_representation(
-        weighted_mismatch,
-        shape,
-        particle_spacing,
-        core_radius=core_radius,
-        slip_slab_bounds=slip_slab_bounds,
-        lattice_origin_z=lattice_origin_z,
-    )
-    residual = weighted_mismatch - represented_weighted_mismatch
-    denominator = float(np.linalg.norm(blended_target[physical])) + 1.0e-30
-    residual_before = float(np.linalg.norm(residual[physical])) / denominator
-
-    correction_gain = min(max_ratio - 1.0, 1.0)
-    strength_correction = weighted_mismatch + correction_gain * residual
-    # The residual of the Van Cittert step reaches about six cores beyond the
-    # mismatch. The zero-weight layer and the lattice nodes outside the transfer
-    # surface keep their particle strengths, so the correction stops at the ramp.
-    strength_correction[blend_weight <= 0.0] = 0.0
-    baseline = vpm_strength.copy()
-    if weight is not None:
-        baseline *= weight[:, None]
-        strength_correction *= weight[:, None]
-    baseline[~physical] = 0.0
-    strength_correction[~physical] = 0.0
-    peak_target_strength = (
-        float(np.linalg.norm(blended_target[physical], axis=1).max(initial=0.0)) + 1.0e-30
-    )
-    bound_squared = np.maximum(
-        np.einsum("ij,ij->i", baseline, baseline), (max_ratio * peak_target_strength) ** 2
-    )
-    limited_strength = baseline + strength_correction
-    exceeds_limit = np.einsum("ij,ij->i", limited_strength, limited_strength) > bound_squared
-    unlimited_exceeding = limited_strength[exceeds_limit].copy()
-    if np.any(exceeds_limit):
-        previous = baseline[exceeds_limit]
-        delta = strength_correction[exceeds_limit]
-        a = np.einsum("ij,ij->i", delta, delta)
-        b = np.einsum("ij,ij->i", previous, delta)
-        c = np.minimum(
-            np.einsum("ij,ij->i", previous, previous) - bound_squared[exceeds_limit], 0.0
-        )
-        root = np.sqrt(np.maximum(b * b - a * c, 0.0))
-        # Stable positive quadratic root, including an already saturated node.
-        update_fraction = np.zeros_like(a)
-        outward = b >= 0.0
-        np.divide(-c, root + b, out=update_fraction, where=outward & (root + b > 0.0))
-        np.divide(root - b, a, out=update_fraction, where=~outward & (a > 0.0))
-        limited_strength[exceeds_limit] = (
-            previous + np.clip(update_fraction, 0.0, 1.0)[:, None] * delta
-        )
-    strength_ratio = (
-        float(np.linalg.norm(limited_strength, axis=1).max(initial=0.0)) / peak_target_strength
-    )
-    limiter_l1 = float(
-        np.linalg.norm(unlimited_exceeding - limited_strength[exceeds_limit], axis=1).sum()
-    )
-
-    represented_limited: np.ndarray | None = None
-    residual_after: float | None = None
-    if compute_final_representation:
-        represented_limited = gaussian_representation(
-            limited_strength,
-            shape,
-            particle_spacing,
-            core_radius=core_radius,
-            slip_slab_bounds=slip_slab_bounds,
-            lattice_origin_z=lattice_origin_z,
-        )
-        residual_after = (
-            float(np.linalg.norm((blended_target - represented_limited)[physical])) / denominator
-        )
-    return StrengthCorrection(
-        limited_strength=limited_strength,
-        blended_target=blended_target,
-        represented_strength=represented_limited,
-        residual_before_correction=residual_before,
-        residual_after_correction=residual_after,
-        strength_ratio=strength_ratio,
-        limited_vortex_strength_l1=limiter_l1,
-    )
+def _slab_physical_nodes(lattice) -> np.ndarray | None:
+    """Return the nodes inside the slip slab, or ``None`` without a slab."""
+    if not lattice.slip_slab:
+        return None
+    spacing = lattice.particle_spacing
+    z_nodes = lattice.origin[2] + spacing * np.arange(lattice.shape[2])
+    z_min, z_max = lattice.transfer_region_bounds[4:6]
+    inside = (z_nodes >= z_min - 1e-8 * spacing) & (z_nodes <= z_max + 1e-8 * spacing)
+    return np.broadcast_to(inside, lattice.shape).reshape(-1)
 
 
 def remove_weak_strengths(
@@ -987,7 +775,7 @@ def _correct_fluid_component_moments(lattice, original, redistributed, labels, c
     """Apply the moment correction to each fluid-connected component.
 
     A component whose retained strengths cannot carry the correction keeps its
-    limited strengths unchanged; its count and strength L1 norm are returned.
+    node strengths from before the removal; its count and strength L1 norm are returned.
     """
     fallback_count, fallback_l1 = 0, 0.0
     raw = redistributed.copy()
@@ -1017,7 +805,7 @@ def _correct_fluid_component_moments(lattice, original, redistributed, labels, c
             corrected[retained] = result
         except (ValueError, np.linalg.LinAlgError, FloatingPointError):
             # A removal threshold cannot justify moving a component's strength
-            # into another fluid region. Keep its limited strengths instead.
+            # into another fluid region. Keep its strengths from before the removal.
             raw[component] = original[component]
             corrected[component] = original[component]
             fallback_count += 1
@@ -1058,12 +846,8 @@ class LatticeTransferResult:
     conservation_target_moments: VortexMoments | None = None
     conservation_raw_moments: VortexMoments | None = None
     conservation_reference_strength_l1: float = 0.0
-    representation_residual_before_removal: float | None = None
-    representation_residual_after_removal: float | None = None
-    strength_ratio: float = 0.0
     excluded_target_vortex_strength_l1: float = 0.0
     fvm_budget: FVMBudget | None = None
-    limited_vortex_strength_l1: float = 0.0
     solid_particle_vortex_strength_l1: float = 0.0
     tapered_vortex_strength_l1: float = 0.0
     moment_fallback_component_count: int = 0
@@ -1086,18 +870,17 @@ def transfer_on_lattice(
     strength_threshold: float = 0.0,
     surface_strength_threshold: float | None = None,
     core_radius_ratio: float = CORE_RADIUS_RATIO,
-    max_strength_ratio: float = DEFAULT_MAX_STRENGTH_RATIO,
     freestream_speed: float = 0.0,
     time_step_size: float = 0.0,
-    compute_diagnostics: bool = True,
-    correction_steps: int = 1,
 ) -> LatticeTransferResult:
     """Transfer the FVM vorticity on the lattice and keep the particles outside it.
 
-    The particles of the remeshing region are remeshed onto the lattice, the
-    strengths are corrected toward the blended target, weak strengths are
-    removed, and the moment correction restores the total strength and linear
-    impulse of the limited strengths. Particles outside the remeshing region are
+    The particles of the remeshing region are remeshed onto the lattice and
+    blended with the FVM circulation of each lattice cube
+    (:func:`blend_lattice_strength`): the replacement region holds the FVM
+    circulation exactly. Weak strengths are then removed, and the moment
+    correction restores the total strength and linear impulse that the removal
+    changed. Particles outside the remeshing region are
     kept. The function does not modify its inputs; the caller supplies the FVM
     target strengths through ``fvm_target_strength_at_node`` and may then
     replace the particle arrays with the returned state in one step.
@@ -1181,81 +964,40 @@ def transfer_on_lattice(
         )
         fvm_target = raw_target * (lattice.fluid_weight * lattice.mesh_weight)[:, None]
         # The fluid weight can be positive just inside the wall, but those nodes
-        # cannot hold particles. Exclude their mismatch before the strength
-        # correction spreads a solid-interior target into fluid strengths.
+        # cannot hold particles.
         output_weight = lattice.fluid_weight * ~lattice.solid_interior
         budget_nodes = replacement & (output_weight > 0.0) & (lattice.mesh_weight > 0.0)
-        wall_band = None
     else:
         # The Stokes integral over a wall-cut lattice cube already holds exactly the
         # vorticity of its fluid part, so the whole target is kept. Part of the wall
-        # sheet falls on the shell -h < d < 0: it enters the strength solve and is
-        # moved onto a fluid node below, instead of being lost at every transfer.
+        # sheet falls on the shell -h < d < 0: it is moved onto a fluid node below,
+        # instead of being lost at every transfer.
         output = (lattice.fluid_weight > 0.0) & (lattice.mesh_weight > 0.0)
         output &= ~lattice.solid_interior | shell
         excluded_target_l1 = float(np.linalg.norm(raw_target[~output], axis=1).sum())
         fvm_target = raw_target * (lattice.mesh_weight * output)[:, None]
         output_weight = output.astype(np.float64)
         budget_nodes = replacement & output
-        # A wall sheet thinner than the Gaussian core cannot be deconvolved, and one
-        # Van Cittert step from the previous near-wall strengths drifts from transfer
-        # to transfer. The replaced wall band therefore starts from zero each time
-        # and follows the FVM target alone. It keeps the usual correction gain: on a
-        # thin lifting body the mismatch alone keeps only 91 % of the circulation.
-        wall_band = replacement & output & (lattice.wall_distance < WALL_BAND_SPACINGS * spacing)
-        vpm_lattice_strength[wall_band] = 0.0
 
     base_core_radius = ratio * spacing
-    if correction_steps < 1:
-        raise ValueError("correction_steps must be at least one")
-    corrected_strength = vpm_lattice_strength
-    for step in range(correction_steps):
-        correction = correct_lattice_strength(
-            corrected_strength,
-            fvm_target,
-            lattice.blending_weight,
-            lattice.shape,
-            spacing,
-            core_radius=base_core_radius,
-            max_strength_ratio=max_strength_ratio,
-            output_weight=output_weight,
-            compute_final_representation=compute_diagnostics and step == correction_steps - 1,
-            slip_slab_bounds=(
-                tuple(lattice.transfer_region_bounds[4:6]) if lattice.slip_slab else None
-            ),
-            lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
-        )
-        corrected_strength = correction.limited_strength
-    comparison_weight = output_weight * lattice.mesh_weight
-    residual_before_removal: float | None = None
-    if compute_diagnostics:
-        if correction.represented_strength is None:
-            raise RuntimeError("the particle-represented vorticity was not evaluated")
-        denominator = (
-            float(np.linalg.norm(correction.blended_target * comparison_weight[:, None])) + 1.0e-30
-        )
-        residual_before_removal = (
-            float(
-                np.linalg.norm(
-                    (correction.represented_strength - correction.blended_target)
-                    * comparison_weight[:, None]
-                )
-            )
-            / denominator
-        )
-
-    limited_strength = correction.limited_strength
+    node_strength = blend_lattice_strength(
+        vpm_lattice_strength,
+        fvm_target,
+        lattice.blending_weight,
+        output_weight=output_weight,
+        physical=_slab_physical_nodes(lattice),
+    )
     relocated_shell_l1 = 0.0
     dropped_shell_l1 = 0.0
     if shell is not None:
-        limited_strength, relocated_shell_l1, dropped_shell_l1 = _move_shell_strength(
-            lattice, limited_strength
+        node_strength, relocated_shell_l1, dropped_shell_l1 = _move_shell_strength(
+            lattice, node_strength
         )
     elif lattice.wall_crossing_links is not None:
-        limited_strength = limited_strength.copy()
-        limited_strength[lattice.solid_interior] = 0.0
-    limited_moments = vortex_moments(lattice.positions, limited_strength)
-    magnitude_before = np.linalg.norm(limited_strength, axis=1)
+        node_strength = node_strength.copy()
+        node_strength[lattice.solid_interior] = 0.0
+    node_moments = vortex_moments(lattice.positions, node_strength)
+    magnitude_before = np.linalg.norm(node_strength, axis=1)
     labels = (
         None
         if lattice.wall_crossing_links is None
@@ -1269,7 +1011,7 @@ def transfer_on_lattice(
     # surface the particles evolve under the VPM alone, so the removal threshold
     # falls to the GBD removal threshold there.
     local_threshold = surface_threshold + (threshold - surface_threshold) * lattice.blending_weight
-    retained, removed = remove_weak_strengths(limited_strength, local_threshold)
+    retained, removed = remove_weak_strengths(node_strength, local_threshold)
     redistributed = redistribute_removed_strength(
         removed,
         retained,
@@ -1283,7 +1025,7 @@ def transfer_on_lattice(
     if labels is not None:
         redistributed, wall_corrected, fallback_count, fallback_l1 = (
             _correct_fluid_component_moments(
-                lattice, limited_strength, redistributed, labels, moment_correction
+                lattice, node_strength, redistributed, labels, moment_correction
             )
         )
     keep = np.linalg.norm(redistributed, axis=1) > 0.0
@@ -1296,15 +1038,15 @@ def transfer_on_lattice(
     transfer_strength = raw_transfer_strength if wall_corrected is None else wall_corrected[keep]
     transfer_volume = np.full(len(transfer_position), lattice.particle_volume, dtype=np.float64)
     raw_moments = vortex_moments(transfer_position, raw_transfer_strength)
-    conservation_raw_mismatch = vortex_moment_residual(limited_moments, raw_moments)
-    conservation_target_moments = limited_moments
+    conservation_raw_mismatch = vortex_moment_residual(node_moments, raw_moments)
+    conservation_target_moments = node_moments
     conservation_raw_moments = raw_moments
     conservation_reference_strength_l1 = active_l1
     if wall_corrected is None and len(transfer_position) > 1:
         transfer_strength = moment_correction(
             transfer_position,
             raw_transfer_strength,
-            limited_moments,
+            node_moments,
             volumes=transfer_volume,
         )
     corrected_moments = vortex_moments(transfer_position, transfer_strength)
@@ -1312,7 +1054,7 @@ def transfer_on_lattice(
         raw_moments,
         corrected_moments,
     )
-    conservation_residual = vortex_moment_residual(limited_moments, corrected_moments)
+    conservation_residual = vortex_moment_residual(node_moments, corrected_moments)
     applied_particle_strength_fraction = float(
         np.linalg.norm(transfer_strength - raw_transfer_strength, axis=1).sum(dtype=np.float64)
         / (active_l1 + 1.0e-30)
@@ -1327,32 +1069,6 @@ def transfer_on_lattice(
         relocated_shell_l1=relocated_shell_l1,
         dropped_shell_l1=dropped_shell_l1,
     )
-
-    residual_after_removal: float | None = None
-    if compute_diagnostics:
-        transferred_lattice_strength = np.zeros_like(correction.limited_strength)
-        transferred_lattice_strength[keep] = transfer_strength
-        represented_transfer = gaussian_representation(
-            transferred_lattice_strength,
-            lattice.shape,
-            spacing,
-            core_radius=base_core_radius,
-            slip_slab_bounds=tuple(lattice.transfer_region_bounds[4:6])
-            if lattice.slip_slab
-            else None,
-            lattice_origin_z=float(lattice.origin[2]) if lattice.slip_slab else None,
-        )
-        denominator = (
-            float(np.linalg.norm(correction.blended_target * comparison_weight[:, None])) + 1.0e-30
-        )
-        residual_after_removal = (
-            float(
-                np.linalg.norm(
-                    (represented_transfer - correction.blended_target) * comparison_weight[:, None]
-                )
-            )
-            / denominator
-        )
 
     transfer_radius = np.full(len(transfer_position), base_core_radius, dtype=np.float64)
 
@@ -1489,12 +1205,8 @@ def transfer_on_lattice(
         conservation_target_moments=conservation_target_moments,
         conservation_raw_moments=conservation_raw_moments,
         conservation_reference_strength_l1=conservation_reference_strength_l1,
-        representation_residual_before_removal=residual_before_removal,
-        representation_residual_after_removal=residual_after_removal,
-        strength_ratio=correction.strength_ratio,
         excluded_target_vortex_strength_l1=excluded_target_l1,
         fvm_budget=budget,
-        limited_vortex_strength_l1=correction.limited_vortex_strength_l1,
         solid_particle_vortex_strength_l1=float(
             np.linalg.norm(strength[deep_solid], axis=1).sum(dtype=np.float64)
         ),
@@ -1700,18 +1412,15 @@ def _nonnegative_finite(name: str, value: float) -> float:
 
 
 __all__ = [
-    "DEFAULT_MAX_STRENGTH_RATIO",
     "LatticeTransferResult",
     "M4_PRIME_SUPPORT_CELLS",
-    "StrengthCorrection",
     "TransferLattice",
     "VortexMoments",
+    "blend_lattice_strength",
     "blending_weight",
     "build_transfer_lattice",
     "check_fvm_budget",
-    "correct_lattice_strength",
     "correct_vortex_moments",
-    "gaussian_representation",
     "m4_prime",
     "redistribute_removed_strength",
     "remove_weak_strengths",

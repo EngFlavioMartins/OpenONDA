@@ -75,7 +75,7 @@ def remeshing_extension_length(
 
 @dataclass(frozen=True)
 class TransferResult:
-    """Particle counts, representation residuals and conservation of one vorticity transfer.
+    """Particle counts, weak-strength removal and conservation of one vorticity transfer.
 
     Strengths are in m³/s, linear impulse in m⁴/s, angular impulse in m⁵/s and
     relative errors are dimensionless. The ``transfer_*`` fields describe the
@@ -139,9 +139,6 @@ class TransferResult:
     transfer_applied_angular_impulse_correction: float = 0.0
     transfer_angular_impulse_error: float = 0.0
     transfer_applied_particle_strength_fraction: float = 0.0
-    representation_residual_before_removal: float | None = None
-    representation_residual_after_removal: float | None = None
-    strength_ratio: float = 0.0
     fvm_budget_total_vortex_strength: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
@@ -164,7 +161,6 @@ class TransferResult:
     fvm_budget_wall_circulation_ratio: float = 1.0
     relocated_shell_vortex_strength_l1: float = 0.0
     dropped_shell_vortex_strength_l1: float = 0.0
-    limited_vortex_strength_l1: float = 0.0
     solid_particle_vortex_strength_l1: float = 0.0
     tapered_vortex_strength_l1: float = 0.0
     moment_fallback_component_count: int = 0
@@ -335,17 +331,14 @@ def transfer_vorticity_to_particles(
     particle_in_solid: Callable[[np.ndarray], np.ndarray] | None,
     strength_threshold: float,
     core_radius_ratio: float,
-    max_strength_ratio: float,
     kinematic_viscosity: float,
     freestream_speed: float,
     time_step_size: float,
-    compute_diagnostics: bool,
     max_moment_correction_fraction: float | None = None,
     surface_strength_threshold: float | None = None,
     frame: MeshFrame | None = None,
     circulation_budget_limit: float | None = None,
     wall_circulation_ratio_bounds: tuple[float, float] | None = None,
-    correction_steps: int = 1,
 ) -> TransferResult:
     """Transfer the FVM vorticity to the particles of a GBD particle set in one step.
 
@@ -393,11 +386,8 @@ def transfer_vorticity_to_particles(
         strength_threshold=strength_threshold,
         surface_strength_threshold=surface_strength_threshold,
         core_radius_ratio=core_radius_ratio,
-        max_strength_ratio=max_strength_ratio,
         freestream_speed=freestream_speed,
         time_step_size=time_step_size,
-        compute_diagnostics=compute_diagnostics,
-        correction_steps=correction_steps,
     )
     if result.transfer_cfl > 1.0:
         raise RuntimeError(
@@ -625,10 +615,6 @@ def transfer_vorticity_to_particles(
         ),
         transfer_angular_impulse_error=float(conservation.get("angular_impulse", 0.0)),
         transfer_applied_particle_strength_fraction=moment_correction_fraction,
-        representation_residual_before_removal=result.representation_residual_before_removal,
-        representation_residual_after_removal=result.representation_residual_after_removal,
-        strength_ratio=float(result.strength_ratio),
-        limited_vortex_strength_l1=float(result.limited_vortex_strength_l1),
         solid_particle_vortex_strength_l1=float(result.solid_particle_vortex_strength_l1),
         tapered_vortex_strength_l1=float(result.tapered_vortex_strength_l1),
         moment_fallback_component_count=int(result.moment_fallback_component_count),
@@ -702,7 +688,6 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
         ("fvm circulation budget, error", f"{result.fvm_budget_relative_error:.3e}"),
         ("near-wall circulation ratio", f"{result.fvm_budget_wall_circulation_ratio:.4f}"),
         ("particle-set net strength, of L1", f"{result.particle_set_net_strength_fraction:.3e}"),
-        ("strength limited by kappa, l1", f"{result.limited_vortex_strength_l1:.3e}", "m^3/s"),
         (
             "particles in the solid, dropped l1",
             f"{result.solid_particle_vortex_strength_l1:.3e}",
@@ -789,25 +774,8 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
                 f"{100.0 * result.transfer_applied_particle_strength_fraction:.3f}",
                 "%",
             ),
-            (
-                "strength ratio, kappa",
-                f"{result.strength_ratio:.3f}",
-            ),
         )
     )
-    if result.representation_residual_after_removal is not None:
-        rows.extend(
-            (
-                (
-                    "representation residual, before removal",
-                    result.representation_residual_before_removal,
-                ),
-                (
-                    "representation residual, after removal",
-                    f"{result.representation_residual_after_removal:.3e}",
-                ),
-            )
-        )
     return tuple(rows)
 
 
@@ -888,7 +856,6 @@ class VorticityTransfer:
         self.band_depth = cfg.band_depth(self.particle_spacing)
         self.strength_threshold = float(cfg.transfer_removal_threshold) * self.particle_spacing**3
         self.surface_strength_threshold = float(viscous.gbd_threshold)
-        self.max_strength_ratio = float(cfg.max_strength_ratio)
         self.kinematic_viscosity = float(coupler.kinematic_viscosity)
         self.coupling_time_step_size = float(coupler.maximum_coupling_time_step_size)
         self.remeshing_extension_length = remeshing_extension_length(
@@ -1410,15 +1377,12 @@ class VorticityTransfer:
             strength_threshold=self.interval_strength_threshold(),
             surface_strength_threshold=self.surface_strength_threshold,
             core_radius_ratio=self.core_radius_ratio,
-            max_strength_ratio=self.max_strength_ratio,
             kinematic_viscosity=self.kinematic_viscosity,
             freestream_speed=float(np.linalg.norm(self.config.freestream_velocity_vector)),
             time_step_size=self.coupling_time_step_size,
-            compute_diagnostics=(self.step == 1 or self.step % self.diagnostic_interval == 0),
             max_moment_correction_fraction=self.max_moment_correction_fraction,
             circulation_budget_limit=self.circulation_budget_limit,
             wall_circulation_ratio_bounds=self.wall_circulation_ratio_bounds,
-            correction_steps=int(self.config.transfer_correction_steps),
             frame=self._frame if self._frame is not None and self._frame.rotates else None,
         )
 
@@ -1461,7 +1425,7 @@ class VorticityTransfer:
         Returns
         -------
         TransferResult
-            Particle counts, representation residuals, weak-strength removal and
+            Particle counts, weak-strength removal and
             conservation of the total strength and impulse of this transfer.
 
         Raises

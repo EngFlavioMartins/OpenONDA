@@ -13,9 +13,8 @@ run() { python setup.py --box-margin 2.4 --transfer-inset 8.75 --end-time 55 "$@
 # 100 s. The forces and profiles in figures/ come from this run.
 run --fvm-substeps 5 --end-time 100 --name box2.4_sub5_inset8.75
 
-# Coupling interval N, at two strength limits
+# Coupling interval N
 for n in 1 2 3 6; do run --fvm-substeps $n --name box2.4_sub${n}_inset8.75; done
-for n in 1 3 4 6; do run --fvm-substeps $n --max-strength-ratio 3.0 --name box2.4_sub${n}_inset8.75_kappa3; done
 
 # Coupling iterations M (fixed count instead of the tolerance)
 run --fvm-substeps 5 --coupling-iterations 1 --name box2.4_sub5_inset8.75_k1

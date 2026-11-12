@@ -52,7 +52,6 @@ BLEND_END = 6  # cells below the transfer surface
 FVM_SUBSTEPS = 5  # per particle step
 COUPLING_ITERATIONS = 6  # maximum FVM solves per particle step
 COUPLING_TOLERANCE = 1.0e-5  # boundary velocity and tangential-gradient tolerance
-MAX_STRENGTH_RATIO = 1.8  # transfer strength-correction limit
 TRANSFER_REMOVAL_THRESHOLD = 0.05  # 1/s, removal threshold of the replacement region
 MOMENT_CORRECTION_FRACTION = 0.08  # largest moment correction, fraction of transferred strength
 END_TIME = 100.0  # s
@@ -97,7 +96,6 @@ def build_case(
     cell_size=CELL_SIZE,
     box_downstream=BOX_MARGIN + 2.0,
     interface_cell_size=CELL_SIZE,
-    max_strength_ratio=MAX_STRENGTH_RATIO,
     blend_start=BLEND_START,
     blend_end=BLEND_END,
     transfer_removal_threshold=TRANSFER_REMOVAL_THRESHOLD,
@@ -293,7 +291,6 @@ def build_case(
         max_coupling_iterations=coupling_iterations,
         normal_velocity_tolerance=coupling_tolerance,
         normal_gradient_tolerance=coupling_tolerance,
-        max_strength_ratio=max_strength_ratio,
         transfer_removal_threshold=transfer_removal_threshold,
         max_moment_correction_fraction=moment_correction_fraction,
         transfer_diagnostic_interval_steps=round(
@@ -357,12 +354,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--reynolds-number", type=float, default=REYNOLDS_NUMBER, help="Reynolds number U D / nu"
-    )
-    parser.add_argument(
-        "--max-strength-ratio",
-        type=float,
-        default=MAX_STRENGTH_RATIO,
-        help="strength-ratio limit kappa_max of the transfer correction",
     )
     parser.add_argument(
         "--blend-start",
@@ -440,7 +431,6 @@ if __name__ == "__main__":
         arguments.cell_size,
         box_downstream,
         interface_cell_size,
-        arguments.max_strength_ratio,
         arguments.blend_start,
         arguments.blend_end,
         arguments.transfer_removal_threshold,

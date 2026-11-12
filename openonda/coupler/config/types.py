@@ -107,18 +107,8 @@ class CouplerConfig:
     with the number of transfers. ``"convective"`` scales the threshold by ``√(U Δt / h)``, which
     removes the same fraction per convective time ``h / U`` at any interval (never below the GBD
     threshold); ``"per_transfer"`` applies ``τ_transfer`` at every transfer."""
-    transfer_correction_steps: int = 1
-    """Van Cittert steps of the strength correction at each transfer, at least one."""
-    max_strength_ratio: float = 1.8
-    """Strength-ratio limit ``κ_max`` of the strength correction; at least one.
-
-    It sets the correction gain ``γ = min(κ_max − 1, 1)`` and bounds each corrected lattice strength
-    by ``κ_max`` times the peak target strength. Larger existing strengths are kept when the FVM
-    and particle vorticity already agree.
-    """
     transfer_diagnostic_interval_steps: int = 10
-    """Accepted transfers between full diagnostics (two extra Gaussian convolutions of the transfer
-    lattice and the transfer log); positive. The first transfer is always one of them."""
+    """Accepted transfers between two entries of the transfer log; positive."""
     max_moment_correction_fraction: float = 0.08
     """Largest moment correction, as a fraction of the transferred strength L1 norm, in (0, 1]."""
     circulation_budget_limit: float | None = 0.02
@@ -199,12 +189,6 @@ class CouplerConfig:
                 raise ValueError(f"{name} must be a positive integer")
         if self.transfer_removal_scaling not in ("convective", "per_transfer"):
             raise ValueError("transfer_removal_scaling must be 'convective' or 'per_transfer'")
-        if (
-            isinstance(self.transfer_correction_steps, bool)
-            or not isinstance(self.transfer_correction_steps, int)
-            or self.transfer_correction_steps < 1
-        ):
-            raise ValueError("transfer_correction_steps must be a positive integer")
         if self.boundary_data_extrapolation not in ("linear", "constant"):
             raise ValueError("boundary_data_extrapolation must be 'linear' or 'constant'")
         for name in ("normal_velocity_tolerance", "normal_gradient_tolerance"):
@@ -234,8 +218,6 @@ class CouplerConfig:
             )
         if not np.isfinite(self.transfer_inset_spacings) or self.transfer_inset_spacings < 0.0:
             raise ValueError("transfer_inset_spacings must be finite and non-negative")
-        if not np.isfinite(self.max_strength_ratio) or self.max_strength_ratio < 1.0:
-            raise ValueError("max_strength_ratio must be at least one")
         if not np.isfinite(self.max_moment_correction_fraction) or not (
             0.0 < self.max_moment_correction_fraction <= 1.0
         ):

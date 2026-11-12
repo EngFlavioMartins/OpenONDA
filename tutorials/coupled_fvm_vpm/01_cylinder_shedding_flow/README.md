@@ -18,7 +18,7 @@ A no-slip cylinder sheds a planar vortex street. The FVM resolves the wall and t
 | Cell and particle spacing | $h=0.04D$ |
 | FVM step; coupling interval | 0.008 s; 0.04 s ($N=5$, particle CFL number 0.78) |
 | Coupling iterations | to the tolerance $10^{-5}$ |
-| Strength limit; transfer inset | $\kappa_\mathrm{max}=1.8$; 8.75 cells |
+| Transfer inset | 8.75 cells |
 | FVM box margin | $2.4D$ |
 | Particle integration; vorticity floor | RK2; $10^{-2}$ s$^{-1}$ |
 
@@ -90,7 +90,6 @@ At $x=2D$, inside the FVM domain, the profiles differ by less than 0.7 % of $U_\
 | Setting | Levels | Effect | Cost |
 | --- | --- | --- | --- |
 | Coupling interval $\Delta t_\mathrm{VPM}$ | 0.008–0.048 s ($N=1$–6) | −7.4 % at 0.008 s, −2.6 % at 0.016 s, −1.8 % at 0.024 s, −1.25 % at 0.040 s, −1.1 % at 0.048 s. Drag −2.6 % to +0.1 %, $St$ −3.6 % to −0.3 %. The error decreases as the interval grows | Particle steps per $D/U_\infty$: 125 at $N=1$, 25 at $N=5$ |
-| Strength limit $\kappa_\mathrm{max}$ | 1.8 and 3, at $N=1,3,4,6$ | None; at $N=1$ the two differ by 0.3 points | None |
 | Coupling iterations $M$ | 1, 2, 4, tolerance $10^{-5}$ | $M=1$: drag +3.2 %, lift +2.3 % (+3.6 points from the tolerance run, of opposite sign). $M\ge2$ matches the tolerance run within the resolution | The tolerance needs 1.7 iterations on average |
 | FVM box margin | 1.6–4.0 $D$ | Within ±1.5 %, without a trend. The FVM run is refined only over the 2.4 $D$ box, so wider boxes are compared with coarser FVM cells outside it | Cells grow with the box |
 | Transfer inset | 4, 8.75, 14 cells | ±0.2 %, at the resolution | None |
@@ -101,7 +100,7 @@ At $x=2D$, inside the FVM domain, the profiles differ by less than 0.7 % of $U_\
 
 ### Why the interval matters
 
-A shorter interval gives a larger error, so the error is added at each transfer and is not a time-integration error. Raising $\kappa_\mathrm{max}$ from 1.8 to 3 leaves it unchanged, so the strength limiter does not cause it. The mean FVM boundary-velocity mismatch grows with the transfer rate, from $2.6\times10^{-3}U_\infty$ at $N=6$ to $6.4\times10^{-3}U_\infty$ at $N=1$, together with the force error. The remeshing and thresholding applied at each transfer are the next candidates to test.
+A shorter interval gives a larger error, so the error is added at each transfer and is not a time-integration error. The mean FVM boundary-velocity mismatch grows with the transfer rate, from $2.6\times10^{-3}U_\infty$ at $N=6$ to $6.4\times10^{-3}U_\infty$ at $N=1$, together with the force error. The remeshing and thresholding applied at each transfer are the next candidates to test.
 
 ## Rules for a user
 
@@ -109,7 +108,7 @@ For laminar periodic shedding from a smooth body at this resolution:
 
 1. Use the longest coupling interval the particles allow, a particle CFL number $\Delta t_\mathrm{VPM}S_\mathrm{max}$ of 0.75 to 0.9. It gives the smallest error and the lowest cost. Below 0.5 the error grows quickly. Refine time with the FVM step inside the interval, not with a shorter interval.
 2. Do not run one coupling iteration. Converge to the tolerance $10^{-5}$; a fixed $M=2$ gives the same result here.
-3. Keep $\kappa_\mathrm{max}=1.8$, a transfer inset of 8.75 cells and RK2 particle integration. Changing them did not move the result beyond the resolution.
+3. Keep a transfer inset of 8.75 cells and RK2 particle integration. Changing them did not move the result beyond the resolution.
 4. A box margin of 1.6 to 2.4 $D$ is enough.
 5. Keep the particle spacing equal to the cell size and the vorticity floor at $10^{-2}$ s$^{-1}$.
 6. Expect a remaining coupling error near 1 % in lift amplitude and 0.3 % in $St$, about the FVM's error at $h=D/25$. To go lower, refine the FVM first.
@@ -117,4 +116,4 @@ For laminar periodic shedding from a smooth body at this resolution:
 
 ## Not measured
 
-The interval and $\kappa_\mathrm{max}$ series stop at a particle CFL number of 0.93 ($N=6$). The remeshing and thresholding at the transfer, the blending depths and the moment-correction limit were not varied. Apart from the baseline, runs end at 55, at the end of the lift-amplitude growth.
+The interval series stops at a particle CFL number of 0.93 ($N=6$). The remeshing and thresholding at the transfer, the blending depths and the moment-correction limit were not varied. Apart from the baseline, runs end at 55, at the end of the lift-amplitude growth.
