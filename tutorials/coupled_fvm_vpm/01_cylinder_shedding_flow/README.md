@@ -91,6 +91,7 @@ To be filled from the runs of the current transfer. `./allplot.sh` writes to `fi
 | File | Content |
 | --- | --- |
 | `forces`, `velocity_profiles`, `vorticity_profiles` | baseline against the FVM-only reference |
+| `velocity_fields/phase<bin>`, `vorticity_fields/phase<bin>` | baseline against the FVM-only reference: fields averaged in 12 bins of the shedding phase from 55 s, and their difference (`auxiliary/field_differences.csv`) |
 | `error_overview` | error of every run, with the window uncertainty |
 | `error_coupling_interval` | group T: error against the coupling interval |
 | `error_coupling_iterations` | group M: error and mean iteration count against the tolerance |
