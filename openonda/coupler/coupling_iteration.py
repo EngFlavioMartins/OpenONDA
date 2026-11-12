@@ -91,7 +91,7 @@ def coupling_tolerances(coupler, face_velocity: np.ndarray) -> tuple[float, floa
     coupled boundary (:func:`reference_speed`) and to ``U / h`` with ``h`` the
     particle spacing, so one value fits every case.
     """
-    speed = reference_speed(coupler.freestream_velocity, face_velocity)
+    speed = reference_speed(coupler, face_velocity)
     spacing = float(coupler.vpm_particle_spacing)
     return (
         coupler.config.normal_velocity_tolerance * speed,

@@ -717,16 +717,20 @@ def _check_boundary_mismatch(
     return None
 
 
-def reference_speed(freestream_velocity: np.ndarray, face_velocity: np.ndarray) -> float:
+def reference_speed(coupler, face_velocity: np.ndarray) -> float:
     """Return the reference speed of the coupled boundary in m/s.
 
-    It is the larger of the free-stream speed and the RMS speed of the particle
-    velocity on the outer FVM boundary, so a ramped or zero free stream still has
-    the scale of the flow through the boundary.
+    It is the larger of the free-stream speed relative to the mesh and the RMS
+    speed of the particle velocity on the outer FVM boundary, both in the mesh
+    frame, so the value is the same for a body moving through still fluid and
+    for the fixed body in a stream, and a ramped or zero free stream still has
+    the scale of the flow through the boundary. ``face_velocity`` is inertial,
+    as the FVM boundary data are.
     """
-    face = np.asarray(face_velocity, dtype=np.float64).reshape(-1, 3)
+    frame_velocity = coupler.absolute_freestream_velocity - coupler.freestream_velocity
+    face = np.asarray(face_velocity, dtype=np.float64).reshape(-1, 3) - frame_velocity
     rms = float(np.sqrt(np.mean(np.einsum("ij,ij->i", face, face)))) if len(face) else 0.0
-    return max(float(np.linalg.norm(freestream_velocity)), rms, np.finfo(np.float64).tiny)
+    return max(float(np.linalg.norm(coupler.freestream_velocity)), rms, np.finfo(np.float64).tiny)
 
 
 def _record_root_boundary_data(
@@ -738,7 +742,7 @@ def _record_root_boundary_data(
 ) -> str | None:
     difference = np.asarray(face_velocity) - np.asarray(vpm_target_velocity)
     magnitude = np.linalg.norm(difference, axis=1)
-    speed = reference_speed(coupler.freestream_velocity, vpm_target_velocity)
+    speed = reference_speed(coupler, vpm_target_velocity)
     normal_mismatch = np.abs(np.einsum("ij,ij->i", difference, face_normal))
     assert coupler.fvm_domain_bounds is not None
     face_centre = getattr(coupler, "face_centre_body", face_centre)
