@@ -1,92 +1,92 @@
 #!/usr/bin/env python3
-"""Sampling floor of the shedding statistics from sliding statistics windows.
+"""Statistical uncertainty of the study statistics over the 40-55 s window.
 
-The study compares mean drag, lift amplitude and Strouhal number over a window of a few
-shedding periods. A difference between two runs is resolved only when it exceeds the spread
-of the statistic between windows of the same developed flow. This script slides the study
-window over every reference and coupled run that extends well beyond the window and reports
-the spread of each statistic, in the percentage points used by the sensitivity figures. It
-also reports the per-period mean of the lift amplitude next to the global peak-to-peak value.
+Every run of the study is compared with its FVM-only reference over the same window of a few
+shedding periods, while the lift amplitude is still growing. Two things limit how small an error
+the comparison resolves:
 
-Run from the case directory: python -m assets.window_uncertainty
-Writes figures/auxiliary/window_uncertainty.csv.
+- the spread of a statistic between windows of the developed flow, sigma_w: the standard deviation
+  of the statistic over 15 s windows slid in steps of 2.5 s from t = 55 s to the end of a run, in
+  each run that reaches 95 s;
+- the spread between runs of the transient drift of the 40-55 s window, s_d: the drift of a run
+  is its 40-55 s value over its developed mean, minus one, and s_d is the standard deviation of
+  the drift over the same runs.
+
+The error of a run is a difference of two runs over the same window, so its standard uncertainty
+is sigma = sqrt(2 sigma_w^2 + s_d^2), with sigma_w^2 averaged over the runs. The figures draw
++-2 sigma; an error inside that bar is not resolved.
+
+Run from the case directory, python -m assets.window_uncertainty, to print the terms.
 """
-
-import csv
-from pathlib import Path
 
 import numpy as np
 
-from assets.plot_forces import DEVELOPED_SHEDDING, read_forces, shedding_statistics
-from assets.plot_sensitivity import reference_paths, run_paths
-
-CASE_DIR = Path(__file__).resolve().parents[1]
-WINDOW = 15.0  # s, the study window (40-55 s)
-SLIDE = 2.5  # s, window offset between samples
-MARGIN = 15.0  # s, a run must reach the window end plus this to be used
+WINDOW = 15.0  # s, length of the study window
+SLIDE = 2.5  # s, offset between sliding windows
+LONG_RUN_END = 95.0  # s, runs that reach this time give the uncertainty
 
 
-def sliding_windows(forces):
-    """Statistics of every full study window from developed shedding to the end of the run."""
+def sliding_statistics(forces, start, statistics_of):
+    """Statistics of every full window from ``start`` to the end of a run."""
     end_time = forces["time"][-1]
-    starts = np.arange(DEVELOPED_SHEDDING, end_time - WINDOW + 1.0e-9, SLIDE)
     rows = []
-    for start in starts:
-        statistics = shedding_statistics(forces, start, start + WINDOW)
-        if statistics is not None:
-            rows.append({"start": start, **statistics})
+    for begin in np.arange(start, end_time - WINDOW + 1.0e-9, SLIDE):
+        try:
+            rows.append(statistics_of(forces, begin, begin + WINDOW))
+        except (IndexError, ValueError):
+            continue
     return rows
 
 
-def main():
-    paths = [*reference_paths(), *run_paths()]
-    names = (
-        "mean drag",
-        "mean drag, whole window",
-        "lift amplitude",
-        "lift amplitude per period",
-        "Strouhal number",
-    )
-    table = []
-    for path in paths:
-        forces = np.atleast_1d(read_forces(path))
-        if forces["time"][-1] < DEVELOPED_SHEDDING + WINDOW + MARGIN:
-            continue  # too short to slide the window
-        rows = sliding_windows(forces)
+def window_uncertainty(long_runs, study_window, steady_start, statistics_of, keys):
+    """Standard uncertainty (fraction) of each statistic's error, and the terms behind it.
+
+    ``long_runs`` maps a run name to its force history; runs shorter than LONG_RUN_END are
+    ignored. Returns {"sigma": {key: value}, "sigma_w": ..., "s_d": ..., "runs": [...],
+    "drift": {run: {key: value}}}; with no long run every value is NaN, and with one long run
+    s_d is NaN and sigma uses sigma_w alone.
+    """
+    variances, drifts, used = {key: [] for key in keys}, {}, []
+    for name, forces in long_runs.items():
+        if forces["time"][-1] < LONG_RUN_END:
+            continue
+        rows = sliding_statistics(forces, steady_start, statistics_of)
+        try:
+            early = statistics_of(forces, *study_window)
+        except (IndexError, ValueError):
+            continue
         if len(rows) < 3:
             continue
-        # reference_flow/samples/<name>/ or solution/sensitivity_analysis/<name>/samples/
-        run = path.parents[1].name if path.parent.name == "samples" else path.parent.name
-        record = {"run": run, "end time": forces["time"][-1], "windows": len(rows)}
-        for name in names:
-            values = np.array([row[name] for row in rows])
-            late = values[len(values) // 2 :]  # second half of the run: after the transient
-            record[f"{name} study window"] = values[0]
-            record[f"{name} mean"] = late.mean()
-            record[f"{name} spread [%]"] = 100.0 * np.ptp(late) / late.mean()
-            record[f"{name} sigma [%]"] = 100.0 * late.std(ddof=1) / late.mean()
-            record[f"{name} drift [%]"] = 100.0 * (values[0] / late.mean() - 1.0)
-        table.append(record)
-        print(f"{run}: {len(rows)} windows to t = {forces['time'][-1]:.0f} s")
-        for name in names:
-            print(
-                f"  {name:26s} study window {record[f'{name} study window']:.5f}"
-                f"  developed mean {record[f'{name} mean']:.5f}"
-                f"  spread {record[f'{name} spread [%]']:.2f} %"
-                f"  sigma {record[f'{name} sigma [%]']:.2f} %"
-                f"  drift of study window {record[f'{name} drift [%]']:+.2f} %"
-            )
+        used.append(name)
+        drifts[name] = {}
+        for key in keys:
+            values = np.array([row[key] for row in rows])
+            variances[key].append((values.std(ddof=1) / values.mean()) ** 2)
+            drifts[name][key] = early[key] / values.mean() - 1.0
+    sigma_w, s_d, sigma = {}, {}, {}
+    for key in keys:
+        sigma_w[key] = float(np.sqrt(np.mean(variances[key]))) if used else np.nan
+        values = [drifts[name][key] for name in used]
+        s_d[key] = float(np.std(values, ddof=1)) if len(values) > 1 else np.nan
+        terms = 2.0 * sigma_w[key] ** 2 + (0.0 if np.isnan(s_d[key]) else s_d[key] ** 2)
+        sigma[key] = float(np.sqrt(terms)) if used else np.nan
+    return {"sigma": sigma, "sigma_w": sigma_w, "s_d": s_d, "runs": used, "drift": drifts}
 
-    if not table:
-        print("no run reaches far enough beyond the study window; run section h first")
-        return
-    output = CASE_DIR / "figures/auxiliary/window_uncertainty.csv"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(table[0]))
-        writer.writeheader()
-        writer.writerows(table)
-    print(f"wrote {output.relative_to(CASE_DIR)}")
+
+def main():
+    from assets.plot_study import STATISTICS, STEADY_START, STUDY_WINDOW, long_runs
+    from assets.plot_study import shedding_statistics
+
+    result = window_uncertainty(long_runs(), STUDY_WINDOW, STEADY_START, shedding_statistics, STATISTICS)
+    print(f"runs reaching {LONG_RUN_END:g} s: {', '.join(result['runs']) or 'none'}")
+    for key in STATISTICS:
+        print(
+            f"  {key:7s} sigma_w {100 * result['sigma_w'][key]:.3f} %  s_d {100 * result['s_d'][key]:.3f} %"
+            f"  2 sigma {200 * result['sigma'][key]:.3f} %"
+        )
+    for name, drift in result["drift"].items():
+        print(f"  drift of {STUDY_WINDOW[0]:g}-{STUDY_WINDOW[1]:g} s, {name}: "
+              + ", ".join(f"{key} {100 * value:+.2f} %" for key, value in drift.items()))
 
 
 if __name__ == "__main__":

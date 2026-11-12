@@ -3,5 +3,8 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Statistics, coupling errors and every figure of the study, written to figures/
-python -m assets.plot_study
+# State of every study run, then the statistics, errors and figures of the calibration study,
+# written to figures/ (PDF and PNG) with figures/study_summary.csv. Figures whose runs are not
+# finished yet are skipped with a message.
+python -m assets.study_status
+python -m assets.plot_study "$@"

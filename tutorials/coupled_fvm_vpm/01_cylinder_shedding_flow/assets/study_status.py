@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""State of the sensitivity study: every run of the current version, how far it is, and whether
-its coupling diagnostics stay healthy.
+"""State of the calibration study: every run of the current wall transfer, its study group, how
+far it is, and whether its coupling diagnostics stay healthy. Runs of older transfers are counted
+and left out.
 
 A run is flagged when its particle image sums left the GPU (backend other than cupy_cuda, or a
 memory fallback), when the mean boundary velocity mismatch exceeds 0.02 U, when coupling
@@ -15,6 +16,8 @@ from pathlib import Path
 import time
 
 import numpy as np
+
+from assets.plot_study import group_of, run_settings
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 STUDY_DIR = CASE_DIR / "solution/sensitivity_analysis"
@@ -78,22 +81,35 @@ def status(directory):
 
 def main():
     # A trailing separator matches directories only
-    directories = sorted(STUDY_DIR.glob("box*/"))
-    print(f"{'run':52s} {'t [s]':>7s} {'s/s':>6s} {'N_p':>7s} {'mismatch':>9s}  flags")
+    directories = sorted(STUDY_DIR.glob("*/"))
+    older = 0
+    print(f"{'group':8s} {'run':44s} {'t [s]':>7s} {'s/s':>6s} {'N_p':>7s} {'mismatch':>9s}  flags")
     for directory in directories:
+        try:
+            settings = run_settings(directory)
+        except (FileNotFoundError, KeyError):
+            settings = None
+        if settings is not None and not settings["current"]:
+            older += 1
+            continue
+        group = group_of(settings) if settings else "?"
         row = status(directory)
+        row["run"] = f"{group:8s} {row['run']:44s}"
         if "state" in row:
             if row["state"] != "not started":
-                print(f"{row['run']:52s} {row['state']}")
+                print(f"{row['run']} {row['state']}")
             continue
         flags = list(row["flags"])
         if row.get("age", 0.0) > STALE_SECONDS and row["time"] < 54.9:
             flags.append(f"no output for {row['age'] / 3600:.1f} h")
         print(
-            f"{row['run']:52s} {row['time']:7.2f} {row.get('cost', np.nan):6.1f} "
+            f"{row['run']} {row['time']:7.2f} {row.get('cost', np.nan):6.1f} "
             f"{row.get('particles', 0):7.0f} "
             f"{row.get('mismatch', np.nan):9.2e}  {'; '.join(flags)}"
         )
+
+    if older:
+        print(f"({older} runs of an older wall transfer left out)")
 
 
 if __name__ == "__main__":
