@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Phase-averaged velocity and vorticity of the reference and the coupled flow, and their difference."""
+"""Phase-averaged velocity and vorticity of the FVM-only reference and the coupled baseline, and
+their difference, in 12 bins of the shedding phase over every saved frame from 55 s on.
+
+Writes figures/{velocity,vorticity}_fields/phase<bin>.pdf/png and
+figures/auxiliary/field_differences.csv. Waits, with a message, until the baseline reaches 67 s,
+as the force and profile figures of assets/plot_study.py do. Called by allplot.sh.
+"""
 
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -14,6 +20,7 @@ from scipy.spatial import Delaunay
 from openonda.plotting import CM, COLORMAPS, FONT_SIZE_PT, export_figure, set_thesis_style
 from openonda.saved_times import match_saved_times
 
+from assets.plot_study import MINIMUM_STEADY_LENGTH, STEADY_START
 from assets.shedding_phase import N_PHASES, phase_bin, shedding_phase
 
 CASE_DIR = Path(__file__).resolve().parents[1]
@@ -23,7 +30,7 @@ FREESTREAM_SPEED = 1.0  # m/s
 FVM_DOMAIN_BOUNDS = (-2.4, 4.4, -2.4, 2.4)  # m
 WINDOW = (-1.5, 9.5, -1.5, 1.5)  # m
 SPACING = 0.02  # m, comparison lattice
-DEVELOPED_SHEDDING = 40.0  # s, start of the phase averages
+DEVELOPED_SHEDDING = STEADY_START  # s, start of the phase averages
 
 # Matched FVM-only reference, and the baseline coupled run: FVM in the box, particles in the
 # outer wake
@@ -174,6 +181,14 @@ def phase_sums(frames, fields_of, phase):
 
 
 def main():
+    needed = STEADY_START + MINIMUM_STEADY_LENGTH
+    if not (COUPLED_FORCES.exists() and COUPLED_FVM.exists() and COUPLED_VPM.exists()):
+        print("field figures: wait for the baseline run")
+        return
+    end = np.genfromtxt(COUPLED_FORCES, delimiter=",", names=True)["time"][-1]
+    if end < needed:
+        print(f"field figures: wait for the baseline to reach {needed:g} s (t = {end:.1f} s)")
+        return
     reference_times, reference_paths = saved_frames(REFERENCE)
     fvm_times, fvm_paths = saved_frames(COUPLED_FVM)
     vpm_times, vpm_paths = saved_frames(COUPLED_VPM)
