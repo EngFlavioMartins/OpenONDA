@@ -25,6 +25,7 @@ import taichi as ti
 
 from ..io.logging import Logging
 from ..physics.induction.base import StageRates, StageState
+from ..runtime.timing import remainder_section
 from ..wall_errors import WallCorrectionTooLargeError
 
 if TYPE_CHECKING:
@@ -226,6 +227,7 @@ class EvolutionStepper:
         target_step = self.solver.step + 1
         target_time = self.solver.time + self.time_step_size if time is None else float(time)
         Logging.begin_step(target_step)
+        self.profiler.begin_step(self.solver.step, self.solver.time, self.time_step_size)
 
         self.stabilization.begin_step(
             step=self.solver.step,
@@ -244,7 +246,6 @@ class EvolutionStepper:
         self.particles.step = self.step
         self._debug_validate_particle_geometry("step entry")
 
-        self.profiler.begin_step(self.solver.step, self.solver.time, self.time_step_size)
         _gradients_required = (
             self.flow_model == "les"
             or (self.stabilization_config.selective_eddy_viscosity_coefficient or 0.0) > 0.0
@@ -254,10 +255,9 @@ class EvolutionStepper:
             )
         )
         if _gradients_required:
-            with self.profiler.section("Velocity gradients"):
-                self._update_velocity_and_gradients()
+            self._update_velocity_and_gradients()
 
-        with self.profiler.section("LES update"):
+        with remainder_section(self.profiler, "LES update"):
             self._update_les_state()
             self.stabilization.refresh_metrics(
                 kinetic_energy_rate=self.solver.kinetic_energy_rate,
@@ -270,10 +270,9 @@ class EvolutionStepper:
 
         # The inviscid particle state always advances through one coupled
         # position/strength RK call.  Diffusion remains a split operator.
-        with self.profiler.section("Coupled particle evolution"):
-            self._apply_coupled_update(
-                self.time_step_size,
-            )
+        self._apply_coupled_update(
+            self.time_step_size,
+        )
         self._debug_validate_particle_geometry("coupled evolution")
 
         if self.flow_model != "potential":
@@ -288,7 +287,7 @@ class EvolutionStepper:
             # near-wake row. Newborn elements must not receive a second full
             # step of advection or stretching during their birth interval.
             self.particles.touch_state()
-            with self.profiler.section("VLM coupling"):
+            with remainder_section(self.profiler, "VLM coupling"):
                 self.coupling.advance_vlm(self.time_step_size)
 
         # The evolution kernels mutate particle source fields directly on the
@@ -323,7 +322,8 @@ class EvolutionStepper:
         if self.viscous_scheme != "gbd":
             self.solver._particle_regeneration_pending = False
             return
-        self._apply_viscous_diffusion(0.0)
+        with remainder_section(self.profiler, "Viscous diffusion"):
+            self._apply_viscous_diffusion(0.0)
         self.solver._particle_regeneration_pending = False
 
     def _debug_validate_particle_geometry(self, stage: str) -> None:
@@ -395,11 +395,12 @@ class EvolutionStepper:
         # External stage providers may add a non-uniform velocity gradient.
         # Rebuild the LES/stabilization strain tensor from the final combined
         # Jacobian rather than trusting a backend-private scratch field.
-        self.particles._compute_strain_rate_tensor(
-            self.particles.velocity_gradient,
-            self.particles.strain_rate,
-            count,
-        )
+        with self.profiler.section("Strain-rate tensor"):
+            self.particles._compute_strain_rate_tensor(
+                self.particles.velocity_gradient,
+                self.particles.strain_rate,
+                count,
+            )
 
     def _update_les_state(self) -> None:
         """Update LES viscosity from the current strain-rate field."""
@@ -489,11 +490,16 @@ class EvolutionStepper:
         accepted_intervals = 0
 
         def snapshot() -> tuple[np.ndarray, np.ndarray, object]:
-            return (
-                self.physics.download_vector_field(self.particles.position, count),
-                self.physics.download_vector_field(self.particles.vortex_strength, count),
-                deepcopy(getattr(self.physics, "last_solid_projection", None)),
-            )
+            with self.profiler.section("Wall retry snapshot"):
+                return (
+                    self.physics.download_vector_field(self.particles.position, count),
+                    self.physics.download_vector_field(self.particles.vortex_strength, count),
+                    deepcopy(getattr(self.physics, "last_solid_projection", None)),
+                )
+
+        def project_accepted(position: object, vortex_strength: object, n: int) -> None:
+            with self.profiler.section("Wall projection"):
+                accepted_projector(position, vortex_strength, n)
 
         def restore(saved: tuple[np.ndarray, np.ndarray, object]) -> None:
             position, strength, budget = saved
@@ -523,7 +529,9 @@ class EvolutionStepper:
                         time=start_time,
                         time_step_size=dt,
                         right_hand_side=self.solver.stage_rhs,
-                        accepted_position_projector=accepted_projector,
+                        accepted_position_projector=(
+                            None if accepted_projector is None else project_accepted
+                        ),
                         accepted_revision=self.particles.state_revision,
                     )
                 finally:
@@ -573,17 +581,22 @@ class EvolutionStepper:
     ) -> None:
         """Advance position and strength together, with symmetric core spreading."""
         if self.viscous_scheme == "cs":
-            self._apply_core_spreading_diffusion(0.5 * time_step_size)
+            with remainder_section(self.profiler, "Viscous diffusion"):
+                self._apply_core_spreading_diffusion(0.5 * time_step_size)
 
-        self._advance_particles(time_step_size)
+        with remainder_section(self.profiler, "Runge-Kutta update"):
+            self._advance_particles(time_step_size)
         if self.viscous_scheme == "cs":
-            self._apply_core_spreading_diffusion(0.5 * time_step_size)
+            with remainder_section(self.profiler, "Viscous diffusion"):
+                self._apply_core_spreading_diffusion(0.5 * time_step_size)
 
         if self.viscous_scheme in {"rwm", "dvh", "gbd"}:
-            self._apply_viscous_diffusion(time_step_size)
+            with remainder_section(self.profiler, "Viscous diffusion"):
+                self._apply_viscous_diffusion(time_step_size)
 
         if self.turbulence_model is not None:
-            self.turbulence_model.apply_strength_exchange(self.particles, time_step_size)
+            with self.profiler.section("LES strength exchange"):
+                self.turbulence_model.apply_strength_exchange(self.particles, time_step_size)
 
     def _apply_core_spreading_diffusion(self, time_step_size: float) -> None:
         """Advance the split Gaussian core-spreading operator."""
@@ -649,18 +662,19 @@ class EvolutionStepper:
                     # already left every new particle inside the same retention
                     # domain.  The post-step O(N) retention scan would be a no-op.
                     self.stabilization.ctx.state.domain_bounds_enforced = bool(np.all(inside))
-                self.replace_vortex_particles(
-                    position=new_p["position"],
-                    velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
-                    vortex_strength=new_p["vortex_strength"],
-                    core_radius=new_p["core_radius"],
-                    particle_volume=new_p["particle_volume"],
-                    kinematic_viscosity=new_p.get("kinematic_viscosity"),
-                    eddy_viscosity=new_p.get("eddy_viscosity"),
-                    zone_id=new_p.get("zone_id", np.zeros(M, dtype=np.int32)),
-                    group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
-                    report_removal=False,
-                )
+                with self.profiler.section("Particle replacement"):
+                    self.replace_vortex_particles(
+                        position=new_p["position"],
+                        velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
+                        vortex_strength=new_p["vortex_strength"],
+                        core_radius=new_p["core_radius"],
+                        particle_volume=new_p["particle_volume"],
+                        kinematic_viscosity=new_p.get("kinematic_viscosity"),
+                        eddy_viscosity=new_p.get("eddy_viscosity"),
+                        zone_id=new_p.get("zone_id", np.zeros(M, dtype=np.int32)),
+                        group_id=new_p.get("group_id", np.zeros(M, dtype=np.int32)),
+                        report_removal=False,
+                    )
                 # Velocity is left stale; it is recomputed before the next consumer.
             if self.viscous_scheme == "dvh":
                 # Commit the accepted-step counter only after validation and

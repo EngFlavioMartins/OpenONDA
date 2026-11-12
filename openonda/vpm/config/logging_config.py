@@ -26,7 +26,8 @@ class LoggingConfig:
         Also write the records to the terminal.
     detailed_timing : bool, default=False
         Synchronize the compute device around each solver phase and report
-        the time of every phase. Synchronization slows accelerator runs.
+        the time of every phase, also in :attr:`VPMSolver.phase_seconds`.
+        Synchronization slows accelerator runs.
     validate_stages : bool, default=False
         Check particle core radii and volumes after every evolution stage.
         The check copies fields from the compute device.

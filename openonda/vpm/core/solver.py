@@ -59,6 +59,7 @@ from ..runtime.backend import (
     initialize_taichi_backend,
     reset_taichi_backend,
 )
+from ..runtime.timing import remainder_section
 from ..sampling.manager import SamplerManager
 from ..stabilization import StabilizationManager
 from ..stabilization.context import (
@@ -514,17 +515,18 @@ class VPMSolver:
                 *(("  " + mechanism, "active") for mechanism in active),
             )
         self._initialize_vlm_solver(final_setup)
+        # Phase timing waits for the device around every phase, so it is
+        # opt-in; the whole-step timer of a normal run adds no device wait.
+        self.profiler = Profiler(enabled=self.case.logging.detailed_timing, synchronize=ti.sync)
+        self.physics.profiler = self.profiler
         self.stage_rhs = StageRHS(
             self.induction,
             providers=tuple(self._stage_providers),
             strength_enabled=self.flow_model != "potential",
             # Core spreading changes every core radius before the first stage.
             retain_strength_rate=self.viscous_scheme != "cs",
+            profiler=self.profiler,
         )
-        # Detailed section timing forces a device barrier around every phase.
-        # Make that diagnostic opt-in; the whole-step timer remains available in
-        # normal production runs without serialising every kernel launch.
-        self.profiler = Profiler(enabled=self.case.logging.detailed_timing, synchronize=ti.sync)
         self.wall_time = 0.0
         self.stepper = EvolutionStepper(self)
         self.coupling = CouplingStepper(self)
@@ -1127,28 +1129,63 @@ class VPMSolver:
         self._enable_routine_messages()
         started = perf_counter()
         with self._output_preparation():
-            self._check_accepted_particle_state()
+            with remainder_section(self.profiler, "Particle state checks"):
+                self._check_accepted_particle_state()
             state_check_finished = perf_counter()
-            if self.vlm_solver is not None:
-                self._record_vlm_diagnostics()
-            if self._sampler_manager.flow_integrals_due():
-                self._update_all_flow_integrals()
+            with remainder_section(self.profiler, "Flow and VLM diagnostics"):
+                if self.vlm_solver is not None:
+                    self._record_vlm_diagnostics()
+                if self._sampler_manager.flow_integrals_due():
+                    self._update_all_flow_integrals()
             diagnostics_finished = perf_counter()
-            if self._is_due(self.case.backup.schedule):
-                self._allow_backup_velocity_reuse = True
-                try:
-                    self.save_backup()
-                finally:
-                    self._allow_backup_velocity_reuse = False
-            if self._is_due(self.case.output.schedule):
-                self.write_vtk()
-            self._sampler_manager.dispatch(OutputEvent.accepted_step)
+            with remainder_section(self.profiler, "Backups, frames and samplers"):
+                if self._is_due(self.case.backup.schedule):
+                    self._allow_backup_velocity_reuse = True
+                    try:
+                        self.save_backup()
+                    finally:
+                        self._allow_backup_velocity_reuse = False
+                if self._is_due(self.case.output.schedule):
+                    self.write_vtk()
+                self._sampler_manager.dispatch(OutputEvent.accepted_step)
         Logging.section(
             "OUTPUT TIMING",
             ("Particle state checks", state_check_finished - started, "s"),
             ("Flow and VLM diagnostics", diagnostics_finished - state_check_finished, "s"),
             ("Backups, frames and samplers", perf_counter() - diagnostics_finished, "s"),
         )
+
+    @property
+    def phase_seconds(self) -> dict[str, float]:
+        """Wall time in s of each phase since the last step started.
+
+        The phases are those of the step and of the output written after it.
+        They do not overlap: a phase that contains another holds only its
+        own part, so the sum is at most the wall time spent in the solver.
+
+        ``"Induction"`` is the velocity, velocity-gradient and stretching
+        evaluation of the particles. ``"Wall projection"`` moves particles
+        out of the walls at the Runge--Kutta stages and at the accepted
+        state. ``"Runge-Kutta update"`` builds and combines the stages and
+        ``"Wall retry snapshot"`` downloads the state a rejected wall
+        correction restores. GBD splits into ``"GBD remeshing"`` (particles
+        to the grid), ``"GBD wall correction"``, ``"GBD diffusion"`` (the
+        grid Laplacian), ``"GBD grid download"`` and ``"GBD moment
+        redistribution"`` (the moments of the removed weak nodes);
+        ``"Viscous diffusion"`` is the rest of the diffusion operator, such
+        as the particle downloads and the regeneration of the particles, and
+        all of it for the other schemes. ``"Particle replacement"`` uploads
+        the regenerated particles. The stabilization workers, ``"Strain-rate
+        tensor"``, ``"LES update"``, ``"LES strength exchange"``,
+        ``"External stage rates"`` and ``"VLM coupling"`` have their own
+        phases, and the output has ``"Particle state
+        checks"``, ``"Flow and VLM diagnostics"`` and ``"Backups, frames
+        and samplers"``.
+
+        Empty unless :attr:`LoggingConfig.detailed_timing` is set, because
+        each phase waits for the compute device before and after it.
+        """
+        return self.profiler.step_sections
 
     def _is_due(self, schedule: object | None) -> bool:
         """Return whether ``schedule`` selects the accepted state."""

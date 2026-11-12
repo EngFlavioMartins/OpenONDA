@@ -20,6 +20,7 @@ import taichi as ti
 
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.grid_connectivity import connected_grid_components
+from openonda.core.profiling import Profiler
 from openonda.core.slip_slab_images import (
     add_slab_images,
     even_slab_field,
@@ -471,6 +472,9 @@ class _GridDiffusionMixin:
         self._body_grid_geometry_cache: BodyGridGeometryCache | None = None
 
         self._require_fixed_grid_allocation: bool = False
+
+        # Step profiler of the owning solver; it times the GBD phases.
+        self.profiler = Profiler(enabled=False)
 
     def require_fixed_grid_allocation(self, enabled: bool = True) -> None:
         """Require grid-based diffusion to pre-allocate one fixed grid.
@@ -2694,75 +2698,77 @@ class _GridDiffusionMixin:
         )
 
         # -- M4' scatter (GPU) -------------------------------------------------
-        self._prepare_body_mask_current_grid(grid_min_np, particle_spacing, nx, ny, nz)
-        self._zero_grid_kernel(self._current_grid, nx, ny, nz)
-        gmin = grid_min_np.astype(float)
-        scatter = (
-            self._m4_scatter_gpu_kernel
-            if remeshing_kernel == "m4_prime"
-            else self._lagrange6_scatter_gpu_kernel
-        )
-        batch_size = _M4_SCATTER_BATCH_SIZE if remeshing_kernel == "m4_prime" else 1024
-        for start in range(0, N, batch_size):
-            count = min(batch_size, N - start)
-            scatter(
-                particles.position,
-                particles.vortex_strength,
-                self._current_grid,
-                gmin[0],
-                gmin[1],
-                gmin[2],
-                float(particle_spacing),
-                nx,
-                ny,
-                nz,
-                start,
-                count,
+        with self.profiler.section("GBD remeshing"):
+            self._prepare_body_mask_current_grid(grid_min_np, particle_spacing, nx, ny, nz)
+            self._zero_grid_kernel(self._current_grid, nx, ny, nz)
+            gmin = grid_min_np.astype(float)
+            scatter = (
+                self._m4_scatter_gpu_kernel
+                if remeshing_kernel == "m4_prime"
+                else self._lagrange6_scatter_gpu_kernel
             )
-            ti.sync()
-        if getattr(self, "_body_mask_active", False):
-            if remeshing_kernel != "m4_prime":
-                raise RuntimeError(
-                    "solid-wall GBD redistribution requires remeshing_kernel='m4_prime'"
-                )
-            correction_nodes, correction_values, wall_budget = self.compute_m4_wall_corrections(
-                pos_np,
-                vortex_strength,
-                grid_min_np,
-                particle_spacing,
-                (nx, ny, nz),
-            )
-            self._last_gbd_wall_transfer = wall_budget
-            if len(correction_nodes):
-                linear = (
-                    correction_nodes[:, 0].astype(np.int64) * (ny * nz)
-                    + correction_nodes[:, 1].astype(np.int64) * nz
-                    + correction_nodes[:, 2]
-                )
-                unique, inverse = np.unique(linear, return_inverse=True)
-                correction_values = np.column_stack(
-                    [
-                        np.bincount(
-                            inverse,
-                            weights=correction_values[:, component],
-                            minlength=len(unique),
-                        )
-                        for component in range(3)
-                    ]
-                ).astype(np.float32)
-                correction_nodes = np.column_stack(
-                    (unique // (ny * nz), (unique // nz) % ny, unique % nz)
-                ).astype(np.int32)
-            for start in range(0, len(correction_nodes), _GRID_TRANSFER_CHUNK):
-                stop = min(start + _GRID_TRANSFER_CHUNK, len(correction_nodes))
-                self._add_sparse_wall_corrections_kernel(
+            batch_size = _M4_SCATTER_BATCH_SIZE if remeshing_kernel == "m4_prime" else 1024
+            for start in range(0, N, batch_size):
+                count = min(batch_size, N - start)
+                scatter(
+                    particles.position,
+                    particles.vortex_strength,
                     self._current_grid,
-                    np.ascontiguousarray(correction_nodes[start:stop].reshape(-1)),
-                    np.ascontiguousarray(correction_values[start:stop]),
-                    stop - start,
+                    gmin[0],
+                    gmin[1],
+                    gmin[2],
+                    float(particle_spacing),
+                    nx,
+                    ny,
+                    nz,
+                    start,
+                    count,
                 )
-            if len(correction_nodes):
                 ti.sync()
+        with self.profiler.section("GBD wall correction"):
+            if getattr(self, "_body_mask_active", False):
+                if remeshing_kernel != "m4_prime":
+                    raise RuntimeError(
+                        "solid-wall GBD redistribution requires remeshing_kernel='m4_prime'"
+                    )
+                correction_nodes, correction_values, wall_budget = self.compute_m4_wall_corrections(
+                    pos_np,
+                    vortex_strength,
+                    grid_min_np,
+                    particle_spacing,
+                    (nx, ny, nz),
+                )
+                self._last_gbd_wall_transfer = wall_budget
+                if len(correction_nodes):
+                    linear = (
+                        correction_nodes[:, 0].astype(np.int64) * (ny * nz)
+                        + correction_nodes[:, 1].astype(np.int64) * nz
+                        + correction_nodes[:, 2]
+                    )
+                    unique, inverse = np.unique(linear, return_inverse=True)
+                    correction_values = np.column_stack(
+                        [
+                            np.bincount(
+                                inverse,
+                                weights=correction_values[:, component],
+                                minlength=len(unique),
+                            )
+                            for component in range(3)
+                        ]
+                    ).astype(np.float32)
+                    correction_nodes = np.column_stack(
+                        (unique // (ny * nz), (unique // nz) % ny, unique % nz)
+                    ).astype(np.int32)
+                for start in range(0, len(correction_nodes), _GRID_TRANSFER_CHUNK):
+                    stop = min(start + _GRID_TRANSFER_CHUNK, len(correction_nodes))
+                    self._add_sparse_wall_corrections_kernel(
+                        self._current_grid,
+                        np.ascontiguousarray(correction_nodes[start:stop].reshape(-1)),
+                        np.ascontiguousarray(correction_values[start:stop]),
+                        stop - start,
+                    )
+                if len(correction_nodes):
+                    ti.sync()
         if slab_bounds is not None:
             # The M4 kernel, wall mask and moment corrections are equivariant
             # under the slab reflections, so the physical deposits fix the
@@ -2805,15 +2811,16 @@ class _GridDiffusionMixin:
                     particle_spacing,
                     slab_bounds,
                 ).astype(np.float32)
-        self._last_gbd_diffusion_substeps, _max_diffusion_number = self._advance_gbd_laplacian(
-            nx=nx,
-            ny=ny,
-            nz=nz,
-            time_step_size=float(time_step_size),
-            particle_spacing=float(particle_spacing),
-            kinematic_viscosity=float(kinematic_viscosity),
-            effective_viscosity_grid=effective_viscosity_grid_np,
-        )
+        with self.profiler.section("GBD diffusion"):
+            self._last_gbd_diffusion_substeps, _max_diffusion_number = self._advance_gbd_laplacian(
+                nx=nx,
+                ny=ny,
+                nz=nz,
+                time_step_size=float(time_step_size),
+                particle_spacing=float(particle_spacing),
+                kinematic_viscosity=float(kinematic_viscosity),
+                effective_viscosity_grid=effective_viscosity_grid_np,
+            )
 
         # -- Body mask (GPU, optional) -----------------------------------------
         self._apply_body_mask_current_grid(nx, ny, nz)
@@ -2846,7 +2853,8 @@ class _GridDiffusionMixin:
         )
 
         # -- Weak-strength removal (CPU — read diffused grid back once) --------
-        grid_np = self._download_active_vec_grid(self._current_grid, nx, ny, nz)
+        with self.profiler.section("GBD grid download"):
+            grid_np = self._download_active_vec_grid(self._current_grid, nx, ny, nz)
 
         if slab_bounds is not None:
             # Keep the physical share only: image nodes beyond the planes are
@@ -2908,123 +2916,126 @@ class _GridDiffusionMixin:
         cap = self._regeneration_cap(particles, N)
         self._require_regeneration_capacity(len(ix), cap, "gbd")
 
-        nonzero_node_count = int(np.count_nonzero(vortex_strength_magnitude > 0.0))
-        support_augmented_node_count = 0
-        preserve_group_correction = False
-        wall_correction = self._body_segment_classifier is not None
-        correction_labels = group_winner_grid
-        if wall_correction and self.conserve_removed_moments and len(ix) < nonzero_node_count:
-            correction_labels = self._wall_correction_labels(
-                vortex_strength_magnitude, group_winner_grid
-            )
-        if self.conserve_removed_moments and len(ix) < nonzero_node_count:
-            retained_before_support = len(ix)
-            (
-                ix,
-                iy,
-                iz,
-                support_augmented_node_count,
-                preserve_group_correction,
-            ) = self._augment_moment_correction_support(
-                grid_np,
-                vortex_strength_magnitude,
-                ix,
-                iy,
-                iz,
-                grid_min_np,
-                particle_spacing,
-                cap,
-                labels=correction_labels,
-                strict_labels=wall_correction,
-            )
-            if support_augmented_node_count:
-                self._event_observer.record(
-                    "gaussian blob diffusion moment support",
-                    ("nodes, threshold/cap result", f"{retained_before_support:,}"),
-                    ("nodes, support added", f"{support_augmented_node_count:,}"),
-                    ("nodes, final retained", f"{len(ix):,}"),
-                    ("regeneration cap", f"{cap:,}"),
+        with self.profiler.section("GBD moment redistribution"):
+            nonzero_node_count = int(np.count_nonzero(vortex_strength_magnitude > 0.0))
+            support_augmented_node_count = 0
+            preserve_group_correction = False
+            wall_correction = self._body_segment_classifier is not None
+            correction_labels = group_winner_grid
+            if wall_correction and self.conserve_removed_moments and len(ix) < nonzero_node_count:
+                correction_labels = self._wall_correction_labels(
+                    vortex_strength_magnitude, group_winner_grid
                 )
-        correction_diagnostics = self._empty_gbd_moment_correction()
-        correction_diagnostics.update(
-            nonzero_node_count=nonzero_node_count,
-            retained_node_count=int(len(ix)),
-            removed_node_count=int(nonzero_node_count - len(ix)),
-            support_augmented_node_count=int(support_augmented_node_count),
-        )
-        self._last_gbd_moment_correction = correction_diagnostics
-        if self.conserve_removed_moments and len(ix) < nonzero_node_count:
-            moment_diagnostics: dict[str, bool | int | float] = {}
-            active_correction_labels = correction_labels if preserve_group_correction else None
-            while True:
-                try:
-                    corrected_retained = self._redistribute_removed_moments(
-                        grid_np,
-                        vortex_strength_magnitude,
-                        ix,
-                        iy,
-                        iz,
-                        grid_min_np,
-                        particle_spacing,
-                        labels=active_correction_labels,
-                        diagnostics=moment_diagnostics,
-                        strict_labels=wall_correction,
-                        segments_cross_wall=self._segments_cross_wall if wall_correction else None,
-                    )
-                    break
-                except _GBDMomentCorrectionError as error:
-                    # A geometrically complete basis can still misrepresent a
-                    # small fluid component that lost most of its nodes. Keep that
-                    # component's diffused field; never relax the moment or
-                    # correction-fraction limits.
-                    ix, iy, iz, added = self._retain_diffused_component(
-                        vortex_strength_magnitude,
-                        ix,
-                        iy,
-                        iz,
-                        cap,
-                        active_correction_labels,
-                        error.correction_label,
-                    )
-                    support_augmented_node_count += added
-                    correction_diagnostics.update(
-                        retained_node_count=int(len(ix)),
-                        removed_node_count=int(nonzero_node_count - len(ix)),
-                        support_augmented_node_count=int(support_augmented_node_count),
-                    )
+            if self.conserve_removed_moments and len(ix) < nonzero_node_count:
+                retained_before_support = len(ix)
+                (
+                    ix,
+                    iy,
+                    iz,
+                    support_augmented_node_count,
+                    preserve_group_correction,
+                ) = self._augment_moment_correction_support(
+                    grid_np,
+                    vortex_strength_magnitude,
+                    ix,
+                    iy,
+                    iz,
+                    grid_min_np,
+                    particle_spacing,
+                    cap,
+                    labels=correction_labels,
+                    strict_labels=wall_correction,
+                )
+                if support_augmented_node_count:
                     self._event_observer.record(
-                        "gaussian blob diffusion retained diffused component",
-                        ("component", str(error.correction_label)),
-                        ("diffused nodes retained", f"{added:,}"),
+                        "gaussian blob diffusion moment support",
+                        ("nodes, threshold/cap result", f"{retained_before_support:,}"),
+                        ("nodes, support added", f"{support_augmented_node_count:,}"),
                         ("nodes, final retained", f"{len(ix):,}"),
                         ("regeneration cap", f"{cap:,}"),
                     )
-            raw_retained = grid_np[ix, iy, iz].astype(np.float64)
-            correction_l1 = float(
-                np.linalg.norm(corrected_retained.astype(np.float64) - raw_retained, axis=1).sum(
-                    dtype=np.float64
-                )
+            correction_diagnostics = self._empty_gbd_moment_correction()
+            correction_diagnostics.update(
+                nonzero_node_count=nonzero_node_count,
+                retained_node_count=int(len(ix)),
+                removed_node_count=int(nonzero_node_count - len(ix)),
+                support_augmented_node_count=int(support_augmented_node_count),
             )
-            complete_net = grid_np.sum(axis=(0, 1, 2), dtype=np.float64)
-            raw_net = raw_retained.sum(axis=0, dtype=np.float64)
-            corrected_net = corrected_retained.sum(axis=0, dtype=np.float64)
-            net_scale = vortex_strength_total + 1.0e-30
-            self._event_observer.record(
-                "gaussian blob diffusion moment correction",
-                ("correction strength fraction", f"{correction_l1 / net_scale:.6e}"),
-                (
-                    "net residual, before",
-                    f"{np.linalg.norm(raw_net - complete_net) / net_scale:.6e}",
-                ),
-                (
-                    "net residual, after",
-                    f"{np.linalg.norm(corrected_net - complete_net) / net_scale:.6e}",
-                ),
-            )
-            grid_np[ix, iy, iz] = corrected_retained
-            correction_diagnostics.update(moment_diagnostics)
-            correction_diagnostics["applied"] = True
             self._last_gbd_moment_correction = correction_diagnostics
+            if self.conserve_removed_moments and len(ix) < nonzero_node_count:
+                moment_diagnostics: dict[str, bool | int | float] = {}
+                active_correction_labels = correction_labels if preserve_group_correction else None
+                while True:
+                    try:
+                        corrected_retained = self._redistribute_removed_moments(
+                            grid_np,
+                            vortex_strength_magnitude,
+                            ix,
+                            iy,
+                            iz,
+                            grid_min_np,
+                            particle_spacing,
+                            labels=active_correction_labels,
+                            diagnostics=moment_diagnostics,
+                            strict_labels=wall_correction,
+                            segments_cross_wall=self._segments_cross_wall
+                            if wall_correction
+                            else None,
+                        )
+                        break
+                    except _GBDMomentCorrectionError as error:
+                        # A geometrically complete basis can still misrepresent a
+                        # small fluid component that lost most of its nodes. Keep that
+                        # component's diffused field; never relax the moment or
+                        # correction-fraction limits.
+                        ix, iy, iz, added = self._retain_diffused_component(
+                            vortex_strength_magnitude,
+                            ix,
+                            iy,
+                            iz,
+                            cap,
+                            active_correction_labels,
+                            error.correction_label,
+                        )
+                        support_augmented_node_count += added
+                        correction_diagnostics.update(
+                            retained_node_count=int(len(ix)),
+                            removed_node_count=int(nonzero_node_count - len(ix)),
+                            support_augmented_node_count=int(support_augmented_node_count),
+                        )
+                        self._event_observer.record(
+                            "gaussian blob diffusion retained diffused component",
+                            ("component", str(error.correction_label)),
+                            ("diffused nodes retained", f"{added:,}"),
+                            ("nodes, final retained", f"{len(ix):,}"),
+                            ("regeneration cap", f"{cap:,}"),
+                        )
+                raw_retained = grid_np[ix, iy, iz].astype(np.float64)
+                correction_l1 = float(
+                    np.linalg.norm(
+                        corrected_retained.astype(np.float64) - raw_retained, axis=1
+                    ).sum(dtype=np.float64)
+                )
+                complete_net = grid_np.sum(axis=(0, 1, 2), dtype=np.float64)
+                raw_net = raw_retained.sum(axis=0, dtype=np.float64)
+                corrected_net = corrected_retained.sum(axis=0, dtype=np.float64)
+                net_scale = vortex_strength_total + 1.0e-30
+                self._event_observer.record(
+                    "gaussian blob diffusion moment correction",
+                    ("correction strength fraction", f"{correction_l1 / net_scale:.6e}"),
+                    (
+                        "net residual, before",
+                        f"{np.linalg.norm(raw_net - complete_net) / net_scale:.6e}",
+                    ),
+                    (
+                        "net residual, after",
+                        f"{np.linalg.norm(corrected_net - complete_net) / net_scale:.6e}",
+                    ),
+                )
+                grid_np[ix, iy, iz] = corrected_retained
+                correction_diagnostics.update(moment_diagnostics)
+                correction_diagnostics["applied"] = True
+                self._last_gbd_moment_correction = correction_diagnostics
 
         result = self._build_diffusion_particle_arrays(
             ix,

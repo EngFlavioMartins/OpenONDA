@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..io.logging import Logging
+from ..runtime.timing import remainder_section
 from .context import StabilizationContext
 from .operators import StabilizationOperators
 
@@ -144,8 +145,7 @@ PHASES: dict[str, tuple[str, ...]] = {
     "post_step": ("apply_outflow_fringe", "apply_retention"),
 }
 
-# Profiler section labels for the phased workers, kept stable so the runtime
-# timing report reads the same after a worker is re-registered under a phase.
+# Profiler phase names of the phased workers.
 _PHASE_SECTION_LABELS: dict[str, str] = {
     "apply_relaxation": "Pedrizzetti relaxation",
     "apply_filament_refinement": "Filament refinement",
@@ -400,14 +400,14 @@ class StabilizationManager:
         ``apply_*()`` sequence.  Each worker keeps its own admissibility rules
         and gating; this method only dispatches them in the declared order.
 
-        When a profiler is supplied, each worker is timed under its stable
-        :data:`_PHASE_SECTION_LABELS` section name so the timing report reads
-        exactly as before the workers were folded into phases.
+        When a profiler is supplied, each worker is timed under its
+        :data:`_PHASE_SECTION_LABELS` phase name, without the induction and
+        other phases it calls.
         """
         for worker_name in PHASES[phase]:
             worker = getattr(self, worker_name)
             if profiler is not None and worker_name in _PHASE_SECTION_LABELS:
-                with profiler.section(_PHASE_SECTION_LABELS[worker_name]):
+                with remainder_section(profiler, _PHASE_SECTION_LABELS[worker_name]):
                     worker()
             else:
                 worker()

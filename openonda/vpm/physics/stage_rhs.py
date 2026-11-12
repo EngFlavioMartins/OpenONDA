@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 import taichi as ti
 
+from openonda.core.profiling import Profiler
+
 from .induction.base import (
     _STRETCHING_MODES,
     InductionMethod,
@@ -303,6 +305,7 @@ class StageRHS:
         strength_enabled: bool = True,
         reuse_induction: bool = True,
         retain_strength_rate: bool = True,
+        profiler: Profiler | None = None,
     ) -> None:
         """Create a central RHS evaluator for one RK stage.
 
@@ -329,12 +332,17 @@ class StageRHS:
             state is evaluated without it, so the next step's first RK stage
             can reuse that state. Set False when a split operator always
             changes the sources before the first stage, as core spreading does.
+        profiler : Profiler or None, default=None
+            Step profiler that receives the phases ``"Induction"``,
+            ``"Wall projection"`` and ``"External stage rates"``. ``None``
+            times nothing.
         """
         self.induction = induction
         self.providers = tuple(providers)
         self.strength_enabled = bool(strength_enabled)
         self.reuse_induction = bool(reuse_induction)
         self.retain_strength_rate = bool(retain_strength_rate)
+        self.profiler = Profiler(enabled=False) if profiler is None else profiler
         self._accepted_state = AcceptedStateInduction()
         self._reuse_statistics = InductionReuseStatistics()
         self._closed = False
@@ -384,8 +392,8 @@ class StageRHS:
     ) -> None:
         """Evaluate the self-induced field of one stage with the induction backend.
 
-        Every backend evaluation passes through this method, which makes it
-        the timing hook for induction cost; reused accepted states do not.
+        Every backend evaluation passes through this method and is timed as
+        the phase ``"Induction"``; reused accepted states do not.
         An accepted state (``stage_state.accepted_revision`` set) is stored
         for later requests at the same revision. No guard, provider, or
         particle state check is part of this evaluation.
@@ -393,6 +401,12 @@ class StageRHS:
         if self._closed:
             raise RuntimeError("StageRHS is closed")
         self._reuse_statistics.evaluations += 1
+        with self.profiler.section("Induction"):
+            self._evaluate_induction(stage_state, stage_time, stage_rates)
+
+    def _evaluate_induction(
+        self, stage_state: "StageState", stage_time: float, stage_rates: "StageRates"
+    ) -> None:
         count = int(stage_state.count)
         revision = stage_state.accepted_revision
         if not self.reuse_induction or revision is None or count == 0:
@@ -476,18 +490,19 @@ class StageRHS:
         """
         if self._closed:
             raise RuntimeError("StageRHS is closed")
-        if (
-            self.position_guard is not None
-            and self.position_guard(stage_state)
-            and stage_state.accepted_revision is not None
-        ):
-            # The projected positions are no longer the accepted sources.
-            self._accepted_state.invalidate()
-            stage_state = replace(stage_state, accepted_revision=None)
+        if self.position_guard is not None:
+            with self.profiler.section("Wall projection"):
+                moved = self.position_guard(stage_state)
+            if moved and stage_state.accepted_revision is not None:
+                # The projected positions are no longer the accepted sources.
+                self._accepted_state.invalidate()
+                stage_state = replace(stage_state, accepted_revision=None)
         if not self._reuse_accepted_state(stage_state, stage_rates):
             self.evaluate_induction(stage_state, stage_time, stage_rates)
-        for provider in self.providers:
-            provider.add_stage_rates(stage_state, stage_time, stage_rates)
+        if self.providers:
+            with self.profiler.section("External stage rates"):
+                for provider in self.providers:
+                    provider.add_stage_rates(stage_state, stage_time, stage_rates)
         if not self.strength_enabled or not stage_rates.strength_rate_enabled:
             _zero_stage_field(stage_rates.vortex_strength_rate, stage_state.count)
 
