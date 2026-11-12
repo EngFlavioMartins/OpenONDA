@@ -405,6 +405,7 @@ def record_step(
     logger: logging.Logger,
     interval_started: float,
     output_seconds: float,
+    vpm_phase_seconds: dict[str, float] | None = None,
 ) -> None:
     """Report one accepted coupling step, write its due backup and its diagnostics record.
 
@@ -414,7 +415,8 @@ def record_step(
     evolution timers exclude output and backup; the total includes them,
     reporting, logging and collective waits. A failed backup does not undo the
     accepted coupling step: its diagnostics record is written and the backup error
-    is raised on every rank.
+    is raised on every rank. ``vpm_phase_seconds`` (the particle step of the interval
+    and its output, by phase) is recorded as ``timing_seconds.vpm_phases`` when given.
     """
     comm = coupler._comm
     reporting_started = time.perf_counter()
@@ -433,6 +435,10 @@ def record_step(
             "evolution_total": float(sum(timing)),
             "state_checks_and_samplers": float(output_seconds),
         }
+        if vpm_phase_seconds:
+            timing_data["vpm_phases"] = {
+                str(name): float(seconds) for name, seconds in vpm_phase_seconds.items()
+            }
         stats = coupler._step_transfer_stats or {}
         timing_data["last_transfer_fvm_gather"] = float(stats.get("fvm_gather_seconds", 0.0))
         if coupler._is_root:

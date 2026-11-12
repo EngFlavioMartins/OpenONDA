@@ -772,9 +772,12 @@ class CoupledSolver:
             boundary_seconds += time.perf_counter() - refresh_started
         self._coupling_step = step
         output_started = time.perf_counter()
+        vpm_phase_seconds: dict[str, float] = {}
         with collective_phase(self._comm, "VPM particle-state check and output"):
             if self._is_root:
                 self.vpm_solver.write_step_output()
+                # The interval holds one particle step; its phases include this output.
+                vpm_phase_seconds = dict(self.vpm_solver.phase_seconds)
         frame = self.vpm_case.output.schedule
         if frame is not None and frame.is_due(step, time_end, self.vpm_time_step_size):
             # The VPM wrote a particle frame; the FVM writes one at the same time.
@@ -792,6 +795,7 @@ class CoupledSolver:
             logger=logger,
             interval_started=interval_started,
             output_seconds=output_seconds,
+            vpm_phase_seconds=vpm_phase_seconds,
         )
 
     def _start(self) -> None:
