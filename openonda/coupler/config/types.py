@@ -115,10 +115,14 @@ class CouplerConfig:
     """Largest difference between the total strength emitted in the replacement region and the
     FVM total strength there, as a fraction of the FVM strength L1 norm; above it the transfer
     stops before it changes the particles. ``None`` disables the check."""
-    wall_circulation_ratio_bounds: tuple[float, float] | None = (0.9, 1.1)
+    wall_circulation_ratio_bounds: tuple[float, float] | None = (0.97, 1.03)
     """Bounds of the near-wall circulation ratio, emitted over FVM total strength within three
     particle spacings of a wall, checked where the net near-wall FVM circulation exceeds 5 % of its
-    L1 norm (a lifting body); outside them the transfer stops. ``None`` disables the check."""
+    L1 norm (a lifting body); outside them the transfer stops. ``None`` disables the check.
+
+    The transfer assigns the FVM circulation exactly, so only the weak-strength removal moves the
+    ratio from one: on the NACA 4412 wing start-up it shifts the net near-wall circulation by
+    9e-4 of its L1 norm, at most 2 % of the ratio where the check applies."""
     particle_net_strength_warning: float | None = 1.0e-3
     """Net vortex strength of the whole particle set, as a fraction of its L1 norm, above which each
     transfer logs a warning. A healthy three-dimensional run stays near 1e-4. ``None`` disables it."""

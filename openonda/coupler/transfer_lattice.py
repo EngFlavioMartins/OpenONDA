@@ -774,16 +774,19 @@ def redistribute_removed_strength(
 def _correct_fluid_component_moments(lattice, original, redistributed, labels, correct):
     """Apply the moment correction to each fluid-connected component.
 
+    A component with no strength above the removal threshold is removed as a whole;
+    the returned moments hold its strength, which the removed totals then include.
     A component whose retained strengths cannot carry the correction keeps its
     node strengths from before the removal; its count and strength L1 norm are returned.
     """
     fallback_count, fallback_l1 = 0, 0.0
+    dropped = VortexMoments(np.zeros(3), np.zeros(3), np.zeros(3))
     raw = redistributed.copy()
     corrected = redistributed.copy()
     flat_labels = labels.reshape(-1)
     rows = np.flatnonzero(flat_labels >= 0)
     if not len(rows):
-        return raw, corrected, fallback_count, fallback_l1
+        return raw, corrected, fallback_count, fallback_l1, dropped
     if np.any(flat_labels[rows] != flat_labels[rows[0]]):
         rows = rows[np.argsort(flat_labels[rows], kind="stable")]
     boundaries = np.r_[0, np.flatnonzero(np.diff(flat_labels[rows])) + 1, len(rows)]
@@ -791,6 +794,15 @@ def _correct_fluid_component_moments(lattice, original, redistributed, labels, c
         component = rows[start:stop]
         retained = component[np.linalg.norm(raw[component], axis=1) > 0.0]
         target = vortex_moments(lattice.positions[component], original[component])
+        if not len(retained):
+            raw[component] = 0.0
+            corrected[component] = 0.0
+            dropped = VortexMoments(
+                dropped.total_vortex_strength + target.total_vortex_strength,
+                dropped.linear_impulse + target.linear_impulse,
+                dropped.angular_impulse + target.angular_impulse,
+            )
+            continue
         try:
             if len(retained) < 2:
                 raise ValueError("too few retained nodes for the moment correction")
@@ -810,7 +822,7 @@ def _correct_fluid_component_moments(lattice, original, redistributed, labels, c
             corrected[component] = original[component]
             fallback_count += 1
             fallback_l1 += float(np.linalg.norm(original[component], axis=1).sum())
-    return raw, corrected, fallback_count, fallback_l1
+    return raw, corrected, fallback_count, fallback_l1, dropped
 
 
 @dataclass(frozen=True)
@@ -1022,11 +1034,19 @@ def transfer_on_lattice(
     redistributed[lattice.solid_interior] = 0.0
     wall_corrected = None
     fallback_count, fallback_l1 = 0, 0.0
+    # The moments the particles must hold: those of the node strengths, less the
+    # components that the removal takes as a whole.
+    held_moments = node_moments
     if labels is not None:
-        redistributed, wall_corrected, fallback_count, fallback_l1 = (
+        redistributed, wall_corrected, fallback_count, fallback_l1, dropped = (
             _correct_fluid_component_moments(
                 lattice, node_strength, redistributed, labels, moment_correction
             )
+        )
+        held_moments = VortexMoments(
+            node_moments.total_vortex_strength - dropped.total_vortex_strength,
+            node_moments.linear_impulse - dropped.linear_impulse,
+            node_moments.angular_impulse - dropped.angular_impulse,
         )
     keep = np.linalg.norm(redistributed, axis=1) > 0.0
     removed_nodes = (magnitude_before > 0.0) & ~keep
@@ -1038,15 +1058,15 @@ def transfer_on_lattice(
     transfer_strength = raw_transfer_strength if wall_corrected is None else wall_corrected[keep]
     transfer_volume = np.full(len(transfer_position), lattice.particle_volume, dtype=np.float64)
     raw_moments = vortex_moments(transfer_position, raw_transfer_strength)
-    conservation_raw_mismatch = vortex_moment_residual(node_moments, raw_moments)
-    conservation_target_moments = node_moments
+    conservation_raw_mismatch = vortex_moment_residual(held_moments, raw_moments)
+    conservation_target_moments = held_moments
     conservation_raw_moments = raw_moments
     conservation_reference_strength_l1 = active_l1
     if wall_corrected is None and len(transfer_position) > 1:
         transfer_strength = moment_correction(
             transfer_position,
             raw_transfer_strength,
-            node_moments,
+            held_moments,
             volumes=transfer_volume,
         )
     corrected_moments = vortex_moments(transfer_position, transfer_strength)
@@ -1054,7 +1074,7 @@ def transfer_on_lattice(
         raw_moments,
         corrected_moments,
     )
-    conservation_residual = vortex_moment_residual(node_moments, corrected_moments)
+    conservation_residual = vortex_moment_residual(held_moments, corrected_moments)
     applied_particle_strength_fraction = float(
         np.linalg.norm(transfer_strength - raw_transfer_strength, axis=1).sum(dtype=np.float64)
         / (active_l1 + 1.0e-30)
@@ -1252,7 +1272,8 @@ WALL_NET_CIRCULATION_FRACTION = 0.05
 """Net near-wall FVM circulation, as a fraction of its L1 norm, above which the wall ratio is checked.
 
 It is 16 % on the NACA 4412 wing, 9.5 % on a thin lifting ellipse and at most about 2 % on the
-shedding cylinder, where the ratio of two small totals is noise (0.66 to 1.47)."""
+shedding cylinder. Below it the ratio of two small totals is dominated by the shift of the
+weak-strength removal, about 1e-3 of the near-wall L1 norm."""
 
 
 def check_fvm_budget(

@@ -4,11 +4,10 @@ State of `development` on 12 November 2026. The baseline is commit `10ea19e2` (t
 work); `git diff 10ea19e2..HEAD -- openonda/coupler openonda/vpm docs` shows every change. Commit
 hashes below name where each change entered.
 
-Status: items 2–8 are tested (coupler and VPM suites) and were used in the cylinder runs. Item 1 is
-committed as work in progress: its tests and its comparison against saved flow states are not
-finished, and no case has run with it yet.
+Status: items 1–8 are tested (coupler and VPM suites). Items 2–8 were used in the cylinder runs.
+Item 1 is checked against saved wing start-up states (below); no case has run with it yet.
 
-## 1. Vorticity transfer: direct, conservative assignment (in progress)
+## 1. Vorticity transfer: direct, conservative assignment (`92674846` and the commit after it)
 
 Files: `openonda/coupler/transfer_lattice.py`, `openonda/coupler/vorticity_transfer.py`,
 `openonda/coupler/config/types.py`, `docs/coupling.md`, `docs/terminology.md`.
@@ -40,6 +39,42 @@ Unchanged after the assignment: the part of a wall sheet that falls on lattice n
 the wall is moved to the nearest fluid node; strengths below the removal threshold are removed and
 redistributed; the moment correction restores the total strength and the linear impulse, now only
 of what the removal changed.
+
+Changed with it: a fluid-connected component with no strength above the removal threshold is
+removed as a whole, and its strength counts as removed strength in the budget. Before, the moment
+correction could not act on such a component and kept all its strengths. The Gaussian step had
+joined all strengths into one component; without it, the roundoff of the Stokes integral in the
+uniform stream (about 1e-19 m³/s per node) formed 11,211 isolated components at the first wing
+transfer and kept 62,000 particles that carried 1e-14 m³/s in all.
+
+The near-wall circulation-ratio bounds are now (0.97, 1.03), from (0.9, 1.1): only the removal
+moves the ratio from one.
+
+Tests (`tests/coupler/test_conservative_transfer.py`):
+- the ratio is one for five near-wall layer shapes (sheet on one node, on two nodes, exponential
+  layer of 4h, thin layer under an opposite layer, layer peaked at 2h);
+- each replaced node holds the FVM circulation of its cube;
+- the replaced strengths do not depend on the previous particles;
+- the ramp blend;
+- roundoff and a weak isolated pocket emit no particle, and the pocket appears in the removed
+  strength.
+
+The old transfer gives ratios of 1.013–1.088 and region errors of 0.9–3 % on the same five
+layers.
+
+Wing start-up, the saved inputs of the transfers of the run that stopped, old and new transfer on
+the same input (the old one reproduces the saved output exactly):
+
+| t (s) | Near-wall emitted − FVM (m³/s), old / new | Region error, old / new | Moment correction, old / new | Particles, old / new |
+|---|---|---|---|---|
+| 0 | +1.8e-2 / +4e-16 | 1.6e-3 / 4e-17 | 1.9e-5 / 6.1e-8 | 21,928 / 11,446 |
+| 0.04 | +3.2e-2 / +4.0e-3 | 9.5e-4 / 1.8e-6 | 1.4e-4 / 2.6e-4 | 33,774 / 27,531 |
+| 0.08 | +1.3e-1 / +4.8e-3 | 8.5e-4 / 1.8e-6 | 8.2e-5 / 5.1e-4 | 37,213 / 30,420 |
+| 0.12 | +2.7e-1 / +3.8e-3 | 7.7e-4 / 1.8e-6 | 1.6e-4 / 4.4e-4 | 39,750 / 33,496 |
+
+The new near-wall difference is what the removal takes there: 9e-4 of the near-wall L1 norm of 13.1
+m³/s. The old one grew to the 12 % that stopped the run at t = 0.44 s. The moment correction is a
+few 1e-4 of the strength because it now repairs only the removal.
 
 Removed: `correct_lattice_strength`, the limiter, the wall-band reset, the settings
 `max_strength_ratio` (`κ_max`) and `transfer_correction_steps`, the strength-ratio and
@@ -106,5 +141,6 @@ cube failure at t ≈ 38 s). Not yet run on the cube.
 - Cylinder, revised code without item 1, `convective` threshold, one FVM step per transfer, window
   t = 10–21.8 s (short): C_D +0.49 %, St −0.46 %, C_L rms −0.22 % against the blockage-corrected
   FVM-only reference.
-- Wing: stopped at t = 0.44 s for the reason given in item 1.
+- Wing: the run on the old transfer stopped at t = 0.44 s for the reason given in item 1. The new
+  transfer has not yet run on it.
 - Cube: not yet run on the revised code.
