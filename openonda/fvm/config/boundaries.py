@@ -16,7 +16,6 @@ VELOCITY_BOUNDARY_TYPES = frozenset(
         "fixed_value",
         "freestream",
         "inlet_outlet",
-        "no_slip",
         "slip",
         "symmetry",
         "zero_gradient",
@@ -37,8 +36,8 @@ class BoundaryConfig:
         Mesh patch name; it must match a contiguous boundary range.
     velocity_type : str, default='fixed_value'
         Velocity condition: ``fixed_value``, ``zero_gradient``,
-        ``inlet_outlet``, ``slip``, ``symmetry``, ``no_slip``,
-        ``freestream``, ``empty`` or ``cyclic``.
+        ``inlet_outlet``, ``slip``, ``symmetry``, ``freestream``,
+        ``empty`` or ``cyclic``. A wall is declared with :meth:`wall`.
     velocity_value : array-like, default=(0, 0, 0)
         Uniform ``(3,)`` or per-face ``(n_faces, 3)`` velocity in m/s.
     pressure_type : str, default='zero_gradient'

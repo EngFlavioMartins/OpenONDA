@@ -403,10 +403,7 @@ def assemble_diffusion_term(
                     + flux_vf[indices]
                 )
 
-        elif strategy in (
-            BoundaryStrategy.FIXED_VALUE,
-            BoundaryStrategy.NO_SLIP,
-        ):
+        elif strategy is BoundaryStrategy.FIXED_VALUE:
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
                 scalar_field,
                 diffusivity,
@@ -415,14 +412,6 @@ def assemble_diffusion_term(
                 geo_data,
                 include_total_flux=include_total_flux,
             )
-
-            if strategy is BoundaryStrategy.NO_SLIP:
-                # Enforce the mathematical value independently of ghost state.
-                indices = b_fluxes["face_indices"]
-                owners_b = mesh_data["owners"][indices]
-                b_fluxes["flux_vf"][:] = 0.0
-                if include_total_flux:
-                    b_fluxes["flux_tf"][:] = b_fluxes["flux_cf"] * scalar_field[owners_b]
 
             indices = b_fluxes["face_indices"]
             flux_cf[indices] = b_fluxes["flux_cf"]

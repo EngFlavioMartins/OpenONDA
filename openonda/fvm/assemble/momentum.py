@@ -257,10 +257,8 @@ def _apply_ustar_bc(
     elif strategy is BoundaryStrategy.CYCLIC:
         paired = mesh_data["boundary_neighbour_cell"][start_face : start_face + n_faces]
         velocity_star[b_elem_indices] = velocity_star[paired]
-    elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
-        if strategy is BoundaryStrategy.NO_SLIP:
-            velocity_star[b_elem_indices] = [0.0, 0.0, 0.0]
-        elif boundary.get("velocity_value_field") is not None:
+    elif strategy is BoundaryStrategy.FIXED_VALUE:
+        if boundary.get("velocity_value_field") is not None:
             velocity_star[b_elem_indices] = boundary["velocity_value_field"]
         elif "velocity_value" in boundary:
             velocity_star[b_elem_indices] = np.array(boundary["velocity_value"])

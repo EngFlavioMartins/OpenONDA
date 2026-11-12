@@ -69,8 +69,8 @@ def _enforce_velocity_boundary_constraints(
     """Enforce velocity boundary constraints on ghost cells after initialisation.
 
     Iterates over all boundary patches and sets the ghost-layer values
-    in *velocity* according to each patch's boundary condition type (no_slip,
-    fixed_value, zero_gradient, empty, etc.).
+    in *velocity* according to each patch's boundary condition type
+    (fixed_value, zero_gradient, empty, etc.).
 
     Args:
         velocity:    Velocity array (mutated in place).
@@ -86,9 +86,7 @@ def _enforce_velocity_boundary_constraints(
         strategy = BOUNDARIES.strategy(boundary_condition_type, "velocity", "ghost")
         start = n_cells + (boundary["start_face"] - mesh_data["n_interior_faces"])
         end = start + boundary["n_faces"]
-        if strategy is BoundaryStrategy.NO_SLIP:
-            velocity[start:end] = 0.0
-        elif (
+        if (
             strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM)
             and boundary.get("velocity_value_field") is not None
         ):

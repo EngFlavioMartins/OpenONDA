@@ -17,7 +17,6 @@ class BoundaryStrategy(Enum):
     FIXED_VALUE = auto()
     ZERO_GRADIENT = auto()
     EMPTY = auto()
-    NO_SLIP = auto()
     INLET_OUTLET = auto()
     SLIP = auto()
     SYMMETRY = auto()
@@ -160,7 +159,6 @@ for _name, _fields, _strategy in (
         BoundaryStrategy.ZERO_GRADIENT,
     ),
     ("empty", frozenset({"velocity", "kinematic_pressure", "scalar"}), BoundaryStrategy.EMPTY),
-    ("no_slip", frozenset({"velocity"}), BoundaryStrategy.NO_SLIP),
     ("inlet_outlet", frozenset({"velocity"}), BoundaryStrategy.INLET_OUTLET),
     ("slip", frozenset({"velocity"}), BoundaryStrategy.SLIP),
     ("symmetry", frozenset({"velocity"}), BoundaryStrategy.SYMMETRY),

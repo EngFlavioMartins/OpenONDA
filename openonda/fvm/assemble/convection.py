@@ -435,10 +435,7 @@ def assemble_convection_term_boundary(
             result["flux_tf"] = flux_cf * scalar_field[owners_b] + flux_vf
         return result
 
-    if strategy in (
-        BoundaryStrategy.FIXED_VALUE,
-        BoundaryStrategy.NO_SLIP,
-    ):
+    if strategy is BoundaryStrategy.FIXED_VALUE:
         # A Dirichlet face value is specified for either flow direction.
         flux_cf = np.zeros_like(boundary_advective_face_flux)
         flux_ff_val = boundary_advective_face_flux

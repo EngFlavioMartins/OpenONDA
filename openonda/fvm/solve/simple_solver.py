@@ -939,8 +939,8 @@ def adjust_boundary_flux_for_continuity(
     An incompressible domain requires ``∮ volumetric_face_flux·dS = 0``; otherwise the pressure
     Poisson problem is incompatible
     and the solver leaves a residual divergence (a checkerboard, typically at
-    the outflow).  Faces whose velocity is *fixed* (``fixed_value`` inlet,
-    ``no_slip`` wall) carry a prescribed flux and cannot absorb the mismatch;
+    the outflow).  Faces whose velocity is *fixed* (``fixed_value`` inlet
+    or wall) carry a prescribed flux and cannot absorb the mismatch;
     faces whose velocity *floats* (``freestream``, ``zero_gradient``,
     ``inlet_outlet``) can.  The net imbalance is removed by a single
     multiplicative scaling of the floating **outflow** faces, exactly matching
@@ -1828,9 +1828,8 @@ def _apply_fixed_value_bc(
     boundary: dict[str, object],
     n_cells: int,
     n_interior: int,
-    strategy: "BoundaryStrategy",
 ) -> None:
-    """Apply fixed_value or no_slip velocity BC.
+    """Apply a fixed_value velocity BC.
 
     Honours a per-face ``value_velocity_field`` (n_faces_patch, 3) when present (e.g. a
     non-uniform coupler VPM boundary condition), otherwise the uniform ``value_velocity``.
@@ -1838,9 +1837,7 @@ def _apply_fixed_value_bc(
     start = boundary["start_face"]
     nf = boundary["n_faces"]
     idx = n_cells + (start - n_interior)
-    if strategy is BoundaryStrategy.NO_SLIP:
-        velocity[idx : idx + nf] = [0.0, 0.0, 0.0]
-    elif boundary.get("velocity_value_field") is not None:
+    if boundary.get("velocity_value_field") is not None:
         velocity[idx : idx + nf] = boundary["velocity_value_field"]
     elif "velocity_value" in boundary:
         velocity[idx : idx + nf] = np.array(boundary["velocity_value"])
@@ -1902,7 +1899,7 @@ def _update_velocity_bcs(
 
     - ``zero_gradient`` → :func:`_apply_zero_gradient_bc`
     - ``inlet_outlet``  → :func:`_apply_inlet_outlet_bc`
-    - ``fixed_value`` / ``no_slip`` → :func:`_apply_fixed_value_bc`
+    - ``fixed_value``   → :func:`_apply_fixed_value_bc`
     - ``empty`` / ``slip`` / ``symmetry`` → :func:`_apply_slip_bc`
 
     Args:
@@ -1925,8 +1922,8 @@ def _update_velocity_bcs(
             _apply_inlet_outlet_bc(
                 velocity, volumetric_face_flux, boundary, owners, n_cells, n_interior
             )
-        elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.NO_SLIP):
-            _apply_fixed_value_bc(velocity, boundary, n_cells, n_interior, strategy)
+        elif strategy is BoundaryStrategy.FIXED_VALUE:
+            _apply_fixed_value_bc(velocity, boundary, n_cells, n_interior)
         elif strategy is BoundaryStrategy.MIXED_VELOCITY:
             if mesh_data is None:
                 raise ValueError("Mixed velocity boundary update requires mesh_data")
@@ -2073,8 +2070,8 @@ def _apply_scalar_bc(
 ) -> None:
     """Apply a boundary condition to a scalar field ghost-cell block.
 
-    Zero-gradient BCs (including inlet, outlet, symmetry, empty, slip,
-    no_slip) copy the owner value.  ``fixed_value`` sets the prescribed
+    Zero-gradient BCs (including inlet, outlet, symmetry, empty, slip)
+    copy the owner value.  ``fixed_value`` sets the prescribed
     boundary value.
 
     Args:
