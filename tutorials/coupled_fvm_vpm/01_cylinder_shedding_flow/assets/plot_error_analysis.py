@@ -74,7 +74,6 @@ FAMILY_NAMES = {
     "S": "Particle spacing",
     "A": "Space, fixed interval 0.032",
     "XP": "Space, fixed interval 0.04",
-    "KAPPA": "Strength-ratio limit",
     "BL": "Blending depths",
 }
 # Draw each run in its first matching family.
@@ -90,7 +89,6 @@ FAMILY_STYLE = {
     "S": (COLORS["teal"], "h"),
     "A": (COLORS["dark"], "p"),
     "XP": (COLORS["dark"], "d"),
-    "KAPPA": (COLORS["red"], "<"),
     "BL": (COLORS["amber"], ">"),
 }
 
@@ -543,30 +541,22 @@ def indicator_figure(rows, correlations):
     save_validation_figure(figure, FIGURES / "error_indicator")
 
 
-def transfer_limit_summary(runs, decomposition):
-    """Coupling error against the strength-ratio limit, the blending depths and N.
-
-    The strength ratio kappa of every transfer is logged; when it sits at kappa_max in most
-    transfers the strength correction is cut back near the wall at every coupling interval, and
-    a series in N then changes the transfer count and the action of the limit together.
-    """
+def transfer_blending_summary(runs, decomposition):
+    """Coupling error against the blending depths and the coupling interval N."""
     members = [
         run
         for run in runs
-        if {"E", "KAPPA", "BL"} & set(run["families"].split()) or run["name"] == BASELINE_NAME
+        if {"E", "BL"} & set(run["families"].split()) or run["name"] == BASELINE_NAME
     ]
     rows = []
-    print("Transfer limits and blending depths, 40 <= t <= 55 s (e_coupling in % of Q_ext)")
-    for run in sorted(members, key=lambda r: (r["max_strength_ratio"], r["fvm_substeps"])):
+    print("Blending depths and coupling interval, 40 <= t <= 55 s (e_coupling in % of Q_ext)")
+    for run in sorted(members, key=lambda r: r["fvm_substeps"]):
         row = {
             "run": run["name"],
             "N": run["fvm_substeps"],
             "coupling intervals per convective time": DIAMETER / (SPEED * run["particle_time_step"]),
-            "kappa_max": run["max_strength_ratio"],
             "delta_0 [cells]": run["blend_start"],
             "delta_1 [cells]": run["blend_end"],
-            "kappa median": run["strength ratio median"],
-            "fraction of transfers at kappa_max": run["strength-limit fraction"],
             "boundary mismatch mean [U]": run["boundary mismatch mean"],
         }
         row.update(
@@ -574,9 +564,8 @@ def transfer_limit_summary(runs, decomposition):
         )
         rows.append(row)
         print(
-            f"  {run['name']:36s} N {row['N']:2d}  kappa_max {row['kappa_max']:.1f}"
+            f"  {run['name']:36s} N {row['N']:2d}"
             f"  delta {row['delta_0 [cells]']:g}/{row['delta_1 [cells]']:g}"
-            f"  kappa {row['kappa median']:.3f}  at limit {row['fraction of transfers at kappa_max']:.2f}"
             f"  mismatch {row['boundary mismatch mean [U]']:.2e}"
             + "".join(f"  {q[:6]} {row[f'e_coupling {q} [%]']:+6.2f}" for q in STATISTICS)
         )
@@ -787,7 +776,7 @@ def main():
         )
     indicator_rows, correlations = indicator_analysis(runs, decomposition)
     factorial_summary(runs, decomposition)
-    limit_rows = transfer_limit_summary(runs, decomposition)
+    blending_rows = transfer_blending_summary(runs, decomposition)
     check_rows = window_and_reference_checks(runs, references)
 
     # Tables
@@ -806,8 +795,8 @@ def main():
     if driver_rows:
         write_table(TABLES / "error_drivers.csv", driver_rows)
     write_table(TABLES / "error_indicators.csv", indicator_rows)
-    if limit_rows:
-        write_table(TABLES / "error_transfer_limits.csv", limit_rows)
+    if blending_rows:
+        write_table(TABLES / "error_transfer_blending.csv", blending_rows)
     if check_rows:
         write_table(TABLES / "error_window_reference.csv", check_rows)
 

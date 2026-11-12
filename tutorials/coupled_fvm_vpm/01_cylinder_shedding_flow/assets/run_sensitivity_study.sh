@@ -2,7 +2,7 @@
 # Sensitivity study of the coupled cylinder. Run from the cylinder case directory:
 #
 #   assets/run_sensitivity_study.sh            # every section, one run after another
-#   assets/run_sensitivity_study.sh b1 a       # the named sections only
+#   assets/run_sensitivity_study.sh h a        # the named sections only
 #   assets/run_sensitivity_study.sh --list     # section names
 #
 # Each coupled run is this case with --name, written to
@@ -10,7 +10,7 @@
 # commands); each FVM-only variant is a copy of reference_flow/ in sensitivity/reference_{suffix}.
 # The names below are the names of the stored runs, so a section that is launched again resumes
 # its runs from their latest backups, and a run that already reached the end time is skipped. Suffix order (parsed by
-# assets/plot_sensitivity.py): _xd _h _dtf _ic _hp _bs _be _kappa _tau _mc _rk _vf _co _oc _k _re _rep.
+# assets/plot_sensitivity.py): _xd _h _dtf _ic _hp _bs _be _tau _mc _rk _vf _co _oc _k _re _rep.
 #
 # Sections are grouped by what they isolate: D the FVM domain, I the interface at a fixed FVM and
 # VPM, T the coupling interval, V the particle side at a fixed FVM and interface, F the FVM side
@@ -208,7 +208,7 @@ reference() {
     quick_failure_check "$directory" "$status" $((SECONDS - started))
 }
 
-SECTIONS=(h g b1 n_interval box_conv box_min i_transfer v_side f_side d c a a_fine e baseline k c_ref x t2 p e_old b f_fact r inset f)
+SECTIONS=(h g n_interval box_conv box_min i_transfer v_side f_side d c a a_fine e baseline k c_ref x t2 p e_old b f_fact r inset f)
 if [[ ${1:-} == --list ]]; then
     printf '%s\n' "${SECTIONS[@]}"
     exit 0
@@ -218,44 +218,15 @@ selected=("$@")
 want() { [[ " ${selected[*]} " == *" $1 "* ]]; }
 
 # ------------------------------------------------------------------------------------------------
-# Sections added on 30 October 2026 (thesis section 4.7; follow-up of the error study)
-# ------------------------------------------------------------------------------------------------
-
-# b1. Strength-ratio limit kappa_max. In the N = 2 run kappa sits at kappa_max = 1.8 in 81% of the
-# transfers, in the baseline never. kappa_max = 1 gives gamma = 0 (direct assignment of the
-# mismatch); kappa_max = 3 leaves the limit inactive. Isolates the strength correction at the wall
-# from the number of transfers per convective time.
-# The gain is gamma = min(kappa_max - 1, 1): kappa_max = 2 is the smallest value with full gain, so
-# kappa_max = 2, 3 and 10 separate the gain from the bound on the corrected strength.
-if want b1; then
-    # The baseline interval first, the short interval (where kappa saturates) after it.
-    run 2.4 5 8.75 _kappa1 --max-strength-ratio 1.0
-    run 2.4 5 8.75 _kappa3 --max-strength-ratio 3.0
-    run 2.4 5 8.75 _kappa2 --max-strength-ratio 2.0
-    run 2.4 5 8.75 _kappa10 --max-strength-ratio 10.0
-    run 2.4 2 8.75 _kappa1 --max-strength-ratio 1.0
-    run 2.4 2 8.75 _kappa3 --max-strength-ratio 3.0
-    run 2.4 2 8.75 _kappa2 --max-strength-ratio 2.0
-    run 2.4 2 8.75 _kappa10 --max-strength-ratio 10.0
-fi
-
-# ------------------------------------------------------------------------------------------------
 # Sections added on 31 October 2026 (redesign: isolate the interface from the FVM and the VPM)
 # ------------------------------------------------------------------------------------------------
 
-# T. Coupling interval at the baseline FVM step, N = 1 to 6, at the default and at an inactive
-# strength limit. The stored interval series (N = 2, 4, 5 and the dt_FVM variants) gives a coupling
-# error that grows as the interval shrinks and collapses on dt_VPM; this section decides whether
-# the per-transfer error is the limiter (curves separate) or lies elsewhere (curves coincide).
-# N = 6 is the largest admissible interval (Lambda = 0.93); N = 1 transfers every FVM step.
+# T. Coupling interval at the baseline FVM step, N = 1 to 6. N = 6 is the largest admissible
+# interval (Lambda = 0.93); N = 1 transfers every FVM step.
 if want n_interval; then
     run 2.4 1 8.75 ""
     run 2.4 3 8.75 ""
     run 2.4 6 8.75 ""
-    run 2.4 1 8.75 _kappa3 --max-strength-ratio 3.0
-    run 2.4 3 8.75 _kappa3 --max-strength-ratio 3.0
-    run 2.4 4 8.75 _kappa3 --max-strength-ratio 3.0
-    run 2.4 6 8.75 _kappa3 --max-strength-ratio 3.0
 fi
 
 # D. FVM domain beyond the baseline margin. The lateral series 1.4, 1.6, 1.8, 2.4 D has not
@@ -281,7 +252,7 @@ if want i_transfer; then
     run 2.4 5 8.75 _tau0.2 --transfer-removal-threshold 0.2
     run 2.4 5 8.75 _mc0.02 --moment-correction-fraction 0.02
     run 2.4 5 8.75 _mc0.3 --moment-correction-fraction 0.3
-    run 2.4 2 8.75 _tau0.2 --transfer-removal-threshold 0.2    # at the short interval, where kappa saturates
+    run 2.4 2 8.75 _tau0.2 --transfer-removal-threshold 0.2    # at the short interval
 fi
 
 # V. Particle side at the baseline FVM and interface: particles twice as coarse as the cells (the

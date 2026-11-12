@@ -43,7 +43,7 @@ REFERENCE_HEIGHT = 32.0  # m, distance between the slip walls of the FVM-only do
 BASE_CELL, BASE_FVM_STEP = 0.04, 0.008  # m, s; the FVM step scales with the cell
 PARTICLE_STRAIN_RATE = 19.4  # 1/s, largest particle strain rate of the baseline
 # Recommended setup, the baseline of the study: h = 0.04 m, dt_FVM = 0.008 s, N = 5 (particle CFL
-# number 0.78), box margin 2.4D, inset 8.75 cells, kappa_max = 1.8, iterations to tolerance. Its
+# number 0.78), box margin 2.4D, inset 8.75 cells, iterations to tolerance. Its
 # forces and profiles are the main results.
 BASELINE = "box2.4_sub5_inset8.75"
 
@@ -84,7 +84,6 @@ def parse_run(name):
         "cell": cell,
         "fvm_step": fvm_step,
         "vpm_step": substeps * fvm_step,
-        "kappa_max": float(options.get("kappa", 1.8)),
         "iterations": options.get("k", "tol"),
         "particle_spacing": float(options.get("hp", cell)),
         "integrator": "RK4" if "rk" in options else "RK2",
@@ -232,7 +231,6 @@ def write_summary(references, runs, floor):
         "vpm_step",
         "margin",
         "inset",
-        "kappa_max",
         "iterations",
         "particle_spacing",
         "integrator",
@@ -433,7 +431,7 @@ def figure_convergence(references, runs):
     are refined together.
     """
     series = sorted(
-        (run for run in runs if np.isclose(run["vpm_step"], 0.048) and run["kappa_max"] == 1.8),
+        (run for run in runs if np.isclose(run["vpm_step"], 0.048)),
         key=lambda run: run["cell"],
     )
     set_thesis_style()
@@ -476,7 +474,7 @@ def figure_convergence(references, runs):
 
 
 def study_family(runs):
-    """Runs that differ from the baseline only in the coupling interval and the strength limit."""
+    """Runs that differ from the baseline only in the coupling interval."""
     return [
         run
         for run in runs
@@ -502,26 +500,21 @@ def figure_interval(runs, floor):
         ("St", "Strouhal error"),
         ("mismatch", "boundary mismatch"),
     )
-    for kappa, style in (
-        (1.8, dict(marker="o", linestyle="-", color=COLORS["hybrid"])),
-        (3.0, dict(marker="^", linestyle="--", color=COLORS["red"], mfc="white")),
-    ):
-        series = sorted(
-            (run for run in family if run["kappa_max"] == kappa), key=lambda run: run["N"]
+    series = sorted(family, key=lambda run: run["N"])
+    interval = [run["vpm_step"] * FREESTREAM_SPEED / DIAMETER for run in series]
+    for axis, (key, _) in zip(axes.flat, panels):
+        values = [
+            1e3 * run["mismatch"] if key == "mismatch" else 100 * run["error"][key]
+            for run in series
+        ]
+        axis.plot(
+            interval,
+            values,
+            linewidth=LINE_WIDTH,
+            marker="o",
+            linestyle="-",
+            color=COLORS["hybrid"],
         )
-        interval = [run["vpm_step"] * FREESTREAM_SPEED / DIAMETER for run in series]
-        for axis, (key, _) in zip(axes.flat, panels):
-            values = [
-                1e3 * run["mismatch"] if key == "mismatch" else 100 * run["error"][key]
-                for run in series
-            ]
-            axis.plot(
-                interval,
-                values,
-                linewidth=LINE_WIDTH,
-                label=rf"$\kappa_{{\max}}={kappa:g}$",
-                **style,
-            )
     for axis, (key, label) in zip(axes.flat, panels):
         if key == "mismatch":
             axis.set_ylabel(r"$10^3\,\overline{|\Delta u|}/U_\infty$")
@@ -548,7 +541,6 @@ def figure_interval(runs, floor):
         axis.set_xlim(0, 0.052)
         axis.set_xticks([0, 0.02, 0.04])
     axes[1, 1].set_ylim(0, 9.5)
-    axes[1, 1].legend(loc="upper right", frameon=True, edgecolor="0.8", handlelength=1.5)
     save(figure, "error_coupling_interval")
 
 
@@ -563,7 +555,6 @@ def sensitivity_entries(runs):
             "margin": 2.4,
             "inset": 8.75,
             "iterations": "tol",
-            "kappa_max": 1.8,
             "particle_spacing": BASE_CELL,
             "integrator": "RK2",
             "vorticity_floor": 0.01,
@@ -583,14 +574,7 @@ def sensitivity_entries(runs):
         [
             (interval(run), run)
             for run in sorted(
-                (run for run in family if run["kappa_max"] == 1.8 and run["N"] != 5),
-                key=lambda run: run["N"],
-            )
-        ],
-        [
-            (rf"$\kappa_{{\max}}=3$, " + interval(run), run)
-            for run in sorted(
-                (run for run in family if run["kappa_max"] == 3 and run["N"] in (1, 6)),
+                (run for run in family if run["N"] != 5),
                 key=lambda run: run["N"],
             )
         ],

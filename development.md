@@ -78,9 +78,9 @@ few 1e-4 of the strength because it now repairs only the removal.
 
 Removed: `correct_lattice_strength`, the limiter, the wall-band reset, the settings
 `max_strength_ratio` (`κ_max`) and `transfer_correction_steps`, the strength-ratio and
-representation-residual diagnostics, and the `κ` study of the cylinder tutorial (`setup.py`,
-`allrun.sh`, `README.md`). Analysis scripts of that tutorial that read the removed fields are still
-to be cleaned.
+representation-residual diagnostics, and the `κ` study of the cylinder tutorial: its runs
+(`setup.py`, `allrun.sh`, `run_sensitivity_study.sh`), its analysis (`strength_ratio_history.py` and
+the `κ` parts of the other study scripts) and its text (`README.md`, `coupling_findings.md`).
 
 ## 2. Wall treatment of the transfer (`1e02b236`, `36bb75ad`, `1fc5ecb0`, `3f3aa6eb`)
 

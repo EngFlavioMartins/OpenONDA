@@ -317,16 +317,6 @@ def coupled_families(runs):
             )
             for name, particle_step in (("A", 0.032), ("XP", 0.04))
         },
-        # Strength-ratio limit kappa_max at each number of FVM substeps
-        "KAPPA": (
-            "max_strength_ratio",
-            [
-                run
-                for run in runs
-                if at_baseline(run, "max_strength_ratio", "fvm_substeps")
-                and np.isclose(run["fvm_time_step"], FVM_TIME_STEP)
-            ],
-        ),
         # Blending depths delta_0 and delta_1 below the transfer surface
         "BL": ("blend_end", [run for run in runs if at_baseline(run, "blend_start", "blend_end")]),
         "K": (

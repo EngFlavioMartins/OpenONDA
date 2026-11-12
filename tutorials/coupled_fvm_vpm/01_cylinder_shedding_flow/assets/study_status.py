@@ -69,7 +69,6 @@ def status(directory):
         converged = np.mean([r.get("coupling_iteration", {}).get("converged", True) for r in records])
         if converged < 0.9:
             row["flags"].append(f"converged {100 * converged:.0f}%")
-        row["kappa"] = np.median([r["transfer"]["strength_ratio"] for r in records if "transfer" in r])
         row["particles"] = records[-1].get("transfer", {}).get("n_particles_after", 0)
         times = [r["time"] for r in records]
         if len(times) > 1:
@@ -80,7 +79,7 @@ def status(directory):
 def main():
     # A trailing separator matches directories only
     directories = sorted(STUDY_DIR.glob("box*/"))
-    print(f"{'run':52s} {'t [s]':>7s} {'s/s':>6s} {'N_p':>7s} {'kappa':>6s} {'mismatch':>9s}  flags")
+    print(f"{'run':52s} {'t [s]':>7s} {'s/s':>6s} {'N_p':>7s} {'mismatch':>9s}  flags")
     for directory in directories:
         row = status(directory)
         if "state" in row:
@@ -92,7 +91,7 @@ def main():
             flags.append(f"no output for {row['age'] / 3600:.1f} h")
         print(
             f"{row['run']:52s} {row['time']:7.2f} {row.get('cost', np.nan):6.1f} "
-            f"{row.get('particles', 0):7.0f} {row.get('kappa', np.nan):6.2f} "
+            f"{row.get('particles', 0):7.0f} "
             f"{row.get('mismatch', np.nan):9.2e}  {'; '.join(flags)}"
         )
 

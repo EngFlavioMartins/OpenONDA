@@ -27,7 +27,6 @@ from setup import FVM_SUBSTEPS
 from setup import (
     FVM_OUTER_CORRECTORS,
     FVM_TIME_STEP,
-    MAX_STRENGTH_RATIO,
     MOMENT_CORRECTION_FRACTION,
 )
 from setup import REYNOLDS_NUMBER, TRANSFER_INSET, TRANSFER_REMOVAL_THRESHOLD, VORTICITY_FLOOR
@@ -58,7 +57,6 @@ BASELINE = {
     "fvm_time_step": FVM_TIME_STEP,
     "particle_spacing": CELL_SIZE,
     "interface_cell_size": CELL_SIZE,  # m
-    "max_strength_ratio": MAX_STRENGTH_RATIO,
     "blend_start": float(BLEND_START),  # cells below the transfer surface
     "blend_end": float(BLEND_END),  # cells below the transfer surface
     "transfer_removal_threshold": TRANSFER_REMOVAL_THRESHOLD,  # 1/s
@@ -88,7 +86,6 @@ RUN_NAME = re.compile(
     r"(?:_ic(?P<interface_cell_size>[^_]+))?"
     r"(?:_hp(?P<particle_spacing>[^_]+))?"
     r"(?:_bs(?P<blend_start>[\d.]+))?(?:_be(?P<blend_end>[\d.]+))?"
-    r"(?:_kappa(?P<max_strength_ratio>[\d.]+))?"
     r"(?:_tau(?P<transfer_removal_threshold>[\d.]+))?"
     r"(?:_mc(?P<moment_correction_fraction>[\d.]+))?"
     r"(?:_(?P<vpm_integrator>rk2|ssprk3|rk4))?(?:_vf(?P<vorticity_floor>[\d.]+))?"
@@ -200,12 +197,7 @@ def no_errors():
 
 
 def coupling_step_statistics(path):
-    """Wall time per flow time, coupling iterations, residuals and transfer limits of developed steps.
-
-    The strength ratio kappa is the largest limited lattice strength over the peak target strength
-    of a transfer; a transfer at its limit kappa_max (within 0.5%) has had its strength correction
-    cut back near the wall.
-    """
+    """Wall time per flow time, coupling iterations, residuals and boundary mismatch of developed steps."""
     records = jsonl_records(path)
     coupling_interval = records[1]["time"] - records[0]["time"]
     records = [
@@ -213,16 +205,6 @@ def coupling_step_statistics(path):
         for record in records
         if STATISTICS_WINDOW[0] <= record["time"] <= STATISTICS_WINDOW[1]
     ]
-    kappa_max = next(
-        (
-            json.loads(metadata.read_text())["configuration"].get("max_strength_ratio", np.nan)
-            for metadata in path.parent.glob("coupler_metadata.json")
-        ),
-        np.nan,
-    )
-    kappa = np.array(
-        [record["transfer"]["strength_ratio"] for record in records if "transfer" in record]
-    )
     mismatch = [
         record["fvm_boundary_data"]["mean_velocity_mismatch"]
         for record in records
@@ -242,9 +224,6 @@ def coupling_step_statistics(path):
         "gradient residual": np.mean([row["normal_gradient_residual"] for row in final])
         if final
         else np.nan,
-        "strength ratio median": np.median(kappa) if kappa.size else np.nan,
-        "strength ratio max": kappa.max() if kappa.size else np.nan,
-        "strength-limit fraction": np.mean(kappa >= 0.995 * kappa_max) if kappa.size else np.nan,
         "boundary mismatch mean": np.mean(mismatch) / FREESTREAM_VELOCITY[0]
         if mismatch
         else np.nan,

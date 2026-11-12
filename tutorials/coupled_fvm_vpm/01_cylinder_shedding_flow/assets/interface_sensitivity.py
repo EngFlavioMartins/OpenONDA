@@ -27,7 +27,6 @@ Writes figures/auxiliary/interface_*.csv and figures/interface_*.pdf/png.
 """
 
 import csv
-import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -53,7 +52,6 @@ SPEED = FREESTREAM_VELOCITY[0]
 WINDOW = (40.0, 55.0)  # s, the statistics window of every run and reference
 SLIDE = 2.5  # s, offset of the sliding windows of the floor
 FLOOR_RUN_END = 95.0  # s, runs reaching this time give the sampling floor
-CAP_FRACTION = 0.995  # a transfer within 0.5 % of kappa_max sits at the strength limit
 RESOLVED = 2.0  # an effect counts when it exceeds this many floor sigmas
 
 STATISTICS = {
@@ -208,9 +206,6 @@ def transfer_indicators(directory):
     """Developed-window means of the per-transfer indicators, the cost and the backend check."""
     path = directory / "solution/coupler_diagnostics.jsonl"
     records = [r for r in jsonl_records(path) if WINDOW[0] <= r["time"] <= WINDOW[1]]
-    configuration = json.loads((directory / "solution/coupler_metadata.json").read_text())
-    kappa_max = configuration["configuration"]["max_strength_ratio"]
-    kappa = np.array([r["transfer"]["strength_ratio"] for r in records if "transfer" in r])
     iterations = [r.get("coupling_iteration", {}) for r in records]
     backends = {
         r["last_induction_image_call"]["mesh"]["finite_evaluation"]["execution_backend"]
@@ -224,12 +219,6 @@ def transfer_indicators(directory):
     )
     times = [r["time"] for r in records]
     return {
-        "kappa_max": kappa_max,
-        "kappa median": np.median(kappa) if kappa.size else np.nan,
-        "kappa max observed": kappa.max() if kappa.size else np.nan,
-        "strength-limit fraction": np.mean(kappa >= CAP_FRACTION * kappa_max)
-        if kappa.size
-        else np.nan,
         "boundary mismatch mean [U]": np.mean(
             [r["fvm_boundary_data"]["mean_velocity_mismatch"] for r in records]
         )
@@ -305,7 +294,7 @@ def panel_definitions():
     """Figure, x label, parameter, log2 axis and (series label, run filter) of every panel.
 
     Each series varies one parameter about the baseline; a panel holds the series of one parameter
-    (for instance kappa_max at N = 5 and at N = 2).
+    (for instance tau_transfer at N = 5 and at N = 2).
     """
     n2 = lambda r: r["fvm_substeps"] == 2 and np.isclose(r["fvm_time_step"], FVM_TIME_STEP)
     return [
@@ -323,10 +312,6 @@ def panel_definitions():
             ("own reference", lambda r: at_baseline(r, "reynolds_number")),
         ]),
         # I: the interface at a fixed FVM, particle set and interval
-        ("I_transfer", r"$\kappa_{\max}$", "max_strength_ratio", True, [
-            ("$N=5$", lambda r: at_baseline(r, "max_strength_ratio")),
-            ("$N=2$", lambda r: at_baseline(r, "max_strength_ratio", "fvm_substeps") and n2(r)),
-        ]),
         ("I_transfer", r"$\tau_{\rm transfer}$ [1/s]", "transfer_removal_threshold", True, [
             ("$N=5$", lambda r: at_baseline(r, "transfer_removal_threshold")),
             ("$N=2$", lambda r: at_baseline(r, "transfer_removal_threshold", "fvm_substeps") and n2(r)),
@@ -348,9 +333,7 @@ def panel_definitions():
         ]),
         # T: the coupling interval at the baseline FVM step
         ("T", r"$\Delta t_{\rm VPM}$ [s]", "particle_time_step", True, [
-            (r"$\kappa_{\max}=1.8$", lambda r: at_baseline(r, "fvm_substeps")),
-            (r"$\kappa_{\max}=3$", lambda r: at_baseline(r, "fvm_substeps", "max_strength_ratio")
-             and np.isclose(r["max_strength_ratio"], 3.0)),
+            (r"$\Delta t_{\rm FVM}=0.008$ s", lambda r: at_baseline(r, "fvm_substeps")),
         ]),
         # V: the particle side at a fixed FVM and interface
         ("V", r"$h_{\rm VPM}$ [m]", "particle_spacing", True, [
@@ -386,7 +369,7 @@ def panel_definitions():
 
 SHORT_NAMES = {
     "box_margin": "margin", "box_downstream": "downstream face", "reynolds_number": "$Re$",
-    "max_strength_ratio": r"$\kappa_{\max}$", "transfer_removal_threshold": r"$\tau_{\rm transfer}$",
+    "transfer_removal_threshold": r"$\tau_{\rm transfer}$",
     "moment_correction_fraction": "moment cap", "coupling_iterations": "iterations",
     "blend_start": r"$\delta_0$", "blend_end": r"$\delta_1$", "transfer_inset": "inset",
     "particle_time_step": r"$\Delta t_{\rm VPM}$", "particle_spacing": r"$h_{\rm VPM}$",
@@ -395,7 +378,6 @@ SHORT_NAMES = {
     "cell_size": r"$h_{\rm FVM}$", "max_courant": r"$Co_{\max}$",
 }
 SHORT_SERIES = {"downstream face at 4.4 $D$": "(face 4.4)", "downstream face at $m+2D$": "(face $m$+2)",
-                r"$\kappa_{\max}=1.8$": r"($\kappa_{\max}$ 1.8)", r"$\kappa_{\max}=3$": r"($\kappa_{\max}$ 3)",
                 "$N=5$": "($N$=5)", "$N=2$": "($N$=2)"}
 GROUP_OF_FIGURE = {"D": "D", "I_transfer": "I", "I_geometry": "I", "T": "T", "V": "V", "F": "F"}
 SERIES_STYLES = ((COLORS["hybrid"], "o"), (COLORS["fvm"], "s"), (COLORS["vpm"], "^"))
@@ -544,64 +526,6 @@ def clear_labels(axis, levels, baseline, spacing=0.27):
     return set(chosen)
 
 
-def interval_figure(runs, floor):
-    """e_coupling and median kappa against the coupling interval at kappa_max = 1.8 and 3, with the
-    runs at other FVM steps as open markers: the mechanism test of the interval error."""
-    series = [
-        (kappa, [run for run in runs
-                 if at_baseline(run, "fvm_substeps", "fvm_time_step", "max_strength_ratio")
-                 and np.isclose(run["max_strength_ratio"], kappa)], color, marker)
-        for kappa, (color, marker) in zip((1.8, 3.0), SERIES_STYLES)
-    ]
-    if sum(len(members) for _, members, _, _ in series) < 3:
-        return
-    key = "e_coupling [%]"
-    set_thesis_style()
-    quantities = (*STATISTICS, "kappa median")
-    labels = sum(len({run["fvm_time_step"] for run in members}) for _, members, _, _ in series)
-    legend_rows = int(np.ceil(labels / 2))
-    height = 2.2 + 0.7 * legend_rows + 2 * 4.0
-    figure, grid = plt.subplots(2, 2, sharex=True, figsize=(MAX_FIGURE_WIDTH_CM * CM, height * CM))
-    centered_subplots_adjust(figure, outer=0.12, bottom=1.5 / height,
-                             top=1.0 - (0.4 + 0.7 * legend_rows) / height, wspace=0.42, hspace=0.12)
-    axes = grid.ravel()
-    handles = {}
-    for kappa, members, color, marker in series:
-        for step in sorted({run["fvm_time_step"] for run in members}, reverse=True):
-            chosen = sorted([run for run in members if np.isclose(run["fvm_time_step"], step)],
-                            key=lambda run: run["particle_time_step"])
-            main = np.isclose(step, FVM_TIME_STEP)
-            for axis, quantity in zip(axes, quantities):
-                line = axis.errorbar(
-                    [run["particle_time_step"] for run in chosen],
-                    [run[f"{quantity} {key}"] if quantity in STATISTICS else run[quantity] for run in chosen],
-                    yerr=floor[quantity]["sigma"] if quantity in STATISTICS else None,
-                    color=color, marker=marker, markersize=MARKER_SIZE,
-                    markerfacecolor=color if main else "white", linewidth=LINE_WIDTH if main else 0.0, capsize=2.0,
-                )
-            label = rf"$\kappa_{{\max}}={kappa:g}$, $\Delta t_{{\rm FVM}}={step:g}$ s"
-            handles.setdefault(label, line)
-        axes[-1].axhline(kappa, color=color, linewidth=0.5 * LINE_WIDTH, linestyle=":")
-    for axis, quantity in zip(axes, STATISTICS):
-        axis.axhline(0.0, **REFERENCE_STYLE)
-        axis.set_ylabel(STATISTICS[quantity] + " " + r"$e_{\rm coupling}$ [\%]")
-    axes[-1].set_ylabel(r"median $\kappa$")
-    steps = sorted({run["particle_time_step"] for _, members, _, _ in series for run in members})
-    for axis in grid[-1]:
-        axis.set_xscale("log", base=2)
-        axis.set_xlim(min(steps) / 1.3, max(steps) * 1.3)
-        axis.set_xticks(steps)
-        axis.set_xticks([], minor=True)
-        shown = clear_labels(axis, steps, FVM_SUBSTEPS * FVM_TIME_STEP, spacing=0.12)
-        axis.set_xticklabels([f"{step:g}" if step in shown else "" for step in steps])
-        axis.set_xlabel(r"coupling interval $\Delta t_{\rm VPM}$ [s]")
-    for axis in axes:
-        axis.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
-    figure.legend(list(handles.values()), list(handles), loc="upper center", ncol=2, frameon=False)
-    fit_thesis_y_label_margins(figure, figure.axes)
-    save_validation_figure(figure, FIGURES / "interface_interval_mechanism")
-
-
 def ranking_figure(ranking, floor):
     """Range of e_coupling of every series with two or more levels against the 2-sigma floor."""
     ranking = [row for row in ranking if row["levels"] > 1]
@@ -650,7 +574,6 @@ def main():
         flag = "" if run["image backend"] == "cupy_cuda" and run["memory fallbacks"] == 0 else "  CHECK BACKEND"
         print(
             f"  {run['name']:52s} " + " ".join(f"{run[f'{n} e_coupling [%]']:+7.3f}" for n in STATISTICS)
-            + f"  kappa {run['kappa median']:.2f} ({100 * run['strength-limit fraction']:.0f}% at limit)"
             + f"  mismatch {run['boundary mismatch mean [U]']:.2e}  vs {run['reference']}{flag}"
         )
 
@@ -700,7 +623,6 @@ def main():
     for name, panels in figures.items():
         if name != "T":
             group_figure(name, panels, floor)
-    interval_figure(runs, floor)
     ranking_figure(ranking, floor)
 
 
