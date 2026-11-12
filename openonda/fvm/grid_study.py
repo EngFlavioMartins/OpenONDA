@@ -201,7 +201,7 @@ def analyse_grid_study(samples_root: str | Path, output_root: str | Path) -> dic
 
     spacing = [float(grid["cell_size"]) for grid in grids]
     convergence = {}
-    for metric in ("mean_drag", "rms_drag", "rms_lift", "rms_side", "strouhal"):
+    for metric in ("mean_drag", "rms_drag", "rms_lift", "rms_side", "lift_frequency"):
         values = [grid["forces"][metric] for grid in grids]
         if all(value is not None for value in values[-3:]):
             convergence[metric] = _convergence([float(value) for value in values], spacing)
@@ -243,7 +243,9 @@ def analyse_grid_study(samples_root: str | Path, output_root: str | Path) -> dic
     )
     with (output_root / "grid_study.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(("case", "cell_size", "cell_count", "mean_drag", "rms_lift", "strouhal"))
+        writer.writerow(
+            ("case", "cell_size", "cell_count", "mean_drag", "rms_lift", "lift_frequency")
+        )
         for grid in grids:
             writer.writerow(
                 (
@@ -252,7 +254,7 @@ def analyse_grid_study(samples_root: str | Path, output_root: str | Path) -> dic
                     grid["cell_count"],
                     grid["forces"]["mean_drag"],
                     grid["forces"]["rms_lift"],
-                    grid["forces"]["strouhal"],
+                    grid["forces"]["lift_frequency"],
                 )
             )
     drag = convergence.get("mean_drag", {})
@@ -261,15 +263,15 @@ def analyse_grid_study(samples_root: str | Path, output_root: str | Path) -> dic
         "",
         f"Common statistics window: `{start:g} <= t <= {end:g}`.",
         "",
-        "| Case | h/D | Cells | Mean Cd | RMS Cl | St |",
+        "| Case | h/D | Cells | Mean Cd | RMS Cl | f [Hz] |",
         "|---|---:|---:|---:|---:|---:|",
     ]
     for grid in grids:
         force = grid["forces"]
-        st = "n/a" if force["strouhal"] is None else f"{force['strouhal']:.6g}"
+        frequency = "n/a" if force["lift_frequency"] is None else f"{force['lift_frequency']:.6g}"
         markdown.append(
             f"| {grid['case']} | {grid['cell_size']:.8g} | {grid['cell_count']:,} | "
-            f"{force['mean_drag']:.8g} | {force['rms_lift']:.8g} | {st} |"
+            f"{force['mean_drag']:.8g} | {force['rms_lift']:.8g} | {frequency} |"
         )
     markdown.extend(
         [
