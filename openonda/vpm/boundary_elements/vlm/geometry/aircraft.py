@@ -130,16 +130,25 @@ class Wing:
 
     @property
     def span(self) -> float:
-        """Approximate wing span."""
+        """Extent of the wing across its mean chord, excluding symmetry, in m.
+
+        The spanwise direction is the mean quarter-chord (bound-leg) direction
+        with its component along the mean chord removed, so sweep does not
+        lengthen the span and the wing may lie along any axis.
+        """
         if not self.segments:
             return 0.0
-
-        y_coords = []
-        for seg in self.segments.values():
-            for key in ["a", "b", "c", "d"]:
-                y_coords.append(seg.vertex_position[key][1])
-
-        return max(y_coords) - min(y_coords)
+        vertices = [segment.vertex_position for segment in self.segments.values()]
+        bound = sum(0.75 * (v["b"] - v["a"]) + 0.25 * (v["c"] - v["d"]) for v in vertices)
+        chord = sum((v["d"] - v["a"]) + (v["c"] - v["b"]) for v in vertices)
+        chord_length = np.linalg.norm(chord)
+        if chord_length > 0.0:
+            bound = bound - (bound @ chord) / chord_length**2 * chord
+        bound_length = np.linalg.norm(bound)
+        if bound_length == 0.0:
+            return 0.0
+        extent = [v[key] @ bound / bound_length for v in vertices for key in "abcd"]
+        return float(max(extent) - min(extent))
 
     def add_segment(self, segment: WingSegment) -> None:
         """Add a segment to this wing."""
@@ -224,9 +233,14 @@ class Aircraft:
             weighted_centre / total_vol if total_vol > 1e-10 else np.array([0.0, 0.0, 0.0])
         )
 
+        if not total_area > 0.0 or not max_span > 0.0:
+            raise ValueError(
+                f"Aircraft {self.uid} has reference area {total_area} m² and span "
+                f"{max_span} m; both must be positive"
+            )
         self.refs = {
-            "area": total_area if total_area > 0 else 1.0,
-            "chord": total_area / max_span if max_span > 0 else 1.0,
+            "area": total_area,
+            "chord": total_area / max_span,
             "span": max_span,
             "geometry_centre": geometry_centre,
             "reference_point": geometry_centre.copy(),

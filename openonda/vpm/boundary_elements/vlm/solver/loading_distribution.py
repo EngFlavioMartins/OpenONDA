@@ -79,32 +79,19 @@ class VLMLoadingDistribution:
           original_panel_indices  : np.ndarray (n_spanwise_panels, n_chordwise_panels) of panel flat indices,
           mirrored_panel_indices: np.ndarray (n_spanwise_panels, n_chordwise_panels) | None
         """
-        wing_ranges = vlm_solver._build_wing_panel_ranges()
         n_panels = vlm_solver.lattice.n_panels
         panel_segment_id = vlm_solver.lattice.segment_id.to_numpy()[:n_panels]
-
-        # select wings for this surface (single- or multi-surface)
-        # single-surface: aircraft.uid == surface_name, wing UIDs are bare
-        # multi-surface:  aircraft.uid == "combined", wing UIDs are "{surface_name}_{wing_uid}"
-        is_multi_surface = vlm_solver.aircraft.uid == "combined"
-        selected_wings = {}
-        for uid, wing in vlm_solver.aircraft.wings.items():
-            if is_multi_surface:
-                match = uid.startswith(surface_name + "_")
-            else:
-                match = surface_name in vlm_solver.surfaces
-            if match and uid in wing_ranges:
-                selected_wings[uid] = wing
+        surface_panels = vlm_solver._surface_panels[surface_name]
 
         surface_blocks: list[dict] = []
         global_segment_id = 0  # sequential segment ID across all wings of the aircraft
+        wing_panel_start = 0
         for wing_uid, wing in vlm_solver.aircraft.wings.items():
+            is_selected = surface_panels.start <= wing_panel_start < surface_panels.stop
             for local_segment_id, (segment_uid, segment) in enumerate(wing.segments.items()):
                 n_chordwise_panels = segment.n_chordwise_panels
                 n_spanwise_panels = segment.n_spanwise_panels
-                is_selected = wing_uid in selected_wings
                 if is_selected:
-                    wing_panel_start = wing_ranges[wing_uid][0]
                     # cursor inside this wing
                     cursor = wing_panel_start
                     for _prev_seg_uid, prev_seg in wing.segments.items():
@@ -151,6 +138,12 @@ class VLMLoadingDistribution:
                         }
                     )
                 global_segment_id += 1
+            wing_panel_start += sum(
+                segment.n_chordwise_panels
+                * segment.n_spanwise_panels
+                * (2 if wing.symmetry > 0 else 1)
+                for segment in wing.segments.values()
+            )
 
         return surface_blocks
 

@@ -76,6 +76,31 @@ class SurfaceTransform(TypedDict):
     rotation_centre: tuple[float, float, float] | None
 
 
+# Lattice fields that move rigidly with their surface.
+_GEOMETRY_FIELDS = (
+    "panel_corner_position",
+    "vortex_point_position",
+    "collocation_point",
+    "bound_vortex_midpoint",
+    "normal",
+)
+
+
+def _map_rigidly(geometry: dict[str, np.ndarray], pose: RigidPose, panels: slice) -> None:
+    """Map one panel slice of float64 lattice geometry through ``pose`` in place."""
+    for name in _GEOMETRY_FIELDS[:-1]:
+        values = geometry[name][panels]
+        geometry[name][panels] = pose.apply(values.reshape(-1, 3)).reshape(values.shape)
+    geometry["normal"][panels] = geometry["normal"][panels] @ pose.rotation.T
+
+
+def _padded(values: np.ndarray, lattice: VLMLattice) -> np.ndarray:
+    """Return active-panel values padded to the lattice capacity in lattice precision."""
+    padded = np.zeros((lattice.max_n_panels, *values.shape[1:]), dtype=lattice.np_dtype)
+    padded[: len(values)] = values
+    return padded
+
+
 class VLMSolver:
     """
     Vortex Lattice Method solver with VPM coupling support.
@@ -105,6 +130,11 @@ class VLMSolver:
         # Accumulated rigid pose of each surface relative to its placement;
         # the motions are immutable, so the moving state lives here.
         self.surface_poses: dict[str, RigidPose] = {}
+        # Placed lattice geometry in float64, set by generate_mesh; the
+        # current geometry is this reference mapped through surface_poses.
+        self._placed_geometry: dict[str, np.ndarray] = {}
+        # Area-weighted centroid of the placed lattice [m], the moment reference.
+        self._placed_centroid = np.zeros(3)
 
         # Combined aircraft for mesh generation (set by _register_surface)
         self.aircraft: Aircraft
@@ -169,6 +199,8 @@ class VLMSolver:
         # Explicit initialization of optional attributes to avoid AttributeError
         self._surface_transforms: dict[str, SurfaceTransform] = {}
         self._surface_group_ids: dict[str, int] = {}
+        # Contiguous lattice panels of each surface, set by generate_mesh.
+        self._surface_panels: dict[str, slice] = {}
         self._surface_sampling: dict[str, bool] = {}
         self.sample_surface_forces = config.sample_surface_forces
 
@@ -268,8 +300,13 @@ class VLMSolver:
             spanwise_spacing_region=self.config.mesh.region,
         )
 
-        # Apply per-surface transformations AFTER mesh generation
-        self._apply_surface_transforms()
+        # The mesh generator emits the surfaces in registration order.
+        start = 0
+        for name, (aircraft, _) in self.surfaces.items():
+            stop = start + aircraft.total_n_panels()
+            self._surface_panels[name] = slice(start, stop)
+            start = stop
+        self._place_surfaces()
         self.field_settings = BoundSurfaceFieldSettings(
             filament_core_radius=self.lattice.filament_core_radius,
             near_wake_treatment=(
@@ -311,170 +348,65 @@ class VLMSolver:
             ("elapsed", elapsed, "s"),
         )
 
-    def _build_wing_panel_ranges(self) -> dict[str, tuple[int, int]]:
-        """Build mapping from wing UID to panel range indices."""
-        panel_idx = 0
-        wing_panel_ranges = {}
+    def _place_surfaces(self) -> None:
+        """Store the placed lattice as the float64 reference of the surface motion.
 
-        for wing_uid, wing in self.aircraft.wings.items():
-            n_panels_wing = 0
-            for seg in wing.segments.values():
-                n_panels_wing += seg.n_chordwise_panels * seg.n_spanwise_panels
-                if wing.symmetry > 0:
-                    n_panels_wing += seg.n_chordwise_panels * seg.n_spanwise_panels
-            wing_panel_ranges[wing_uid] = (panel_idx, panel_idx + n_panels_wing)
-            panel_idx += n_panels_wing
-
-        return wing_panel_ranges
-
-    def _transform_panel_points(
-        self,
-        panel_corner_position: np.ndarray,
-        vortex_point_position: np.ndarray,
-        collocation_point: np.ndarray,
-        bound_vortex_midpoint: np.ndarray,
-        normal: np.ndarray,
-        start_idx: int,
-        end_idx: int,
-        rotation_matrix: np.ndarray,
-        translation: np.ndarray,
-        rotation_centre: np.ndarray,
-    ) -> None:
-        """Apply transformation to a range of panels (vectorized)."""
-        # Transform panel_corner_position and vortex points (shape: [n_panels, 4, 3])
-        for j in range(4):
-            # Vectorized transformation
-            panel_corner_offset = panel_corner_position[start_idx:end_idx, j] - rotation_centre
-            panel_corner_position[start_idx:end_idx, j] = (
-                (rotation_matrix @ panel_corner_offset.T).T + rotation_centre + translation
-            )
-
-            vortex_point_offset = vortex_point_position[start_idx:end_idx, j] - rotation_centre
-            vortex_point_position[start_idx:end_idx, j] = (
-                (rotation_matrix @ vortex_point_offset.T).T + rotation_centre + translation
-            )
-
-        # Transform collocation_point and bound midpoints
-        collocation_offset = collocation_point[start_idx:end_idx] - rotation_centre
-        collocation_point[start_idx:end_idx] = (
-            (rotation_matrix @ collocation_offset.T).T + rotation_centre + translation
-        )
-
-        bound_vortex_offset = bound_vortex_midpoint[start_idx:end_idx] - rotation_centre
-        bound_vortex_midpoint[start_idx:end_idx] = (
-            (rotation_matrix @ bound_vortex_offset.T).T + rotation_centre + translation
-        )
-
-        # Rotate normal (no translation)
-        normal[start_idx:end_idx] = (rotation_matrix @ normal[start_idx:end_idx].T).T
-
-    def _write_lattice_arrays(
-        self,
-        n_panels: int,
-        panel_corner_position: np.ndarray,
-        vortex_point_position: np.ndarray,
-        collocation_point: np.ndarray,
-        bound_vortex_midpoint: np.ndarray,
-        normal: np.ndarray,
-    ) -> None:
-        """Write numpy arrays back to GPU lattice."""
-        for field, values in (
-            (self.lattice.panel_corner_position, panel_corner_position),
-            (self.lattice.vortex_point_position, vortex_point_position),
-            (self.lattice.collocation_point, collocation_point),
-            (self.lattice.bound_vortex_midpoint, bound_vortex_midpoint),
-            (self.lattice.normal, normal),
-        ):
-            padded = field.to_numpy()
-            padded[:n_panels] = values
-            field.from_numpy(padded)
-
-    def _apply_transform_to_surface(
-        self,
-        surface_name: str,
-        transform: SurfaceTransform,
-        wing_panel_ranges: dict[str, tuple[int, int]],
-        panel_corner_position: np.ndarray,
-        vortex_point_position: np.ndarray,
-        collocation_point: np.ndarray,
-        bound_vortex_midpoint: np.ndarray,
-        normal: np.ndarray,
-    ) -> None:
-        """Apply a single surface transform to matching wings."""
-        if transform["rotation_degrees"] is None and transform["translation"] is None:
-            return
-
-        rotation_matrix = self._build_rotation_matrix(transform["rotation_degrees"])
-        translation = (
-            np.array(transform["translation"])
-            if transform["translation"] is not None
-            else np.zeros(3)
-        )
-        rotation_centre = (
-            np.array(transform["rotation_centre"])
-            if transform["rotation_centre"] is not None
-            else np.zeros(3)
-        )
-
-        # Find which wings belong to this surface and transform them
-        for wing_uid, (start_idx, end_idx) in wing_panel_ranges.items():
-            if len(self.surfaces) == 1 or wing_uid.startswith(surface_name + "_"):
-                self._transform_panel_points(
-                    panel_corner_position,
-                    vortex_point_position,
-                    collocation_point,
-                    bound_vortex_midpoint,
-                    normal,
-                    start_idx,
-                    end_idx,
-                    rotation_matrix,
-                    translation,
-                    rotation_centre,
-                )
-
-    def _apply_surface_transforms(self) -> None:
+        Every later geometry is this reference mapped through the surface
+        pose, so the lattice stays a rigid image of the placed surface for
+        any number of steps.
         """
-        Apply stored transformations to lattice points per-surface.
-
-        This is called after mesh generation to position each surface correctly.
-        """
-        if not any(
-            value["rotation_degrees"] is not None or value["translation"] is not None
-            for value in self._surface_transforms.values()
-        ):
-            return
-
-        wing_panel_ranges = self._build_wing_panel_ranges()
-
-        # Get lattice arrays (must be numpy for modification)
         n_panels = self.lattice.n_panels
-        panel_corner_position = self.lattice.panel_corner_position.to_numpy()[:n_panels]
-        vortex_point_position = self.lattice.vortex_point_position.to_numpy()[:n_panels]
-        collocation_point = self.lattice.collocation_point.to_numpy()[:n_panels]
-        bound_vortex_midpoint = self.lattice.bound_vortex_midpoint.to_numpy()[:n_panels]
-        normal = self.lattice.normal.to_numpy()[:n_panels]
-
-        # Apply each surface transformation
+        geometry = {
+            name: getattr(self.lattice, name).to_numpy()[:n_panels].astype(np.float64)
+            for name in _GEOMETRY_FIELDS
+        }
         for surface_name, transform in self._surface_transforms.items():
-            self._apply_transform_to_surface(
-                surface_name,
-                transform,
-                wing_panel_ranges,
-                panel_corner_position,
-                vortex_point_position,
-                collocation_point,
-                bound_vortex_midpoint,
-                normal,
+            if transform["rotation_degrees"] is None and transform["translation"] is None:
+                continue
+            rotation = self._build_rotation_matrix(transform["rotation_degrees"])
+            translation = (
+                np.zeros(3) if transform["translation"] is None else transform["translation"]
             )
-
-        self._write_lattice_arrays(
-            n_panels,
-            panel_corner_position,
-            vortex_point_position,
-            collocation_point,
-            bound_vortex_midpoint,
-            normal,
+            centre = (
+                np.zeros(3)
+                if transform["rotation_centre"] is None
+                else np.asarray(transform["rotation_centre"], dtype=np.float64)
+            )
+            # x -> R (x - c) + c + t as one rigid pose.
+            placement = RigidPose(rotation, centre + translation - rotation @ centre)
+            _map_rigidly(geometry, placement, self._surface_panels[surface_name])
+        self._placed_geometry = geometry
+        self._placed_centroid = np.average(
+            geometry["panel_corner_position"].mean(axis=1),
+            axis=0,
+            weights=self.lattice.area.to_numpy()[:n_panels],
         )
+        self._write_geometry(geometry)
+
+    def _surface_geometry(self, poses: dict[str, RigidPose]) -> dict[str, np.ndarray]:
+        """Return the float64 lattice geometry with each surface at ``poses``.
+
+        The far trailing points are not body geometry: the last solve aligns
+        them with the flow. Each far leg of the accepted lattice is turned
+        with its surface from the accepted pose to the requested one.
+        """
+        n_panels = self.lattice.n_panels
+        geometry = {name: values.copy() for name, values in self._placed_geometry.items()}
+        vortex = self.lattice.vortex_point_position.to_numpy()[:n_panels].astype(np.float64)
+        far_legs = vortex[:, [0, 3]] - vortex[:, [1, 2]]
+        for name, pose in poses.items():
+            panels = self._surface_panels[name]
+            _map_rigidly(geometry, pose, panels)
+            turn = pose.rotation @ self.surface_poses[name].rotation.T
+            far_legs[panels] = far_legs[panels] @ turn.T
+        bound = geometry["vortex_point_position"][:, [1, 2]]
+        geometry["vortex_point_position"][:, [0, 3]] = bound + far_legs
+        return geometry
+
+    def _write_geometry(self, geometry: dict[str, np.ndarray]) -> None:
+        """Upload float64 geometry arrays of the active panels to the lattice fields."""
+        for name, values in geometry.items():
+            getattr(self.lattice, name).from_numpy(_padded(values, self.lattice))
 
     def _build_rotation_matrix(self, rotation_degrees: Sequence[float] | None) -> np.ndarray:
         """Build 3x3 rotation matrix from [rx, ry, rz] angles in degrees."""
@@ -562,38 +494,9 @@ class VLMSolver:
         Returns:
              np.ndarray: Array of shape (n_panels,) with group ID for each panel.
         """
-        if self._lattice is None:
-            return np.zeros(0, dtype=np.int32)
-
-        n_panels = self.lattice.n_panels
-        group_id = np.zeros(n_panels, dtype=np.int32)
-
-        if not self._surface_group_ids:
-            return group_id
-
-        wing_ranges = self._build_wing_panel_ranges()
-
-        # Map panels to surfaces
-        # This relies on the convention that combined wings are named "{surface}_{wing}"
-        # or exactly "{surface}" if single wing.
-
+        group_id = np.zeros(self.lattice.n_panels, dtype=np.int32)
         for surface_name, gid in self._surface_group_ids.items():
-            # Find all wings belonging to this surface
-            for wing_uid, (start, end) in wing_ranges.items():
-                # Check for match.
-                # Wing UID in combined aircraft is constructed as f"{name}_{wing_uid}" in _update_combined_aircraft
-                # But careful: if user names surface "wing" and original wing is "wing_0", combined is "wing_wing_0".
-
-                # More robust check:
-                # If single surface mode: keys are just original wing UIDs.
-                if len(self.surfaces) == 1:
-                    # All panels belong to the single surface
-                    group_id[start:end] = gid
-                else:
-                    # Multi-surface mode: keys are f"{surface_name}_{original_wing_uid}"
-                    if wing_uid.startswith(f"{surface_name}_"):
-                        group_id[start:end] = gid
-
+            group_id[self._surface_panels[surface_name]] = gid
         return group_id
 
     def ensure_mesh_generated(self) -> None:
@@ -654,25 +557,11 @@ class VLMSolver:
         rotation_centre = self.surface_rotation_centre(surface_name)
         rotation_axis = np.asarray(kinematics.rotation_axis)
         collocation_point = self.lattice.get_collocation_points()
-        wing_panel_ranges = self._build_wing_panel_ranges()
-        surface_prefix = f"{surface_name}_" if len(self.surfaces) > 1 else ""
-        maximum_tip_speed = 0.0
-        for wing_uid, (panel_start, panel_end) in wing_panel_ranges.items():
-            if not (
-                len(self.surfaces) == 1
-                or wing_uid.startswith(surface_prefix)
-                or wing_uid == surface_name
-            ):
-                continue
-            radial_position = collocation_point[panel_start:panel_end] - rotation_centre
-            axial_position = np.outer(radial_position @ rotation_axis, rotation_axis)
-            radial_position -= axial_position
-            max_radial_distance = (
-                np.max(np.linalg.norm(radial_position, axis=1)) if len(radial_position) > 0 else 0.0
-            )
-            maximum_tip_speed = max(
-                maximum_tip_speed, angular_speed_magnitude * max_radial_distance
-            )
+        radial_position = collocation_point[self._surface_panels[surface_name]] - rotation_centre
+        radial_position -= np.outer(radial_position @ rotation_axis, rotation_axis)
+        maximum_tip_speed = angular_speed_magnitude * float(
+            np.max(np.linalg.norm(radial_position, axis=1), initial=0.0)
+        )
         return rotation_axis * maximum_tip_speed, maximum_tip_speed
 
     def _get_active_kinematic_velocity(self) -> np.ndarray:
@@ -717,15 +606,6 @@ class VLMSolver:
         kinematic_velocity = self._get_active_kinematic_velocity()
         return float(np.linalg.norm(kinematic_velocity))
 
-    def _active_surface_pose(self) -> RigidPose:
-        """Return the pose of the single surface, or of the first moving one."""
-        if len(self.surfaces) == 1:
-            return next(iter(self.surface_poses.values()))
-        for name, (_, kinematics) in self.surfaces.items():
-            if not isinstance(kinematics, StaticMotion):
-                return self.surface_poses[name]
-        return RigidPose()
-
     def update_trailing_directions(self, transport_velocity: np.ndarray) -> None:
         """
         Update trailing edge directions based on transport velocity.
@@ -748,21 +628,6 @@ class VLMSolver:
 
         self._aerodynamic_influence_coefficient_computed = False
 
-    def _find_surface_panel_range(
-        self, surface_name: str, wing_ranges: dict[str, tuple[int, int]], n_panels: int
-    ) -> tuple[int, int] | None:
-        """Return (start, end) panel indices for a surface, or None if not found."""
-        if len(self.surfaces) == 1:
-            return 0, n_panels
-        prefix = f"{surface_name}_"
-        min_start, max_end, found = n_panels, 0, False
-        for w_uid, (w_start, w_end) in wing_ranges.items():
-            if w_uid.startswith(prefix) or w_uid == surface_name:
-                found = True
-                min_start = min(min_start, w_start)
-                max_end = max(max_end, w_end)
-        return (min_start, max_end) if found else None
-
     def _compute_panel_kinematic_velocity(
         self,
         kinematics: RigidMotion,
@@ -778,28 +643,8 @@ class VLMSolver:
         radial_position = collocation_point[start_idx:end_idx] - rotation_centre
         return translational_velocity + np.cross(angular_velocity, radial_position)
 
-    def _move_surface(
-        self, surface_name: str, time: float, time_step_size: float, start: int, stop: int
-    ) -> None:
-        """Move one surface's panels and pose over ``[time, time + time_step_size]``.
-
-        The increment of the surface motion rotates the panels about the
-        current rotation centre and translates them with that centre.
-        """
-        _, motion = self.surfaces[surface_name]
-        rotation, displacement = motion.increment(time, time_step_size)
-        if np.array_equal(rotation, np.eye(3)):
-            self.lattice.translate_panels(displacement, start, stop)
-        else:
-            self.lattice.rotate_translate_panels(
-                rotation, self.surface_rotation_centre(surface_name), displacement, start, stop
-            )
-        self.surface_poses[surface_name] = advance_pose(
-            motion, self.surface_poses[surface_name], time, time_step_size
-        )
-
     def advance_time(self, time_step_size: float, current_time: float) -> None:
-        """Advance kinematics state and geometry for all surfaces."""
+        """Advance the surface poses to ``current_time`` and map the geometry through them."""
         if not self._mesh_generated:
             self.generate_mesh()
         self._previous_panel_corners = self.lattice.panel_corner_position.to_numpy()[
@@ -810,30 +655,32 @@ class VLMSolver:
         time = self._current_time
         n_panels = self.lattice.n_panels
         kinematic_velocity = np.zeros((n_panels, 3), dtype=np.float64)
-        has_kinematics = False
-        wing_ranges = self._build_wing_panel_ranges()
-        for surface_name, (_aircraft_obj, kinematics) in self.surfaces.items():
-            if isinstance(kinematics, StaticMotion):
-                continue
-            has_kinematics = True
-            panel_range = self._find_surface_panel_range(surface_name, wing_ranges, n_panels)
-            if panel_range is None:
-                continue
-            start_idx, end_idx = panel_range
-            self._move_surface(
-                surface_name, time - time_step_size, time_step_size, start_idx, end_idx
-            )
-            collocation_point = self.lattice.get_collocation_points()
-            kinematic_velocity[start_idx:end_idx] = self._compute_panel_kinematic_velocity(
-                kinematics,
-                self.surface_rotation_centre(surface_name),
-                time,
-                collocation_point,
-                start_idx,
-                end_idx,
-            )
+        moving = {
+            name: motion
+            for name, (_, motion) in self.surfaces.items()
+            if not isinstance(motion, StaticMotion)
+        }
+        if moving:
+            poses = dict(self.surface_poses)
+            for name, motion in moving.items():
+                poses[name] = advance_pose(
+                    motion, poses[name], time - time_step_size, time_step_size
+                )
+            geometry = self._surface_geometry(poses)
+            self.surface_poses.update(poses)
+            self._write_geometry(geometry)
+            for name, motion in moving.items():
+                panels = self._surface_panels[name]
+                kinematic_velocity[panels] = self._compute_panel_kinematic_velocity(
+                    motion,
+                    self.surface_rotation_centre(name),
+                    time,
+                    geometry["collocation_point"],
+                    panels.start,
+                    panels.stop,
+                )
         self.lattice.set_kinematic_velocity(kinematic_velocity)
-        if has_kinematics:
+        if moving:
             self._aerodynamic_influence_coefficient_computed = False
             self._solved = False
 
@@ -1053,49 +900,55 @@ class VLMSolver:
     def _stage_geometry_arrays(self, stage_time: float) -> tuple[np.ndarray, ...]:
         """Return temporary geometry and surface velocity at ``stage_time``.
 
-        The arrays are copies of the last accepted geometry.  Rigid motion is
-        integrated only for the requested stage interval; no accepted lattice
-        coordinate, motion history, or clock is changed.  The same helper is
-        used by stage boundary solves and returns the same moving geometry for
-        every stage query.
+        Each moving surface is placed at its pose advanced from the accepted
+        time to the stage time; no accepted lattice coordinate, pose or clock
+        is changed. Stage boundary solves and stage velocities use the same
+        geometry for one stage time.
         """
         reference_time = self._current_time if self._current_time is not None else 0.0
         duration = float(stage_time) - float(reference_time)
-        arrays = [
-            self.lattice.vortex_point_position.to_numpy().copy(),
-            self.lattice.panel_corner_position.to_numpy().copy(),
-            self.lattice.collocation_point.to_numpy().copy(),
-            self.lattice.normal.to_numpy().copy(),
-        ]
         kinematic = self.lattice.kinematic_velocity.to_numpy().copy()
-        moving = any(not isinstance(motion, StaticMotion) for _, motion in self.surfaces.values())
-        if abs(duration) < 1.0e-14 and not moving:
-            return (*arrays, kinematic)
-
-        ranges = self._build_wing_panel_ranges()
-        for name, (_, motion) in self.surfaces.items():
-            panel_range = self._find_surface_panel_range(name, ranges, self.lattice.n_panels)
-            if panel_range is None or isinstance(motion, StaticMotion):
-                continue
-            start, stop = panel_range
-            centre = self.surface_rotation_centre(name)
-            if abs(duration) >= 1.0e-14:
-                rotation, translation = motion.increment(reference_time, duration)
-                for array in arrays[:3]:
-                    array[start:stop] = (
-                        (array[start:stop] - centre) @ rotation.T + centre + translation
-                    )
-                arrays[3][start:stop] = (rotation @ arrays[3][start:stop].T).T
-                centre = centre + translation
-            kinematic[start:stop] = self._compute_panel_kinematic_velocity(
+        moving = {
+            name: motion
+            for name, (_, motion) in self.surfaces.items()
+            if not isinstance(motion, StaticMotion)
+        }
+        if not moving:
+            return (
+                self.lattice.vortex_point_position.to_numpy().copy(),
+                self.lattice.panel_corner_position.to_numpy().copy(),
+                self.lattice.collocation_point.to_numpy().copy(),
+                self.lattice.normal.to_numpy().copy(),
+                kinematic,
+            )
+        poses = dict(self.surface_poses)
+        if abs(duration) >= 1.0e-14:
+            for name, motion in moving.items():
+                poses[name] = advance_pose(motion, poses[name], reference_time, duration)
+        geometry = self._surface_geometry(poses)
+        for name, motion in moving.items():
+            panels = self._surface_panels[name]
+            centre = poses[name].apply(np.asarray(motion.rotation_centre)[np.newaxis])[0]
+            kinematic[panels] = self._compute_panel_kinematic_velocity(
                 motion,
                 centre,
                 float(stage_time),
-                arrays[2],
-                start,
-                stop,
+                geometry["collocation_point"],
+                panels.start,
+                panels.stop,
             )
-        return (*arrays, kinematic)
+        return (
+            *(
+                _padded(geometry[name], self.lattice)
+                for name in (
+                    "vortex_point_position",
+                    "panel_corner_position",
+                    "collocation_point",
+                    "normal",
+                )
+            ),
+            kinematic,
+        )
 
     def _ensure_stage_geometry_fields(
         self, stage_time: float
@@ -1483,20 +1336,16 @@ class VLMSolver:
         padded[: self.lattice.n_panels] = incident_at_bound
         self.lattice.bound_external_velocity.from_numpy(padded)
         bound_kinematics = np.zeros_like(padded)
-        wing_ranges = self._build_wing_panel_ranges()
         points = self.lattice.bound_vortex_midpoint.to_numpy()[: self.lattice.n_panels]
         for name, (_, motion) in self.surfaces.items():
-            panel_range = self._find_surface_panel_range(name, wing_ranges, self.lattice.n_panels)
-            if panel_range is None:
-                continue
-            start, end = panel_range
-            bound_kinematics[start:end] = self._compute_panel_kinematic_velocity(
+            panels = self._surface_panels[name]
+            bound_kinematics[panels] = self._compute_panel_kinematic_velocity(
                 motion,
                 self.surface_rotation_centre(name),
                 self._current_time or 0.0,
                 points,
-                start,
-                end,
+                panels.start,
+                panels.stop,
             )
         self.lattice.bound_kinematic_velocity.from_numpy(bound_kinematics)
         self.lattice.reference_speed = float(reference_velocity_magnitude)
@@ -1609,9 +1458,12 @@ class VLMSolver:
         bound_vortex_midpoint = self.lattice.bound_vortex_midpoint.to_numpy()[
             : self.lattice.n_panels
         ]
-        pose = self._active_surface_pose()
-        local_reference_point = np.array(self.aircraft.refs.get("reference_point", [0.0, 0.0, 0.0]))
-        reference_point = pose.translation + pose.rotation @ local_reference_point
+        # A single surface carries its placed centroid; several surfaces share
+        # the fixed placed centroid of the whole lattice.
+        reference_point = self._placed_centroid
+        if len(self.surfaces) == 1:
+            pose = next(iter(self.surface_poses.values()))
+            reference_point = pose.apply(reference_point[np.newaxis])[0]
         total_moment = np.sum(
             np.cross(bound_vortex_midpoint - reference_point, panel_force)
             + panel_moment_correction,
@@ -1858,29 +1710,22 @@ class VLMSolver:
         self,
         surface_name: str,
         panel_force: np.ndarray,
-        wing_panel_ranges: dict[str, tuple[int, int]],
         reference_direction: np.ndarray,
         force_normalization: float,
         panel_moment_correction: np.ndarray,
     ) -> dict[str, float]:
         """Compute forces, moment about the current pivot, and fluid-on-body power."""
-        indices = np.concatenate(
-            [
-                np.arange(start, stop)
-                for wing, (start, stop) in wing_panel_ranges.items()
-                if len(self.surfaces) == 1 or wing.startswith(surface_name + "_")
-            ]
-        )
+        panels = self._surface_panels[surface_name]
         _, motion = self.surfaces[surface_name]
         time = self._current_time if self._current_time is not None else 0.0
         centre = self.surface_rotation_centre(surface_name)
-        positions = self.lattice.bound_vortex_midpoint.to_numpy()[indices]
-        forces = panel_force[indices]
-        panel_centers = self.lattice.panel_corner_position.to_numpy()[indices].mean(axis=1)
-        areas = self.lattice.area.to_numpy()[indices]
+        positions = self.lattice.bound_vortex_midpoint.to_numpy()[panels]
+        forces = panel_force[panels]
+        panel_centers = self.lattice.panel_corner_position.to_numpy()[panels].mean(axis=1)
+        areas = self.lattice.area.to_numpy()[panels]
         centroid = np.average(panel_centers, axis=0, weights=areas)
         surface_force = forces.sum(axis=0)
-        moment = (np.cross(positions - centre, forces) + panel_moment_correction[indices]).sum(
+        moment = (np.cross(positions - centre, forces) + panel_moment_correction[panels]).sum(
             axis=0
         )
         translation_velocity = motion.get_velocity(time)
@@ -1893,7 +1738,7 @@ class VLMSolver:
             "drag": drag,
             "lift_coefficient": lift / force_normalization if force_normalization > 1e-10 else 0.0,
             "drag_coefficient": drag / force_normalization if force_normalization > 1e-10 else 0.0,
-            "panel_count": len(indices),
+            "panel_count": panels.stop - panels.start,
             "rotational_power": rotational_power,
             "translational_power": translational_power,
             "power": rotational_power + translational_power,
@@ -1937,7 +1782,6 @@ class VLMSolver:
             reference_velocity, self.lattice.n_panels
         )
         reference_velocity_magnitude = float(np.linalg.norm(reference_velocity))
-        wing_panel_ranges = self._build_wing_panel_ranges()
         dynamic_pressure = 0.5 * density * reference_velocity_magnitude**2
         force_normalization = dynamic_pressure * float(self.aircraft.refs.get("area", 1.0))
         reference_direction = (
@@ -1951,7 +1795,6 @@ class VLMSolver:
             name: self._compute_one_surface_forces(
                 name,
                 panel_force,
-                wing_panel_ranges,
                 reference_direction,
                 force_normalization,
                 moment_correction,
