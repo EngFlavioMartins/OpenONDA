@@ -76,11 +76,8 @@ class MatrixAssemblyWorkspace:
             include_boundaries=include_boundaries,
         )
 
-    def update(
-        self, flux_data: dict[str, object], mesh_data: dict[str, object], *, backend: str = "numpy"
-    ) -> csr_matrix:
+    def update(self, flux_data: dict[str, object], mesh_data: dict[str, object]) -> csr_matrix:
         """Overwrite coefficients and return the stable CSR matrix object."""
-        del backend  # Direct CSR accumulation is backend-independent.
         _fill_matrix_values(
             self.matrix.data,
             self.pattern,
@@ -381,7 +378,7 @@ def assemble_matrix_from_fluxes_vectorized(
     if workspace is not None:
         if workspace.include_boundaries != has_boundaries:
             raise ValueError("Matrix workspace boundary layout does not match the flux arrays")
-        return workspace.update(flux_data, mesh_data, backend=backend)
+        return workspace.update(flux_data, mesh_data)
 
     pattern = _csr_pattern(mesh_data, has_boundaries)
     data = np.zeros(len(pattern.indices), dtype=np.float64)

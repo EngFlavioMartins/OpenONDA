@@ -23,7 +23,6 @@ class BoundaryStrategy(Enum):
     CYCLIC = auto()
     FREESTREAM = auto()
     FIXED_FLUX_PRESSURE = auto()
-    FIXED_GRADIENT = auto()
     MIXED_VELOCITY = auto()
 
 
@@ -180,16 +179,6 @@ BOUNDARIES.register(
         frozenset({"kinematic_pressure"}),
         _ALL_OPERATORS,
         BoundaryStrategy.FIXED_FLUX_PRESSURE,
-        coupling_only=True,
-    )
-)
-
-BOUNDARIES.register(
-    BoundaryOperator(
-        "fixed_gradient",
-        frozenset({"kinematic_pressure"}),
-        _ALL_OPERATORS,
-        BoundaryStrategy.FIXED_GRADIENT,
         coupling_only=True,
     )
 )

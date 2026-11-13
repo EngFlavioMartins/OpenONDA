@@ -56,7 +56,7 @@ def compute_dev2_stress_source(
                           - \tfrac{2}{3} S_{f,j} \,\mathrm{tr}(G_f) \right].
 
     Returns an acceleration ``(n_cells, 3)`` in m/s², i.e. already divided by
-    the cell volume, ready to add to ``source_explicit``.  The term is
+    the cell volume, added to the momentum right-hand side.  The term is
     assembled for every mesh and viscosity, so momentum assembly and reported
     wall traction use the same discrete stress.  Cyclic faces are interior
     faces between the owner and its paired cell.
@@ -153,27 +153,6 @@ def compute_dev2_stress_source(
 
     source /= geo_data["cell_volume"][:, np.newaxis]
     return source
-
-
-def _make_momentum_boundary(b: dict, i_comp: int) -> dict:
-    """Create per-component momentum boundary dict from velocity boundary.
-
-    Args:
-        b: Velocity boundary dictionary containing ``velocity_type`` and
-            optionally ``velocity_value``.
-        i_comp: Component index (0, 1, 2 for x, y, z).
-
-    Returns:
-        dict: Momentum boundary dictionary with ``boundary_condition_type`` and ``value``
-            keys extracted for the specified component.
-    """
-    b_mom = b.copy()
-    if "velocity_type" in b:
-        b_mom["boundary_condition_type"] = b["velocity_type"]
-    if "velocity_value" in b:
-        val = b["velocity_value"]
-        b_mom["value"] = val[i_comp] if (np.ndim(val) == 1 and len(val) == 3) else val
-    return b_mom
 
 
 def _apply_empty_bc_ustar(
@@ -292,14 +271,12 @@ def assemble_momentum_equation(
     mesh_data: dict[str, object],
     geo_data: dict[str, object],
     boundaries: list[dict],
-    convection_scheme: str = "deferred",
+    convection_scheme: str,
     time_step_size: float | None = None,
     velocity_old: np.ndarray | None = None,
     velocity_older: np.ndarray | None = None,
     previous_time_step_size: float | None = None,
     ddt_scheme: str = "euler_implicit",
-    source_explicit: np.ndarray | None = None,
-    source_implicit: np.ndarray | None = None,
     matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
     operator_backend: str = "numpy",
 ) -> dict[str, dict[str, object]]:
@@ -322,12 +299,6 @@ def assemble_momentum_equation(
         time_step_size: Time step size (optional)
         velocity_old: Previous time step velocity (optional, for transient term)
         previous_time_step_size: Preceding accepted step size for variable-step BDF2.
-        source_explicit: Optional acceleration source Su [m/s²], shape
-            ``(n_cells, 3)``. Added to the RHS as ``Su * V`` for each
-            component (e.g. body acceleration or MMS forcing).
-        source_implicit: Optional implicit volumetric source coefficient Sp
-            [1/s], shape ``(n_cells,)``. Added to the diagonal as ``Sp * V``
-            Must be >= 0 to preserve diagonal dominance.
 
     Returns:
         dict: For each component (x, y, z):
@@ -410,8 +381,6 @@ def assemble_momentum_equation(
             velocity_gradient[:, :, i_comp] if velocity_gradient.ndim == 3 else velocity_gradient
         )  # (n_cells, 3) or full
 
-        momentum_boundaries = [_make_momentum_boundary(b, i_comp) for b in boundaries]
-
         # 1. Diffusion term: ∇·(ν∇velocity)
         diff_flux = diffusion.assemble_diffusion_term(
             velocity_component,
@@ -419,7 +388,7 @@ def assemble_momentum_equation(
             kinematic_viscosity,
             mesh_data,
             geo_data,
-            momentum_boundaries,
+            boundaries,
             volumetric_face_flux=volumetric_face_flux,
             vector_field=velocity,
             component=i_comp,
@@ -478,10 +447,6 @@ def assemble_momentum_equation(
                     transient_factor = 1.0
                 transient_diagonal = transient_factor * vol / time_step_size
                 assembled_matrix.setdiag(assembled_matrix.diagonal() + transient_diagonal)
-            if source_implicit is not None:
-                assembled_matrix.setdiag(
-                    assembled_matrix.diagonal() + source_implicit[:n_cells] * vol
-                )
             if has_directional_mixed_bc:
                 A = assembled_matrix
                 equation_diagonal = A.diagonal()
@@ -533,11 +498,6 @@ def assemble_momentum_equation(
             else:
                 b += coefficient * old_component
 
-        # 6b. Generic acceleration source terms: S = Su + Sp·velocity.
-        #     Su → RHS (+Su·V); Sp → diagonal (+Sp·V), keeping velocity implicit.
-        #     Used by MMS forcing and other solver-owned source models.
-        if source_explicit is not None:
-            b += source_explicit[:n_cells, i_comp] * vol
         results[comp_name] = {
             "A": A,
             "b": b,
@@ -560,7 +520,7 @@ def solve_momentum_predictor(
     mesh_data: dict[str, object],
     geo_data: dict[str, object],
     boundaries: list[dict],
-    convection_scheme: str = "deferred",
+    convection_scheme: str,
     solver: str = "spsolve",
     under_relaxation: float = 0.7,
     time_step_size: float | None = None,
@@ -568,8 +528,6 @@ def solve_momentum_predictor(
     velocity_older: np.ndarray | None = None,
     previous_time_step_size: float | None = None,
     ddt_scheme: str = "euler_implicit",
-    source_explicit: np.ndarray | None = None,
-    source_implicit: np.ndarray | None = None,
     return_diagnostics: bool = False,
     return_operator: bool = False,
     **solver_kwargs: object,
@@ -577,8 +535,7 @@ def solve_momentum_predictor(
     """Assemble and solve the three momentum predictors.
 
     Returns the predicted cell-and-boundary velocity and relaxed cell
-    diagonals used by the pressure correction. ``source_explicit`` has shape
-    ``(n_cells, 3)`` and ``source_implicit`` has shape ``(n_cells,)``.
+    diagonals used by the pressure correction.
     With ``return_diagnostics`` the per-component linear-solve diagnostics
     follow; with ``return_operator`` the relaxed momentum matrices, keyed by
     ``"x"``, ``"y"`` and ``"z"``, come last. PISO correctors use them to
@@ -606,8 +563,6 @@ def solve_momentum_predictor(
         velocity_older=velocity_older,
         previous_time_step_size=previous_time_step_size,
         ddt_scheme=ddt_scheme,
-        source_explicit=source_explicit,
-        source_implicit=source_implicit,
         matrix_workspace=matrix_workspace,
         operator_backend=operator_backend,
     )

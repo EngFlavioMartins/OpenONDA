@@ -60,7 +60,6 @@ class PIMPLESolver:
             "velocity_relaxation": 1.0,
             "pressure_relaxation": 1.0,
             "momentum_tolerance": 1e-4,
-            "convection_scheme": "deferred",
             "linear_solver": "spsolve",
         }
         if params:
@@ -127,8 +126,6 @@ class PIMPLESolver:
         density: float = 1.0,
         kinematic_viscosity: float | np.ndarray = 0.01,
         velocity_older: np.ndarray | None = None,
-        source_explicit: np.ndarray | None = None,
-        source_implicit: np.ndarray | None = None,
         volumetric_face_flux_old: np.ndarray | None = None,
         volumetric_face_flux_older: np.ndarray | None = None,
         previous_time_step_size: float | None = None,
@@ -149,8 +146,6 @@ class PIMPLESolver:
                 after BDF2 startup.
             previous_time_step_size: Preceding accepted step size [s], required
                 with ``velocity_older`` for variable-step BDF2.
-            source_explicit: Explicit acceleration source [m/s²].
-            source_implicit: Non-negative implicit source coefficient [1/s].
             mesh_face_flux: Face flux swept by a moving mesh, ``u_mesh . Sf``
                 [m³/s], on the end-of-step geometry. Momentum is convected and
                 inflow/outflow faces are selected with ``phi - mesh_face_flux``;
@@ -288,7 +283,6 @@ class PIMPLESolver:
             )
 
             def _solve_predictor(
-                src_explicit,
                 volumetric_face_flux=(
                     volumetric_face_flux
                     if mesh_face_flux is None
@@ -315,8 +309,6 @@ class PIMPLESolver:
                     velocity_older=velocity_older,
                     previous_time_step_size=previous_time_step_size,
                     ddt_scheme=ddt_scheme,
-                    source_explicit=src_explicit,
-                    source_implicit=source_implicit,
                     momentum_preconditioner=self.params.get("momentum_preconditioner", "dilu"),
                     reuse_ilu=self.params.get("reuse_ilu", False),
                     ilu_key=self.params.get("ilu_key", None),
@@ -342,7 +334,7 @@ class PIMPLESolver:
 
             section_start = perf_counter()
             velocity_star, momentum_diagonal, momentum_diagnostics, momentum_operator = (
-                _solve_predictor(source_explicit)
+                _solve_predictor()
             )
             # Pressure assembly reuses the momentum CSR storage; later PISO
             # correctors need their own copy of the relaxed momentum matrix.

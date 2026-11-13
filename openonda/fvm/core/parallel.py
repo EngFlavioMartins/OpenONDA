@@ -157,11 +157,6 @@ class ParallelContext:
         return self.size > 1
 
     @property
-    def owns_replicated_output(self) -> bool:
-        """Only rank zero exposes replicated fields to external consumers."""
-        return self.is_root
-
-    @property
     def is_partitioned(self) -> bool:
         """Whether fields use local owned-plus-halo PETSc partitions."""
         return self.mode == "petsc_partitioned"
@@ -327,6 +322,6 @@ class ParallelContext:
         numpy.ndarray
             Contiguous root copy, or an empty array on non-root ranks.
         """
-        if self.owns_replicated_output:
+        if self.is_root:
             return np.ascontiguousarray(values, dtype=np.float64)
         return np.empty((0, *trailing_shape), dtype=np.float64)

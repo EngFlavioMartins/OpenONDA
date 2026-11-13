@@ -601,15 +601,8 @@ class FVMSolver(CouplerInterfaceMixin):
         self._buffered_vtk_writer = None
         self.max_courant_number = 0.0
         # Coupling / driver-split state
-        self.registered_fields: dict[str, np.ndarray] = {}  # named volume fields (fvOptions)
         self._outer_boundary_patch_ids_by_rank: dict[str, Any] = {}
         self._coupling_cell_ids_by_rank: dict[str, Any] = {}
-        self._coupling_consistency_filter = None
-        # Optional conservative field projection applied after the pressure-
-        # velocity solve and before diagnostics, sampling, history commit, and
-        # output. Benchmarks can use this to enforce a known invariant
-        # subspace without bypassing the solver's normal bookkeeping.
-        self._post_solve_state_callback = None
         self._n_committed_time_steps = 0  # number of committed time steps (BDF2 startup check)
         self._accepted_time_step_size = self.time_step_size
         self._previous_time_step_size = self.time_step_size
@@ -643,8 +636,6 @@ class FVMSolver(CouplerInterfaceMixin):
         }
 
         self.logger.solver_configuration(self, perf_counter() - initialization_start)
-
-        from ..solve import simple_solver
 
         simple_solver.update_scalar_boundaries(
             self.kinematic_pressure,
@@ -927,8 +918,6 @@ class FVMSolver(CouplerInterfaceMixin):
             self.velocity_older[:] = self.velocity
 
             from ..assemble import convection
-            from ..solve import simple_solver
-
             self.volumetric_face_flux = convection.compute_volumetric_face_flux(
                 self.velocity, self.mesh_data, self.geo_data
             )
@@ -1020,8 +1009,6 @@ class FVMSolver(CouplerInterfaceMixin):
             from ..assemble import convection
 
             self.kinematic_pressure[:n_cells] = kinematic_pressure
-            from ..solve import simple_solver
-
             self.volumetric_face_flux = convection.compute_volumetric_face_flux(
                 self.velocity, self.mesh_data, self.geo_data
             )
@@ -1088,42 +1075,6 @@ class FVMSolver(CouplerInterfaceMixin):
                 raise FloatingPointError("Turbulence model returned invalid eddy viscosity")
             return self._kinematic_viscosity + self.eddy_viscosity
         return self._kinematic_viscosity
-
-    def _coupling_consistency_source(self) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
-        """Build the resolved-scale VPM-to-FVM relaxation source, if registered.
-
-        The implicit part is ``Sp = rate``. The explicit target retains the
-        current FVM high-pass fluctuation, so only scales representable by the
-        VPM velocity field are relaxed:
-
-        ``S = rate * (target + (U - filter(U))) - rate * U``.
-        """
-        rate_field = "couplingConsistencyRate"
-        target_field = "couplingConsistencyTargetVelocity"
-        rate = self.registered_fields.get(rate_field)
-        target = self.registered_fields.get(target_field)
-        if rate is None and target is None:
-            return None, None
-        if rate is None or target is None:
-            raise RuntimeError(
-                f"Incomplete coupling consistency source: {rate_field} and "
-                f"{target_field} must be registered together"
-            )
-        n_cells = int(self.mesh_data["n_cells"])
-        rate = np.asarray(rate, dtype=np.float64)[:n_cells]
-        target = np.asarray(target, dtype=np.float64)[:n_cells]
-        if rate.shape != (n_cells,) or target.shape != (n_cells, 3):
-            raise RuntimeError("Coupling consistency fields have incompatible cell shapes")
-        if np.any(rate < 0.0) or not np.all(np.isfinite(rate)) or not np.all(np.isfinite(target)):
-            raise RuntimeError("Coupling consistency fields must be finite with non-negative rate")
-
-        if self._coupling_consistency_filter is None:
-            from ..fields.filters import CellBoxFilter
-
-            self._coupling_consistency_filter = CellBoxFilter(self.mesh_data, self.geo_data)
-        velocity = np.asarray(self.velocity, dtype=np.float64)[:n_cells]
-        high_pass_velocity = velocity - self._coupling_consistency_filter(velocity)
-        return rate[:, np.newaxis] * (target + high_pass_velocity), rate
 
     def _ensure_evolution_usable(self) -> None:
         """Reject continuation after a numerical candidate has failed."""
@@ -1265,11 +1216,6 @@ class FVMSolver(CouplerInterfaceMixin):
         # BDF2 needs u^{n-1}; available only once at least one step is committed.
         velocity_older_argument = self.velocity_older if self._n_committed_time_steps >= 1 else None
         try:
-            source_explicit, source_implicit = self._coupling_consistency_source()
-        except BaseException as error:
-            self._mark_evolution_failure(error)
-            raise
-        try:
             self.velocity, self.kinematic_pressure, self.volumetric_face_flux, residuals = (
                 self.algorithm.step(
                     self.velocity,
@@ -1280,8 +1226,6 @@ class FVMSolver(CouplerInterfaceMixin):
                     density=self._configuration.numerics.transport.density,
                     kinematic_viscosity=effective_viscosity,
                     velocity_older=velocity_older_argument,
-                    source_explicit=source_explicit,
-                    source_implicit=source_implicit,
                     volumetric_face_flux_old=self.volumetric_face_flux_old,
                     volumetric_face_flux_older=(
                         self.volumetric_face_flux_older
@@ -1301,30 +1245,6 @@ class FVMSolver(CouplerInterfaceMixin):
             raise
         try:
             residuals = {str(name): float(value) for name, value in residuals.items()}
-            if self._post_solve_state_callback is not None:
-                self._post_solve_state_callback(self)
-                n_cells = self.mesh_data["n_cells"]
-                if self.parallel.is_partitioned:
-                    self.parallel.exchange_halo(self.velocity[:n_cells])
-                    self.parallel.exchange_halo(self.kinematic_pressure[:n_cells])
-                _enforce_velocity_boundary_constraints(
-                    self.velocity,
-                    self.boundaries,
-                    n_cells,
-                    self.mesh_data,
-                    self.geo_data,
-                )
-                simple_solver.update_scalar_boundaries(
-                    self.kinematic_pressure,
-                    self.mesh_data,
-                    self.boundaries,
-                    "kinematic_pressure",
-                    volumetric_face_flux=self.volumetric_face_flux,
-                )
-        except BaseException as error:
-            self._mark_evolution_failure(error)
-            raise
-        try:
             self._invalidate_derived_fields()
             self._publish_state()
             self.logger.convergence(residuals)
@@ -1441,16 +1361,6 @@ class FVMSolver(CouplerInterfaceMixin):
             self.geo_data["cell_volume"],
             n_owned,
         )
-        projection_diagnostics = {}
-        if self._post_solve_state_callback is not None:
-            projection_diagnostics = {
-                str(name): float(value)
-                for name, value in getattr(
-                    self._post_solve_state_callback,
-                    "last_removed_maximum",
-                    {},
-                ).items()
-            }
         return StepDiagnostics(
             step=self.step + 1,
             time=self.time + step_time_step_size,
@@ -1482,7 +1392,6 @@ class FVMSolver(CouplerInterfaceMixin):
             total_enstrophy=float(self.parallel.global_sum(local_enstrophy_integral)),
             min_eddy_viscosity=min_eddy_viscosity,
             max_eddy_viscosity=max_eddy_viscosity,
-            state_projection=projection_diagnostics,
         )
 
     def _enforce_acceptance_limits(self, diagnostics: "StepDiagnostics") -> None:

@@ -43,7 +43,6 @@ class CouplerInterfaceMixin:
     velocity: np.ndarray
     kinematic_pressure: np.ndarray
     _configuration: Any
-    registered_fields: dict[str, np.ndarray]
     time_step_size: float
     _accepted_time_step_size: float
     _outer_boundary_patch_ids_by_rank: dict[str, Any]
@@ -581,7 +580,6 @@ class CouplerInterfaceMixin:
         b.pop("fixed_flux_pressure_external", None)
         if not retain_native_history:
             b.pop("fixed_flux_pressure_delta", None)
-        b.pop("fixed_gradient_delta", None)
         self._invalidate_derived_fields()
 
     # Helper.

@@ -676,7 +676,6 @@ def _fixed_flux_pressure_face_drive(
 
 @njit(cache=True)
 def _process_boundary_faces_jit(
-    n_boundary_faces: int,
     n_interior: int,
     n_cells: int,
     owners: np.ndarray,
@@ -699,7 +698,6 @@ def _process_boundary_faces_jit(
     Significantly faster than looping per patch in pure Python.
 
     Args:
-        n_boundary_faces:     Total number of boundary faces.
         n_interior:           Number of interior faces.
         n_cells:           Number of interior cells.
         owners:               Owner index array.
@@ -743,15 +741,14 @@ def _process_boundary_faces_jit(
             velocity_star[b_elem_idx, 1],
             velocity_star[b_elem_idx, 2],
         )
-        velocity_flux = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
 
         # zero_gradient pressure, including the inflow side of freestream
-        if bc_code == 0 or (bc_code == 3 and velocity_flux < 0.0):
+        if bc_code == 0:
             flux_vf_out[i] = Ub0 * Sf0 + Ub1 * Sf1 + Ub2 * Sf2
             continue
 
         # fixed_value pressure, including the outflow side of freestream
-        if bc_code == 1 or bc_code == 3:
+        if bc_code == 1:
             CF0, CF1, CF2 = (
                 cell_connection_vector[i_face, 0],
                 cell_connection_vector[i_face, 1],
@@ -861,7 +858,6 @@ def build_pressure_boundary_layout(
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
-            BoundaryStrategy.FIXED_GRADIENT,
             BoundaryStrategy.CYCLIC,
         ):
             code = 0
@@ -906,7 +902,8 @@ def _build_boundary_face_arrays(
     Returns
     -------
     bc_type_codes : ndarray
-        0=zero_gradient, 1=fixed_value, 2=empty, 3=freestream
+        0=zero_gradient, 1=fixed_value, 2=empty; a freestream face is 0 on
+        inflow and 1 on outflow
     kinematic_pressure_boundary_values : ndarray
         Fixed pressure value (or 0.0 if not applicable)
     boundary_face_indices : ndarray
@@ -1443,7 +1440,6 @@ def assemble_pressure_correction_equation_rhie_chow(
             )
         )
         cf_b, ff_b, vf_b = _process_boundary_faces_jit(
-            n_boundary_faces,
             n_interior,
             n_cells,
             owners,
@@ -1463,25 +1459,6 @@ def assemble_pressure_correction_equation_rhie_chow(
             flux_cf[bnd_face_idx] = cf_b
             flux_ff[bnd_face_idx] = ff_b
         flux_vf[bnd_face_idx] = vf_b
-
-        # A replay experiment may supply the face flux measured by the same
-        # monolithic discretisation.  Keep it as the pressure-equation
-        # boundary flux (and, for fixed_flux_pressure, through the correction)
-        # instead of reconstructing it from an interpolated boundary velocity.
-        # Normal coupled runs never populate this optional patch field.
-        for boundary in boundaries:
-            external_flux = boundary.get("external_face_flux")
-            if external_flux is None:
-                continue
-            start = int(boundary["start_face"])
-            nf = int(boundary["n_faces"])
-            field = np.asarray(external_flux, dtype=float).reshape(-1)
-            if field.shape != (nf,) or not np.all(np.isfinite(field)):
-                raise ValueError(
-                    f"External face flux for patch {boundary.get('name')!r} must have "
-                    f"shape ({nf},) and finite values"
-                )
-            flux_vf[start : start + nf] = field
 
         boundary_neighbour_cell = np.asarray(
             mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
@@ -1660,7 +1637,6 @@ def _extend_kinematic_pressure_correction_bcs(
         elif strategy in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
-            BoundaryStrategy.FIXED_GRADIENT,
             BoundaryStrategy.EMPTY,
         ):
             kinematic_pressure_correction_extended[idx : idx + nf] = kinematic_pressure_correction[
@@ -1745,7 +1721,6 @@ def _correct_boundary_fluxes(
         elif strategy not in (
             BoundaryStrategy.ZERO_GRADIENT,
             BoundaryStrategy.FIXED_FLUX_PRESSURE,
-            BoundaryStrategy.FIXED_GRADIENT,
             BoundaryStrategy.EMPTY,
         ):
             raise RuntimeError(f"Unhandled pressure flux strategy {strategy!r}")
@@ -1794,12 +1769,10 @@ def _apply_inlet_outlet_bc(
 
 def _apply_zero_gradient_bc(
     velocity: np.ndarray,
-    volumetric_face_flux: np.ndarray,
     boundary: dict,
     owners: np.ndarray,
     n_cells: int,
     n_interior: int,
-    boundaries: list[dict],
 ) -> None:
     """Apply a zero-gradient velocity BC (extrapolate from the owner cell).
 
@@ -1807,12 +1780,10 @@ def _apply_zero_gradient_bc(
 
     Args:
         velocity:           Velocity array (mutated in place).
-        volumetric_face_flux:         Face flux array.
         boundary:    Boundary patch dictionary.
         owners:      Owner index array.
         n_cells:  Number of interior cells.
         n_interior:  Number of interior faces.
-        boundaries:  List of all boundary patches.
     """
     start = boundary["start_face"]
     nf = boundary["n_faces"]
@@ -1930,9 +1901,7 @@ def _update_velocity_bcs(
         bc_type_u = boundary.get("velocity_type") or boundary.get("boundary_condition_type")
         strategy = BOUNDARIES.strategy(bc_type_u, "velocity", "ghost")
         if strategy is BoundaryStrategy.ZERO_GRADIENT:
-            _apply_zero_gradient_bc(
-                velocity, volumetric_face_flux, boundary, owners, n_cells, n_interior, boundaries
-            )
+            _apply_zero_gradient_bc(velocity, boundary, owners, n_cells, n_interior)
         elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
             _apply_inlet_outlet_bc(
                 velocity, volumetric_face_flux, boundary, owners, n_cells, n_interior
@@ -2100,16 +2069,8 @@ def _apply_scalar_bc(
     """
     if strategy in (BoundaryStrategy.ZERO_GRADIENT, BoundaryStrategy.EMPTY):
         field_values[indices] = field_values[owners_b]
-    elif strategy in (
-        BoundaryStrategy.FIXED_FLUX_PRESSURE,
-        BoundaryStrategy.FIXED_GRADIENT,
-    ):
-        key = (
-            "fixed_flux_pressure_delta"
-            if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE
-            else "fixed_gradient_delta"
-        )
-        delta = boundary.get(key)
+    elif strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
+        delta = boundary.get("fixed_flux_pressure_delta")
         if delta is None:
             field_values[indices] = field_values[owners_b]
         else:

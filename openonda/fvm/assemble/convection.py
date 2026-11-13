@@ -113,66 +113,6 @@ def assemble_convection_term_central(
     return result
 
 
-def assemble_convection_term_deferred_correction(
-    scalar_field: np.ndarray,
-    advective_face_flux: np.ndarray,
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
-    *,
-    include_total_flux: bool = True,
-) -> dict[str, object]:
-    """
-    Assemble convection term using deferred correction.
-
-    Approach:
-    1. Use upwind for implicit part (stable)
-    2. Add correction to central as explicit term (accurate)
-
-    This gives stability of upwind with accuracy approaching central.
-
-    Args:
-        scalar_field: Field values
-        advective_face_flux: Volumetric face flux [m³/s]
-        mesh_data: Mesh connectivity
-        geo_data: Geometric data
-
-    Returns:
-        dict: Flux coefficients
-    """
-
-    n_interior_faces = mesh_data["n_interior_faces"]
-    owners = mesh_data["owners"][:n_interior_faces]
-    neighbours = mesh_data["neighbours"][:n_interior_faces]
-
-    interior_advective_face_flux = advective_face_flux[:n_interior_faces]
-    weights = geo_data["face_interpolation_weight"][:n_interior_faces]
-
-    # Upwind part (implicit)
-    flux_cf_upwind = np.maximum(interior_advective_face_flux, 0.0)
-    flux_ff_upwind = np.minimum(interior_advective_face_flux, 0.0)
-
-    # Central part
-    flux_cf_central = (1 - weights) * interior_advective_face_flux
-    flux_ff_central = weights * interior_advective_face_flux
-
-    # Deferred correction: explicit term = central - upwind
-    flux_vf = (flux_cf_central - flux_cf_upwind) * scalar_field[owners] + (
-        flux_ff_central - flux_ff_upwind
-    ) * scalar_field[neighbours]
-
-    # Use upwind for implicit coefficients
-    flux_cf = flux_cf_upwind
-    flux_ff = flux_ff_upwind
-
-    # Total flux
-    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
-    if include_total_flux:
-        result["flux_tf"] = (
-            flux_cf * scalar_field[owners] + flux_ff * scalar_field[neighbours] + flux_vf
-        )
-    return result
-
-
 def _tvd_face_psi(
     scalar_field: np.ndarray,
     interior_advective_face_flux: np.ndarray,
@@ -336,9 +276,7 @@ def assemble_convection_term_boundary(
             scalar_field_linear = (1.0 - weights) * scalar_field[owners_b] + weights * scalar_field[
                 neighbours_b
             ]
-            if scheme_name == "deferred":
-                psi = np.ones_like(boundary_advective_face_flux)
-            elif scheme_name in ("lust", "linear_upwind"):
+            if scheme_name in ("lust", "linear_upwind"):
                 # Same linear-upwind target as interior faces. The paired cell
                 # is a translated image, so its offset to the face is the
                 # owner offset minus the owner-to-neighbour connection.
@@ -549,7 +487,7 @@ def assemble_convection_term(
     mesh_data: dict[str, object],
     geo_data: dict[str, object],
     boundaries: list[dict],
-    scheme: str = "deferred",
+    scheme: str,
     scalar_field_gradient: np.ndarray = None,
     *,
     include_total_flux: bool = True,
@@ -565,8 +503,7 @@ def assemble_convection_term(
         geo_data: Geometric data
         boundaries: Boundary patch list
         scheme: Convection scheme. First-order: ``'upwind'``.  Second-order
-            (unbounded, energy-conserving): ``'central'``, ``'deferred'``
-            (central via deferred correction).  Gradient-corrected:
+            (unbounded, energy-conserving): ``'central'``.  Gradient-corrected:
             ``'linear_upwind'`` and ``'lust'`` (0.75 central + 0.25 linear
             upwind).  Bounded TVD (require ``scalar_field_gradient``):
             ``'limited_linear'``, ``'van_leer'``, ``'muscl'``, ``'minmod'``,
@@ -596,14 +533,6 @@ def assemble_convection_term(
         )
     elif s == "central":
         interior_fluxes = assemble_convection_term_central(
-            scalar_field,
-            advective_face_flux,
-            mesh_data,
-            geo_data,
-            include_total_flux=include_total_flux,
-        )
-    elif s == "deferred":
-        interior_fluxes = assemble_convection_term_deferred_correction(
             scalar_field,
             advective_face_flux,
             mesh_data,
