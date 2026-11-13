@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from openonda.core.clock import time_tolerance
 from openonda.core.output_events import OutputEvent
 from openonda.core.simulation.parallel import collective_phase
 from openonda.core.solution_layout import collection_path, component_directory
@@ -1586,7 +1587,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 raise ValueError("stop_time must be finite and later than the accepted FVM time")
             end_time = min(end_time, stop_time)
         remaining = float(end_time - self.time)
-        tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
+        tolerance = time_tolerance(end_time)
         if remaining > tolerance and (time_until_event is None or remaining <= time_until_event):
             time_until_event, deadline_time = remaining, end_time
         landing_time = None
@@ -1598,7 +1599,7 @@ class FVMSolver(CouplerInterfaceMixin):
             )
             # A step that reaches the deadline is accepted at the deadline
             # itself, so output times keep their configured decimal value.
-            if selected >= time_until_event - max(1.0e-14, abs(deadline_time) * 1.0e-12):
+            if selected >= time_until_event - time_tolerance(deadline_time):
                 landing_time = deadline_time
         self.time_step_size = selected
         self._selected_courant_time_step_size = courant_estimate
@@ -1892,7 +1893,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 final_status = RunStatus.completed if converged else RunStatus.not_converged
             else:
                 end_time = run_plan.end_time
-                tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
+                tolerance = time_tolerance(end_time)
                 while self.time < end_time - tolerance:
                     self.advance()
                 final_status = RunStatus.completed
@@ -2156,7 +2157,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
         backup = self._configuration.backup
         end_time = self._configuration.run.end_time
-        end_tolerance = max(1.0e-14, abs(end_time) * 1.0e-12)
+        end_tolerance = time_tolerance(end_time)
         at_end = self.time >= end_time - end_tolerance
         if (
             backup.schedule is not None
@@ -2509,7 +2510,7 @@ class FVMSolver(CouplerInterfaceMixin):
         """
         import csv
 
-        from openonda.core.file_output import TIME_TOLERANCE, rewind_csv
+        from openonda.core.file_output import rewind_csv
 
         error = None
         current = False
@@ -2527,7 +2528,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 if path.is_file():
                     with path.open(newline="", encoding="utf-8") as stream:
                         current = any(
-                            abs(float(row["time"]) - self.time) <= TIME_TOLERANCE
+                            abs(float(row["time"]) - self.time) <= time_tolerance(self.time)
                             for row in csv.DictReader(stream)
                         )
             except Exception as exc:

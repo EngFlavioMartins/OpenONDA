@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import shutil
 
-from openonda.core.file_output import TIME_TOLERANCE
+from openonda.core.clock import time_tolerance
 from openonda.core.solution_layout import (
     coupled_backup_directories,
     fvm_backup_files,
@@ -142,9 +142,9 @@ def output_has_time(directory, name, time):
             rows = csv.DictReader(stream)
             if "time" not in (rows.fieldnames or ()):
                 return False
-            if any(abs(float(row["time"]) - time) <= TIME_TOLERANCE for row in rows):
+            if any(abs(float(row["time"]) - time) <= time_tolerance(time) for row in rows):
                 return True
     return any(
-        abs(frame_time - time) <= TIME_TOLERANCE
+        abs(frame_time - time) <= time_tolerance(time)
         for frame_time, _ in read_collection(directory / f"{name}.pvd")
     )

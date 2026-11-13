@@ -17,6 +17,7 @@ import numpy as np
 from numpy.typing import NDArray
 import taichi as ti
 
+from openonda.core.clock import time_tolerance
 from openonda.core.log_style import close_logging, configure_logging
 from openonda.core.output_events import OutputEvent
 from openonda.core.profiling import Profiler
@@ -922,7 +923,7 @@ class VPMSolver:
             if self._last_frame_state != self._state_key():
                 self.write_vtk()
             final_time = float(self.case.run.end_time)
-            tolerance = max(1.0e-14, abs(final_time) * 1.0e-12)
+            tolerance = time_tolerance(final_time)
             if self.time < final_time - tolerance:
                 self._sampler_manager.write_all(OutputEvent.final)
             else:
@@ -1018,7 +1019,7 @@ class VPMSolver:
         self._particle_snapshot_buffers = {}
         if not self._run_started and self._initial_conditions_built:
             final_time = float(self.case.run.end_time)
-            tolerance = max(1.0e-14, abs(final_time) * 1.0e-12)
+            tolerance = time_tolerance(final_time)
             status = (
                 RunStatus.completed if self.time >= final_time - tolerance else RunStatus.partial
             )

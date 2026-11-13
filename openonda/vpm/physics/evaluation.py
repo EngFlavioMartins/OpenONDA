@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import taichi as ti
 
+from ...core.clock import time_tolerance
 from ..config.constants import (
     DEFAULT_CUTOFF_RADIUS_FACTOR,
     EPSILON,
@@ -921,7 +922,7 @@ class ParticleFieldEvaluation:
         # Replace the latest entry when callers request diagnostics multiple
         # times at the same physical time. This keeps dE/dt finite differences
         # well-posed and avoids zero-dt history pairs.
-        if self._energy_history and abs(self._energy_history[-1][0] - time) < 1e-12:
+        if self._energy_history and abs(self._energy_history[-1][0] - time) <= time_tolerance(time):
             self._energy_history[-1] = (time, total_kinetic_energy, measurement)
             return
 

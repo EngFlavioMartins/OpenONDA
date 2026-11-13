@@ -19,7 +19,8 @@ from xml.sax.saxutils import quoteattr
 
 from defusedxml import ElementTree
 
-from .file_output import TIME_TOLERANCE, write_text_atomic
+from .clock import time_tolerance
+from .file_output import write_text_atomic
 
 __all__ = [
     "DEFAULT_COMPRESSION",
@@ -205,8 +206,9 @@ def rewind_collection(path: str | Path, time: float) -> None:
     """
     source = Path(path)
     entries = read_collection(source)
-    kept = [(t, name) for t, name in entries if t <= time + TIME_TOLERANCE]
-    removed = [name for t, name in entries if t > time + TIME_TOLERANCE]
+    tolerance = time_tolerance(time)
+    kept = [(t, name) for t, name in entries if t <= time + tolerance]
+    removed = [name for t, name in entries if t > time + tolerance]
     kept_names = {name for _, name in kept}
     for name in removed:
         if name in kept_names:

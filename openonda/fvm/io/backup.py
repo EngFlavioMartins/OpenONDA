@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ...core.clock import time_tolerance
 from .storage import require_free_space
 
 if TYPE_CHECKING:
@@ -358,10 +359,10 @@ def validate_restart_state(
         raise ValueError("Restart molecular viscosity must be finite and positive")
 
     start_time = float(solver._configuration.run.start_time)
-    if time < start_time - max(1.0e-12, abs(start_time) * 1.0e-12):
+    if time < start_time - time_tolerance(start_time):
         raise ValueError(f"Backup time {time} precedes the configured start time {start_time}")
     end_time = float(solver._configuration.run.end_time)
-    if time > end_time + max(1.0e-12, abs(end_time) * 1.0e-12):
+    if time > end_time + time_tolerance(end_time):
         raise ValueError(f"Backup time {time} exceeds the configured end time {end_time}")
 
     counter_values = np.asarray(state["n_consecutive_accepted_steps"])

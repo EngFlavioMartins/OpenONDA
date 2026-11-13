@@ -19,8 +19,9 @@ import os
 from pathlib import Path
 import tempfile
 
+from .clock import time_tolerance
+
 __all__ = [
-    "TIME_TOLERANCE",
     "append_csv_rows",
     "append_jsonl",
     "rewind_csv",
@@ -28,9 +29,6 @@ __all__ = [
     "write_json_atomic",
     "write_text_atomic",
 ]
-
-TIME_TOLERANCE = 1.0e-12
-"""Absolute tolerance in s when a recorded time is compared with a restart time."""
 
 
 def write_text_atomic(path: str | Path, text: str) -> Path:
@@ -217,7 +215,7 @@ def rewind_csv(path: str | Path, time: float) -> None:
             raise ValueError(f"CSV file {source} has an invalid time in row {index}") from error
         if not math.isfinite(row_time):
             raise ValueError(f"CSV file {source} has a non-finite time in row {index}")
-        if row_time <= time + TIME_TOLERANCE:
+        if row_time <= time + time_tolerance(time):
             kept.append(row)
     if len(kept) == len(rows):
         return
@@ -283,7 +281,7 @@ def rewind_jsonl(path: str | Path, time: float) -> None:
             raise ValueError(f"JSON-lines file {source} has an invalid line {index + 1}") from error
         if not math.isfinite(row_time):
             raise ValueError(f"JSON-lines file {source} has a non-finite time in line {index + 1}")
-        if row_time <= time + TIME_TOLERANCE:
+        if row_time <= time + time_tolerance(time):
             kept.append(line)
     if len(kept) != len(lines):
         write_text_atomic(source, "".join(kept))

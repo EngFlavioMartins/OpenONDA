@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 import h5py
 import numpy as np
 
+from ...core.clock import time_tolerance
 from ..config.configuration_values import numerical_configuration
 from ..config.restart_changes import validate_configuration_changes
 from .logging import Logging
@@ -147,7 +148,7 @@ class _BackupIO:
 
                 validate_vlm_restart(vlm, state)
                 vlm_time = float(state.attrs["time"])
-                clock_tolerance = max(1.0e-10, abs(source_time) * 1.0e-12)
+                clock_tolerance = time_tolerance(source_time)
                 if not np.isfinite(source_time) or not np.isfinite(vlm_time):
                     raise ValueError("VLM and solver restart clocks must be finite")
                 if not np.isclose(vlm_time, source_time, rtol=0.0, atol=clock_tolerance):

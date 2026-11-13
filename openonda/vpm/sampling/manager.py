@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
 
+from openonda.core.clock import time_tolerance
 from openonda.core.file_output import append_csv_rows, rewind_csv
 from openonda.core.output_events import OutputEvent
 from openonda.core.restart import output_has_time
@@ -153,7 +154,9 @@ class SamplerManager:
         for sampler in self.samplers:
             validate = getattr(sampler, "validate_existing_vtk", None)
             entries = read_collection(self.directory / f"{sampler_name(sampler)}.pvd")
-            kept = [file for entry_time, file in entries if entry_time <= time + 1.0e-12]
+            kept = [
+                file for entry_time, file in entries if entry_time <= time + time_tolerance(time)
+            ]
             if validate is not None and kept:
                 validate(self.directory / kept[-1])
         for name in self.owned_names():

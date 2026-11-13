@@ -15,6 +15,8 @@ import math
 from numbers import Real
 from typing import Protocol
 
+from .clock import time_tolerance
+
 __all__ = [
     "EverySteps",
     "EveryTime",
@@ -106,12 +108,11 @@ class EverySteps:
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return true when ``step`` reaches this schedule's cadence."""
-        epsilon = max(abs(self.interval * time_step_size) * 1.0e-12, abs(time) * 1.0e-14)
         return (
             step > 0
             and step % self.interval == 0
             and (self.first_step is None or step >= self.first_step)
-            and (self.start_time is None or time + epsilon >= self.start_time)
+            and (self.start_time is None or time + time_tolerance(time) >= self.start_time)
         )
 
 
@@ -157,7 +158,7 @@ class EveryTime:
 
         Solvers with adaptive time steps shorten the step to land on it.
         """
-        epsilon = max(abs(self.interval) * 1.0e-12, abs(time) * 1.0e-14)
+        epsilon = time_tolerance(time)
         if time + epsilon < self.start_time:
             return self.start_time
         bucket = math.floor((time - self.start_time + epsilon) / self.interval)
@@ -183,7 +184,7 @@ class EveryTime:
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return true when the accepted step crosses a time boundary."""
-        epsilon = max(abs(self.interval) * 1.0e-12, abs(time) * 1.0e-14)
+        epsilon = time_tolerance(time)
         if step <= 0 or time + epsilon < self.start_time:
             return False
         previous_time = time - time_step_size
