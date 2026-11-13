@@ -10,7 +10,7 @@ import numpy as np
 from openonda.core._numba import cacheable_njit as njit
 
 from ..fields.mixed_velocity_boundary import boundary_skew_velocity_increment
-from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..utils.vector_algebra import vector_dot, vector_magnitude
 
 
@@ -97,10 +97,6 @@ def assemble_diffusion_term_interior(
     """
 
     n_interior_faces = mesh_data["n_interior_faces"]
-    # Handle scalar field gradients: squeeze if shape is (n, 3, 1)
-    if scalar_field_gradient.ndim == 3 and scalar_field_gradient.shape[2] == 1:
-        scalar_field_gradient = scalar_field_gradient.squeeze(-1)  # (n, 3, 1) -> (n, 3)
-
     owners_all = mesh_data["owners"]
     neighbours_all = mesh_data["neighbours"]
     flux_cf = np.empty(n_interior_faces, dtype=np.float64)
@@ -150,7 +146,7 @@ def assemble_diffusion_term_boundary_fixed_value(
 
     Args:
         scalar_field: Field values including boundary elements
-        scalar_field_gradient: Owner-cell gradient, ``(n, 3)`` or ``(n, 3, 1)``
+        scalar_field_gradient: Owner-cell gradient, ``(n, 3)``
         diffusivity: Diffusion coefficient
         boundary_patch: Dict with patch info (start_face, n_faces, value)
         mesh_data: Mesh connectivity
@@ -211,11 +207,7 @@ def assemble_diffusion_term_boundary_fixed_value(
     normals = sf_b / mag_sf_b[:, np.newaxis]
     owner_to_face = geo_data["cell_connection_vector"][b_face_indices]
     tangential_offset = owner_to_face - wall_distance[:, np.newaxis] * normals
-    gradient = (
-        scalar_field_gradient.squeeze(-1)
-        if scalar_field_gradient.ndim == 3
-        else scalar_field_gradient
-    )
+    gradient = scalar_field_gradient
     flux_vf = flux_vf + boundary_diffusivity * geo_diff_b * np.einsum(
         "ij,ij->i", gradient[owners_b], tangential_offset
     )
@@ -262,12 +254,12 @@ def assemble_diffusion_term(
         vector_field: Full vector velocity field, required by the directional
             mixed velocity condition.
         component: Component assembled from ``vector_field`` (0, 1, or 2).
-        separate_slip_diagonal: Return the implicit slip/symmetry wall
+        separate_slip_diagonal: Return the implicit slip wall
             coefficient as ``slip_diagonal`` (one value per cell) instead of
             adding it to ``flux_cf``, so that components without a wall-normal
             part can share one matrix.
 
-    Slip and symmetry planes carry no diffusive flux of the tangential
+    Slip planes carry no diffusive flux of the tangential
     velocity. The ghost holds the tangential part of the owner velocity, so
     the normal component has the wall-normal gradient ``-(u_P . n) n / d``
     and component ``i`` the flux ``-nu A n_i (u_P . n) / d``. Its own
@@ -306,13 +298,13 @@ def assemble_diffusion_term(
     for boundary in boundaries:
         boundary_condition_type = boundary.get("boundary_condition_type")
         if boundary.get("velocity_type") is not None:
-            strategy = BOUNDARIES.strategy(boundary["velocity_type"], "velocity", "diffusion")
+            strategy = boundary_strategy(boundary["velocity_type"], "velocity")
         else:
-            strategy = BOUNDARIES.strategy(boundary_condition_type, "scalar", "diffusion")
+            strategy = boundary_strategy(boundary_condition_type, "scalar")
         if strategy is BoundaryStrategy.EMPTY:
             continue
 
-        elif strategy in (BoundaryStrategy.SLIP, BoundaryStrategy.SYMMETRY):
+        elif strategy is BoundaryStrategy.SLIP:
             if vector_field is None or component not in (0, 1, 2):
                 # A scalar has zero normal gradient at the plane.
                 continue
@@ -358,11 +350,7 @@ def assemble_diffusion_term(
                 if np.isscalar(diffusivity)
                 else weights * diffusivity[neighbours_b] + (1.0 - weights) * diffusivity[owners_b]
             )
-            grad = (
-                scalar_field_gradient.squeeze(-1)
-                if scalar_field_gradient.ndim == 3
-                else scalar_field_gradient
-            )
+            grad = scalar_field_gradient
             grad_f = (
                 weights[:, None] * grad[neighbours_b] + (1.0 - weights[:, None]) * grad[owners_b]
             )

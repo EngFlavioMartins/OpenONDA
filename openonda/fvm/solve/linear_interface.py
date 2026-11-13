@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy import sparse
-from scipy.sparse.linalg import LinearOperator, bicgstab, cg, gmres, spilu, splu, spsolve
+from scipy.sparse.linalg import LinearOperator, bicgstab, cg, splu, spsolve
 
 from openonda.core._numba import cacheable_njit as njit
 
@@ -26,11 +26,11 @@ if TYPE_CHECKING:
     from ..io.logging import Logging
     from .petsc_partitioned import PartitionedLinearWorkspace
 
-_ILU_CACHE = {}
 _AMG_CACHE = {}
 _MAX_TRANSIENT_CACHE_ENTRIES = 16
 _AMG_BUILD_SEED = 0
-_FALLBACK_WARN_COUNT = 0
+# Relative diagonal change above which a cached AMG hierarchy is rebuilt.
+AMG_REUSE_TOLERANCE = 0.05
 LINEAR_VERIFICATION_FACTOR = 10.0
 LINEAR_RESIDUAL_FLOOR = 1.0e-12
 # Smallest residual double precision resolves, relative to max(||b||, ||A x0||).
@@ -83,17 +83,6 @@ def _solve_direct_with_workspace(
     return solution, setup_seconds, time.perf_counter() - solve_start
 
 
-def _emit_warning(log_sink: "Logging | None", message: str, *args: object) -> None:
-    """Route a user-facing warning through the active FVM logger."""
-    text = message % args if args else message
-    if log_sink is None:
-        from ..io.logging import standalone_report
-
-        standalone_report("warnings", (text, ""), warning=True)
-    else:
-        log_sink.warning(text)
-
-
 def _emit_debug(log_sink: "Logging | None", message: str, *args: object) -> None:
     """Route a debug-mode note through the active FVM logger."""
     if log_sink is not None:
@@ -104,8 +93,7 @@ class LinearSolveError(RuntimeError):
     """Raised when a configured linear backend does not converge.
 
     Both the SciPy and PETSc backends raise this exception when the Krylov
-    method fails to reach the requested tolerance, unless the
-    ``direct_fallback`` failure option has been set.
+    method fails to reach the requested tolerance.
     """
 
 
@@ -141,8 +129,6 @@ class LinearSolveResult:
         Wall time for preconditioner setup.
     solve_seconds : float
         Wall time for the iterative solve.
-    used_fallback : bool
-        Whether a direct fallback was invoked after iterative failure.
     preconditioner_rebuilt : bool or None
         Whether the preconditioner was rebuilt this call (``None`` for direct).
     """
@@ -158,7 +144,6 @@ class LinearSolveResult:
     final_residual: float
     setup_seconds: float
     solve_seconds: float
-    used_fallback: bool = False
     preconditioner_rebuilt: bool | None = None
     equation: str | None = None
 
@@ -298,16 +283,15 @@ def _breakdown_converged(
     return False
 
 
-def _run_krylov(
+def _run_bicgstab(
     A: sparse.spmatrix,
     b: np.ndarray,
-    method: str,
     M: LinearOperator,
     tol: float,
     maxiter: int,
     x0: np.ndarray,
 ) -> tuple[np.ndarray, int, int]:
-    """Run a SciPy Krylov method in residual-correction form.
+    """Run SciPy BiCGSTAB in residual-correction form.
 
     Solves ``A e = r0 / ||r0||`` with ``r0 = b - A x0`` and returns
     ``x0 + ||r0|| e``.  The unit-normalized RHS keeps the recurrence scalars
@@ -337,18 +321,9 @@ def _run_krylov(
         nonlocal iterations
         iterations += 1
 
-    kwargs = {"rtol": rtol_eff, "maxiter": maxiter, "callback": count_iteration}
-    if M is not None:
-        kwargs["M"] = M
-    # Resolved at call time so tests can monkeypatch the module attributes.
-    if method == "gmres":
-        solve_fn = gmres
-        kwargs["callback_type"] = "pr_norm"
-    elif method == "cg":
-        solve_fn = cg
-    else:
-        solve_fn = bicgstab
-    e, info = solve_fn(A, r0 / r0_norm, **kwargs)
+    e, info = bicgstab(
+        A, r0 / r0_norm, rtol=rtol_eff, maxiter=maxiter, callback=count_iteration, M=M
+    )
     return x0 + r0_norm * e, info, iterations
 
 
@@ -467,8 +442,6 @@ def _solve_petsc(
         requested = str(method).lower()
         ksp_types = {
             "bicgstab": PETSc.KSP.Type.BCGS,
-            "gmres": PETSc.KSP.Type.GMRES,
-            "cg": PETSc.KSP.Type.CG,
         }
         if requested == "amg":
             if equation_type != "kinematic_pressure":
@@ -557,7 +530,6 @@ def _solve_petsc(
             final_residual=final_residual,
             setup_seconds=setup_seconds,
             solve_seconds=solve_seconds,
-            used_fallback=False,
             preconditioner_rebuilt=True,
         )
 
@@ -573,15 +545,6 @@ def _solve_petsc(
         return x, info
 
 
-def _cache_key_from_matrix(
-    A_csc: sparse.spmatrix, ilu_key: tuple[str, int] | None = None
-) -> tuple[str, tuple[str, int], tuple[int, int]] | None:
-    """Return an owner-scoped ILU key, or decline caching without an owner."""
-    if ilu_key is not None:
-        return ("key", ilu_key, A_csc.shape)
-    return None
-
-
 def _amg_cache_key(
     A: sparse.spmatrix, amg_key: tuple[str, int] | None = None
 ) -> tuple[str, tuple[str, int], tuple[int, int]] | None:
@@ -592,31 +555,19 @@ def _amg_cache_key(
 
 
 def clear_linear_solver_caches(cache_namespace: tuple[str, int] = None) -> None:
-    """Clear preconditioner entries for one owner namespace, or all owners."""
+    """Clear AMG hierarchies for one owner namespace, or all owners."""
     if cache_namespace is None:
-        _ILU_CACHE.clear()
         _AMG_CACHE.clear()
         return
-    for cache in (_ILU_CACHE, _AMG_CACHE):
-        # Momentum components with distinct matrices extend the owner key as
-        # (owner key, component).
-        stale = [
-            key
-            for key in cache
-            if len(key) > 1
-            and (
-                key[1] == cache_namespace
-                or (isinstance(key[1], tuple) and key[1][0] == cache_namespace)
-            )
-        ]
-        for key in stale:
-            cache.pop(key, None)
+    stale = [key for key in _AMG_CACHE if len(key) > 1 and key[1] == cache_namespace]
+    for key in stale:
+        _AMG_CACHE.pop(key, None)
 
 
 def _get_or_build_amg(
     A: sparse.spmatrix,
     pyamg: ModuleType,
-    reuse_tol: float = 0.05,
+    reuse_tol: float = AMG_REUSE_TOLERANCE,
     force_rebuild: bool = False,
     amg_key: tuple[str, int] = None,
 ) -> tuple[object, bool]:
@@ -656,35 +607,28 @@ def _get_or_build_amg(
 def _solve_pressure(
     A: sparse.spmatrix,
     b: np.ndarray,
-    amg_tolerance: float,
-    amg_max_iterations: int,
     tol: float,
     maxiter: int,
     x0: np.ndarray | None,
-    amg_reuse_tolerance: float,
-    failure_action: str,
     log_sink: "Logging | None",
     amg_key: tuple[str, int] | None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Solve the pressure Poisson equation.
 
-    Runs algebraic-multigrid-preconditioned CG via ``pyamg``. A failure
-    raises unless ``failure_action='direct_fallback'`` was requested.
+    Runs algebraic-multigrid-preconditioned CG via ``pyamg``; a failure raises.
 
     Args:
         A:           Sparse matrix.
         b:           Right-hand side vector.
-        amg_tolerance: AMG solver tolerance.
-        amg_max_iterations: AMG max iterations.
-        tol:         CG fallback tolerance.
-        maxiter:     CG fallback max iterations.
+        tol:         CG tolerance.
+        maxiter:     CG iteration cap.
         x0:          Initial guess (optional).
 
     Returns:
-        Solution vector.
+        Solution vector and solve metadata.
     """
     setup_start = time.perf_counter()
-    x_early = _trivial_solution(A, b, x0, amg_tolerance)
+    x_early = _trivial_solution(A, b, x0, tol)
     if x_early is not None:
         return x_early, {
             "preconditioner": "pyamg",
@@ -692,31 +636,14 @@ def _solve_pressure(
             "reason": "initial residual satisfied tolerance",
             "setup_seconds": time.perf_counter() - setup_start,
             "solve_seconds": 0.0,
-            "used_fallback": False,
         }
     try:
         import pyamg
     except ImportError as error:
-        if failure_action == "raise":
-            raise LinearSolveError("AMG pressure solve requires pyamg") from error
-        _emit_warning(
-            log_sink,
-            "AMG is unavailable because pyamg is not installed; using the direct solver",
-        )
-        setup_seconds = time.perf_counter() - setup_start
-        solve_start = time.perf_counter()
-        x = spsolve(A, b)
-        return x, {
-            "preconditioner": "pyamg",
-            "iterations": 0,
-            "reason": "pyamg unavailable; configured direct fallback converged",
-            "setup_seconds": setup_seconds,
-            "solve_seconds": time.perf_counter() - solve_start,
-            "used_fallback": True,
-        }
+        raise LinearSolveError("AMG pressure solve requires pyamg") from error
 
     try:
-        ml, rebuilt = _get_or_build_amg(A, pyamg, reuse_tol=amg_reuse_tolerance, amg_key=amg_key)
+        ml, rebuilt = _get_or_build_amg(A, pyamg, amg_key=amg_key)
         M = ml.aspreconditioner(cycle="V")
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
@@ -730,34 +657,30 @@ def _solve_pressure(
             A,
             b,
             M=M,
-            rtol=amg_tolerance,
-            maxiter=amg_max_iterations,
+            rtol=tol,
+            maxiter=maxiter,
             x0=x0,
             callback=count_iteration,
         )
-        if info != 0 and _breakdown_converged(
-            A, b, x, amg_tolerance, "pressure CG", info, log_sink, x0=x0
-        ):
+        if info != 0 and _breakdown_converged(A, b, x, tol, "pressure CG", info, log_sink, x0=x0):
             info = 0
         if info != 0:
             # One rebuild handles coefficient drift that made a cached
             # hierarchy ineffective without silently accepting a poor solve.
-            ml, rebuilt = _get_or_build_amg(
-                A, pyamg, reuse_tol=amg_reuse_tolerance, force_rebuild=True, amg_key=amg_key
-            )
+            ml, rebuilt = _get_or_build_amg(A, pyamg, force_rebuild=True, amg_key=amg_key)
             M = ml.aspreconditioner(cycle="V")
             setup_seconds = time.perf_counter() - setup_start
             x, info = cg(
                 A,
                 b,
                 M=M,
-                rtol=amg_tolerance,
-                maxiter=amg_max_iterations,
+                rtol=tol,
+                maxiter=maxiter,
                 x0=x0,
                 callback=count_iteration,
             )
             if info != 0 and _breakdown_converged(
-                A, b, x, amg_tolerance, "pressure CG", info, log_sink, x0=x0
+                A, b, x, tol, "pressure CG", info, log_sink, x0=x0
             ):
                 info = 0
         if info != 0:
@@ -769,28 +692,10 @@ def _solve_pressure(
             "reason": "AMG-preconditioned CG converged",
             "setup_seconds": setup_seconds,
             "solve_seconds": solve_seconds,
-            "used_fallback": False,
             "preconditioner_rebuilt": rebuilt,
         }
     except Exception as error:
-        if failure_action == "raise":
-            raise LinearSolveError("AMG pressure solve failed") from error
-        _emit_warning(
-            log_sink,
-            "AMG solve failed; using the direct solver. Error: %r",
-            error,
-        )
-        fallback_start = time.perf_counter()
-        failed_solve_seconds = fallback_start - locals().get("solve_start", fallback_start)
-        x = spsolve(A, b)
-        return x, {
-            "preconditioner": "pyamg",
-            "iterations": locals().get("iterations", 0),
-            "reason": f"AMG failed; configured direct fallback converged: {error}",
-            "setup_seconds": locals().get("setup_seconds", time.perf_counter() - setup_start),
-            "solve_seconds": failed_solve_seconds + time.perf_counter() - fallback_start,
-            "used_fallback": True,
-        }
+        raise LinearSolveError("AMG pressure solve failed") from error
 
 
 @njit(cache=True)
@@ -859,280 +764,72 @@ def _apply_dilu(
     return correction
 
 
-def _build_krylov_preconditioner(
-    A: sparse.spmatrix,
-    preconditioner: str,
-    reuse_ilu: bool,
-    ilu_key: tuple[str, int] | None,
-    ilu_drop_tolerance: float,
-    ilu_fill_factor: float,
-    ilu_reuse_tolerance: float | None,
-) -> tuple[LinearOperator, bool]:
-    """Return the requested Krylov preconditioner and whether it was rebuilt.
+def _build_dilu_preconditioner(A: sparse.spmatrix) -> LinearOperator:
+    """Return the diagonal incomplete LU preconditioner of ``A``.
 
-    ``dilu`` and ``jacobi`` cost one sweep over the current coefficients and
-    are rebuilt on every call. ``ilu`` is SciPy's thresholded incomplete LU,
-    optionally cached between solves.
+    It costs one sweep over the current coefficients and is rebuilt on every call.
     """
-    if preconditioner == "jacobi":
-        reciprocal = 1.0 / A.diagonal()
-        if not np.all(np.isfinite(reciprocal)):
-            raise ValueError("Jacobi preconditioner requires a nonzero finite diagonal")
-        return LinearOperator(
-            A.shape,
-            matvec=lambda residual: reciprocal * residual,
-            dtype=A.dtype,  # type: ignore[call-arg]
-        ), True
-    if preconditioner == "dilu":
-        matrix = A.tocsr()
-        if not matrix.has_canonical_format:
-            matrix = matrix.copy()
-            matrix.sum_duplicates()
-        indptr, indices = matrix.indptr, matrix.indices
-        data = np.asarray(matrix.data, dtype=np.float64)
-        reciprocal = _dilu_reciprocal_diagonal(indptr, indices, data)
-        if reciprocal.size != A.shape[0] or not np.all(np.isfinite(reciprocal)):
-            raise ValueError("DILU preconditioner produced a zero or non-finite diagonal")
-        return LinearOperator(
-            A.shape,
-            matvec=lambda residual: _apply_dilu(
-                indptr, indices, data, reciprocal, np.asarray(residual, dtype=np.float64).ravel()
-            ),
-            dtype=A.dtype,  # type: ignore[call-arg]
-        ), True
-    if preconditioner != "ilu":
-        raise ValueError(f"Unknown Krylov preconditioner {preconditioner!r}")
-    ilu, rebuilt = _get_or_build_ilu(
-        A.tocsc(),
-        reuse_ilu,
-        ilu_key,
-        ilu_drop_tolerance,
-        ilu_fill_factor,
-        ilu_reuse_tolerance,
-        A,
+    matrix = A.tocsr()
+    if not matrix.has_canonical_format:
+        matrix = matrix.copy()
+        matrix.sum_duplicates()
+    indptr, indices = matrix.indptr, matrix.indices
+    data = np.asarray(matrix.data, dtype=np.float64)
+    reciprocal = _dilu_reciprocal_diagonal(indptr, indices, data)
+    if reciprocal.size != A.shape[0] or not np.all(np.isfinite(reciprocal)):
+        raise ValueError("DILU preconditioner produced a zero or non-finite diagonal")
+    return LinearOperator(
+        A.shape,
+        matvec=lambda residual: _apply_dilu(
+            indptr, indices, data, reciprocal, np.asarray(residual, dtype=np.float64).ravel()
+        ),
+        dtype=A.dtype,  # type: ignore[call-arg]
     )
-    # An explicit dtype stops SciPy from probing it with an extra ILU solve.
-    return LinearOperator(A.shape, matvec=ilu.solve, dtype=A.dtype), rebuilt  # type: ignore[call-arg]
 
 
-def _get_or_build_ilu(
-    A_csc: sparse.spmatrix,
-    reuse_ilu: bool,
-    ilu_key: tuple[str, int] | None,
-    ilu_drop_tolerance: float,
-    ilu_fill_factor: float,
-    ilu_reuse_tolerance: float | None,
-    A: sparse.spmatrix,
-) -> tuple[object, bool]:
-    """Return an ILU preconditioner, optionally from cache.
-
-    When ``reuse_ilu`` is ``True``, looks up the cache by key and only
-    recomputes if the matrix diagonal has changed beyond
-    ``ilu_reuse_tolerance``.  When ``reuse_ilu`` is ``False``, computes a
-    transient (non-cached) ILU.
-
-    Args:
-        A_csc:          Matrix in CSC format.
-        reuse_ilu:      Whether to cache and reuse the ILU factorisation.
-        ilu_key:        User-defined cache key (optional).
-        ilu_drop_tolerance: ILU drop tolerance.
-        ilu_fill_factor: ILU fill factor.
-        ilu_reuse_tolerance: Diagonal change threshold for rebuild.
-        A:              Original matrix (for diagonal check).
-
-    Returns:
-        An ``spilu`` factorisation object.
-    """
-    if not reuse_ilu or ilu_key is None:
-        ilu = spilu(A_csc, drop_tol=ilu_drop_tolerance, fill_factor=ilu_fill_factor)
-        return ilu, True
-
-    key = _cache_key_from_matrix(A_csc, ilu_key)
-    cached = _ILU_CACHE.get(key)
-    if cached is None:
-        ilu = spilu(A_csc, drop_tol=ilu_drop_tolerance, fill_factor=ilu_fill_factor)
-        if len(_ILU_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES:
-            _ILU_CACHE.pop(next(iter(_ILU_CACHE)))
-        _ILU_CACHE[key] = (ilu, A.diagonal().copy())
-        return ilu, True
-
-    ilu_cached, diag_snapshot = cached
-    if ilu_reuse_tolerance is not None and diag_snapshot is not None:
-        cur_diag = A.diagonal()
-        rel_change = np.linalg.norm(cur_diag - diag_snapshot) / (
-            np.linalg.norm(diag_snapshot) + 1e-16
-        )
-        if rel_change > ilu_reuse_tolerance:
-            ilu = spilu(A_csc, drop_tol=ilu_drop_tolerance, fill_factor=ilu_fill_factor)
-            _ILU_CACHE[key] = (ilu, A.diagonal().copy())
-            return ilu, True
-
-    return ilu_cached, False
-
-
-def _iterative_solve_with_M(
+def _solve_preconditioned_bicgstab(
     A: sparse.spmatrix,
     b: np.ndarray,
-    method: str,
-    M: LinearOperator,
-    tol: float,
-    maxiter: int,
-    x0: np.ndarray,
-    failure_action: str,
-    log_sink: "Logging",
-) -> tuple[np.ndarray, int, bool, str]:
-    """Run an iterative solver (BiCGSTAB or GMRES) with a preconditioner.
-
-    A solve that does not converge raises, or with
-    ``failure_action='direct_fallback'`` is repeated with ``spsolve``.
-
-    Args:
-        A:       Sparse matrix.
-        b:       Right-hand side vector.
-        method:  ``"bicgstab"`` or ``"gmres"``.
-        M:       Preconditioner (a ``LinearOperator``).
-        tol:     Relative tolerance.
-        maxiter: Max iterations.
-        x0:      Initial guess (optional).
-
-    Returns:
-        Solution vector.
-    """
-    x, info, iterations = _run_krylov(A, b, method, M, tol, maxiter, x0)
-    if info != 0 and _breakdown_converged(A, b, x, tol, method, info, log_sink, x0=x0):
-        info = 0
-    if info != 0:
-        global _FALLBACK_WARN_COUNT
-        _FALLBACK_WARN_COUNT += 1
-        msg = f"{method} did not converge (info={info})"
-        if _FALLBACK_WARN_COUNT <= 3 or _FALLBACK_WARN_COUNT % 50 == 0:
-            _emit_warning(
-                log_sink,
-                "%s did not converge (solver code %s, occurrence %d)",
-                method,
-                info,
-                _FALLBACK_WARN_COUNT,
-            )
-        if failure_action == "raise":
-            raise LinearSolveError(
-                f"{method} did not converge after {maxiter} iterations (info={info})"
-            )
-        _emit_warning(
-            log_sink,
-            "%s did not converge; using the direct solver",
-            method,
-        )
-        return spsolve(A, b), max(iterations, int(info) if info > 0 else 0), True, msg
-    return x, iterations, False, "Krylov solver converged"
-
-
-def _solve_preconditioned_krylov(
-    A: sparse.spmatrix,
-    b: np.ndarray,
-    method: str,
     tol: float,
     maxiter: int,
     x0: np.ndarray | None,
-    preconditioner: str,
-    reuse_ilu: bool,
-    ilu_key: tuple[str, int] | None,
-    ilu_drop_tolerance: float,
-    ilu_fill_factor: float,
-    ilu_reuse_tolerance: float | None,
-    failure_action: str,
     log_sink: "Logging | None",
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Solve a linear system with a preconditioned Krylov method.
-
-    Builds the selected preconditioner (``dilu``, ``jacobi`` or a cached
-    ``ilu``), then runs the selected iterative method. A failure falls back to
-    ``spsolve`` only with ``failure_action='direct_fallback'``.
-
-    Args:
-        A:               Sparse matrix.
-        b:               Right-hand side.
-        method:          ``"bicgstab"`` or ``"gmres"``.
-        tol:             Relative tolerance.
-        maxiter:         Max iterations.
-        x0:              Initial guess.
-        preconditioner:  ``"dilu"``, ``"jacobi"`` or ``"ilu"``.
-        reuse_ilu:       Whether to cache ILU.
-        ilu_key:         ILU cache key.
-        ilu_drop_tolerance: ILU drop tolerance.
-        ilu_fill_factor: ILU fill factor.
-        ilu_reuse_tolerance: Diagonal change threshold.
-
-    Returns:
-        Solution vector.
-    """
+    """Solve a linear system with DILU-preconditioned BiCGSTAB; a failure raises."""
     setup_start = time.perf_counter()
     x_early = _trivial_solution(A, b, x0, tol)
     if x_early is not None:
         return x_early, {
-            "preconditioner": preconditioner,
+            "preconditioner": "dilu",
             "iterations": 0,
             "reason": "initial residual satisfied tolerance",
             "setup_seconds": time.perf_counter() - setup_start,
             "solve_seconds": 0.0,
-            "used_fallback": False,
         }
     try:
-        M, rebuilt = _build_krylov_preconditioner(
-            A,
-            preconditioner,
-            reuse_ilu,
-            ilu_key,
-            ilu_drop_tolerance,
-            ilu_fill_factor,
-            ilu_reuse_tolerance,
-        )
+        M = _build_dilu_preconditioner(A)
         setup_seconds = time.perf_counter() - setup_start
         solve_start = time.perf_counter()
-        x, iterations, used_fallback, reason = _iterative_solve_with_M(
-            A,
-            b,
-            method,
-            M,
-            tol,
-            maxiter,
-            x0,
-            failure_action,
-            log_sink,
-        )
+        x, info, iterations = _run_bicgstab(A, b, M, tol, maxiter, x0)
+        if info != 0 and _breakdown_converged(A, b, x, tol, "bicgstab", info, log_sink, x0=x0):
+            info = 0
+        if info != 0:
+            raise LinearSolveError(
+                f"bicgstab did not converge after {maxiter} iterations (info={info})"
+            )
         solve_seconds = time.perf_counter() - solve_start
         return x, {
-            "preconditioner": preconditioner,
+            "preconditioner": "dilu",
             "iterations": iterations,
-            "reason": reason,
+            "reason": "Krylov solver converged",
             "setup_seconds": setup_seconds,
             "solve_seconds": solve_seconds,
-            "used_fallback": used_fallback,
-            "preconditioner_rebuilt": rebuilt,
+            "preconditioner_rebuilt": True,
         }
-    except Exception as e:
-        if isinstance(e, LinearSolveError):
-            raise
-        if failure_action == "raise":
-            raise LinearSolveError(
-                f"{method} with {preconditioner} preconditioner setup or solve failed"
-            ) from e
-        _emit_warning(
-            log_sink,
-            "%s preconditioner setup or solve failed; using the direct solver. Error: %r",
-            preconditioner,
-            e,
-        )
-        setup_seconds = time.perf_counter() - setup_start
-        solve_start = time.perf_counter()
-        x = spsolve(A, b)
-        return x, {
-            "preconditioner": preconditioner,
-            "iterations": 0,
-            "reason": f"{preconditioner} solve failed; configured direct fallback converged: {e}",
-            "setup_seconds": setup_seconds,
-            "solve_seconds": time.perf_counter() - solve_start,
-            "used_fallback": True,
-        }
+    except LinearSolveError:
+        raise
+    except Exception as error:
+        raise LinearSolveError("bicgstab with dilu preconditioner setup or solve failed") from error
 
 
 def solve_linear_system(
@@ -1144,36 +841,24 @@ def solve_linear_system(
     rel_tol: float = 0.0,
     maxiter: int = 1000,
     x0: np.ndarray | None = None,
-    preconditioner: str = "ilu",
-    reuse_ilu: bool = False,
-    ilu_key: tuple[str, int] | None = None,
-    ilu_drop_tolerance: float = 1e-4,
-    ilu_fill_factor: float = 10,
-    ilu_reuse_tolerance: float | None = None,
     backend: str = "scipy",
     parallel_context: "ParallelContext | None" = None,
     nullspace: str | None = None,
     partitioned_workspace: "PartitionedLinearWorkspace | None" = None,
     amg_key: tuple[str, int] | None = None,
     return_info: bool = False,
-    failure_action: str = "raise",
     log_sink: "Logging | None" = None,
     matrix_values_unchanged: bool = False,
     direct_workspace: "MatrixAssemblyWorkspace | None" = None,
-    **kwargs: object,
 ) -> "np.ndarray | tuple[np.ndarray, LinearSolveResult]":
     """Solve ``A·x = b`` using the explicitly selected serial or PETSc path.
 
-    ``preconditioner`` selects the SciPy Krylov preconditioner (``dilu``,
-    ``jacobi`` or ``ilu``); PETSc uses its own block-Jacobi or Jacobi
-    preconditioner. Cached ILU/AMG setup is controlled by the reuse arguments. A direct solve
-    after iterative failure is permitted only with
-    ``failure_action="direct_fallback"`` and is reported in returned telemetry.
+    SciPy solves use DILU-preconditioned BiCGSTAB, AMG-preconditioned CG
+    (pressure) or a sparse direct factorization; PETSc uses its own
+    block-Jacobi or Jacobi preconditioner. A solve that does not converge
+    raises ``LinearSolveError``.
     """
     method = str(method).lower()
-    failure_action = str(failure_action).lower()
-    if failure_action not in {"raise", "direct_fallback"}:
-        raise ValueError(f"Unknown linear failure action {failure_action!r}")
 
     if str(backend).lower() == "petsc":
         if parallel_context is not None and parallel_context.is_partitioned:
@@ -1191,13 +876,7 @@ def solve_linear_system(
                 initial_guess=x0,
                 workspace=partitioned_workspace,
                 matrix_values_unchanged=matrix_values_unchanged,
-                preconditioner_reuse_tolerance=(
-                    float(kwargs.get("amg_reuse_tolerance", 0.05))
-                    if method == "amg"
-                    else ilu_reuse_tolerance
-                    if reuse_ilu
-                    else None
-                ),
+                preconditioner_reuse_tolerance=AMG_REUSE_TOLERANCE if method == "amg" else None,
             )
         else:
             solution, info = _solve_petsc(
@@ -1242,7 +921,6 @@ def solve_linear_system(
             final_residual=final_residual,
             setup_seconds=float(metadata["setup_seconds"]),
             solve_seconds=float(metadata["solve_seconds"]),
-            used_fallback=bool(metadata.get("used_fallback", False)),
             preconditioner_rebuilt=metadata.get("preconditioner_rebuilt"),
             equation=None if equation_type is None else str(equation_type),
         )
@@ -1271,95 +949,17 @@ def solve_linear_system(
                 "reason": "sparse direct solve completed",
                 "setup_seconds": setup_seconds,
                 "solve_seconds": solve_seconds,
-                "used_fallback": False,
             },
         )
 
     if method == "amg":
         if equation_type != "kinematic_pressure":
             raise ValueError("AMG is supported only for pressure equations")
-        # Without an explicit AMG tolerance the pressure tolerance applies.
-        configured_amg_tol = kwargs.get("amg_tolerance")
-        amg_tolerance = tol if configured_amg_tol is None else float(configured_amg_tol)
-        amg_max_iterations = kwargs.get("amg_max_iterations", maxiter)
-        amg_reuse_tolerance = kwargs.get("amg_reuse_tolerance", 0.05)
-        solution, metadata = _solve_pressure(
-            A,
-            b,
-            amg_tolerance,
-            amg_max_iterations,
-            tol,
-            maxiter,
-            x0,
-            amg_reuse_tolerance,
-            failure_action,
-            log_sink,
-            amg_key,
-        )
+        solution, metadata = _solve_pressure(A, b, tol, maxiter, x0, log_sink, amg_key)
         return finish(solution, metadata)
 
-    if method in ("bicgstab", "gmres") or (
-        equation_type in ("momentum", "scalar") and method == "cg"
-    ):
-        solution, metadata = _solve_preconditioned_krylov(
-            A,
-            b,
-            method,
-            tol,
-            maxiter,
-            x0,
-            str(preconditioner).lower(),
-            reuse_ilu,
-            ilu_key,
-            ilu_drop_tolerance,
-            ilu_fill_factor,
-            ilu_reuse_tolerance,
-            failure_action,
-            log_sink,
-        )
+    if method == "bicgstab":
+        solution, metadata = _solve_preconditioned_bicgstab(A, b, tol, maxiter, x0, log_sink)
         return finish(solution, metadata)
 
-    # Unpreconditioned CG
-    if method != "cg":
-        raise ValueError(f"Unknown solver method: {method}")
-    solve_start = time.perf_counter()
-    x, info, iterations = _run_krylov(A, b, method, None, tol, maxiter, x0)
-    solve_seconds = time.perf_counter() - solve_start
-    if info != 0:
-        _emit_warning(
-            log_sink,
-            "%s did not converge (solver code %s)",
-            method,
-            info,
-        )
-
-    if info != 0:
-        if failure_action == "raise":
-            raise LinearSolveError(
-                f"{method} did not converge after {maxiter} iterations (info={info})"
-            )
-        fallback_start = time.perf_counter()
-        x = spsolve(A, b)
-        return finish(
-            x,
-            {
-                "preconditioner": None,
-                "iterations": max(iterations, int(info) if info > 0 else 0),
-                "reason": f"Krylov info={info}; configured direct fallback converged",
-                "setup_seconds": 0.0,
-                "solve_seconds": solve_seconds + time.perf_counter() - fallback_start,
-                "used_fallback": True,
-            },
-        )
-
-    return finish(
-        x,
-        {
-            "preconditioner": None,
-            "iterations": iterations,
-            "reason": "Krylov solver converged",
-            "setup_seconds": 0.0,
-            "solve_seconds": solve_seconds,
-            "used_fallback": False,
-        },
-    )
+    raise ValueError(f"Unknown solver method: {method}")

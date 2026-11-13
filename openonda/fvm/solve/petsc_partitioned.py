@@ -290,8 +290,6 @@ class PartitionedLinearWorkspace:
         ksp.setOperators(matrix)
         self.pc = ksp.getPC()
         methods = {
-            "cg": PETSc.KSP.Type.CG,
-            "gmres": PETSc.KSP.Type.GMRES,
             "bicgstab": PETSc.KSP.Type.BCGS,
         }
         if method == "amg":
@@ -500,7 +498,7 @@ def solve_owned_rows(
     system: OwnedRowsCSR,
     context: ParallelContext,
     *,
-    method: str = "cg",
+    method: str = "bicgstab",
     tolerance: float = 1e-10,
     relative_tolerance: float = 0.0,
     max_iterations: int = 500,

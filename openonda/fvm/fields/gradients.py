@@ -1,6 +1,5 @@
 """Gauss and inverse-distance least-squares gradients."""
 
-from collections.abc import Callable
 
 import numpy as np
 from scipy import sparse
@@ -8,7 +7,7 @@ from scipy import sparse
 from openonda.core._numba import cacheable_njit as njit
 
 from ..mesh.data import BoundaryPatchData, GeometryData, LeastSquaresGeometry, MeshData
-from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 
 _LSQ_QR_CONDITION_LIMIT = 1.0e8
 
@@ -22,13 +21,11 @@ converged value by less than 1 %."""
 def _is_empty_boundary(boundary: BoundaryPatchData, *, allow_source_type: bool = False) -> bool:
     type_u = boundary.get("velocity_type")
     if type_u is not None:
-        strategy = BOUNDARIES.strategy(type_u, "velocity", "gradient")
+        strategy = boundary_strategy(type_u, "velocity")
     elif boundary.get("boundary_condition_type") is None and allow_source_type:
         return boundary.get("type") == "empty"
     else:
-        strategy = BOUNDARIES.strategy(
-            boundary.get("boundary_condition_type"), "scalar", "gradient"
-        )
+        strategy = boundary_strategy(boundary.get("boundary_condition_type"), "scalar")
     return strategy is BoundaryStrategy.EMPTY
 
 
@@ -550,26 +547,16 @@ def compute_lsq_gradient(
     return grad
 
 
-def _resolve_gradient_fn(
-    geo_data: GeometryData,
-) -> Callable[[np.ndarray, MeshData, GeometryData], np.ndarray]:
-    """Return the gradient function matching the configured scheme.
+def gradient(field_values: np.ndarray, mesh_data: MeshData, geo_data: GeometryData) -> np.ndarray:
+    """Return the cell gradient of a scalar or vector field.
 
-    Checks ``geo_data["gradient_scheme"]``:
-    - ``"lsq"`` → :func:`compute_lsq_gradient`
-    - anything else → :func:`compute_gauss_gradient`
-
-    Parameters
-    ----------
-    geo_data : dict
-        Geometry dictionary; ``"lsq"`` selects least squares and any other
-        value selects Gauss linear.
-
-    Returns
-    -------
-    callable
-        ``grad_fn(field_values, mesh_data, geo_data) -> gradient``.
+    ``geo_data["gradient_scheme"]`` selects least squares (``"lsq"``) or Gauss
+    linear (any other value). The result covers interior and boundary cells:
+    ``(n, 3)`` for a scalar field and ``(n, 3, 3)`` for a vector field, where
+    ``result[i, j, k]`` is ``d(field_k)/d(x_j)``.
     """
     if geo_data.get("gradient_scheme") == "lsq":
-        return compute_lsq_gradient
-    return compute_gauss_gradient
+        result = compute_lsq_gradient(field_values, mesh_data, geo_data)
+    else:
+        result = compute_gauss_gradient(field_values, mesh_data, geo_data)
+    return result[..., 0] if np.ndim(field_values) == 1 else result

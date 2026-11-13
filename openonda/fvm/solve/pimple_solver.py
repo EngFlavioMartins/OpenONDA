@@ -105,7 +105,6 @@ class PIMPLESolver:
         for workspace in self._partitioned_linear_workspaces.values():
             workspace.rebuild_preconditioner()
         namespace = self._momentum_matrix_workspace.cache_namespace
-        clear_linear_solver_caches(("momentum", namespace))
         clear_linear_solver_caches(("kinematic_pressure", namespace))
 
     def close(self) -> None:
@@ -306,22 +305,15 @@ class PIMPLESolver:
                     velocity_older=velocity_older,
                     previous_time_step_size=previous_time_step_size,
                     ddt_scheme=ddt_scheme,
-                    momentum_preconditioner=self.params.get("momentum_preconditioner", "dilu"),
-                    reuse_ilu=self.params.get("reuse_ilu", False),
-                    ilu_key=self.params.get("ilu_key", None),
-                    ilu_drop_tolerance=self.params.get("ilu_drop_tolerance", 1e-4),
-                    ilu_fill_factor=self.params.get("ilu_fill_factor", 10),
                     momentum_tolerance=momentum_tolerance,
                     momentum_relative_tolerance=momentum_relative_tolerance,
                     maxiter=self.params.get("momentum_max_iterations", 1000),
-                    ilu_reuse_tolerance=self.params.get("ilu_reuse_tolerance", None),
                     linear_backend=self.params.get("_linear_backend", "scipy"),
                     parallel_context=self.params.get("_parallel_context"),
                     # The default shared settings bounds full-mesh RAM.  The
                     # explicit separate settings retains equation-specific PETSc
                     # objects so pressure agglomeration can be cached.
                     partitioned_workspace=self._partitioned_workspace("momentum"),
-                    failure_action=self.params.get("linear_failure_action", "raise"),
                     log_sink=logger,
                     matrix_workspace=self._momentum_matrix_workspace,
                     return_diagnostics=True,
@@ -428,8 +420,6 @@ class PIMPLESolver:
                         "pressure", final=final_pressure_solve
                     )
                     pressure_max_iterations = int(self.params.get("pressure_max_iterations", 500))
-                    amg_tolerance = self.params.get("amg_tolerance")
-                    amg_max_iterations = self.params.get("amg_max_iterations")
                     kinematic_pressure_correction, kinematic_pressure_result = solve_linear_system(
                         pressure_matrix,
                         pressure_right_hand_side,
@@ -438,20 +428,12 @@ class PIMPLESolver:
                         tol=pressure_tolerance,
                         rel_tol=pressure_relative_tolerance,
                         maxiter=pressure_max_iterations,
-                        amg_tolerance=None if amg_tolerance is None else float(amg_tolerance),
-                        amg_max_iterations=(
-                            pressure_max_iterations
-                            if amg_max_iterations is None
-                            else int(amg_max_iterations)
-                        ),
-                        amg_reuse_tolerance=float(self.params.get("amg_reuse_tolerance", 0.05)),
                         amg_key=(
                             "kinematic_pressure",
                             self._pressure_matrix_workspace.cache_namespace,
                         ),
                         backend=self.params.get("_linear_backend", "scipy"),
                         parallel_context=self.params.get("_parallel_context"),
-                        failure_action=self.params.get("linear_failure_action", "raise"),
                         log_sink=logger,
                         nullspace=(
                             "constant"

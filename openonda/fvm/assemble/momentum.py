@@ -9,7 +9,7 @@ from ..fields import gradients
 from ..fields.mixed_velocity_boundary import (
     update_mixed_velocity_boundary,
 )
-from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..solve.linear_interface import (
     LINEAR_RESIDUAL_FLOOR,
     LINEAR_VERIFICATION_FACTOR,
@@ -21,6 +21,9 @@ from . import convection, diffusion, matrix_assembly
 from .time_integration import backward_coefficients
 
 if TYPE_CHECKING:
+    from ..core.parallel import ParallelContext
+    from ..io.logging import Logging
+    from ..solve.petsc_partitioned import PartitionedLinearWorkspace
     from .matrix_assembly import MatrixAssemblyWorkspace
 
 
@@ -220,7 +223,7 @@ def _apply_ustar_bc(
     b_elem_start = start_face - mesh_data["n_interior_faces"]
     b_elem_indices = np.arange(n_cells + b_elem_start, n_cells + b_elem_start + n_faces)
     boundary_condition_type = boundary.get("velocity_type")
-    strategy = BOUNDARIES.strategy(boundary_condition_type, "velocity", "ghost")
+    strategy = boundary_strategy(boundary_condition_type, "velocity")
 
     if strategy is BoundaryStrategy.ZERO_GRADIENT:
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
@@ -255,7 +258,6 @@ def _apply_ustar_bc(
     elif strategy in (
         BoundaryStrategy.EMPTY,
         BoundaryStrategy.SLIP,
-        BoundaryStrategy.SYMMETRY,
     ):
         owners_b = mesh_data["owners"][start_face : start_face + n_faces]
         face_area_vector = geo_data["face_area_vector"][start_face : start_face + n_faces]
@@ -331,14 +333,8 @@ def assemble_momentum_equation(
                 f"kinematic_viscosity must be finite and positive with shape ({n_cells},)"
             )
 
-    # Resolve gradient scheme
-    _grad_fn = gradients._resolve_gradient_fn(geo_data)
-
-    velocity_gradient = _grad_fn(velocity, mesh_data, geo_data)
-
-    kinematic_pressure_gradient = _grad_fn(kinematic_pressure, mesh_data, geo_data)
-    if kinematic_pressure_gradient.ndim == 3:
-        kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)  # (n, 3, 1) -> (n, 3)
+    velocity_gradient = gradients.gradient(velocity, mesh_data, geo_data)
+    kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
 
     # The incompressible equation is divided by the constant reference
     # density. ``volumetric_face_flux`` therefore remains volumetric flux and
@@ -351,7 +347,7 @@ def assemble_momentum_equation(
     common_diagonal = None
     vol = geo_data["cell_volume"]
     has_directional_mixed_bc = any(
-        BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "diffusion")
+        boundary_strategy(boundary.get("velocity_type"), "velocity")
         is BoundaryStrategy.MIXED_VELOCITY
         for boundary in boundaries
     )
@@ -459,7 +455,7 @@ def assemble_momentum_equation(
             A = common_matrix
             equation_diagonal = common_diagonal
         if np.any(slip_diagonal):
-            # The wall-normal slip/symmetry coefficient belongs to this
+            # The wall-normal slip coefficient belongs to this
             # component only; the others keep sharing the common matrix.
             if A is common_matrix:
                 A = common_matrix.copy()
@@ -526,7 +522,15 @@ def solve_momentum_predictor(
     ddt_scheme: str = "euler_implicit",
     return_diagnostics: bool = False,
     return_operator: bool = False,
-    **solver_kwargs: object,
+    *,
+    momentum_tolerance: float,
+    momentum_relative_tolerance: float,
+    maxiter: int,
+    linear_backend: str = "scipy",
+    parallel_context: "ParallelContext | None" = None,
+    partitioned_workspace: "PartitionedLinearWorkspace | None" = None,
+    matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
+    log_sink: "Logging | None" = None,
 ) -> Any:
     """Assemble and solve the three momentum predictors.
 
@@ -542,7 +546,6 @@ def solve_momentum_predictor(
     n_boundary = mesh_data["n_faces"] - mesh_data["n_interior_faces"]
 
     # Assemble momentum equations
-    matrix_workspace = solver_kwargs.pop("matrix_workspace", None)
     mom_eqs = assemble_momentum_equation(
         velocity,
         kinematic_pressure,
@@ -567,7 +570,6 @@ def solve_momentum_predictor(
     # refreshes the extrapolated ones from the predicted interior.
     velocity_star[n_cells:] = velocity[n_cells : n_cells + n_boundary]
     matrices_are_shared = all(mom_eqs[name]["A"] is mom_eqs["x"]["A"] for name in ("y", "z"))
-    parallel_context = solver_kwargs.pop("parallel_context", None)
     component_diagonal = not matrices_are_shared
     if parallel_context is not None and parallel_context.is_partitioned:
         # A rank without mixed boundary faces may still exchange with one
@@ -579,8 +581,6 @@ def solve_momentum_predictor(
     # pressure/Rhie-Chow vector path that already supports them.
     momentum_diagonal = np.empty((n_cells, 3) if component_diagonal else n_cells, dtype=np.float64)
     solve_diagnostics = {}
-    linear_backend = solver_kwargs.pop("linear_backend", "scipy")
-    partitioned_workspace = solver_kwargs.pop("partitioned_workspace", None)
 
     if solver == "spsolve" and linear_backend == "scipy":
         # Components that share a matrix share one SuperLU factorization and
@@ -603,8 +603,8 @@ def solve_momentum_predictor(
                 A_group,
                 B,
                 method="spsolve",
-                tol=solver_kwargs.get("momentum_tolerance", 1e-4),
-                rel_tol=solver_kwargs.get("momentum_relative_tolerance", 0.0),
+                tol=momentum_tolerance,
+                rel_tol=momentum_relative_tolerance,
                 return_info=True,
                 direct_workspace=matrix_workspace,
             )
@@ -627,8 +627,8 @@ def solve_momentum_predictor(
                     A_group,
                     b_relaxed,
                     x_initial,
-                    solver_kwargs.get("momentum_tolerance", 1e-4),
-                    solver_kwargs.get("momentum_relative_tolerance", 0.0),
+                    momentum_tolerance,
+                    momentum_relative_tolerance,
                 )
                 final_residual = float(
                     np.linalg.norm(b_relaxed - A_group @ X[:, column]) / norm_factor
@@ -666,15 +666,6 @@ def solve_momentum_predictor(
             {name: mom_eqs[name]["A"] for name in "xyz"} if return_operator else None,
         )
 
-    preconditioner = solver_kwargs.pop("momentum_preconditioner", "dilu")
-    requested_ilu_key = solver_kwargs.pop("ilu_key", None)
-    shared_ilu_key = requested_ilu_key
-    if shared_ilu_key is None and matrix_workspace is not None:
-        # The three momentum components share this static matrix topology.  A
-        # workspace namespace scopes the cache to one solver instance while
-        # allowing x/y/z to reuse one ILU factorisation.
-        shared_ilu_key = ("momentum", matrix_workspace.cache_namespace)
-
     # Relax each distinct matrix once: components may share one matrix.
     relaxed_diagonals: dict[int, np.ndarray] = {}
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
@@ -688,12 +679,6 @@ def solve_momentum_predictor(
             momentum_diagonal[:, i_comp] = diag_new
         else:
             momentum_diagonal[:] = diag_new
-        first_sharer = next(name for name in "xyz" if mom_eqs[name]["A"] is A_relaxed)
-        component_ilu_key = (
-            shared_ilu_key
-            if matrices_are_shared or shared_ilu_key is None
-            else (shared_ilu_key, first_sharer)
-        )
         b = mom_eqs[comp_name]["b"]
 
         # Add source term to RHS to ensure consistency at convergence
@@ -703,8 +688,6 @@ def solve_momentum_predictor(
 
         # Determine initial guess x0 for iterative solver: prefer velocity_old
         # (previous time step) if available
-        momentum_tolerance = solver_kwargs.get("momentum_tolerance", 1e-4)
-        momentum_relative_tolerance = solver_kwargs.get("momentum_relative_tolerance", 0.0)
         x0_vec = None
         if velocity_old is not None:
             if np.asarray(velocity_old).shape[0] < n_cells:
@@ -720,14 +703,13 @@ def solve_momentum_predictor(
             tol=momentum_tolerance,
             rel_tol=momentum_relative_tolerance,
             x0=x0_vec,
-            preconditioner=preconditioner,
-            ilu_key=component_ilu_key,
+            maxiter=maxiter,
             backend=linear_backend,
             parallel_context=parallel_context,
             partitioned_workspace=partitioned_workspace,
             return_info=True,
             direct_workspace=matrix_workspace,
-            **solver_kwargs,
+            log_sink=log_sink,
         )
         solve_diagnostics[comp_name] = {
             "initial_residual": linear_result.initial_residual,

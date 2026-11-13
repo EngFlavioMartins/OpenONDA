@@ -56,8 +56,9 @@ class FVMConfiguration:
                 parallel_mode=parallel_mode,
                 output_mode="synchronous",
             )
-            # A direct SciPy solve is serial: use a tightly converged GMRES
-            # solve instead and never loosen an authored tolerance.
+            # A direct SciPy solve is serial: use a tightly converged
+            # iterative solve instead (BiCGSTAB for momentum, AMG for pressure)
+            # and never loosen an authored tolerance.
             linear_options: dict[str, object] = {}
             for equation in ("momentum", "pressure"):
                 method = (
@@ -66,7 +67,7 @@ class FVMConfiguration:
                 if method == "spsolve":
                     linear_options.update(
                         {
-                            f"{equation}_solver": "gmres",
+                            f"{equation}_solver": ("amg" if equation == "pressure" else "bicgstab"),
                             f"{equation}_tolerance": min(
                                 getattr(numerics.linear, f"{equation}_tolerance"), 1e-10
                             ),

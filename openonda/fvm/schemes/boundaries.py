@@ -1,8 +1,7 @@
-"""Declarative boundary capabilities shared by all FVM operators."""
+"""Boundary-condition types of the FVM operators and their numerical treatment."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum, auto
 
 
@@ -19,179 +18,82 @@ class BoundaryStrategy(Enum):
     EMPTY = auto()
     INLET_OUTLET = auto()
     SLIP = auto()
-    SYMMETRY = auto()
     CYCLIC = auto()
     FREESTREAM = auto()
     FIXED_FLUX_PRESSURE = auto()
     MIXED_VELOCITY = auto()
 
 
-@dataclass(frozen=True)
-class BoundaryOperator:
-    """Registration record binding a boundary type to its discrete operators.
+_SHARED = {
+    "fixed_value": BoundaryStrategy.FIXED_VALUE,
+    "zero_gradient": BoundaryStrategy.ZERO_GRADIENT,
+    "empty": BoundaryStrategy.EMPTY,
+    "cyclic": BoundaryStrategy.CYCLIC,
+    "freestream": BoundaryStrategy.FREESTREAM,
+}
 
-    Associates a boundary-condition name (e.g. ``"fixed_value"``) with the
-    set of fields it applies to, the set of discrete operators it
-    implements, and the :class:`BoundaryStrategy` that controls the
-    numerical treatment.
+# ``mixed_velocity`` is the velocity condition of the coupling: it prescribes
+# the normal velocity and the normal gradient of the tangential velocity, and
+# reconstructs the tangential face velocity from the evolving owner-cell state.
+VELOCITY_BOUNDARY: dict[str, BoundaryStrategy] = {
+    **_SHARED,
+    "inlet_outlet": BoundaryStrategy.INLET_OUTLET,
+    "slip": BoundaryStrategy.SLIP,
+    "mixed_velocity": BoundaryStrategy.MIXED_VELOCITY,
+}
+# ``fixed_flux_pressure`` is the pressure partner of a prescribed-velocity
+# boundary: the absolute pressure carries a momentum-compatible normal
+# gradient, while the pressure correction is homogeneous Neumann so that the
+# prescribed boundary flux is not changed.
+PRESSURE_BOUNDARY: dict[str, BoundaryStrategy] = {
+    **_SHARED,
+    "fixed_flux_pressure": BoundaryStrategy.FIXED_FLUX_PRESSURE,
+}
+SCALAR_BOUNDARY: dict[str, BoundaryStrategy] = dict(_SHARED)
 
-    Attributes
+_FIELD_BOUNDARY = {
+    "velocity": VELOCITY_BOUNDARY,
+    "kinematic_pressure": PRESSURE_BOUNDARY,
+    "scalar": SCALAR_BOUNDARY,
+}
+
+
+def boundary_strategy(name: str | None, field: str) -> BoundaryStrategy:
+    """Return the numerical treatment of boundary type ``name`` for ``field``.
+
+    Parameters
     ----------
-    name : str
-        Boundary-condition name (e.g. ``"fixed_value"``).
-    fields : frozenset[str]
-        Fields this BC applies to (e.g. ``{"velocity", "kinematic_pressure", "scalar"}``).
-    operators : frozenset[str]
-        Operators implemented (e.g. ``{"gradient", "convection"}``).
-    strategy : BoundaryStrategy
-        Standard behaviour enum value.
-    coupling_only : bool
-        Whether this BC is only available through the FVM–VPM coupler.
+    name : str or None
+        Boundary-condition name, such as ``"fixed_value"``. ``None`` (no
+        boundary condition set) is rejected like an unknown name.
+    field : {'velocity', 'kinematic_pressure', 'scalar'}
+        Field family.
+
+    Raises
+    ------
+    ValueError
+        If ``name`` is not a boundary type of ``field``.
     """
-
-    name: str
-    fields: frozenset[str]
-    operators: frozenset[str]
-    strategy: BoundaryStrategy
-    coupling_only: bool = False
-
-
-_ALL_OPERATORS = frozenset(
-    {"gradient", "convection", "diffusion", "pressure", "flux", "ghost", "diagnostics"}
-)
+    table = _FIELD_BOUNDARY[field]
+    strategy = table.get(name) if name is not None else None
+    if strategy is None:
+        raise ValueError(f"Boundary {name!r} is not a {field} boundary; supported: {sorted(table)}")
+    return strategy
 
 
-class BoundaryRegistry:
-    """Registry of all supported boundary-condition operators.
-
-    Enforces uniqueness (each name can be registered only once) and provides
-    lookups that validate whether a given boundary name implements the
-    required operator for a given field.  Use :meth:`require` before applying
-    a boundary treatment; it raises a clear error if the combination is not
-    supported.
-
-    The module-level singleton :data:`BOUNDARIES` is pre-populated with all
-    standard finite-volume boundary types.
-    """
-
-    def __init__(self) -> None:
-        """Create an empty boundary-operator registry.
-
-        The registry is a host-side mapping from boundary name to supported
-        field/operator strategies. It allocates no mesh or solver state; use
-        :meth:`register` to add unique entries.
-        """
-        self._entries: dict[str, BoundaryOperator] = {}
-
-    def register(self, entry: BoundaryOperator) -> None:
-        """Register one unique field/operator boundary capability.
-
-        Parameters
-        ----------
-        entry : BoundaryOperator
-            Immutable record naming supported fields, operations, and strategy.
-
-        Raises
-        ------
-        ValueError
-            If ``entry.name`` is already registered.
-        """
-        if entry.name in self._entries:
-            raise ValueError(f"Boundary operator {entry.name!r} is already registered")
-        self._entries[entry.name] = entry
-
-    def require(self, name: str | None, field: str, operator: str) -> BoundaryOperator:
-        """Resolve a boundary capability or raise a descriptive error.
-
-        Parameters
-        ----------
-        name : str or None
-            OpenFOAM-style boundary name, such as ``"fixed_value"``. ``None``
-            (no boundary condition set) is rejected like an unknown name.
-        field : str
-            Field family requesting the operation, such as ``"velocity"``.
-        operator : str
-            Discrete operation, such as ``"gradient"`` or ``"flux"``.
-
-        Returns
-        -------
-        BoundaryOperator
-            Registered immutable capability record.
-
-        Raises
-        ------
-        ValueError
-            If the name/field/operator combination is unsupported.
-        """
-        entry = self._entries.get(name) if name is not None else None
-        if entry is None or field not in entry.fields or operator not in entry.operators:
-            supported = sorted(
-                key
-                for key, candidate in self._entries.items()
-                if field in candidate.fields and operator in candidate.operators
-            )
-            raise ValueError(
-                f"Boundary {name!r} does not implement {operator} for {field}; "
-                f"supported: {supported}"
-            )
-        return entry
-
-    def names_for(self, field: str) -> set[str]:
-        """Return a new set of boundary names supporting ``field``."""
-        return {name for name, entry in self._entries.items() if field in entry.fields}
-
-    def strategy(self, name: str | None, field: str, operator: str) -> BoundaryStrategy:
-        """Resolve validated operator behavior without per-module name fallback."""
-        return self.require(name, field, operator).strategy
-
-
-BOUNDARIES = BoundaryRegistry()
-for _name, _fields, _strategy in (
-    (
-        "fixed_value",
-        frozenset({"velocity", "kinematic_pressure", "scalar"}),
-        BoundaryStrategy.FIXED_VALUE,
-    ),
-    (
-        "zero_gradient",
-        frozenset({"velocity", "kinematic_pressure", "scalar"}),
-        BoundaryStrategy.ZERO_GRADIENT,
-    ),
-    ("empty", frozenset({"velocity", "kinematic_pressure", "scalar"}), BoundaryStrategy.EMPTY),
-    ("inlet_outlet", frozenset({"velocity"}), BoundaryStrategy.INLET_OUTLET),
-    ("slip", frozenset({"velocity"}), BoundaryStrategy.SLIP),
-    ("symmetry", frozenset({"velocity"}), BoundaryStrategy.SYMMETRY),
-    ("cyclic", frozenset({"velocity", "kinematic_pressure", "scalar"}), BoundaryStrategy.CYCLIC),
-    (
-        "freestream",
-        frozenset({"velocity", "kinematic_pressure", "scalar"}),
-        BoundaryStrategy.FREESTREAM,
-    ),
-):
-    BOUNDARIES.register(BoundaryOperator(_name, _fields, _ALL_OPERATORS, _strategy))
-
-# Pressure partner for a prescribed-velocity boundary.  The absolute pressure
-# carries a momentum-compatible normal gradient, while the pressure correction
-# is homogeneous Neumann so that the prescribed boundary flux is not changed.
-BOUNDARIES.register(
-    BoundaryOperator(
-        "fixed_flux_pressure",
-        frozenset({"kinematic_pressure"}),
-        _ALL_OPERATORS,
-        BoundaryStrategy.FIXED_FLUX_PRESSURE,
-        coupling_only=True,
-    )
-)
-
-# Mixed velocity condition of the coupling: prescribes the normal velocity and
-# the normal gradient of the tangential velocity.  Unlike fixed_value, its tangential
-# face velocity is reconstructed from the evolving owner-cell state.
-BOUNDARIES.register(
-    BoundaryOperator(
-        "mixed_velocity",
-        frozenset({"velocity"}),
-        _ALL_OPERATORS,
-        BoundaryStrategy.MIXED_VELOCITY,
-        coupling_only=True,
-    )
-)
+def validate_boundary_conditions(boundaries: list[dict]) -> None:
+    """Reject patches whose velocity or pressure type is not supported."""
+    errors = []
+    for patch in boundaries:
+        name = patch.get("name", "<unnamed>")
+        for key, field, table in (
+            ("velocity_type", "velocity", VELOCITY_BOUNDARY),
+            ("pressure_type", "pressure", PRESSURE_BOUNDARY),
+        ):
+            if patch.get(key) not in table:
+                errors.append(
+                    f"  patch {name!r}: {field} BC {patch.get(key)!r} unsupported; "
+                    f"valid: {sorted(table)}"
+                )
+    if errors:
+        raise ValueError("Unsupported FVM boundary conditions:\n" + "\n".join(errors))

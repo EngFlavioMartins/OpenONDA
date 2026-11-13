@@ -27,7 +27,7 @@ from openonda.core.kinematics import RigidPose, advance_pose
 from ..fields.mixed_velocity_boundary import (
     update_mixed_velocity_boundary,
 )
-from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from .elastic import ElasticMount, MountedBody
 from .mesh_motion import MeshMotion
 
@@ -116,7 +116,7 @@ class RigidMeshMotion:
         self._wall_velocity: dict[str, np.ndarray] = {}
         self._empty_patches: list[dict] = []
         for boundary in self._boundaries:
-            strategy = BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "ghost")
+            strategy = boundary_strategy(boundary.get("velocity_type"), "velocity")
             if strategy is BoundaryStrategy.FIXED_VALUE and boundary.get("type") == "wall":
                 configured = boundary.get("velocity_value_field")
                 if configured is None:
@@ -129,8 +129,7 @@ class RigidMeshMotion:
         self._slip_type = {
             item.name: item.velocity_type
             for item in sorted(solver.case.boundaries, key=lambda item: item.name)
-            if BOUNDARIES.strategy(item.velocity_type, "velocity", "ghost")
-            in (BoundaryStrategy.SLIP, BoundaryStrategy.SYMMETRY)
+            if boundary_strategy(item.velocity_type, "velocity") is BoundaryStrategy.SLIP
         }
         self._parallel = solver.parallel
 
@@ -282,7 +281,9 @@ class RigidMeshMotion:
         )
         if isinstance(self.kinematics, MountedBody):
             if state is None:
-                raise ValueError("Restarting an elastically mounted body needs its structural state")
+                raise ValueError(
+                    "Restarting an elastically mounted body needs its structural state"
+                )
             self.kinematics.restore(self.accepted_time, state)
         self.move_to(self.accepted_time, self.accepted_pose)
 

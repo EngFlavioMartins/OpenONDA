@@ -306,8 +306,7 @@ def compute_vorticity(
     # expensive reconstruction for wall loads and VTK in one time state, so
     # accepting a supplied gradient prevents duplicate full-domain work.
     if gradient is None:
-        _grad_fn = gradients._resolve_gradient_fn(geo_data)
-        gradient = _grad_fn(velocity, mesh_data, geo_data)
+        gradient = gradients.gradient(velocity, mesh_data, geo_data)
     return vorticity_from_gradient(gradient, mesh_data["n_cells"])
 
 
@@ -645,7 +644,7 @@ def compute_surface_face_loads(
         Per-face centers, areas, normals, pressure values, pressure/viscous
         forces, and wall-shear vectors.
     """
-    from ..fields.gradients import _resolve_gradient_fn as _resolve_grad
+    from ..fields.gradients import gradient as _cell_gradient
 
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
@@ -669,7 +668,7 @@ def compute_surface_face_loads(
         velocity_gradient = (
             gradient
             if gradient is not None
-            else _resolve_grad(geo_data)(velocity, mesh_data, geo_data)
+            else _cell_gradient(velocity, mesh_data, geo_data)
         )
         if velocity_gradient.ndim == 3:
             velocity_gradient = velocity_gradient[:n_cells]

@@ -14,7 +14,7 @@ from ..fields.boundary_reconstruction import boundary_owner_gradient, boundary_r
 from ..fields.mixed_velocity_boundary import (
     update_mixed_velocity_boundary,
 )
-from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..utils.vector_algebra import vector_dot, vector_magnitude
 from .pressure_reference import fix_pressure_reference
 
@@ -96,7 +96,7 @@ def _pressure_requires_constraint(
     """Return whether the assembled pressure operator has a constant null space."""
     for boundary in boundaries:
         boundary_condition_type = boundary.get("pressure_type")
-        strategy = BOUNDARIES.strategy(boundary_condition_type, "kinematic_pressure", "pressure")
+        strategy = boundary_strategy(boundary_condition_type, "kinematic_pressure")
         if strategy is BoundaryStrategy.FIXED_VALUE or (
             strategy is BoundaryStrategy.FREESTREAM
             and np.any(_freestream_pressure_outflow(boundary, geo_data))
@@ -185,7 +185,7 @@ def prepare_freestream_boundaries(
     selection_flux = face_flux if mesh_face_flux is None else face_flux - mesh_face_flux
     changed = False
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "ghost")
+        strategy = boundary_strategy(boundary.get("velocity_type"), "velocity")
         if strategy is BoundaryStrategy.FREESTREAM:
             select_freestream_faces(boundary, face_flux, geo_data, mesh_face_flux)
         elif strategy is BoundaryStrategy.INLET_OUTLET and mesh_face_flux is not None:
@@ -248,9 +248,7 @@ def compute_ddt_flux_correction(
     if volumetric_face_flux_old is None or time_step_size is None or velocity_old is None:
         return None
 
-    strategies = [
-        BOUNDARIES.strategy(b.get("velocity_type"), "velocity", "ghost") for b in boundaries
-    ]
+    strategies = [boundary_strategy(b.get("velocity_type"), "velocity") for b in boundaries]
     if strategies and all(
         strategy in (BoundaryStrategy.CYCLIC, BoundaryStrategy.EMPTY) for strategy in strategies
     ):
@@ -491,11 +489,9 @@ def _update_fixed_flux_pressure_boundaries(
     owners = mesh_data["owners"]
     face_area_vector = geo_data["face_area_vector"]
     face_cf = geo_data["cell_connection_vector"]
-    _grad_fn = gradients._resolve_gradient_fn(geo_data)
-
     fixed_flux_patches = []
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "kinematic_pressure", "ghost")
+        strategy = boundary_strategy(boundary.get("pressure_type"), "kinematic_pressure")
         if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
             fixed_flux_patches.append(boundary)
     parallel = mesh_data.get("_parallel_context")
@@ -506,9 +502,7 @@ def _update_fixed_flux_pressure_boundaries(
         return kinematic_pressure_gradient
 
     if kinematic_pressure_gradient is None:
-        kinematic_pressure_gradient = _grad_fn(kinematic_pressure, mesh_data, geo_data)
-        if kinematic_pressure_gradient.ndim == 3:
-            kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)
+        kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
     assert kinematic_pressure_gradient is not None
 
     if pressure_free_face_flux is not None:
@@ -587,9 +581,7 @@ def _update_fixed_flux_pressure_boundaries(
         # without physical boundary faces. Its entry must be collective.
         changed = bool(parallel.global_max(int(changed)))
     if changed:
-        kinematic_pressure_gradient = _grad_fn(kinematic_pressure, mesh_data, geo_data)
-        if kinematic_pressure_gradient.ndim == 3:
-            kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)
+        kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
     return kinematic_pressure_gradient
 
 
@@ -613,7 +605,7 @@ def _fixed_flux_pressure_face_drive(
     """
     faces = []
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(boundary.get("pressure_type"), "kinematic_pressure", "ghost")
+        strategy = boundary_strategy(boundary.get("pressure_type"), "kinematic_pressure")
         if boundary.get("fixed_flux_pressure_external", False):
             continue
         if strategy is BoundaryStrategy.FIXED_FLUX_PRESSURE:
@@ -828,9 +820,7 @@ def _pressure_boundary_signature(
     """Return the structural part of the pressure-boundary configuration."""
     signature = []
     for boundary in boundaries:
-        strategy = BOUNDARIES.strategy(
-            boundary.get("pressure_type"), "kinematic_pressure", "pressure"
-        )
+        strategy = boundary_strategy(boundary.get("pressure_type"), "kinematic_pressure")
         signature.append((int(boundary["start_face"]), int(boundary["n_faces"]), strategy.name))
     return tuple(signature)
 
@@ -846,9 +836,7 @@ def build_pressure_boundary_layout(
         start = int(boundary["start_face"])
         nf = int(boundary["n_faces"])
         local = slice(start - n_interior, start - n_interior + nf)
-        strategy = BOUNDARIES.strategy(
-            boundary.get("pressure_type"), "kinematic_pressure", "pressure"
-        )
+        strategy = boundary_strategy(boundary.get("pressure_type"), "kinematic_pressure")
         if strategy is BoundaryStrategy.FIXED_VALUE:
             code = 1
         elif strategy is BoundaryStrategy.EMPTY:
@@ -981,7 +969,7 @@ def adjust_boundary_flux_for_continuity(
         if np.any(boundary_neighbour_cell[start : start + nf] >= 0):
             continue
         net_local += float(np.sum(patch_flux))
-        strategy = BOUNDARIES.strategy(boundary.get("velocity_type"), "velocity", "flux")
+        strategy = boundary_strategy(boundary.get("velocity_type"), "velocity")
         if strategy in floating:
             # Scale exactly the faces the pressure matrix treats as
             # adjustable: the assembly's own classification when present.
@@ -1321,10 +1309,7 @@ def assemble_pressure_correction_equation_rhie_chow(
         raise ValueError("reuse_matrix requires an assembled pressure-correction workspace")
 
     # Use direct gradient computation for full pressure field kinematic_pressure
-    _grad_fn = gradients._resolve_gradient_fn(geo_data)
-    kinematic_pressure_gradient = _grad_fn(kinematic_pressure, mesh_data, geo_data)
-    if kinematic_pressure_gradient.ndim == 3:
-        kinematic_pressure_gradient = kinematic_pressure_gradient.squeeze(-1)
+    kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
     scalar_diagonal = np.asarray(pressure_velocity_coefficient).ndim == 1
     pressure_velocity_coefficient_vector = (
         pressure_velocity_coefficient[:, np.newaxis]
@@ -1619,7 +1604,7 @@ def _extend_kinematic_pressure_correction_bcs(
         idx = n_cells + (start - n_interior)
         own = owners[start : start + nf]
         pressure_type = boundary.get("pressure_type")
-        strategy = BOUNDARIES.strategy(pressure_type, "kinematic_pressure", "ghost")
+        strategy = boundary_strategy(pressure_type, "kinematic_pressure")
         if strategy is BoundaryStrategy.FIXED_VALUE:
             kinematic_pressure_correction_extended[idx : idx + nf] = 0.0
         elif strategy is BoundaryStrategy.CYCLIC:
@@ -1698,7 +1683,7 @@ def _correct_boundary_fluxes(
         own = owners[idx]
         geo_diff_b = face_conductance[idx]
         boundary_condition_type = boundary.get("pressure_type")
-        strategy = BOUNDARIES.strategy(boundary_condition_type, "kinematic_pressure", "flux")
+        strategy = boundary_strategy(boundary_condition_type, "kinematic_pressure")
         if strategy is BoundaryStrategy.FIXED_VALUE:
             volumetric_face_flux[idx] += geo_diff_b * kinematic_pressure_correction[own]
         elif strategy is BoundaryStrategy.CYCLIC:
@@ -1834,7 +1819,7 @@ def _apply_slip_bc(
     n_cells: int,
     n_interior: int,
 ) -> None:
-    """Apply a slip / symmetry / empty velocity BC.
+    """Apply a slip / empty velocity BC.
 
     Removes the component normal to the boundary face from the
     ghost-cell velocity, leaving only the tangential part.
@@ -1883,7 +1868,7 @@ def _update_velocity_bcs(
     - ``zero_gradient`` → :func:`_apply_zero_gradient_bc`
     - ``inlet_outlet``  → :func:`_apply_inlet_outlet_bc`
     - ``fixed_value``   → :func:`_apply_fixed_value_bc`
-    - ``empty`` / ``slip`` / ``symmetry`` → :func:`_apply_slip_bc`
+    - ``empty`` / ``slip`` → :func:`_apply_slip_bc`
 
     Args:
         velocity:           Velocity array (mutated in place).
@@ -1896,7 +1881,7 @@ def _update_velocity_bcs(
     """
     for boundary in boundaries:
         bc_type_u = boundary.get("velocity_type") or boundary.get("boundary_condition_type")
-        strategy = BOUNDARIES.strategy(bc_type_u, "velocity", "ghost")
+        strategy = boundary_strategy(bc_type_u, "velocity")
         if strategy is BoundaryStrategy.ZERO_GRADIENT:
             _apply_zero_gradient_bc(velocity, boundary, owners, n_cells, n_interior)
         elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
@@ -1912,7 +1897,6 @@ def _update_velocity_bcs(
         elif strategy in (
             BoundaryStrategy.EMPTY,
             BoundaryStrategy.SLIP,
-            BoundaryStrategy.SYMMETRY,
         ):
             _apply_slip_bc(velocity, boundary, owners, geo_data, n_cells, n_interior)
         elif strategy is BoundaryStrategy.CYCLIC:
@@ -1999,12 +1983,9 @@ def correct_velocity_and_flux(
         mesh_data,
         boundaries,
     )
-    _grad_fn = gradients._resolve_gradient_fn(geo_data)
-    kinematic_pressure_correction_gradient = _grad_fn(
+    kinematic_pressure_correction_gradient = gradients.gradient(
         kinematic_pressure_correction_extended, mesh_data, geo_data
     )
-    if kinematic_pressure_correction_gradient.ndim == 3:
-        kinematic_pressure_correction_gradient = kinematic_pressure_correction_gradient.squeeze(-1)
     pressure_velocity_coefficient_vector = (
         pressure_velocity_coefficient[:, np.newaxis]
         if np.asarray(pressure_velocity_coefficient).ndim == 1
@@ -2051,7 +2032,7 @@ def _apply_scalar_bc(
 ) -> None:
     """Apply a boundary condition to a scalar field ghost-cell block.
 
-    Zero-gradient BCs (including inlet, outlet, symmetry, empty, slip)
+    Zero-gradient BCs (including inlet, outlet, empty, slip)
     copy the owner value.  ``fixed_value`` sets the prescribed
     boundary value.
 
@@ -2160,7 +2141,7 @@ def update_scalar_boundaries(
             "boundary_condition_type"
         )
         registry_field = "kinematic_pressure" if field_name == "kinematic_pressure" else "scalar"
-        strategy = BOUNDARIES.strategy(boundary_condition_type, registry_field, "ghost")
+        strategy = boundary_strategy(boundary_condition_type, registry_field)
         _apply_scalar_bc(
             field_values,
             b_elem_indices,

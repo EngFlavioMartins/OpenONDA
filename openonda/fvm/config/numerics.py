@@ -91,7 +91,7 @@ class LinearSolverConfig:
 
     Parameters
     ----------
-    linear_solver : {'bicgstab', 'gmres', 'cg', 'amg', 'spsolve'}
+    linear_solver : {'bicgstab', 'amg', 'spsolve'}
         Default method. Momentum cannot use ``amg`` directly.
     momentum_solver, pressure_solver : str or None
         Equation-specific methods. Momentum inherits ``linear_solver`` by
@@ -100,18 +100,6 @@ class LinearSolverConfig:
     pressure_nullspace_method : {'auto', 'reference', 'petsc'}
         Constant-pressure nullspace treatment for singular incompressible
         systems. ``reference`` pins a datum; ``petsc`` attaches a nullspace.
-    linear_failure_action : {'raise', 'direct_fallback'}
-        Action when an iterative solve does not converge. The default
-        ``raise`` never silently replaces the configured numerical method.
-    momentum_preconditioner : {'dilu', 'jacobi', 'ilu'}
-        Preconditioner of the SciPy Krylov momentum solve. ``dilu`` is the
-        diagonal incomplete LU (``(D* + L) D*^-1 (D* + U)``, off-diagonal
-        coefficients unchanged), rebuilt from the current matrix in one sweep;
-        ``jacobi`` divides by the diagonal; ``ilu`` is SciPy's thresholded
-        incomplete LU controlled by the ``ilu_*`` settings. The PETSc backend
-        uses its own block-Jacobi preconditioner.
-    reuse_ilu : bool
-        Reuse an ILU preconditioner while matrix-change checks permit it.
     momentum_tolerance, pressure_tolerance : float
         Positive absolute residual tolerances in assembled equation units.
         The default momentum tolerance of ``1e-9`` converges the predictor
@@ -123,21 +111,14 @@ class LinearSolverConfig:
         the ordinary equation setting.
     momentum_max_iterations, pressure_max_iterations : int
         Positive iteration caps.
-    amg_tolerance, amg_max_iterations : float or int or None
-        Optional AMG-specific positive tolerance and iteration cap; ``None``
-        uses the pressure tolerance and ``pressure_max_iterations``.
-    amg_reuse_tolerance : float
-        Positive dimensionless matrix-change tolerance for AMG reuse.
-    ilu_drop_tolerance, ilu_fill_factor : float
-        Positive SciPy ILU sparsification and fill controls.
-    ilu_reuse_tolerance : float or None
-        Optional non-negative dimensionless matrix-change check for ILU reuse.
 
     Momentum and pressure may select different methods; pressure also has an
     explicit constant-nullspace settings. Absolute tolerances are in assembled
     equation residual units and relative tolerances are normalized against the
-    initial residual. ``linear_failure_action='raise'`` is the safe default;
-    ``'direct_fallback'`` explicitly permits a fallback solve.
+    initial residual. A solve that does not converge raises. The momentum
+    solve is BiCGSTAB with a diagonal incomplete LU preconditioner, rebuilt
+    from the current matrix in one sweep (``(D* + L) D*^-1 (D* + U)``); the
+    PETSc backend uses its own block-Jacobi preconditioner.
 
     Raises
     ------
@@ -147,47 +128,14 @@ class LinearSolverConfig:
         If a method is unsupported or a tolerance/count violates its range.
     """
 
-    linear_solver: Literal[
-        "bicgstab",
-        "gmres",
-        "cg",
-        "amg",
-        "spsolve",
-    ] = "bicgstab"
-    momentum_solver: (
-        Literal[
-            "bicgstab",
-            "gmres",
-            "cg",
-            "spsolve",
-        ]
-        | None
-    ) = None
-    pressure_solver: (
-        Literal[
-            "amg",
-            "bicgstab",
-            "gmres",
-            "cg",
-            "spsolve",
-        ]
-        | None
-    ) = "amg"
+    linear_solver: Literal["bicgstab", "amg", "spsolve"] = "bicgstab"
+    momentum_solver: Literal["bicgstab", "spsolve"] | None = None
+    pressure_solver: Literal["amg", "bicgstab", "spsolve"] | None = "amg"
     pressure_nullspace_method: Literal[
         "auto",
         "reference",
         "petsc",
     ] = "auto"
-    linear_failure_action: Literal[
-        "raise",
-        "direct_fallback",
-    ] = "raise"
-    momentum_preconditioner: Literal[
-        "dilu",
-        "jacobi",
-        "ilu",
-    ] = "dilu"
-    reuse_ilu: bool = True
 
     momentum_tolerance: float = 1e-9
     momentum_relative_tolerance: float = 0.0
@@ -199,16 +147,8 @@ class LinearSolverConfig:
     pressure_final_relative_tolerance: float | None = 0.0
     pressure_max_iterations: int = 500
 
-    amg_tolerance: float | None = None
-    amg_max_iterations: int | None = None
-    amg_reuse_tolerance: float = 0.05
-
-    ilu_drop_tolerance: float = 1e-4
-    ilu_fill_factor: float = 10.0
-    ilu_reuse_tolerance: float | None = None
-
     def __post_init__(self) -> None:
-        valid = {"bicgstab", "gmres", "cg", "amg", "spsolve"}
+        valid = {"bicgstab", "amg", "spsolve"}
         for name in ("linear_solver", "momentum_solver", "pressure_solver"):
             value = getattr(self, name)
             if value is None and name != "linear_solver":
@@ -227,26 +167,9 @@ class LinearSolverConfig:
                 "LinearSolverConfig.pressure_nullspace_method must be auto, reference, or petsc"
             )
         object.__setattr__(self, "pressure_nullspace_method", nullspace)
-        failure_action = self.linear_failure_action
-        if failure_action not in {"raise", "direct_fallback"}:
-            raise ValueError(
-                "LinearSolverConfig.linear_failure_action must be raise or direct_fallback"
-            )
-        object.__setattr__(self, "linear_failure_action", failure_action)
-        preconditioner = self.momentum_preconditioner
-        if preconditioner not in {"dilu", "jacobi", "ilu"}:
-            raise ValueError(
-                "LinearSolverConfig.momentum_preconditioner must be dilu, jacobi, or ilu"
-            )
-        object.__setattr__(self, "momentum_preconditioner", preconditioner)
-        if not isinstance(self.reuse_ilu, bool):
-            raise TypeError("LinearSolverConfig.reuse_ilu must be a boolean")
         for name in (
             "momentum_tolerance",
             "pressure_tolerance",
-            "ilu_drop_tolerance",
-            "ilu_fill_factor",
-            "amg_reuse_tolerance",
         ):
             object.__setattr__(
                 self,
@@ -267,7 +190,6 @@ class LinearSolverConfig:
         for name in (
             "momentum_final_relative_tolerance",
             "pressure_final_relative_tolerance",
-            "ilu_reuse_tolerance",
         ):
             value = getattr(self, name)
             if value is not None:
@@ -276,30 +198,11 @@ class LinearSolverConfig:
                     name,
                     finite_real(f"LinearSolverConfig.{name}", value, minimum=0.0),
                 )
-        if self.amg_tolerance is not None:
-            object.__setattr__(
-                self,
-                "amg_tolerance",
-                finite_real(
-                    "LinearSolverConfig.amg_tolerance",
-                    self.amg_tolerance,
-                    minimum=0.0,
-                    strict_minimum=True,
-                ),
-            )
         for name in ("momentum_max_iterations", "pressure_max_iterations"):
             object.__setattr__(
                 self,
                 name,
                 strict_int(f"LinearSolverConfig.{name}", getattr(self, name), minimum=1),
-            )
-        if self.amg_max_iterations is not None:
-            object.__setattr__(
-                self,
-                "amg_max_iterations",
-                strict_int(
-                    "LinearSolverConfig.amg_max_iterations", self.amg_max_iterations, minimum=1
-                ),
             )
 
 

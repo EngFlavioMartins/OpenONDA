@@ -5,8 +5,8 @@ schemes (:mod:`..assemble.convection`).  This package is the intended home for
 the wider discretisation selection (div/grad/laplacian/ddt) as it grows.
 """
 
+from .boundaries import validate_boundary_conditions
 from .limiters import LIMITERS, apply_limiter, is_limited_scheme
-from .validation import validate_boundary_conditions
 
 __all__ = [
     "LIMITERS",

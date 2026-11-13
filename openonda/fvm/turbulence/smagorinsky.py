@@ -131,8 +131,7 @@ class SmagorinskyModel:
         n_cells = mesh_data["n_cells"]
 
         # Compute velocity gradient on elements (returns gradients for interior+boundary elements)
-        _grad_fn = gradients._resolve_gradient_fn(geo_data)
-        velocity_gradient = _grad_fn(velocity, mesh_data, geo_data)
+        velocity_gradient = gradients.gradient(velocity, mesh_data, geo_data)
 
         # We are only interested in interior element gradients (first n_cells)
         interior_velocity_gradient = velocity_gradient[:n_cells]
@@ -265,8 +264,9 @@ class EquilibriumSmagorinskyModel:
         mesh = self.mesh_data
         geometry = self.geo_data
         n_cells = int(mesh["n_cells"])
-        grad_fn = gradients._resolve_gradient_fn(geometry)
-        velocity_gradient = np.asarray(grad_fn(velocity, mesh, geometry), dtype=np.float64)
+        velocity_gradient = np.asarray(
+            gradients.gradient(velocity, mesh, geometry), dtype=np.float64
+        )
         if velocity_gradient.shape[1:] != (3, 3) or velocity_gradient.shape[0] < n_cells:
             raise ValueError(
                 f"Velocity gradient has shape {velocity_gradient.shape}; expected at least ({n_cells}, 3, 3)"

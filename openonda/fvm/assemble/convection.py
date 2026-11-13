@@ -11,7 +11,7 @@ Converted from uFVM cfdAssembleConvectionTerm.m
 
 import numpy as np
 
-from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..schemes.limiters import apply_limiter, is_limited_scheme
 from ..utils.vector_algebra import gathered_vector_dot
 
@@ -20,9 +20,9 @@ def _convection_boundary_strategy(boundary_patch: dict[str, object]) -> "Boundar
     """Resolve velocity/scalar boundary behavior without an implicit fallback."""
     type_u = boundary_patch.get("velocity_type")
     if type_u is not None:
-        return BOUNDARIES.strategy(type_u, "velocity", "convection")
+        return boundary_strategy(type_u, "velocity")
     boundary_condition_type = boundary_patch.get("boundary_condition_type")
-    return BOUNDARIES.strategy(boundary_condition_type, "scalar", "convection")
+    return boundary_strategy(boundary_condition_type, "scalar")
 
 
 def assemble_convection_term_upwind(
@@ -131,8 +131,6 @@ def _tvd_face_psi(
         raise ValueError(
             "Limited convection schemes require scalar_field_gradient (cell gradient)."
         )
-    if scalar_field_gradient.ndim == 3 and scalar_field_gradient.shape[2] == 1:
-        scalar_field_gradient = scalar_field_gradient.squeeze(-1)
     if not np.all(np.isfinite(scalar_field)) or not np.all(np.isfinite(scalar_field_gradient)):
         raise FloatingPointError("TVD convection received a non-finite field or gradient")
 
@@ -282,11 +280,7 @@ def assemble_convection_term_boundary(
                 # owner offset minus the owner-to-neighbour connection.
                 if scalar_field_gradient is None:
                     raise ValueError("linear_upwind/lust convection requires scalar_field_gradient")
-                gradient = (
-                    scalar_field_gradient.squeeze(-1)
-                    if scalar_field_gradient.ndim == 3
-                    else scalar_field_gradient
-                )
+                gradient = scalar_field_gradient
                 owner_to_face = (
                     geo_data["face_centre"][b_face_indices] - geo_data["cell_centre"][owners_b]
                 )
@@ -436,8 +430,6 @@ def assemble_convection_term_gradient_upwind(
         raise ValueError(
             "linearUpwind/LUST convection requires scalar_field_gradient (cell gradient)"
         )
-    if scalar_field_gradient.ndim == 3 and scalar_field_gradient.shape[2] == 1:
-        scalar_field_gradient = scalar_field_gradient.squeeze(-1)
 
     n_interior_faces = mesh_data["n_interior_faces"]
     owners_all = mesh_data["owners"]
@@ -586,7 +578,6 @@ def assemble_convection_term(
         if strategy in (
             BoundaryStrategy.EMPTY,
             BoundaryStrategy.SLIP,
-            BoundaryStrategy.SYMMETRY,
         ):
             # No convective flux through an impermeable plane.
             continue

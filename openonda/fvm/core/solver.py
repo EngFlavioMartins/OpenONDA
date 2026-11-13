@@ -80,11 +80,11 @@ def _enforce_velocity_boundary_constraints(
         mesh_data:  Mesh dictionary.
         geo_data:   Geometry dictionary.
     """
-    from ..schemes.boundaries import BOUNDARIES, BoundaryStrategy
+    from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 
     for boundary in boundaries:
         boundary_condition_type = boundary.get("velocity_type")
-        strategy = BOUNDARIES.strategy(boundary_condition_type, "velocity", "ghost")
+        strategy = boundary_strategy(boundary_condition_type, "velocity")
         start = n_cells + (boundary["start_face"] - mesh_data["n_interior_faces"])
         end = start + boundary["n_faces"]
         if (
@@ -115,7 +115,6 @@ def _enforce_velocity_boundary_constraints(
         elif strategy in (
             BoundaryStrategy.EMPTY,
             BoundaryStrategy.SLIP,
-            BoundaryStrategy.SYMMETRY,
         ):
             owners_b = mesh_data["owners"][
                 boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
@@ -255,9 +254,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
         gradient = self._derived_fields.get("velocity_gradient")
         if gradient is None:
-            gradient = gradients._resolve_gradient_fn(self.geo_data)(
-                self.velocity, self.mesh_data, self.geo_data
-            )
+            gradient = gradients.gradient(self.velocity, self.mesh_data, self.geo_data)
             self._derived_fields["velocity_gradient"] = gradient
         return gradient
 
@@ -387,14 +384,12 @@ class FVMSolver(CouplerInterfaceMixin):
                 or configuration.numerics.linear.linear_solver,
             }
             invalid = {
-                name: value
-                for name, value in methods.items()
-                if value not in {"bicgstab", "gmres", "cg", "amg"}
+                name: value for name, value in methods.items() if value not in {"bicgstab", "amg"}
             }
             if invalid:
                 raise ValueError(
                     "PETSc execution requires iterative momentum/pressure methods "
-                    f"(bicgstab, gmres, cg, or pressure AMG); got {invalid!r}. Distributed "
+                    f"(bicgstab, or pressure AMG); got {invalid!r}. Distributed "
                     "direct factorization is not assumed."
                 )
 
