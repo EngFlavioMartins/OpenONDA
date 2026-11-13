@@ -318,7 +318,8 @@ class SlipSlabInduction:
         self._mesh_binding: tuple | None = None
         self._mesh_session: GaussianSlabFieldSession | None = None
         self._mesh_cleanup_error: BaseException | None = None
-        self._mesh_execution_backend: str | None = None
+        # Where the image fields run; resolved at bind, shown in the start-up report.
+        self.mesh_execution_backend: str | None = None
 
     @property
     def _bound_physics(self) -> "PhysicsBase":
@@ -367,7 +368,7 @@ class SlipSlabInduction:
         self._z_min_field[None] = self.z_min
         self._z_max_field[None] = self.z_max
         physics._slip_slab_bounds = (self.z_min, self.z_max)
-        self._mesh_execution_backend = execution_backend
+        self.mesh_execution_backend = execution_backend
         self._mesh_binding = self._mesh_configuration()
         return self
 
@@ -506,7 +507,7 @@ class SlipSlabInduction:
                 velocity_scale=self.velocity_scale,
                 gradient_scale=self.gradient_scale,
                 settings=self.gaussian_mesh_settings,
-                execution_backend=self._mesh_execution_backend,
+                execution_backend=self.mesh_execution_backend,
                 dtype="float32" if self._bound_physics.accumulator_dtype == ti.f32 else "float64",
                 kernel=self._bound_physics.particle_kernel,
             )

@@ -298,6 +298,9 @@ class Logging:
         induction = getattr(system, "induction", None)
         induction_name = induction.__class__.__name__ if induction is not None else "unknown"
         rows.append(("induction", induction_name.removesuffix("Induction")))
+        mesh_backend = getattr(induction, "mesh_execution_backend", None)
+        if mesh_backend is not None:
+            rows.append(("  slab image fields", mesh_backend))
         axis = system.numerics.axisymmetric_no_swirl_axis
         if axis is not None:
             rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))

@@ -301,6 +301,8 @@ class FMMDeviceWorkspace:
             max_nodes=self.max_nodes,
             theta=0.1,
             max_leaf_size=1,
+            # Kernels without an LBVH leaf kernel use this tree as the hierarchy
+            # only; their target queries raise.
             kernel_type=kernel_name if kernel_name in treecode_kernel_names() else "gaussian",
             multipole_order=1,
             sort_particle_targets=False,
@@ -1260,8 +1262,9 @@ class FMMInduction:
 
     Supported production combinations are CPU, Vulkan, Metal, CUDA, and AUTO
     resolution; f32 precision; and Gaussian, high-order Gaussian, super-Gaussian, or
-    Winckelmans radial kernels. Arbitrary target queries reuse the source LBVH,
-    p=3 multipoles, and exact regularized near interactions on the device.
+    Winckelmans radial kernels. Arbitrary target queries reuse the source LBVH
+    with monopoles at theta=0.1 and exact regularized near interactions on the
+    device, for the Gaussian and Winckelmans kernels only.
     """
 
     # AUTO is accepted as a request to resolve a backend at solver construction;
@@ -1756,41 +1759,23 @@ class FMMInduction:
         ------
         RuntimeError
             If the evaluator is not bound.
+        NotImplementedError
+            For a kernel that the LBVH target traversal does not implement.
 
         Notes
         -----
         Particle stages use the p=3 FMM. Arbitrary targets reuse its source
-        LBVH with the qualified strict tree traversal at theta=0.1, so no
-        particle field is downloaded and no second hierarchy is built for
-        Gaussian and Winckelmans kernels. High-order Gaussian and
-        super-Gaussian target queries retain the exact regularized direct
-        operator because the shared LBVH does not implement those leaf kernels.
+        LBVH with a monopole tree traversal at theta=0.1, so no particle field
+        is downloaded and no second hierarchy is built. The LBVH implements
+        the Gaussian and Winckelmans leaf kernels only.
         """
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before target evaluation")
         if self.kernel.name not in treecode_kernel_names():
-            if target_velocity is not None:
-                self.physics.compute_target_velocity_kernel(
-                    target_position,
-                    source_position,
-                    source_vortex_strength,
-                    source_core_radius,
-                    target_velocity,
-                    background_velocity if include_freestream else self.physics._zero_velocity,
-                    int(target_count),
-                    int(source_count),
-                )
-            if target_velocity_gradient is not None:
-                self.physics.compute_target_velocity_gradient_kernel(
-                    target_position,
-                    source_position,
-                    source_vortex_strength,
-                    source_core_radius,
-                    target_velocity_gradient,
-                    int(target_count),
-                    int(source_count),
-                )
-            return
+            raise NotImplementedError(
+                f"FMMInduction has no target-query operator for the {self.kernel.name} kernel; "
+                f"use DirectInduction or one of the kernels {sorted(treecode_kernel_names())}"
+            )
         fixed = getattr(self, "_fixed_source_key", None)
         if fixed is not None and not (
             fixed[0] is source_position

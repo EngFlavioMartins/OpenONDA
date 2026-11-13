@@ -252,7 +252,7 @@ class GaussianSlabFieldSession:
         gradient_scale: float = 1.0,
         dtype: str = "float32",
         settings: "GaussianSlabSettings | None" = None,
-        execution_backend: str | None = None,
+        execution_backend: str,
         kernel: str = "gaussian",
     ):
         if (
@@ -272,9 +272,7 @@ class GaussianSlabFieldSession:
         if settings is not None and type(settings) is not GaussianSlabSettings:
             raise TypeError("GaussianSlabSettings required")
         self.settings = GaussianSlabSettings() if settings is None else settings
-        self.execution_backend = execution_backend or (
-            "cupy_cuda" if self.settings.backend == "cupy_cuda" else "cpu"
-        )
+        self.execution_backend = execution_backend
         if self.execution_backend not in {"cpu", "cupy_cuda"}:
             raise ValueError("finite field execution requires cpu or cupy_cuda")
         if self.settings.backend != "auto" and self.execution_backend != self.settings.backend:
