@@ -466,27 +466,3 @@ class VTKExporter:
         self._write_grid(filename, self._grid)
 
         return filename
-
-    def export_cells(
-        self, filename: str, cell_ids: np.ndarray, fields: dict[str, np.ndarray]
-    ) -> str:
-        """Write an explicitly selected cell partition without interpolation."""
-        self._set_vertex_position(None)
-        ids = np.asarray(cell_ids, dtype=np.int64)
-        if ids.ndim != 1 or np.any(ids < 0) or np.any(ids >= self.mesh_data["n_cells"]):
-            raise ValueError("cell_ids must be valid one-dimensional global cell indices")
-        self._grid.cell_data.clear()
-        self._grid.point_data.clear()
-        grid = self._grid.extract_cells(ids)
-        for name, data in fields.items():
-            values = self._field_array(data)
-            if values.shape[0] != len(ids):
-                raise ValueError(
-                    f"Partition field {name!r} has {values.shape[0]} rows; expected {len(ids)}"
-                )
-            grid.cell_data[name] = values
-        directory = os.path.dirname(filename)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-        self._write_grid(filename, grid)
-        return filename

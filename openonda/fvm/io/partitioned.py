@@ -335,8 +335,8 @@ def write_partition_vtu(
     fields: dict[str, np.ndarray],
     comm: object,
     *,
-    output: Output | None = None,
-    exporter: VTKExporter | None = None,
+    output: Output,
+    exporter: VTKExporter,
 ) -> Path:
     """Atomically write one rank piece and a root parallel collection.
 
@@ -347,30 +347,33 @@ def write_partition_vtu(
     """
     if not stem or Path(stem).name != stem:
         raise ValueError("stem must be a non-empty filename component")
-    output = output or Output()
     target = Path(directory)
     n_owned = len(partition.owned_global_ids)
     local_count = len(partition.local_global_ids)
-    local_fields = {}
-    piece_fields = {}
     local_error = None
     try:
         target.mkdir(parents=True, exist_ok=True)
+        local_fields = {}
         for name, values in fields.items():
             array = np.asarray(values)
             if array.ndim == 0 or array.shape[0] != local_count:
                 raise ValueError(f"Field {name!r} does not match the local partition")
             _field_components(array)
-            local_fields[name] = np.ascontiguousarray(array).copy()
+            local_fields[name] = array
 
         piece_name = f"{stem}-rank-{partition.rank:05d}.vtu"
         if output.ghost_layers == 1:
+            # The halo exchange fills the ghost rows in place, on copies.
+            local_fields = {
+                name: np.ascontiguousarray(array).copy() for name, array in local_fields.items()
+            }
             if len(partition.ghost_global_ids):
                 for values in local_fields.values():
                     partition.exchange_halo(values, comm)
-            for name in list(local_fields):
-                local_fields[name] = cast_for_write(local_fields[name], output.precision)
-            piece_fields = dict(local_fields)
+            piece_fields = {
+                name: cast_for_write(values, output.precision)
+                for name, values in local_fields.items()
+            }
             ghost_types = np.zeros(local_count, dtype=np.uint8)
             # vtkDataSetAttributes::DUPLICATECELL marks overlap supplied only
             # for parallel filters and prevents duplicate contributions.
@@ -380,11 +383,7 @@ def write_partition_vtu(
                 partition.local_global_ids,
                 dtype=np.int64,
             )
-            visualization_mesh = mesh_data.get("_visualization_mesh")
-            if visualization_mesh is None:
-                if mesh_data["n_cells"] != local_count:
-                    raise ValueError("Partitioned ghost output requires a visualization mesh")
-                visualization_mesh = mesh_data
+            visualization_mesh = mesh_data["_visualization_mesh"]
             point_fields = {
                 "global_point_id": np.ascontiguousarray(
                     visualization_mesh.get(
@@ -394,31 +393,19 @@ def write_partition_vtu(
                     dtype=np.int64,
                 )
             }
-            writer = exporter or VTKExporter(visualization_mesh, output)
-            writer.export(
+            exporter.export(
                 str(target / piece_name),
                 piece_fields,
                 point_fields=point_fields,
             )
         else:
+            # The visualization mesh holds exactly the owned cells.
             piece_fields = {name: values[:n_owned] for name, values in local_fields.items()}
             piece_fields["global_cell_id"] = np.ascontiguousarray(
                 partition.owned_global_ids,
                 dtype=np.int64,
             )
-            # A tiny localized partition can contain every global cell as
-            # owned-plus-halo data. Its visualization mesh still uses compact
-            # local indices, so equal cell counts do not identify a global mesh.
-            if (
-                "_visualization_mesh" not in mesh_data
-                and mesh_data["n_cells"] == partition.n_global_cells
-            ):
-                cell_ids = partition.owned_global_ids
-            else:
-                cell_ids = np.arange(n_owned, dtype=np.int64)
-            export_mesh = mesh_data.get("_visualization_mesh", mesh_data)
-            writer = exporter or VTKExporter(export_mesh, output)
-            writer.export_cells(str(target / piece_name), cell_ids, piece_fields)
+            exporter.export(str(target / piece_name), piece_fields)
     except BaseException as error:
         local_error = _error_record(error, rank=partition.rank)
 

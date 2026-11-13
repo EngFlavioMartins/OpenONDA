@@ -2155,7 +2155,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
             n_local = self.mesh_data["n_cells"]
             if self.vtk_exporter is None:
-                export_mesh = self.mesh_data.get("_visualization_mesh", self.mesh_data)
+                export_mesh = self.mesh_data["_visualization_mesh"]
                 self.vtk_exporter = VTKExporter(export_mesh, output)
             frame = write_partition_vtu(
                 frame_dir,
