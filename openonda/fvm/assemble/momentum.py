@@ -56,25 +56,13 @@ def compute_dev2_stress_source(
                           - \tfrac{2}{3} S_{f,j} \,\mathrm{tr}(G_f) \right].
 
     Returns an acceleration ``(n_cells, 3)`` in m/s², i.e. already divided by
-    the cell volume, ready to add to ``source_explicit``.  In a fully periodic
-    constant-viscosity domain the transpose-stress divergence is identically
-    zero in incompressible flow; the conservative face flux is the discrete
-    divergence measure, so that special case returns zero.  Meshes with
-    physical boundaries retain the term so momentum assembly and reported
-    wall traction use the same discrete stress.
+    the cell volume, ready to add to ``source_explicit``.  The term is
+    assembled for every mesh and viscosity, so momentum assembly and reported
+    wall traction use the same discrete stress.  Cyclic faces are interior
+    faces between the owner and its paired cell.
     """
     n_cells = mesh_data["n_cells"]
     kinematic_viscosity_array = np.asarray(kinematic_viscosity, dtype=np.float64)
-    boundaries = mesh_data.get("boundary", ())
-    fully_periodic = bool(boundaries) and all(
-        boundary.get("velocity_type", boundary.get("type")) in ("cyclic", "empty")
-        for boundary in boundaries
-    )
-    if kinematic_viscosity_array.ndim == 0 and fully_periodic:
-        # Re-discretising grad(div(velocity)) from interpolated cell gradients injects
-        # a spurious force even though the corrected periodic face flux is
-        # divergence-free to solver tolerance.
-        return np.zeros((n_cells, 3), dtype=np.float64)
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
     owners = mesh_data["owners"]
@@ -129,20 +117,37 @@ def compute_dev2_stress_source(
     if n_faces > n_interior:
         # The patch value of the gradient already carries the exact wall-normal
         # derivative (see gradients._correct_boundary_gradient), which is what
-        # fvc::interpolate reads on a boundary patch.
+        # fvc::interpolate reads on a boundary patch.  A cyclic face
+        # interpolates between its owner and the paired cell, as an interior
+        # face does.
+        boundary_neighbour_cell = np.asarray(
+            mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
+        )
         for start in range(n_interior, n_faces, chunk_size):
             stop = min(start + chunk_size, n_faces)
             faces_b = np.arange(start, stop)
             owners_b = owners[faces_b]
-            ghosts_b = n_cells + (faces_b - n_interior)
+            grad_face = velocity_gradient[n_cells + (faces_b - n_interior)]
             kinematic_viscosity_face = (
                 np.full(stop - start, kinematic_viscosity_scalar, dtype=np.float64)
                 if kinematic_viscosity_cells is None
                 else kinematic_viscosity_cells[owners_b]
             )
-            flux_b = _face_flux(
-                velocity_gradient[ghosts_b], kinematic_viscosity_face, face_area_vector[faces_b]
-            )
+            coupled = np.flatnonzero(boundary_neighbour_cell[faces_b] >= 0)
+            if coupled.size:
+                owners_c = owners_b[coupled]
+                paired_c = boundary_neighbour_cell[faces_b[coupled]]
+                weight_c = weights[faces_b[coupled]]
+                w = weight_c[:, np.newaxis, np.newaxis]
+                grad_face[coupled] = (
+                    w * velocity_gradient[paired_c] + (1.0 - w) * velocity_gradient[owners_c]
+                )
+                if kinematic_viscosity_cells is not None:
+                    kinematic_viscosity_face[coupled] = (
+                        weight_c * kinematic_viscosity_cells[paired_c]
+                        + (1.0 - weight_c) * kinematic_viscosity_cells[owners_c]
+                    )
+            flux_b = _face_flux(grad_face, kinematic_viscosity_face, face_area_vector[faces_b])
             for axis in range(3):
                 source[:, axis] += np.bincount(owners_b, weights=flux_b[:, axis], minlength=n_cells)
 
