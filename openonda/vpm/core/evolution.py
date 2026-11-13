@@ -225,7 +225,7 @@ class EvolutionStepper:
         """
 
         target_step = self.solver.step + 1
-        target_time = self.solver.time + self.time_step_size if time is None else float(time)
+        target_time = self.solver._clock_time(target_step) if time is None else float(time)
         Logging.begin_step(target_step)
         self.profiler.begin_step(self.solver.step, self.solver.time, self.time_step_size)
 

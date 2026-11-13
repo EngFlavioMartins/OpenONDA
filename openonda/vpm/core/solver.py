@@ -686,6 +686,9 @@ class VPMSolver:
         except BaseException as error:
             self._mark_evolution_failure(error)
             raise
+        if time is not None:
+            # An imposed time is the base of a later fixed step.
+            self._anchor_clock()
         if defer_output:
             return
         self.write_step_output()
@@ -757,6 +760,7 @@ class VPMSolver:
             return
         self.step = step
         self.time = time
+        self._anchor_clock()
         self._restart_loaded = True
         self._restart_terminal_noop = True
         self._restart_particle_count = particle_count
@@ -1195,6 +1199,30 @@ class VPMSolver:
     def _state_key(self) -> tuple[int, float, int]:
         """Identify the accepted state for once-only output."""
         return (self.step, self.time, self.particles.state_revision)
+
+    @property
+    def time_step_size(self) -> float:
+        """Fixed time-step size in s."""
+        return self._time_step_size
+
+    @time_step_size.setter
+    def time_step_size(self, value: float) -> None:
+        """Set the time-step size and start the fixed-step clock at the current state."""
+        self._time_step_size = value
+        self._anchor_clock()
+
+    def _anchor_clock(self) -> None:
+        """Make the current accepted state the base of the fixed-step clock."""
+        self._clock_base_step = self.step
+        self._clock_base_time = self.time
+
+    def _clock_time(self, step: int) -> float:
+        """Return the time in s of accepted ``step`` on the fixed-step clock.
+
+        The time is computed from the base state rather than summed step by
+        step, so its error is one rounding at every step.
+        """
+        return self._clock_base_time + (step - self._clock_base_step) * self._time_step_size
 
     @property
     def elapsed_wall_time(self) -> float:
@@ -2144,6 +2172,8 @@ class VPMSolver:
             allowed_config_differences=allowed_config_differences,
             expected_config_differences=expected_config_differences,
         )
+        # The restored clock is the base of the fixed step.
+        self._anchor_clock()
         self._evolution_failure = None
         self.run_failure = None
         self._restart_loaded = True

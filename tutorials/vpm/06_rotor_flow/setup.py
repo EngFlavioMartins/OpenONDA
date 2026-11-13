@@ -103,7 +103,7 @@ def build_case(
 
     if run_plan is None:
         run_plan = vpm.RunPlan(end_time=end_time, state_limit_action="stop")
-    backup_schedule = vpm.EverySteps(max(1, round(BACKUP_INTERVAL_TIME / time_step_size)))
+    backup_schedule = vpm.EveryTime(BACKUP_INTERVAL_TIME)
     return vpm.VPMCase(
         name=CASE_NAME,
         directory=TUTORIAL_DIR,
