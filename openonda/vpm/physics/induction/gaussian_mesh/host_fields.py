@@ -14,11 +14,12 @@ import threading
 from time import perf_counter
 from types import SimpleNamespace
 
-from numba import njit
 import numpy as np
 import psutil
 from scipy.fft import irfftn, next_fast_len, rfftn
 from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
+
+from openonda.core._numba import cacheable_njit as njit
 
 from .coordinates import finite_images, image_tail_edges, slab_coordinates
 from .correction import _correction_factors, _possibly_near, _residual_factors, residual_family

@@ -15,8 +15,9 @@ import math
 from numbers import Integral
 import time
 
-from numba import njit
 import numpy as np
+
+from openonda.core._numba import cacheable_njit as njit
 
 from ....kernels.high_order_gaussian import corrected_gaussian_residual
 from ....kernels.registry import kernel_definition
