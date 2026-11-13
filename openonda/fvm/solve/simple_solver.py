@@ -946,11 +946,11 @@ def adjust_boundary_flux_for_continuity(
     multiplicative scaling of the floating **outflow** faces, exactly matching
     the mass the fixed faces validate.
 
-    When the boundary flux already balances (a standalone inlet/pressure-outlet
-    case), the scale factor is unity and this is a no-op — so it never
-    perturbs cases that were already conservative.  The reduction is global so
-    a partitioned coupling patch spread over several ranks is balanced once,
-    not per rank.
+    The pressure assembly calls this only for an all-Neumann pressure problem.
+    With a fixed pressure on any face, that face's flux correction absorbs the
+    imbalance, and rescaling its predicted flux would shift the imposed
+    pressure.  The reduction is global so a partitioned coupling patch spread
+    over several ranks is balanced once, not per rank.
 
     On a moving mesh the outflow and its scaling refer to the flux relative to
     the moving faces, ``volumetric_face_flux - mesh_face_flux``; a rigid mesh
@@ -1528,17 +1528,18 @@ def assemble_pressure_correction_equation_rhie_chow(
                 )
             flux_vf[cyclic_faces] = velocity_h_over_a_face_flux + compact + nonorthogonal_flux
 
-    # 3b. Enforce global continuity of the predicted boundary flux (adjustPhi)
-    # so the pressure Poisson problem is compatible.  A no-op when the boundary
-    # flux already balances, so conservative inlet/outlet cases are untouched.
-    # Every partition must enter the global reductions in adjustPhi, including
-    # interior-only partitions with no physical boundary faces.  Skipping this
-    # call locally lets those ranks advance into PETSc's next collective while
-    # boundary-owning ranks are still reducing the boundary flux, deadlocking
-    # the solve.
-    adjust_boundary_flux_for_continuity(
-        flux_vf, boundaries, mesh_data, n_interior, n_faces, mesh_face_flux=mesh_face_flux
-    )
+    # 3b. An all-Neumann pressure problem is compatible only when the predicted
+    # boundary flux balances, so that flux is balanced first (adjustPhi).  A
+    # fixed pressure on any face absorbs the imbalance through its own flux
+    # correction; rescaling there would shift the imposed pressure.  The
+    # constraint test and adjustPhi are global reductions that every partition
+    # enters, including interior-only partitions with no physical boundary
+    # faces; skipping them locally deadlocks the next PETSc collective.
+    pressure_requires_constraint = _pressure_requires_constraint(boundaries, mesh_data, geo_data)
+    if pressure_requires_constraint:
+        adjust_boundary_flux_for_continuity(
+            flux_vf, boundaries, mesh_data, n_interior, n_faces, mesh_face_flux=mesh_face_flux
+        )
 
     # 4. Assemble Matrix and RHS
     flux_data = {"flux_vf": flux_vf}
@@ -1557,7 +1558,7 @@ def assemble_pressure_correction_equation_rhie_chow(
     )
 
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.
-    if _pressure_requires_constraint(boundaries, mesh_data, geo_data):
+    if pressure_requires_constraint:
         if pressure_constraint == "reference":
             pressure_matrix, pressure_right_hand_side = fix_pressure_reference(
                 pressure_matrix, pressure_right_hand_side
