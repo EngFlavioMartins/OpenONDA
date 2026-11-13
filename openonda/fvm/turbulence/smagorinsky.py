@@ -12,7 +12,11 @@ Two distinct formulations are provided:
     velocity gradient before evaluating ``eddy_viscosity = C_k Delta sqrt(k)``.  The
     defaults are ``C_k=0.094`` and ``C_e=1.048``.
 
-Both use the ``cubeRootVol`` filter in 3-D: ``Delta = V^(1/3)``.
+Both use the ``cubeRootVol`` filter ``Delta = V^(1/3)``, computed once per
+mesh, and both need a three-dimensional mesh.  Neither has a wall
+treatment: there is no van Driest damping and no wall model, so next to a
+wall the eddy viscosity follows the resolved strain of the wall-adjacent
+cell.
 
 """
 
@@ -29,67 +33,25 @@ EQUILIBRIUM_CE = 1.048
 """Default algebraic-equilibrium SGS dissipation coefficient."""
 
 
-def _detect_2d_mesh(mesh_data: dict) -> bool:
-    """Check whether the mesh is pseudo-2D (has ``empty`` boundary patches).
+def _filter_width(mesh_data: dict, geo_data: dict) -> np.ndarray:
+    """Return the ``cubeRootVol`` filter width ``V^(1/3)`` of every cell.
 
-    A pseudo-2D mesh is a single-layer extruded mesh where the front/back
-    faces use the ``empty`` boundary type.  This affects the filter-width
-    computation.
+    A subgrid model is a three-dimensional closure; a one-cell-thick mesh
+    with ``empty`` patches has no resolved spanwise scale and is rejected.
 
-    Args:
-        mesh_data: Mesh dictionary (must contain a ``"boundary"`` list).
-
-    Returns:
-        ``True`` if any boundary patch has type ``"empty"``.
+    Raises:
+        ValueError: If the mesh has an ``empty`` patch.
     """
-    return any(
-        boundary.get("velocity_type") == "empty" for boundary in mesh_data.get("boundary", [])
-    )
-
-
-def _compute_empty_bc_thickness(mesh_data: dict, geo_data: dict) -> float:
-    """Infer the pseudo-2D mesh thickness from an ``empty`` boundary patch.
-
-    The thickness is computed as twice the normal distance from the first
-    empty-patch face centre to its owner cell centre.
-
-    Args:
-        mesh_data: Mesh dictionary.
-        geo_data:  Geometry dictionary (needs ``face_centre``,
-                   ``cell_centre``).
-
-    Returns:
-        Mesh thickness (float); ``1.0`` if no empty patch found.
-    """
-    for boundary in mesh_data.get("boundary", []):
-        if boundary.get("velocity_type") == "empty":
-            start = boundary["start_face"]
-            own = mesh_data["owners"][start]
-            face_c = geo_data["face_centre"][start]
-            cell_c = geo_data["cell_centre"][own]
-            return float(2.0 * np.linalg.norm(face_c - cell_c))
-    return 1.0
-
-
-def _compute_filter_width(cell_volume: np.ndarray, mesh_data: dict, geo_data: dict) -> np.ndarray:
-    """Compute the per-cell LES filter width Δ.
-
-    For 3D meshes: ``Δ = V^{1/3}`` (cube root of cell volume).
-    For pseudo-2D meshes: ``Δ = √(V / t)`` where *t* is the out-of-plane
-    thickness from :func:`_compute_empty_bc_thickness`.
-
-    Args:
-        cell_volume:      Cell volume array ``(n_cells,)``.
-        mesh_data: Mesh dictionary (used for 2-D detection).
-        geo_data:  Geometry dictionary (used for thickness inference).
-
-    Returns:
-        Per-cell filter width array ``(n_cells,)``.
-    """
-    if _detect_2d_mesh(mesh_data):
-        thickness = _compute_empty_bc_thickness(mesh_data, geo_data)
-        return np.sqrt(cell_volume / thickness)
-    return cell_volume ** (1.0 / 3.0)
+    empty = [
+        boundary.get("name")
+        for boundary in mesh_data.get("boundary", [])
+        if boundary.get("velocity_type") == "empty"
+    ]
+    if empty:
+        raise ValueError(
+            f"A subgrid-scale model needs a three-dimensional mesh; patches {empty} are empty"
+        )
+    return np.asarray(geo_data["cell_volume"], dtype=np.float64) ** (1.0 / 3.0)
 
 
 class SmagorinskyModel:
@@ -100,8 +62,7 @@ class SmagorinskyModel:
     ``|S| = √(2 S_ij S_ij)`` is the strain-rate magnitude, and *C_s* is the
     Smagorinsky coefficient (typical value 0.17).
 
-    Handles both 3D and pseudo-2D (extruded) meshes via
-    :func:`_compute_filter_width`.
+    The filter width is fixed at construction (:func:`_filter_width`).
 
     Args:
         mesh_data: Mesh dictionary.
@@ -128,7 +89,8 @@ class SmagorinskyModel:
         Raises
         ------
         ValueError
-            If ``smagorinsky_coefficient`` is non-finite or negative.
+            If ``smagorinsky_coefficient`` is non-finite or negative, or the
+            mesh has an ``empty`` patch.
         """
         if not np.isfinite(smagorinsky_coefficient) or smagorinsky_coefficient < 0.0:
             raise ValueError(
@@ -137,6 +99,7 @@ class SmagorinskyModel:
         self.smagorinsky_coefficient = smagorinsky_coefficient
         self.mesh_data = mesh_data
         self.geo_data = geo_data
+        self.filter_width = _filter_width(mesh_data, geo_data)
 
     def get_filter_info(self) -> dict[str, object]:
         """Return a dictionary of filter parameters for logging and diagnostics.
@@ -145,7 +108,7 @@ class SmagorinskyModel:
             Dict with keys ``model``, ``smagorinsky_coefficient``, ``min_filter_width``,
             ``max_filter_width``, ``mean_filter_width``.
         """
-        delta = _compute_filter_width(self.geo_data["cell_volume"], self.mesh_data, self.geo_data)
+        delta = self.filter_width
         return {
             "model": "smagorinsky",
             "smagorinsky_coefficient": self.smagorinsky_coefficient,
@@ -154,12 +117,7 @@ class SmagorinskyModel:
             "mean_filter_width": float(np.mean(delta)),
         }
 
-    def compute_eddy_viscosity(
-        self,
-        velocity: np.ndarray,
-        mesh_data: dict[str, object] = None,
-        geo_data: dict[str, object] = None,
-    ) -> np.ndarray:
+    def compute_eddy_viscosity(self, velocity: np.ndarray) -> np.ndarray:
         """Compute eddy viscosity per cell.
 
         Args:
@@ -168,8 +126,8 @@ class SmagorinskyModel:
         Returns:
             Eddy viscosity with shape ``(n_cells,)``.
         """
-        mesh_data = self.mesh_data if mesh_data is None else mesh_data
-        geo_data = self.geo_data if geo_data is None else geo_data
+        mesh_data = self.mesh_data
+        geo_data = self.geo_data
         n_cells = mesh_data["n_cells"]
 
         # Compute velocity gradient on elements (returns gradients for interior+boundary elements)
@@ -198,12 +156,9 @@ class SmagorinskyModel:
                 f"{interior_velocity_gradient.shape}; expected ({n_cells}, 3, 3)"
             )
 
-        # Filter width Delta
-        cell_volume = geo_data["cell_volume"]
-        filter_width = _compute_filter_width(cell_volume, mesh_data, geo_data)
-
-        smagorinsky_coefficient = self.smagorinsky_coefficient
-        eddy_viscosity = (smagorinsky_coefficient * filter_width) ** 2 * strain_rate_magnitude
+        eddy_viscosity = (
+            self.smagorinsky_coefficient * self.filter_width
+        ) ** 2 * strain_rate_magnitude
 
         if not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0):
             raise FloatingPointError("Smagorinsky model produced invalid eddy viscosity")
@@ -224,8 +179,7 @@ class EquilibriumSmagorinskyModel:
        \nu_t &= C_k \Delta \sqrt{k},
 
     where ``D`` is the symmetric velocity-gradient tensor and ``Delta`` is the
-    filter width of :func:`_compute_filter_width`: ``V^(1/3)``, or
-    ``sqrt(V / t)`` on a pseudo-2D mesh of thickness ``t``.  For exactly incompressible flow this reduces to the
+    filter width ``V^(1/3)`` of :func:`_filter_width`.  For exactly incompressible flow this reduces to the
     classical model with ``C_s^2 = C_k sqrt(C_k/C_e)``.  Keeping the full
     algebraic expression remains valid when the discrete velocity field has a
     small non-zero divergence.
@@ -275,8 +229,8 @@ class EquilibriumSmagorinskyModel:
         Raises
         ------
         ValueError
-            If either coefficient is non-finite, ``C_K`` is negative, or
-            ``C_E`` is non-positive.
+            If either coefficient is non-finite, ``C_K`` is negative,
+            ``C_E`` is non-positive, or the mesh has an ``empty`` patch.
         """
         if (
             not np.isfinite(subgrid_kinetic_energy_coefficient)
@@ -296,6 +250,7 @@ class EquilibriumSmagorinskyModel:
         self.subgrid_dissipation_coefficient = float(subgrid_dissipation_coefficient)
         self.mesh_data = mesh_data
         self.geo_data = geo_data
+        self.filter_width = _filter_width(mesh_data, geo_data)
 
     @property
     def equivalent_smagorinsky_coefficient(self) -> float:
@@ -305,15 +260,10 @@ class EquilibriumSmagorinskyModel:
             / self.subgrid_dissipation_coefficient**0.25
         )
 
-    def _compute_sgs_state(
-        self,
-        velocity: np.ndarray,
-        mesh_data: dict | None,
-        geo_data: dict | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def _compute_sgs_state(self, velocity: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Return ``(k_sgs, delta)`` with bounded tensor working storage."""
-        mesh = self.mesh_data if mesh_data is None else mesh_data
-        geometry = self.geo_data if geo_data is None else geo_data
+        mesh = self.mesh_data
+        geometry = self.geo_data
         n_cells = int(mesh["n_cells"])
         grad_fn = gradients._resolve_gradient_fn(geometry)
         velocity_gradient = np.asarray(grad_fn(velocity, mesh, geometry), dtype=np.float64)
@@ -324,7 +274,7 @@ class EquilibriumSmagorinskyModel:
         if not np.all(np.isfinite(velocity_gradient)):
             raise FloatingPointError("Smagorinsky velocity gradient contains non-finite values")
 
-        delta = _compute_filter_width(geometry["cell_volume"], mesh, geometry)
+        delta = self.filter_width
         k_sgs = np.empty(n_cells, dtype=np.float64)
         chunk_size = 100_000
         for start in range(0, n_cells, chunk_size):
@@ -347,14 +297,9 @@ class EquilibriumSmagorinskyModel:
             raise FloatingPointError("Equilibrium Smagorinsky produced invalid SGS energy")
         return k_sgs, delta
 
-    def compute_eddy_viscosity(
-        self,
-        velocity: np.ndarray,
-        mesh_data: dict | None = None,
-        geo_data: dict | None = None,
-    ) -> np.ndarray:
+    def compute_eddy_viscosity(self, velocity: np.ndarray) -> np.ndarray:
         """Compute algebraic-equilibrium SGS kinematic viscosity ``eddy_viscosity``."""
-        k_sgs, delta = self._compute_sgs_state(velocity, mesh_data, geo_data)
+        k_sgs, delta = self._compute_sgs_state(velocity)
         eddy_viscosity = self.subgrid_kinetic_energy_coefficient * delta * np.sqrt(k_sgs)
         if not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0):
             raise FloatingPointError("Equilibrium Smagorinsky produced invalid eddy viscosity")
@@ -362,7 +307,7 @@ class EquilibriumSmagorinskyModel:
 
     def get_filter_info(self) -> dict[str, float | str]:
         """Return model coefficients and ``cubeRootVol`` filter statistics."""
-        delta = _compute_filter_width(self.geo_data["cell_volume"], self.mesh_data, self.geo_data)
+        delta = self.filter_width
         return {
             "model": "equilibrium_smagorinsky",
             "subgrid_kinetic_energy_coefficient": self.subgrid_kinetic_energy_coefficient,

@@ -1089,9 +1089,7 @@ class FVMSolver(CouplerInterfaceMixin):
             Effective kinematic viscosity (scalar or per-element array).
         """
         if self.turbulence is not None:
-            self.eddy_viscosity = self.turbulence.compute_eddy_viscosity(
-                self.velocity, self.mesh_data, self.geo_data
-            )
+            self.eddy_viscosity = self.turbulence.compute_eddy_viscosity(self.velocity)
             self.parallel.exchange_halo(self.eddy_viscosity[: self.mesh_data["n_cells"]])
             if not np.all(np.isfinite(self.eddy_viscosity)) or np.any(self.eddy_viscosity < 0.0):
                 raise FloatingPointError("Turbulence model returned invalid eddy viscosity")
