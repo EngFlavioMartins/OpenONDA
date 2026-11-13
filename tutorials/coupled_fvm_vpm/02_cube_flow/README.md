@@ -35,7 +35,7 @@ Run commands from this directory.
 ./allplot.sh
 ```
 
-`./allplot.sh` writes the comparison figures and updates the animation; the field comparison samples the saved fine-grid reference onto the coupled mid-plane lattice. `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup.
+`./allplot.sh` compares the coupled run with the FVM-only reference `reference_flow/samples/grid_h0045_dt0.02`, on the cells and at the FVM step 0.02 s of the coupled box. The field comparison samples the reference onto the coupled mid-plane lattice. The animation `assets/cube_flow.gif` is redrawn only once the run reaches $t=60$ s. `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup.
 
 The slip walls of the reference domain speed up the stream at the cube; the coupled flow is unbounded. The force comparison divides the reference forces by $(U'/U)^2$ and its Strouhal number by $U'/U$, with Maskell's wake-blockage speed-up $(U'/U)^2 = 1 + 2.5\,C_D S/C$ ($S$ the frontal area, $C$ the cross-section between the walls): $U'/U = 1.008$, forces $-1.6$ %. The mean streamwise velocity beside the cube ($y=\pm2$ m, mid-plane) is 0.7–0.9 % higher in the reference than in the coupled flow, which confirms the size of the correction.
 
@@ -44,8 +44,12 @@ The slip walls of the reference domain speed up the stream at the cube; the coup
 | File | Content |
 | --- | --- |
 | `figures/forces` | Drag, side force and lift against the reference |
-| `figures/velocity_profiles` | Mean streamwise velocity and transverse-velocity fluctuation |
+| `figures/errors_by_window` | Error of the mean forces against the FVM-only reference in consecutive windows, with the 2 % acceptance band: mean drag in 5 s windows from $t=5$ s, rms side force and lift in 10 s windows |
+| `figures/interface_measures` | Per coupling interval: rms velocity mismatch per FVM box side and its maximum, FVM budget error, near-wall circulation ratio with the 0.97–1.03 band |
+| `figures/velocity_profiles` | Time-mean streamwise velocity and transverse-velocity fluctuation |
 | `figures/velocity_fields`, `figures/vorticity_fields` | Mid-plane reference, coupled and difference fields |
+| `figures/mean_velocity_field`, `figures/mean_vorticity_field` | The same, averaged over $30\le t\le60$ s |
 | `figures/coupling_cost` | Wall time by solver part and particle count |
-| `assets/cube_flow.gif` | Mid-plane and particle vorticity with drag history |
+| `figures/comparison_summary.csv` | Statistics, errors, interface measures and wall time per flow time of the run and the reference |
+| `assets/cube_flow.gif` | Mid-plane and particle vorticity with drag history, from the finished run |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particle states for ParaView |

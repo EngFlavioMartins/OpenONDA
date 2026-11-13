@@ -41,7 +41,10 @@ The forces are compared without a blockage correction. The reference domain is o
 | File | Content |
 | --- | --- |
 | `figures/forces` | Drag and lift against the FVM reference |
-| `figures/velocity_profiles` | Mean transverse and spanwise wake profiles at $x/c=2$ and $5$ |
+| `figures/errors_by_window` | Error of the mean forces against the FVM-only reference in consecutive windows, with the 2 % acceptance band: mean drag and lift in 2 s windows |
+| `figures/interface_measures` | Per coupling interval: rms velocity mismatch per FVM box side and its maximum, FVM budget error, near-wall circulation ratio with the 0.97–1.03 band |
+| `figures/velocity_profiles/transverse_mean`, `figures/velocity_profiles/spanwise_mean` | Transverse and spanwise wake profiles at $x/c=2$ and $5$, averaged over $12\le t\le24$ s |
 | `figures/fields` | Reference, coupled and difference fields on mid-span and cross-flow planes |
 | `figures/coupling_cost` | Wall time by solver part and particle count |
+| `figures/comparison_summary.csv` | Statistics, errors, interface measures and wall time per flow time of the run and the reference |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particle states |
