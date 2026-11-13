@@ -17,15 +17,13 @@ from openonda.core.file_output import write_text_atomic
 from openonda.core.write_precision import cast_for_write
 
 from ..config.output import Output
-from .backup import decode_state, encode_state
+from .backup import FORMAT_VERSION, decode_state, encode_state
 from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
     from ..mesh.partition import CellPartition
-
-PARTITIONED_BACKUP_VERSION = 10
 
 
 def _prune_partitioned_generations(target: Path, current: dict, previous: dict | None) -> None:
@@ -103,7 +101,7 @@ def _raise_collective_backup_error(error_record: dict[str, object]) -> None:
 
 def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> Path:
     """Publish a complete backup without invalidating the prior generation."""
-    from .backup import configuration_digest, mesh_pose_arrays
+    from .backup import configuration_digest, state_arrays
 
     target = Path(directory)
     previous_info = None
@@ -126,32 +124,7 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
     arrays = {
         "global_cell_id": partition.local_global_ids,
         "global_face_id": solver.mesh_data["global_face_id"],
-        "velocity": solver.velocity,
-        "kinematic_pressure": solver.kinematic_pressure,
-        "volumetric_face_flux": solver.volumetric_face_flux,
-        "volumetric_face_flux_old": solver.volumetric_face_flux_old,
-        "volumetric_face_flux_older": solver.volumetric_face_flux_older,
-        "velocity_old": solver.velocity_old,
-        "velocity_older": solver.velocity_older,
-        "eddy_viscosity": np.asarray([])
-        if solver.eddy_viscosity is None
-        else solver.eddy_viscosity,
-        "time": np.asarray(solver.time),
-        "step": np.asarray(solver.step),
-        "n_committed_time_steps": np.asarray(solver._n_committed_time_steps),
-        "time_step_size": np.asarray(solver.time_step_size),
-        "accepted_time_step_size": np.asarray(solver._accepted_time_step_size),
-        "previous_time_step_size": np.asarray(solver._previous_time_step_size),
-        "courant_time_step_size": np.asarray(solver._courant_time_step_size),
-        "max_courant_number": np.asarray(solver.max_courant_number),
-        "n_consecutive_accepted_steps": np.asarray(
-            [
-                solver._n_consecutive_accepted_steps[name]
-                for name in sorted(solver._n_consecutive_accepted_steps)
-            ],
-            dtype=np.int64,
-        ),
-        **mesh_pose_arrays(solver),
+        **state_arrays(solver),
     }
 
     # All ranks write their temporary archives concurrently, so reserve space
@@ -195,11 +168,10 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
     metadata_error = None
     if solver.parallel.is_root:
         checkpoint_info = {
-            "format_version": PARTITIONED_BACKUP_VERSION,
+            "format_version": FORMAT_VERSION,
             "generation": generation,
             "configuration_sha256": configuration_digest(solver),
             "mesh_sha256": solver.mesh_data["global_mesh_hash"],
-            "kinematic_viscosity": float(solver._kinematic_viscosity),
             "n_global_cells": partition.n_global_cells,
             "n_ranks": partition.size,
             "files": files,
@@ -237,8 +209,8 @@ def load_partitioned_solver_backup(
     """Collectively stage and restore a complete partitioned backup."""
     from .backup import (
         configuration_digest,
-        mesh_pose_arrays,
         restore_restart_state,
+        state_arrays,
         validate_restart_state,
     )
 
@@ -265,14 +237,13 @@ def load_partitioned_solver_backup(
             "generation",
             "configuration_sha256",
             "mesh_sha256",
-            "kinematic_viscosity",
             "n_global_cells",
             "n_ranks",
             "files",
         }
         if not isinstance(checkpoint_info, dict) or set(checkpoint_info) != expected_info_keys:
             raise ValueError("Partitioned backup information has invalid fields")
-        if checkpoint_info.get("format_version") != PARTITIONED_BACKUP_VERSION:
+        if checkpoint_info.get("format_version") != FORMAT_VERSION:
             raise ValueError("Unsupported partitioned FVM backup version")
         if checkpoint_info.get("n_ranks") != solver.parallel.size:
             raise ValueError("Partitioned backup communicator size does not match")
@@ -280,24 +251,6 @@ def load_partitioned_solver_backup(
             raise ValueError("Partitioned backup mesh hash does not match")
         if checkpoint_info.get("configuration_sha256") != configuration_digest(solver):
             raise ValueError("Partitioned backup configuration hash does not match")
-        archived_viscosity = checkpoint_info.get("kinematic_viscosity")
-        if (
-            isinstance(archived_viscosity, bool)
-            or not isinstance(archived_viscosity, int | float)
-            or not np.isfinite(float(archived_viscosity))
-            or float(archived_viscosity) <= 0.0
-        ):
-            raise ValueError("Partitioned backup molecular viscosity is invalid")
-        if not np.isclose(
-            float(archived_viscosity),
-            float(solver._kinematic_viscosity),
-            rtol=0.0,
-            atol=1.0e-15,
-        ):
-            raise ValueError(
-                "Partitioned backup molecular viscosity does not match the active case"
-            )
-
         files = checkpoint_info.get("files")
         if not isinstance(files, list) or len(files) != solver.parallel.size:
             raise ValueError("Partitioned backup file description is incomplete")
@@ -314,30 +267,9 @@ def load_partitioned_solver_backup(
             state = decode_state(
                 {name: np.array(archive[name], copy=True) for name in archive.files}
             )
-        required_state = {
-            "global_cell_id",
-            "global_face_id",
-            "velocity",
-            "kinematic_pressure",
-            "volumetric_face_flux",
-            "volumetric_face_flux_old",
-            "volumetric_face_flux_older",
-            "velocity_old",
-            "velocity_older",
-            "eddy_viscosity",
-            "time",
-            "step",
-            "n_committed_time_steps",
-            "time_step_size",
-            "accepted_time_step_size",
-            "previous_time_step_size",
-            "max_courant_number",
-            "n_consecutive_accepted_steps",
-            *mesh_pose_arrays(solver),
-        }
+        required_state = {"global_cell_id", "global_face_id", *state_arrays(solver)}
         state.pop("storage_layout", None)
-        # Optional for backups written before the controller estimate was stored.
-        unexpected = sorted(set(state) - required_state - {"courant_time_step_size"})
+        unexpected = sorted(set(state) - required_state)
         missing = sorted(required_state - set(state))
         if missing or unexpected:
             raise ValueError(
@@ -349,11 +281,7 @@ def load_partitioned_solver_backup(
             raise ValueError("Partitioned backup cell IDs do not match")
         if not np.array_equal(state.pop("global_face_id"), solver.mesh_data["global_face_id"]):
             raise ValueError("Partitioned backup face IDs do not match")
-        restart_state = validate_restart_state(
-            solver,
-            state,
-            kinematic_viscosity=float(checkpoint_info["kinematic_viscosity"]),
-        )
+        restart_state = validate_restart_state(solver, state)
     except Exception as error:
         local_error = _error_record(error, rank=solver.parallel.rank)
 

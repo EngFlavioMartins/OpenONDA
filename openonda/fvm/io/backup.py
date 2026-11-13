@@ -18,7 +18,19 @@ from .storage import require_free_space
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
 
-FORMAT_VERSION = 11
+# One version for the serial archive and the partitioned checkpoint.
+FORMAT_VERSION = 12
+
+# Solution fields held at every restart, in the order the archives store them.
+STATE_FIELDS = (
+    "velocity",
+    "kinematic_pressure",
+    "volumetric_face_flux",
+    "volumetric_face_flux_old",
+    "volumetric_face_flux_older",
+    "velocity_old",
+    "velocity_older",
+)
 
 
 @dataclass(frozen=True)
@@ -33,15 +45,12 @@ class FieldRestartState:
     time_step_size: float
     accepted_time_step_size: float
     previous_time_step_size: float
-    kinematic_viscosity: float
+    courant_time_step_size: float
     max_courant_number: float
     n_consecutive_accepted_steps: dict[str, int]
     mesh_pose: tuple[np.ndarray, np.ndarray] | None = None
     # Structural state of an elastically mounted body; empty for a prescribed motion.
     mesh_motion_state: dict[str, np.ndarray] | None = None
-    # Maximum-Courant controller estimate; ``None`` for backups written before
-    # it was stored, which continue from ``time_step_size``.
-    courant_time_step_size: float | None = None
 
 
 # Deflate finds almost nothing in raw float64: the mantissa bytes look like
@@ -120,6 +129,32 @@ def mesh_pose_arrays(solver: FVMSolver) -> dict[str, np.ndarray]:
     }
 
 
+def state_arrays(solver: FVMSolver) -> dict[str, np.ndarray]:
+    """Return every array a restart stores, shared by both backup layouts."""
+    return {
+        **{name: getattr(solver, name) for name in STATE_FIELDS},
+        "eddy_viscosity": (
+            np.asarray([]) if solver.eddy_viscosity is None else solver.eddy_viscosity
+        ),
+        "time": np.asarray(solver.time),
+        "step": np.asarray(solver.step),
+        "n_committed_time_steps": np.asarray(solver._n_committed_time_steps),
+        "time_step_size": np.asarray(solver.time_step_size),
+        "accepted_time_step_size": np.asarray(solver._accepted_time_step_size),
+        "previous_time_step_size": np.asarray(solver._previous_time_step_size),
+        "courant_time_step_size": np.asarray(solver._courant_time_step_size),
+        "max_courant_number": np.asarray(solver.max_courant_number),
+        "n_consecutive_accepted_steps": np.asarray(
+            [
+                solver._n_consecutive_accepted_steps[name]
+                for name in sorted(solver._n_consecutive_accepted_steps)
+            ],
+            dtype=np.int64,
+        ),
+        **mesh_pose_arrays(solver),
+    }
+
+
 def _update_digest(digest: hashlib._Hash, value: object) -> None:
     if isinstance(value, np.ndarray):
         array = np.ascontiguousarray(value)
@@ -194,37 +229,8 @@ def save_backup(solver: FVMSolver, path: Path | str) -> Path:
         "format_version": FORMAT_VERSION,
         "configuration_sha256": configuration_digest(solver),
         "mesh_sha256": mesh_digest(solver.mesh_data),
-        "kinematic_viscosity": float(solver._kinematic_viscosity),
     }
-    arrays = {
-        "metadata": np.asarray(json.dumps(metadata, sort_keys=True)),
-        "velocity": solver.velocity,
-        "kinematic_pressure": solver.kinematic_pressure,
-        "volumetric_face_flux": solver.volumetric_face_flux,
-        "volumetric_face_flux_old": solver.volumetric_face_flux_old,
-        "volumetric_face_flux_older": solver.volumetric_face_flux_older,
-        "velocity_old": solver.velocity_old,
-        "velocity_older": solver.velocity_older,
-        "eddy_viscosity": (
-            np.asarray([]) if solver.eddy_viscosity is None else solver.eddy_viscosity
-        ),
-        "time": np.asarray(solver.time),
-        "step": np.asarray(solver.step),
-        "n_committed_time_steps": np.asarray(solver._n_committed_time_steps),
-        "time_step_size": np.asarray(solver.time_step_size),
-        "accepted_time_step_size": np.asarray(solver._accepted_time_step_size),
-        "previous_time_step_size": np.asarray(solver._previous_time_step_size),
-        "courant_time_step_size": np.asarray(solver._courant_time_step_size),
-        "max_courant_number": np.asarray(solver.max_courant_number),
-        "n_consecutive_accepted_steps": np.asarray(
-            [
-                solver._n_consecutive_accepted_steps[name]
-                for name in sorted(solver._n_consecutive_accepted_steps)
-            ],
-            dtype=np.int64,
-        ),
-        **mesh_pose_arrays(solver),
-    }
+    arrays = {"metadata": np.asarray(json.dumps(metadata, sort_keys=True)), **state_arrays(solver)}
 
     state_bytes = sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values())
     require_free_space(
@@ -271,29 +277,15 @@ def _read_scalar(state: dict, name: str, *, kind: str) -> float:
     raise AssertionError(f"unknown scalar kind {kind!r}")
 
 
-def validate_restart_state(
-    solver: FVMSolver,
-    state: dict,
-    *,
-    kinematic_viscosity: float | None = None,
-) -> FieldRestartState:
+def validate_restart_state(solver: FVMSolver, state: dict) -> FieldRestartState:
     """Validate a decoded backup without mutating *solver*.
 
     This is shared by serial and partitioned validation.  A
     caller can collect validation errors from every rank before publishing any
     fields, which makes restart rejection validated at the solver boundary.
     """
-    field_names = (
-        "velocity",
-        "kinematic_pressure",
-        "volumetric_face_flux",
-        "volumetric_face_flux_old",
-        "volumetric_face_flux_older",
-        "velocity_old",
-        "velocity_older",
-    )
     fields: dict[str, np.ndarray] = {}
-    for field_name in field_names:
+    for field_name in STATE_FIELDS:
         active = np.asarray(getattr(solver, field_name))
         values = np.asarray(state[field_name])
         if values.shape != active.shape:
@@ -332,12 +324,8 @@ def validate_restart_state(
     time_step_size = _read_scalar(state, "time_step_size", kind="float")
     accepted_time_step_size = _read_scalar(state, "accepted_time_step_size", kind="float")
     previous_time_step_size = _read_scalar(state, "previous_time_step_size", kind="float")
-    courant_time_step_size = (
-        _read_scalar(state, "courant_time_step_size", kind="float")
-        if "courant_time_step_size" in state
-        else None
-    )
-    if courant_time_step_size is not None and courant_time_step_size <= 0.0:
+    courant_time_step_size = _read_scalar(state, "courant_time_step_size", kind="float")
+    if courant_time_step_size <= 0.0:
         raise ValueError("Backup courant_time_step_size must be finite and positive")
     max_courant_number = _read_scalar(state, "max_courant_number", kind="float")
     if step < 0 or n_committed < 0:
@@ -352,11 +340,6 @@ def validate_restart_state(
         raise ValueError("Backup time-step sizes must be finite and positive")
     if max_courant_number < 0.0:
         raise ValueError("Backup max_courant_number must be finite and non-negative")
-
-    if kinematic_viscosity is None:
-        kinematic_viscosity = float(solver._kinematic_viscosity)
-    if not np.isfinite(kinematic_viscosity) or kinematic_viscosity <= 0.0:
-        raise ValueError("Restart molecular viscosity must be finite and positive")
 
     start_time = float(solver._configuration.run.start_time)
     if time < start_time - time_tolerance(start_time):
@@ -405,12 +388,11 @@ def validate_restart_state(
         time_step_size=time_step_size,
         accepted_time_step_size=accepted_time_step_size,
         previous_time_step_size=previous_time_step_size,
-        kinematic_viscosity=kinematic_viscosity,
+        courant_time_step_size=courant_time_step_size,
         max_courant_number=max_courant_number,
         n_consecutive_accepted_steps=counters,
         mesh_pose=mesh_pose,
         mesh_motion_state=mesh_motion_state,
-        courant_time_step_size=courant_time_step_size,
     )
 
 
@@ -450,14 +432,9 @@ def restore_restart_state(solver: FVMSolver, restart_state: FieldRestartState) -
     solver.time_step_size = restart_state.time_step_size
     solver._accepted_time_step_size = restart_state.accepted_time_step_size
     solver._previous_time_step_size = restart_state.previous_time_step_size
-    solver._courant_time_step_size = (
-        restart_state.time_step_size
-        if restart_state.courant_time_step_size is None
-        else restart_state.courant_time_step_size
-    )
+    solver._courant_time_step_size = restart_state.courant_time_step_size
     solver._selected_courant_time_step_size = None
     solver._selected_landing_time = None
-    solver._kinematic_viscosity = restart_state.kinematic_viscosity
     solver.max_courant_number = restart_state.max_courant_number
     solver._n_consecutive_accepted_steps.update(restart_state.n_consecutive_accepted_steps)
     solver.last_diagnostics = None
@@ -477,17 +454,8 @@ def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
     """
     if solver._step_phase != "accepted":
         raise RuntimeError("A coupling snapshot requires an accepted FVM state")
-    names = (
-        "velocity",
-        "kinematic_pressure",
-        "volumetric_face_flux",
-        "volumetric_face_flux_old",
-        "volumetric_face_flux_older",
-        "velocity_old",
-        "velocity_older",
-    )
     return FieldRestartState(
-        fields={name: getattr(solver, name).copy() for name in names},
+        fields={name: getattr(solver, name).copy() for name in STATE_FIELDS},
         eddy_viscosity=(
             np.empty(0) if solver.eddy_viscosity is None else solver.eddy_viscosity.copy()
         ),
@@ -497,10 +465,9 @@ def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
         time_step_size=solver.time_step_size,
         accepted_time_step_size=solver._accepted_time_step_size,
         previous_time_step_size=solver._previous_time_step_size,
-        kinematic_viscosity=solver._kinematic_viscosity,
+        courant_time_step_size=solver._courant_time_step_size,
         max_courant_number=solver.max_courant_number,
         n_consecutive_accepted_steps=solver._n_consecutive_accepted_steps.copy(),
-        courant_time_step_size=solver._courant_time_step_size,
         mesh_pose=(
             None
             if solver.mesh_motion is None
@@ -518,44 +485,18 @@ def capture_restart_state(solver: FVMSolver) -> FieldRestartState:
 def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState:
     """Validate and restore one standard FVM backup."""
     source = Path(path)
-    required = {
-        "metadata",
-        "velocity",
-        "kinematic_pressure",
-        "volumetric_face_flux",
-        "volumetric_face_flux_old",
-        "volumetric_face_flux_older",
-        "velocity_old",
-        "velocity_older",
-        "eddy_viscosity",
-        "time",
-        "step",
-        "n_committed_time_steps",
-        "time_step_size",
-        "accepted_time_step_size",
-        "previous_time_step_size",
-        "max_courant_number",
-        "n_consecutive_accepted_steps",
-        "storage_layout",
-        *mesh_pose_arrays(solver),
-    }
+    required = {"metadata", "storage_layout", *state_arrays(solver)}
     with np.load(source, allow_pickle=False) as archive:
         archive_keys = set(archive.files)
-        # Optional for backups written before the controller estimate was stored.
-        if archive_keys - {"courant_time_step_size"} != required:
+        if archive_keys != required:
             missing = sorted(required - archive_keys)
-            unexpected = sorted(archive_keys - required - {"courant_time_step_size"})
+            unexpected = sorted(archive_keys - required)
             raise ValueError(
                 f"Invalid FVM backup fields; missing={missing}, unexpected={unexpected}"
             )
         metadata = json.loads(str(np.asarray(archive["metadata"]).item()))
         metadata_keys = set(metadata)
-        expected_metadata = {
-            "format_version",
-            "configuration_sha256",
-            "mesh_sha256",
-            "kinematic_viscosity",
-        }
+        expected_metadata = {"format_version", "configuration_sha256", "mesh_sha256"}
         if metadata_keys != expected_metadata:
             raise ValueError(
                 "Invalid FVM backup metadata; "
@@ -571,34 +512,10 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState
             raise ValueError("FVM backup mesh hash does not match the active mesh")
         if metadata.get("configuration_sha256") != configuration_digest(solver):
             raise ValueError("FVM backup configuration hash does not match the active case")
-        archived_viscosity = metadata.get("kinematic_viscosity")
-        if (
-            isinstance(archived_viscosity, bool)
-            or not isinstance(archived_viscosity, int | float)
-            or not np.isfinite(float(archived_viscosity))
-            or float(archived_viscosity) <= 0.0
-        ):
-            raise ValueError("FVM backup molecular viscosity record is invalid")
-        if not np.isclose(
-            float(archived_viscosity),
-            float(solver._kinematic_viscosity),
-            rtol=0.0,
-            atol=1.0e-15,
-        ):
-            raise ValueError("FVM backup molecular viscosity does not match the active case")
         state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
         state.pop("metadata", None)
 
-    missing = sorted((required - {"metadata", "storage_layout"}) - set(state))
-    if missing:
-        raise ValueError("Incomplete FVM backup; missing: " + ", ".join(missing))
-    restart_state = validate_restart_state(
-        solver,
-        state,
-        kinematic_viscosity=float(metadata["kinematic_viscosity"]),
-    )
-
-    return restart_state
+    return validate_restart_state(solver, state)
 
 
 def load_backup(solver: FVMSolver, path: Path | str) -> None:
