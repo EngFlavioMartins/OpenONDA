@@ -177,6 +177,7 @@ def assemble_diffusion_term_interior(
 
 def assemble_diffusion_term_boundary_fixed_value(
     scalar_field: np.ndarray,
+    scalar_field_gradient: np.ndarray,
     diffusivity: float | np.ndarray,
     boundary_patch: dict[str, object],
     mesh_data: dict[str, object],
@@ -187,10 +188,17 @@ def assemble_diffusion_term_boundary_fixed_value(
     """
     Assemble diffusion term for boundary faces with fixed value BC.
 
-    For Dirichlet BC: φ_boundary = φ_prescribed
+    For Dirichlet BC: φ_boundary = φ_prescribed.  The face-normal derivative
+    is ``(φ_b - φ_P - ∇φ_P·r_t) / d_n``: ``d_n`` is the normal distance from
+    the owner centre to the face and ``r_t`` the tangential offset of the
+    owner centre from the face normal through the face centre.  The explicit
+    term removes the tangential variation that ``φ_b - φ_P`` carries on a
+    skewed boundary cell, as the mixed velocity boundary and the boundary
+    gradient do.
 
     Args:
         scalar_field: Field values including boundary elements
+        scalar_field_gradient: Owner-cell gradient, ``(n, 3)`` or ``(n, 3, 1)``
         diffusivity: Diffusion coefficient
         boundary_patch: Dict with patch info (start_face, n_faces, value)
         mesh_data: Mesh connectivity
@@ -245,6 +253,20 @@ def assemble_diffusion_term_boundary_fixed_value(
     # This goes to RHS: b[owner] -= flux_vf
     # So flux_vf = -diffusivity * geo_diff * scalar_field_b
     flux_vf = -boundary_diffusivity * geo_diff_b * scalar_field_b
+
+    # Skew correction: the owner centre is offset by r_t from the face normal
+    # through the face centre.
+    normals = sf_b / mag_sf_b[:, np.newaxis]
+    owner_to_face = geo_data["cell_connection_vector"][b_face_indices]
+    tangential_offset = owner_to_face - wall_distance[:, np.newaxis] * normals
+    gradient = (
+        scalar_field_gradient.squeeze(-1)
+        if scalar_field_gradient.ndim == 3
+        else scalar_field_gradient
+    )
+    flux_vf = flux_vf + boundary_diffusivity * geo_diff_b * np.einsum(
+        "ij,ij->i", gradient[owners_b], tangential_offset
+    )
 
     # Total flux (for reference)
     result = {
@@ -406,6 +428,7 @@ def assemble_diffusion_term(
         elif strategy is BoundaryStrategy.FIXED_VALUE:
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
                 scalar_field,
+                scalar_field_gradient,
                 diffusivity,
                 boundary,
                 mesh_data,
@@ -428,6 +451,7 @@ def assemble_diffusion_term(
                 continue
             b_fluxes = assemble_diffusion_term_boundary_fixed_value(
                 scalar_field,
+                scalar_field_gradient,
                 diffusivity,
                 boundary,
                 mesh_data,
