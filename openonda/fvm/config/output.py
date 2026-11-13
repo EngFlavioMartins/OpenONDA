@@ -38,8 +38,6 @@ class Output:
         ``flush_output`` or ``close``. An MPI run writes inline.
     ghost_layers : {0, 1}, default=1
         Boundary ghost layers included in a partitioned frame.
-    point_interpolation : {'none', 'boundary_weighted'}, default='none'
-        Optional derived vertex data beside the cell data.
     """
 
     schedule: Schedule | None = None
@@ -47,7 +45,6 @@ class Output:
     compression: Literal["zlib", "lz4", "none"] = "zlib"
     asynchronous: bool = True
     ghost_layers: Literal[0, 1] = 1
-    point_interpolation: Literal["none", "boundary_weighted"] = "none"
 
     def __post_init__(self) -> None:
         check_schedule("Output.schedule", self.schedule, optional=True)
@@ -57,9 +54,6 @@ class Output:
             raise TypeError("Output.asynchronous must be a boolean")
         if isinstance(self.ghost_layers, bool) or self.ghost_layers not in {0, 1}:
             raise ValueError("Output.ghost_layers must be 0 or 1")
-        lowercase_choice(
-            "Output.point_interpolation", self.point_interpolation, {"none", "boundary_weighted"}
-        )
 
 
 @dataclass(frozen=True, slots=True)
