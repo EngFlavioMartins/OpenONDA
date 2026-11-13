@@ -55,6 +55,7 @@ WantedBy=timers.target
 EOF
 systemctl --user daemon-reload
 systemctl --user enable --now openonda-publish-samples.timer
+systemctl --user start --no-block openonda-publish-samples.service   # first publish now
 # Keep the user services running when logged out (simulations run unattended).
 loginctl enable-linger "$USER" 2>/dev/null || true
 
