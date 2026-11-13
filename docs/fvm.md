@@ -214,7 +214,7 @@ Samplers in `FVMCase(samplers=Samplers((...)))` write to `samples/` on their `sc
 | `SurfaceSampler(point, normal, bounds, spacing)` | The same fields on a planar grid with both bounds included, `samples/<name>_{step}.vts` |
 | `YPlusSampler(patch_names)` | Wall $y^+$ statistics |
 
-`fvm.compute_kinetic_energy`, `compute_enstrophy` and `compute_continuity_error` evaluate global diagnostics from saved fields. Volume fields are written on `Output.schedule` to `solution/fvm/fvm_{step:06d}.vtu`, listed in `solution/fvm.pvd` for ParaView; restart backups go to `solution/fvm/fvm_{step:06d}.npz` on `Backup.schedule`; see [results](solution_layout.md).
+`fvm.compute_continuity_error` evaluates a global diagnostic from saved fields. Volume fields are written on `Output.schedule` to `solution/fvm/fvm_{step:06d}.vtu`, listed in `solution/fvm.pvd` for ParaView; restart backups go to `solution/fvm/fvm_{step:06d}.npz` on `Backup.schedule`; see [results](solution_layout.md).
 
 ## Parallel runs
 

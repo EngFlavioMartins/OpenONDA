@@ -106,18 +106,27 @@ class FVMConfiguration:
     def restart_configuration(self) -> dict[str, Any]:
         """Return the settings a restart backup must match.
 
-        Output, logging, backup and sampler settings and the end time are
-        excluded: they may change when a run is extended.
+        Only settings that change the computed solution are included. The
+        execution backend, the linear-solver options, the output, logging,
+        backup and sampler settings, the step-acceptance and mesh-quality
+        limits, the core count and the end time may change when a run is
+        continued. The initial fields are replaced by the saved state. A
+        boundary velocity that is a Python function is identified by its
+        qualified name.
         """
+        numerics = self.numerics
         return {
-            "case_name": self.case_name,
-            "cores": self.cores,
-            "numerics": asdict(self.numerics),
+            "time_step_size": numerics.time_step_size,
+            "time_step_control": (
+                None if numerics.time_step_control is None else asdict(numerics.time_step_control)
+            ),
+            "transport": asdict(numerics.transport),
+            "schemes": asdict(numerics.schemes),
+            "pimple": asdict(numerics.pimple),
+            "turbulence": asdict(numerics.turbulence),
             "start_time": self.run.start_time,
-            "mesh_quality": asdict(self.mesh_quality),
             "boundaries": [asdict(boundary) for boundary in self.boundaries],
             "velocity_boundaries": [asdict(item) for item in self.velocity_boundaries],
-            "initial_conditions": asdict(self.initial_conditions),
             "mesh_motion": (
                 None if self.mesh_motion is None else mesh_motion_to_dict(self.mesh_motion)
             ),

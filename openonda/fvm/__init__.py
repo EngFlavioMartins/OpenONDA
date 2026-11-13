@@ -58,8 +58,6 @@ from .core.solver import AcceptanceLimitError, FVMSolver
 from .core.state import FieldState
 from .diagnostics.fields import (
     compute_continuity_error,
-    compute_enstrophy,
-    compute_kinetic_energy,
 )
 from .diagnostics.step import StepDiagnostics
 from .grid_study import analyse_grid_study, update_grid_study
@@ -121,8 +119,6 @@ __all__ = [
     "__version__",
     "analyse_grid_study",
     "compute_continuity_error",
-    "compute_enstrophy",
-    "compute_kinetic_energy",
     "io",
     "mesher",
     "update_grid_study",

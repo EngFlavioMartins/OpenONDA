@@ -128,73 +128,6 @@ def compute_continuity_error(
     return div
 
 
-def compute_kinetic_energy(
-    velocity: np.ndarray,
-    geo_data: GeometryData,
-    density: float | np.ndarray = 1.0,
-) -> float:
-    """Integrate ``0.5 * density * |velocity|²`` over interior cells.
-
-    Parameters
-    ----------
-    velocity : numpy.ndarray, shape (n_cells[, + n_boundary], 3)
-        Cell-centred velocity in m/s. Any appended boundary/ghost rows are
-        ignored.
-    geo_data : dict
-        Geometry mapping whose ``cell_volume`` has shape ``(n_cells,)`` in m³.
-    density : float or numpy.ndarray, default=1.0
-        Positive density in kg/m³, scalar or shape ``(n_cells,)``.
-
-    Returns
-    -------
-    float
-        Volume-integrated kinetic energy in joules.
-
-    Raises
-    ------
-    ValueError
-        If density has the wrong shape or contains non-positive/non-finite data.
-    """
-    cell_volume = np.asarray(geo_data["cell_volume"], dtype=np.float64)
-    velocity = np.asarray(velocity[: len(cell_volume)], dtype=np.float64)
-    density = np.asarray(density, dtype=np.float64)
-    if density.ndim == 0:
-        density = np.full(len(cell_volume), float(density))
-    if (
-        density.shape != cell_volume.shape
-        or np.any(density <= 0.0)
-        or not np.all(np.isfinite(density))
-    ):
-        raise ValueError(f"density must be finite and positive with shape {cell_volume.shape}")
-    return 0.5 * float(np.sum(density * cell_volume * np.sum(velocity * velocity, axis=1)))
-
-
-def compute_enstrophy(
-    velocity: np.ndarray,
-    mesh_data: MeshData,
-    geo_data: GeometryData,
-) -> float:
-    """Integrate ``0.5 * |curl(velocity)|²`` over the FVM domain.
-
-    Parameters
-    ----------
-    velocity : numpy.ndarray, shape (n_cells_with_ghosts, 3)
-        Cell-centred and reconstructed boundary velocity in m/s.
-    mesh_data, geo_data : dict
-        Mesh connectivity and geometry accepted by the configured gradient
-        reconstruction. ``cell_volume`` is in m³.
-
-    Returns
-    -------
-    float
-        Domain enstrophy integral in m³/s². The reconstructed vorticity has
-        units 1/s and only interior-cell rows are integrated.
-    """
-    vorticity = compute_vorticity(velocity, mesh_data, geo_data)
-    cell_volume = np.asarray(geo_data["cell_volume"], dtype=np.float64)
-    return 0.5 * float(np.sum(cell_volume * np.sum(vorticity * vorticity, axis=1)))
-
-
 def vorticity_from_gradient(
     velocity_gradient: np.ndarray, n_cells: int | None = None
 ) -> np.ndarray:
@@ -310,56 +243,9 @@ def compute_vorticity(
     return vorticity_from_gradient(gradient, mesh_data["n_cells"])
 
 
-def _normalize_patch_names(patch_names: str | Sequence[str] | None) -> list[str] | None:
-    """Normalize *patch_names* into a list of strings.
-
-    Accepts ``None`` (returns ``None``), a comma-separated string, or an
-    iterable of strings.
-
-    Args:
-        patch_names: Patch name(s) to normalise.  May be ``None``, a
-            comma-separated ``str``, or an iterable of ``str``.
-
-    Returns:
-        list[str] | None: Normalized list of patch names, or ``None`` when
-        the input is ``None``.
-    """
-    if patch_names is None:
-        return None
-    if isinstance(patch_names, str):
-        return [
-            kinematic_pressure.strip()
-            for kinematic_pressure in patch_names.split(",")
-            if kinematic_pressure.strip()
-        ]
-    return list(patch_names)
-
-
-def _should_compute_yplus(boundary: BoundaryPatchData, patch_names: Sequence[str] | None) -> bool:
-    """Determine whether y+ should be computed for a given boundary.
-
-    When *patch_names* is provided the boundary is selected by name.
-    Otherwise the boundary is selected only when its mesh type is ``"wall"``.
-
-    Args:
-        boundary: Boundary dictionary.  Must contain key ``"name"``, and
-            may contain ``"velocity_type"`` and ``"type"``.
-        patch_names: Explicit list of patch names to select, or ``None``
-            for auto-detection.
-
-    Returns:
-        ``True`` if y+ should be computed for this boundary, ``False``
-        otherwise.
-    """
-    name = boundary["name"]
-    if patch_names is not None:
-        return name in patch_names
-    return boundary.get("type") == "wall"
-
-
 def _compute_face_viscous_forces(
     velocity: np.ndarray,
-    velocity_gradient: np.ndarray | None,
+    velocity_gradient: np.ndarray,
     owners_idx: np.ndarray,
     boundary_idx: np.ndarray,
     n_vec: np.ndarray,
@@ -382,8 +268,7 @@ def _compute_face_viscous_forces(
 
     Args:
         velocity: Velocity field including boundary-face values.
-        velocity_gradient: Velocity gradient field ``(n_cells, 3, 3)``, or
-            ``None`` (returns zero forces).
+        velocity_gradient: Velocity gradient field ``(n_cells, 3, 3)``.
         owners_idx: Indices into *velocity_gradient* for the owner cells of the
             boundary faces ``(nf,)``.
         boundary_idx: Indices into *velocity* for the boundary-face values.
@@ -397,9 +282,6 @@ def _compute_face_viscous_forces(
     Returns:
         ndarray: Viscous force per face ``(nf, 3)``.
     """
-    if velocity_gradient is None:
-        return np.zeros((nf, 3))
-
     grad_face = np.asarray(velocity_gradient[owners_idx], dtype=np.float64).copy()
     distance = np.asarray(wall_distance, dtype=np.float64)
     if distance.shape != (nf,) or np.any(~np.isfinite(distance)) or np.any(distance <= 0.0):
@@ -461,9 +343,6 @@ def _compute_force_coefficients(
         "drag_coefficient": float(force_coefficients[0]),
         "lift_coefficient": float(force_coefficients[1]),
         "side_force_coefficient": float(force_coefficients[2]),
-        "force_coefficient_x": float(force_coefficients[0]),
-        "force_coefficient_y": float(force_coefficients[1]),
-        "force_coefficient_z": float(force_coefficients[2]),
     }
     if reference_length and reference_length > 0 and reference_area:
         result["pitching_moment_coefficient"] = float(
@@ -478,7 +357,7 @@ def compute_y_plus(
     mesh_data: MeshData,
     geo_data: GeometryData,
     boundaries: list[BoundaryPatchData],
-    patch_names: str | Sequence[str] | None = None,
+    patch_names: Sequence[str] | None = None,
 ) -> dict[str, dict[str, float]]:
     """Compute wall-unit ``y+`` statistics for selected boundary patches.
 
@@ -493,7 +372,7 @@ def compute_y_plus(
         distances in m.
     boundaries : sequence[dict]
         Patch records containing ``name``, ``type``, and face ranges.
-    patch_names : sequence[str] or str or None, default=None
+    patch_names : sequence[str] or None, default=None
         Explicit patch selection. ``None`` auto-selects patches whose mesh type
         is ``"wall"``.
 
@@ -509,9 +388,8 @@ def compute_y_plus(
     """
     owners = mesh_data["owners"]
 
-    patch_names = _normalize_patch_names(patch_names)
-    if patch_names is not None and len(patch_names) == 0:
-        return {}
+    if patch_names is None:
+        patch_names = [b["name"] for b in boundaries if b.get("type") == "wall"]
 
     kinematic_viscosity_values = np.asarray(kinematic_viscosity, dtype=np.float64)
     if kinematic_viscosity_values.ndim == 0:
@@ -535,7 +413,7 @@ def compute_y_plus(
     y_plus_stats = {}
 
     for boundary in boundaries:
-        if not _should_compute_yplus(boundary, patch_names):
+        if boundary["name"] not in patch_names:
             continue
 
         name = boundary["name"]
@@ -545,13 +423,7 @@ def compute_y_plus(
         own = owners[idx]
 
         # 1. Wall distance: cell centre to face centre
-        # wall_distance is usually pre-computed in geo_data for FVM
-        if "wall_distance" in geo_data:
-            d = geo_data["wall_distance"][idx]
-        else:
-            # Fallback: CF vector projection
-            cf_vec = geo_data["cell_connection_vector"][idx]
-            d = np.linalg.norm(cf_vec, axis=1)
+        d = geo_data["wall_distance"][idx]
         if not np.all(np.isfinite(d)) or np.any(d <= 0.0):
             raise ValueError(f"wall distance must be finite and positive on patch {name!r}")
 
@@ -663,15 +535,9 @@ def compute_surface_face_loads(
         raise ValueError(
             f"Dynamic viscosity must be scalar or have shape ({n_cells},), got {mu_values.shape}"
         )
-    velocity_gradient = None
-    if not np.all(mu_values == 0.0):
-        velocity_gradient = (
-            gradient
-            if gradient is not None
-            else _cell_gradient(velocity, mesh_data, geo_data)
-        )
-        if velocity_gradient.ndim == 3:
-            velocity_gradient = velocity_gradient[:n_cells]
+    velocity_gradient = (
+        gradient if gradient is not None else _cell_gradient(velocity, mesh_data, geo_data)
+    )[:n_cells]
 
     results = {}
     for boundary in boundaries:
@@ -685,7 +551,9 @@ def compute_surface_face_loads(
         boundary_idx = n_cells + (face_idx - n_interior)
         sf = np.asarray(geo_data["face_area_vector"])[face_idx]
         area = np.linalg.norm(sf, axis=1)
-        normal = sf / (area[:, None] + 1e-30)
+        if not np.all(area > 0.0):
+            raise ValueError(f"face areas must be positive on patch {name!r}")
+        normal = sf / area[:, None]
         kinematic_pressure_face = np.asarray(kinematic_pressure, dtype=np.float64)[boundary_idx]
         pressure_force = rho_value * kinematic_pressure_face[:, None] * sf
         viscous_force = -_compute_face_viscous_forces(
@@ -699,7 +567,7 @@ def compute_surface_face_loads(
             dynamic_viscosity,
             nf,
         )
-        traction = viscous_force / (area[:, None] + 1e-30)
+        traction = viscous_force / area[:, None]
         wall_shear = traction - np.einsum("fi,fi->f", traction, normal)[:, None] * normal
         results[name] = {
             "face_centre": np.asarray(geo_data["face_centre"])[face_idx].copy(),

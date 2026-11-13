@@ -1,6 +1,5 @@
 """Gauss and inverse-distance least-squares gradients."""
 
-
 import numpy as np
 from scipy import sparse
 
