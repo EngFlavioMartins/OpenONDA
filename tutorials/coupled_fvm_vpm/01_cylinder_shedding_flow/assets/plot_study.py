@@ -2,7 +2,7 @@
 """Calibration study of the coupled cylinder at Re = 150: statistics, errors and figures.
 
 Reads every coupled run in solution/sensitivity_analysis/<name> and the FVM-only references in
-reference_flow/samples/h<cell>_dt<step>, and writes to figures/ (PDF and PNG):
+reference_flow/samples/h<cell>_dt<step>, and writes PNG figures to figures/:
 
     forces, velocity_profiles,     1. baseline against the FVM-only reference
     vorticity_profiles
@@ -458,7 +458,7 @@ def resolved(run, key, uncertainty):
 
 
 def save(figure, name, figure_dir, fit_margins=True):
-    """Save in PDF and PNG; with fit_margins, set the side margins from the y labels first."""
+    """Save as PNG; with fit_margins, set the side margins from the y labels first."""
     if fit_margins:
         fit_thesis_y_label_margins(figure, figure.axes)
     save_validation_figure(figure, figure_dir / name, figure_format="png")

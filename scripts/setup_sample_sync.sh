@@ -13,7 +13,9 @@ publish="$(cd "$(dirname "$0")" && pwd)/publish_samples.sh"
 command -v syncthing >/dev/null || { echo "Install Syncthing first: sudo apt install syncthing" >&2; exit 1; }
 
 if [ ! -f "$HOME/.local/state/syncthing/config.xml" ] && [ ! -f "$HOME/.config/syncthing/config.xml" ]; then
-    syncthing generate --no-default-folder
+    # Without a default ~/Sync folder, which would contain the shared folder.
+    STNODEFAULTFOLDER=1 syncthing generate --no-default-folder 2>/dev/null \
+        || STNODEFAULTFOLDER=1 syncthing generate
 fi
 systemctl --user enable --now syncthing.service
 until syncthing cli show system >/dev/null 2>&1; do sleep 1; done
@@ -23,6 +25,9 @@ if ! syncthing cli config folders list | grep -qx openonda-samples; then
     syncthing cli config folders add --id openonda-samples --label "OpenONDA samples" --path "$folder"
 fi
 syncthing cli config folders openonda-samples type set sendonly
+if syncthing cli config folders list | grep -qx default; then
+    echo "Remove the 'Default Folder' (~/Sync) in the web interface: it would contain this one." >&2
+fi
 
 units="$HOME/.config/systemd/user"
 mkdir -p "$units"

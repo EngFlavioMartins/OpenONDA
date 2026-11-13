@@ -2,7 +2,7 @@
 """Phase-averaged velocity and vorticity of the FVM-only reference and the coupled baseline, and
 their difference, in 12 bins of the shedding phase over every saved frame from 55 s on.
 
-Writes figures/{velocity,vorticity}_fields/phase<bin>.pdf/png and
+Writes figures/{velocity,vorticity}_fields/phase<bin>.png and
 figures/auxiliary/field_differences.csv. Waits, with a message, until the baseline reaches 67 s,
 as the force and profile figures of assets/plot_study.py do. Called by allplot.sh.
 """

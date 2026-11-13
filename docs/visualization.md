@@ -3,12 +3,10 @@
 Each tutorial plots its own results:
 
 ```bash
-./allplot.sh          # PNG and PDF
-./allplot.sh png      # PNG only (VPM and FVM cases)
-./allplot.sh pdf      # PDF only (VPM and FVM cases)
+./allplot.sh          # PNG figures in figures/
 ```
 
-The coupled cases write both formats and ignore the argument.
+The tutorials write PNG only; the thesis and paper draw their own PDF figures from the sampled data.
 
 The plot scripts in `assets/` read `samples/` and `solution/` directly; edit them to change a comparison. For fields, open `solution/fvm.pvd`, `solution/vpm.pvd` or `solution/vlm.pvd` in ParaView; several cases provide `assets/paraview_state.py` with a ready-made view. Perceptually uniform colour maps for ParaView are in `docs/assets/scientific_colour_maps/`.
 

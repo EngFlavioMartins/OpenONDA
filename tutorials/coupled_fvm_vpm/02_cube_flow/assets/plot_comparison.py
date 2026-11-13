@@ -3,7 +3,7 @@
 
 Reads the coupled run in solution/ and samples/ and the FVM-only reference
 reference_flow/{samples,solution}/grid_h0045_dt0.02 (same cells and FVM step as the coupled box),
-and writes to figures/ (PDF and PNG):
+and writes PNG figures to figures/:
 
     forces               drag, side force and lift against the reference
     errors_by_window     mean-drag error in 5 s windows with the 2 % acceptance band; rms side

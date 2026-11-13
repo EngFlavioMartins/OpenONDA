@@ -2,7 +2,7 @@
 """Coupled wing against the FVM-only reference: forces, errors, interface measures and cost.
 
 Reads the coupled run in solution/ and samples/ and the FVM-only reference in
-reference_flow/{samples,solution}, and writes to figures/ (PDF and PNG):
+reference_flow/{samples,solution}, and writes PNG figures to figures/:
 
     forces               drag and lift against the reference
     errors_by_window     mean drag and lift errors in 2 s windows with the 2 % acceptance band
