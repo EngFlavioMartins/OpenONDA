@@ -123,6 +123,79 @@ def _wave_numbers(
     )
 
 
+def projection_padding(
+    shape: tuple[int, ...], *, periodic_z: bool = False
+) -> list[tuple[int, int]]:
+    """Padding that doubles each free-space axis of a periodic projection grid.
+
+    Outside a compact field the gradient part of its projection decays like a
+    dipole field, r^-3, so the periodic images of the doubled box perturb it
+    eight times less than those of the bare box. A slab z axis is one image
+    period and is not padded.
+    """
+    padding = [(size // 2, size - size // 2) for size in shape[:3]]
+    if periodic_z:
+        padding[2] = (0, 0)
+    return padding
+
+
+def helmholtz_project(field: np.ndarray, spacing: float) -> tuple[np.ndarray, float, float]:
+    """Periodic Helmholtz projection of a Cartesian vector field onto its solenoidal part.
+
+    Returns the projected field and the relative divergence before and after.
+    Gaussian convolution commutes with this projection. Pad free-space axes by
+    :func:`projection_padding` first.
+    """
+    transformed = [fft.rfftn(field[..., component], workers=-1) for component in range(3)]
+    wave_numbers = _wave_numbers(field.shape[:3], spacing)
+    norm_sq = sum(component * component for component in wave_numbers)
+    dot = sum(wave_numbers[axis] * transformed[axis] for axis in range(3))
+    nonzero = norm_sq > 0.0
+    divergence_before = float(
+        np.sqrt(
+            np.sum(np.abs(dot) ** 2, dtype=np.float64)
+            / max(
+                sum(
+                    np.sum(
+                        np.abs(wave_numbers[direction] * transformed[component]) ** 2,
+                        dtype=np.float64,
+                    )
+                    for direction in range(3)
+                    for component in range(3)
+                ),
+                np.finfo(float).tiny,
+            )
+        )
+    )
+    for axis in range(3):
+        transformed[axis][nonzero] -= wave_numbers[axis][nonzero] * dot[nonzero] / norm_sq[nonzero]
+    dot_after = sum(wave_numbers[axis] * transformed[axis] for axis in range(3))
+    divergence_after = float(
+        np.sqrt(
+            np.sum(np.abs(dot_after) ** 2, dtype=np.float64)
+            / max(
+                sum(
+                    np.sum(
+                        np.abs(wave_numbers[direction] * transformed[component]) ** 2,
+                        dtype=np.float64,
+                    )
+                    for direction in range(3)
+                    for component in range(3)
+                ),
+                np.finfo(float).tiny,
+            )
+        )
+    )
+    projected = np.stack(
+        [
+            fft.irfftn(transformed[component], s=field.shape[:3], workers=-1).real
+            for component in range(3)
+        ],
+        axis=-1,
+    )
+    return projected, divergence_before, divergence_after
+
+
 class GaussianParticleGridOperator:
     """Symmetric M4 scatter/Gaussian-convolution/M4 gather operator."""
 
@@ -313,60 +386,6 @@ class GaussianParticleGridOperator:
 
         return self.gather(self.smooth(self.scatter(vortex_strength)))
 
-    def helmholtz_project(self, field: np.ndarray) -> tuple[np.ndarray, float, float]:
-        """Project a padded grid vector field onto its solenoidal subspace."""
-
-        transformed = [fft.rfftn(field[..., component], workers=-1) for component in range(3)]
-        wave_numbers = _wave_numbers(self.shape, self.spacing)
-        norm_sq = sum(component * component for component in wave_numbers)
-        dot = sum(wave_numbers[axis] * transformed[axis] for axis in range(3))
-        nonzero = norm_sq > 0.0
-        divergence_before = float(
-            np.sqrt(
-                np.sum(np.abs(dot) ** 2, dtype=np.float64)
-                / max(
-                    sum(
-                        np.sum(
-                            np.abs(wave_numbers[direction] * transformed[component]) ** 2,
-                            dtype=np.float64,
-                        )
-                        for direction in range(3)
-                        for component in range(3)
-                    ),
-                    np.finfo(float).tiny,
-                )
-            )
-        )
-        for axis in range(3):
-            transformed[axis][nonzero] -= (
-                wave_numbers[axis][nonzero] * dot[nonzero] / norm_sq[nonzero]
-            )
-        dot_after = sum(wave_numbers[axis] * transformed[axis] for axis in range(3))
-        divergence_after = float(
-            np.sqrt(
-                np.sum(np.abs(dot_after) ** 2, dtype=np.float64)
-                / max(
-                    sum(
-                        np.sum(
-                            np.abs(wave_numbers[direction] * transformed[component]) ** 2,
-                            dtype=np.float64,
-                        )
-                        for direction in range(3)
-                        for component in range(3)
-                    ),
-                    np.finfo(float).tiny,
-                )
-            )
-        )
-        projected = np.stack(
-            [
-                fft.irfftn(transformed[component], s=self.shape, workers=-1).real
-                for component in range(3)
-            ],
-            axis=-1,
-        )
-        return projected, divergence_before, divergence_after
-
     def relaxation_residual(
         self,
         vortex_strength: np.ndarray,
@@ -374,8 +393,14 @@ class GaussianParticleGridOperator:
         """Return ``P(K vortex_strength) - K vortex_strength`` at particle locations."""
 
         blob_grid = self.smooth(self.scatter(vortex_strength))
-        target_grid, before, after = self.helmholtz_project(blob_grid)
-        return self.gather(target_grid) - self.gather(blob_grid), before, after
+        padding = projection_padding(self.shape, periodic_z=self.slip_slab is not None)
+        target_grid, before, after = helmholtz_project(
+            np.pad(blob_grid, (*padding, (0, 0))), self.spacing
+        )
+        crop = tuple(
+            slice(low, low + size) for (low, _), size in zip(padding, self.shape, strict=True)
+        )
+        return self.gather(target_grid[crop]) - self.gather(blob_grid), before, after
 
 
 def invariant_rows(

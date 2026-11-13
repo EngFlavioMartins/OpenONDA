@@ -19,39 +19,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy import fft
 from scipy.ndimage import gaussian_filter
 from scipy.spatial import cKDTree
 
 from openonda.core.slip_slab_images import physical_slab_share
 
 from ..numerics.fourier_integrals import _grid_for_particles, _scatter_vortex_strength_m4
+from .divergence_relaxation import helmholtz_project, projection_padding
 
 if TYPE_CHECKING:
     from ..particles.container import Particles
-
-
-def project_grid_strength(field: np.ndarray, spacing: float) -> np.ndarray:
-    """Periodic Helmholtz projection of a Cartesian strength field.
-
-    Gaussian convolution commutes with this projection. The curl and hence
-    induced velocity are unchanged on the complete grid; finite padding,
-    weak-strength removal and the subsequent moment correction remain approximations.
-    """
-    from .divergence_relaxation import _wave_numbers
-
-    spectrum = [fft.rfftn(field[..., axis], workers=-1) for axis in range(3)]
-    wave = _wave_numbers(field.shape[:3], spacing)
-    norm = sum(k * k for k in wave)
-    dot = sum(k * a for k, a in zip(wave, spectrum, strict=True))
-    factor = np.divide(dot, norm, out=np.zeros_like(dot), where=norm > 0)
-    return np.stack(
-        [
-            fft.irfftn(a - k * factor, s=field.shape[:3], workers=-1)
-            for k, a in zip(wave, spectrum, strict=True)
-        ],
-        axis=-1,
-    )
 
 
 def gaussian_core_remesh(
@@ -170,11 +147,9 @@ def gaussian_core_remesh(
     if solenoidal:
         from ..numerics.fourier_integrals import CartesianGrid
 
-        padding = [(size // 2, size - size // 2) for size in grid.shape]
-        if slip_slab is not None:
-            padding[2] = (0, 0)
+        padding = projection_padding(grid.shape, periodic_z=slip_slab is not None)
         shape = tuple(size + sum(pad) for size, pad in zip(grid.shape, padding, strict=True))
-        field = project_grid_strength(np.pad(field, (*padding, (0, 0))), spacing)
+        field = helmholtz_project(np.pad(field, (*padding, (0, 0))), spacing)[0]
         grid = CartesianGrid(
             grid.origin - spacing * np.array([p[0] for p in padding]),
             spacing,
