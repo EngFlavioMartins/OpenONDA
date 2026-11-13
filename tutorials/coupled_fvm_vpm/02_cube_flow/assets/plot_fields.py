@@ -168,7 +168,7 @@ def comparison_figure(lattice, path, quantity, reference, coupled, difference, m
         figure.colorbar(plot, cax=axes_at(top, BAR_HEIGHT), orientation="horizontal", ticks=ticks,
                         label=label if row == 1 else difference_label)
         top += BAR_HEIGHT + BAR_LABEL
-    export_figure(figure, FIGURES / path, figure_format="both")
+    export_figure(figure, FIGURES / path, figure_format="png")
 
 
 def difference_norms(velocity_difference, vorticity_difference):

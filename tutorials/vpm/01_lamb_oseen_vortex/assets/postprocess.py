@@ -767,7 +767,7 @@ def build_arg_parser(description: str):
     p = _argparse.ArgumentParser(description=description)
     p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Raster resolution.")
     p.add_argument(
-        "--format", choices=("png", "pdf", "both"), default="both", help="Output figure format."
+        "--format", choices=("png", "pdf", "both"), default="png", help="Output figure format."
     )
     kinematic_viscosity = REFERENCE_CIRCULATION / REYNOLDS_NUMBER
     p.set_defaults(

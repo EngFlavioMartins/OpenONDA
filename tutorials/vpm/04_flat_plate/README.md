@@ -13,7 +13,7 @@ python setup.py --mode moving --angle 5
 
 The cases run on the CPU (`compute_device="cpu"` in `setup.py`). The scene figures of `allplot.sh` also use ParaView's `pvpython` and `pdflatex`, both in the OpenONDA environment.
 
-`./allrun.sh` removes previous output and runs ten angles in each frame, from −10° to 15°. `./allcontinue.sh` resumes the saved backups. `./allplot.sh` produces figures; add `pdf` for PDF exports.
+`./allrun.sh` removes previous output and runs ten angles in each frame, from −10° to 15°. `./allcontinue.sh` resumes the saved backups. `./allplot.sh` writes the figures as PNG.
 
 ## Geometry, flow and resolution
 

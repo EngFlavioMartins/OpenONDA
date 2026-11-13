@@ -50,7 +50,7 @@ cd tutorials/fvm/taylor_green
 ./allplot.sh    # make the figures
 ```
 
-The run writes its fields to `solution/fvm.pvd` for ParaView and its kinetic-energy history to `solution/history.csv`; `./allplot.sh` draws that decay against the exact solution in `figures/taylor_green_decay.png` and `.pdf`. Each case directory holds its launchers (`allrun.sh`, `allplot.sh`, ...) and a README with its physics and parameters.
+The run writes its fields to `solution/fvm.pvd` for ParaView and its kinetic-energy history to `solution/history.csv`; `./allplot.sh` draws that decay against the exact solution in `figures/taylor_green_decay.png`. Each case directory holds its launchers (`allrun.sh`, `allplot.sh`, ...) and a README with its physics and parameters.
 
 ## Writing your own case
 

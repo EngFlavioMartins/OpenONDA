@@ -25,7 +25,7 @@ from assets.results import parameters
 from assets.theoretical_model import spanwise_reference
 
 parser = argparse.ArgumentParser(description="Flat plate spanwise lift distribution")
-parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
 parser.add_argument("--dpi", type=int, default=400)
 args = parser.parse_args()
 C_MOVING = color("teal")

@@ -98,12 +98,12 @@ def build_arg_parser(description: str):
     import argparse
 
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--format", choices=_theme().FORMAT_CHOICES, default="both")
+    p.add_argument("--format", choices=_theme().FORMAT_CHOICES, default="png")
     p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Figure DPI.")
     return p
 
 
-def save_fig(fig, path, dpi=None, figure_format="both"):
+def save_fig(fig, path, dpi=None, figure_format="png"):
     return _theme().export_figure(fig, path, figure_format=figure_format, dpi=dpi)
 
 

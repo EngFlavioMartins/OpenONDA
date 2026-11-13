@@ -178,7 +178,7 @@ def main():
         action="store_true",
         help="Include each selected run's actual final saved time",
     )
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
     args = parser.parse_args()
     runs = args.runs or list(CASES)
     records = discover_core_sections(args.samples_dir, runs)

@@ -42,7 +42,7 @@ def main():
         "--schematic-only", action="store_true", help="Rebuild only the initial geometry diagram."
     )
     parser.add_argument("--output-dir", type=Path, default=CASE / "figures")
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
     args = parser.parse_args()
     meta_path = CASE / "solution/les_transposed/vpm_metadata.json"
     meta = read_json(meta_path)

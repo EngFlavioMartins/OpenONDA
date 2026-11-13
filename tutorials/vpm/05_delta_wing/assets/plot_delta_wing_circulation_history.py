@@ -24,7 +24,7 @@ def plot_circulation(samples_arg=None, destination=FIGURES_DIR, figure_format="p
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=_theme.FORMAT_CHOICES, default="both")
+    parser.add_argument("--format", choices=_theme.FORMAT_CHOICES, default="png")
     parser.add_argument(
         "--samples",
         type=Path,

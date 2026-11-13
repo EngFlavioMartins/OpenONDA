@@ -1,6 +1,5 @@
 """Render a developed coupled cylinder wake for print."""
 
-import shutil
 import subprocess
 import tempfile
 
@@ -209,13 +208,12 @@ def main() -> None:
             check=True,
             stdout=subprocess.DEVNULL,
         )
-        shutil.copy(f"{build}/{NAME}.pdf", ASSETS_DIR / f"{NAME}.pdf")
-    subprocess.run(
-        ["pdftoppm", "-r", f"{DPI}", "-png", "-singlefile", f"{NAME}.pdf", NAME],
-        cwd=ASSETS_DIR,
-        check=True,
-    )
-    print(f"  Saved: {ASSETS_DIR / NAME}.pdf")
+        # Only the PNG is kept; the PDF stays in the temporary build directory.
+        subprocess.run(
+            ["pdftoppm", "-r", f"{DPI}", "-png", "-singlefile", f"{build}/{NAME}.pdf", NAME],
+            cwd=ASSETS_DIR,
+            check=True,
+        )
     print(f"  Saved: {ASSETS_DIR / NAME}.png")
 
 

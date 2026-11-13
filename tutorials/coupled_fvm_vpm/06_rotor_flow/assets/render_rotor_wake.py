@@ -6,7 +6,6 @@ particles of the wake share one vorticity colour scale on a white page; the
 text is typeset with the thesis fonts over the render.
 """
 
-import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
@@ -212,13 +211,13 @@ def main():
             check=True,
             stdout=subprocess.DEVNULL,
         )
-        shutil.copy(f"{build}/{name}.pdf", FIGURES / f"{name}.pdf")
-    subprocess.run(
-        ["pdftoppm", "-r", f"{DPI}", "-png", "-singlefile", f"{name}.pdf", name],
-        cwd=FIGURES,
-        check=True,
-    )
-    print(f"  Saved: {FIGURES / name}.pdf and .png")
+        # Only the PNG is kept; the PDF stays in the temporary build directory.
+        subprocess.run(
+            ["pdftoppm", "-r", f"{DPI}", "-png", "-singlefile", f"{build}/{name}.pdf", name],
+            cwd=FIGURES,
+            check=True,
+        )
+    print(f"  Saved: {FIGURES / name}.png")
 
 
 if __name__ == "__main__":

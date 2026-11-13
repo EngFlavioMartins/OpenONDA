@@ -15,7 +15,7 @@ from assets.results import load_forces, parameters
 from assets.theoretical_model import lifting_line_polar
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
 parser.add_argument("--dpi", type=int, default=400)
 parser.add_argument(
     "--include-startup", action="store_true", help="Also export the optional startup comparison."

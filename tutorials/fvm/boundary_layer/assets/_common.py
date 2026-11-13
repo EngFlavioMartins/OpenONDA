@@ -28,7 +28,7 @@ FREESTREAM_SPEED = 1.0
 
 def build_arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--format", choices=THEME.FORMAT_CHOICES, default="both")
+    parser.add_argument("--format", choices=THEME.FORMAT_CHOICES, default="png")
     parser.add_argument("--dpi", type=int, default=THEME.DEFAULT_DPI)
     parser.add_argument("--Re", type=float, default=1e4)
     return parser
@@ -62,5 +62,5 @@ def blasius_solution(eta_max=10.0, n_steps=2000):
     return eta, fprime
 
 
-def save_fig(fig, name, figures_dir, dpi=None, figure_format="both"):
+def save_fig(fig, name, figures_dir, dpi=None, figure_format="png"):
     return THEME.save_fig(fig, Path(figures_dir) / name, figure_format=figure_format, dpi=dpi)

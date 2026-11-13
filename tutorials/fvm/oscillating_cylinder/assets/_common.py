@@ -22,7 +22,7 @@ figure_size = THEME.figure_size
 
 def build_arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--format", choices=THEME.FORMAT_CHOICES, default="both")
+    parser.add_argument("--format", choices=THEME.FORMAT_CHOICES, default="png")
     parser.add_argument("--dpi", type=int, default=THEME.DEFAULT_DPI)
     return parser
 
@@ -49,5 +49,5 @@ def latest_fvm_frame():
     return frames[-1]
 
 
-def save_fig(fig, name, figure_format="both", dpi=None):
+def save_fig(fig, name, figure_format="png", dpi=None):
     return THEME.save_fig(fig, FIGURES_DIR / name, figure_format=figure_format, dpi=dpi)

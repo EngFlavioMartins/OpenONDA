@@ -461,7 +461,7 @@ def save(figure, name, figure_dir, fit_margins=True):
     """Save in PDF and PNG; with fit_margins, set the side margins from the y labels first."""
     if fit_margins:
         fit_thesis_y_label_margins(figure, figure.axes)
-    save_validation_figure(figure, figure_dir / name, figure_format="both")
+    save_validation_figure(figure, figure_dir / name, figure_format="png")
 
 
 def figure_forces(run, figure_dir, steady_start):

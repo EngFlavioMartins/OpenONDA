@@ -11,7 +11,7 @@ From this directory:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous generated output and starts a fresh run. `./allcontinue.sh` resumes saved native checkpoints. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes previous generated output and starts a fresh run. `./allcontinue.sh` resumes saved native checkpoints.
 
 ## Physical inputs
 

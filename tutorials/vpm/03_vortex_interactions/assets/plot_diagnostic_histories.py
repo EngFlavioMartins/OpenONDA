@@ -86,7 +86,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", nargs="+")
     parser.add_argument("--output", type=Path, default=setup.TUTORIAL_DIR / "figures")
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
     parser.add_argument("--figure-name", default=FIGURE_NAME)
     args = parser.parse_args()
     formats = ("pdf", "png") if args.format == "both" else (args.format,)

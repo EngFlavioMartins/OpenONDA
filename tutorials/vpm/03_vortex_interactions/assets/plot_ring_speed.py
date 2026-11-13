@@ -82,7 +82,7 @@ def main():
     parser.add_argument(
         "--auxiliary-output", type=Path, default=setup.TUTORIAL_DIR / "figures/auxiliary"
     )
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
     args = parser.parse_args()
     formats = ("pdf", "png") if args.format == "both" else (args.format,)
     plot(args.output, args.auxiliary_output, formats)

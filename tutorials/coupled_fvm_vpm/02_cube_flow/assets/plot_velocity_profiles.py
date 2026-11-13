@@ -93,7 +93,7 @@ def main():
     figure.legend(handles, labels, loc="upper center", ncol=3, frameon=True, edgecolor="0.8",
                   bbox_to_anchor=(0.5, 0.995), handlelength=1.5, columnspacing=0.8)
     fit_thesis_y_label_margins(figure, figure.axes)
-    save_validation_figure(figure, CASE_DIR / "figures/velocity_profiles", figure_format="both")
+    save_validation_figure(figure, CASE_DIR / "figures/velocity_profiles", figure_format="png")
     print(f"velocity_profiles: means over {STATISTICS_WINDOW[0]:g}-{end:g} s")
 
 

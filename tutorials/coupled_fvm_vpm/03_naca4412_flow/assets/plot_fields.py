@@ -184,7 +184,7 @@ def comparison_figure(name, plane_name, quantity, across, up, panels):
             label=labels[0] if row == 1 else labels[1],
         )
         top += BAR_HEIGHT + BAR_LABEL
-    export_figure(figure, FIGURES / f"fields/{plane_name}_{quantity}" / name, figure_format="both")
+    export_figure(figure, FIGURES / f"fields/{plane_name}_{quantity}" / name, figure_format="png")
 
 
 def compare(name, plane_name, across, up, reference, coupled, inside_wing):

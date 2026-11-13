@@ -21,7 +21,7 @@ from assets.results import parameters
 from assets.theoretical_model import lifting_line_circulation
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
 parser.add_argument("--dpi", type=int, default=400)
 args = parser.parse_args()
 physics = parameters(SAMPLES_DIR.parent)

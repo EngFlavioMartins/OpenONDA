@@ -54,7 +54,7 @@ def _initial_particle_state(case_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=OUT)
-    parser.add_argument("--format", choices=("pdf", "png", "both"), default="both")
+    parser.add_argument("--format", choices=("pdf", "png", "both"), default="png")
     args = parser.parse_args()
     _, theme = load_theme()
     plt.rcParams.update({"axes.linewidth": 0.6, "pdf.compression": 9})

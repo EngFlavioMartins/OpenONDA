@@ -470,7 +470,7 @@ def set_style(*, use_tex: bool = False):
     plt.rcParams.update(tex_fonts)
 
 
-def requested_formats(figure_format="both"):
+def requested_formats(figure_format="png"):
     """Expand the CLI format without treating 'both' as a filename extension."""
     if figure_format == "both":
         return ("pdf", "png")
@@ -489,7 +489,7 @@ def export_figure(fig, path, *, figure_format=None, dpi=None, close=True):
     path = Path(path)
     suffix_format = path.suffix.lstrip(".")
     formats = requested_formats(
-        figure_format or (suffix_format if suffix_format in FORMAT_CHOICES else "both")
+        figure_format or (suffix_format if suffix_format in FORMAT_CHOICES else "png")
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     outputs = []
@@ -507,8 +507,8 @@ def export_figure(fig, path, *, figure_format=None, dpi=None, close=True):
     return tuple(outputs)
 
 
-def save_fig(fig, path, figure_format="both", dpi=None):
-    """Lay out, validate and export a simple thesis figure in PNG and PDF."""
+def save_fig(fig, path, figure_format="png", dpi=None):
+    """Lay out, validate and export a simple thesis figure (PNG unless asked otherwise)."""
     prepare_figure(fig)
     validate_thesis_figure(fig, fig.axes)
     return export_figure(fig, path, figure_format=figure_format, dpi=dpi)
@@ -594,7 +594,7 @@ def validation_legend(fig, axis, *, ncol=2):
     )
 
 
-def save_validation_figure(fig, path, *, figure_format="both", dpi=None):
+def save_validation_figure(fig, path, *, figure_format="png", dpi=None):
     """Check text extents and collisions before saving a comparison figure."""
     prepare_figure(fig)
     validate_thesis_figure(fig, fig.axes)

@@ -152,7 +152,7 @@ def rotor_subplots(nrows, *, height_cm, sharex=False):
     return (fig, axes[:, 0])
 
 
-def save_rotor_figure(fig, path, *, figure_format="both", dpi=None):
+def save_rotor_figure(fig, path, *, figure_format="png", dpi=None):
     outer = {
         "rotor_performance": 0.1,
         "rotor_loading_validation": 0.129,
@@ -168,6 +168,6 @@ def save_rotor_figure(fig, path, *, figure_format="both", dpi=None):
 
 def build_arg_parser(description):
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument("--format", choices=theme.FORMAT_CHOICES, default="both")
+    parser.add_argument("--format", choices=theme.FORMAT_CHOICES, default="png")
     parser.add_argument("--dpi", type=int, default=theme.DEFAULT_DPI)
     return parser

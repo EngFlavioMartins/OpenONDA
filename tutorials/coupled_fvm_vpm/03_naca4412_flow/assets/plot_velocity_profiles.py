@@ -91,7 +91,7 @@ def main():
                       bbox_to_anchor=(0.5, 0.995), handlelength=1.5, columnspacing=0.8)
         fit_thesis_y_label_margins(figure, figure.axes)
         save_validation_figure(figure, CASE_DIR / f"figures/velocity_profiles/{line}_mean",
-                               figure_format="both")
+                               figure_format="png")
     print(f"velocity_profiles: means over {STATISTICS_WINDOW[0]:g}-{end:g} s")
 
 

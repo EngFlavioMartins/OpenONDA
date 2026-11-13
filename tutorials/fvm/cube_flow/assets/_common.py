@@ -39,7 +39,7 @@ REFERENCES = {
 
 def build_arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--format", choices=THEME.FORMAT_CHOICES, default="both")
+    parser.add_argument("--format", choices=THEME.FORMAT_CHOICES, default="png")
     parser.add_argument("--dpi", type=int, default=THEME.DEFAULT_DPI)
     parser.add_argument("--Re", type=float, default=100.0)
     return parser
@@ -67,5 +67,5 @@ def strouhal_from_lift(t, cl):
     return float(freqs[1:][np.argmax(amp[1:])])
 
 
-def save_fig(fig, name, figures_dir, dpi=None, figure_format="both"):
+def save_fig(fig, name, figures_dir, dpi=None, figure_format="png"):
     return THEME.save_fig(fig, Path(figures_dir) / name, figure_format=figure_format, dpi=dpi)

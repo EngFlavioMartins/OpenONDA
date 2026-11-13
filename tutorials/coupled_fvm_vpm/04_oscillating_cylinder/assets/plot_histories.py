@@ -77,7 +77,7 @@ def main():
         trajectory.yaxis.tick_right()
         validation_legend(figure, histories[0], ncol=1)
         prepare_figure(figure)
-        export_figure(figure, FIGURES / f"histories_{variant(*run)}", figure_format="both")
+        export_figure(figure, FIGURES / f"histories_{variant(*run)}", figure_format="png")
 
 
 if __name__ == "__main__":

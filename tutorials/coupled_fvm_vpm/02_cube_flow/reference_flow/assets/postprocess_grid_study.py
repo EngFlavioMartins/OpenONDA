@@ -145,7 +145,7 @@ def analyse_forces(
     }
     write_json(output_dir / "grid_forces.json", report)
     write_csv(grids, output_dir / "grid_forces.csv")
-    plot_forces(grids, output_dir / "grid_forces.both")
+    plot_forces(grids, output_dir / "grid_forces.png")
     return report
 
 

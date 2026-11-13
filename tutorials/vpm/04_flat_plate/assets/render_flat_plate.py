@@ -227,7 +227,7 @@ def scene_assets(work, state, surface_input, figure_format):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--format", choices=("png", "pdf", "both"), default="both")
+    parser.add_argument("--format", choices=("png", "pdf", "both"), default="png")
     args = parser.parse_args()
     particle_input, surface_input = native_inputs()
     state = read_native_state(particle_input, surface_input)

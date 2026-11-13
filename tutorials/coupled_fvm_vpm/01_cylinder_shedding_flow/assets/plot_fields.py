@@ -166,7 +166,7 @@ def comparison_figure(name, quantity, reference, coupled, difference):
             label=label if row == 1 else difference_label,
         )
         top += BAR_HEIGHT + BAR_LABEL
-    export_figure(figure, FIGURES / f"{quantity}_fields" / name, figure_format="both")
+    export_figure(figure, FIGURES / f"{quantity}_fields" / name, figure_format="png")
 
 
 def phase_sums(frames, fields_of, phase):

@@ -204,7 +204,7 @@ def top_legend(figure, axis, ncol, handles=None):
 def save(figure, name, fit_margins=True):
     if fit_margins:
         fit_thesis_y_label_margins(figure, figure.axes)
-    save_validation_figure(figure, FIGURE_DIR / name, figure_format="both")
+    save_validation_figure(figure, FIGURE_DIR / name, figure_format="png")
 
 
 def shade_window(axis, end):

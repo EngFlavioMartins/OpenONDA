@@ -13,7 +13,7 @@ From this directory:
 
 The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`, which never falls back to the CPU; without a GPU the run stops with a message.
 
-`allrun.sh` removes generated output and starts a fresh calculation. `./allcontinue.sh` resumes the saved backups; `python setup.py` also continues automatically. `./allplot.sh pdf` exports PDF.
+`allrun.sh` removes generated output and starts a fresh calculation. `./allcontinue.sh` resumes the saved backups; `python setup.py` also continues automatically.
 
 ## Geometry and operating point
 
