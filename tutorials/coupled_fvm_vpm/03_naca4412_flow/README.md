@@ -45,6 +45,7 @@ The forces are compared without a blockage correction. The reference domain is o
 | `figures/interface_measures` | Per coupling interval: rms velocity mismatch per FVM box side and its maximum, FVM budget error, near-wall circulation ratio with the 0.97–1.03 band |
 | `figures/velocity_profiles/transverse_mean`, `figures/velocity_profiles/spanwise_mean` | Transverse and spanwise wake profiles at $x/c=2$ and $5$, averaged over $12\le t\le24$ s |
 | `figures/fields` | Reference, coupled and difference fields on mid-span and cross-flow planes |
+| `figures/starting_vortex` | Passage of the starting vortex and the tip vortices through the planes $x=4$ and 8 m, at every saved state of both runs: $\omega_z$ and $\omega_x$ maps around the passage, coupled above reference, and the histories of the integrated $\omega_z$ and of the circulation of each tip vortex |
 | `figures/coupling_cost` | Wall time by solver part and particle count |
 | `figures/comparison_summary.csv` | Statistics, errors, interface measures and wall time per flow time of the run and the reference |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particle states |

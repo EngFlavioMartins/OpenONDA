@@ -82,6 +82,8 @@ WAKE_HEIGHT = -0.5 * CHORD * math.sin(ALPHA)  # m
 QUARTER_CHORD = (-0.25 * CHORD * math.cos(ALPHA), 0.25 * CHORD * math.sin(ALPHA), 0.0)  # m
 VPM_SLICE_Z0 = (-1.6, 8.0, -2.4, 2.4)  # m, x and y bounds of the mid-span plane
 VPM_SLICE_CROSS = (-2.4, 2.4, -4.0, 4.0)  # m, y and z bounds of the cross-flow planes
+STARTING_VORTEX_PLANES = (4.0, 8.0)  # m, cross-flow planes of the starting-vortex passage
+STARTING_VORTEX_SPACING = 0.04  # m
 
 
 # The wing surface for the mesher
@@ -292,6 +294,19 @@ VPM_CASE = vpm.VPMCase(
                     initial=False,
                 )
                 for x in WAKE_STATIONS
+            ),
+            # The planes the starting vortex crosses, from t = 0
+            *(
+                vpm.SurfaceSampler(
+                    (x, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    VPM_SLICE_CROSS,
+                    STARTING_VORTEX_SPACING,
+                    include_derivatives=False,
+                    file_name=f"vpm_slice_x{x:g}",
+                    schedule=vpm.EveryTime(SLICE_INTERVAL),
+                )
+                for x in STARTING_VORTEX_PLANES
             ),
         )
     ),

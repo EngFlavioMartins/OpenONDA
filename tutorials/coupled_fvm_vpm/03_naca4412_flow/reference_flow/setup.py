@@ -68,6 +68,8 @@ WAKE_HEIGHT = -0.5 * CHORD * math.sin(ALPHA)  # m
 QUARTER_CHORD = (-0.25 * CHORD * math.cos(ALPHA), 0.25 * CHORD * math.sin(ALPHA), 0.0)  # m
 SLICE_Z0 = (-1.6, 8.0, -2.4, 2.4)  # m, x and y bounds of the mid-span plane
 SLICE_CROSS = (-2.4, 2.4, -4.0, 4.0)  # m, y and z bounds of the cross-flow planes
+STARTING_VORTEX_PLANES = (4.0, 8.0)  # m, cross-flow planes of the starting-vortex passage
+STARTING_VORTEX_SPACING = 0.04  # m
 
 
 write_wing_stl(WING_STL, NACA_CODE, CHORD, SPAN, N_SECTION_POINTS, 1, ANGLE_OF_ATTACK)
@@ -151,6 +153,20 @@ SAMPLERS = (
     ),
     plane((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), SLICE_Z0, "slice_z0"),
     *(plane((x, 0.0, 0.0), (1.0, 0.0, 0.0), SLICE_CROSS, f"slice_x{x:g}") for x in WAKE_STATIONS),
+    # The planes the starting vortex crosses, from t = 0
+    *(
+        fvm.SurfaceSampler(
+            (x, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            SLICE_CROSS,
+            STARTING_VORTEX_SPACING,
+            n_neighbours=12,
+            reconstruction="affine",
+            file_name=f"slice_x{x:g}",
+            schedule=fvm.EveryTime(SLICE_INTERVAL),
+        )
+        for x in STARTING_VORTEX_PLANES
+    ),
 )
 
 CASE = fvm.FVMCase(
