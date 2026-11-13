@@ -10,11 +10,7 @@ import numpy as np
 import taichi as ti
 
 from ...core.clock import time_tolerance
-from ..config.constants import (
-    DEFAULT_CUTOFF_RADIUS_FACTOR,
-    EPSILON,
-    MAX_N_PARTICLES,
-)
+from ..config.constants import EPSILON, MAX_N_PARTICLES
 from .events import NullPhysicsEventObserver, PhysicsEventObserver
 from .induction.base import TaichiDataType
 
@@ -254,78 +250,74 @@ class ParticleFieldEvaluation:
                     # Unbounded domain: direct distance
                     r_ij = pos_i - pos_j
                     r_mag = r_ij.norm()
-                    sigma = 0.5 * (radii_i + radii_j)
-                    r_sigma = r_mag / sigma
 
-                    if r_sigma <= DEFAULT_CUTOFF_RADIUS_FACTOR:
-                        # Every quadratic field integral of the blob field is a
-                        # *convolution* of two blobs, so its regularised kernel is
-                        # evaluated at the convolved width
-                        #
-                        #     σ_e = sqrt(σ_i² + σ_j²)
-                        #
-                        # not at the pair mean σ = (σ_i+σ_j)/2.  This applies to
-                        # E = ½∫ω·ψ, to H = ∫ω·u and to ∫|ω|² alike: each is
-                        # ΣΣ Γ_i·Γ_j (k_σi * k_σj)(r_ij).  Using σ inflates the
-                        # near field (+41 % on the single-blob self energy) and
-                        # breaks the exact dE/dt = −ν∫|ω|² balance under core
-                        # spreading.  With σ_e that identity closes to machine
-                        # precision, including for unequal cores and per-particle
-                        # ν_eff, so the LES energy budget can be checked.
-                        #
-                        # ζ_σ * ζ_σ = ζ_{σ√2} is a *Gaussian* identity, so σ_e is
-                        # exact for the Gaussian and an approximation for the
-                        # algebraic kernels, whose double-mollified Green's
-                        # function is not in their own family.  The enstrophy,
-                        # E and H share this assumption for every kernel, so the
-                        # three stay consistent; the exact factor for the
-                        # Winckelmans and other algebraic kernels is not derived.
-                        sigma_e = ti.sqrt(radii_i * radii_i + radii_j * radii_j)
-                        r_sigma_e = r_mag / sigma_e
-                        zeta_val = zeta_(r_sigma_e) / sigma_e**3
-                        g_val = g_(r_sigma_e) / sigma_e
-                        q_val = q_(r_sigma_e)
+                    # Every quadratic field integral of the blob field is a
+                    # *convolution* of two blobs, so its regularised kernel is
+                    # evaluated at the convolved width
+                    #
+                    #     σ_e = sqrt(σ_i² + σ_j²)
+                    #
+                    # not at the pair mean σ = (σ_i+σ_j)/2.  This applies to
+                    # E = ½∫ω·ψ, to H = ∫ω·u and to ∫|ω|² alike: each is
+                    # ΣΣ Γ_i·Γ_j (k_σi * k_σj)(r_ij).  Using σ inflates the
+                    # near field (+41 % on the single-blob self energy) and
+                    # breaks the exact dE/dt = −ν∫|ω|² balance under core
+                    # spreading.  With σ_e that identity closes to machine
+                    # precision, including for unequal cores and per-particle
+                    # ν_eff, so the LES energy budget can be checked.
+                    #
+                    # ζ_σ * ζ_σ = ζ_{σ√2} is a *Gaussian* identity, so σ_e is
+                    # exact for the Gaussian and an approximation for the
+                    # algebraic kernels, whose double-mollified Green's
+                    # function is not in their own family.  The enstrophy,
+                    # E and H share this assumption for every kernel, so the
+                    # three stay consistent; the exact factor for the
+                    # Winckelmans and other algebraic kernels is not derived.
+                    sigma_e = ti.sqrt(radii_i * radii_i + radii_j * radii_j)
+                    r_sigma_e = r_mag / sigma_e
+                    zeta_val = zeta_(r_sigma_e) / sigma_e**3
+                    g_val = g_(r_sigma_e) / sigma_e
+                    q_val = q_(r_sigma_e)
 
-                        # Accumulate pairwise contributions (explicit cast avoids
-                        # implicit f32↔f64 promotion warnings from Taichi JIT)
-                        _acc = self.accumulator_dtype
-                        if ti.static(use_physical_gaussian_energy):
-                            # For Gaussian blobs, kinetic energy is the norm of
-                            # the induced velocity, not the scalar inverse-
-                            # Laplacian form 1/2*omega·psi. The latter also
-                            # counts the longitudinal part of an individual
-                            # nonsolenoidal blob and is 50% too large for one
-                            # isolated particle. This is the exact Gaussian
-                            # transverse Green tensor convolution.
-                            rho_sq = r_sigma_e * r_sigma_e
-                            tensor_isotropic = gaussian_tensor_origin / (3.0 * sigma_e)
-                            tensor_radial = ti.cast(0.0, _acc)
-                            if r_sigma_e < 0.5:
-                                tensor_isotropic = (
-                                    gaussian_tensor_origin
-                                    / sigma_e
+                    # Accumulate pairwise contributions (explicit cast avoids
+                    # implicit f32↔f64 promotion warnings from Taichi JIT)
+                    _acc = self.accumulator_dtype
+                    if ti.static(use_physical_gaussian_energy):
+                        # For Gaussian blobs, kinetic energy is the norm of
+                        # the induced velocity, not the scalar inverse-
+                        # Laplacian form 1/2*omega·psi. The latter also
+                        # counts the longitudinal part of an individual
+                        # nonsolenoidal blob and is 50% too large for one
+                        # isolated particle. This is the exact Gaussian
+                        # transverse Green tensor convolution.
+                        rho_sq = r_sigma_e * r_sigma_e
+                        tensor_isotropic = gaussian_tensor_origin / (3.0 * sigma_e)
+                        tensor_radial = ti.cast(0.0, _acc)
+                        if r_sigma_e < 0.5:
+                            tensor_isotropic = (
+                                gaussian_tensor_origin
+                                / sigma_e
+                                * (
+                                    1.0 / 3.0
+                                    + rho_sq
                                     * (
-                                        1.0 / 3.0
+                                        -2.0 / 15.0
                                         + rho_sq
                                         * (
-                                            -2.0 / 15.0
+                                            3.0 / 70.0
                                             + rho_sq
                                             * (
-                                                3.0 / 70.0
+                                                -2.0 / 189.0
                                                 + rho_sq
                                                 * (
-                                                    -2.0 / 189.0
+                                                    5.0 / 2376.0
                                                     + rho_sq
                                                     * (
-                                                        5.0 / 2376.0
+                                                        -1.0 / 2860.0
                                                         + rho_sq
                                                         * (
-                                                            -1.0 / 2860.0
-                                                            + rho_sq
-                                                            * (
-                                                                7.0 / 140400.0
-                                                                - 4307.0 / 691891200.0 * rho_sq
-                                                            )
+                                                            7.0 / 140400.0
+                                                            - 4307.0 / 691891200.0 * rho_sq
                                                         )
                                                     )
                                                 )
@@ -333,163 +325,159 @@ class ParticleFieldEvaluation:
                                         )
                                     )
                                 )
-                                tensor_radial = (
-                                    gaussian_tensor_origin
-                                    / (sigma_e**3)
+                            )
+                            tensor_radial = (
+                                gaussian_tensor_origin
+                                / (sigma_e**3)
+                                * (
+                                    1.0 / 15.0
+                                    + rho_sq
                                     * (
-                                        1.0 / 15.0
+                                        -1.0 / 35.0
                                         + rho_sq
                                         * (
-                                            -1.0 / 35.0
+                                            1.0 / 126.0
                                             + rho_sq
                                             * (
-                                                1.0 / 126.0
+                                                -1.0 / 594.0
                                                 + rho_sq
                                                 * (
-                                                    -1.0 / 594.0
+                                                    1.0 / 3432.0
                                                     + rho_sq
                                                     * (
-                                                        1.0 / 3432.0
-                                                        + rho_sq
-                                                        * (
-                                                            -1.0 / 23400.0
-                                                            + 3769.0 / 691891200.0 * rho_sq
-                                                        )
+                                                        -1.0 / 23400.0
+                                                        + 3769.0 / 691891200.0 * rho_sq
                                                     )
                                                 )
                                             )
                                         )
                                     )
                                 )
-                            else:
-                                g_dimensionless = g_val * sigma_e
-                                zeta_dimensionless = zeta_val * sigma_e**3
-                                tensor_aux = (2.0 * rho_sq - 1.0) * g_dimensionless
-                                tensor_aux += 0.5 * zeta_dimensionless
-                                tensor_aux /= 4.0 * rho_sq
-                                tensor_isotropic = (g_dimensionless - tensor_aux) / sigma_e
-                                tensor_radial = (
-                                    -g_dimensionless / rho_sq + 3.0 * tensor_aux / rho_sq
-                                ) / (sigma_e * sigma_e * sigma_e)
-                            dot_ij = str_i.dot(str_j)
-                            radial_i = str_i.dot(r_ij)
-                            radial_j = str_j.dot(r_ij)
-                            local_energy += ti.cast(
-                                0.5
-                                * (tensor_isotropic * dot_ij + tensor_radial * radial_i * radial_j),
-                                _acc,
                             )
                         else:
-                            # Non-Gaussian kernels do not expose an exact
-                            # transverse pair convolution; they use the
-                            # regularized potential diagnostic instead of
-                            # the Gaussian identity.
-                            local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
-                        if r_mag > EPSILON:
-                            local_helicity += ti.cast(
-                                q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3,
-                                _acc,
-                            )
-                        # Test-filtered enstrophy: the same quadratic form at a
-                        # widened width sqrt(sigma_i^2 + sigma_j^2 + Delta_test^2).
-                        # Delta_test = 2 V^(1/3) matches the LES filter width in
-                        # smagorinsky.py and remains a useful resolution diagnostic.
-                        d_test = (
-                            2.0
-                            * (
-                                particle_volume[i] ** (1.0 / 3.0)
-                                + particle_volume[j] ** (1.0 / 3.0)
-                            )
-                            * 0.5
+                            g_dimensionless = g_val * sigma_e
+                            zeta_dimensionless = zeta_val * sigma_e**3
+                            tensor_aux = (2.0 * rho_sq - 1.0) * g_dimensionless
+                            tensor_aux += 0.5 * zeta_dimensionless
+                            tensor_aux /= 4.0 * rho_sq
+                            tensor_isotropic = (g_dimensionless - tensor_aux) / sigma_e
+                            tensor_radial = (
+                                -g_dimensionless / rho_sq + 3.0 * tensor_aux / rho_sq
+                            ) / (sigma_e * sigma_e * sigma_e)
+                        dot_ij = str_i.dot(str_j)
+                        radial_i = str_i.dot(r_ij)
+                        radial_j = str_j.dot(r_ij)
+                        local_energy += ti.cast(
+                            0.5 * (tensor_isotropic * dot_ij + tensor_radial * radial_i * radial_j),
+                            _acc,
                         )
-                        sigma_t = ti.sqrt(sigma_e * sigma_e + d_test * d_test)
-                        zeta_test = zeta_(r_mag / sigma_t) / sigma_t**3
-                        pair_enstrophy = ti.cast(zeta_val * str_i.dot(str_j), _acc)
-                        local_enstrophy_test += ti.cast(zeta_test * str_i.dot(str_j), _acc)
-                        pair_nu = ti.cast(0.5 * (viscosities_eff[i] + viscosities_eff[j]), _acc)
-                        local_enstrophy += pair_enstrophy
-                        if ti.static(use_physical_gaussian_energy):
-                            # Viscous kinetic-energy loss uses the projected
-                            # vorticity norm |P omega|², not the norm of the
-                            # nonsolenoidal blob field itself. This is the
-                            # Gaussian pair convolution of P = I - kk/k² and
-                            # remains consistent with the transverse energy
-                            # tensor above.
-                            rho_sq = r_sigma_e * r_sigma_e
-                            diss_isotropic = gaussian_tensor_origin / (sigma_e**3) * (2.0 / 3.0)
-                            diss_radial = ti.cast(0.0, _acc)
-                            if r_sigma_e < 0.5:
-                                diss_isotropic = (
-                                    gaussian_tensor_origin
-                                    / (sigma_e**3)
+                    else:
+                        # Non-Gaussian kernels do not expose an exact
+                        # transverse pair convolution; they use the
+                        # regularized potential diagnostic instead of
+                        # the Gaussian identity.
+                        local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
+                    if r_mag > EPSILON:
+                        local_helicity += ti.cast(
+                            q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3,
+                            _acc,
+                        )
+                    # Test-filtered enstrophy: the same quadratic form at a
+                    # widened width sqrt(sigma_i^2 + sigma_j^2 + Delta_test^2).
+                    # Delta_test = 2 V^(1/3) matches the LES filter width in
+                    # smagorinsky.py and remains a useful resolution diagnostic.
+                    d_test = (
+                        2.0
+                        * (particle_volume[i] ** (1.0 / 3.0) + particle_volume[j] ** (1.0 / 3.0))
+                        * 0.5
+                    )
+                    sigma_t = ti.sqrt(sigma_e * sigma_e + d_test * d_test)
+                    zeta_test = zeta_(r_mag / sigma_t) / sigma_t**3
+                    pair_enstrophy = ti.cast(zeta_val * str_i.dot(str_j), _acc)
+                    local_enstrophy_test += ti.cast(zeta_test * str_i.dot(str_j), _acc)
+                    pair_nu = ti.cast(0.5 * (viscosities_eff[i] + viscosities_eff[j]), _acc)
+                    local_enstrophy += pair_enstrophy
+                    if ti.static(use_physical_gaussian_energy):
+                        # Viscous kinetic-energy loss uses the projected
+                        # vorticity norm |P omega|², not the norm of the
+                        # nonsolenoidal blob field itself. This is the
+                        # Gaussian pair convolution of P = I - kk/k² and
+                        # remains consistent with the transverse energy
+                        # tensor above.
+                        rho_sq = r_sigma_e * r_sigma_e
+                        diss_isotropic = gaussian_tensor_origin / (sigma_e**3) * (2.0 / 3.0)
+                        diss_radial = ti.cast(0.0, _acc)
+                        if r_sigma_e < 0.5:
+                            diss_isotropic = (
+                                gaussian_tensor_origin
+                                / (sigma_e**3)
+                                * (
+                                    2.0 / 3.0
+                                    + rho_sq
                                     * (
-                                        2.0 / 3.0
+                                        -4.0 / 5.0
                                         + rho_sq
                                         * (
-                                            -4.0 / 5.0
+                                            3.0 / 7.0
                                             + rho_sq
                                             * (
-                                                3.0 / 7.0
+                                                -4.0 / 27.0
                                                 + rho_sq
                                                 * (
-                                                    -4.0 / 27.0
+                                                    5.0 / 132.0
                                                     + rho_sq
                                                     * (
-                                                        5.0 / 132.0
+                                                        -1.0 / 130.0
                                                         + rho_sq
-                                                        * (
-                                                            -1.0 / 130.0
-                                                            + rho_sq
-                                                            * (7.0 / 5400.0 - 1.0 / 5355.0 * rho_sq)
-                                                        )
+                                                        * (7.0 / 5400.0 - 1.0 / 5355.0 * rho_sq)
                                                     )
                                                 )
                                             )
                                         )
                                     )
                                 )
-                                diss_radial = (
-                                    gaussian_tensor_origin
-                                    / (sigma_e**5)
-                                    * (
-                                        2.0 / 5.0
-                                        + rho_sq
-                                        * (
-                                            -2.0 / 7.0
-                                            + rho_sq
-                                            * (
-                                                1.0 / 9.0
-                                                + rho_sq
-                                                * (
-                                                    -1.0 / 33.0
-                                                    + rho_sq
-                                                    * (
-                                                        1.0 / 156.0
-                                                        + rho_sq
-                                                        * (-1.0 / 900.0 + 1.0 / 6120.0 * rho_sq)
-                                                    )
-                                                )
-                                            )
-                                        )
-                                    )
-                                )
-                            else:
-                                zeta_dimensionless = zeta_val * sigma_e**3
-                                diss_isotropic = (
-                                    zeta_dimensionless - q_val / rho_sq / r_sigma_e
-                                ) / (sigma_e**3)
-                                diss_radial = (
-                                    -zeta_dimensionless + 3.0 * q_val / (rho_sq * r_sigma_e)
-                                ) / (sigma_e**5 * rho_sq)
-                            radial_i = str_i.dot(r_ij)
-                            radial_j = str_j.dot(r_ij)
-                            projected_enstrophy = (
-                                diss_isotropic * str_i.dot(str_j)
-                                + diss_radial * radial_i * radial_j
                             )
-                            local_dissipation -= pair_nu * projected_enstrophy
+                            diss_radial = (
+                                gaussian_tensor_origin
+                                / (sigma_e**5)
+                                * (
+                                    2.0 / 5.0
+                                    + rho_sq
+                                    * (
+                                        -2.0 / 7.0
+                                        + rho_sq
+                                        * (
+                                            1.0 / 9.0
+                                            + rho_sq
+                                            * (
+                                                -1.0 / 33.0
+                                                + rho_sq
+                                                * (
+                                                    1.0 / 156.0
+                                                    + rho_sq
+                                                    * (-1.0 / 900.0 + 1.0 / 6120.0 * rho_sq)
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            )
                         else:
-                            local_dissipation -= pair_nu * pair_enstrophy
+                            zeta_dimensionless = zeta_val * sigma_e**3
+                            diss_isotropic = (zeta_dimensionless - q_val / rho_sq / r_sigma_e) / (
+                                sigma_e**3
+                            )
+                            diss_radial = (
+                                -zeta_dimensionless + 3.0 * q_val / (rho_sq * r_sigma_e)
+                            ) / (sigma_e**5 * rho_sq)
+                        radial_i = str_i.dot(r_ij)
+                        radial_j = str_j.dot(r_ij)
+                        projected_enstrophy = (
+                            diss_isotropic * str_i.dot(str_j) + diss_radial * radial_i * radial_j
+                        )
+                        local_dissipation -= pair_nu * projected_enstrophy
+                    else:
+                        local_dissipation -= pair_nu * pair_enstrophy
 
                 # Atomic accumulation of local sums
                 ti.atomic_add(results[None].total_kinetic_energy, local_energy)
