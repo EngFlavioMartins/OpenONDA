@@ -151,12 +151,10 @@ class LinearSolverConfig:
                 raise ValueError(f"Unsupported LinearSolverConfig.{name}={value!r}")
         if self.linear_solver == "amg":
             raise ValueError("LinearSolverConfig.linear_solver drives momentum and cannot be 'amg'")
-        nullspace = self.pressure_nullspace_method
-        if nullspace not in {"auto", "reference", "petsc"}:
+        if self.pressure_nullspace_method not in {"auto", "reference", "petsc"}:
             raise ValueError(
                 "LinearSolverConfig.pressure_nullspace_method must be auto, reference, or petsc"
             )
-        object.__setattr__(self, "pressure_nullspace_method", nullspace)
         for name in (
             "momentum_tolerance",
             "pressure_tolerance",

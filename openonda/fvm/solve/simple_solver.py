@@ -75,17 +75,10 @@ class PressureCorrectionWorkspace:
 
 def _resolve_pressure_constraint(params: dict[str, object]) -> str:
     """Select the configured all-Neumann pressure treatment for this backend."""
-    method = str(params.get("pressure_nullspace_method", "auto")).lower()
-    backend = str(params.get("_linear_backend", "scipy")).lower()
-    if method == "auto":
-        return "nullspace" if backend == "petsc" else "reference"
-    if method == "petsc":
-        if backend != "petsc":
-            raise ValueError("The PETSc pressure null space requires backend='petsc'")
-        return "nullspace"
-    if method == "reference":
+    # The configuration and ``FVMSolver`` have validated the method and backend.
+    if params["pressure_nullspace_method"] == "reference" or params["_linear_backend"] != "petsc":
         return "reference"
-    raise ValueError(f"Unknown pressure null-space method {method!r}")
+    return "nullspace"
 
 
 def _pressure_requires_constraint(

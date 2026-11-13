@@ -48,22 +48,13 @@ class PIMPLESolver:
         mesh_data: dict[str, object],
         geo_data: dict[str, object],
         boundaries: list[dict],
-        params: dict[str, object] = None,
+        params: dict[str, object],
     ) -> None:
-        """Initialise PIMPLE with transient defaults."""
+        """Initialise PIMPLE with the resolved configuration parameters."""
         self.mesh_data = mesh_data
         self.geo_data = geo_data
         self.boundaries = boundaries
-        self.params: dict[str, Any] = {
-            "n_correctors": 2,
-            "n_nonorthogonal_correctors": 0,
-            "velocity_relaxation": 1.0,
-            "pressure_relaxation": 1.0,
-            "momentum_tolerance": 1e-4,
-            "linear_solver": "spsolve",
-        }
-        if params:
-            self.params.update(params)
+        self.params: dict[str, Any] = dict(params)
         # Momentum and pressure are sequential and share one static-topology
         # workspace. Its CSR values are overwritten between equations.
         self._momentum_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(
@@ -165,7 +156,7 @@ class PIMPLESolver:
             self.boundaries,
             mesh_face_flux=mesh_face_flux,
         )
-        n_outer = int(self.params.get("n_outer_correctors", 1))
+        n_outer = int(self.params["n_outer_correctors"])
         n_corr = int(self.params["n_correctors"])
         velocity_relaxation = self.params["velocity_relaxation"]
         pressure_relaxation = self.params["pressure_relaxation"]
@@ -174,13 +165,11 @@ class PIMPLESolver:
         pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
 
         def _linear_tolerances(equation: str, *, final: bool) -> tuple[float, float]:
-            absolute = float(self.params.get(f"{equation}_tolerance", 1e-8))
-            relative = self.params.get(f"{equation}_relative_tolerance", 0.0)
-            if final:
-                relative = 0.0
-            return absolute, float(relative)
+            absolute = float(self.params[f"{equation}_tolerance"])
+            relative = 0.0 if final else float(self.params[f"{equation}_relative_tolerance"])
+            return absolute, relative
 
-        ts = str(self.params.get("time_scheme", "euler_implicit")).lower()
+        ts = self.params["time_scheme"]
         ddt_scheme = "backward" if ts == "backward" else "euler_implicit"
         if ddt_scheme == "backward" and velocity_older is None:
             ddt_scheme = "euler_implicit"  # self-starting first step
@@ -305,8 +294,8 @@ class PIMPLESolver:
                     ddt_scheme=ddt_scheme,
                     momentum_tolerance=momentum_tolerance,
                     momentum_relative_tolerance=momentum_relative_tolerance,
-                    maxiter=self.params.get("momentum_max_iterations", 1000),
-                    linear_backend=self.params.get("_linear_backend", "scipy"),
+                    maxiter=self.params["momentum_max_iterations"],
+                    linear_backend=self.params["_linear_backend"],
                     parallel_context=self.params.get("_parallel_context"),
                     # The default shared settings bounds full-mesh RAM.  The
                     # explicit separate settings retains equation-specific PETSc
@@ -417,7 +406,7 @@ class PIMPLESolver:
                     pressure_tolerance, pressure_relative_tolerance = _linear_tolerances(
                         "pressure", final=final_pressure_solve
                     )
-                    pressure_max_iterations = int(self.params.get("pressure_max_iterations", 500))
+                    pressure_max_iterations = int(self.params["pressure_max_iterations"])
                     kinematic_pressure_correction, kinematic_pressure_result = solve_linear_system(
                         pressure_matrix,
                         pressure_right_hand_side,
@@ -430,7 +419,7 @@ class PIMPLESolver:
                             "kinematic_pressure",
                             self._pressure_matrix_workspace.cache_namespace,
                         ),
-                        backend=self.params.get("_linear_backend", "scipy"),
+                        backend=self.params["_linear_backend"],
                         parallel_context=self.params.get("_parallel_context"),
                         log_sink=logger,
                         nullspace=(
