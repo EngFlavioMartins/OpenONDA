@@ -11,6 +11,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from matplotlib import colormaps
+from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
@@ -43,7 +44,7 @@ COUPLED_FORCES = BASELINE_DIR / "samples/forces_history.csv"
 
 # Field labels, colour maps, and difference scales.
 QUANTITIES = {
-    "velocity": ("$u_x/U_\\infty$", COLORMAPS["velocity"], r"$\|\Delta\mathbf{u}\|/U_\infty$ [\%]"),
+    "velocity": ("$u_x/U_\\infty$", COLORMAPS["velocity"], r"$\|\Delta\mathbf{u}\|/U_\infty$ ($\%$)"),
     "vorticity": (
         "$\\omega_z D/U_\\infty$",
         COLORMAPS["vorticity"],
@@ -116,10 +117,15 @@ def comparison_figure(name, quantity, reference, coupled, difference):
         high = max(np.percentile(np.abs([reference[wake], coupled[wake]]), 99.5), 0.01)
         low = -high
     largest = max(np.nanmax(difference), 1e-6)
+    # Widen each scale to round ticks so the colour bar ends on a labelled value.
+    field_ticks = MaxNLocator(nbins=5).tick_values(low, high)
+    difference_ticks = MaxNLocator(nbins=5).tick_values(0.0, largest)
+    field_levels = np.linspace(field_ticks[0], field_ticks[-1], 41)
+    difference_levels = np.linspace(0.0, difference_ticks[-1], 41)
     panels = (
-        ("(a) FVM only", reference, np.linspace(low, high, 41), cmap),
-        ("(b) Coupled FVM and VPM", coupled, np.linspace(low, high, 41), cmap),
-        ("(c) Difference", difference, np.linspace(0.0, largest, 41), DIFFERENCE_COLOURS),
+        ("(a) FVM only", reference, field_levels, cmap, field_ticks),
+        ("(b) Coupled FVM and VPM", coupled, field_levels, cmap, field_ticks),
+        ("(c) Difference", difference, difference_levels, DIFFERENCE_COLOURS, difference_ticks),
     )
 
     set_thesis_style()
@@ -132,7 +138,7 @@ def comparison_figure(name, quantity, reference, coupled, difference):
         )
 
     top = 0.0
-    for row, (title, values, levels, colours) in enumerate(panels):
+    for row, (title, values, levels, colours, ticks) in enumerate(panels):
         top += TITLE
         axes = axes_at(top, PANEL)
         plot = axes.contourf(x, y, values, levels=levels, cmap=colours, extend="both")
@@ -144,20 +150,19 @@ def comparison_figure(name, quantity, reference, coupled, difference):
         axes.set(
             xlim=WINDOW[:2], ylim=WINDOW[2:], aspect="equal", yticks=[-1, 0, 1], ylabel="$y/D$"
         )
-        axes.set_title(title, pad=1.0, fontsize=FONT_SIZE_PT)
+        axes.set_title(title, pad=4.0, fontsize=FONT_SIZE_PT)
         if row == 0:
             axes.tick_params(labelbottom=False)
             top += PANEL + PANEL_GAP - TITLE
             continue
         axes.set_xlabel("$x/D$")
         top += PANEL + BAR_GAP
-        bar_low, bar_high = levels[0], levels[-1]
+        # The default formatter writes a typeset minus sign.
         figure.colorbar(
             plot,
             cax=axes_at(top, BAR_HEIGHT),
             orientation="horizontal",
-            ticks=[bar_low, 0.5 * (bar_low + bar_high), bar_high],
-            format="%.2g",
+            ticks=ticks,
             label=label if row == 1 else difference_label,
         )
         top += BAR_HEIGHT + BAR_LABEL
