@@ -37,8 +37,5 @@ GAUSSIAN_Q_SERIES_CROSSOVER = 1.0
 # k-equilibrium model converts it to C_k via C_k = (C_s² √C_e)^(2/3).
 SMAGORINSKY_CONSTANT = 0.17
 
-# Regularization of the singular VLM Biot-Savart segments [m]
-VLM_EPSILON = 1e-8
-
 # Small velocity or length below which a VLM direction is undefined
 VLM_SMALL_VELOCITY = 1e-10

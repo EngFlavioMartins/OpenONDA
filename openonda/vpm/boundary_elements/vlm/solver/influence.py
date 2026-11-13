@@ -5,7 +5,7 @@ pressure-coefficient evaluation.
 
 import taichi as ti
 
-from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
+from ....config.constants import VLM_SMALL_VELOCITY
 from ....physics.induction.stretching import stretching_rate
 from ..kernels.biot_savart import (
     bound_vortex_velocity,
@@ -186,6 +186,7 @@ def compute_induced_velocities(
     velocity: ti.template(),  # type: ignore[invalid-annotation]
     external_velocity: ti.template(),  # type: ignore[invalid-annotation]
     coupled_mode: ti.i32,
+    core_radius: float,
 ):
     """Evaluate the same bound field used for wake advection at collocation points."""
     for i in range(n_panels):
@@ -199,7 +200,7 @@ def compute_induced_velocities(
                 trailing_edge_index,
                 circulation[j],
                 coupled_mode,
-                VLM_EPSILON,
+                core_radius,
             )
             induced += value
         velocity[i] = external_velocity[i] + induced
@@ -216,6 +217,7 @@ def add_induced_velocity_at_targets(
     n_targets: ti.i32,
     n_panels: ti.i32,
     coupled_mode: ti.i32,
+    core_radius: float,
 ):
     """Accumulate bound velocity at point probes, without a particle-volume filter."""
     for i in range(n_targets):
@@ -229,7 +231,7 @@ def add_induced_velocity_at_targets(
                 trailing_edge_index,
                 circulation[panel],
                 coupled_mode,
-                VLM_EPSILON,
+                core_radius,
             )
             induced += value
         target_velocity[i] += induced
@@ -248,6 +250,7 @@ def add_induced_velocity_and_gradient_at_targets(
     n_targets: ti.i32,
     n_panels: ti.i32,
     coupled_mode: ti.i32,
+    core_radius: float,
 ):
     """Add particle-volume-filtered velocity and write its analytic Jacobian.
 
@@ -261,7 +264,7 @@ def add_induced_velocity_and_gradient_at_targets(
         target = target_position[i]
         induced = target * 0.0
         gradient = target.outer_product(target) * 0.0
-        radius = ti.max(target_core_radius[i], VLM_EPSILON)
+        radius = ti.max(target_core_radius[i], core_radius)
         for panel in range(n_panels):
             value, jacobian = panel_velocity_and_gradient(
                 target,
@@ -299,6 +302,7 @@ def add_stage_rates_with_bound_exchange(
     mode: ti.i32,
     weighted_dt: float,
     has_gradient: ti.template(),  # type: ignore[invalid-annotation]
+    core_radius: float,
 ):
     """Evaluate bound induction and retain its opposite strip strength exchange.
 
@@ -312,7 +316,7 @@ def add_stage_rates_with_bound_exchange(
         induced = ti.Vector.zero(velocity.dtype, 3)
         gradient = ti.Matrix.zero(rate.dtype, 3, 3)
         strip_rate = ti.Vector.zero(rate.dtype, 3)
-        core = ti.max(radius[i], VLM_EPSILON)
+        core = ti.max(radius[i], core_radius)
         for panel in range(n_panels):
             value, jacobian = panel_velocity_and_gradient(
                 target,
@@ -375,6 +379,7 @@ def _bound_panel_pair_velocity(
     trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
     g: float,
     coupled_mode: ti.i32,
+    core_radius: float,
 ) -> ti.math.vec3:
     """Compute velocity contribution from panel j at evaluation point on panel i."""
     v2 = vortex_point_position[j, ti.i32(1)]
@@ -387,22 +392,22 @@ def _bound_panel_pair_velocity(
         v_te_L = panel_corner_position[te, ti.i32(3)]
         v_te_R = panel_corner_position[te, ti.i32(2)]
         if coupled_mode == 1:
-            vel += bound_vortex_velocity(target, v_te_L, v2, g, VLM_EPSILON)
-            vel += bound_vortex_velocity(target, v3, v_te_R, g, VLM_EPSILON)
+            vel += bound_vortex_velocity(target, v_te_L, v2, g, core_radius)
+            vel += bound_vortex_velocity(target, v3, v_te_R, g, core_radius)
         else:
             vel += bound_vortex_velocity(
-                target, vortex_point_position[j, ti.i32(0)], v2, g, VLM_EPSILON
+                target, vortex_point_position[j, ti.i32(0)], v2, g, core_radius
             )
             vel += bound_vortex_velocity(
-                target, v3, vortex_point_position[j, ti.i32(3)], g, VLM_EPSILON
+                target, v3, vortex_point_position[j, ti.i32(3)], g, core_radius
             )
     else:
         if coupled_mode == 1:
             v_te_L = panel_corner_position[te, ti.i32(3)]
             v_te_R = panel_corner_position[te, ti.i32(2)]
-            vel += bound_vortex_velocity(target, v_te_L, v2, g, VLM_EPSILON)
-            vel += bound_vortex_velocity(target, v2, v3, g, VLM_EPSILON)
-            vel += bound_vortex_velocity(target, v3, v_te_R, g, VLM_EPSILON)
+            vel += bound_vortex_velocity(target, v_te_L, v2, g, core_radius)
+            vel += bound_vortex_velocity(target, v2, v3, g, core_radius)
+            vel += bound_vortex_velocity(target, v3, v_te_R, g, core_radius)
         else:
             vel += horseshoe_velocity(
                 target,
@@ -411,7 +416,7 @@ def _bound_panel_pair_velocity(
                 v3,
                 vortex_point_position[j, ti.i32(3)],
                 g,
-                VLM_EPSILON,
+                core_radius,
             )
     return vel
 
@@ -427,6 +432,7 @@ def compute_induced_velocities_at_bound(
     velocity: ti.template(),  # type: ignore[invalid-annotation]
     external_velocity: ti.template(),  # type: ignore[invalid-annotation]
     coupled_mode: ti.i32,
+    core_radius: float,
 ):
     """
     Compute total velocity AT BOUND VORTEX MIDPOINTS.
@@ -446,6 +452,7 @@ def compute_induced_velocities_at_bound(
         velocity: Output velocity field (N x 3)
         external_velocity: External velocity field at bound midpoints (N x 3)
         coupled_mode: If 1, use bound-only induction consistent with UVLM
+        core_radius: Filament core length of the lattice
     """
     for i in range(n_panels):
         vel_induced = ti.Vector([0.0, 0.0, 0.0])
@@ -461,6 +468,7 @@ def compute_induced_velocities_at_bound(
                 trailing_edge_index,
                 circulation[j],
                 coupled_mode,
+                core_radius,
             )
 
         # Total velocity = External + Induced

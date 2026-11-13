@@ -22,7 +22,7 @@ from openonda.core.kinematics import (
 )
 from openonda.core.metadata import metadata_value
 
-from ....config.constants import VLM_EPSILON, VLM_SMALL_VELOCITY
+from ....config.constants import VLM_SMALL_VELOCITY
 from ....io.logging import Logging
 from ....kernels import make_vortex_kernel
 from ..config import VLMConfig, VLMSurface
@@ -98,7 +98,6 @@ class VLMSolver:
         # Solver configuration
         self.config = config
         self.dtype: Literal["f32", "f64"] = config.dtype
-        self.epsilon = VLM_EPSILON
         self.circulation_relaxation = config.circulation_relaxation
 
         # Multi-body storage: Dict[uid -> (Aircraft, kinematics)]
@@ -129,21 +128,9 @@ class VLMSolver:
         self._force_density = config.density
         self.kinematic_viscosity = config.kinematic_viscosity
         self.wake_core_overlap = config.wake_core_overlap
-        # The present source representation uses one point/trace radius for
-        # the bound operator.  It is named separately from particle radii in
-        # the field definition so a future distributed sheet can change it
-        # without changing the transport rule.
-        self.bound_source_radius = float(VLM_EPSILON)
         self.boundary_response = config.boundary_response
-        self.field_settings = BoundSurfaceFieldSettings(
-            numerical_epsilon=float(VLM_EPSILON),
-            bound_source_radius=self.bound_source_radius,
-            near_wake_treatment=(
-                "affine_row_history_transport_v2"
-                if config.boundary_response == "responsive"
-                else "partial_newborn_row_stage_responsive"
-            ),
-        )
+        # Set by generate_mesh, which fixes the filament core of the lattice.
+        self.field_settings: BoundSurfaceFieldSettings
         self._wake_kernel = make_vortex_kernel("gaussian")
 
         # Transverse shedding threshold
@@ -283,6 +270,14 @@ class VLMSolver:
 
         # Apply per-surface transformations AFTER mesh generation
         self._apply_surface_transforms()
+        self.field_settings = BoundSurfaceFieldSettings(
+            filament_core_radius=self.lattice.filament_core_radius,
+            near_wake_treatment=(
+                "affine_row_history_transport_v2"
+                if self.boundary_response == "responsive"
+                else "partial_newborn_row_stage_responsive"
+            ),
+        )
 
         # Populate panel group IDs
         group_id = self.get_panel_group_ids()
@@ -859,7 +854,7 @@ class VLMSolver:
             self.lattice.trailing_edge_index,
             self.lattice.aerodynamic_influence_coefficient,
             self.lattice.n_panels,
-            self.bound_source_radius,
+            self.lattice.filament_core_radius,
             0,  # coupled_mode = 0 (standalone)
         )
         self._aerodynamic_influence_coefficient_computed = True
@@ -1018,7 +1013,7 @@ class VLMSolver:
             self.lattice.trailing_edge_index,
             self.lattice.aerodynamic_influence_coefficient,
             self.lattice.n_panels,
-            self.bound_source_radius,
+            self.lattice.filament_core_radius,
             coupled_mode=1 if coupled else 0,
         )
         influence_matrix_end_time = time.time()
@@ -1189,7 +1184,7 @@ class VLMSolver:
             self.lattice.trailing_edge_index,
             self._stage_influence,
             n,
-            self.bound_source_radius,
+            self.lattice.filament_core_radius,
             coupled_mode=1,
         )
         compute_coupled_right_hand_side(
@@ -1256,6 +1251,7 @@ class VLMSolver:
             int(count),
             int(self.lattice.n_panels),
             int(self._coupled_mode),
+            self.lattice.filament_core_radius,
         )
 
     def add_stage_velocity_and_gradient(
@@ -1284,6 +1280,7 @@ class VLMSolver:
             int(count),
             int(self.lattice.n_panels),
             int(self._coupled_mode),
+            self.lattice.filament_core_radius,
         )
 
     def _initialize_bound_transport(self) -> None:
@@ -1367,6 +1364,7 @@ class VLMSolver:
             mode,
             weighted_dt,
             rates.velocity_gradient is not None,
+            lattice.filament_core_radius,
         )
         if self._stage_response_active and self._stage_wake_sources:
             if self._virtual_wake_kernel is None:
@@ -1461,6 +1459,7 @@ class VLMSolver:
             self.lattice.velocity,
             self.lattice.external_velocity,
             int(coupled),
+            self.lattice.filament_core_radius,
         )
         velocity = self.lattice.velocity.to_numpy()[: self.lattice.n_panels]
         kinematic_velocity = self.lattice.get_kinematic_velocity()
@@ -1511,6 +1510,7 @@ class VLMSolver:
             self.lattice.bound_vortex_velocity,
             self.lattice.bound_external_velocity,
             1 if coupled else 0,
+            self.lattice.filament_core_radius,
         )
         bound_velocity = self.lattice.bound_vortex_velocity.to_numpy()[: self.lattice.n_panels]
         bound_relative_velocity = np.zeros((self.max_n_panels, 3), dtype=self.lattice.np_dtype)

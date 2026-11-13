@@ -215,6 +215,13 @@ def generate_vlm_mesh(
     vortex_np[:panel_idx, 3] = (
         vortex_np[:panel_idx, 2] + trailing_edge_infty * trail_np[:panel_idx, 1]
     )
+    # Filament core: on the extension of a segment the exact velocity is zero, but
+    # |s x r| carries roundoff u |s| |r|. The core term must dominate it, so it scales
+    # with sqrt(u) times the panel span; its model error at distance h is O(core^2/h^2) = O(u).
+    bound_span = np.linalg.norm(
+        vortex_np[:panel_idx, 2].astype(np.float64) - vortex_np[:panel_idx, 1], axis=1
+    )
+    lattice.filament_core_radius = float(np.sqrt(np.finfo(np_dtype).eps) * bound_span.mean())
     _stitch_symmetry_neighbors(aircraft, neigh_np)
     _stitch_segment_neighbors(segment_blocks, neigh_np)
 

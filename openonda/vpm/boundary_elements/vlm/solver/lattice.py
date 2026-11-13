@@ -51,6 +51,8 @@ class VLMLattice:
         self.dtype = dtype
         self.np_dtype = np.float32 if dtype == ti.f32 else np.float64
         self.n_panels = 0
+        # Regularization length of the bound filaments [m], set by generate_vlm_mesh.
+        self.filament_core_radius = 0.0
         Logging.record("VLM mesh allocation", ("panel capacity", self.max_n_panels))
 
         # Panel corner points (N x 4 x 3)

@@ -22,18 +22,14 @@ class BoundSurfaceFieldSettings:
 
     Parameters
     ----------
-    numerical_epsilon : float
+    filament_core_radius : float
         Positive regularization length of the singular bound line-integral
-        operator. It is not a physical core radius.
-    bound_source_radius : float
-        Radius used for point/probe and boundary-trace evaluation of the
-        bound source. It may equal ``numerical_epsilon`` for the
-        point-trace model, but is named separately so a resolved study can
-        set it on its own.
+        operator, used at collocation points, probes and bound midpoints. It is
+        not a physical core radius.
     particle_core_rule : str
         Human-readable description of the finite-target rule. The current
         coupled model uses ``max(particle_core_radius,
-        numerical_epsilon)`` for particle-centre transport and stretching.
+        filament_core_radius)`` for particle-centre transport and stretching.
     free_wake_operator : str
         The configured VPM source/target backend. It is part of the complete
         transport definition even though this object owns only the bound field.
@@ -47,9 +43,8 @@ class BoundSurfaceFieldSettings:
         Accepted/newborn wake rule used by the stage-responsive solve.
     """
 
-    numerical_epsilon: float
-    bound_source_radius: float
-    particle_core_rule: str = "max(particle_core_radius, numerical_epsilon)"
+    filament_core_radius: float
+    particle_core_rule: str = "max(particle_core_radius, filament_core_radius)"
     free_wake_operator: str = "configured VPM induction backend"
     bound_representation: str = "finite_segment_global_horseshoe"
     bound_trace_operator: str = "finite_segment_rosenhead_point_trace"
@@ -58,17 +53,15 @@ class BoundSurfaceFieldSettings:
     near_wake_treatment: str = "partial_newborn_row_stage_responsive"
 
     def __post_init__(self) -> None:
-        """Require finite positive numerical and bound-source radii."""
-        for name in ("numerical_epsilon", "bound_source_radius"):
-            value = float(getattr(self, name))
-            if not np.isfinite(value) or value <= 0.0:
-                raise ValueError(f"{name} must be finite and positive")
+        """Require a finite positive filament core radius."""
+        value = float(self.filament_core_radius)
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError("filament_core_radius must be finite and positive")
 
     def as_dict(self) -> dict[str, object]:
         """Return the complete explicit field settings for metadata and restarts."""
         return {
-            "numerical_epsilon": float(self.numerical_epsilon),
-            "bound_source_radius": float(self.bound_source_radius),
+            "filament_core_radius": float(self.filament_core_radius),
             "particle_core_rule": self.particle_core_rule,
             "free_wake_operator": self.free_wake_operator,
             "bound_representation": self.bound_representation,

@@ -5,11 +5,6 @@ vortex-ring induced velocity.
 
 import taichi as ti
 
-from ....config.constants import VLM_EPSILON
-
-# Local aliases used in @ti.func kernels
-EPSILON = VLM_EPSILON
-
 
 @ti.func
 def regularized_segment_velocity_and_gradient(target, pa, pb, circulation, core_radius):
