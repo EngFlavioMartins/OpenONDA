@@ -21,4 +21,6 @@ Run `scripts/setup_sample_sync.sh` once after `sudo apt install syncthing`; it
 starts Syncthing, adds the folder and a user timer that publishes every 15
 minutes. Rerun it with the other machine's device ID to pair the two. On the
 plotting machine, `allfetch.sh` at the root of the thesis and paper folders
-copies what their figures need into their `data/` folders.
+copies what their figures need into their `data/` folders; on a Mac,
+`tools/setup_sample_sync_mac.sh` in the thesis folder installs and configures the
+receiving side.
