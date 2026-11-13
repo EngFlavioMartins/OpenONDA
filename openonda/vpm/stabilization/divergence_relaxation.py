@@ -556,6 +556,7 @@ class _SweepState:
         self.norm = max(float(np.linalg.norm(vortex_strength)), np.finfo(float).tiny)
         self._integrals = None
         self._energy_direction = None
+        self._energy_direction_computed = False
         self._divergence_corrections: dict[int, np.ndarray] = {}
 
     def integrals(self, vortex_strength: np.ndarray | None = None):
@@ -573,17 +574,24 @@ class _SweepState:
             slip_slab=self.slip_slab,
         )
 
-    def energy_direction(self) -> np.ndarray:
-        """Moment-preserving part of the strength itself, scaled to its norm."""
-        if self._energy_direction is None:
+    def energy_direction(self) -> np.ndarray | None:
+        """Moment-preserving part of the strength itself, scaled to its norm.
+
+        Returns ``None`` when that part is round-off: the strength then lies in
+        the span of its own moment rows (a uniform discrete ring lies in the
+        span of the impulse rows), so no moment-preserving rescaling exists.
+        """
+        if not self._energy_direction_computed:
+            self._energy_direction_computed = True
             sqrt_volume = self.nullspace.sqrt_volume[:, None]
             direction = self.nullspace.to_correction(self.vortex_strength / sqrt_volume)
             direction_norm = float(np.linalg.norm(direction))
-            if direction_norm <= np.finfo(float).tiny:
-                raise DivergenceRelaxationError(
-                    "no moment-preserving direction is available to restore kinetic energy"
-                )
-            self._energy_direction = direction * (self.norm / direction_norm)
+            if direction_norm <= np.sqrt(np.finfo(float).eps) * self.norm:
+                return None
+            # Scaling up amplifies the round-off left in the moment rows by
+            # norm / direction_norm; a second projection removes it again.
+            direction *= self.norm / direction_norm
+            self._energy_direction = self.nullspace.to_correction(direction / sqrt_volume)
         return self._energy_direction
 
     def divergence_correction(
@@ -832,29 +840,33 @@ def _propose(
     # Kinetic energy is a quadratic form of the strength, so along the
     # moment-preserving direction d, E(c + m d) = E(c) + b m + a m^2 exactly; the
     # central differences give b and a, and the smaller root restores E.
+    # Without such a direction the audit judges the energy change of the
+    # candidate itself against its tolerance.
     energy_direction = state.energy_direction()
-    energy = state.integrals(candidate).total_kinetic_energy
-    plus = state.integrals(candidate + energy_direction).total_kinetic_energy
-    minus = state.integrals(candidate - energy_direction).total_kinetic_energy
-    energy_roots = np.roots(
-        (
-            0.5 * (plus + minus) - energy,
-            0.5 * (plus - minus),
-            energy - state.integrals().total_kinetic_energy,
+    relaxed = candidate
+    if energy_direction is not None:
+        energy = state.integrals(candidate).total_kinetic_energy
+        plus = state.integrals(candidate + energy_direction).total_kinetic_energy
+        minus = state.integrals(candidate - energy_direction).total_kinetic_energy
+        energy_roots = np.roots(
+            (
+                0.5 * (plus + minus) - energy,
+                0.5 * (plus - minus),
+                energy - state.integrals().total_kinetic_energy,
+            )
         )
-    )
-    real_energy_roots = [
-        float(value.real)
-        for value in energy_roots
-        if np.isfinite(value) and abs(value.imag) <= 1e-10
-    ]
-    if not real_energy_roots:
-        return _Rejection(
-            "kinetic-energy restoration",
-            "kinetic energy could not be restored in the moment null space",
-        )
-    energy_multiplier = min(real_energy_roots, key=abs)
-    relaxed = vortex_strength + (raw_correction + energy_multiplier * energy_direction)
+        real_energy_roots = [
+            float(value.real)
+            for value in energy_roots
+            if np.isfinite(value) and abs(value.imag) <= 1e-10
+        ]
+        if not real_energy_roots:
+            return _Rejection(
+                "kinetic-energy restoration",
+                "kinetic energy could not be restored in the moment null space",
+            )
+        energy_multiplier = min(real_energy_roots, key=abs)
+        relaxed = vortex_strength + (raw_correction + energy_multiplier * energy_direction)
 
     audit = _audit(
         state,
