@@ -352,8 +352,6 @@ def assemble_matrix_from_fluxes_vectorized(
     flux_data: dict[str, object],
     mesh_data: dict[str, object],
     workspace: "MatrixAssemblyWorkspace | None" = None,
-    *,
-    backend: str = "numpy",
 ) -> sparse.csr_matrix:
     """
     Vectorized version of matrix assembly for better performance.
@@ -415,7 +413,7 @@ def _assemble_rhs_numba(
 
 
 def assemble_rhs_from_fluxes_vectorized(
-    flux_data: dict[str, object], mesh_data: dict[str, object], *, backend: str = "numpy"
+    flux_data: dict[str, object], mesh_data: dict[str, object]
 ) -> np.ndarray:
     """
     Vectorized RHS assembly.
@@ -424,40 +422,10 @@ def assemble_rhs_from_fluxes_vectorized(
     n_cells = mesh_data["n_cells"]
     n_interior_faces = mesh_data["n_interior_faces"]
 
-    owners = mesh_data["owners"][:n_interior_faces]
-    neighbours = mesh_data["neighbours"][:n_interior_faces]
-    flux_vf = flux_data["flux_vf"][:n_interior_faces]
-
-    if backend == "numba":
-        return _assemble_rhs_numba(
-            np.asarray(flux_data["flux_vf"], dtype=np.float64),
-            np.asarray(mesh_data["owners"], dtype=np.int64),
-            np.asarray(mesh_data["neighbours"], dtype=np.int64),
-            n_cells,
-            n_interior_faces,
-        )
-    if backend == "taichi":
-        from ..core.taichi_operators import assemble_rhs
-
-        return assemble_rhs(
-            flux_data["flux_vf"],
-            mesh_data["owners"],
-            mesh_data["neighbours"],
-            n_cells,
-            n_interior_faces,
-        )
-    if backend != "numpy":
-        raise ValueError(f"Unknown operator backend {backend!r}")
-
-    # ``np.bincount`` returns an integer array when the interior-face slice is
-    # empty, even though boundary contributions below are floating point.
-    b = np.bincount(owners, weights=-flux_vf, minlength=n_cells).astype(np.float64, copy=False)
-    b += np.bincount(neighbours, weights=flux_vf, minlength=n_cells)
-
-    # Boundary faces
-    if len(flux_data["flux_vf"]) > n_interior_faces:
-        owners_b = mesh_data["owners"][n_interior_faces:]
-        flux_vf_b = flux_data["flux_vf"][n_interior_faces:]
-        b += np.bincount(owners_b, weights=-flux_vf_b, minlength=n_cells)
-
-    return b
+    return _assemble_rhs_numba(
+        np.asarray(flux_data["flux_vf"], dtype=np.float64),
+        np.asarray(mesh_data["owners"], dtype=np.int64),
+        np.asarray(mesh_data["neighbours"], dtype=np.int64),
+        n_cells,
+        n_interior_faces,
+    )

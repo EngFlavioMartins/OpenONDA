@@ -209,10 +209,9 @@ def compute_gauss_gradient(
 ) -> np.ndarray:
     """Compute cell gradients with the linear Gauss theorem.
 
-    Uses compiled face accumulation with the Numba operator backend and
-    ``bincount`` reductions with NumPy. Both apply the same linear face
-    interpolation, skewness correction (:func:`_correct_gauss_skewness`) and
-    boundary-normal correction.
+    Uses compiled face accumulation with linear face interpolation, skewness
+    correction (:func:`_correct_gauss_skewness`) and boundary-normal
+    correction.
 
     Parameters
     ----------
@@ -244,107 +243,7 @@ def compute_gauss_gradient(
     # Determine field type
     if field_values.ndim == 1:
         field_values = field_values.reshape(-1, 1)
-    if geo_data.get("_operator_backend") == "numba":
-        return _compute_gauss_gradient_compiled(field_values, mesh_data, geo_data)
-
-    n_total = field_values.shape[0]
-    n_components = field_values.shape[1]
-
-    n_cells = mesh_data["n_cells"]
-    n_interior_faces = mesh_data["n_interior_faces"]
-    n_faces = mesh_data["n_faces"]
-
-    owners = mesh_data["owners"]
-    neighbours = mesh_data["neighbours"]
-
-    face_area_vector = geo_data["face_area_vector"]
-    face_interpolation_weight = geo_data["face_interpolation_weight"]
-    cell_volume = geo_data["cell_volume"]
-
-    field_gradient = np.zeros((n_total, 3, n_components), dtype=np.float64)
-
-    # --- INTERIOR FACES (Vectorized) ---
-    owners_i = owners[:n_interior_faces]
-    neighbours_i = neighbours[:n_interior_faces]
-    weights_i = face_interpolation_weight[:n_interior_faces]
-    sf_i = face_area_vector[:n_interior_faces]
-
-    for i_component in range(n_components):
-        # Face interpolation
-        face_field_values = (
-            weights_i * field_values[neighbours_i, i_component]
-            + (1 - weights_i) * field_values[owners_i, i_component]
-        )
-
-        # Contribution to owners (vectorized accumulation)
-        contribution = face_field_values[:, np.newaxis] * sf_i  # (n_faces, 3)
-        for dimension in range(3):
-            field_gradient[:n_cells, dimension, i_component] += np.bincount(
-                owners_i,
-                weights=contribution[:, dimension],
-                minlength=n_cells,
-            )
-            field_gradient[:n_cells, dimension, i_component] -= np.bincount(
-                neighbours_i,
-                weights=contribution[:, dimension],
-                minlength=n_cells,
-            )
-
-    # --- BOUNDARY FACES (Vectorized) ---
-    owners_b = owners[n_interior_faces:n_faces]
-    sf_b = face_area_vector[n_interior_faces:n_faces]
-
-    # Identify non-empty boundary face indices
-    boundaries = mesh_data["boundary"]
-    valid_b_face_list: list[int] = []
-
-    for boundary in boundaries:
-        if _is_empty_boundary(boundary):
-            continue
-
-        start = boundary["start_face"]
-        nf = boundary["n_faces"]
-        valid_b_face_list.extend(range(start, start + nf))
-
-    # Store indices of boundary elements that are part of non-empty patches
-    # Store indices of owner cells corresponding to these non-empty boundary elements
-
-    if valid_b_face_list:
-        valid_b_face_indices = np.array(valid_b_face_list)
-        # Relative indices for owners_b and sf_b
-        rel_indices = valid_b_face_indices - n_interior_faces
-        # Boundary element indices for these faces
-        b_elem_indices = n_cells + rel_indices
-
-        for i_component in range(n_components):
-            boundary_field_values = field_values[b_elem_indices, i_component]
-            boundary_neighbour_cell = np.asarray(
-                mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-            )[valid_b_face_indices]
-            coupled = boundary_neighbour_cell >= 0
-            if np.any(coupled):
-                face_interpolation_weight_b = face_interpolation_weight[
-                    valid_b_face_indices[coupled]
-                ]
-                owner_indices = owners[valid_b_face_indices[coupled]]
-                boundary_field_values[coupled] = (
-                    face_interpolation_weight_b
-                    * field_values[boundary_neighbour_cell[coupled], i_component]
-                    + (1.0 - face_interpolation_weight_b) * field_values[owner_indices, i_component]
-                )
-            contribution_b = boundary_field_values[:, np.newaxis] * sf_b[rel_indices]
-            for dimension in range(3):
-                field_gradient[:n_cells, dimension, i_component] += np.bincount(
-                    owners_b[rel_indices],
-                    weights=contribution_b[:, dimension],
-                    minlength=n_cells,
-                )
-
-    # --- Volume Averaging (Vectorized) ---
-    for i_component in range(n_components):
-        field_gradient[:n_cells, :, i_component] /= cell_volume[:, np.newaxis]
-
-    return _finish_gauss_gradient(field_gradient, field_values, mesh_data, geo_data)
+    return _compute_gauss_gradient_compiled(field_values, mesh_data, geo_data)
 
 
 def _correct_gauss_skewness(

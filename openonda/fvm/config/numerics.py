@@ -14,11 +14,7 @@ CONVECTION_SCHEMES = frozenset(
         "limited_linear",
         "linear_upwind",
         "lust",
-        "minmod",
-        "muscl",
-        "superbee",
         "upwind",
-        "van_leer",
     }
 )
 
@@ -59,8 +55,7 @@ class DiscretizationConfig:
     convection_scheme : str, default='limited_linear'
         Face interpolation of the convected velocity: ``upwind`` (first
         order, bounded), ``central``, ``linear_upwind``, ``lust`` (0.75
-        central + 0.25 linear upwind), or the TVD-limited ``limited_linear``,
-        ``van_leer``, ``muscl``, ``minmod`` and ``superbee``.
+        central + 0.25 linear upwind), or the TVD-limited ``limited_linear``.
     gradient_scheme : {'gauss', 'lsq'}, default='lsq'
         Cell-centred gradient: Gauss divergence theorem or least squares.
     time_scheme : {'euler_implicit', 'backward'}, default='euler_implicit'
@@ -74,10 +69,6 @@ class DiscretizationConfig:
         "linear_upwind",
         "lust",
         "limited_linear",
-        "van_leer",
-        "muscl",
-        "minmod",
-        "superbee",
     ] = "limited_linear"
     gradient_scheme: Literal["gauss", "lsq"] = "lsq"
     time_scheme: Literal["euler_implicit", "backward"] = "euler_implicit"
@@ -324,27 +315,15 @@ class PimpleConfig:
         Nonlinear outer passes; PISO uses one.
     n_nonorthogonal_correctors : int, default=0
         Extra pressure solves for the non-orthogonal correction.
-    min_outer_correctors : int, default=1
-        Outer passes before residual-based early termination.
-    outer_residual_tolerance : float or None
-        Optional maximum equation residual for early termination.
-    outer_continuity_tolerance : float or None
-        Optional maximum cell divergence in 1/s for early termination.
     velocity_relaxation, pressure_relaxation : float, default=1.0
         Under-relaxation factors in ``(0, 1]``.
-    ddt_corr : bool, default=True
-        Include the transient Rhie--Chow flux correction.
     """
 
     n_correctors: int = 2
     n_outer_correctors: int = 1
     n_nonorthogonal_correctors: int = 0
-    min_outer_correctors: int = 1
-    outer_residual_tolerance: float | None = None
-    outer_continuity_tolerance: float | None = None
     velocity_relaxation: float = 1.0
     pressure_relaxation: float = 1.0
-    ddt_corr: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -356,16 +335,10 @@ class PimpleConfig:
                 minimum=0,
             ),
         )
-        for name in (
-            "n_correctors",
-            "n_outer_correctors",
-            "min_outer_correctors",
-        ):
+        for name in ("n_correctors", "n_outer_correctors"):
             object.__setattr__(
                 self, name, strict_int(f"PimpleConfig.{name}", getattr(self, name), minimum=1)
             )
-        if self.min_outer_correctors > self.n_outer_correctors:
-            raise ValueError("PimpleConfig.min_outer_correctors cannot exceed n_outer_correctors")
         for name in ("velocity_relaxation", "pressure_relaxation"):
             object.__setattr__(
                 self,
@@ -378,16 +351,6 @@ class PimpleConfig:
                     strict_minimum=True,
                 ),
             )
-        for name in ("outer_residual_tolerance", "outer_continuity_tolerance"):
-            value = getattr(self, name)
-            if value is not None:
-                object.__setattr__(
-                    self,
-                    name,
-                    finite_real(f"PimpleConfig.{name}", value, minimum=0.0, strict_minimum=True),
-                )
-        if not isinstance(self.ddt_corr, bool):
-            raise TypeError("PimpleConfig.ddt_corr must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,8 +359,9 @@ class ComputeConfig:
 
     Parameters
     ----------
-    operator_backend : {'numpy', 'numba', 'taichi'}, default='numpy'
-        Implementation of the local discrete operators.
+    operator_backend : {'numba'}, default='numba'
+        Implementation of the local discrete operators. Numba is the only
+        implementation; the field remains because coupled cases set it.
     linear_backend : {'scipy', 'petsc'}, default='scipy'
         Sparse linear-algebra library. Serial runs use SciPy.
     parallel_mode : {'serial', 'petsc_replicated', 'petsc_partitioned'}
@@ -409,14 +373,14 @@ class ComputeConfig:
         :attr:`Output.asynchronous` is false; an MPI run always writes inline.
     """
 
-    operator_backend: Literal["numpy", "numba", "taichi"] = "numpy"
+    operator_backend: Literal["numba"] = "numba"
     linear_backend: Literal["scipy", "petsc"] = "scipy"
     parallel_mode: Literal["serial", "petsc_replicated", "petsc_partitioned"] = "serial"
     output_mode: Literal["synchronous", "threaded"] = "synchronous"
 
     def __post_init__(self) -> None:
         choices = {
-            "operator_backend": {"numpy", "numba", "taichi"},
+            "operator_backend": {"numba"},
             "linear_backend": {"scipy", "petsc"},
             "parallel_mode": {"serial", "petsc_replicated", "petsc_partitioned"},
             "output_mode": {"synchronous", "threaded"},

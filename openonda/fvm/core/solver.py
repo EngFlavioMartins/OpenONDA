@@ -379,7 +379,6 @@ class FVMSolver(CouplerInterfaceMixin):
             parallel=self.parallel,
             output_path=self.solution_dir / "performance.jsonl",
         )
-        self.operator_backend = configuration.numerics.execution.operator_backend
         if configuration.numerics.execution.linear_backend == "petsc":
             methods = {
                 "momentum": configuration.numerics.linear.momentum_solver
@@ -846,8 +845,6 @@ class FVMSolver(CouplerInterfaceMixin):
         """Create the PIMPLE pressure--velocity algorithm."""
         params = self._configuration.algorithm_parameters()
         params["_linear_backend"] = self._configuration.numerics.execution.linear_backend
-        params["_operator_backend"] = self.operator_backend
-        self.geo_data["_operator_backend"] = self.operator_backend
         params["_parallel_context"] = self.parallel
         params["_logger"] = self.logger
         params["_profiler"] = self.profiler
@@ -918,6 +915,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.velocity_older[:] = self.velocity
 
             from ..assemble import convection
+
             self.volumetric_face_flux = convection.compute_volumetric_face_flux(
                 self.velocity, self.mesh_data, self.geo_data
             )

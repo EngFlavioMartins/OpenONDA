@@ -107,68 +107,20 @@ def assemble_diffusion_term_interior(
     flux_ff = np.empty(n_interior_faces, dtype=np.float64)
     flux_vf = np.empty(n_interior_faces, dtype=np.float64)
     flux_tf = np.empty(n_interior_faces, dtype=np.float64) if include_total_flux else None
-    if geo_data.get("_operator_backend") == "numba":
-        _diffusion_interior_compiled(
-            scalar_field,
-            scalar_field_gradient,
-            np.atleast_1d(diffusivity),
-            owners_all,
-            neighbours_all,
-            geo_data["face_area_vector"],
-            geo_data["cell_connection_vector"],
-            geo_data["face_interpolation_weight"],
-            flux_cf,
-            flux_ff,
-            flux_vf,
-            np.empty(0) if flux_tf is None else flux_tf,
-        )
-        result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
-        if flux_tf is not None:
-            result["flux_tf"] = flux_tf
-        return result
-
-    # Keep the temporary edge/gradient tensors bounded independently of mesh
-    # size.  On the cube reference partition the all-face implementation held
-    # roughly 200 MiB here for each velocity component.
-    chunk_size = 250_000
-    for start in range(0, n_interior_faces, chunk_size):
-        stop = min(start + chunk_size, n_interior_faces)
-        face_slice = slice(start, stop)
-        owners = owners_all[face_slice]
-        neighbours = neighbours_all[face_slice]
-        sf = geo_data["face_area_vector"][face_slice]
-        cf_vector = geo_data["cell_connection_vector"][face_slice]
-        mag_cf = np.linalg.norm(cf_vector, axis=1)
-        edge = cf_vector / mag_cf[:, np.newaxis]
-        sf_dot_edge = np.sum(sf * edge, axis=1)
-        sf_dot_edge = np.where(np.abs(sf_dot_edge) < 1e-30, 1e-30, sf_dot_edge)
-        ef_mag = np.sum(sf * sf, axis=1) / sf_dot_edge
-        nonorthogonal = sf - ef_mag[:, np.newaxis] * edge
-        geo_diff = ef_mag / mag_cf
-
-        weights = geo_data["face_interpolation_weight"][face_slice]
-        if np.isscalar(diffusivity):
-            face_diffusivity = float(np.asarray(diffusivity).item())
-        else:
-            face_diffusivity = (
-                weights * diffusivity[neighbours] + (1.0 - weights) * diffusivity[owners]
-            )
-        grad_face = (
-            weights[:, np.newaxis] * scalar_field_gradient[neighbours]
-            + (1.0 - weights[:, np.newaxis]) * scalar_field_gradient[owners]
-        )
-        coefficient = face_diffusivity * geo_diff
-        correction = -face_diffusivity * np.sum(grad_face * nonorthogonal, axis=1)
-        flux_cf[face_slice] = coefficient
-        flux_ff[face_slice] = -coefficient
-        flux_vf[face_slice] = correction
-        if flux_tf is not None:
-            flux_tf[face_slice] = (
-                coefficient * scalar_field[owners]
-                - coefficient * scalar_field[neighbours]
-                + correction
-            )
-
+    _diffusion_interior_compiled(
+        scalar_field,
+        scalar_field_gradient,
+        np.atleast_1d(diffusivity),
+        owners_all,
+        neighbours_all,
+        geo_data["face_area_vector"],
+        geo_data["cell_connection_vector"],
+        geo_data["face_interpolation_weight"],
+        flux_cf,
+        flux_ff,
+        flux_vf,
+        np.empty(0) if flux_tf is None else flux_tf,
+    )
     result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
     if flux_tf is not None:
         result["flux_tf"] = flux_tf

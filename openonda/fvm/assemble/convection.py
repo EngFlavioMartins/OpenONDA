@@ -506,8 +506,7 @@ def assemble_convection_term(
             (unbounded, energy-conserving): ``'central'``.  Gradient-corrected:
             ``'linear_upwind'`` and ``'lust'`` (0.75 central + 0.25 linear
             upwind).  Bounded TVD (require ``scalar_field_gradient``):
-            ``'limited_linear'``, ``'van_leer'``, ``'muscl'``, ``'minmod'``,
-            ``'superbee'``.
+            ``'limited_linear'``.
         scalar_field_gradient: Cell gradient of ``scalar_field`` (n_total, 3), required by the TVD
             schemes; ignored by the others.
         component: Velocity component index (0, 1, or 2), required by the

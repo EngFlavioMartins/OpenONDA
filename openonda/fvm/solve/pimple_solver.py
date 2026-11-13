@@ -190,21 +190,19 @@ class PIMPLESolver:
 
         # Frozen for the whole physical time step: only committed old-time
         # fields enter the face-history correction.
-        ddt_flux_correction = None
-        if bool(self.params.get("ddt_corr", True)):
-            ddt_flux_correction = simple_solver.compute_ddt_flux_correction(
-                velocity_old,
-                velocity_older,
-                volumetric_face_flux_old,
-                volumetric_face_flux_older,
-                time_step_size,
-                self.mesh_data,
-                self.geo_data,
-                self.boundaries,
-                ddt_scheme,
-                previous_time_step_size=previous_time_step_size,
-                mesh_face_flux=mesh_face_flux,
-            )
+        ddt_flux_correction = simple_solver.compute_ddt_flux_correction(
+            velocity_old,
+            velocity_older,
+            volumetric_face_flux_old,
+            volumetric_face_flux_older,
+            time_step_size,
+            self.mesh_data,
+            self.geo_data,
+            self.boundaries,
+            ddt_scheme,
+            previous_time_step_size=previous_time_step_size,
+            mesh_face_flux=mesh_face_flux,
+        )
 
         simple_solver.update_scalar_boundaries(
             kinematic_pressure,
@@ -268,14 +266,13 @@ class PIMPLESolver:
         # ``(1-α)/α · diag(A) · Δvelocity`` damping term in the committed solution,
         # which suppresses physically growing modes such as shear-layer rollup
         # and bluff-body vortex shedding.
-        final_iteration = False
 
         for outer in range(n_outer):
             outer_previous_velocity = np.asarray(velocity[:n_owned], dtype=np.float64).copy()
             outer_previous_pressure = np.asarray(
                 kinematic_pressure[:n_owned], dtype=np.float64
             ).copy()
-            final_iteration = final_iteration or outer == n_outer - 1
+            final_iteration = outer == n_outer - 1
             outer_velocity_relaxation = 1.0 if final_iteration else velocity_relaxation
             outer_pressure_relaxation = 1.0 if final_iteration else pressure_relaxation
             momentum_tolerance, momentum_relative_tolerance = _linear_tolerances(
@@ -327,7 +324,6 @@ class PIMPLESolver:
                     failure_action=self.params.get("linear_failure_action", "raise"),
                     log_sink=logger,
                     matrix_workspace=self._momentum_matrix_workspace,
-                    operator_backend=self.params.get("_operator_backend", "numpy"),
                     return_diagnostics=True,
                     return_operator=True,
                 )
@@ -410,7 +406,6 @@ class PIMPLESolver:
                         velocity_relaxation=outer_velocity_relaxation,
                         pressure_constraint=pressure_constraint,
                         matrix_workspace=self._pressure_matrix_workspace,
-                        operator_backend=self.params.get("_operator_backend", "numpy"),
                         boundary_layout=self._pressure_boundary_layout,
                         ddt_flux_correction=ddt_flux_correction,
                         correction_workspace=pressure_geometry,
@@ -593,23 +588,6 @@ class PIMPLESolver:
             # predictor-sized arrays before the next outer momentum assembly.
             del velocity_star, momentum_diagonal, velocity_iter, pressure_geometry
             del momentum_operator, corrected_velocity
-
-            if final_iteration:
-                break
-
-            checks = []
-            residual_tolerance = self.params.get("outer_residual_tolerance")
-            if residual_tolerance is not None:
-                checks.append(state_update <= float(residual_tolerance))
-            continuity_tolerance = self.params.get("outer_continuity_tolerance")
-            if continuity_tolerance is not None:
-                checks.append(continuity_outer <= float(continuity_tolerance))
-            minimum = int(self.params.get("min_outer_correctors", 1))
-            if checks and all(checks) and outer + 1 >= minimum:
-                # ``pimpleControl::loop`` does not stop on the iteration whose
-                # residuals satisfied the criteria: it flags the next one final
-                # and runs it unrelaxed before leaving the loop.
-                final_iteration = True
 
         final_velocity_component_residuals = {
             comp: values["final_residual"] for comp, values in momentum_diagnostics.items()

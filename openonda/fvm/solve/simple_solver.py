@@ -1209,7 +1209,6 @@ def assemble_pressure_correction_equation_rhie_chow(
     velocity_relaxation: float = 1.0,
     pressure_constraint: str = "reference",
     matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
-    operator_backend: str = "numpy",
     boundary_layout: "PressureBoundaryLayout | None" = None,
     ddt_flux_correction: np.ndarray | None = None,
     correction_workspace: "PressureCorrectionWorkspace | None" = None,
@@ -1251,8 +1250,6 @@ def assemble_pressure_correction_equation_rhie_chow(
         constraint.
     matrix_workspace : MatrixAssemblyWorkspace or None, optional
         Reusable CSR structure for the pressure matrix.
-    operator_backend : {'numpy', 'numba', 'taichi'}, default='numpy'
-        Backend used for vectorized coefficient assembly.
     boundary_layout, ddt_flux_correction, correction_workspace : optional
         Precomputed topology/time-integration data. ``None`` requests local
         construction; supplied arrays must use the current mesh row order.
@@ -1542,10 +1539,10 @@ def assemble_pressure_correction_equation_rhie_chow(
         assert flux_cf is not None and flux_ff is not None
         flux_data.update({"flux_cf": flux_cf, "flux_ff": flux_ff})
         pressure_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
-            flux_data, mesh_data, workspace=matrix_workspace, backend=operator_backend
+            flux_data, mesh_data, workspace=matrix_workspace
         )
     pressure_right_hand_side = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
-        flux_data, mesh_data, backend=operator_backend
+        flux_data, mesh_data
     )
 
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.

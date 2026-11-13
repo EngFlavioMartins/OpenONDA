@@ -121,11 +121,11 @@ A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..
 | --- | --- |
 | `PimpleConfig(...)` | Transient PIMPLE: `n_correctors` pressure corrections per outer pass and `n_outer_correctors` nonlinear outer passes (one pass is PISO), with `velocity_relaxation`/`pressure_relaxation`. Each pressure correction updates the momentum prediction with the previous correction's velocity change (Issa 1986). |
 | `DiscretizationConfig(time_scheme=...)` | `euler_implicit` (first order) or `backward` (second-order BDF). |
-| `convection_scheme` | `upwind` (robust, dissipative), `central` (accurate when resolved, may oscillate), bounded `limited_linear` (default), `linear_upwind`, `lust`, `van_leer`, `muscl`, `minmod`, `superbee`. |
+| `convection_scheme` | `upwind` (robust, dissipative), `central` (accurate when resolved, may oscillate), bounded `limited_linear` (default), `linear_upwind`, `lust`. |
 | `gradient_scheme` | `lsq` (default) or `gauss`. |
 | `Numerics(time_step_control=MaximumCourantTimeStep(maximum, maximum_time_step_size))` | Adapts the step to a Courant limit; physical-time output events are reached exactly, at their configured decimal times. |
 
-`LinearSolverConfig` sets the momentum and pressure solver tolerances; `ComputeConfig(operator_backend="numba")` speeds up the discrete operators. `LinearSolverConfig(momentum_preconditioner=...)` selects the preconditioner of the BiCGStab momentum solve:
+`LinearSolverConfig` sets the momentum and pressure solver tolerances; the discrete operators are compiled with Numba (`ComputeConfig(operator_backend="numba")`, the only choice). `LinearSolverConfig(momentum_preconditioner=...)` selects the preconditioner of the BiCGStab momentum solve:
 
 | Option | Preconditioner |
 | --- | --- |
@@ -137,7 +137,7 @@ The preconditioner changes only the iterations, not the converged tolerance; the
 
 ## Moving meshes
 
-`MeshMotion` moves the whole mesh as one rigid body with a prescribed motion. Pass it as `FVMCase(mesh_motion=...)`; a moving mesh needs the transient `piso` or `pimple` algorithm:
+`MeshMotion` moves the whole mesh as one rigid body with a prescribed motion. Pass it as `FVMCase(mesh_motion=...)`:
 
 ```python
 motion = fvm.MeshMotion(

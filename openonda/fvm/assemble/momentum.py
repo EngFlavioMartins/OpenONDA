@@ -278,7 +278,6 @@ def assemble_momentum_equation(
     previous_time_step_size: float | None = None,
     ddt_scheme: str = "euler_implicit",
     matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
-    operator_backend: str = "numpy",
 ) -> dict[str, dict[str, object]]:
     """
     Assemble momentum equation for all three velocity components.
@@ -431,7 +430,6 @@ def assemble_momentum_equation(
                 combined_flux,
                 mesh_data,
                 workspace=matrix_workspace,
-                backend=operator_backend,
             )
             # A reusable workspace owns one mutable CSR object.  Preserve each
             # component before the next workspace update overwrites its data.
@@ -467,9 +465,7 @@ def assemble_momentum_equation(
                 A = common_matrix.copy()
             A.setdiag(A.diagonal() + slip_diagonal)
             equation_diagonal = A.diagonal()
-        b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
-            combined_flux, mesh_data, backend=operator_backend
-        )
+        b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(combined_flux, mesh_data)
 
         # 5. Add pressure gradient to RHS: -∇kinematic_pressure * V
         grad_p_comp = kinematic_pressure_gradient[:n_cells, i_comp]
@@ -547,7 +543,6 @@ def solve_momentum_predictor(
 
     # Assemble momentum equations
     matrix_workspace = solver_kwargs.pop("matrix_workspace", None)
-    operator_backend = solver_kwargs.pop("operator_backend", "numpy")
     mom_eqs = assemble_momentum_equation(
         velocity,
         kinematic_pressure,
@@ -564,7 +559,6 @@ def solve_momentum_predictor(
         previous_time_step_size=previous_time_step_size,
         ddt_scheme=ddt_scheme,
         matrix_workspace=matrix_workspace,
-        operator_backend=operator_backend,
     )
 
     # Solve for each component
