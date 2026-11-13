@@ -404,6 +404,11 @@ def _compute_pressure_face_conductance(
     is linearly interpolated on interior faces and taken from the owner on
     boundary faces. Because pressure is kinematic and ``volumetric_face_flux`` is volumetric
     flux, density does not enter this conductance.
+
+    The face area vector is split as the momentum Laplacian splits it, in the
+    over-relaxed form: the implicit part ``E = |S|^2 / (S . e)`` along the unit
+    owner-to-neighbour vector ``e`` and the explicit remainder ``S - E e``,
+    which the flux kernels evaluate with the interpolated pressure gradient.
     """
     n_faces = mesh_data["n_faces"]
     n_interior = mesh_data["n_interior_faces"]
@@ -463,7 +468,7 @@ def _compute_pressure_face_conductance(
                 normal * normal, face_pressure_velocity_coefficient
             )
         edge = cf_block / mag_cf[:, np.newaxis]
-        orthogonal_area = vector_dot(sf_block, edge)
+        orthogonal_area = mag_sf * mag_sf / vector_dot(sf_block, edge)
         conductance[face_slice] = effective_pressure_velocity_coefficient * orthogonal_area / mag_cf
 
     if np.any(conductance < -1e-14):
@@ -784,7 +789,7 @@ def _process_boundary_faces_jit(
             mag_Sf = (Sf0 * Sf0 + Sf1 * Sf1 + Sf2 * Sf2) ** 0.5
             if mag_Sf < 1e-30:
                 continue
-            sf_dot_e = Sf0 * e0 + Sf1 * e1 + Sf2 * e2
+            orthogonal_area = mag_Sf * mag_Sf / (Sf0 * e0 + Sf1 * e1 + Sf2 * e2)
             geoDiff = face_conductance[i_face]
 
             if geoDiff > 0:
@@ -803,9 +808,9 @@ def _process_boundary_faces_jit(
                 term_compact = cf * kinematic_pressure[own] + ff * val
 
                 # Non-orthogonal correction
-                k0 = Sf0 - sf_dot_e * e0
-                k1 = Sf1 - sf_dot_e * e1
-                k2 = Sf2 - sf_dot_e * e2
+                k0 = Sf0 - orthogonal_area * e0
+                k1 = Sf1 - orthogonal_area * e1
+                k2 = Sf2 - orthogonal_area * e2
                 flux_nonortho = -(
                     k0 * owner_pressure_velocity_coefficient_x * gp0
                     + k1 * owner_pressure_velocity_coefficient_y * gp1
@@ -1056,7 +1061,9 @@ def _pressure_interior_flux_scalar(
         sf0 = face_area_vector[face, 0]
         sf1 = face_area_vector[face, 1]
         sf2 = face_area_vector[face, 2]
-        orthogonal_area = sf0 * edge0 + sf1 * edge1 + sf2 * edge2
+        orthogonal_area = (sf0 * sf0 + sf1 * sf1 + sf2 * sf2) / (
+            sf0 * edge0 + sf1 * edge1 + sf2 * edge2
+        )
 
         grad0 = (
             weight * kinematic_pressure_gradient[nei, 0]
@@ -1137,7 +1144,9 @@ def _pressure_interior_flux_vector(
         sf0 = face_area_vector[face, 0]
         sf1 = face_area_vector[face, 1]
         sf2 = face_area_vector[face, 2]
-        orthogonal_area = sf0 * edge0 + sf1 * edge1 + sf2 * edge2
+        orthogonal_area = (sf0 * sf0 + sf1 * sf1 + sf2 * sf2) / (
+            sf0 * edge0 + sf1 * edge1 + sf2 * edge2
+        )
 
         grad0 = (
             weight * kinematic_pressure_gradient[nei, 0]
@@ -1162,13 +1171,14 @@ def _pressure_interior_flux_vector(
             + (weight * velocity_h_over_a[nei, 2] + owner_weight * velocity_h_over_a[own, 2]) * sf2
         )
         if use_ddt:
+            area_squared = sf0 * sf0 + sf1 * sf1 + sf2 * sf2
             velocity_h_over_a_face_flux += (
                 (
-                    pressure_velocity_coefficient_x
-                    + pressure_velocity_coefficient_y
-                    + pressure_velocity_coefficient_z
+                    sf0 * sf0 * pressure_velocity_coefficient_x
+                    + sf1 * sf1 * pressure_velocity_coefficient_y
+                    + sf2 * sf2 * pressure_velocity_coefficient_z
                 )
-                / 3.0
+                / area_squared
             ) * ddt_flux_correction[face]
         conductance = face_conductance[face]
         flux_vf[face] = (
@@ -1377,15 +1387,12 @@ def assemble_pressure_correction_equation_rhie_chow(
     flux_ff = None if reuse_matrix else np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)
 
-    # --- MODIFIED RHIE-CHOW INTERPOLATION ---
-    # Standard Rhie-Chow: U_f = Avg(velocity) + Avg(D)*(Avg(GradP) - CompactGradP)
-    # Modified Rhie-Chow: U_f = Avg(velocity + D*GradP) - Avg(D)*CompactGradP
-    # This is much more robust on persistent checkerboarding.
-
-    # 1. Reconstruct "H/A" velocity at cell centres (Velocity without pressure gradient)
-    # U_centre = H/A - kinematic_pressure_gradient * pressure_velocity_coefficient
-    # So H/A = U_centre + kinematic_pressure_gradient * pressure_velocity_coefficient
-    # We use velocity_star as U_centre (it includes -kinematic_pressure_gradient * pressure_velocity_coefficient approx).
+    # Rhie-Chow face flux: interpolate H/A = U* + D grad(p) and add the
+    # compact pressure drive, U_f = interp(H/A) - D_f grad_f(p).  D is the
+    # unrelaxed V / a_P, so U* + D grad(p) is the exact H/A only for an
+    # unrelaxed predictor; under velocity relaxation it approximates H/A in
+    # the outer iterations, and the final, unrelaxed outer iteration commits
+    # the exact form.
     # Fuse the interior-face interpolation and non-orthogonal correction in a
     # compiled loop. Besides being faster than eight chains of NumPy advanced
     # indexing per PIMPLE step, this avoids retaining pressure_velocity_coefficient, velocity_h_over_a, edge,
@@ -1509,7 +1516,7 @@ def assemble_pressure_correction_equation_rhie_chow(
                 weight_b * kinematic_pressure_gradient[nei_b]
                 + (1.0 - weight_b) * kinematic_pressure_gradient[own_b]
             )
-            orthogonal_area = vector_dot(sf_b, edge_b)
+            orthogonal_area = vector_dot(sf_b, sf_b) / vector_dot(sf_b, edge_b)
             nonorthogonal = sf_b - orthogonal_area[:, np.newaxis] * edge_b
             conductance_b = face_conductance[cyclic_faces]
             if not reuse_matrix:
@@ -1517,6 +1524,16 @@ def assemble_pressure_correction_equation_rhie_chow(
                 flux_cf[cyclic_faces] = conductance_b
                 flux_ff[cyclic_faces] = -conductance_b
             velocity_h_over_a_face_flux = vector_dot(hbya_b, sf_b)
+            if ddt_values.size:
+                normal_coefficient = (
+                    boundary_pressure_velocity_coefficient
+                    if scalar_diagonal
+                    else vector_dot(sf_b * sf_b, boundary_pressure_velocity_coefficient)
+                    / vector_dot(sf_b, sf_b)
+                )
+                velocity_h_over_a_face_flux = (
+                    velocity_h_over_a_face_flux + normal_coefficient * ddt_values[cyclic_faces]
+                )
             compact = conductance_b * (kinematic_pressure[own_b] - kinematic_pressure[nei_b])
             if scalar_diagonal:
                 nonorthogonal_flux = -boundary_pressure_velocity_coefficient * vector_dot(

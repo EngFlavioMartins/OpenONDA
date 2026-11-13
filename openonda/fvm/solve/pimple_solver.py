@@ -362,6 +362,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
                         velocity_iter[:n_elem] - corrected_velocity,
                         n_owned,
                         parallel,
+                        outer_velocity_relaxation,
                     )
                     frozen_velocity_h_over_a = frozen_velocity_h_over_a + h_over_a_increment
                     velocity_iter[:n_elem] += h_over_a_increment
@@ -649,13 +650,16 @@ def _piso_h_over_a_increment(
     velocity_change: np.ndarray,
     n_owned: int,
     parallel: "ParallelContext | None",
+    velocity_relaxation: float,
 ) -> np.ndarray:
     """Change of H/A caused by one corrector's cell-velocity change.
 
-    With momentum matrix ``A = diag(a_P) + N``, ``H(u)/a_P = (b - N u)/a_P``
-    changes by ``-N du/a_P = du - (A du)/a_P``. Owned rows use the exchanged
-    halo values of ``du``; halo rows are then refreshed from their owners.
-    Returns shape ``(n_cells, 3)``.
+    The relaxed momentum matrix is ``A = diag(a_P / alpha) + N``.  H/A and
+    the Rhie--Chow coefficient ``V / a_P`` use the unrelaxed diagonal, so
+    ``H(u)/a_P = (b - N u)/a_P`` changes by
+    ``-N du / a_P = (du - (A du) / (a_P / alpha)) / alpha``.  Owned rows use
+    the exchanged halo values of ``du``; halo rows are then refreshed from
+    their owners.  Returns shape ``(n_cells, 3)``.
     """
     change = np.array(velocity_change, dtype=np.float64)
     if parallel is not None and parallel.is_partitioned:
@@ -670,7 +674,7 @@ def _piso_h_over_a_increment(
         applied = rows @ change[:, components]
         increment[:n_owned, components] = (
             change[:n_owned, components] - applied / diagonal[:, np.newaxis]
-        )
+        ) / velocity_relaxation
     if parallel is not None and parallel.is_partitioned:
         parallel.exchange_halo(increment)
     return increment
