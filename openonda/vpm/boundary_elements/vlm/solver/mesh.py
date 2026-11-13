@@ -17,27 +17,51 @@ if TYPE_CHECKING:
     from .lattice import VLMLattice
 
 
-def _stitch_symmetry_neighbors(aircraft: Aircraft, neigh_np: np.ndarray) -> None:
-    """Connect wing root panels across the symmetry plane by updating neigh_np in-place."""
-    current_idx = 0
-    for _wing_uid, wing in aircraft.wings.items():
-        if wing.symmetry > 0:
-            for _seg_uid, segment in wing.segments.items():
-                nc = segment.n_chordwise_panels
-                ns = segment.n_spanwise_panels
-                n_panels_seg = nc * ns
-                start_orig = current_idx
-                current_idx += n_panels_seg
-                start_mirror = current_idx
-                current_idx += n_panels_seg
-                for i in range(nc):
-                    idx_orig = start_orig + i
-                    idx_mirror = start_mirror + i
-                    neigh_np[idx_orig, 0] = idx_mirror
-                    neigh_np[idx_mirror, 0] = idx_orig
-        else:
-            for seg in wing.segments.values():
-                current_idx += seg.n_chordwise_panels * seg.n_spanwise_panels
+# Root edges within this fraction of the root chord of the symmetry plane lie on it.
+_SYMMETRY_ROOT_TOLERANCE = 1e-6
+# Coordinate that a symmetry plane (1: XY, 2: XZ, 3: YZ) mirrors.
+_MIRRORED_AXIS = {1: 2, 2: 1, 3: 0}
+
+
+def _check_wing_topology(aircraft: Aircraft) -> None:
+    """Reject wings whose strips would be stitched across edges that do not meet."""
+    for wing_uid, wing in aircraft.wings.items():
+        segments = list(wing.segments.values())
+        for lower, upper in zip(segments[:-1], segments[1:], strict=False):
+            if lower.n_chordwise_panels != upper.n_chordwise_panels:
+                raise ValueError(
+                    f"wing {wing_uid!r}: adjacent segments {lower.uid!r} and {upper.uid!r} have "
+                    f"n_chordwise_panels {lower.n_chordwise_panels} and "
+                    f"{upper.n_chordwise_panels}; their strips meet panel to panel only with "
+                    "equal counts"
+                )
+        if wing.symmetry > 0 and segments:
+            root = segments[0].vertex_position
+            axis = _MIRRORED_AXIS[wing.symmetry]
+            chord = float(np.linalg.norm(np.asarray(root["d"]) - np.asarray(root["a"])))
+            offset = max(abs(float(root["a"][axis])), abs(float(root["d"][axis])))
+            if offset > _SYMMETRY_ROOT_TOLERANCE * chord:
+                raise ValueError(
+                    f"wing {wing_uid!r}: the root edge of segment {segments[0].uid!r} is "
+                    f"{offset:.3e} m off the symmetry plane; a mirrored wing must meet its "
+                    "image at the root"
+                )
+
+
+def _stitch_symmetry_neighbors(blocks: list[dict], neigh_np: np.ndarray) -> None:
+    """Connect the root strips of a mirrored wing's first segment to their images."""
+    roots = {
+        (block["wing_id"], block["is_mirrored"]): block
+        for block in blocks
+        if block["segment_order"] == 0
+    }
+    for (wing_id, is_mirrored), block in roots.items():
+        mirror = roots.get((wing_id, True))
+        if is_mirrored or mirror is None:
+            continue
+        for i in range(block["nc"]):
+            neigh_np[block["start"] + i, 0] = mirror["start"] + i
+            neigh_np[mirror["start"] + i, 0] = block["start"] + i
 
 
 def _stitch_segment_neighbors(blocks: list[dict], neigh_np: np.ndarray) -> None:
@@ -55,7 +79,7 @@ def _stitch_segment_neighbors(blocks: list[dict], neigh_np: np.ndarray) -> None:
     for half_blocks in by_half.values():
         half_blocks.sort(key=lambda item: item["segment_order"])
         for lower, upper in zip(half_blocks[:-1], half_blocks[1:], strict=False):
-            nc = min(lower["nc"], upper["nc"])
+            nc = lower["nc"]
             lower_start = lower["start"] + (lower["ns"] - 1) * lower["nc"]
             upper_start = upper["start"]
             for i in range(nc):
@@ -89,6 +113,7 @@ def generate_vlm_mesh(
         spanwise_spacing_ratio: Concentration ratio for geometric spacing
         spanwise_spacing_region: Refinement region ('start', 'end', 'both')
     """
+    _check_wing_topology(aircraft)
     # Pre-allocate numpy arrays for all mesh data
     max_n_panels = lattice.max_n_panels
 
@@ -222,7 +247,7 @@ def generate_vlm_mesh(
         vortex_np[:panel_idx, 2].astype(np.float64) - vortex_np[:panel_idx, 1], axis=1
     )
     lattice.filament_core_radius = float(np.sqrt(np.finfo(np_dtype).eps) * bound_span.mean())
-    _stitch_symmetry_neighbors(aircraft, neigh_np)
+    _stitch_symmetry_neighbors(segment_blocks, neigh_np)
     _stitch_segment_neighbors(segment_blocks, neigh_np)
 
     lattice.panel_corner_position.from_numpy(corners_np)

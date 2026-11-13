@@ -807,7 +807,6 @@ class VLMSolver:
         self,
         external_velocity: np.ndarray | None = None,
         time_step_size: float | None = None,
-        save_old: bool = True,
         coupled: bool = False,
     ) -> np.ndarray:
         """
@@ -817,8 +816,6 @@ class VLMSolver:
             external_velocity: Total external velocity field at collocation_point points (N x 3).
                        If None, assumes data is already in lattice.external_velocity (GPU-resident).
             time_step_size: Time step size (optional, used for wake shedding updates if needed)
-            save_old: If True (default), saves current circulation to circulation_old
-                     before solving. Set to False for re-solves within the same step.
             coupled: If True, uses bound-only aerodynamic_influence_coefficient for coupling with VPM particles.
 
         Returns:
@@ -873,9 +870,9 @@ class VLMSolver:
             self.lattice.n_panels,
         )
         right_hand_side_end_time = time.time()
-        if save_old:
-            self.lattice.save_old_circulation()
-        if coupled and save_old:
+        # The unsteady load differences against the circulation of the previous step.
+        self.lattice.save_old_circulation()
+        if coupled:
             self._augment_near_wake_particles()
         circulation_np = self._run_linear_solver(n_panels)
         linear_solve_end_time = time.time()
