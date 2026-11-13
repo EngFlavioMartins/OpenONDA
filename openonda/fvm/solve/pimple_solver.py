@@ -169,7 +169,7 @@ class PIMPLESolver:
         n_corr = int(self.params["n_correctors"])
         velocity_relaxation = self.params["velocity_relaxation"]
         pressure_relaxation = self.params["pressure_relaxation"]
-        momentum_method = self.params.get("momentum_solver") or self.params["linear_solver"]
+        momentum_method = self.params["linear_solver"]
         pressure_method = self.params.get("pressure_solver") or self.params["linear_solver"]
         pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
 
@@ -177,9 +177,7 @@ class PIMPLESolver:
             absolute = float(self.params.get(f"{equation}_tolerance", 1e-8))
             relative = self.params.get(f"{equation}_relative_tolerance", 0.0)
             if final:
-                final_relative = self.params.get(f"{equation}_final_relative_tolerance", 0.0)
-                if final_relative is not None:
-                    relative = final_relative
+                relative = 0.0
             return absolute, float(relative)
 
         ts = str(self.params.get("time_scheme", "euler_implicit")).lower()

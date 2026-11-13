@@ -54,25 +54,24 @@ class FVMConfiguration:
                 numerics.execution,
                 linear_backend="petsc",
                 parallel_mode=parallel_mode,
-                output_mode="synchronous",
             )
             # A direct SciPy solve is serial: use a tightly converged
             # iterative solve instead (BiCGSTAB for momentum, AMG for pressure)
             # and never loosen an authored tolerance.
             linear_options: dict[str, object] = {}
-            for equation in ("momentum", "pressure"):
-                method = (
-                    getattr(numerics.linear, f"{equation}_solver") or numerics.linear.linear_solver
-                )
+            for equation, solver_field, replacement in (
+                ("momentum", "linear_solver", "bicgstab"),
+                ("pressure", "pressure_solver", "amg"),
+            ):
+                method = getattr(numerics.linear, solver_field) or numerics.linear.linear_solver
                 if method == "spsolve":
                     linear_options.update(
                         {
-                            f"{equation}_solver": ("amg" if equation == "pressure" else "bicgstab"),
+                            solver_field: replacement,
                             f"{equation}_tolerance": min(
                                 getattr(numerics.linear, f"{equation}_tolerance"), 1e-10
                             ),
                             f"{equation}_relative_tolerance": 0.0,
-                            f"{equation}_final_relative_tolerance": 0.0,
                         }
                     )
             numerics = replace(

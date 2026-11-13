@@ -378,8 +378,7 @@ class FVMSolver(CouplerInterfaceMixin):
         )
         if configuration.numerics.execution.linear_backend == "petsc":
             methods = {
-                "momentum": configuration.numerics.linear.momentum_solver
-                or configuration.numerics.linear.linear_solver,
+                "momentum": configuration.numerics.linear.linear_solver,
                 "pressure": configuration.numerics.linear.pressure_solver
                 or configuration.numerics.linear.linear_solver,
             }
@@ -2181,7 +2180,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 self.logger.output(f"Output written: {Path(frame).name}")
             return
 
-        if output.asynchronous or self._configuration.numerics.execution.output_mode == "threaded":
+        if output.asynchronous:
             if self._buffered_vtk_writer is None:
                 from ..io.async_output import BufferedVTKWriter
 

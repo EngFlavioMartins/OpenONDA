@@ -516,12 +516,14 @@ class Logging:
 
         linear_method = numerics.linear.linear_solver
         pressure_method = numerics.linear.pressure_solver or linear_method
-        momentum_method = numerics.linear.momentum_solver or linear_method
         authored = solver.case.numerics.linear
         replaced = [
             equation
-            for equation, method in (("momentum", momentum_method), ("pressure", pressure_method))
-            if (getattr(authored, f"{equation}_solver") or authored.linear_solver) != method
+            for equation, method, authored_method in (
+                ("momentum", linear_method, authored.linear_solver),
+                ("pressure", pressure_method, authored.pressure_solver or authored.linear_solver),
+            )
+            if authored_method != method
         ]
         sections.append(
             (
@@ -532,10 +534,15 @@ class Logging:
                     ("time scheme", str(numerics.schemes.time_scheme)),
                     ("convection scheme", str(numerics.schemes.convection_scheme)),
                     ("gradient scheme", str(numerics.schemes.gradient_scheme)),
-                    ("momentum solver", str(momentum_method)),
+                    ("momentum solver", str(linear_method)),
                     ("pressure solver", str(pressure_method)),
                     *(
-                        [("direct solves", f"{' and '.join(replaced)} by GMRES to 1e-10 under MPI")]
+                        [
+                            (
+                                "direct solves",
+                                f"{' and '.join(replaced)} by BiCGSTAB or AMG to 1e-10 under MPI",
+                            )
+                        ]
                         if replaced
                         else []
                     ),

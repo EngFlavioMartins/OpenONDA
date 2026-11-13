@@ -93,10 +93,9 @@ class LinearSolverConfig:
     ----------
     linear_solver : {'bicgstab', 'amg', 'spsolve'}
         Default method. Momentum cannot use ``amg`` directly.
-    momentum_solver, pressure_solver : str or None
-        Equation-specific methods. Momentum inherits ``linear_solver`` by
-        default; pressure defaults to AMG. Explicit ``None`` inherits
-        ``linear_solver`` for either equation.
+    pressure_solver : str or None
+        Pressure method; the default is AMG and ``None`` inherits
+        ``linear_solver``. Momentum always uses ``linear_solver``.
     pressure_nullspace_method : {'auto', 'reference', 'petsc'}
         Constant-pressure nullspace treatment for singular incompressible
         systems. ``reference`` pins a datum; ``petsc`` attaches a nullspace.
@@ -105,10 +104,8 @@ class LinearSolverConfig:
         The default momentum tolerance of ``1e-9`` converges the predictor
         well below the discretisation error; DILU keeps it inexpensive.
     momentum_relative_tolerance, pressure_relative_tolerance : float
-        Non-negative residual reductions relative to each solve's initial norm.
-    momentum_final_relative_tolerance, pressure_final_relative_tolerance : float or None
-        Optional relative tolerances for final correctors; ``None`` retains
-        the ordinary equation setting.
+        Non-negative residual reductions relative to each solve's initial norm;
+        the final corrector of a time step solves to the absolute tolerance only.
     momentum_max_iterations, pressure_max_iterations : int
         Positive iteration caps.
 
@@ -129,7 +126,6 @@ class LinearSolverConfig:
     """
 
     linear_solver: Literal["bicgstab", "amg", "spsolve"] = "bicgstab"
-    momentum_solver: Literal["bicgstab", "spsolve"] | None = None
     pressure_solver: Literal["amg", "bicgstab", "spsolve"] | None = "amg"
     pressure_nullspace_method: Literal[
         "auto",
@@ -139,28 +135,22 @@ class LinearSolverConfig:
 
     momentum_tolerance: float = 1e-9
     momentum_relative_tolerance: float = 0.0
-    momentum_final_relative_tolerance: float | None = 0.0
     momentum_max_iterations: int = 1000
 
     pressure_tolerance: float = 1e-8
     pressure_relative_tolerance: float = 0.0
-    pressure_final_relative_tolerance: float | None = 0.0
     pressure_max_iterations: int = 500
 
     def __post_init__(self) -> None:
         valid = {"bicgstab", "amg", "spsolve"}
-        for name in ("linear_solver", "momentum_solver", "pressure_solver"):
+        for name in ("linear_solver", "pressure_solver"):
             value = getattr(self, name)
             if value is None and name != "linear_solver":
                 continue
-            choice = value
-            if choice not in valid:
+            if value not in valid:
                 raise ValueError(f"Unsupported LinearSolverConfig.{name}={value!r}")
-            object.__setattr__(self, name, choice)
-        if self.momentum_solver == "amg" or (
-            self.momentum_solver is None and self.linear_solver == "amg"
-        ):
-            raise ValueError("LinearSolverConfig effective momentum solver cannot be 'amg'")
+        if self.linear_solver == "amg":
+            raise ValueError("LinearSolverConfig.linear_solver drives momentum and cannot be 'amg'")
         nullspace = self.pressure_nullspace_method
         if nullspace not in {"auto", "reference", "petsc"}:
             raise ValueError(
@@ -187,17 +177,6 @@ class LinearSolverConfig:
                 name,
                 finite_real(f"LinearSolverConfig.{name}", getattr(self, name), minimum=0.0),
             )
-        for name in (
-            "momentum_final_relative_tolerance",
-            "pressure_final_relative_tolerance",
-        ):
-            value = getattr(self, name)
-            if value is not None:
-                object.__setattr__(
-                    self,
-                    name,
-                    finite_real(f"LinearSolverConfig.{name}", value, minimum=0.0),
-                )
         for name in ("momentum_max_iterations", "pressure_max_iterations"):
             object.__setattr__(
                 self,
@@ -270,23 +249,17 @@ class ComputeConfig:
     parallel_mode : {'serial', 'petsc_replicated', 'petsc_partitioned'}
         Mesh distribution: every rank holds the global mesh (replicated) or
         its owned cells plus a halo layer (partitioned).
-    output_mode : {'synchronous', 'threaded'}, default='synchronous'
-        ``'threaded'`` writes visualization frames on a background thread.
-        Frames are written inline only when this is ``'synchronous'`` and
-        :attr:`Output.asynchronous` is false; an MPI run always writes inline.
     """
 
     operator_backend: Literal["numba"] = "numba"
     linear_backend: Literal["scipy", "petsc"] = "scipy"
     parallel_mode: Literal["serial", "petsc_replicated", "petsc_partitioned"] = "serial"
-    output_mode: Literal["synchronous", "threaded"] = "synchronous"
 
     def __post_init__(self) -> None:
         choices = {
             "operator_backend": {"numba"},
             "linear_backend": {"scipy", "petsc"},
             "parallel_mode": {"serial", "petsc_replicated", "petsc_partitioned"},
-            "output_mode": {"synchronous", "threaded"},
         }
         for name, valid in choices.items():
             lowercase_choice(f"ComputeConfig.{name}", getattr(self, name), valid)
@@ -295,10 +268,6 @@ class ComputeConfig:
         if self.parallel_mode != "serial" and self.linear_backend != "petsc":
             raise ValueError(
                 f"ComputeConfig.parallel_mode={self.parallel_mode!r} requires linear_backend='petsc'"
-            )
-        if self.parallel_mode == "petsc_partitioned" and self.output_mode == "threaded":
-            raise ValueError(
-                "ComputeConfig petsc_partitioned mode does not support threaded output"
             )
 
 
