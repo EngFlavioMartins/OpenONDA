@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
+from dataclasses import fields
 import hashlib
 import json
 import os
@@ -15,6 +16,7 @@ import numpy as np
 from ...core.clock import time_tolerance
 from ..config.configuration_values import numerical_configuration
 from ..config.restart_changes import validate_configuration_changes
+from ..config.state_limits import ParticleStateMetrics
 from .logging import Logging
 
 if TYPE_CHECKING:
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "11.0"
+_BACKUP_FORMAT_VERSION = "12.0"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -372,24 +374,13 @@ class _BackupIO:
                     raise ValueError(f"Unknown stabilization diagnostic {name!r}")
                 solver_group.attrs[name] = value
 
-            reference_moments = getattr(
-                stabilization,
-                "reference_moments",
-                None,
-            )
-            if reference_moments is not None:
-                reference_array = np.asarray(
-                    reference_moments,
-                    dtype=restart_dtype,
-                )
-                if reference_array.shape != (3, 3):
-                    raise ValueError(
-                        "divergence-relaxation reference moments must have shape (3, 3)"
-                    )
-                solver_group.create_dataset(
-                    "divergence_relaxation_reference_moments",
-                    data=reference_array,
-                )
+            # A growth limit compares each accepted state with the previous one.
+            metrics = solver._accepted_state_metrics
+            if metrics is not None:
+                metrics_group = solver_group.create_group("accepted_state_metrics")
+                for field in fields(ParticleStateMetrics):
+                    metrics_group.attrs[field.name] = getattr(metrics, field.name)
+            solver.field_diagnostics.write_restart(solver_group.create_group("flow_integrals"))
 
             vlm = getattr(solver, "vlm_solver", None)
             if vlm is not None:
@@ -498,19 +489,17 @@ class _BackupIO:
                     }
                 )
 
-            if "divergence_relaxation_reference_moments" in solver_group:
-                reference_array = np.asarray(
-                    solver_group["divergence_relaxation_reference_moments"][:],
-                    dtype=np.float64,
+            solver._accepted_state_metrics = (
+                ParticleStateMetrics(
+                    **{
+                        field.name: solver_group["accepted_state_metrics"].attrs[field.name].item()
+                        for field in fields(ParticleStateMetrics)
+                    }
                 )
-                if reference_array.shape != (3, 3):
-                    raise ValueError(
-                        "Backup divergence-relaxation reference moments must have shape (3, 3)"
-                    )
-                if stabilization is not None:
-                    stabilization.reference_moments = tuple(row.copy() for row in reference_array)
-            elif stabilization is not None:
-                stabilization.reference_moments = None
+                if "accepted_state_metrics" in solver_group
+                else None
+            )
+            solver.field_diagnostics.restore_restart(solver_group["flow_integrals"])
 
             vlm = getattr(solver, "vlm_solver", None)
             if vlm is not None:
@@ -658,14 +647,20 @@ class _BackupIO:
                         - set(_STABILIZATION_DIAGNOSTIC_NAMES)
                     )
                     invalid(f"unknown solver attributes: {', '.join(unknown)}")
-                if set(solver_group.keys()) - {"divergence_relaxation_reference_moments", "vlm"}:
-                    invalid("contains unknown solver datasets")
                 format_version = _attribute_text(solver_group.attrs.get("format_version", ""))
                 if format_version != _BACKUP_FORMAT_VERSION:
                     invalid(
                         "unsupported backup format version "
                         f"{format_version!r}; expected {_BACKUP_FORMAT_VERSION!r}"
                     )
+                if "flow_integrals" not in solver_group:
+                    invalid("missing the flow-integral restart state")
+                if set(solver_group.keys()) - {"accepted_state_metrics", "flow_integrals", "vlm"}:
+                    invalid("contains unknown solver datasets")
+                if "accepted_state_metrics" in solver_group and set(
+                    solver_group["accepted_state_metrics"].attrs.keys()
+                ) != {field.name for field in fields(ParticleStateMetrics)}:
+                    invalid("accepted-state metrics must hold every ParticleStateMetrics field")
 
                 configuration_text = _attribute_text(_read_attribute(solver_group, "configuration"))
                 configuration_hash = _attribute_text(
@@ -730,23 +725,6 @@ class _BackupIO:
                 pending = _read_attribute(solver_group, "particle_regeneration_pending")
                 if not isinstance(pending, bool | int | np.integer) or int(pending) not in (0, 1):
                     invalid("solver attribute 'particle_regeneration_pending' must be 0 or 1")
-
-                if "divergence_relaxation_reference_moments" in solver_group:
-                    moments = solver_group["divergence_relaxation_reference_moments"]
-                    if moments.shape != (3, 3) or not np.issubdtype(moments.dtype, np.floating):
-                        invalid(
-                            "divergence-relaxation reference moments must be a floating (3, 3) array"
-                        )
-                    if (
-                        expected_float_dtype is not None
-                        and np.dtype(moments.dtype) != expected_float_dtype
-                    ):
-                        invalid(
-                            "divergence-relaxation reference moments have dtype "
-                            f"{moments.dtype}; expected solver compute dtype {expected_float_dtype}"
-                        )
-                    if not np.isfinite(moments[:]).all():
-                        invalid("divergence-relaxation reference moments must be finite")
 
                 n_particles_total = _read_particle_count(solver_group)
                 particles_group = file["particles"]

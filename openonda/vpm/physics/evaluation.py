@@ -891,6 +891,68 @@ class ParticleFieldEvaluation:
         # bridge; the reported energy itself remains the raw new-grid value.
         return new_spectral, False, old_spectral
 
+    # Restart state
+
+    def write_restart(self, group) -> None:
+        """Write the energy samples and the Fourier grid that later samples depend on.
+
+        ``group`` is an empty HDF5 group. The next ``kinetic_energy_rate`` is a
+        backward difference to the latest energy sample, and a variable-core
+        Fourier energy is measured on the grid the earlier samples used.
+        """
+        import h5py
+
+        group.create_dataset(
+            "time", data=np.array([sample[0] for sample in self._energy_history], dtype=np.float64)
+        )
+        group.create_dataset(
+            "total_kinetic_energy",
+            data=np.array([sample[1] for sample in self._energy_history], dtype=np.float64),
+        )
+        group.create_dataset(
+            "measurement",
+            data=[sample[2] for sample in self._energy_history],
+            dtype=h5py.string_dtype(),
+        )
+        if self._fourier_grid is not None:
+            if self._fourier_grid.slip_slab is not None:
+                raise ValueError("the persistent Fourier diagnostic grid has no slip slab")
+            group.attrs["fourier_grid_origin"] = np.asarray(
+                self._fourier_grid.origin, dtype=np.float64
+            )
+            group.attrs["fourier_grid_spacing"] = float(self._fourier_grid.spacing)
+            group.attrs["fourier_grid_shape"] = np.asarray(self._fourier_grid.shape, dtype=np.int64)
+
+    def restore_restart(self, group) -> None:
+        """Restore the state written by :meth:`write_restart`."""
+        from ..numerics.fourier_integrals import CartesianGrid
+
+        times = np.asarray(group["time"][()], dtype=np.float64)
+        energies = np.asarray(group["total_kinetic_energy"][()], dtype=np.float64)
+        measurements = [
+            value.decode("utf-8") if isinstance(value, bytes) else str(value)
+            for value in group["measurement"][()]
+        ]
+        if not (len(times) == len(energies) == len(measurements) <= self._max_history_length):
+            raise ValueError("flow-integral energy history has inconsistent lengths")
+        self._energy_history = [
+            (float(time), float(energy), measurement)
+            for time, energy, measurement in zip(times, energies, measurements, strict=True)
+        ]
+        grid_attributes = {"fourier_grid_origin", "fourier_grid_spacing", "fourier_grid_shape"}
+        present = grid_attributes & set(group.attrs.keys())
+        if present and present != grid_attributes:
+            raise ValueError("the Fourier diagnostic grid needs its origin, spacing and shape")
+        self._fourier_grid = (
+            CartesianGrid(
+                origin=np.asarray(group.attrs["fourier_grid_origin"], dtype=np.float64),
+                spacing=float(group.attrs["fourier_grid_spacing"]),
+                shape=tuple(int(value) for value in group.attrs["fourier_grid_shape"]),
+            )
+            if present
+            else None
+        )
+
     # Energy dissipation rate
 
     def _update_energy_history(

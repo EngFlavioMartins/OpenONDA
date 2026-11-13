@@ -2169,9 +2169,6 @@ class VPMSolver:
         self._sampler_manager.rewind(self.time)
         rewind_vpm_frames(self.solution_dir, self.step, self.time)
         self._last_backup_state = self._state_key()
-        # A growth limit compares adjacent accepted states; the restored
-        # state starts a new history.
-        self._accepted_state_metrics = None
 
     def save_backup(self, path: str | Path | None = None) -> Path:
         """Write the restart state of the current accepted state.
