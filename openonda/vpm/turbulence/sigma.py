@@ -91,8 +91,8 @@ class SigmaModel:
         kinematic_viscosity: ti.template(),
         eddy_viscosity: ti.template(),
         effective_viscosity: ti.template(),
-        coefficient: ti.f32,
-        fixed_filter_width: ti.f32,
+        coefficient: float,
+        fixed_filter_width: float,
         count: ti.i32,
     ):
         for i in range(count):

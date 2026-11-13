@@ -215,7 +215,7 @@ class ParticleLES:
         kinematic_viscosity: ti.template(),
         eddy_viscosity: ti.template(),
         effective_viscosity: ti.template(),
-        reference: ti.f32,
+        reference: float,
         exchange: ti.i32,
         count: ti.i32,
     ):

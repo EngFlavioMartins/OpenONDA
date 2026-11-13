@@ -70,7 +70,6 @@ class StrengthExchange:
             particles.position,
             self._cell_start,
             self._cell_count,
-            ti.Vector(lower),
             cell_size,
             *shape,
             count,
@@ -88,7 +87,6 @@ class StrengthExchange:
                 particles.particle_volume,
                 particles.eddy_viscosity,
                 self._cell_start,
-                ti.Vector(lower),
                 cell_size,
                 *shape,
                 count,
@@ -134,8 +132,7 @@ class StrengthExchange:
         position: ti.template(),
         cell_start: ti.template(),
         cell_count: ti.template(),
-        lower: ti.types.vector(3, ti.f32),
-        cell_size: ti.f32,
+        cell_size: float,
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
@@ -144,7 +141,7 @@ class StrengthExchange:
         for c in range(nx * ny * nz):
             cell_count[c] = 0
         for p in range(count):
-            c = self._cell_of(position[p], ti.cast(lower, self.dtype), cell_size, nx, ny, nz)
+            c = self._cell_of(position[p], self._lower[None], cell_size, nx, ny, nz)
             index = (c[0] * ny + c[1]) * nz + c[2]
             self._cell[p] = index
             ti.atomic_add(cell_count[index], 1)
@@ -170,8 +167,7 @@ class StrengthExchange:
         particle_volume: ti.template(),
         eddy_viscosity: ti.template(),
         cell_start: ti.template(),
-        lower: ti.types.vector(3, ti.f32),
-        cell_size: ti.f32,
+        cell_size: float,
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
@@ -185,7 +181,7 @@ class StrengthExchange:
             sp2 = core_radius[p] * core_radius[p]
             nup = eddy_viscosity[p]
             rate = ti.Vector([0.0, 0.0, 0.0], dt=self.dtype)
-            c = self._cell_of(xp, ti.cast(lower, self.dtype), cell_size, nx, ny, nz)
+            c = self._cell_of(xp, self._lower[None], cell_size, nx, ny, nz)
             for i, j, k in ti.ndrange((-1, 2), (-1, 2), (-1, 2)):
                 ci, cj, ck = c[0] + i, c[1] + j, c[2] + k
                 if 0 <= ci < nx and 0 <= cj < ny and 0 <= ck < nz:
@@ -208,6 +204,6 @@ class StrengthExchange:
             self._rate[p] = rate
 
     @ti.kernel
-    def _advance(self, vortex_strength: ti.template(), time_step_size: ti.f32, count: ti.i32):
+    def _advance(self, vortex_strength: ti.template(), time_step_size: float, count: ti.i32):
         for p in range(count):
             vortex_strength[p] += time_step_size * self._rate[p]

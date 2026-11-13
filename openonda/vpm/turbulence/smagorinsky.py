@@ -152,8 +152,8 @@ class SmagorinskyModel:
         kinematic_viscosity: ti.template(),
         eddy_viscosity: ti.template(),
         effective_viscosity: ti.template(),
-        subgrid_kinetic_energy_coefficient: ti.f32,
-        subgrid_dissipation_coefficient: ti.f32,
+        subgrid_kinetic_energy_coefficient: float,
+        subgrid_dissipation_coefficient: float,
     ):
         for i in range(n_particles_total):
             delta = filter_width[i]

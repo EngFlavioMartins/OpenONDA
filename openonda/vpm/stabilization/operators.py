@@ -76,7 +76,7 @@ class StabilizationOperators:
         kinematic_viscosity: ti.template(),
         eddy_viscosity: ti.template(),
         effective_viscosity: ti.template(),
-        coefficient: ti.f32,
+        coefficient: float,
         count: ti.i32,
     ):
         for i in range(count):
@@ -157,7 +157,7 @@ class StabilizationOperators:
         self,
         vortex_strength_field: ti.template(),
         velocity_gradient: ti.template(),
-        factor: ti.f32,
+        factor: float,
         preserve_vortex_strength_magnitude: ti.i32,
         count: ti.i32,
     ):
