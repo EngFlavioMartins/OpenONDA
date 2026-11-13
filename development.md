@@ -7,7 +7,9 @@ hashes below name where each change entered.
 Status: items 1–8 are tested (coupler and VPM suites) and are the code of the final runs of the
 cylinder, the cube and the wing, which started on commit `37d7d7e3` on 12 November 2026. The two
 commits after it (`ba514539`, `b50e86fd`) remove analysis scripts and the unused per-transfer
-threshold; the transfer they compute is bit-identical. Two settings are still being chosen by
+threshold; the transfer they compute is bit-identical. The cube final restarts from t = 0 on the
+fix of the outflow-face defect (item 1, 13 November); the cylinder and wing finals keep their
+remeshing region inside the FVM mesh and continue on `37d7d7e3`. Two settings are still being chosen by
 runs: the tolerance of the coupling iterations (item 5) and the outer-band weight (item 4).
 
 ## 1. Vorticity transfer: direct, conservative assignment (`92674846` and the commit after it)
@@ -53,6 +55,32 @@ transfer and kept 62,000 particles that carried 1e-14 m³/s in all.
 The near-wall circulation-ratio bounds are now (0.97, 1.03), from (0.9, 1.1): only the removal
 moves the ratio from one.
 
+**Defect, fixed 13 November 2026.** In `92674846`–`8ce39a3e` the walled branch of
+`transfer_on_lattice` gave no output to lattice nodes outside the FVM mesh. The remeshed strength
+of particles that had crossed the outer FVM face was therefore deleted at the next transfer, together
+with the outside M4′ share of particles within two spacings inside the face. This happens wherever
+the remeshing region, `L_remesh = 1.5 U Δt + 2h` past the transfer surface, reaches the face within
+the M4′ support:
+- **Cube:** with the outer band the transfer surface sits 3h inside the face, against
+  `L_remesh` = 5.3h. At t = 24 s the particles in the 0.15 m past the face held 0.004 m³/s, where the
+  run on `e97e0343` held 0.32 m³/s; the whole outer wake held about 0.3 m³/s instead of 13 m³/s.
+  Particle velocity on the axis recovered to 0.96 U by x = 6 m, against 0.83 U in the reference.
+- **Effect at the outflow face:** the face velocity of the particles lacked the downstream wake, so
+  the mismatch there grew to 1.7 % rms and 12 % max of U.
+- **Cylinder study:** the transfer inset 4 and the particle spacing 0.08 m.
+- **Not affected:** the cylinder and wing finals.
+
+The fix: the output of the walled branch no longer depends on the mesh weight. Nodes outside the
+mesh have no FVM target and zero blending weight, so they keep their particle strength, as in the
+branch without walls.
+
+A new stop, `check_dropped_particle_strength`, makes such a loss stop the run. On the nodes with
+blending weight zero, away from walls, a transfer keeps the remeshed particle strength bit for bit.
+The stop compares the L1 norm lost there with the L1 norm of those nodes, and stops above
+`DROPPED_PARTICLE_STRENGTH_LIMIT = 1e-12`, which leaves room for roundoff only. It uses the L1 norm
+because a wake leaving the mesh sums to about zero: deleting it changes no total strength or
+impulse, so the vector checks cannot see it.
+
 Tests (`tests/coupler/test_conservative_transfer.py`):
 - the ratio is one for five near-wall layer shapes (sheet on one node, on two nodes, exponential
   layer of 4h, thin layer under an opposite layer, layer peaked at 2h);
@@ -60,7 +88,13 @@ Tests (`tests/coupler/test_conservative_transfer.py`):
 - the replaced strengths do not depend on the previous particles;
 - the ramp blend;
 - roundoff and a weak isolated pocket emit no particle, and the pocket appears in the removed
-  strength.
+  strength;
+- particles past the outer FVM face, inside the remeshing region, keep their positions and
+  strengths through a transfer;
+- a wake of zero net strength crossing the face loses no L1 norm;
+- the strength-loss stop.
+
+The last three fail under the old output rule, which loses all of that strength.
 
 The old transfer gives ratios of 1.013–1.088 and region errors of 0.9–3 % on the same five
 layers.
@@ -123,7 +157,8 @@ cube failure at t ≈ 38 s). Not yet run on the cube.
 
 ## 6. Stops and warnings (`62712c69`, `62bf3c93`, `47e33056`, `384592cd`)
 
-- The run stops or warns when a transfer loses strength.
+- The run stops or warns when a transfer loses strength, and stops when it loses particle strength
+  (L1) where the blending weight is zero (item 1).
 - The transfer is checked once before the solvers start.
 - The velocity mismatch at the outer FVM boundary is measured as an RMS per face side
   (`face_side_rms`); warning at 0.03 and stop at 0.1 of the reference speed
@@ -159,7 +194,7 @@ Final runs on `37d7d7e3`, state of 12 November 2026, 20:47:
 | Case | Flow time | Error against the reference (window) | Near-wall ratio |
 |---|---|---|---|
 | Cylinder, N = 5 | 43.4 of 100 s | C_D +0.36 %, St −0.33 %, C_L rms −0.64 % (28.4–43.4 s) | 0.998 |
-| Cube | 8.2 of 60 s | drag −0.09 % (3–6 s) | 0.996 |
+| Cube | stopped at 24.4 s: outflow-face defect of item 1, rerun from t = 0 | drag −1.52 % (21–24 s); outflow-face mismatch 1.7 % rms, 12 % max | 0.997 |
 | Wing | 2.72 of 24 s | lift −0.46 %, drag −0.23 % (1–2 s) | 0.999 |
 
 The wing run with the old transfer stopped at t = 0.44 s (near-wall ratio 1.12); with the new

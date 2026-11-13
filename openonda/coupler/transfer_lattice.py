@@ -850,6 +850,7 @@ class LatticeTransferResult:
     removed_node_count: int = 0
     removed_vortex_strength_l1: float = 0.0
     removed_vortex_strength_fraction: float = 0.0
+    dropped_particle_vortex_strength_fraction: float = 0.0
     transfer_cfl: float = 0.0
     conservation_raw_mismatch: dict[str, float] = field(default_factory=dict)
     conservation_applied_correction: dict[str, float] = field(default_factory=dict)
@@ -984,12 +985,14 @@ def transfer_on_lattice(
         # vorticity of its fluid part, so the whole target is kept. Part of the wall
         # sheet falls on the shell -h < d < 0: it is moved onto a fluid node below,
         # instead of being lost at every transfer.
-        output = (lattice.fluid_weight > 0.0) & (lattice.mesh_weight > 0.0)
-        output &= ~lattice.solid_interior | shell
-        excluded_target_l1 = float(np.linalg.norm(raw_target[~output], axis=1).sum())
-        fvm_target = raw_target * (lattice.mesh_weight * output)[:, None]
+        # Nodes outside the FVM mesh have no FVM target and zero blending weight; they
+        # keep the strength of the particles that left the mesh.
+        output = (lattice.fluid_weight > 0.0) & (~lattice.solid_interior | shell)
+        target_nodes = output & (lattice.mesh_weight > 0.0)
+        excluded_target_l1 = float(np.linalg.norm(raw_target[~target_nodes], axis=1).sum())
+        fvm_target = raw_target * (lattice.mesh_weight * target_nodes)[:, None]
         output_weight = output.astype(np.float64)
-        budget_nodes = replacement & output
+        budget_nodes = replacement & target_nodes
 
     base_core_radius = ratio * spacing
     node_strength = blend_lattice_strength(
@@ -999,6 +1002,7 @@ def transfer_on_lattice(
         output_weight=output_weight,
         physical=_slab_physical_nodes(lattice),
     )
+    kept_l1, dropped_l1 = _zero_weight_strength_l1(lattice, vpm_lattice_strength, node_strength)
     relocated_shell_l1 = 0.0
     dropped_shell_l1 = 0.0
     if shell is not None:
@@ -1217,6 +1221,7 @@ def transfer_on_lattice(
         removed_node_count=int(np.count_nonzero(removed_nodes)),
         removed_vortex_strength_l1=removed_l1,
         removed_vortex_strength_fraction=removed_l1 / (active_l1 + 1.0e-30),
+        dropped_particle_vortex_strength_fraction=dropped_l1 / (kept_l1 + 1.0e-30),
         transfer_cfl=float(transfer_cfl),
         conservation_raw_mismatch=conservation_raw_mismatch,
         conservation_applied_correction=conservation_applied_correction,
@@ -1309,6 +1314,41 @@ def check_fvm_budget(
             f"near-wall circulation ratio {budget.wall_circulation_ratio:.4f}, bounds "
             f"[{wall_ratio_bounds[0]:g}, {wall_ratio_bounds[1]:g}]; net near-wall FVM "
             f"circulation {net:.3e} of L1 {budget.wall_fvm_vortex_strength_l1:.3e} m^3/s"
+        )
+
+
+DROPPED_PARTICLE_STRENGTH_LIMIT = 1.0e-12
+"""Largest L1 fraction of the particle strength of the zero-weight nodes that a transfer may lose.
+
+Where the blending weight is zero, away from walls, a node keeps its M4'-remeshed particle strength
+bit for bit, so a correct transfer loses none of it; the limit leaves room for roundoff only. The
+check is on the L1 norm because the strength of a wake leaving the FVM mesh sums to about zero: a
+transfer that deletes it changes no total strength or impulse."""
+
+
+def _zero_weight_strength_l1(lattice, vpm_strength, node_strength) -> tuple[float, float]:
+    """Return the particle strength L1 of the zero-weight fluid nodes and the L1 the blend lost there."""
+    nodes = (lattice.blending_weight == 0.0) & (lattice.fluid_weight >= 1.0)
+    nodes &= ~lattice.solid_interior
+    physical = _slab_physical_nodes(lattice)
+    if physical is not None:
+        nodes &= physical
+    kept = float(np.linalg.norm(vpm_strength[nodes], axis=1).sum())
+    dropped = float(np.linalg.norm(vpm_strength[nodes] - node_strength[nodes], axis=1).sum())
+    return kept, dropped
+
+
+def check_dropped_particle_strength(fraction: float) -> None:
+    """Raise RuntimeError when a transfer loses particle strength where it must keep it.
+
+    ``fraction`` is the L1 norm lost on the zero-weight nodes over their particle
+    strength L1 norm; above ``DROPPED_PARTICLE_STRENGTH_LIMIT`` the transfer stops
+    before it changes the particles.
+    """
+    if fraction > DROPPED_PARTICLE_STRENGTH_LIMIT:
+        raise RuntimeError(
+            "the vorticity transfer loses particle strength where the blending weight is zero: "
+            f"{fraction:.3e} of its L1 norm there, limit {DROPPED_PARTICLE_STRENGTH_LIMIT:.0e}"
         )
 
 
@@ -1433,6 +1473,7 @@ def _nonnegative_finite(name: str, value: float) -> float:
 
 
 __all__ = [
+    "DROPPED_PARTICLE_STRENGTH_LIMIT",
     "LatticeTransferResult",
     "M4_PRIME_SUPPORT_CELLS",
     "TransferLattice",
@@ -1440,6 +1481,7 @@ __all__ = [
     "blend_lattice_strength",
     "blending_weight",
     "build_transfer_lattice",
+    "check_dropped_particle_strength",
     "check_fvm_budget",
     "correct_vortex_moments",
     "m4_prime",

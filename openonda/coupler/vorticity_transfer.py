@@ -19,6 +19,7 @@ from openonda.coupler.transfer_lattice import (
     TransferLattice,
     VortexMoments,
     build_transfer_lattice,
+    check_dropped_particle_strength,
     check_fvm_budget,
     transfer_on_lattice,
     vortex_moment_residual,
@@ -126,6 +127,7 @@ class TransferResult:
     removed_lattice_nodes: int = 0
     removed_vortex_strength_l1: float = 0.0
     removed_vortex_strength_fraction: float = 0.0
+    dropped_particle_vortex_strength_fraction: float = 0.0
     transfer_cfl: float = 0.0
     transfer_raw_vortex_strength_error: float = 0.0
     transfer_applied_vortex_strength_correction: float = 0.0
@@ -344,10 +346,11 @@ def transfer_vorticity_to_particles(
 
     :func:`transfer_on_lattice` builds the new particle state; it is checked for
     capacity, for conservation of the total strength and linear impulse in
-    storage precision, and against the FVM circulation budget of the replacement
+    storage precision, against the FVM circulation budget of the replacement
     region and next to the walls (``circulation_budget_limit`` and
-    ``wall_circulation_ratio_bounds``, see :func:`check_fvm_budget`) before it
-    replaces the VPM particles. ``frame`` of a rotating mesh transfers in body coordinates,
+    ``wall_circulation_ratio_bounds``, see :func:`check_fvm_budget`) and for the
+    particle strength of the zero-weight nodes
+    (:func:`check_dropped_particle_strength`) before it replaces the VPM particles. ``frame`` of a rotating mesh transfers in body coordinates,
     where the lattice and the walls are fixed; ``None`` transfers in the VPM
     coordinates.
     """
@@ -395,6 +398,7 @@ def transfer_vorticity_to_particles(
             "extensions in one coupling interval (transfer CFL U dt / L_remesh above 1); "
             "particles would leave the remeshing region between two transfers"
         )
+    check_dropped_particle_strength(result.dropped_particle_vortex_strength_fraction)
     budget = result.fvm_budget
     if budget is not None:
         check_fvm_budget(
@@ -594,6 +598,9 @@ def transfer_vorticity_to_particles(
         removed_lattice_nodes=int(result.removed_node_count),
         removed_vortex_strength_l1=float(result.removed_vortex_strength_l1),
         removed_vortex_strength_fraction=float(result.removed_vortex_strength_fraction),
+        dropped_particle_vortex_strength_fraction=float(
+            result.dropped_particle_vortex_strength_fraction
+        ),
         transfer_cfl=float(result.transfer_cfl),
         transfer_raw_vortex_strength_error=float(
             raw_conservation.get("total_vortex_strength", 0.0)
