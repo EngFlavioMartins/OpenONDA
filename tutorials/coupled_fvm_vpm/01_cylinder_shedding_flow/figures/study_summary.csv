@@ -2,10 +2,10 @@
 "# error = coupled / FVM-only (same cells and FVM step) - 1; uncertainty = 2 sigma of the window (assets/window_uncertainty.py), from: FVM h0.03_dt0.006, FVM h0.04_dt0.008, FVM h0.06_dt0.012, FVM h0.08_dt0.016, box2.4_sub5_inset8.75"
 "# interface measures over the window; cost = wall seconds per flow second, whole run; reference_cost of the matched FVM-only run"
 run,group,end_time,N,cell,fvm_step,interval,margin,inset,particle_spacing,max_iterations,tolerance,extrapolation,reference,CD,CL,St,CL_rms,error_CD_%,error_CL_%,error_St_%,error_CL_rms_%,uncertainty_CD_%,uncertainty_CL_%,uncertainty_St_%,uncertainty_CL_rms_%,resolved_CD,resolved_CL,resolved_St,resolved_CL_rms,iterations,mismatch_rms_x-,mismatch_rms_x+,mismatch_rms_y-,mismatch_rms_y+,budget_error_median,budget_error_max,wall_ratio_median,wall_ratio_p01,wall_ratio_p99,cost,reference_cost
-box2.4_sub1_inset8.75,T,45.40,1,0.04,0.008,0.008,2.4,8.75,0.04,6,1e-05,linear,h0.04_dt0.008,,,,,,,,,0.022,0.111,0.015,0.265,,,,,,,,,,,,,,,1310,590.6
-box2.4_sub3_inset8.75_h0.08,other,0.00,3,0.08,0.016,0.048,2.44,8.75,0.08,6,1e-05,linear,h0.08_dt0.016,,,,,,,,,0.022,0.111,0.015,0.265,,,,,,,,,,,,,,,nan,98.64
-box2.4_sub5_inset8.75,baseline,100.00,5,0.04,0.008,0.04,2.4,8.75,0.04,6,1e-05,linear,h0.04_dt0.008,1.314802,0.499113,0.182474,0.351480,0.431,-0.342,-0.217,-0.426,0.022,0.111,0.015,0.265,True,True,True,True,1.774,0.0001569,0.005411,0.0002758,0.0002745,0.0001333,0.0001887,0.9973,0.8195,1.224,732.4,590.6
-FVM h0.03_dt0.006,reference,99.96,,,,,,,,,,,,1.307334,0.508038,0.183327,0.358414,,,,,,,,,,,,,,,,,,,,,,,,1217
-FVM h0.04_dt0.008,reference,100.00,,,,,,,,,,,,1.309154,0.500824,0.182871,0.352985,,,,,,,,,,,,,,,,,,,,,,,,590.6
-FVM h0.06_dt0.012,reference,99.97,,,,,,,,,,,,1.315234,0.489594,0.182151,0.345074,,,,,,,,,,,,,,,,,,,,,,,,204.9
-FVM h0.08_dt0.016,reference,100.00,,,,,,,,,,,,1.329713,0.479141,0.181917,0.337747,,,,,,,,,,,,,,,,,,,,,,,,98.64
+box2.4_sub1_inset8.75,T,53.00,1,0.04,0.008,0.008,2.4,8.75,0.04,6,1e-05,linear,h0.04_dt0.008,,,,,,,,,0.022,0.111,0.015,0.265,,,,,,,,,,,,,,,1344,590.6
+box2.4_sub3_inset8.75_h0.08,S,55.01,3,0.08,0.016,0.048,2.44,8.75,0.08,6,1e-05,linear,h0.08_dt0.016,1.339221,0.474241,0.182759,0.334588,0.838,-1.023,0.463,-0.935,0.022,0.111,0.015,0.265,True,True,True,True,1.699,0.0002884,0.007789,0.000818,0.0007913,4.855e-05,0.0001496,1.003,0.7867,1.06,132.4,98.64
+box2.4_sub5_inset8.75,baseline,100.00,5,0.04,0.008,0.04,2.4,8.75,0.04,6,1e-05,linear,h0.04_dt0.008,1.314802,0.499113,0.182474,0.351480,0.553,-0.342,-0.217,-0.426,0.022,0.111,0.015,0.265,True,True,True,True,1.774,0.0001569,0.005411,0.0002758,0.0002745,0.0001333,0.0001887,0.9973,0.8195,1.224,732.4,590.6
+FVM h0.03_dt0.006,reference,99.96,,,,,,,,,,,,1.305754,0.508038,0.183327,0.358414,,,,,,,,,,,,,,,,,,,,,,,,1217
+FVM h0.04_dt0.008,reference,100.00,,,,,,,,,,,,1.307571,0.500824,0.182871,0.352985,,,,,,,,,,,,,,,,,,,,,,,,590.6
+FVM h0.06_dt0.012,reference,99.97,,,,,,,,,,,,1.313639,0.489594,0.182151,0.345074,,,,,,,,,,,,,,,,,,,,,,,,204.9
+FVM h0.08_dt0.016,reference,100.00,,,,,,,,,,,,1.328089,0.479141,0.181917,0.337747,,,,,,,,,,,,,,,,,,,,,,,,98.64

@@ -25,7 +25,8 @@ missing, or have not reached the end of the statistics window, is skipped with a
 The error of a run is Q_coupled / Q_FVM - 1 against the FVM-only run with the same cells and FVM
 step, over the whole shedding periods in the study window. The FVM domain is bounded by slip
 walls 32 D apart and the coupled one is not, so every FVM value is corrected for blockage
-(Allen and Vincenti): forces by (U'/U)^2, St by U'/U.
+(Allen and Vincenti): drag by 1 - 2 eps_w - 3 eps_s (Sadeh and Saharon 1982, eq. 3.5), lift by
+(U'/U)^2, St by U'/U.
 
 Usage, from the case directory:
     python -m assets.plot_study [--runs DIR] [--figures DIR] [--window START END]
@@ -135,10 +136,18 @@ def blockage_factor(drag):
     return 1 + 0.25 * drag * ratio + 0.82 * ratio**2
 
 
+def drag_factor(drag):
+    """Corrected over measured drag between slip walls, Allen and Vincenti, 1 - 2 eps_w - 3 eps_s,
+    in the form of Sadeh and Saharon (1982), eq. (3.5)."""
+    ratio = DIAMETER / REFERENCE_HEIGHT
+    return 1 - 0.5 * drag * ratio - 2.467 * ratio**2
+
+
 def corrected(stats):
-    """Unbounded-flow statistics of an FVM-only run: forces scale with U^2, St with U."""
+    """Unbounded-flow statistics of an FVM-only run: drag by the Allen-Vincenti drag correction, lift
+    with U^2, St with U."""
     factor = blockage_factor(stats["CD"])
-    out = {"CD": stats["CD"] / factor**2, "CL": stats["CL"] / factor**2, "St": stats["St"] / factor}
+    out = {"CD": stats["CD"] * drag_factor(stats["CD"]), "CL": stats["CL"] / factor**2, "St": stats["St"] / factor}
     if "CL_rms" in stats:
         out["CL_rms"] = stats["CL_rms"] / factor**2
     return out
@@ -221,10 +230,16 @@ def run_settings(directory):
 
 
 def differences(settings):
-    """Settings in which a run differs from the baseline."""
+    """Settings in which a run differs from the baseline. The box margin is snapped to the cells of
+    the run's mesh, so it counts as unchanged within one cell."""
     changed = set()
     for key, value in BASELINE.items():
-        same = settings[key] == value if isinstance(value, str) else np.isclose(settings[key], value)
+        if isinstance(value, str):
+            same = settings[key] == value
+        elif key == "margin":
+            same = abs(settings[key] - value) <= settings["cell"] + 1e-9
+        else:
+            same = np.isclose(settings[key], value)
         if not same:
             changed.add(key)
     return changed
@@ -477,10 +492,12 @@ def figure_forces(run, figure_dir, steady_start):
         first, last, _ = whole_periods(forces, steady_start, end)
         stats = shedding_statistics(forces, steady_start, end)
         factor = blockage_factor(stats["CD"]) if bounded else 1.0
+        scale = {"drag_coefficient": drag_factor(stats["CD"]) if bounded else 1.0,
+                 "lift_coefficient": 1.0 / factor**2}
         time = forces["time"] * FREESTREAM_SPEED / DIAMETER
         for axis, key in zip(axes, ("drag_coefficient", "lift_coefficient")):
-            axis.plot(time, forces[key] / factor**2, label=label, **style)
-        mean = stats["CD"] / factor**2
+            axis.plot(time, forces[key] * scale[key], label=label, **style)
+        mean = stats["CD"] * scale["drag_coefficient"]
         axes[0].plot([first, last], [mean, mean], color=style["color"], linestyle=":", linewidth=LINE_WIDTH)
     axes[0].set_ylabel("drag coefficient")
     axes[1].set_ylabel("lift coefficient")
