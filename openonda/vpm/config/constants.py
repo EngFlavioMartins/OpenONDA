@@ -42,6 +42,3 @@ VLM_EPSILON = 1e-8
 
 # Small velocity or length below which a VLM direction is undefined
 VLM_SMALL_VELOCITY = 1e-10
-
-# Taichi backend name, set by the runtime backend selection
-TAICHI_BACKEND = None

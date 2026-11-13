@@ -56,9 +56,8 @@ from ..physics.stage_rhs import (
     VLMStageContribution,
 )
 from ..runtime.backend import (
-    acquire_taichi_backend,
-    initialize_taichi_backend,
     reset_taichi_backend,
+    start_taichi,
 )
 from ..runtime.timing import remainder_section
 from ..sampling.manager import SamplerManager
@@ -172,12 +171,6 @@ class VPMSolver:
         self.samples_dir = self.case_dir / "samples" / variant
         self._backend_claimed = False
         self._closed = False
-        acquire_taichi_backend(
-            self,
-            preferred_backend=case.run.runtime_compute_device or case.numerics.compute_device,
-            precision=case.numerics.precision,
-        )
-        self._backend_claimed = True
         self.time = 0.0
         self.step = 0
         self._restart_details: dict | None = None
@@ -323,26 +316,19 @@ class VPMSolver:
             if workspace_estimate is not None
             else 0
         )
-        self.compute_device = initialize_taichi_backend(
-            self.compute_device,
-            self.case.logging.mode == "debug",
-            self.precision,
+        self.compute_device = start_taichi(
+            self,
+            device=self.compute_device,
+            precision=self.precision,
+            debug=self.case.logging.mode == "debug",
             random_seed=final_setup.random_seed,
-            supported_devices=getattr(self.induction, "supported_devices", None),
-            _minimum_pool_bytes=minimum_pool_bytes,
+            supported_devices=self.induction.supported_devices,
+            minimum_pool_bytes=minimum_pool_bytes,
         )
-        # Keep the resolved backend identity independent of the process-global
-        # Taichi constant.  ``close()`` releases that global runtime before a
-        # terminal metadata is written, so consulting the constant later can
-        # incorrectly report ``UNKNOWN`` for an otherwise reproducible run.
+        self._backend_claimed = True
+        # ``close()`` releases the runtime before the terminal metadata is
+        # written, so the metadata records the device resolved here.
         self._backend_name = str(self.compute_device)
-        supported_devices = getattr(self.induction, "supported_devices", None)
-        if supported_devices is not None and self.compute_device not in supported_devices:
-            raise ValueError(
-                f"{type(self.induction).__name__} resolved AUTO to unsupported "
-                f"compute_device={self.compute_device}; supported devices: "
-                f"{sorted(device for device in supported_devices if device != 'auto')}"
-            )
         Logging.message(run_header(self.precision, self._backend_name))
         # Initialization can call the same particle/model helpers used at run
         # time.  Suppress their routine event records until the complete,

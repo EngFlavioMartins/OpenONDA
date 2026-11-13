@@ -67,7 +67,8 @@ renders that compose TikZ overlays or ParaView views need `pdflatex` or
 
 The standard installation runs on the CPU. Particle cases run on a GPU when
 `compute_device` selects a device with suitable drivers (`cuda`, `vulkan` or
-`metal`; `auto` picks one). Slip-slab cases, including planar flow, evaluate
+`metal`; `auto` picks one: Metal on macOS, CUDA when `nvidia-smi` reports a GPU, Vulkan
+otherwise, and names it in the log). Slip-slab cases, including planar flow, evaluate
 their mirror images fastest with the optional CUDA extension, which supplies
 CuPy and matching CUDA 12 libraries for an NVIDIA GPU:
 
@@ -110,8 +111,13 @@ function, for example `openonda api openonda.vpm.ViscousConfig`.
 - A slip-slab case stops with "Gaussian mesh requires …" while the particles run on CUDA:
   install the CUDA extension above, or evaluate the images on the CPU with
   `GaussianSlabSettings(backend="cpu")`.
-- A particle case stops with "No Taichi backend could be initialised": no GPU driver answered;
-  check the GPU as above, or set `compute_device="cpu"` in the case.
+- A particle case stops with "Taichi could not start compute_device=…": the requested GPU
+  driver did not answer; check the GPU as above, or set `compute_device="cpu"` in the case.
+- A particle case stops with "A Taichi runtime on 'cpu' was started outside OpenONDA": the
+  script called `ti.init` itself before building the solver; remove that call, since the solver
+  starts Taichi on the case's `compute_device`.
+- Every start recompiles the Numba kernels and the log warns that the Numba cache is not
+  writable: set `NUMBA_CACHE_DIR` to a writable directory.
 
 ## For maintainers: building release packages
 

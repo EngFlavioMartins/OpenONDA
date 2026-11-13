@@ -227,7 +227,7 @@ class VLMSolver:
         """Ensure lattice is created (lazy initialization after Taichi init).
 
         VPM is required to be the Taichi master: the VPM Solver must call
-        ``initialize_taichi_backend`` (i.e. ``Solver.__init__``) *before* any
+        ``start_taichi`` (i.e. ``VPMSolver.__init__``) *before* any
         VLM lattice fields are allocated.  This prevents a mismatch between the
         precision that Taichi was initialised with and the dtype requested here.
         """
@@ -237,7 +237,7 @@ class VLMSolver:
                 raise RuntimeError(
                     "VLMSolver._ensure_lattice_initialized called before Taichi "
                     "is initialised.  Always construct the VPM Solver first so "
-                    "that initialize_taichi_backend() runs before any VLM fields "
+                    "that start_taichi() runs before any VLM fields "
                     "are created."
                 )
 

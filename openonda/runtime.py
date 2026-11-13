@@ -84,10 +84,6 @@ def detected_world_size() -> int:
     return max(sizes, default=1)
 
 
-def _world_size() -> int:
-    return detected_world_size()
-
-
 def _mpi_vendor() -> str:
     """MPI implementation used by mpi4py, or an empty string if unavailable."""
     try:
@@ -202,7 +198,7 @@ class RunConfig:
         current process with ``mpiexec``. It also restricts each rank to one
         numerical-library thread to avoid oversubscription.
         """
-        size = _world_size()
+        size = detected_world_size()
         if size > 1:
             if size != self.cpu_cores:
                 raise RuntimeError(
@@ -264,7 +260,7 @@ class RunConfig:
         if self.parallel_mode == "mpi":
             self.ensure_mpi(script)
             return
-        if _world_size() > 1:
+        if detected_world_size() > 1:
             raise RuntimeError("A threaded case must not be launched with mpiexec")
         self._set_thread_count(self.cpu_cores)
 

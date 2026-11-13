@@ -11,11 +11,7 @@ os.environ.setdefault("TI_OFFLINE_CACHE_FILE_PATH", str(_CACHE_DIR))
 
 import taichi as ti  # noqa: E402 - the cache path above must be set before Taichi loads
 
-
-def _ensure_cpu_runtime() -> None:
-    runtime = ti.lang.impl.get_runtime()
-    if runtime.prog is None:
-        ti.init(arch=ti.cpu, default_fp=ti.f64, offline_cache=False)
+from openonda.vpm.runtime.backend import start_taichi  # noqa: E402
 
 
 @ti.kernel
@@ -36,7 +32,7 @@ def assemble_rhs(
     flux: np.ndarray, owners: np.ndarray, neighbours: np.ndarray, n_cells: int, n_interior: int
 ) -> np.ndarray:
     """Assemble an owned-cell RHS using Taichi CPU atomics."""
-    _ensure_cpu_runtime()
+    start_taichi(None, device="cpu", precision="f64")
     result = np.zeros(n_cells, dtype=np.float64)
     _rhs_kernel(
         np.ascontiguousarray(flux, dtype=np.float64),
