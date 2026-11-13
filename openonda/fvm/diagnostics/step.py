@@ -49,8 +49,6 @@ class StepDiagnostics:
 
     Attributes
     ----------
-    algorithm : str
-        Solver algorithm name (``"PIMPLE"``, ``"SIMPLE"``, or ``"PISO"``).
     step : int
         Zero-based time-step index.
     time : float
@@ -92,7 +90,6 @@ class StepDiagnostics:
         Human-readable warnings that did not trigger an abort.
     """
 
-    algorithm: str
     step: int
     time: float
     time_step_size: float

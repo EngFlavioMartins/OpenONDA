@@ -10,7 +10,6 @@ from typing import Protocol, TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 
-from openonda.core.schedules import EveryTime
 from openonda.core.simulation.forcing import VelocityBoundary
 
 from ..motion.mesh_motion import MeshMotion
@@ -191,13 +190,8 @@ class FVMCase:
                 raise TypeError(f"FVMCase.{name} must be a {cls.__name__} instance")
         if isinstance(self.cores, bool) or not isinstance(self.cores, int) or self.cores < 1:
             raise ValueError(f"FVMCase.cores must be a positive integer (got {self.cores!r})")
-        if self.mesh_motion is not None:
-            if not isinstance(self.mesh_motion, MeshMotion):
-                raise TypeError("FVMCase.mesh_motion must be a MeshMotion or None")
-            if self.numerics.pimple.algorithm == "simple":
-                raise ValueError(
-                    "A moving mesh requires the transient 'piso' or 'pimple' algorithm"
-                )
+        if self.mesh_motion is not None and not isinstance(self.mesh_motion, MeshMotion):
+            raise TypeError("FVMCase.mesh_motion must be a MeshMotion or None")
         object.__setattr__(self, "directory", Path(self.directory))
         boundaries = tuple(self.boundaries)
         if any(not isinstance(item, BoundaryConfig) for item in boundaries):
@@ -220,13 +214,6 @@ class FVMCase:
         if len(set(bound_patches)) != len(bound_patches):
             raise ValueError("Each patch may have only one velocity history")
         object.__setattr__(self, "velocity_boundaries", velocity_boundaries)
-        if self.numerics.pimple.algorithm == "simple" and any(
-            isinstance(schedule, EveryTime)
-            for schedule in (self.output.schedule, self.backup.schedule)
-        ):
-            raise ValueError(
-                "The steady 'simple' algorithm has no physical time; use EverySteps schedules"
-            )
 
     @property
     def solution_directory(self) -> Path:

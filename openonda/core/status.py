@@ -23,8 +23,6 @@ class RunStatus(StrEnum):
         A run or interactive stepping is in progress.
     completed
         The run reached ``RunPlan.end_time``.
-    not_converged
-        A steady or iterative solve stopped before its residual tolerance.
     partial
         The run stopped early on request and its last state is valid.
     failed
@@ -42,7 +40,6 @@ class RunStatus(StrEnum):
     created = "created"
     running = "running"
     completed = "completed"
-    not_converged = "not_converged"
     partial = "partial"
     failed = "failed"
     unstable = "unstable"

@@ -626,8 +626,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self._initial_run_selected = False
         self._initial_rewound_histories: set[Path] = set()
         self._velocity_boundary_values: dict[int, np.ndarray] = {}
-        self.steady_iterations = 0
-        self.steady_converged = False
         self._step_phase = "accepted"
         self._pending_step_size: float | None = None
         self._pending_acceptance_counters: dict[str, int] | None = None
@@ -854,7 +852,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self._publish_state()
 
     def _initialize_algorithm(self) -> None:
-        """Create the PIMPLE/PISO or steady SIMPLE pressure--velocity algorithm."""
+        """Create the PIMPLE pressure--velocity algorithm."""
         params = self._configuration.algorithm_parameters()
         params["_linear_backend"] = self._configuration.numerics.execution.linear_backend
         params["_operator_backend"] = self.operator_backend
@@ -862,14 +860,9 @@ class FVMSolver(CouplerInterfaceMixin):
         params["_parallel_context"] = self.parallel
         params["_logger"] = self.logger
         params["_profiler"] = self.profiler
-        if self._configuration.numerics.pimple.algorithm == "simple":
-            self.algorithm = simple_solver.SIMPLESolver(
-                self.mesh_data, self.geo_data, self.boundaries, params
-            )
-        else:
-            self.algorithm = pimple_solver.PIMPLESolver(
-                self.mesh_data, self.geo_data, self.boundaries, params
-            )
+        self.algorithm = pimple_solver.PIMPLESolver(
+            self.mesh_data, self.geo_data, self.boundaries, params
+        )
 
     def set_initial_velocity(self, values: np.ndarray) -> None:
         """Set a cell-centred initial velocity and rebuild dependent state.
@@ -1209,8 +1202,7 @@ class FVMSolver(CouplerInterfaceMixin):
         Raises
         ------
         RuntimeError
-            If the algorithm is ``simple``, a candidate is in an incompatible
-            phase, or an earlier step failed.
+            If a candidate is in an incompatible phase, or an earlier step failed.
         AcceptanceLimitError
             If the candidate exceeds a configured acceptance limit.
         ValueError
@@ -1228,8 +1220,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self._ensure_evolution_usable()
         if self.run_status in {RunStatus.not_started, RunStatus.created}:
             self.run_status = RunStatus.running
-        if self._configuration.numerics.pimple.algorithm == "simple":
-            raise RuntimeError("The 'simple' algorithm is steady; use solve_steady()")
         if self._step_phase not in {"accepted", "candidate"}:
             raise RuntimeError("FVM physical step is not available for another solve")
         if self._step_phase == "candidate":
@@ -1462,7 +1452,6 @@ class FVMSolver(CouplerInterfaceMixin):
                 ).items()
             }
         return StepDiagnostics(
-            algorithm=self._configuration.numerics.pimple.algorithm,
             step=self.step + 1,
             time=self.time + step_time_step_size,
             time_step_size=float(step_time_step_size),
@@ -1655,92 +1644,6 @@ class FVMSolver(CouplerInterfaceMixin):
         schedules.extend(sampler.schedule for sampler in self._samplers)
         return tuple(schedules)
 
-    def solve_steady(self) -> bool:
-        """Run the steady SIMPLE iteration without advancing time.
-
-        Returns
-        -------
-        bool
-            Whether the steady loop converged. The steady iteration
-            count is exposed as `step` for output numbering; `time` remains at
-            the configured start time.
-
-        Raises
-        ------
-        RuntimeError
-            If the configured algorithm is not ``simple``, a candidate is pending,
-            or the solver has become terminal after a failed evolution.
-        FloatingPointError
-            If the iteration returns a non-finite or shape-incompatible state.
-
-        Notes
-        -----
-        The steady algorithm uses its dedicated steady iteration plan rather than the
-        transient candidate/commit path.  ``time`` therefore remains at the
-        configured start time; ``step`` is the steady iteration count used for
-        output numbering and reporting.
-        """
-        if self._configuration.numerics.pimple.algorithm != "simple":
-            raise RuntimeError("solve_steady() requires the 'simple' algorithm")
-        self._ensure_evolution_usable()
-        if self._step_phase != "accepted":
-            raise RuntimeError("Cannot start a steady solve with a pending FVM candidate")
-
-        effective_viscosity = self.compute_effective_viscosity()
-        result = self.algorithm.solve(
-            self.velocity,
-            self.kinematic_pressure,
-            density=self._configuration.numerics.transport.density,
-            kinematic_viscosity=effective_viscosity,
-        )
-        if not isinstance(result, tuple) or len(result) != 4:
-            raise RuntimeError("SIMPLE steady solve must return four state values")
-        candidate_velocity, candidate_pressure, candidate_flux, converged = result
-        candidate_velocity = np.asarray(candidate_velocity, dtype=np.float64)
-        candidate_pressure = np.asarray(candidate_pressure, dtype=np.float64)
-        candidate_flux = np.asarray(candidate_flux, dtype=np.float64)
-        if (
-            candidate_velocity.shape != self.velocity.shape
-            or candidate_pressure.shape != self.kinematic_pressure.shape
-            or candidate_flux.shape != self.volumetric_face_flux.shape
-            or not np.all(np.isfinite(candidate_velocity))
-            or not np.all(np.isfinite(candidate_pressure))
-            or not np.all(np.isfinite(candidate_flux))
-        ):
-            raise FloatingPointError("SIMPLE steady solve returned an invalid candidate state")
-
-        self.velocity[:] = candidate_velocity
-        self.kinematic_pressure[:] = candidate_pressure
-        self.volumetric_face_flux[:] = candidate_flux
-        self.parallel.exchange_halo(self.velocity[: self.mesh_data["n_cells"]])
-        self.parallel.exchange_halo(self.kinematic_pressure[: self.mesh_data["n_cells"]])
-        self.velocity_old[:] = self.velocity
-        self.velocity_older[:] = self.velocity
-        self.volumetric_face_flux_old[:] = self.volumetric_face_flux
-        self.volumetric_face_flux_older[:] = self.volumetric_face_flux
-        self._invalidate_derived_fields()
-        self._publish_state()
-
-        iterations = len(getattr(self.algorithm, "residuals", ()))
-        self.steady_iterations = int(iterations)
-        self.steady_converged = bool(converged)
-        self.logger.steady_iterations(self.steady_iterations)
-        self.step = self.steady_iterations
-        self._n_committed_time_steps = self.steady_iterations
-        self._accepted_time_step_size = self.time_step_size
-        self._previous_time_step_size = self.time_step_size
-        self._courant_time_step_size = self.time_step_size
-        self._selected_courant_time_step_size = None
-        self._selected_landing_time = None
-        self._step_phase = "accepted"
-        self._pending_step_size = None
-        self._pending_acceptance_counters = None
-        self._run_metadata_written = False
-        if not self._run_started:
-            self.run_status = RunStatus.completed if converged else RunStatus.not_converged
-            self.write_run_metadata(status=self.run_status)
-        return self.steady_converged
-
     def apply_velocity_boundaries(self, time: float) -> None:
         """Impose the case velocity histories at physical time ``time`` in s.
 
@@ -1886,15 +1789,11 @@ class FVMSolver(CouplerInterfaceMixin):
             self.write_initial_output()
             if start_from is not None and not restored:
                 self._save_scheduled_backup()
-            if self._configuration.numerics.pimple.algorithm == "simple":
-                converged = self.solve_steady()
-                final_status = RunStatus.completed if converged else RunStatus.not_converged
-            else:
-                end_time = run_plan.end_time
-                tolerance = time_tolerance(end_time)
-                while self.time < end_time - tolerance:
-                    self.advance()
-                final_status = RunStatus.completed
+            end_time = run_plan.end_time
+            tolerance = time_tolerance(end_time)
+            while self.time < end_time - tolerance:
+                self.advance()
+            final_status = RunStatus.completed
             self.write_final_output()
             if (
                 self._configuration.backup.write_at_end or start_from is not None
@@ -1965,8 +1864,6 @@ class FVMSolver(CouplerInterfaceMixin):
             For an invalid phase, a failed solve or a rejected candidate.
         """
         self._ensure_evolution_usable()
-        if self._configuration.numerics.pimple.algorithm == "simple":
-            raise RuntimeError("The 'simple' algorithm is steady; use solve_steady()")
         if self._step_phase != "accepted":
             raise RuntimeError("A candidate FVM step is pending; call accept_step() first")
         if time_step_size is None:

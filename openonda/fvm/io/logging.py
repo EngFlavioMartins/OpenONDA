@@ -214,7 +214,6 @@ class Logging:
         self._collect_routine = True
         self._step_wall_time = 0.0
         self._steps = 0
-        self._count_label = "steps"
         self._logger = logging.getLogger(LOGGER_NAME)
         if self.enabled:
             log_style.configure_logging(LOGGER_NAME, self.path, console=bool(config.console))
@@ -351,13 +350,6 @@ class Logging:
         if self._step is not None:
             self._step.elapsed = float(elapsed)
         self._flush_step()
-
-    def steady_iterations(self, iterations: int) -> None:
-        """Record steady SIMPLE iterations without pretending they are time steps."""
-        if isinstance(iterations, bool) or int(iterations) < 0:
-            raise ValueError("steady iteration count must be a non-negative integer")
-        self._steps = int(iterations)
-        self._count_label = "iterations"
 
     def _reportable(self, record: _StepRecord) -> bool:
         if record.warnings:
@@ -498,7 +490,6 @@ class Logging:
                 "RUN",
                 [
                     ("case", str(config.case_name)),
-                    ("algorithm", numerics.pimple.algorithm),
                     ("execution mode", str(numerics.execution.parallel_mode)),
                     ("mpi ranks", str(parallel.size)),
                     ("operator backend", str(numerics.execution.operator_backend)),
@@ -653,7 +644,7 @@ class Logging:
         mean = self._step_wall_time / self._steps if self._steps else 0.0
         rows: list[log_style.Row] = [
             ("status", str(status)),
-            (self._count_label, f"{self._steps:,}"),
+            ("steps", f"{self._steps:,}"),
             ("wall time, total", f"{self._step_wall_time:.3e}", "s"),
             ("wall time, mean per step", f"{mean:.3f}", "s"),
         ]

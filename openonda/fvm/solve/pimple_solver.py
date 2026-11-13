@@ -7,7 +7,7 @@ import numpy as np
 
 from openonda.core.profiling import Profiler
 
-from ..assemble import momentum
+from ..assemble import matrix_assembly, momentum
 from ..diagnostics import fields as field_diagnostics
 from ..diagnostics.step import OuterCorrectorDiagnostics
 from . import simple_solver
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .petsc_partitioned import PartitionedLinearWorkspace
 
 
-class PIMPLESolver(simple_solver.SIMPLESolver):
+class PIMPLESolver:
     """Transient PIMPLE algorithm for incompressible Navier–Stokes.
 
     Combines the PISO inner corrector loop (momentum predictor + multiple
@@ -27,9 +27,8 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
     approach allows larger time steps than pure PISO while retaining good
     temporal accuracy.
 
-    Inherits the SIMPLE boundary handling and pressure-correction operators;
-    replaces the steady outer iteration with a time-advancement loop driven
-    by the :class:`~openonda.fvm.core.solver.FVMSolver`.
+    The time-advancement loop is driven by the
+    :class:`~openonda.fvm.core.solver.FVMSolver`.
 
     References
     ----------
@@ -52,22 +51,32 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
         params: dict[str, object] = None,
     ) -> None:
         """Initialise PIMPLE with transient defaults."""
-        super().__init__(mesh_data, geo_data, boundaries, params)
-
-        pimple_defaults = {
+        self.mesh_data = mesh_data
+        self.geo_data = geo_data
+        self.boundaries = boundaries
+        self.params: dict[str, Any] = {
             "n_correctors": 2,
             "n_nonorthogonal_correctors": 0,
             "velocity_relaxation": 1.0,
             "pressure_relaxation": 1.0,
-            "max_iterations": 20,
             "momentum_tolerance": 1e-4,
             "convection_scheme": "deferred",
+            "linear_solver": "spsolve",
         }
-
-        for key, val in pimple_defaults.items():
-            if key not in self.params:
-                self.params[key] = val
-
+        if params:
+            self.params.update(params)
+        # Momentum and pressure are sequential and share one static-topology
+        # workspace. Its CSR values are overwritten between equations.
+        self._momentum_matrix_workspace = matrix_assembly.MatrixAssemblyWorkspace.create(
+            mesh_data,
+            include_boundaries=mesh_data["n_faces"] > mesh_data["n_interior_faces"],
+        )
+        self._pressure_matrix_workspace = self._momentum_matrix_workspace
+        self._pressure_boundary_layout = simple_solver.build_pressure_boundary_layout(
+            boundaries,
+            mesh_data["n_interior_faces"],
+            mesh_data["n_faces"],
+        )
         self._profiler = self.params.get("_profiler") or Profiler(enabled=False)
 
         self.last_linear_results = ()
@@ -92,16 +101,21 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
 
     def rebuild_preconditioners(self) -> None:
         """Rebuild the reused serial and PETSc preconditioners at the next solves."""
+        from .linear_interface import clear_linear_solver_caches
+
         for workspace in self._partitioned_linear_workspaces.values():
             workspace.rebuild_preconditioner()
-        super().rebuild_preconditioners()
+        namespace = self._momentum_matrix_workspace.cache_namespace
+        clear_linear_solver_caches(("momentum", namespace))
+        clear_linear_solver_caches(("kinematic_pressure", namespace))
 
     def close(self) -> None:
         """Release collectively-owned persistent PETSc workspaces."""
         for workspace in self._partitioned_linear_workspaces.values():
             workspace.close()
         self._partitioned_linear_workspaces.clear()
-        super().close()
+        self.rebuild_preconditioners()
+        self._momentum_matrix_workspace.direct_factorization = None
 
     def step(
         self,

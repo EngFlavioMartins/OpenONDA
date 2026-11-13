@@ -314,12 +314,10 @@ class LinearSolverConfig:
 
 @dataclass(frozen=True, slots=True)
 class PimpleConfig:
-    """Pressure--velocity coupling with SIMPLE, PISO or PIMPLE.
+    """Transient pressure--velocity coupling with PIMPLE.
 
     Parameters
     ----------
-    algorithm : {'pimple', 'piso', 'simple'}, default='pimple'
-        Pressure--velocity coupling algorithm. ``simple`` is steady.
     n_correctors : int, default=2
         Pressure-correction solves per outer pass.
     n_outer_correctors : int, default=1
@@ -332,31 +330,23 @@ class PimpleConfig:
         Optional maximum equation residual for early termination.
     outer_continuity_tolerance : float or None
         Optional maximum cell divergence in 1/s for early termination.
-    max_iterations : int, default=20
-        SIMPLE iteration limit.
-    tolerance : float, default=1e-6
-        SIMPLE convergence tolerance.
     velocity_relaxation, pressure_relaxation : float, default=1.0
         Under-relaxation factors in ``(0, 1]``.
     ddt_corr : bool, default=True
         Include the transient Rhie--Chow flux correction.
     """
 
-    algorithm: Literal["pimple", "piso", "simple"] = "pimple"
     n_correctors: int = 2
     n_outer_correctors: int = 1
     n_nonorthogonal_correctors: int = 0
     min_outer_correctors: int = 1
     outer_residual_tolerance: float | None = None
     outer_continuity_tolerance: float | None = None
-    max_iterations: int = 20
-    tolerance: float = 1e-6
     velocity_relaxation: float = 1.0
     pressure_relaxation: float = 1.0
     ddt_corr: bool = True
 
     def __post_init__(self) -> None:
-        lowercase_choice("PimpleConfig.algorithm", self.algorithm, {"pimple", "piso", "simple"})
         object.__setattr__(
             self,
             "n_nonorthogonal_correctors",
@@ -370,20 +360,12 @@ class PimpleConfig:
             "n_correctors",
             "n_outer_correctors",
             "min_outer_correctors",
-            "max_iterations",
         ):
             object.__setattr__(
                 self, name, strict_int(f"PimpleConfig.{name}", getattr(self, name), minimum=1)
             )
         if self.min_outer_correctors > self.n_outer_correctors:
             raise ValueError("PimpleConfig.min_outer_correctors cannot exceed n_outer_correctors")
-        if self.algorithm == "piso" and self.n_outer_correctors != 1:
-            raise ValueError("PimpleConfig algorithm 'piso' requires n_outer_correctors == 1")
-        object.__setattr__(
-            self,
-            "tolerance",
-            finite_real("PimpleConfig.tolerance", self.tolerance, minimum=0.0, strict_minimum=True),
-        )
         for name in ("velocity_relaxation", "pressure_relaxation"):
             object.__setattr__(
                 self,
@@ -618,10 +600,3 @@ class Numerics:
         for name, cls in expected.items():
             if not isinstance(getattr(self, name), cls):
                 raise TypeError(f"Numerics.{name} must be a {cls.__name__} instance")
-        if self.pimple.algorithm == "simple":
-            if self.schemes.time_scheme != "euler_implicit":
-                raise ValueError(
-                    "The steady 'simple' algorithm requires time_scheme='euler_implicit'"
-                )
-            if self.time_step_control is not None:
-                raise ValueError("The steady 'simple' algorithm has no adaptive time step")

@@ -55,7 +55,7 @@ case = fvm.FVMCase(
     numerics=fvm.Numerics(
         time_step_size=1.0e-3,
         transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
-        pimple=fvm.PimpleConfig(algorithm="piso", n_correctors=2),
+        pimple=fvm.PimpleConfig(n_correctors=2),
     ),
     initial_conditions=fvm.InitialFields(velocity=(1.0, 0.0, 0.0)),
     run=fvm.RunPlan(end_time=0.1),
@@ -119,7 +119,7 @@ A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..
 
 | Setting | Options |
 | --- | --- |
-| `PimpleConfig(algorithm=...)` | `piso`: transient, `n_correctors` pressure corrections. `pimple`: adds `n_outer_correctors` nonlinear corrections, with `velocity_relaxation`/`pressure_relaxation`. `simple`: steady state through `solver.solve_steady()`. Each PISO correction updates the momentum prediction with the previous correction's velocity change (Issa 1986). |
+| `PimpleConfig(...)` | Transient PIMPLE: `n_correctors` pressure corrections per outer pass and `n_outer_correctors` nonlinear outer passes (one pass is PISO), with `velocity_relaxation`/`pressure_relaxation`. Each pressure correction updates the momentum prediction with the previous correction's velocity change (Issa 1986). |
 | `DiscretizationConfig(time_scheme=...)` | `euler_implicit` (first order) or `backward` (second-order BDF). |
 | `convection_scheme` | `upwind` (robust, dissipative), `central` (accurate when resolved, may oscillate), bounded `limited_linear` (default), `linear_upwind`, `lust`, `van_leer`, `muscl`, `minmod`, `superbee`. |
 | `gradient_scheme` | `lsq` (default) or `gauss`. |
