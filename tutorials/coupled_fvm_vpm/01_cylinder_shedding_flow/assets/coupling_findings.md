@@ -10,7 +10,7 @@ Each statistic $Q$ (mean drag $\bar C_D$, Strouhal number $St$, rms lift $C_{L,\
 
 $$e = Q_\mathrm{coupled}/Q_\mathrm{FVM}(h,\Delta t_\mathrm{FVM}) - 1,$$
 
-against the FVM-only run on the same cells and FVM step. The FVM-only domain has slip walls 32 $D$ apart; its values are corrected for blockage (Allen–Vincenti) before the comparison. The FVM's own discretization error is reported apart, from the reference grids $h=0.08$, 0.06, 0.04 and 0.03 m.
+against the FVM-only run on the same cells and FVM step. The FVM-only domain has slip walls 32 $D$ apart; its values are corrected for blockage before the comparison: the drag with the complete Allen–Vincenti expression $C_D\,(1 - \tfrac12 C_D\,D/H - 2.467\,(D/H)^2)$ (Sadeh and Saharon 1982, eq. 3.5), which includes the drag of the axial pressure gradient, the lift by $(U/U')^2$ and $St$ by $U/U'$. The FVM's own discretization error is reported apart, from the reference grids $h=0.08$, 0.06, 0.04 and 0.03 m.
 
 Runs are compared over $40\le t\le55$ s. A difference is resolved when it exceeds $\pm2\sigma$, with $\sigma=\sqrt{2\sigma_w^2+s_d^2}$:
 - $\sigma_w$, the window-to-window spread of the developed flow;

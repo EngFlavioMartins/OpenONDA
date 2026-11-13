@@ -72,8 +72,9 @@ Statistics, over whole shedding periods:
 
 The error of a run is the coupling error $e = Q_\mathrm{FVM\text{-}VPM}/Q_\mathrm{FVM}(h,\Delta t_\mathrm{FVM}) - 1$. It is measured against the FVM-only run with the same cells and FVM step ([reference flow](reference_flow/README.md)), so the FVM's own discretization error cancels. That error is measured separately, as the change between the reference grids.
 
-**Blockage.** The FVM-only domain has slip walls at $y=\pm16D$ (blockage $D/H=1/32$); the coupled domain has none. FVM-only values are corrected with the Allen–Vincenti freestream speed-up $U'/U = 1 + \tfrac14 C_D\,D/H + 0.82\,(D/H)^2$:
-- forces by $(U/U')^2$;
+**Blockage.** The FVM-only domain has slip walls at $y=\pm16D$ (blockage $D/H=1/32$); the coupled domain has none. FVM-only values are corrected with Allen and Vincenti's expressions (Sadeh and Saharon 1982), with the freestream speed-up $U'/U = 1 + \tfrac14 C_D\,D/H + 0.82\,(D/H)^2$:
+- drag by the complete expression $C_D\,(1 - \tfrac12 C_D\,D/H - 2.467\,(D/H)^2)$ (their eq. 3.5), which includes the drag of the axial pressure gradient that scaling by $(U/U')^2$ leaves out;
+- lift by $(U/U')^2$;
 - $St$, velocities and vorticity by $U/U'$.
 
 ### Statistics window and its uncertainty
