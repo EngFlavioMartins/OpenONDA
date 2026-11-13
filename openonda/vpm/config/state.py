@@ -10,12 +10,14 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 def cached_particle_property(func: F) -> F:
-    """Cache an expensive particle property for one particle-state revision.
+    """Cache the host copy of a Biot-Savart source field for one particle-state revision.
 
     Particle fields can be changed several times while the solver clock stays
     fixed (for example by a stabilization worker or a coupled wake update).
     A step number is therefore not a cache key.  ``Particles.touch_state``
-    publishes a new monotone revision whenever a source field changes.
+    publishes a new monotone revision whenever a source field changes. Derived
+    fields (velocity, gradients, vorticity, viscosities) change without a new
+    revision and must not use this cache.
     """
     cache_name = f"_{func.__name__}_cache"
     cache_revision_name = f"_{func.__name__}_cache_revision"

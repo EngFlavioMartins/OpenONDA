@@ -414,10 +414,7 @@ class _BackupIO:
                 particles_group.create_dataset(
                     name,
                     data=_cast_for_restart(
-                        # Derived fields can change at the same source-state
-                        # revision. A checkpoint must read the actual device
-                        # state, never a preceding diagnostic's CPU snapshot.
-                        getattr(solver.particles, f"{name}_cpu")(use_cache=False),
+                        getattr(solver.particles, f"{name}_cpu")(),
                         restart_dtype,
                     ),
                     **_COMPRESSION,

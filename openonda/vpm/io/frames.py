@@ -65,7 +65,7 @@ def write_particle_frame(solver: VPMSolver, path: str | Path) -> Path:
         grid.SetCells(numpy_to_vtk(np.array([VTK_POLY_VERTEX], dtype=np.uint8), deep=True), cells)
 
     for name in (*_VECTOR_FIELDS, *_SCALAR_FIELDS):
-        values = getattr(particles, f"{name}_cpu")(use_cache=False)
+        values = getattr(particles, f"{name}_cpu")()
         array = numpy_to_vtk(
             np.ascontiguousarray(cast_for_write(values, output.precision)), deep=True
         )

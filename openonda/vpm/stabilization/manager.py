@@ -487,7 +487,7 @@ class StabilizationManager:
         if cfg.pedrizzetti_relaxation_preserve_moments:
             particles = self.ctx.particles
             reference_vortex_strength = original_strength.astype(np.float64)
-            particle_volume = particles.particle_volume_cpu(use_cache=False).astype(np.float64)
+            particle_volume = particles.particle_volume_cpu().astype(np.float64)
         try:
             statistics = self.operators.apply_pedrizzetti_relaxation(
                 self.ctx.particles,
@@ -777,7 +777,7 @@ class StabilizationManager:
         removed = strength[damped] * (1.0 - factor)[:, None]
         strength[damped] *= factor[:, None]
         update = {"vortex_strength": strength.astype(ctx.np_dtype)}
-        vorticity = ctx.particles.vorticity_cpu(use_cache=False).astype(np.float64)
+        vorticity = ctx.particles.vorticity_cpu().astype(np.float64)
         vorticity[damped] *= factor[:, None]
         update["vorticity"] = vorticity.astype(ctx.np_dtype)
         ctx.mutations.set_properties(**update)

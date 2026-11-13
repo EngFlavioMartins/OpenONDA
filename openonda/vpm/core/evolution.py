@@ -334,7 +334,7 @@ class EvolutionStepper:
         if n == 0:
             return
         core_radius = self.particles.core_radius_cpu(use_cache=False)
-        particle_volume = self.particles.particle_volume_cpu(use_cache=False)
+        particle_volume = self.particles.particle_volume_cpu()
         invalid_radii = ~np.isfinite(core_radius) | (core_radius <= 0.0)
         invalid_volumes = ~np.isfinite(particle_volume) | (particle_volume <= 0.0)
         n_bad_radii = int(np.count_nonzero(invalid_radii))
@@ -428,8 +428,8 @@ class EvolutionStepper:
         # Read the stepper's own particle container; the stepper has no
         # forwarding view of the solver fields.
         position = self.particles.position_cpu(use_cache=False).astype(np.float64)
-        orbit_id = self.particles.zone_id_cpu(use_cache=False).astype(np.int64)
-        group_id = self.particles.group_id_cpu(use_cache=False).astype(np.int64)
+        orbit_id = self.particles.zone_id_cpu().astype(np.int64)
+        group_id = self.particles.group_id_cpu().astype(np.int64)
         count = len(position)
         if count == 0:
             return

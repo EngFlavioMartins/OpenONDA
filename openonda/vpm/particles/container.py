@@ -680,18 +680,17 @@ class Particles:
 
         self.n_particles_total = count
 
-    # CPU access methods (return NumPy arrays) - now with caching
+    # Host copies of the Biot-Savart source fields are cached per state revision;
+    # every other field is downloaded on each call.
     @cached_particle_property
     def position_cpu(self) -> np.ndarray:
         """Return active positions as a CPU copy, shape ``(N, 3)`` in m.
 
         The result contains only the active prefix. The cache is invalidated
-        by :meth:`touch_state`; pass ``use_cache=False`` when a fresh transfer
-        is required by the decorator-supported call path.
+        by :meth:`touch_state`; pass ``use_cache=False`` for a fresh transfer.
         """
         return self._extract_vector(self.position, self.n_particles_total)
 
-    @cached_particle_property
     def velocity_cpu(self) -> np.ndarray:
         """Return active velocities as a CPU copy, shape ``(N, 3)`` in m/s."""
         return self._extract_vector(self.velocity, self.n_particles_total)
@@ -706,42 +705,34 @@ class Particles:
         """Return active core radii as a CPU copy, shape ``(N,)`` in m."""
         return self._extract_scalar(self.core_radius, self.n_particles_total)
 
-    @cached_particle_property
     def particle_volume_cpu(self) -> np.ndarray:
         """Return active quadrature volumes as a CPU copy, shape ``(N,)`` in m³."""
         return self._extract_scalar(self.particle_volume, self.n_particles_total)
 
-    @cached_particle_property
     def kinematic_viscosity_cpu(self) -> np.ndarray:
         """Return molecular viscosity as a CPU copy, shape ``(N,)`` in m²/s."""
         return self._extract_scalar(self.kinematic_viscosity, self.n_particles_total)
 
-    @cached_particle_property
     def eddy_viscosity_cpu(self) -> np.ndarray:
         """Return modeled turbulent viscosity as a CPU copy, shape ``(N,)`` in m²/s."""
         return self._extract_scalar(self.eddy_viscosity, self.n_particles_total)
 
-    @cached_particle_property
     def effective_viscosity_cpu(self) -> np.ndarray:
         """Return molecular plus eddy viscosity as a CPU copy, shape ``(N,)`` in m²/s."""
         return self._extract_scalar(self.effective_viscosity, self.n_particles_total)
 
-    @cached_particle_property
     def group_id_cpu(self) -> np.ndarray:
         """Return int32 group labels as a CPU copy, shape ``(N,)``."""
         return self._extract_int(self.group_id, self.n_particles_total)
 
-    @cached_particle_property
     def velocity_gradient_cpu(self) -> np.ndarray:
         """Return velocity Jacobians as a CPU copy, shape ``(N, 3, 3)`` in 1/s."""
         return self._extract_matrix(self.velocity_gradient, self.n_particles_total)
 
-    @cached_particle_property
     def strain_rate_cpu(self) -> np.ndarray:
         """Return symmetric strain tensors as a CPU copy, shape ``(N, 3, 3)`` in 1/s."""
         return self._extract_matrix(self.strain_rate, self.n_particles_total)
 
-    @cached_particle_property
     def vorticity_cpu(self) -> np.ndarray:
         """Return vorticity vectors as a CPU copy, shape ``(N, 3)`` in 1/s."""
         return self._extract_vector(self.vorticity, self.n_particles_total)
@@ -763,7 +754,6 @@ class Particles:
             out[lo : lo + count] = buf[:count]
         return out
 
-    @cached_particle_property
     def zone_id_cpu(self) -> np.ndarray:
         """Return int32 zone labels as a CPU copy, shape ``(N,)``."""
         return self._extract_int(self.zone_id, self.n_particles_total)
@@ -1462,8 +1452,7 @@ class Particles:
             self._copy_matrices_chunked(values, field, 0, count)
         else:
             raise ValueError(f"Field '{field_name}' type not recognized for set_field.")
-        if field_name in {"position", "vortex_strength", "core_radius"}:
-            self.touch_state()
+        self.touch_state()
 
     @ti.kernel
     def _copy_particles_grouped_kernel(
