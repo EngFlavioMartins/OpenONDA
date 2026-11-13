@@ -13,16 +13,16 @@ operator.
 
 The inverse is regularized: strongly overlapping Gaussian blobs
 make the unregularized interpolation matrix ill-conditioned, and fitting its
-near-null modes creates large, non-physical strength oscillations.  A
-minimum-norm particular correction first restores the reference vector
-vortex_strength, linear impulse, and Gaussian-corrected angular impulse.  The
-divergence solve is restricted to the exact null space of those nine moments,
-and two independent null-space directions restore the quadratic kinetic energy
-and enstrophy exactly in the Fourier audit.  Helicity, total variation,
-correction size, and residual reduction are then hard acceptance checks.  If
-one admissible sweep does not reach the global residual target, later sweeps
-are searched by amplitude and audited together as one atomic original-to-final
-state update.
+near-null modes creates large, non-physical strength oscillations.  The
+correction keeps the vector vortex_strength, linear impulse, and
+Gaussian-corrected angular impulse of the field, or restores given target
+moments with a minimum-norm particular correction.  The divergence solve is
+restricted to the exact null space of those nine moments, and one null-space
+direction restores the kinetic energy exactly in the Fourier audit.  Enstrophy,
+helicity, total variation, correction size, and residual reduction are then
+hard acceptance checks.  If one admissible sweep does not reach the global
+residual target, later sweeps are searched by amplitude and audited together
+as one atomic original-to-final state update.
 
 Between free-slip planes (``slip_slab``) the grid spans one image period in
 z, the blob field includes every particle image, and the restored moments are
@@ -37,11 +37,11 @@ from math import prod
 import numpy as np
 from scipy import fft
 from scipy.ndimage import gaussian_filter
-from scipy.optimize import root
 from scipy.sparse.linalg import LinearOperator, cg
 
 from openonda.core.slip_slab_images import AXIAL_PARITY, slab_period_images, slab_period_lattice
 
+from ..config.divergence_relaxation import DivergenceRelaxationConfig
 from ..numerics.fourier_integrals import gaussian_fourier_integrals
 from ..numerics.m4_kernel import m4_prime
 from .filament_refinement import gaussian_particle_moments, particle_moments
@@ -72,36 +72,17 @@ class DivergenceRelaxationError(RuntimeError):
 
 @dataclass(frozen=True)
 class DivergenceRelaxationResult:
-    """Accepted reassignment and its independently measurable diagnostics."""
+    """Accepted reassignment and the diagnostics the stabilization log reports."""
 
     vortex_strength: np.ndarray
-    correction: np.ndarray
     projection_sweeps: int
-    iterations: int
-    regularization: float
-    trust_region_scale: float
-    initial_residual_norm: float
     final_residual_ratio: float
     correction_norm_relative: float
-    quadratic_restoration_fraction: float
-    reference_restoration_scale: float
-    vortex_strength_restored: float
-    linear_impulse_restored: float
-    angular_impulse_restored: float
-    vortex_strength_reference_error: float
-    linear_impulse_reference_error: float
-    angular_impulse_reference_error: float
-    vortex_strength_error: float
-    linear_impulse_error: float
-    angular_impulse_error: float
-    total_kinetic_energy_change_relative: float
-    total_enstrophy_change_relative: float
-    total_helicity_change_relative: float
-    total_kinetic_energy_spectral_error: float
-    total_enstrophy_spectral_error: float
-    total_helicity_spectral_error: float
-    grid_divergence_before: float
-    grid_divergence_after: float
+
+
+# Halvings of the moment restoration, the correction amplitude, and the
+# sweep amplitude that a proposal may try before it is rejected.
+_MAX_LINE_SEARCH_STEPS = 8
 
 
 def _wave_numbers(
@@ -530,111 +511,278 @@ def restore_particle_moments(
     return vortex_strength + correction, float(np.linalg.norm(correction) / scale)
 
 
-def _constrained_divergence_relaxation_once(
-    position: np.ndarray,
-    vortex_strength: np.ndarray,
-    core_radius: np.ndarray,
-    particle_volume: np.ndarray,
-    *,
-    grid_spacing: float,
-    regularization: float = 0.1,
-    solver_relative_tolerance: float = 1e-5,
-    max_iterations: int = 30,
-    max_correction_norm: float = 2e-2,
-    max_residual_ratio: float = 0.9,
-    total_kinetic_energy_tolerance: float = 1e-6,
-    total_enstrophy_tolerance: float = 1e-4,
-    total_helicity_tolerance: float = 1e-4,
-    variation_tolerance: float = 1e-3,
-    spectral_convergence_fraction: float = 0.1,
-    reference_scales: tuple[float, float, float] | None = None,
-    reference_tolerances: tuple[float, float, float] = (1e-3, 1e-2, 1e-2),
-    correction_scale: float = 1.0,
-    restoration_scale: float = 1.0,
-    target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
-    slip_slab: tuple[float, float] | None = None,
-) -> DivergenceRelaxationResult:
-    """Return one accepted, reference-restoring Winckelmans relaxation."""
+@dataclass(frozen=True)
+class _Rejection:
+    """A proposal that failed an amplitude-dependent acceptance check."""
 
-    position = np.asarray(position, dtype=np.float64)
-    vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
-    core_radius = np.asarray(core_radius, dtype=np.float64)
-    particle_volume = np.asarray(particle_volume, dtype=np.float64)
-    if position.shape != vortex_strength.shape or position.ndim != 2 or position.shape[1] != 3:
-        raise ValueError("position and vortex_strength must both have shape (N, 3)")
-    if core_radius.shape != (len(position),) or particle_volume.shape != (len(position),):
-        raise ValueError("core_radius and particle_volume must have shape (N,)")
-    if np.any(particle_volume <= 0.0):
-        raise ValueError("all particle volume must be positive")
-    if regularization <= 0.0:
-        raise ValueError("regularization must be positive")
-    if solver_relative_tolerance <= 0.0 or max_iterations < 1:
-        raise ValueError("solver_rtol must be positive and max_iterations at least one")
-    if not 0.0 < spectral_convergence_fraction <= 1.0:
-        raise ValueError("spectral_convergence_fraction must be in (0, 1]")
-    if not 0.0 < restoration_scale <= 1.0:
-        raise ValueError("restoration_scale must be in (0, 1]")
-    if len(reference_tolerances) != 3 or any(value < 0.0 for value in reference_tolerances):
-        raise ValueError("reference_tolerances must contain three non-negative values")
-    if reference_scales is not None and (
-        len(reference_scales) != 3 or any(value <= 0.0 for value in reference_scales)
-    ):
-        raise ValueError("reference_scales must contain three positive values")
+    check: str
+    message: str
 
-    before_moments = gaussian_particle_moments(
-        position, vortex_strength, core_radius, slip_slab=slip_slab is not None
-    )
-    if target_moments is None:
-        target_total = before_moments[0]
-        target_impulse = before_moments[2]
-        target_angular = before_moments[3]
-    else:
-        if len(target_moments) != 3:
-            raise ValueError(
-                "target_moments must contain vortex strength, linear impulse, and angular impulse"
+
+class _SweepState:
+    """Quantities of one working strength that no proposal amplitude changes."""
+
+    def __init__(
+        self,
+        position: np.ndarray,
+        vortex_strength: np.ndarray,
+        core_radius: np.ndarray,
+        particle_volume: np.ndarray,
+        *,
+        grid_spacing: float,
+        slip_slab: tuple[float, float] | None,
+    ) -> None:
+        self.position = position
+        self.vortex_strength = vortex_strength
+        self.core_radius = core_radius
+        self.particle_volume = particle_volume
+        self.grid_spacing = grid_spacing
+        self.slip_slab = slip_slab
+        self.moments = gaussian_particle_moments(
+            position, vortex_strength, core_radius, slip_slab=slip_slab is not None
+        )
+        self.operator = GaussianParticleGridOperator(
+            position,
+            core_radius,
+            np.linalg.norm(vortex_strength, axis=1),
+            spacing=grid_spacing,
+            slip_slab=slip_slab,
+        )
+        residual, _, _ = self.operator.relaxation_residual(vortex_strength)
+        self.residual_norm = float(np.linalg.norm(residual))
+        self.blob_norm = float(np.linalg.norm(self.operator.apply(vortex_strength)))
+        self.rows = gaussian_invariant_rows(position, core_radius, slip_slab=slip_slab is not None)
+        self.nullspace = _MomentNullspace(self.rows, particle_volume)
+        self.norm = max(float(np.linalg.norm(vortex_strength)), np.finfo(float).tiny)
+        self._integrals = None
+        self._energy_direction = None
+        self._divergence_corrections: dict[int, np.ndarray] = {}
+
+    def integrals(self, vortex_strength: np.ndarray | None = None):
+        """Fourier-audited quadratic integrals of this or another strength field."""
+        if vortex_strength is None:
+            if self._integrals is None:
+                self._integrals = self.integrals(self.vortex_strength)
+            return self._integrals
+        return gaussian_fourier_integrals(
+            self.position,
+            vortex_strength,
+            self.core_radius,
+            self.particle_volume,
+            spacing=self.grid_spacing,
+            slip_slab=self.slip_slab,
+        )
+
+    def energy_direction(self) -> np.ndarray:
+        """Moment-preserving part of the strength itself, scaled to its norm."""
+        if self._energy_direction is None:
+            sqrt_volume = self.nullspace.sqrt_volume[:, None]
+            direction = self.nullspace.to_correction(self.vortex_strength / sqrt_volume)
+            direction_norm = float(np.linalg.norm(direction))
+            if direction_norm <= np.finfo(float).tiny:
+                raise DivergenceRelaxationError(
+                    "no moment-preserving direction is available to restore kinetic energy"
+                )
+            self._energy_direction = direction * (self.norm / direction_norm)
+        return self._energy_direction
+
+    def divergence_correction(
+        self,
+        restoration_index: int,
+        repaired: np.ndarray,
+        config: DivergenceRelaxationConfig,
+    ) -> np.ndarray:
+        """Regularized moment-preserving solution of ``K delta = residual(repaired)``."""
+        if restoration_index in self._divergence_corrections:
+            return self._divergence_corrections[restoration_index]
+        nullspace = self.nullspace
+        sqrt_volume = nullspace.sqrt_volume
+        repaired_residual, _, _ = self.operator.relaxation_residual(repaired)
+        right_hand_side = nullspace.project_transformed(sqrt_volume[:, None] * repaired_residual)
+
+        def matrix_vector(flat_value: np.ndarray) -> np.ndarray:
+            transformed = nullspace.project_transformed(flat_value.reshape(-1, 3))
+            physical = sqrt_volume[:, None] * transformed
+            applied = sqrt_volume[:, None] * self.operator.apply(physical)
+            return (
+                nullspace.project_transformed(applied) + config.regularization * transformed
+            ).ravel()
+
+        dimension = 3 * len(self.position)
+        solution, info = cg(
+            LinearOperator((dimension, dimension), matvec=matrix_vector, dtype=np.float64),
+            right_hand_side.ravel(),
+            rtol=config.solver_relative_tolerance,
+            atol=0.0,
+            maxiter=config.max_iterations,
+        )
+        if info != 0:
+            raise DivergenceRelaxationError(
+                f"regularized divergence relaxation did not converge in {config.max_iterations} "
+                f"iterations (CG info={info})"
             )
-        target_total, target_impulse, target_angular = (
-            np.asarray(value, dtype=np.float64) for value in target_moments
-        )
-        if any(value.shape != (3,) for value in (target_total, target_impulse, target_angular)):
-            raise ValueError("each target moment must have shape (3,)")
-        if not all(
-            np.isfinite(value).all() for value in (target_total, target_impulse, target_angular)
-        ):
-            raise ValueError("target moments must be finite")
+        correction = nullspace.to_correction(solution.reshape(-1, 3))
+        self._divergence_corrections[restoration_index] = correction
+        return correction
 
-    vortex_strength_magnitude = np.linalg.norm(vortex_strength, axis=1)
-    operator = GaussianParticleGridOperator(
-        position,
-        core_radius,
-        vortex_strength_magnitude,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    residual, grid_divergence_before, _ = operator.relaxation_residual(vortex_strength)
-    initial_residual_norm = float(np.linalg.norm(residual))
-    blob_norm = float(np.linalg.norm(operator.apply(vortex_strength)))
-    rows = gaussian_invariant_rows(position, core_radius, slip_slab=slip_slab is not None)
-    nullspace = _MomentNullspace(rows, particle_volume)
-    full_moment_change = np.concatenate(
+
+def _target_moment_change(
+    state: _SweepState,
+    target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+) -> np.ndarray:
+    if target_moments is None:
+        return np.zeros(9)
+    target_total, target_impulse, target_angular = target_moments
+    return np.concatenate(
         (
-            target_total - before_moments[0],
-            target_impulse - before_moments[2],
-            target_angular - before_moments[3],
+            target_total - state.moments[0],
+            target_impulse - state.moments[2],
+            target_angular - state.moments[3],
         )
     )
-    moment_change = restoration_scale * full_moment_change
-    achieved_total = before_moments[0] + moment_change[0:3]
-    achieved_impulse = before_moments[2] + moment_change[3:6]
-    achieved_angular = before_moments[3] + moment_change[6:9]
-    moment_correction = nullspace.correction_for_moment_change(moment_change)
-    restored_moment_change = np.einsum("mpa,pa->m", rows, moment_correction)
+
+
+def _audit(
+    before: _SweepState,
+    relaxed: np.ndarray,
+    config: DivergenceRelaxationConfig,
+    *,
+    target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+    restoration_scale: float,
+    residual_limit: float,
+) -> tuple[float, float] | _Rejection:
+    """Check a proposed original-to-relaxed update against every physics limit.
+
+    Returns the residual ratio and the relative correction norm, or the first
+    violated amplitude-dependent check. A moment change beyond roundoff is a
+    defect, not a rejection, and raises.
+    """
+    position = before.position
+    vortex_strength = before.vortex_strength
+    core_radius = before.core_radius
+    slab = before.slip_slab is not None
+    before_moments = before.moments
+    after_moments = gaussian_particle_moments(position, relaxed, core_radius, slip_slab=slab)
+    achieved = np.concatenate(
+        (before_moments[0], before_moments[2], before_moments[3])
+    ) + restoration_scale * _target_moment_change(before, target_moments)
+    impulse_scale = max(
+        0.5
+        * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum(dtype=np.float64)),
+        np.finfo(float).tiny,
+    )
+    angular_terms = (
+        np.cross(position, np.cross(position, vortex_strength)) / 3.0
+        - core_radius[:, None] ** 2 * vortex_strength / 3.0
+    )
+    angular_scale = max(
+        float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
+        np.finfo(float).tiny,
+    )
+    moment_tolerance = 4096.0 * np.finfo(float).eps
+    for name, after, target, scale in (
+        ("vector strength", after_moments[0], achieved[0:3], before_moments[1]),
+        ("linear impulse", after_moments[2], achieved[3:6], impulse_scale),
+        ("angular impulse", after_moments[3], achieved[6:9], angular_scale),
+    ):
+        error = float(np.linalg.norm(after - target))
+        allowance = moment_tolerance * max(scale, np.finfo(float).tiny)
+        if error > allowance:
+            raise DivergenceRelaxationError(
+                f"divergence relaxation changed {name} by {error:.3e}, beyond "
+                f"its roundoff allowance {allowance:.3e}"
+            )
+
+    tiny = np.finfo(float).tiny
+    before_integrals = before.integrals()
+    after_integrals = before.integrals(relaxed)
+
+    def relative_changes(energy: str, enstrophy: str, helicity: str) -> tuple[float, ...]:
+        energy_before = getattr(before_integrals, energy)
+        enstrophy_before = getattr(before_integrals, enstrophy)
+        helicity_scale = np.sqrt(max(2.0 * abs(energy_before) * abs(enstrophy_before), tiny))
+        return (
+            (getattr(after_integrals, energy) - energy_before) / max(abs(energy_before), tiny),
+            (getattr(after_integrals, enstrophy) - enstrophy_before)
+            / max(abs(enstrophy_before), tiny),
+            (getattr(after_integrals, helicity) - getattr(before_integrals, helicity))
+            / helicity_scale,
+        )
+
+    changes = relative_changes("total_kinetic_energy", "total_enstrophy", "total_helicity")
+    previous_order_changes = relative_changes(
+        "previous_order_total_kinetic_energy",
+        "previous_order_total_enstrophy",
+        "previous_order_total_helicity",
+    )
+    spectral_errors = [
+        abs(change - previous)
+        for change, previous in zip(changes, previous_order_changes, strict=True)
+    ]
+    variation_change = (after_moments[1] - before_moments[1]) / max(before_moments[1], tiny)
+    correction_norm_relative = float(np.linalg.norm(relaxed - vortex_strength) / before.norm)
+    final_residual, _, _ = before.operator.relaxation_residual(relaxed)
+    final_residual_ratio = (
+        float(np.linalg.norm(final_residual) / before.residual_norm)
+        if before.residual_norm > tiny
+        else 0.0
+    )
+    fraction = config.spectral_convergence_fraction
+    for name, value, limit in (
+        ("correction norm", correction_norm_relative, config.max_correction_norm),
+        ("residual ratio", final_residual_ratio, residual_limit),
+        ("kinetic-energy transfer", abs(changes[0]), config.total_kinetic_energy_tolerance),
+        ("enstrophy transfer", abs(changes[1]), config.total_enstrophy_tolerance),
+        ("helicity transfer", abs(changes[2]), config.total_helicity_tolerance),
+        ("total-variation transfer", abs(variation_change), config.variation_tolerance),
+        (
+            "kinetic-energy spectral convergence",
+            spectral_errors[0],
+            fraction * config.total_kinetic_energy_tolerance,
+        ),
+        (
+            "enstrophy spectral convergence",
+            spectral_errors[1],
+            fraction * config.total_enstrophy_tolerance,
+        ),
+        (
+            "helicity spectral convergence",
+            spectral_errors[2],
+            fraction * config.total_helicity_tolerance,
+        ),
+    ):
+        if not np.isfinite(value) or value > limit:
+            return _Rejection(
+                name, f"divergence-relaxation {name} {value:.3e} exceeds the admissible {limit:.3e}"
+            )
+    return final_residual_ratio, correction_norm_relative
+
+
+def _propose(
+    state: _SweepState,
+    config: DivergenceRelaxationConfig,
+    *,
+    target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+    restoration_index: int,
+    correction_scale: float,
+    residual_limit: float,
+) -> DivergenceRelaxationResult | _Rejection:
+    """One Winckelmans relaxation of ``state`` at the given amplitudes."""
+
+    vortex_strength = state.vortex_strength
+    restoration_scale = 0.5**restoration_index
+    moment_change = restoration_scale * _target_moment_change(state, target_moments)
+    moment_correction = state.nullspace.correction_for_moment_change(moment_change)
+    restored_moment_change = np.einsum("mpa,pa->m", state.rows, moment_correction)
+    targets = (
+        target_moments
+        if target_moments is not None
+        else (state.moments[0], state.moments[2], state.moments[3])
+    )
     moment_change_scale = max(
         float(np.linalg.norm(moment_change)),
-        float(np.linalg.norm(target_total)),
-        float(np.linalg.norm(target_impulse)),
-        float(np.linalg.norm(target_angular)),
-        1.0,
+        *(float(np.linalg.norm(value)) for value in targets),
+        np.finfo(float).tiny,
     )
     if not np.allclose(
         restored_moment_change,
@@ -646,225 +794,53 @@ def _constrained_divergence_relaxation_once(
             "reference moments are rank-deficient for the current particle cloud"
         )
     moment_correction_norm = float(np.linalg.norm(moment_correction))
-    vortex_strength_norm = max(
-        float(np.linalg.norm(vortex_strength)),
-        np.finfo(float).tiny,
-    )
-    if moment_correction_norm > 0.9 * max_correction_norm * vortex_strength_norm:
-        raise DivergenceRelaxationError(
+    available_norm = 0.9 * config.max_correction_norm * state.norm - moment_correction_norm
+    if available_norm < 0.0:
+        return _Rejection(
+            "moment restoration",
             "reference-moment restoration alone requires a correction norm of "
-            f"{moment_correction_norm / vortex_strength_norm:.3e}, beyond the admissible "
-            f"{0.9 * max_correction_norm:.3e}",
-            check="correction norm",
+            f"{moment_correction_norm / state.norm:.3e}, beyond the admissible "
+            f"{0.9 * config.max_correction_norm:.3e}",
         )
 
-    repaired = vortex_strength + moment_correction
-    repaired_residual, _, _ = operator.relaxation_residual(repaired)
-    negligible_residual = initial_residual_norm <= 128.0 * np.finfo(float).eps * max(blob_norm, 1.0)
-    negligible_moment_change = moment_correction_norm <= 128.0 * np.finfo(float).eps * max(
-        vortex_strength_norm, 1.0
-    )
-    if negligible_residual and negligible_moment_change:
+    roundoff = 128.0 * np.finfo(float).eps
+    if (
+        state.residual_norm <= roundoff * state.blob_norm
+        and moment_correction_norm <= roundoff * state.norm
+    ):
         return DivergenceRelaxationResult(
             vortex_strength=vortex_strength.copy(),
-            correction=np.zeros_like(vortex_strength),
             projection_sweeps=1,
-            iterations=0,
-            regularization=regularization,
-            trust_region_scale=1.0,
-            initial_residual_norm=initial_residual_norm,
             final_residual_ratio=0.0,
             correction_norm_relative=0.0,
-            quadratic_restoration_fraction=0.0,
-            reference_restoration_scale=restoration_scale,
-            vortex_strength_restored=0.0,
-            linear_impulse_restored=0.0,
-            angular_impulse_restored=0.0,
-            vortex_strength_reference_error=0.0,
-            linear_impulse_reference_error=0.0,
-            angular_impulse_reference_error=0.0,
-            vortex_strength_error=0.0,
-            linear_impulse_error=0.0,
-            angular_impulse_error=0.0,
-            total_kinetic_energy_change_relative=0.0,
-            total_enstrophy_change_relative=0.0,
-            total_helicity_change_relative=0.0,
-            total_kinetic_energy_spectral_error=0.0,
-            total_enstrophy_spectral_error=0.0,
-            total_helicity_spectral_error=0.0,
-            grid_divergence_before=grid_divergence_before,
-            grid_divergence_after=grid_divergence_before,
         )
 
-    sqrt_volume = nullspace.sqrt_volume
-    right_hand_side = nullspace.project_transformed(sqrt_volume[:, None] * repaired_residual)
-    iterations = 0
-
-    def matrix_vector(flat_value: np.ndarray) -> np.ndarray:
-        transformed = nullspace.project_transformed(flat_value.reshape(-1, 3))
-        physical = sqrt_volume[:, None] * transformed
-        applied = sqrt_volume[:, None] * operator.apply(physical)
-        return (nullspace.project_transformed(applied) + regularization * transformed).ravel()
-
-    def note_iteration(_value: np.ndarray) -> None:
-        nonlocal iterations
-        iterations += 1
-
-    dimension = 3 * len(position)
-    linear_operator = LinearOperator(
-        (dimension, dimension),
-        matvec=matrix_vector,
-        dtype=np.float64,
-    )
-    solution, info = cg(
-        linear_operator,
-        right_hand_side.ravel(),
-        rtol=solver_relative_tolerance,
-        atol=0.0,
-        maxiter=max_iterations,
-        callback=note_iteration,
-    )
-    if info != 0:
-        raise DivergenceRelaxationError(
-            f"regularized divergence relaxation did not converge in {max_iterations} "
-            f"iterations (CG info={info})"
-        )
-    divergence_correction = nullspace.to_correction(solution.reshape(-1, 3))
-    divergence_correction_norm = float(np.linalg.norm(divergence_correction))
-    available_norm = max(
-        0.0,
-        0.9 * max_correction_norm * vortex_strength_norm - moment_correction_norm,
+    divergence_correction = state.divergence_correction(
+        restoration_index, vortex_strength + moment_correction, config
     )
     trust_region_scale = (
         min(
             1.0,
-            available_norm / max(divergence_correction_norm, np.finfo(float).tiny),
+            available_norm
+            / max(float(np.linalg.norm(divergence_correction)), np.finfo(float).tiny),
         )
         * correction_scale
     )
     raw_correction = moment_correction + trust_region_scale * divergence_correction
     candidate = vortex_strength + raw_correction
 
-    energy_direction = nullspace.to_correction(vortex_strength / sqrt_volume[:, None])
-    energy_direction_norm = float(np.linalg.norm(energy_direction))
-    if energy_direction_norm <= np.finfo(float).tiny:
-        raise DivergenceRelaxationError(
-            "no moment-preserving direction is available to restore quadratic invariants"
-        )
-    energy_direction *= vortex_strength_norm / energy_direction_norm
-
-    enstrophy_gradient = operator.apply(vortex_strength)
-    enstrophy_direction = nullspace.to_correction(enstrophy_gradient / sqrt_volume[:, None])
-    enstrophy_direction -= (
-        np.vdot(enstrophy_direction, energy_direction) / np.vdot(energy_direction, energy_direction)
-    ) * energy_direction
-    enstrophy_direction_norm = float(np.linalg.norm(enstrophy_direction))
-    for axis in range(3):
-        trial = nullspace.to_correction(
-            position[:, axis, None] * vortex_strength / sqrt_volume[:, None]
-        )
-        trial -= (
-            np.vdot(trial, energy_direction) / np.vdot(energy_direction, energy_direction)
-        ) * energy_direction
-        trial_norm = float(np.linalg.norm(trial))
-        if enstrophy_direction_norm <= 1e-10 * vortex_strength_norm and trial_norm > 0.0:
-            enstrophy_direction = trial
-            enstrophy_direction_norm = trial_norm
-    if enstrophy_direction_norm <= 1e-10 * vortex_strength_norm:
-        raise DivergenceRelaxationError(
-            "no second moment-preserving direction is available to restore quadratic invariants"
-        )
-    enstrophy_direction *= vortex_strength_norm / enstrophy_direction_norm
-
-    before_integrals = gaussian_fourier_integrals(
-        position,
-        vortex_strength,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    candidate_integrals = gaussian_fourier_integrals(
-        position,
-        candidate,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    plus_energy = gaussian_fourier_integrals(
-        position,
-        candidate + energy_direction,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    minus_energy = gaussian_fourier_integrals(
-        position,
-        candidate - energy_direction,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    plus_enstrophy = gaussian_fourier_integrals(
-        position,
-        candidate + enstrophy_direction,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    minus_enstrophy = gaussian_fourier_integrals(
-        position,
-        candidate - enstrophy_direction,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    plus_both = gaussian_fourier_integrals(
-        position,
-        candidate + energy_direction + enstrophy_direction,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    values = np.array(
-        [
-            [candidate_integrals.total_kinetic_energy, candidate_integrals.total_enstrophy],
-            [plus_energy.total_kinetic_energy, plus_energy.total_enstrophy],
-            [minus_energy.total_kinetic_energy, minus_energy.total_enstrophy],
-            [plus_enstrophy.total_kinetic_energy, plus_enstrophy.total_enstrophy],
-            [minus_enstrophy.total_kinetic_energy, minus_enstrophy.total_enstrophy],
-            [plus_both.total_kinetic_energy, plus_both.total_enstrophy],
-        ],
-        dtype=np.float64,
-    ).T
-    linear = np.stack(
-        (
-            0.5 * (values[:, 1] - values[:, 2]),
-            0.5 * (values[:, 3] - values[:, 4]),
-        ),
-        axis=1,
-    )
-    diagonal = np.stack(
-        (
-            0.5 * (values[:, 1] + values[:, 2]) - values[:, 0],
-            0.5 * (values[:, 3] + values[:, 4]) - values[:, 0],
-        ),
-        axis=1,
-    )
-    cross = 0.5 * (
-        values[:, 5] - values[:, 0] - linear[:, 0] - linear[:, 1] - diagonal[:, 0] - diagonal[:, 1]
-    )
+    # Kinetic energy is a quadratic form of the strength, so along the
+    # moment-preserving direction d, E(c + m d) = E(c) + b m + a m^2 exactly; the
+    # central differences give b and a, and the smaller root restores E.
+    energy_direction = state.energy_direction()
+    energy = state.integrals(candidate).total_kinetic_energy
+    plus = state.integrals(candidate + energy_direction).total_kinetic_energy
+    minus = state.integrals(candidate - energy_direction).total_kinetic_energy
     energy_roots = np.roots(
         (
-            diagonal[0, 0],
-            linear[0, 0],
-            values[0, 0] - before_integrals.total_kinetic_energy,
+            0.5 * (plus + minus) - energy,
+            0.5 * (plus - minus),
+            energy - state.integrals().total_kinetic_energy,
         )
     )
     real_energy_roots = [
@@ -873,607 +849,66 @@ def _constrained_divergence_relaxation_once(
         if np.isfinite(value) and abs(value.imag) <= 1e-10
     ]
     if not real_energy_roots:
-        raise DivergenceRelaxationError(
+        return _Rejection(
+            "kinetic-energy restoration",
             "kinetic energy could not be restored in the moment null space",
-            check="quadratic restoration",
         )
     energy_multiplier = min(real_energy_roots, key=abs)
-    scalar_restored_enstrophy = (
-        values[1, 0] + linear[1, 0] * energy_multiplier + diagonal[1, 0] * energy_multiplier**2
-    )
-    targets = np.array(
-        [
-            before_integrals.total_kinetic_energy,
-            (
-                before_integrals.total_enstrophy
-                if reference_scales is not None
-                else scalar_restored_enstrophy
-            ),
-        ],
-        dtype=np.float64,
-    )
-    scales = np.maximum(np.abs(targets), np.finfo(float).tiny)
+    relaxed = vortex_strength + (raw_correction + energy_multiplier * energy_direction)
 
-    def quadratic_errors(multipliers: np.ndarray) -> np.ndarray:
-        first, second = multipliers
-        restored = (
-            values[:, 0]
-            + linear @ multipliers
-            + diagonal[:, 0] * first * first
-            + 2.0 * cross * first * second
-            + diagonal[:, 1] * second * second
-        )
-        return (restored - targets) / scales
-
-    def quadratic_jacobian(multipliers: np.ndarray) -> np.ndarray:
-        first, second = multipliers
-        return (
-            np.stack(
-                (
-                    linear[:, 0] + 2.0 * diagonal[:, 0] * first + 2.0 * cross * second,
-                    linear[:, 1] + 2.0 * cross * first + 2.0 * diagonal[:, 1] * second,
-                ),
-                axis=1,
-            )
-            / scales[:, None]
-        )
-
-    initial_multipliers = (
-        np.linalg.lstsq(
-            linear / scales[:, None],
-            (targets - values[:, 0]) / scales,
-            rcond=1e-12,
-        )[0]
-        if reference_scales is not None
-        else np.array([energy_multiplier, 0.0])
-    )
-    restoration = root(
-        quadratic_errors,
-        initial_multipliers,
-        jac=quadratic_jacobian,
-        method="hybr",
-    )
-    if not restoration.success or not np.isfinite(restoration.x).all():
-        raise DivergenceRelaxationError(
-            "kinetic energy and enstrophy could not be restored in the moment null space",
-            check="quadratic restoration",
-        )
-    invariant_correction = (
-        restoration.x[0] * energy_direction + restoration.x[1] * enstrophy_direction
-    )
-    correction = raw_correction + invariant_correction
-    relaxed = vortex_strength + correction
-    after_integrals = gaussian_fourier_integrals(
-        position,
+    audit = _audit(
+        state,
         relaxed,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
+        config,
+        target_moments=target_moments,
+        restoration_scale=restoration_scale,
+        residual_limit=residual_limit,
     )
-
-    after_moments = gaussian_particle_moments(
-        position, relaxed, core_radius, slip_slab=slip_slab is not None
-    )
-    vortex_strength_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
-    linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
-    angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
-    vortex_strength_error = float(np.linalg.norm(after_moments[0] - achieved_total))
-    linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
-    angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
-    vortex_strength_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
-    linear_impulse_reference_error = float(np.linalg.norm(after_moments[2] - target_impulse))
-    angular_impulse_reference_error = float(np.linalg.norm(after_moments[3] - target_angular))
-    variation_change_relative = (after_moments[1] - before_moments[1]) / max(
-        before_moments[1], np.finfo(float).tiny
-    )
-    total_kinetic_energy_change_relative = (
-        after_integrals.total_kinetic_energy - before_integrals.total_kinetic_energy
-    ) / max(abs(before_integrals.total_kinetic_energy), np.finfo(float).tiny)
-    total_enstrophy_change_relative = (
-        after_integrals.total_enstrophy - before_integrals.total_enstrophy
-    ) / max(abs(before_integrals.total_enstrophy), np.finfo(float).tiny)
-    helicity_scale = np.sqrt(
-        max(
-            2.0
-            * abs(before_integrals.total_kinetic_energy)
-            * abs(before_integrals.total_enstrophy),
-            np.finfo(float).tiny,
-        )
-    )
-    total_helicity_change_relative = (
-        after_integrals.total_helicity - before_integrals.total_helicity
-    ) / helicity_scale
-    previous_energy_change = (
-        after_integrals.previous_order_total_kinetic_energy
-        - before_integrals.previous_order_total_kinetic_energy
-    ) / max(
-        abs(before_integrals.previous_order_total_kinetic_energy),
-        np.finfo(float).tiny,
-    )
-    previous_enstrophy_change = (
-        after_integrals.previous_order_total_enstrophy
-        - before_integrals.previous_order_total_enstrophy
-    ) / max(
-        abs(before_integrals.previous_order_total_enstrophy),
-        np.finfo(float).tiny,
-    )
-    previous_helicity_scale = np.sqrt(
-        max(
-            2.0
-            * abs(before_integrals.previous_order_total_kinetic_energy)
-            * abs(before_integrals.previous_order_total_enstrophy),
-            np.finfo(float).tiny,
-        )
-    )
-    previous_helicity_change = (
-        after_integrals.previous_order_total_helicity
-        - before_integrals.previous_order_total_helicity
-    ) / previous_helicity_scale
-    total_kinetic_energy_spectral_error = abs(
-        total_kinetic_energy_change_relative - previous_energy_change
-    )
-    total_enstrophy_spectral_error = abs(
-        total_enstrophy_change_relative - previous_enstrophy_change
-    )
-    total_helicity_spectral_error = abs(total_helicity_change_relative - previous_helicity_change)
-    correction_norm_relative = float(np.linalg.norm(correction) / vortex_strength_norm)
-    relaxed_residual, relaxed_grid_divergence, _ = operator.relaxation_residual(relaxed)
-    final_residual_ratio = float(np.linalg.norm(relaxed_residual) / initial_residual_norm)
-    quadratic_restoration_fraction = float(
-        np.linalg.norm(invariant_correction)
-        / max(np.linalg.norm(raw_correction), np.finfo(float).tiny)
-    )
-
-    moment_scale = max(before_moments[1], np.finfo(float).tiny)
-    impulse_scale = max(
-        0.5
-        * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum(dtype=np.float64)),
-        np.finfo(float).tiny,
-    )
-    angular_terms = (
-        np.cross(position, np.cross(position, vortex_strength)) / 3.0
-        - core_radius[:, None] ** 2 * vortex_strength / 3.0
-    )
-    angular_scale = max(
-        float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
-        np.finfo(float).tiny,
-    )
-    reference_checks = (
-        (
-            (
-                "vortex_strength reference error",
-                vortex_strength_reference_error / reference_scales[0],
-                reference_tolerances[0],
-            ),
-            (
-                "linear-impulse reference error",
-                linear_impulse_reference_error / reference_scales[1],
-                reference_tolerances[1],
-            ),
-            (
-                "angular-impulse reference error",
-                angular_impulse_reference_error / reference_scales[2],
-                reference_tolerances[2],
-            ),
-        )
-        if reference_scales is not None
-        else ()
-    )
-    moment_tolerance = 4096.0 * np.finfo(float).eps
-    moment_checks = (
-        ("vector strength", vortex_strength_error, moment_scale),
-        ("linear impulse", linear_impulse_error, impulse_scale),
-        ("angular impulse", angular_impulse_error, angular_scale),
-    )
-    for name, error, scale in moment_checks:
-        if error > moment_tolerance * scale:
-            raise DivergenceRelaxationError(
-                f"divergence relaxation changed {name} by {error:.3e}, beyond "
-                f"its roundoff allowance {moment_tolerance * scale:.3e}"
-            )
-    checks = reference_checks + (
-        ("correction norm", correction_norm_relative, max_correction_norm),
-        ("residual ratio", final_residual_ratio, max_residual_ratio),
-        (
-            "kinetic-energy transfer",
-            abs(total_kinetic_energy_change_relative),
-            total_kinetic_energy_tolerance,
-        ),
-        ("enstrophy transfer", abs(total_enstrophy_change_relative), total_enstrophy_tolerance),
-        ("helicity transfer", abs(total_helicity_change_relative), total_helicity_tolerance),
-        ("total-variation transfer", abs(variation_change_relative), variation_tolerance),
-        (
-            "kinetic-energy spectral convergence",
-            total_kinetic_energy_spectral_error,
-            spectral_convergence_fraction * total_kinetic_energy_tolerance,
-        ),
-        (
-            "enstrophy spectral convergence",
-            total_enstrophy_spectral_error,
-            spectral_convergence_fraction * total_enstrophy_tolerance,
-        ),
-        (
-            "helicity spectral convergence",
-            total_helicity_spectral_error,
-            spectral_convergence_fraction * total_helicity_tolerance,
-        ),
-    )
-    for name, value, limit in checks:
-        if not np.isfinite(value) or value > limit:
-            raise DivergenceRelaxationError(
-                f"divergence-relaxation {name} {value:.3e} exceeds the admissible {limit:.3e}",
-                check=name,
-            )
+    if isinstance(audit, _Rejection):
+        return audit
     return DivergenceRelaxationResult(
         vortex_strength=relaxed,
-        correction=correction,
         projection_sweeps=1,
-        iterations=iterations,
-        regularization=regularization,
-        trust_region_scale=trust_region_scale,
-        initial_residual_norm=initial_residual_norm,
-        final_residual_ratio=final_residual_ratio,
-        correction_norm_relative=correction_norm_relative,
-        quadratic_restoration_fraction=quadratic_restoration_fraction,
-        reference_restoration_scale=restoration_scale,
-        vortex_strength_restored=vortex_strength_restored,
-        linear_impulse_restored=linear_impulse_restored,
-        angular_impulse_restored=angular_impulse_restored,
-        vortex_strength_reference_error=vortex_strength_reference_error,
-        linear_impulse_reference_error=linear_impulse_reference_error,
-        angular_impulse_reference_error=angular_impulse_reference_error,
-        vortex_strength_error=vortex_strength_error,
-        linear_impulse_error=linear_impulse_error,
-        angular_impulse_error=angular_impulse_error,
-        total_kinetic_energy_change_relative=total_kinetic_energy_change_relative,
-        total_enstrophy_change_relative=total_enstrophy_change_relative,
-        total_helicity_change_relative=total_helicity_change_relative,
-        total_kinetic_energy_spectral_error=total_kinetic_energy_spectral_error,
-        total_enstrophy_spectral_error=total_enstrophy_spectral_error,
-        total_helicity_spectral_error=total_helicity_spectral_error,
-        grid_divergence_before=grid_divergence_before,
-        grid_divergence_after=relaxed_grid_divergence,
+        final_residual_ratio=audit[0],
+        correction_norm_relative=audit[1],
     )
 
 
-def _constrained_divergence_relaxation_sweep(
-    position: np.ndarray,
-    vortex_strength: np.ndarray,
-    core_radius: np.ndarray,
-    particle_volume: np.ndarray,
+def _sweep(
+    state: _SweepState,
+    config: DivergenceRelaxationConfig,
     *,
-    grid_spacing: float,
-    regularization: float = 0.1,
-    solver_relative_tolerance: float = 1e-5,
-    max_iterations: int = 30,
-    max_correction_norm: float = 2e-2,
-    max_residual_ratio: float = 0.9,
-    total_kinetic_energy_tolerance: float = 1e-6,
-    total_enstrophy_tolerance: float = 1e-4,
-    total_helicity_tolerance: float = 1e-4,
-    variation_tolerance: float = 1e-3,
-    spectral_convergence_fraction: float = 0.1,
-    reference_scales: tuple[float, float, float] | None = None,
-    reference_tolerances: tuple[float, float, float] = (1e-3, 1e-2, 1e-2),
-    max_line_search_steps: int = 8,
-    initial_correction_scale: float = 1.0,
-    target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
-    slip_slab: tuple[float, float] | None = None,
-) -> DivergenceRelaxationResult:
-    """Return one monotone projection sweep, backtracking its amplitude if needed."""
-
-    if max_line_search_steps < 1:
-        raise ValueError("max_line_search_steps must be at least one")
-    if not 0.0 < initial_correction_scale <= 1.0:
-        raise ValueError("initial_correction_scale must lie in (0, 1]")
-    scalable_checks = {
-        "correction norm",
-        "kinetic-energy transfer",
-        "enstrophy transfer",
-        "helicity transfer",
-        "total-variation transfer",
-        "kinetic-energy spectral convergence",
-        "enstrophy spectral convergence",
-        "helicity spectral convergence",
-        "quadratic restoration",
-    }
-    last_error: DivergenceRelaxationError | None = None
-    for restoration_attempt in range(max_line_search_steps):
-        for divergence_attempt in range(max_line_search_steps):
-            try:
-                return _constrained_divergence_relaxation_once(
-                    position,
-                    vortex_strength,
-                    core_radius,
-                    particle_volume,
-                    grid_spacing=grid_spacing,
-                    regularization=regularization,
-                    solver_relative_tolerance=solver_relative_tolerance,
-                    max_iterations=max_iterations,
-                    max_correction_norm=max_correction_norm,
-                    max_residual_ratio=max_residual_ratio,
-                    total_kinetic_energy_tolerance=total_kinetic_energy_tolerance,
-                    total_enstrophy_tolerance=total_enstrophy_tolerance,
-                    total_helicity_tolerance=total_helicity_tolerance,
-                    variation_tolerance=variation_tolerance,
-                    spectral_convergence_fraction=spectral_convergence_fraction,
-                    reference_scales=reference_scales,
-                    reference_tolerances=reference_tolerances,
-                    correction_scale=initial_correction_scale * 0.5**divergence_attempt,
-                    restoration_scale=0.5**restoration_attempt,
-                    target_moments=target_moments,
-                    slip_slab=slip_slab,
-                )
-            except DivergenceRelaxationError as error:
-                if error.check == "residual ratio":
-                    last_error = error
-                    break
-                if error.check not in scalable_checks:
-                    raise
-                last_error = error
-                if str(error).startswith("reference-moment restoration alone"):
-                    break
-    assert last_error is not None
-    raise DivergenceRelaxationError(
-        "divergence-relaxation line search exhausted its physics-admissible "
-        f"amplitudes; last rejection: {last_error}",
-        check=last_error.check,
-    )
-
-
-def _combine_projection_sweeps(
-    position: np.ndarray,
-    vortex_strength: np.ndarray,
-    core_radius: np.ndarray,
-    particle_volume: np.ndarray,
-    sweeps: list[DivergenceRelaxationResult],
-    *,
-    grid_spacing: float,
-    regularization: float,
-    max_correction_norm: float,
-    max_residual_ratio: float,
-    total_kinetic_energy_tolerance: float,
-    total_enstrophy_tolerance: float,
-    total_helicity_tolerance: float,
-    variation_tolerance: float,
-    spectral_convergence_fraction: float,
-    reference_scales: tuple[float, float, float] | None,
-    reference_tolerances: tuple[float, float, float],
     target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
-    slip_slab: tuple[float, float] | None = None,
-) -> DivergenceRelaxationResult:
-    """Audit several monotone sweeps as one original-to-final state update."""
+    residual_limit: float,
+    initial_correction_scale: float,
+) -> tuple[DivergenceRelaxationResult, float] | _Rejection:
+    """One projection sweep, halving its moment restoration and then its amplitude.
 
-    relaxed = sweeps[-1].vortex_strength
-    correction = relaxed - vortex_strength
-    before_moments = gaussian_particle_moments(
-        position, vortex_strength, core_radius, slip_slab=slip_slab is not None
-    )
-    after_moments = gaussian_particle_moments(
-        position, relaxed, core_radius, slip_slab=slip_slab is not None
-    )
-    if target_moments is None:
-        target_total = before_moments[0]
-        target_impulse = before_moments[2]
-        target_angular = before_moments[3]
-    else:
-        target_total, target_impulse, target_angular = (
-            np.asarray(value, dtype=np.float64) for value in target_moments
-        )
-
-    unrestored_fraction = float(
-        np.prod([1.0 - sweep.reference_restoration_scale for sweep in sweeps])
-    )
-    restoration_scale = 1.0 - unrestored_fraction
-    achieved_total = before_moments[0] + restoration_scale * (target_total - before_moments[0])
-    achieved_impulse = before_moments[2] + restoration_scale * (target_impulse - before_moments[2])
-    achieved_angular = before_moments[3] + restoration_scale * (target_angular - before_moments[3])
-    vortex_strength_restored = float(np.linalg.norm(achieved_total - before_moments[0]))
-    linear_impulse_restored = float(np.linalg.norm(achieved_impulse - before_moments[2]))
-    angular_impulse_restored = float(np.linalg.norm(achieved_angular - before_moments[3]))
-    vortex_strength_error = float(np.linalg.norm(after_moments[0] - achieved_total))
-    linear_impulse_error = float(np.linalg.norm(after_moments[2] - achieved_impulse))
-    angular_impulse_error = float(np.linalg.norm(after_moments[3] - achieved_angular))
-    vortex_strength_reference_error = float(np.linalg.norm(after_moments[0] - target_total))
-    linear_impulse_reference_error = float(np.linalg.norm(after_moments[2] - target_impulse))
-    angular_impulse_reference_error = float(np.linalg.norm(after_moments[3] - target_angular))
-    variation_change_relative = (after_moments[1] - before_moments[1]) / max(
-        before_moments[1], np.finfo(float).tiny
-    )
-
-    before_integrals = gaussian_fourier_integrals(
-        position,
-        vortex_strength,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    after_integrals = gaussian_fourier_integrals(
-        position,
-        relaxed,
-        core_radius,
-        particle_volume,
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    total_kinetic_energy_change_relative = (
-        after_integrals.total_kinetic_energy - before_integrals.total_kinetic_energy
-    ) / max(abs(before_integrals.total_kinetic_energy), np.finfo(float).tiny)
-    total_enstrophy_change_relative = (
-        after_integrals.total_enstrophy - before_integrals.total_enstrophy
-    ) / max(abs(before_integrals.total_enstrophy), np.finfo(float).tiny)
-    helicity_scale = np.sqrt(
-        max(
-            2.0
-            * abs(before_integrals.total_kinetic_energy)
-            * abs(before_integrals.total_enstrophy),
-            np.finfo(float).tiny,
-        )
-    )
-    total_helicity_change_relative = (
-        after_integrals.total_helicity - before_integrals.total_helicity
-    ) / helicity_scale
-    previous_energy_change = (
-        after_integrals.previous_order_total_kinetic_energy
-        - before_integrals.previous_order_total_kinetic_energy
-    ) / max(abs(before_integrals.previous_order_total_kinetic_energy), np.finfo(float).tiny)
-    previous_enstrophy_change = (
-        after_integrals.previous_order_total_enstrophy
-        - before_integrals.previous_order_total_enstrophy
-    ) / max(abs(before_integrals.previous_order_total_enstrophy), np.finfo(float).tiny)
-    previous_helicity_scale = np.sqrt(
-        max(
-            2.0
-            * abs(before_integrals.previous_order_total_kinetic_energy)
-            * abs(before_integrals.previous_order_total_enstrophy),
-            np.finfo(float).tiny,
-        )
-    )
-    previous_helicity_change = (
-        after_integrals.previous_order_total_helicity
-        - before_integrals.previous_order_total_helicity
-    ) / previous_helicity_scale
-    total_kinetic_energy_spectral_error = abs(
-        total_kinetic_energy_change_relative - previous_energy_change
-    )
-    total_enstrophy_spectral_error = abs(
-        total_enstrophy_change_relative - previous_enstrophy_change
-    )
-    total_helicity_spectral_error = abs(total_helicity_change_relative - previous_helicity_change)
-
-    vortex_strength_norm = max(float(np.linalg.norm(vortex_strength)), np.finfo(float).tiny)
-    correction_norm_relative = float(np.linalg.norm(correction) / vortex_strength_norm)
-    operator = GaussianParticleGridOperator(
-        position,
-        core_radius,
-        np.linalg.norm(vortex_strength, axis=1),
-        spacing=grid_spacing,
-        slip_slab=slip_slab,
-    )
-    initial_residual, grid_divergence_before, _ = operator.relaxation_residual(vortex_strength)
-    final_residual, grid_divergence_after, _ = operator.relaxation_residual(relaxed)
-    initial_residual_norm = float(np.linalg.norm(initial_residual))
-    final_residual_ratio = (
-        float(np.linalg.norm(final_residual) / initial_residual_norm)
-        if initial_residual_norm > np.finfo(float).tiny
-        else 0.0
-    )
-
-    moment_scale = max(before_moments[1], np.finfo(float).tiny)
-    impulse_scale = max(
-        0.5
-        * float(np.linalg.norm(np.cross(position, vortex_strength), axis=1).sum(dtype=np.float64)),
-        np.finfo(float).tiny,
-    )
-    angular_terms = (
-        np.cross(position, np.cross(position, vortex_strength)) / 3.0
-        - core_radius[:, None] ** 2 * vortex_strength / 3.0
-    )
-    angular_scale = max(
-        float(np.linalg.norm(angular_terms, axis=1).sum(dtype=np.float64)),
-        np.finfo(float).tiny,
-    )
-    moment_tolerance = 4096.0 * np.finfo(float).eps
-    for name, error, scale in (
-        ("vector strength", vortex_strength_error, moment_scale),
-        ("linear impulse", linear_impulse_error, impulse_scale),
-        ("angular impulse", angular_impulse_error, angular_scale),
-    ):
-        if error > moment_tolerance * scale:
-            raise DivergenceRelaxationError(
-                f"iterated divergence relaxation changed {name} by {error:.3e}, beyond "
-                f"its roundoff allowance {moment_tolerance * scale:.3e}"
+    Returns the accepted proposal with its moment-restoration fraction, or the
+    last rejection once every amplitude failed.
+    """
+    last: _Rejection | None = None
+    for restoration_index in range(_MAX_LINE_SEARCH_STEPS):
+        for divergence_index in range(_MAX_LINE_SEARCH_STEPS):
+            outcome = _propose(
+                state,
+                config,
+                target_moments=target_moments,
+                restoration_index=restoration_index,
+                correction_scale=initial_correction_scale * 0.5**divergence_index,
+                residual_limit=residual_limit,
             )
-
-    reference_checks = (
-        (
-            (
-                "vortex_strength reference error",
-                vortex_strength_reference_error / reference_scales[0],
-                reference_tolerances[0],
-            ),
-            (
-                "linear-impulse reference error",
-                linear_impulse_reference_error / reference_scales[1],
-                reference_tolerances[1],
-            ),
-            (
-                "angular-impulse reference error",
-                angular_impulse_reference_error / reference_scales[2],
-                reference_tolerances[2],
-            ),
-        )
-        if reference_scales is not None
-        else ()
-    )
-    checks = reference_checks + (
-        ("correction norm", correction_norm_relative, max_correction_norm),
-        ("residual ratio", final_residual_ratio, max_residual_ratio),
-        (
-            "kinetic-energy transfer",
-            abs(total_kinetic_energy_change_relative),
-            total_kinetic_energy_tolerance,
-        ),
-        ("enstrophy transfer", abs(total_enstrophy_change_relative), total_enstrophy_tolerance),
-        ("helicity transfer", abs(total_helicity_change_relative), total_helicity_tolerance),
-        ("total-variation transfer", abs(variation_change_relative), variation_tolerance),
-        (
-            "kinetic-energy spectral convergence",
-            total_kinetic_energy_spectral_error,
-            spectral_convergence_fraction * total_kinetic_energy_tolerance,
-        ),
-        (
-            "enstrophy spectral convergence",
-            total_enstrophy_spectral_error,
-            spectral_convergence_fraction * total_enstrophy_tolerance,
-        ),
-        (
-            "helicity spectral convergence",
-            total_helicity_spectral_error,
-            spectral_convergence_fraction * total_helicity_tolerance,
-        ),
-    )
-    for name, value, limit in checks:
-        if not np.isfinite(value) or value > limit:
-            raise DivergenceRelaxationError(
-                f"iterated divergence-relaxation {name} {value:.3e} "
-                f"exceeds the admissible {limit:.3e}",
-                check=name,
-            )
-
-    return DivergenceRelaxationResult(
-        vortex_strength=relaxed,
-        correction=correction,
-        projection_sweeps=len(sweeps),
-        iterations=sum(sweep.iterations for sweep in sweeps),
-        regularization=regularization,
-        trust_region_scale=min(sweep.trust_region_scale for sweep in sweeps),
-        initial_residual_norm=initial_residual_norm,
-        final_residual_ratio=final_residual_ratio,
-        correction_norm_relative=correction_norm_relative,
-        quadratic_restoration_fraction=max(
-            sweep.quadratic_restoration_fraction for sweep in sweeps
-        ),
-        reference_restoration_scale=restoration_scale,
-        vortex_strength_restored=vortex_strength_restored,
-        linear_impulse_restored=linear_impulse_restored,
-        angular_impulse_restored=angular_impulse_restored,
-        vortex_strength_reference_error=vortex_strength_reference_error,
-        linear_impulse_reference_error=linear_impulse_reference_error,
-        angular_impulse_reference_error=angular_impulse_reference_error,
-        vortex_strength_error=vortex_strength_error,
-        linear_impulse_error=linear_impulse_error,
-        angular_impulse_error=angular_impulse_error,
-        total_kinetic_energy_change_relative=total_kinetic_energy_change_relative,
-        total_enstrophy_change_relative=total_enstrophy_change_relative,
-        total_helicity_change_relative=total_helicity_change_relative,
-        total_kinetic_energy_spectral_error=total_kinetic_energy_spectral_error,
-        total_enstrophy_spectral_error=total_enstrophy_spectral_error,
-        total_helicity_spectral_error=total_helicity_spectral_error,
-        grid_divergence_before=grid_divergence_before,
-        grid_divergence_after=grid_divergence_after,
+            if not isinstance(outcome, _Rejection):
+                return outcome, 0.5**restoration_index
+            last = outcome
+            # Only a smaller moment restoration can help these two.
+            if outcome.check in ("residual ratio", "moment restoration"):
+                break
+    assert last is not None
+    return _Rejection(
+        last.check,
+        "divergence-relaxation line search exhausted its physics-admissible "
+        f"amplitudes; last rejection: {last.message}",
     )
 
 
@@ -1482,119 +917,106 @@ def constrained_divergence_relaxation(
     vortex_strength: np.ndarray,
     core_radius: np.ndarray,
     particle_volume: np.ndarray,
+    config: DivergenceRelaxationConfig,
     *,
-    grid_spacing: float,
-    regularization: float = 0.1,
-    solver_relative_tolerance: float = 1e-5,
-    max_iterations: int = 30,
-    max_correction_norm: float = 2e-2,
-    max_residual_ratio: float = 0.9,
-    total_kinetic_energy_tolerance: float = 1e-6,
-    total_enstrophy_tolerance: float = 1e-4,
-    total_helicity_tolerance: float = 1e-4,
-    variation_tolerance: float = 1e-3,
-    spectral_convergence_fraction: float = 0.1,
-    reference_scales: tuple[float, float, float] | None = None,
-    reference_tolerances: tuple[float, float, float] = (1e-3, 1e-2, 1e-2),
-    max_line_search_steps: int = 8,
-    max_projection_sweeps: int = 3,
     target_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
     slip_slab: tuple[float, float] | None = None,
 ) -> DivergenceRelaxationResult:
-    """Return an iterated Helmholtz projection with physical error checks."""
+    """Return an iterated Helmholtz projection with physical error checks.
 
-    if max_projection_sweeps < 1:
-        raise ValueError("max_projection_sweeps must be at least one")
-    sweep_residual_limit = max_residual_ratio ** (1.0 / max_projection_sweeps)
+    The relaxation keeps the vector strength and both impulses of the given
+    field, or restores ``target_moments`` (vector strength, linear impulse,
+    angular impulse) when they are given. ``config`` supplies the projection
+    spacing and every limit; its schedule fields are not read.
+    """
+
+    position = np.asarray(position, dtype=np.float64)
+    vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
+    core_radius = np.asarray(core_radius, dtype=np.float64)
+    particle_volume = np.asarray(particle_volume, dtype=np.float64)
+    if position.shape != vortex_strength.shape or position.ndim != 2 or position.shape[1] != 3:
+        raise ValueError("position and vortex_strength must both have shape (N, 3)")
+    if core_radius.shape != (len(position),) or particle_volume.shape != (len(position),):
+        raise ValueError("core_radius and particle_volume must have shape (N,)")
+    if np.any(particle_volume <= 0.0):
+        raise ValueError("all particle volume must be positive")
+    if config.grid_spacing is None or config.grid_spacing <= 0.0:
+        raise ValueError("divergence relaxation requires a positive grid_spacing")
+    if target_moments is not None:
+        if len(target_moments) != 3:
+            raise ValueError(
+                "target_moments must contain vortex strength, linear impulse, and angular impulse"
+            )
+        target_moments = tuple(np.asarray(value, dtype=np.float64) for value in target_moments)
+        if any(value.shape != (3,) for value in target_moments):
+            raise ValueError("each target moment must have shape (3,)")
+        if not all(np.isfinite(value).all() for value in target_moments):
+            raise ValueError("target moments must be finite")
+
+    def sweep_state(strength: np.ndarray) -> _SweepState:
+        return _SweepState(
+            position,
+            strength,
+            core_radius,
+            particle_volume,
+            grid_spacing=config.grid_spacing,
+            slip_slab=slip_slab,
+        )
+
+    max_sweeps = config.max_projection_sweeps
+    sweep_residual_limit = config.max_residual_ratio ** (1.0 / max_sweeps)
     monotone_residual_limit = np.nextafter(1.0, 0.0)
-    amplitude_retryable_checks = {
-        "correction norm",
-        "kinetic-energy transfer",
-        "enstrophy transfer",
-        "helicity transfer",
-        "total-variation transfer",
-        "kinetic-energy spectral convergence",
-        "enstrophy spectral convergence",
-        "helicity spectral convergence",
-    }
-    working_vortex_strength = np.asarray(vortex_strength, dtype=np.float64)
-    sweeps: list[DivergenceRelaxationResult] = []
-    last_error: DivergenceRelaxationError | None = None
-    for sweep_index in range(max_projection_sweeps):
+    original = sweep_state(vortex_strength)
+    working = original
+    unrestored_fraction = 1.0
+    last: _Rejection | None = None
+    for sweep_index in range(max_sweeps):
         full_sweep: DivergenceRelaxationResult | None = None
-        for amplitude_attempt in range(max_line_search_steps):
-            try:
-                candidate = _constrained_divergence_relaxation_sweep(
-                    position,
-                    working_vortex_strength,
-                    core_radius,
-                    particle_volume,
-                    grid_spacing=grid_spacing,
-                    regularization=regularization,
-                    solver_relative_tolerance=solver_relative_tolerance,
-                    max_iterations=max_iterations,
-                    max_correction_norm=max_correction_norm,
-                    max_residual_ratio=(
-                        sweep_residual_limit if amplitude_attempt == 0 else monotone_residual_limit
-                    ),
-                    total_kinetic_energy_tolerance=total_kinetic_energy_tolerance,
-                    total_enstrophy_tolerance=total_enstrophy_tolerance,
-                    total_helicity_tolerance=total_helicity_tolerance,
-                    variation_tolerance=variation_tolerance,
-                    spectral_convergence_fraction=spectral_convergence_fraction,
-                    reference_scales=reference_scales,
-                    reference_tolerances=reference_tolerances,
-                    max_line_search_steps=max_line_search_steps,
-                    initial_correction_scale=0.5**amplitude_attempt,
-                    target_moments=target_moments,
-                    slip_slab=slip_slab,
-                )
-            except DivergenceRelaxationError as error:
-                last_error = error
-                if error.check == "residual ratio":
+        full_restoration = 1.0
+        for amplitude_index in range(_MAX_LINE_SEARCH_STEPS):
+            outcome = _sweep(
+                working,
+                config,
+                target_moments=target_moments,
+                residual_limit=(
+                    sweep_residual_limit if amplitude_index == 0 else monotone_residual_limit
+                ),
+                initial_correction_scale=0.5**amplitude_index,
+            )
+            if isinstance(outcome, _Rejection):
+                last = outcome
+                if outcome.check == "residual ratio":
                     break
-                raise
+                raise DivergenceRelaxationError(outcome.message, check=outcome.check)
+            candidate, restoration_scale = outcome
             if full_sweep is None:
-                full_sweep = candidate
-            candidate_sweeps = [*sweeps, candidate]
-            if len(candidate_sweeps) == 1:
-                if candidate.final_residual_ratio <= max_residual_ratio:
+                full_sweep, full_restoration = candidate, restoration_scale
+            if sweep_index == 0:
+                if candidate.final_residual_ratio <= config.max_residual_ratio:
                     return candidate
                 break
-            try:
-                return _combine_projection_sweeps(
-                    position,
-                    vortex_strength,
-                    core_radius,
-                    particle_volume,
-                    candidate_sweeps,
-                    grid_spacing=grid_spacing,
-                    regularization=regularization,
-                    max_correction_norm=max_correction_norm,
-                    max_residual_ratio=max_residual_ratio,
-                    total_kinetic_energy_tolerance=total_kinetic_energy_tolerance,
-                    total_enstrophy_tolerance=total_enstrophy_tolerance,
-                    total_helicity_tolerance=total_helicity_tolerance,
-                    variation_tolerance=variation_tolerance,
-                    spectral_convergence_fraction=spectral_convergence_fraction,
-                    reference_scales=reference_scales,
-                    reference_tolerances=reference_tolerances,
-                    target_moments=target_moments,
-                    slip_slab=slip_slab,
+            # Several sweeps are accepted only as one original-to-final update.
+            audit = _audit(
+                original,
+                candidate.vortex_strength,
+                config,
+                target_moments=target_moments,
+                restoration_scale=1.0 - unrestored_fraction * (1.0 - restoration_scale),
+                residual_limit=config.max_residual_ratio,
+            )
+            if not isinstance(audit, _Rejection):
+                return DivergenceRelaxationResult(
+                    vortex_strength=candidate.vortex_strength,
+                    projection_sweeps=sweep_index + 1,
+                    final_residual_ratio=audit[0],
+                    correction_norm_relative=audit[1],
                 )
-            except DivergenceRelaxationError as error:
-                last_error = error
-                if error.check == "residual ratio":
-                    break
-                if error.check not in amplitude_retryable_checks:
-                    raise
-        if full_sweep is None:
-            if last_error is not None:
-                raise last_error
-            raise AssertionError("projection sweep produced neither a candidate nor an error")
-        if sweep_index == max_projection_sweeps - 1:
-            assert last_error is not None
-            raise last_error
-        sweeps.append(full_sweep)
-        working_vortex_strength = full_sweep.vortex_strength
+            last = audit
+            if audit.check == "residual ratio":
+                break
+        if full_sweep is None or sweep_index == max_sweeps - 1:
+            assert last is not None
+            raise DivergenceRelaxationError(last.message, check=last.check)
+        unrestored_fraction *= 1.0 - full_restoration
+        working = sweep_state(full_sweep.vortex_strength)
     raise AssertionError("projection sweep loop terminated without a result")

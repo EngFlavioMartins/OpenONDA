@@ -646,11 +646,6 @@ class StabilizationManager:
         vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
         core_radius = particles.core_radius_cpu().astype(np.float64)
         particle_volume = particles.particle_volume_cpu().astype(np.float64)
-        reference_scales = (
-            cfg.vortex_strength_reference_scale,
-            cfg.linear_impulse_reference_scale,
-            cfg.angular_impulse_reference_scale,
-        )
 
         before = self.measure()
         # Each event keeps the strength and impulses of the cloud it finds: wake
@@ -661,26 +656,7 @@ class StabilizationManager:
             vortex_strength,
             core_radius,
             particle_volume,
-            grid_spacing=cfg.grid_spacing,
-            regularization=cfg.regularization,
-            solver_relative_tolerance=cfg.solver_relative_tolerance,
-            max_iterations=cfg.max_iterations,
-            max_projection_sweeps=cfg.max_projection_sweeps,
-            max_correction_norm=cfg.max_correction_norm,
-            max_residual_ratio=cfg.max_residual_ratio,
-            total_kinetic_energy_tolerance=cfg.total_kinetic_energy_tolerance,
-            total_enstrophy_tolerance=cfg.total_enstrophy_tolerance,
-            total_helicity_tolerance=cfg.total_helicity_tolerance,
-            variation_tolerance=cfg.variation_tolerance,
-            spectral_convergence_fraction=cfg.spectral_convergence_fraction,
-            reference_scales=(
-                reference_scales if all(value is not None for value in reference_scales) else None
-            ),
-            reference_tolerances=(
-                cfg.vortex_strength_reference_tolerance,
-                cfg.linear_impulse_reference_tolerance,
-                cfg.angular_impulse_reference_tolerance,
-            ),
+            cfg,
             slip_slab=ctx.slip_slab,
         )
 

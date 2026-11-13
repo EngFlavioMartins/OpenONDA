@@ -28,16 +28,6 @@ class DivergenceRelaxationConfig:
     total_kinetic_energy_tolerance, total_enstrophy_tolerance,
     total_helicity_tolerance, variation_tolerance : float
         Non-negative relative conservation/change checks for a proposal.
-    vortex_strength_reference_scale : float or None
-        Positive ``Gamma`` scale in m³/s for reference-normalized invariants.
-    linear_impulse_reference_scale : float or None
-        Positive linear-impulse scale in m⁴/s.
-    angular_impulse_reference_scale : float or None
-        Positive angular-impulse scale in m⁵/s. All three reference scales must
-        be supplied together or all omitted.
-    vortex_strength_reference_tolerance, linear_impulse_reference_tolerance,
-    angular_impulse_reference_tolerance : float
-        Non-negative dimensionless acceptance tolerances for those invariants.
     spectral_convergence_fraction : float, default=0.1
         Fraction in ``(0, 1]`` of the initial spectral residual used as the
         convergence target.
@@ -62,12 +52,6 @@ class DivergenceRelaxationConfig:
     total_enstrophy_tolerance: float = 1e-4
     total_helicity_tolerance: float = 1e-4
     variation_tolerance: float = 1e-3
-    vortex_strength_reference_scale: float | None = None
-    linear_impulse_reference_scale: float | None = None
-    angular_impulse_reference_scale: float | None = None
-    vortex_strength_reference_tolerance: float = 1e-3
-    linear_impulse_reference_tolerance: float = 1e-2
-    angular_impulse_reference_tolerance: float = 1e-2
     spectral_convergence_fraction: float = 0.1
 
     def __post_init__(self) -> None:
@@ -90,32 +74,11 @@ class DivergenceRelaxationConfig:
         if not 0.0 < self.spectral_convergence_fraction <= 1.0:
             raise ValueError("spectral_convergence_fraction must lie in (0, 1]")
 
-        reference_scales = (
-            self.vortex_strength_reference_scale,
-            self.linear_impulse_reference_scale,
-            self.angular_impulse_reference_scale,
-        )
-        for name, value in (
-            ("vortex_strength_reference_scale", reference_scales[0]),
-            ("linear_impulse_reference_scale", reference_scales[1]),
-            ("angular_impulse_reference_scale", reference_scales[2]),
-        ):
-            if value is not None and value <= 0.0:
-                raise ValueError(f"{name} must be positive when provided")
-
-        if any(value is not None for value in reference_scales) and not all(
-            value is not None for value in reference_scales
-        ):
-            raise ValueError("all three reference scales must be provided together")
-
         for name in (
             "total_kinetic_energy_tolerance",
             "total_enstrophy_tolerance",
             "total_helicity_tolerance",
             "variation_tolerance",
-            "vortex_strength_reference_tolerance",
-            "linear_impulse_reference_tolerance",
-            "angular_impulse_reference_tolerance",
         ):
             if getattr(self, name) < 0.0:
                 raise ValueError(f"{name} must be non-negative")

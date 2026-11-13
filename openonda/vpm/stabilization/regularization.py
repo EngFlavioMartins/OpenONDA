@@ -117,6 +117,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     Returns ``None`` when the resolution_metrics triggers are not met and nothing was done.
     """
 
+    from ..config.divergence_relaxation import DivergenceRelaxationConfig
     from .divergence_relaxation import (
         _MomentNullspace,
         constrained_divergence_relaxation,
@@ -471,16 +472,17 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                 uploaded.astype(np.float64),
                 new_core_radius,
                 new_particle_volume,
-                grid_spacing=spacing,
-                max_correction_norm=cfg.regularization_projection_max_correction,
-                max_residual_ratio=0.9,
-                total_kinetic_energy_tolerance=0.02,
-                total_enstrophy_tolerance=cfg.regularization_total_enstrophy_dissipation_limit,
-                total_helicity_tolerance=0.05,
-                variation_tolerance=0.05,
-                spectral_convergence_fraction=0.25,
-                reference_tolerances=(1.0e-4, 1.0e-4, 1.0e-4),
-                max_projection_sweeps=1,
+                DivergenceRelaxationConfig(
+                    grid_spacing=spacing,
+                    max_projection_sweeps=1,
+                    max_correction_norm=cfg.regularization_projection_max_correction,
+                    max_residual_ratio=0.9,
+                    total_kinetic_energy_tolerance=0.02,
+                    total_enstrophy_tolerance=cfg.regularization_total_enstrophy_dissipation_limit,
+                    total_helicity_tolerance=0.05,
+                    variation_tolerance=0.05,
+                    spectral_convergence_fraction=0.25,
+                ),
                 target_moments=(before_moments[0], before_moments[2], before_moments[3]),
                 slip_slab=slip_slab,
             )
