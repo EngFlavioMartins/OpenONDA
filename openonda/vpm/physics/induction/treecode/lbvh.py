@@ -213,6 +213,9 @@ class TaichiTreecode:
 
         # Multipole moments
         self.node_net_vortex_strength = fields.vector(3, dtype=ti.f32, shape=max_nodes)
+        # Sum of the source strength magnitudes, the scale against which a
+        # node's net strength counts as cancelled.
+        self.node_strength_magnitude = fields.scalar(dtype=ti.f32, shape=max_nodes)
         self.node_com = fields.vector(3, dtype=ti.f32, shape=max_nodes)
         self.node_avg_radius = fields.scalar(dtype=ti.f32, shape=max_nodes)
         self.node_min_radius = fields.scalar(dtype=ti.f32, shape=max_nodes)
@@ -761,6 +764,9 @@ class TaichiTreecode:
                 self.sorted_indices[0] = 0
                 self.leaf_particles[0] = 0
                 self.node_net_vortex_strength[0] = self.vortex_strength[0]
+                self.node_strength_magnitude[0] = float(
+                    np.linalg.norm(self.vortex_strength[0].to_numpy())
+                )
                 self.node_com[0] = self.position[0]
                 # NB: Python scope — ti.Matrix.zero is Taichi-scope only here.
                 zero33 = np.zeros((3, 3), dtype=np.float32)
@@ -830,13 +836,13 @@ class TaichiTreecode:
     def _compute_aabb_kernel(self, N: ti.i32):
         """Parallel min/max reduction over particle position.
 
-        The static init unrolls to three scalar stores that run before the
-        parallel ``range(N)`` loop; the per-particle atomics then reduce
-        concurrently across threads (no ``serialize`` needed).
+        The box starts at particle 0, in a serial store that runs before the
+        parallel ``range(N)`` loop, so no coordinate bound is assumed; the
+        per-particle atomics then reduce concurrently across threads (no
+        ``serialize`` needed).
         """
-        for k in ti.static(range(3)):
-            self._aabb_min[None][k] = 1e10
-            self._aabb_max[None][k] = -1e10
+        self._aabb_min[None] = self.position[0]
+        self._aabb_max[None] = self.position[0]
         for i in range(N):
             p = self.position[i]
             for k in ti.static(range(3)):
@@ -866,7 +872,8 @@ class TaichiTreecode:
         inv_range = ti.Vector([0.0, 0.0, 0.0])
         for k in ti.static(range(3)):
             span = aabb_max[None][k] - aabb_min[None][k]
-            inv_range[k] = 1023.0 / (span + 1e-30)
+            if span > 0.0:
+                inv_range[k] = 1023.0 / span
 
         for i in range(N):
             p = self.position[i]
@@ -907,6 +914,7 @@ class TaichiTreecode:
         for j in range(N):
             p = self.sorted_indices[j]
             self.node_net_vortex_strength[j] = self.vortex_strength[p]
+            self.node_strength_magnitude[j] = self.vortex_strength[p].norm()
             self.node_avg_radius[j] = self.core_radius[p]
             self.node_min_radius[j] = self.core_radius[p]
             self.node_max_radius[j] = self.core_radius[p]
@@ -975,6 +983,9 @@ class TaichiTreecode:
                 self.node_net_vortex_strength[left] + self.node_net_vortex_strength[right]
             )
             self.node_net_vortex_strength[idx] = net_vortex_strength
+            self.node_strength_magnitude[idx] = (
+                self.node_strength_magnitude[left] + self.node_strength_magnitude[right]
+            )
 
             mag_l = ti.sqrt(
                 self.node_net_vortex_strength[left].dot(self.node_net_vortex_strength[left])
@@ -984,7 +995,7 @@ class TaichiTreecode:
             )
             total_mag = mag_l + mag_r
             com = ti.Vector([0.0, 0.0, 0.0])
-            if total_mag > 1e-15:
+            if total_mag > 0.0:
                 com = (self.node_com[left] * mag_l + self.node_com[right] * mag_r) / total_mag
             else:
                 com = (self.node_com[left] + self.node_com[right]) * 0.5
@@ -1053,7 +1064,7 @@ class TaichiTreecode:
             centre = (aabb_min + aabb_max) * 0.5
             self.node_centre[idx] = centre
             half_size = ti.sqrt((aabb_max - aabb_min).dot(aabb_max - aabb_min)) * 0.5
-            self.node_half_size[idx] = max(half_size, 1e-8)
+            self.node_half_size[idx] = half_size
 
     # KERNEL FUNCTIONS (qf, zeta, erf, skew)
 
@@ -1454,9 +1465,9 @@ class TaichiTreecode:
         # source's regularization differs from the singular kernel by less
         # than f32 accuracy, regardless of the spread in core radii. Rejecting
         # these distant nodes makes core-spreading wakes effectively quadratic.
-        radius_scale = ti.max(average, 1e-12)
+        # Both tests are relative, so they do not depend on the units of the case.
         radius_spread = maximum - minimum
-        nearly_cancelled = net_strength.dot(net_strength) <= 1e-24
+        nearly_cancelled = net_strength.norm() <= 1e-6 * self.node_strength_magnitude[node]
         source_extent = (
             self.node_half_size[node] + (self.node_com[node] - self.node_centre[node]).norm()
         )
@@ -1464,9 +1475,7 @@ class TaichiTreecode:
             self.regularization_tail_cutoff[None] * maximum_pair_radius
         )
         return (
-            1
-            if ((radius_spread <= 1e-5 * radius_scale or outside_tail) and not nearly_cancelled)
-            else 0
+            1 if ((radius_spread <= 1e-5 * average or outside_tail) and not nearly_cancelled) else 0
         )
 
     @ti.func
@@ -1536,7 +1545,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                r_mag > self.node_avg_radius[node]
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_admissible(
                     node, r_mag, 0.5 * (target_rad + self.node_max_radius[node])
@@ -1570,7 +1579,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                r_mag > self.node_avg_radius[node]
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_admissible(
                     node, r_mag, 0.5 * (target_rad + self.node_max_radius[node])
@@ -1603,7 +1612,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                r_mag > self.node_avg_radius[node]
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
             ):
@@ -1633,7 +1642,7 @@ class TaichiTreecode:
             r_mag = ti.sqrt(r_sq)
             node_size = 2.0 * self.node_half_size[node]
             if (
-                r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                r_mag > self.node_avg_radius[node]
                 and (node_size * node_size / r_sq) < theta_sq
                 and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
             ):
@@ -1752,7 +1761,7 @@ class TaichiTreecode:
                 r_mag = ti.sqrt(r_sq)
                 node_size = 2.0 * self.node_half_size[node]
                 if (
-                    r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                    r_mag > self.node_avg_radius[node]
                     and (node_size * node_size / r_sq) < theta_sq
                     and self._node_core_is_admissible(
                         node, r_mag, 0.5 * (target_rad + self.node_max_radius[node])
@@ -1903,7 +1912,7 @@ class TaichiTreecode:
                 r_mag = ti.sqrt(r_sq)
                 node_size = 2.0 * self.node_half_size[node]
                 if (
-                    r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                    r_mag > self.node_avg_radius[node]
                     and (node_size * node_size / r_sq) < theta_sq
                     and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
                 ):
@@ -2065,7 +2074,7 @@ class TaichiTreecode:
                 r_mag = ti.sqrt(r_sq)
                 node_size = 2.0 * self.node_half_size[node]
                 if (
-                    r_mag > ti.max(1e-8, self.node_avg_radius[node])
+                    r_mag > self.node_avg_radius[node]
                     and (node_size * node_size / r_sq) < theta_sq
                     and self._node_core_is_admissible(node, r_mag, self.node_max_radius[node]) != 0
                 ):

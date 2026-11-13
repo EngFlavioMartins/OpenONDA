@@ -1,9 +1,9 @@
 """Device-resident Cartesian FMM for coupled VPM stages.
 
-The workspace reuses the verified device LBVH for hierarchy construction only.
-Evaluation is a separate dual-tree path with P2M, M2M, M2L, L2L, L2P, and an
-exact kernel-specific near-field P2P pass. Particle state never crosses to
-NumPy during an RK stage.
+The workspace reuses the verified device LBVH for hierarchy construction and
+target queries. Particle evaluation is a separate dual-tree path with P2M,
+M2M, M2L, L2L, L2P, and an exact kernel-specific near-field P2P pass. Particle
+state never crosses to NumPy during an RK stage.
 
 The source and local expansions use a fixed p=3 Cartesian basis. The internal
 admissibility test keeps the omitted Taylor and regularisation tails in the
@@ -24,6 +24,7 @@ from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ....kernels.registry import kernel_names, treecode_kernel_names
 from ..base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
 from ..stretching import stretching_rate
+from ..treecode.evaluator import _TREECODE_MULTIPOLE_ORDER, _TREECODE_THETA
 from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode, _DeviceFields
 from .diagnostics import FMMDiagnostics
 
@@ -81,7 +82,6 @@ _ACTIVE_CELL_FRACTION = 0.25
 _CAPACITY_GROWTH = 1.25
 _MAX_PAIR_CAPACITY = (1 << 30) - 1  # A queued pair can produce two i32 entries.
 _MAX_LIST_GROWTH_RETRIES = 8
-_EPSILON_SQUARED = 1.0e-24
 _ONE_OVER_FOUR_PI = 0.07957747154594767
 _GEOMETRIC_SEPARATION_FACTOR = 3.0
 _VELOCITY_TAIL_RELATIVE_TOLERANCE = 1.0e-5
@@ -163,11 +163,15 @@ def _double_factorial(value: int) -> int:
 def _translation_tables() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build fixed analytic ``1/(4*pi*r)`` derivative metadata through order six.
 
+    The derivative of multi-index ``alpha``, of order ``k = |alpha|``, is
+    ``r**-(k + 1) * sum(coefficient * u**exponent)`` with ``u = x / r`` the unit
+    displacement. Only the power ``r**-(k + 1)`` carries the length unit.
+
     Returns
     -------
     tuple[numpy.ndarray, ...]
-        Lookup indices, term counts, coefficients, Cartesian exponents, and
-        radial powers consumed by the Taichi M2L kernels.
+        Lookup indices, term counts, coefficients, Cartesian exponents of
+        ``u``, and derivative orders consumed by the Taichi M2L kernels.
     """
     lookup = np.full(
         (_DERIVATIVE_ORDER + 1,) * 3,
@@ -177,10 +181,11 @@ def _translation_tables() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarra
     term_count = np.zeros(_DERIVATIVE_COUNT, dtype=np.int32)
     coefficient = np.zeros((_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS), dtype=np.float32)
     exponent = np.zeros((_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS, 3), dtype=np.int32)
-    radial_step = np.zeros((_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS), dtype=np.int32)
+    derivative_order = np.zeros(_DERIVATIVE_COUNT, dtype=np.int32)
     for derivative_index, alpha in enumerate(_DERIVATIVE_INDICES):
         lookup[alpha] = derivative_index
         order = sum(alpha)
+        derivative_order[derivative_index] = order
         slot = 0
         for px in range(alpha[0] // 2 + 1):
             for py in range(alpha[1] // 2 + 1):
@@ -202,10 +207,9 @@ def _translation_tables() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarra
                         * _ONE_OVER_FOUR_PI
                     )
                     exponent[derivative_index, slot] = remainder
-                    radial_step[derivative_index, slot] = order - contraction_count
                     slot += 1
         term_count[derivative_index] = slot
-    return lookup, term_count, coefficient, exponent, radial_step
+    return lookup, term_count, coefficient, exponent, derivative_order
 
 
 @ti.data_oriented
@@ -296,15 +300,17 @@ class FMMDeviceWorkspace:
         self.gradient_tail_cutoff = float(gradient_tail_cutoff)
         self.target_batch_capacity = min(max(1, int(max_evaluation_points)), _TRAVERSAL_BATCH_SIZE)
         self.kernel_name = kernel_name
+        # Target queries walk this tree with the opening angle and multipole
+        # order of TreecodeInduction, so both backends return the same target
+        # fields. Kernels without an LBVH leaf kernel use the tree as the
+        # hierarchy only; their target queries raise.
         self.tree = TaichiTreecode(
             max_n_particles=self.max_n_particles,
             max_nodes=self.max_nodes,
-            theta=0.1,
+            theta=_TREECODE_THETA,
             max_leaf_size=1,
-            # Kernels without an LBVH leaf kernel use this tree as the hierarchy
-            # only; their target queries raise.
             kernel_type=kernel_name if kernel_name in treecode_kernel_names() else "gaussian",
-            multipole_order=1,
+            multipole_order=_TREECODE_MULTIPOLE_ORDER,
             sort_particle_targets=False,
             traversal_block_dim=0,
             hierarchy_only=True,
@@ -346,10 +352,7 @@ class FMMDeviceWorkspace:
             dtype=ti.i32,
             shape=(_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS),
         )
-        self._derivative_radial_step = fields.scalar(
-            dtype=ti.i32,
-            shape=(_DERIVATIVE_COUNT, _MAX_DERIVATIVE_TERMS),
-        )
+        self._derivative_order = fields.scalar(dtype=ti.i32, shape=_DERIVATIVE_COUNT)
         self._m2l_derivative = fields.scalar(
             dtype=ti.f32,
             shape=(self.m2l_batch_size, _DERIVATIVE_COUNT),
@@ -386,12 +389,12 @@ class FMMDeviceWorkspace:
         self._coefficient_a.from_numpy(coefficient_array[:, 0])
         self._coefficient_b.from_numpy(coefficient_array[:, 1])
         self._coefficient_c.from_numpy(coefficient_array[:, 2])
-        lookup, term_count, coefficient, exponent, radial_step = _translation_tables()
+        lookup, term_count, coefficient, exponent, derivative_order = _translation_tables()
         self._derivative_lookup.from_numpy(lookup)
         self._derivative_term_count.from_numpy(term_count)
         self._derivative_coefficient.from_numpy(coefficient)
         self._derivative_exponent.from_numpy(exponent)
-        self._derivative_radial_step.from_numpy(radial_step)
+        self._derivative_order.from_numpy(derivative_order)
 
     def destroy(self) -> None:
         """Release the disposable FMM and hierarchy scratch fields."""
@@ -417,30 +420,33 @@ class FMMDeviceWorkspace:
     # Keep this description outside the Taichi function body. Taichi 1.7.4
     # misidentifies this bound helper as nested when its first statement is a
     # docstring, which prevents the enclosing kernels from compiling.
+    # The polynomial is evaluated in the unit displacement and multiplied by
+    # r**-(k + 1) once: the largest power is r**-7, not r**-13, so f32 does not
+    # overflow for cell pairs closer than a millimetre. M2L pairs are well
+    # separated, so the displacement is never zero.
     @ti.func
     def _inverse_r_derivative(
         self,
         displacement: ti.template(),  # type: ignore[invalid-annotation]
         derivative_index: ti.i32,
     ) -> ti.f32:
-        radius_sq = displacement.dot(displacement)
-        inverse_radius = ti.rsqrt(ti.max(radius_sq, ti.cast(_EPSILON_SQUARED, ti.f32)))
-        inverse_radius_sq = inverse_radius * inverse_radius
+        inverse_radius = ti.rsqrt(displacement.dot(displacement))
+        direction = displacement * inverse_radius
         value = ti.cast(0.0, ti.f32)
         for term in ti.static(range(_MAX_DERIVATIVE_TERMS)):
             if term < self._derivative_term_count[derivative_index]:
                 exponent = self._derivative_exponent[derivative_index, term]
                 monomial = (
-                    self._small_power(displacement[0], exponent[0])
-                    * self._small_power(displacement[1], exponent[1])
-                    * self._small_power(displacement[2], exponent[2])
+                    self._small_power(direction[0], exponent[0])
+                    * self._small_power(direction[1], exponent[1])
+                    * self._small_power(direction[2], exponent[2])
                 )
-                radial = inverse_radius
-                for step in ti.static(range(_DERIVATIVE_ORDER)):
-                    if step < self._derivative_radial_step[derivative_index, term]:
-                        radial *= inverse_radius_sq
-                value += self._derivative_coefficient[derivative_index, term] * monomial * radial
-        return value
+                value += self._derivative_coefficient[derivative_index, term] * monomial
+        radial = inverse_radius
+        for step in ti.static(range(_DERIVATIVE_ORDER)):
+            if step < self._derivative_order[derivative_index]:
+                radial *= inverse_radius
+        return value * radial
 
     @ti.func
     def _well_separated(self, target: ti.i32, source: ti.i32) -> ti.i32:
@@ -1262,9 +1268,24 @@ class FMMInduction:
 
     Supported production combinations are CPU, Vulkan, Metal, CUDA, and AUTO
     resolution; f32 precision; and Gaussian, high-order Gaussian, super-Gaussian, or
-    Winckelmans radial kernels. Arbitrary target queries reuse the source LBVH
-    with monopoles at theta=0.1 and exact regularized near interactions on the
+    Winckelmans radial kernels. Arbitrary target queries walk the source LBVH
+    with third-order multipoles at an opening angle of 0.4, the setting of
+    ``TreecodeInduction``, and exact regularized near interactions on the
     device, for the Gaussian and Winckelmans kernels only.
+
+    The expansion order (p=3) and the separation factor (a cell pair is
+    expanded when its centre distance exceeds three times the sum of the cell
+    radii) are fixed. Measured on CPU in f32 against float64 direct summation
+    on a 9,528-particle lattice vortex ring (ring radius R, Gaussian core of
+    0.1 R, spacing h = 0.05 R, core radius 1.5 h), the relative L2 errors of
+    the Gaussian kernel are 4.1e-4 for the velocity, 1.7e-3 for its gradient
+    and 1.2e-2 for the transposed stretching rate; the high-order and
+    super-Gaussian kernels give 3.6e-4, 1.4e-3 and 9.1e-3. The algebraic tail
+    of the Winckelmans kernel sends four times as many cell pairs of that cloud
+    to the exact near field as the Gaussian kernel, and its errors are 1e-5 or
+    below. Target queries in and around the ring reach 4.4e-4 for the velocity
+    and 1.6e-3 for the gradient. A qualification test holds every value within
+    a factor of two.
     """
 
     # AUTO is accepted as a request to resolve a backend at solver construction;
@@ -1544,7 +1565,9 @@ class FMMInduction:
         # traversal stack.  The unused particle stack and target outputs are
         # one-element stubs, so they are not capacity-scaled.
         source_particle_bytes = capacity * (3 + 3 + 1) * 4
-        node_metadata_bytes = node_count * (3 + 1 + 3 + 3 + 3 + 6 + 2 + 6) * 4
+        node_metadata_bytes = node_count * (3 + 1 + 3 + 1 + 3 + 3 + 6 + 2 + 6) * 4
+        # Dipole and quadrupole moments of the target walk, 144 bytes per node.
+        target_moment_bytes = node_count * (9 + 27) * 4
         sort_capacity = 1 << (capacity - 1).bit_length()
         # Leaf list, Morton codes, sorted indices and sort keys, the last two
         # padded to the power-of-two sort capacity.
@@ -1562,6 +1585,7 @@ class FMMInduction:
             + output_bytes
             + source_particle_bytes
             + node_metadata_bytes
+            + target_moment_bytes
             + sort_and_leaf_bytes
             + target_stack_bytes
             + derivative_cache_bytes
@@ -1764,10 +1788,11 @@ class FMMInduction:
 
         Notes
         -----
-        Particle stages use the p=3 FMM. Arbitrary targets reuse its source
-        LBVH with a monopole tree traversal at theta=0.1, so no particle field
-        is downloaded and no second hierarchy is built. The LBVH implements
-        the Gaussian and Winckelmans leaf kernels only.
+        Particle stages use the p=3 FMM. Arbitrary targets walk its source
+        LBVH with third-order multipoles at an opening angle of 0.4, the
+        setting of :class:`TreecodeInduction`, so no particle field is
+        downloaded and no second hierarchy is built. The LBVH implements the
+        Gaussian and Winckelmans leaf kernels only.
         """
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before target evaluation")
