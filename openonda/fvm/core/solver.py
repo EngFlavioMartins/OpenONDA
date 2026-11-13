@@ -1355,7 +1355,7 @@ class FVMSolver(CouplerInterfaceMixin):
             cell_volume = self.geo_data["cell_volume"]
             n_owned = self.parallel.n_owned if self.parallel.is_partitioned else len(cell_volume)
             local_max = (
-                float(np.max(np.abs(continuity_error[:n_owned]) / (cell_volume[:n_owned] + 1e-30)))
+                float(np.max(np.abs(continuity_error[:n_owned]) / cell_volume[:n_owned]))
                 if n_owned
                 else 0.0
             )

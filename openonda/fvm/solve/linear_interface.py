@@ -197,16 +197,13 @@ def deviation_norm_factor(A: np.ndarray | sparse.spmatrix, b: np.ndarray, x0: np
     # round-off. In that limit both terms above are O(eps), and dividing a
     # verified O(eps) residual by another O(eps) number spuriously reports an
     # O(1) failure. Keep the deviation-based normalization for resolved
-    # perturbations, but give its degenerate limit a scale-aware round-off
-    # floor. The 1e-12 factor remains far below the 1e-4--1e-6 physical solve
-    # tolerances and cannot hide the small-scale dynamics this normalization
-    # protects.
-    algebraic_scale = max(
-        float(np.linalg.norm(b)),
-        float(np.linalg.norm(reference)),
-        1.0,
-    )
-    return max(factor, 1e-12 * algebraic_scale)
+    # perturbations, but give its degenerate limit a round-off floor relative
+    # to the equation itself. The 1e-12 factor remains far below the
+    # 1e-4--1e-6 physical solve tolerances and cannot hide the small-scale
+    # dynamics this normalization protects. ``tiny`` only guards division
+    # for an all-zero system.
+    algebraic_scale = max(float(np.linalg.norm(b)), float(np.linalg.norm(reference)))
+    return max(factor, 1e-12 * algebraic_scale, np.finfo(np.float64).tiny)
 
 
 def normalized_residual_target(

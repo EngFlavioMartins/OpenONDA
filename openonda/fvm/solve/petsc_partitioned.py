@@ -413,7 +413,8 @@ class PartitionedLinearWorkspace:
             # that residual by another roundoff-sized number reports O(1).
             norm_factor = max(
                 deviation + float(reference.norm()),
-                1e-12 * max(rhs_norm_pre, reference_norm, 1.0),
+                1e-12 * max(rhs_norm_pre, reference_norm),
+                np.finfo(np.float64).tiny,
             )
         initial_residual = initial_residual_norm / norm_factor
         residual_target = max(

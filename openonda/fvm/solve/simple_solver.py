@@ -360,13 +360,17 @@ def _compute_rhie_chow_coefficients(
                  ``(n_cells, 3)`` (per component).
 
     Returns:
-        pressure_velocity_coefficient array ``(n_cells, 3)``, with a small regulariser to avoid
-        division by zero.
+        pressure_velocity_coefficient array, ``(n_cells,)`` or ``(n_cells, 3)``.
+
+    Raises:
+        ValueError: If a diagonal coefficient is not finite and positive.
     """
     diagonal = np.asarray(momentum_diagonal, dtype=np.float64)
+    if not np.all(np.isfinite(diagonal)) or np.any(diagonal <= 0.0):
+        raise ValueError("Rhie-Chow coefficients require a finite positive momentum diagonal")
     if diagonal.ndim == 1:
-        return volumes / (diagonal + 1e-10)
-    return volumes[:, np.newaxis] / (diagonal + 1e-10)
+        return volumes / diagonal
+    return volumes[:, np.newaxis] / diagonal
 
 
 def _validate_reference_density(density: float) -> float:
@@ -753,9 +757,9 @@ def _process_boundary_faces_jit(
             )
             mag_CF = (CF0 * CF0 + CF1 * CF1 + CF2 * CF2) ** 0.5
 
-            e0 = CF0 / (mag_CF + 1e-10)
-            e1 = CF1 / (mag_CF + 1e-10)
-            e2 = CF2 / (mag_CF + 1e-10)
+            e0 = CF0 / mag_CF
+            e1 = CF1 / mag_CF
+            e2 = CF2 / mag_CF
 
             (
                 owner_pressure_velocity_coefficient_x,
@@ -802,15 +806,11 @@ def _process_boundary_faces_jit(
                 k0 = Sf0 - sf_dot_e * e0
                 k1 = Sf1 - sf_dot_e * e1
                 k2 = Sf2 - sf_dot_e * e2
-                k_norm = (k0 * k0 + k1 * k1 + k2 * k2) ** 0.5
-                if k_norm > 1e-12:
-                    flux_nonortho = -(
-                        k0 * owner_pressure_velocity_coefficient_x * gp0
-                        + k1 * owner_pressure_velocity_coefficient_y * gp1
-                        + k2 * owner_pressure_velocity_coefficient_z * gp2
-                    )
-                else:
-                    flux_nonortho = 0.0
+                flux_nonortho = -(
+                    k0 * owner_pressure_velocity_coefficient_x * gp0
+                    + k1 * owner_pressure_velocity_coefficient_y * gp1
+                    + k2 * owner_pressure_velocity_coefficient_z * gp2
+                )
 
                 flux_vf = flux_vf + term_interp + term_compact + flux_nonortho
                 flux_cf_out[i] = cf
@@ -1049,7 +1049,7 @@ def _pressure_interior_flux_scalar(
         cf0 = cell_connection_vector[face, 0]
         cf1 = cell_connection_vector[face, 1]
         cf2 = cell_connection_vector[face, 2]
-        mag_cf = np.sqrt(cf0 * cf0 + cf1 * cf1 + cf2 * cf2) + 1e-12
+        mag_cf = np.sqrt(cf0 * cf0 + cf1 * cf1 + cf2 * cf2)
         edge0 = cf0 / mag_cf
         edge1 = cf1 / mag_cf
         edge2 = cf2 / mag_cf
@@ -1130,7 +1130,7 @@ def _pressure_interior_flux_vector(
         cf0 = cell_connection_vector[face, 0]
         cf1 = cell_connection_vector[face, 1]
         cf2 = cell_connection_vector[face, 2]
-        mag_cf = np.sqrt(cf0 * cf0 + cf1 * cf1 + cf2 * cf2) + 1e-12
+        mag_cf = np.sqrt(cf0 * cf0 + cf1 * cf1 + cf2 * cf2)
         edge0 = cf0 / mag_cf
         edge1 = cf1 / mag_cf
         edge2 = cf2 / mag_cf
@@ -2483,7 +2483,7 @@ class SIMPLESolver:
             volumetric_face_flux, self.mesh_data
         )
         volumes = self.geo_data["cell_volume"]
-        max_continuity_error = float(np.max(np.abs(continuity) / (volumes + 1e-30)))
+        max_continuity_error = float(np.max(np.abs(continuity) / volumes))
         pressure_update = float(
             np.max(
                 np.abs(kinematic_pressure[: self.mesh_data["n_cells"]] - pressure_before_update)

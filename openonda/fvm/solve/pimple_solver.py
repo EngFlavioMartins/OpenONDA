@@ -562,9 +562,7 @@ class PIMPLESolver(simple_solver.SIMPLESolver):
             n_owned = (
                 parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
             )
-            local_continuity = float(
-                np.max(np.abs(continuity[:n_owned]) / (volumes[:n_owned] + 1e-30))
-            )
+            local_continuity = float(np.max(np.abs(continuity[:n_owned]) / volumes[:n_owned]))
             continuity_outer = (
                 float(parallel.global_max(local_continuity))
                 if parallel is not None and parallel.is_partitioned
