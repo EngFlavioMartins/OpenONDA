@@ -208,11 +208,10 @@ class StabilizationManager:
         self.last_vorticity_growth = 0.0
         self.max_vorticity_growth = 0.0
         self.lagrangian_cfl = 0.0
-        # Refinement reference and reference state the workers need across events.  It is
-        # part of the restart state, so the backup reads and writes it.
+        # Refinement reference the workers need across events.  It is part of the
+        # restart state, so the backup reads and writes it.
         self.reference_vortex_strength: np.ndarray | None = None
         self.reference_lengths: np.ndarray | None = None
-        self.reference_moments: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
 
     # -- master criteria -------------------------------------------------------
 
@@ -415,35 +414,20 @@ class StabilizationManager:
     # -- mechanisms ------------------------------------------------------------
 
     def capture_reference_state(self) -> None:
-        """Capture the refinement reference and moment references the workers relax toward."""
+        """Capture the refinement reference the workers relax toward."""
         particles = self.ctx.particles
-        if self.reference_vortex_strength is not None and self.reference_moments is not None:
+        if self.reference_vortex_strength is not None:
             return
         if not (
             self.config.filament_refinement.enabled or self.config.divergence_relaxation.enabled
         ):
             return
 
-        from .filament_refinement import gaussian_particle_moments
-
         vortex_strength = particles.vortex_strength_cpu()
-        particle_volume = particles.particle_volume_cpu()
         magnitude = np.linalg.norm(vortex_strength, axis=1)
         floor = max(float(magnitude.max(initial=0.0)) * 1e-12, np.finfo(np.float64).tiny)
-        if self.reference_vortex_strength is None:
-            self.reference_vortex_strength = np.maximum(magnitude, floor)
-            self.reference_lengths = np.cbrt(particle_volume)
-        if particles.n_particles_total == 0:
-            return
-        moments = gaussian_particle_moments(
-            particles.position_cpu(),
-            vortex_strength,
-            particles.core_radius_cpu(),
-            slip_slab=self.ctx.slip_slab is not None,
-        )
-        self.reference_moments = tuple(
-            np.asarray(moments[index], dtype=np.float64).copy() for index in (0, 2, 3)
-        )
+        self.reference_vortex_strength = np.maximum(magnitude, floor)
+        self.reference_lengths = np.cbrt(particles.particle_volume_cpu())
 
     def update_selective_eddy_viscosity(self) -> None:
         """Add the configured selective eddy viscosity to ``effective_viscosity``."""
@@ -657,10 +641,6 @@ class StabilizationManager:
                 check="kernel compatibility",
             )
 
-        if self.reference_moments is None:
-            raise DivergenceRelaxationError(
-                "divergence relaxation requires captured reference moments"
-            )
         particles = ctx.particles
         position = particles.position_cpu().astype(np.float64)
         vortex_strength = particles.vortex_strength_cpu().astype(np.float64)
@@ -673,6 +653,9 @@ class StabilizationManager:
         )
 
         before = self.measure()
+        # Each event keeps the strength and impulses of the cloud it finds: wake
+        # shedding, coupling, retention and the outflow fringe change them between
+        # events, so no earlier state is the right target.
         result = constrained_divergence_relaxation(
             position,
             vortex_strength,
@@ -698,7 +681,6 @@ class StabilizationManager:
                 cfg.linear_impulse_reference_tolerance,
                 cfg.angular_impulse_reference_tolerance,
             ),
-            target_moments=self.reference_moments,
             slip_slab=ctx.slip_slab,
         )
 
