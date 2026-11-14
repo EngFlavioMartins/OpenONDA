@@ -1,6 +1,4 @@
-"""
-Read/write VLM surface geometry to and from disk.
-"""
+"""Read and write VLM surface geometry as JSON."""
 
 import json
 from pathlib import Path
@@ -23,7 +21,6 @@ def surface_to_dict(aircraft: Aircraft) -> dict[str, Any]:
                     "vertex_position": {k: v.tolist() for k, v in segment.vertex_position.items()},
                     "n_chordwise_panels": segment.n_chordwise_panels,
                     "n_spanwise_panels": segment.n_spanwise_panels,
-                    "airfoils": segment.airfoils,
                 }
             )
         wings.append({"uid": wing.uid, "symmetry": wing.symmetry, "segments": segments})
@@ -42,80 +39,65 @@ def surface_to_dict(aircraft: Aircraft) -> dict[str, Any]:
     }
 
 
-def save_surface(aircraft: Aircraft, filepath: str) -> str:
+def save_surface(aircraft: Aircraft, filepath: str) -> None:
+    """Write the surface geometry and reference values of ``aircraft`` as JSON.
+
+    Parameters
+    ----------
+    aircraft : Aircraft
+        Surface to save.
+    filepath : str
+        Output file; missing parent directories are created.
     """
-    Save aircraft surface geometry to JSON file.
-
-    Args:
-        aircraft: Aircraft object to save
-        filepath: Output filepath (without extension, .json will be added)
-
-    Returns:
-        str: Path to saved file
-    """
-    data = surface_to_dict(aircraft)
-
-    output_path = filepath if filepath.endswith(".json") else f"{filepath}.json"
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    output_path = Path(filepath)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump(data, f, indent=2)
-
-    return output_path
+        json.dump(surface_to_dict(aircraft), f, indent=2)
 
 
 def load_surface(filepath: str) -> Aircraft:
-    """Load an aircraft surface geometry from a JSON file.
+    """Load a surface geometry written by :func:`save_surface`.
 
     Parameters
     ----------
     filepath : str
-        Path to the surface JSON file (``.json`` extension is appended
-        automatically if not present).
+        Path to the surface JSON file.
 
     Returns
     -------
     Aircraft
-        Loaded aircraft object with wings, segments, and reference values.
+        Aircraft with its wings, segments and reference values.
 
-    Examples
-    --------
-    >>> aircraft = load_surface("aircraft.json")
-    >>> aircraft.uid
-    'my_aircraft'
+    Raises
+    ------
+    KeyError
+        If the file lacks a key that :func:`save_surface` writes.
     """
-    input_path = filepath if filepath.endswith(".json") else f"{filepath}.json"
-
-    with open(input_path) as f:
+    with open(filepath) as f:
         data = json.load(f)
 
     aircraft = Aircraft(uid=data["uid"])
-
     for wing_data in data["wings"]:
-        wing = Wing(uid=wing_data["uid"], symmetry=wing_data.get("symmetry", 1))
-
+        wing = Wing(uid=wing_data["uid"], symmetry=wing_data["symmetry"])
         for seg_data in wing_data["segments"]:
-            vertex_position = {k: np.array(v) for k, v in seg_data["vertex_position"].items()}
-            segment = WingSegment(
-                uid=seg_data["uid"],
-                vertex_position=vertex_position,
-                n_chordwise_panels=seg_data["n_chordwise_panels"],
-                n_spanwise_panels=seg_data["n_spanwise_panels"],
-                airfoils=seg_data.get("airfoils", {"inner": "flat", "outer": "flat"}),
+            wing.add_segment(
+                WingSegment(
+                    uid=seg_data["uid"],
+                    vertex_position={
+                        k: np.array(v) for k, v in seg_data["vertex_position"].items()
+                    },
+                    n_chordwise_panels=seg_data["n_chordwise_panels"],
+                    n_spanwise_panels=seg_data["n_spanwise_panels"],
+                )
             )
-            wing.add_segment(segment)
-
         aircraft.add_wing(wing)
 
-    # Restore reference values if present
-    if "refs" in data:
-        aircraft.refs = {
-            "area": data["refs"].get("area", 1.0),
-            "chord": data["refs"].get("chord", 1.0),
-            "span": data["refs"].get("span", 1.0),
-            "geometry_centre": np.array(data["refs"].get("geometry_centre", [0.0, 0.0, 0.0])),
-            "reference_point": np.array(data["refs"].get("reference_point", [0.0, 0.0, 0.0])),
-        }
-    else:
-        aircraft.compute_default_refs()
-
+    refs = data["refs"]
+    aircraft.refs = {
+        "area": refs["area"],
+        "chord": refs["chord"],
+        "span": refs["span"],
+        "geometry_centre": np.array(refs["geometry_centre"]),
+        "reference_point": np.array(refs["reference_point"]),
+    }
     return aircraft

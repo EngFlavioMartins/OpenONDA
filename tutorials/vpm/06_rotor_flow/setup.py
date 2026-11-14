@@ -67,7 +67,6 @@ def build_case(
             )
             for blade_index, azimuth in enumerate((0.0, 120.0, 240.0))
         ),
-        mesh=vpm.VLMMeshConfig.geometric(),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
         wake_core_overlap=2.5,

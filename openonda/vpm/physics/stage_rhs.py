@@ -1,12 +1,10 @@
 """Central stage right-hand side for coupled VPM evolution."""
 
 from collections.abc import Callable, Iterator
-from contextlib import ExitStack, contextmanager, suppress
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
-from itertools import count
 from typing import TYPE_CHECKING, Protocol
 
-import numpy as np
 import taichi as ti
 
 from openonda.core.profiling import Profiler
@@ -16,11 +14,9 @@ from .induction.base import (
     InductionMethod,
     StageRates,
     StageState,
-    TaichiField,
     normalize_stretching_scheme,
 )
 from .induction.reuse import AcceptedStateInduction, InductionReuseStatistics
-from .induction.stretching import stretching_rate
 
 if TYPE_CHECKING:
     from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
@@ -43,143 +39,35 @@ class ExternalStageContribution(Protocol):
         """Accumulate external velocity/rate contributions into stage outputs."""
 
 
-class _StageParticleView:
-    """Read-only particle-container adapter for a temporary RK stage.
-
-    Boundary target evaluators already accept the particle-container protocol;
-    this view lets them consume the exact stage position/strength/radius fields
-    without exposing or mutating the accepted particle object.  Each adapter
-    carries a fresh state revision so target-tree caches cannot cross stage
-    snapshots, including equal-time predictor evaluations.
-    """
-
-    _revisions = count()
-
-    def __init__(
-        self, stage_state: StageState, accepted_particles: "Particles", physics: "PhysicsBase"
-    ) -> None:
-        """Bind temporary sources and borrow immutable background metadata."""
-        self.position = stage_state.position
-        self.vortex_strength = stage_state.vortex_strength
-        self.core_radius = stage_state.core_radius
-        self._count = int(stage_state.count)
-        # Every adapter instance represents one immutable stage snapshot.  A
-        # fresh identity prevents hierarchical target trees from being reused
-        # across equal-time stages or repeated predictor evaluations.
-        # Python can recycle object identities between stages. A monotone
-        # revision prevents a target tree from accepting a different snapshot.
-        self.state_revision = next(self._revisions)
-        self.stage_index = getattr(stage_state, "stage_index", None)
-        self.stage_time = float(stage_state.time)
-        background = None
-        if accepted_particles is not None:
-            background = getattr(accepted_particles, "velocity_background_cpu", None)
-            if callable(background):
-                background = background()
-            elif hasattr(accepted_particles, "velocity_background"):
-                value = accepted_particles.velocity_background
-                background = np.asarray(
-                    [value[None][0], value[None][1], value[None][2]], dtype=np.float64
-                )
-        if background is None:
-            value = getattr(physics, "_zero_velocity", np.zeros(3))
-            if hasattr(value, "__getitem__") and not isinstance(value, np.ndarray):
-                with suppress(Exception):
-                    value = [value[0], value[1], value[2]]
-            background = np.asarray(value, dtype=np.float64)
-        self._velocity_background = np.asarray(background, dtype=np.float64).reshape(3)
-        dtype = getattr(stage_state.position, "dtype", ti.f64)
-        self._velocity_background_field: TaichiField = getattr(
-            accepted_particles, "velocity_background", None
-        )
-        if self._velocity_background_field is None and not np.any(self._velocity_background):
-            self._velocity_background_field = getattr(physics, "_zero_velocity", None)
-        if self._velocity_background_field is None:
-            self._velocity_background_field = ti.Vector.field(3, dtype=dtype, shape=())
-            self._velocity_background_field[None] = self._velocity_background.astype(
-                np.float64 if dtype == ti.f64 else np.float32
-            )
-
-    def __len__(self) -> int:
-        return self._count
-
-    @property
-    def velocity_background(self) -> TaichiField:
-        """Return a scalar Taichi vector field accepted by target evaluators."""
-        return self._velocity_background_field
-
-    def velocity_background_cpu(self) -> np.ndarray:
-        """Return a copy so a backend cannot mutate stage-view metadata."""
-        return self._velocity_background.copy()
-
-
-@ti.kernel
-def _accumulate_vlm_stretching(
-    gradient: ti.template(),  # type: ignore[invalid-annotation]
-    strength: ti.template(),  # type: ignore[invalid-annotation]
-    rate: ti.template(),  # type: ignore[invalid-annotation]
-    total_gradient: ti.template(),  # type: ignore[invalid-annotation]
-    count: ti.i32,
-    mode: ti.i32,
-    has_gradient: ti.template(),  # type: ignore[invalid-annotation]
-):
-    for i in range(count):
-        jacobian = gradient[i]
-        rate[i] += stretching_rate(jacobian, strength[i], mode)
-        if ti.static(has_gradient):
-            total_gradient[i] += jacobian
-
-
 class VLMStageContribution:
-    """Add a stage-consistent VLM bound field at RK stage positions.
+    """Add the VLM bound field and its strip reaction at RK stage positions.
 
-    The default ``lagged`` VLM treatment holds accepted circulation fixed while
-    evaluating temporary stage targets. The ``responsive`` treatment instead
-    solves an isolated temporary boundary system from the supplied stage
-    particle fields and stage-time geometry. Both treatments exchange vortex
-    strength only through the accepted RK integration step; no stage query
-    emits wake particles or commits VLM history.
+    The accepted circulation is held fixed while the stage targets move.
+    Vortex strength is exchanged with the bound strips only through the
+    accepted RK integration step; no stage query emits wake particles or
+    commits VLM history.
     """
 
-    def __init__(
-        self,
-        vlm_solver: "VLMSolver",
-        physics: "PhysicsBase | None" = None,
-        particles: "Particles | None" = None,
-    ) -> None:
+    def __init__(self, vlm_solver: "VLMSolver", physics: "PhysicsBase") -> None:
         """Create a stage provider backed by a solved VLM object.
 
         Parameters
         ----------
-        vlm_solver : VLM-like
-            Object exposing ``add_stage_velocity`` and optionally
-            ``add_stage_velocity_and_gradient``.  It must evaluate at the
-            temporary stage positions supplied later.
-        physics : PhysicsEngine, optional
-            Workspace used to allocate and download the temporary velocity
-            gradient.  Supplying it enables external stretching from the VLM
-            gradient when the solver provides that method.
-        particles : Particles, optional
-            Owning particle container, used only as immutable metadata for the
-            responsive stage boundary adapter (not as the stage source).
+        vlm_solver : VLMSolver
+            Solver that evaluates its bound field at the temporary stage
+            positions supplied later.
+        physics : PhysicsEngine
+            Source of the stretching scheme applied to the VLM velocity
+            gradient; its induction backend must be bound.
         """
+        if physics.induction is None:
+            raise RuntimeError("VLM stage coupling requires a bound induction backend")
         self.vlm_solver = vlm_solver
-        self.physics = physics
-        self.particles = particles
-        self._gradient = None
-        self._native_rates = physics is not None and hasattr(vlm_solver, "add_stage_rates")
+        self._stretching_mode = _STRETCHING_MODES[
+            normalize_stretching_scheme(physics.induction.stretching_scheme)
+        ]
         self._stage_weights: tuple[float, ...] | None = None
         self._consumed_stage_indices: set[int] = set()
-        if physics is not None:
-            if physics.induction is None:
-                raise RuntimeError("VLM stage coupling requires a bound induction backend")
-            self._stretching_mode = _STRETCHING_MODES[
-                normalize_stretching_scheme(physics.induction.stretching_scheme)
-            ]
-            if not self._native_rates:
-                self._gradient = ti.Matrix.field(
-                    3, 3, dtype=physics.accumulator_dtype, shape=(physics.max_n_particles,)
-                )
 
     @contextmanager
     def integration_step(
@@ -192,14 +80,11 @@ class VLMStageContribution:
         still evaluate the VLM field, but it cannot publish a second exchange
         contribution. Published exchange requires an explicit stage index.
         """
-        if not self._native_rates:
-            yield
-            return
         scale = time_step_size if strength_enabled else 0.0
         self._stage_weights = tuple(scale * weight for weight in tableau.b)
         self._consumed_stage_indices = set()
         try:
-            with self.vlm_solver.particle_transport_step(tableau, time_step_size):
+            with self.vlm_solver.particle_transport_step():
                 yield
         finally:
             self._stage_weights = None
@@ -223,63 +108,22 @@ class VLMStageContribution:
     def add_stage_rates(
         self, stage_state: StageState, stage_time: float, stage_rates: StageRates
     ) -> None:
-        """Add VLM-induced velocity and, when available, stretching rates.
+        """Add VLM-induced velocity and stretching rates.
 
         The VLM solution is held fixed during the RK step, but targets are the
         current temporary stage positions.  ``stage_rates.velocity`` and the
         optional gradient/rate fields are mutated in place.
         """
-        if self._native_rates:
-            if getattr(self.vlm_solver, "boundary_response", "lagged") == "responsive":
-                if self.physics is None or self.particles is None:
-                    raise RuntimeError(
-                        "responsive VLM boundary response requires the owning VPM "
-                        "physics workspace and particle container"
-                    )
-                self.vlm_solver.solve_stage_boundary(
-                    stage_state,
-                    stage_time,
-                    self.physics,
-                    _StageParticleView(stage_state, self.particles, self.physics),
-                )
-            weight = self._weight_for_stage(
-                stage_state,
-                publish=bool(stage_rates.strength_rate_enabled),
-            )
-            self.vlm_solver.add_stage_rates(
-                stage_state,
-                stage_time,
-                stage_rates,
-                self._stretching_mode,
-                weight if stage_rates.strength_rate_enabled else 0.0,
-            )
-            return
-        if self._gradient is None or not hasattr(
-            self.vlm_solver, "add_stage_velocity_and_gradient"
-        ):
-            self.vlm_solver.add_stage_velocity(
-                stage_state.position,
-                stage_rates.velocity,
-                stage_state.count,
-                stage_time,
-            )
-            return
-        self.vlm_solver.add_stage_velocity_and_gradient(
-            stage_state.position,
-            stage_rates.velocity,
-            self._gradient,
-            stage_state.count,
-            stage_time,
-            target_core_radius=stage_state.core_radius,
+        weight = self._weight_for_stage(
+            stage_state,
+            publish=bool(stage_rates.strength_rate_enabled),
         )
-        _accumulate_vlm_stretching(
-            self._gradient,
-            stage_state.vortex_strength,
-            stage_rates.vortex_strength_rate,
-            stage_rates.velocity_gradient,
-            stage_state.count,
+        self.vlm_solver.add_stage_rates(
+            stage_state,
+            stage_time,
+            stage_rates,
             self._stretching_mode,
-            stage_rates.velocity_gradient is not None,
+            weight if stage_rates.strength_rate_enabled else 0.0,
         )
 
 

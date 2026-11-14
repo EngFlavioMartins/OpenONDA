@@ -100,7 +100,6 @@ def create_flat_plate(
         vertex_position=vertex_position,
         n_chordwise_panels=n_chordwise_panels,
         n_spanwise_panels=n_spanwise_panels,
-        airfoils={"inner": "flat", "outer": "flat"},
     )
     wing.add_segment(segment)
     aircraft.add_wing(wing)

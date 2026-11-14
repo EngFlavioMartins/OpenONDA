@@ -515,7 +515,7 @@ class VPMSolver:
                 # solvers have initialized.
                 self._stage_providers.insert(
                     0,
-                    VLMStageContribution(self.vlm_solver, self.physics, self.particles),
+                    VLMStageContribution(self.vlm_solver, self.physics),
                 )
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize VLM solver: {e}") from e
@@ -1337,7 +1337,7 @@ class VPMSolver:
     def compute_forces(
         self, density: float | None = None, reference_speed: float | None = None
     ) -> dict[str, np.ndarray | float]:
-        """Compute aerodynamic force using the configured VLM method.
+        """Compute the Kutta--Joukowski force of the attached VLM.
 
         Parameters
         ----------
@@ -1350,31 +1350,18 @@ class VPMSolver:
         Returns
         -------
         dict[str, numpy.ndarray or float]
-            Force components, coefficients, and the selected method as defined
-            by the VLM force evaluator.
+            Force components and coefficients as defined by the VLM force
+            evaluator.
 
         Raises
         ------
         RuntimeError
             If this VPM solver has no attached VLM setup.
-        ValueError
-            If the attached VLM force method is unsupported.
         """
         if self.vlm_solver is None:
             raise RuntimeError("Force evaluation requires a VLM setup")
         if density is None:
             density = self.vlm_solver.density
-        method = self.vlm_solver.force.method
-
-        if method == "kutta_joukowski":
-            return self._compute_forces_kutta_joukowski(density, reference_speed)
-        else:
-            raise ValueError(f"Unknown force method: {method}")
-
-    def _compute_forces_kutta_joukowski(
-        self, density: float, reference_speed: float | None
-    ) -> dict[str, np.ndarray | float]:
-        """Compute force through the VLM Kutta--Joukowski evaluator."""
         return VLMForceEvaluator.compute_kutta_joukowski(
             self.vlm_solver, self.freestream_velocity, density, reference_speed
         )

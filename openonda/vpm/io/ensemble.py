@@ -32,7 +32,7 @@ def _physics(record: dict[str, object]) -> str:
     if vlm is not None:
         # Native VLM records carry the loaded geometry and physical motion
         # case_name independently of source paths and output controls.
-        numerics["vlm"] = {"physics_hash": vlm["physics_hash"]}
+        numerics["vlm"] = {"configuration_hash": vlm["configuration_hash"]}
     physics = {
         "numerics": numerics,
         "initial_conditions": configuration["initial_conditions"],

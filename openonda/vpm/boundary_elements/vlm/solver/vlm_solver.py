@@ -28,11 +28,9 @@ from ....kernels import make_vortex_kernel
 from ..config import VLMConfig, VLMSurface
 from ..geometry.aircraft import Aircraft, Wing
 from ..geometry.surface_io import load_surface as _load_surface
-from ..kernels.virtual_wake import make_virtual_wake_kernel
-from .field import BoundSurfaceFieldSettings
+from .circulation_solver import CirculationSolver
 from .influence import (
     accumulate_bound_transport,
-    add_induced_velocity_and_gradient_at_targets,
     add_induced_velocity_at_targets,
     add_stage_rates_with_bound_exchange,
     compute_aerodynamic_influence_coefficient_matrix,
@@ -40,12 +38,10 @@ from .influence import (
     compute_induced_velocities,
     compute_induced_velocities_at_bound,
     compute_panel_force_coupled,
-    compute_pressure_coefficients,
     initialize_bound_transport,
 )
 from .kernels import shed_wake_particles_kernel
 from .lattice import VLMLattice
-from .linear_solvers import VLMLinearSolver, get_linear_solver
 from .mesh import (
     generate_vlm_mesh,
     update_trailing_directions_local,
@@ -54,18 +50,15 @@ from .mesh import (
 from .unsteady import add_unsteady_pressure_loads
 
 if TYPE_CHECKING:
-    from ....config.case import Numerics
-    from ....numerics.rk_tableaux import RKTableau
     from ....particles.container import Particles
     from ....physics.base import PhysicsBase
     from ....physics.induction.base import StageRates, StageState
-    from ....physics.stage_rhs import _StageParticleView
 
 EPSILON = VLM_SMALL_VELOCITY
 
 # One near-wake source: (position, core radius, strip-circulation
-# coefficients, constant vortex strength, trailing-edge panel index).
-NearWakeSource: TypeAlias = tuple[np.ndarray, float, np.ndarray, np.ndarray, int]
+# coefficients, constant vortex strength).
+NearWakeSource: TypeAlias = tuple[np.ndarray, float, np.ndarray, np.ndarray]
 
 
 class SurfaceTransform(TypedDict):
@@ -108,11 +101,6 @@ class VLMSolver:
     Solves for circulation distribution on thin lifting surfaces using
     horseshoe vortex elements and the zero-normal-flow boundary condition.
 
-    **Linear Solver Options:**
-
-    - ``'scipy'``: CPU direct solver, selected by default below 1000 panels
-    - ``'bicgstab_gpu'``: GPU iterative solver for non-symmetric systems
-
     Geometry, kinematics, transforms, mesh spacing, and fluid data are all
     declared in :class:`VLMConfig`. The runtime solver does not expose
     configuration mutation methods.
@@ -122,8 +110,6 @@ class VLMSolver:
         """Initialize from one complete, immutable VLM definition."""
         # Solver configuration
         self.config = config
-        self.dtype: Literal["f32", "f64"] = config.dtype
-        self.circulation_relaxation = config.circulation_relaxation
 
         # Multi-body storage: Dict[uid -> (Aircraft, kinematics)]
         self.surfaces: dict[str, tuple[Aircraft, RigidMotion]] = {}
@@ -138,7 +124,6 @@ class VLMSolver:
 
         # Combined aircraft for mesh generation (set by _register_surface)
         self.aircraft: Aircraft
-        self.surface: Aircraft
 
         # Lattice will be created when first needed (after Taichi init)
         self._lattice: VLMLattice | None = None
@@ -152,80 +137,42 @@ class VLMSolver:
             if config.freestream_velocity is None
             else np.array(config.freestream_velocity, dtype=np.float64)
         )
-        self.logging_interval_steps = config.logging_interval_steps
         self.density = config.density
         # Density of the latest force evaluation, restored from backups.
         self._force_density = config.density
         self.kinematic_viscosity = config.kinematic_viscosity
         self.wake_core_overlap = config.wake_core_overlap
-        self.boundary_response = config.boundary_response
-        # Set by generate_mesh, which fixes the filament core of the lattice.
-        self.field_settings: BoundSurfaceFieldSettings
         self._wake_kernel = make_vortex_kernel("gaussian")
-
-        # Transverse shedding threshold
-        # Minimum |ΔΓ| for emitting a transverse (closure) wake particle.
-        # Default 0.0 means always emit, which prevents binary wake-topology
-        # changes near steady state.  Set to a finite value (e.g. 1e-3) to
-        # reproduce the threshold artefact as a diagnostic comparison.
-        self.transverse_shedding_threshold: float = 0.0
 
         # solution state
         self._mesh_generated = False
-        self._aerodynamic_influence_coefficient_computed = False
         self._solved = False
         self._coupled_mode = False
-        self._linear_solver_instance: VLMLinearSolver | None = None
-        # Responsive-stage workspace; Taichi fields are dynamic DSL objects.
-        self._stage_circulation: Any = None
-        self._stage_external_velocity: Any = None
-        self._stage_kinematic_velocity: Any = None
-        self._stage_influence: Any = None
-        self._stage_rhs: Any = None
+        self._circulation_solver = CirculationSolver()
+        # Stage geometry fields; Taichi fields are dynamic DSL objects.
         self._stage_geometry_fields: tuple[Any, Any, Any, Any, Any] | None = None
         self._stage_geometry_time: float | None = None
-        self._stage_response_active = False
-        self._stage_wake_sources: list[NearWakeSource] = []
-        self._stage_exchange_history: dict[int, np.ndarray] = {}
 
         # Force evaluation configuration
         self.force = config.force
         self._last_forces: dict[str, Any] | None = None
         self._last_reference_velocity: np.ndarray | None = None
         self._previous_panel_corners: np.ndarray | None = None
-        self._transport_tableau: Any = None
-        self._virtual_wake_kernel: Any = None
 
         # Explicit initialization of optional attributes to avoid AttributeError
         self._surface_transforms: dict[str, SurfaceTransform] = {}
         self._surface_group_ids: dict[str, int] = {}
         # Contiguous lattice panels of each surface, set by generate_mesh.
         self._surface_panels: dict[str, slice] = {}
-        self._surface_sampling: dict[str, bool] = {}
-        self.sample_surface_forces = config.sample_surface_forces
 
         for surface in config.surfaces:
             self._register_surface(surface)
 
-        n_panels = self.aircraft.total_n_panels()
-        self.max_n_panels = config.max_n_panels if config.max_n_panels is not None else n_panels
-        if self.max_n_panels < n_panels:
-            raise ValueError(
-                f"VLM max_n_panels={self.max_n_panels} is smaller than the "
-                f"{n_panels} panels declared by the surfaces"
-            )
-        self.linear_solver: str = (
-            config.linear_solver
-            if config.linear_solver is not None
-            else ("scipy" if n_panels < 1000 else "bicgstab_gpu")
-        )
+        # The lattice holds exactly the panels of the declared surfaces.
+        self.max_n_panels = self.aircraft.total_n_panels()
+        self.dtype: Literal["f32", "f64"]
 
-        Logging.record(
-            "VLM initialized",
-            ("panel capacity", self.max_n_panels),
-            ("precision", self.dtype),
-            ("linear solver", self.linear_solver),
-        )
+        Logging.record("VLM initialized", ("panels", self.max_n_panels))
 
     @property
     def lattice(self) -> VLMLattice:
@@ -237,18 +184,13 @@ class VLMSolver:
             )
         return self._lattice
 
-    @property
-    def lattice_allocated(self) -> bool:
-        """Whether the panel lattice fields have been allocated."""
-        return self._lattice is not None
-
     def _ensure_lattice_initialized(self) -> None:
         """Ensure lattice is created (lazy initialization after Taichi init).
 
         VPM is required to be the Taichi master: the VPM Solver must call
         ``start_taichi`` (i.e. ``VPMSolver.__init__``) *before* any
-        VLM lattice fields are allocated.  This prevents a mismatch between the
-        precision that Taichi was initialised with and the dtype requested here.
+        VLM lattice fields are allocated.  The lattice takes the precision that
+        Taichi was initialised with.
         """
         if not self._lattice_initialized:
             # Guard: Taichi must already be initialised by the VPM Solver.
@@ -260,23 +202,8 @@ class VLMSolver:
                     "are created."
                 )
 
-            # Warn if the requested VLM dtype does not match the Taichi runtime
-            # default floating-point type.  Mismatches cause silent precision
-            # conversions (f32 ↔ f64) that can degrade accuracy.
-            runtime_fp = ti.lang.impl.get_runtime().default_fp
-            vlm_fp = ti.f32 if self.dtype == "f32" else ti.f64
-            if runtime_fp != vlm_fp:
-                runtime_name: Literal["f32", "f64"] = "f32" if runtime_fp == ti.f32 else "f64"
-                Logging.warning(
-                    f"VLMSolver dtype='{self.dtype}' does not match the Taichi "
-                    f"runtime precision '{runtime_name}' set by the VPM Solver.  "
-                    f"Overriding VLM dtype to '{runtime_name}' to keep VPM as the "
-                    f"precision master and avoid f32/f64 conversion errors."
-                )
-                vlm_fp = runtime_fp
-                self.dtype = runtime_name
-
-            ti_dtype = vlm_fp
+            ti_dtype = ti.lang.impl.get_runtime().default_fp
+            self.dtype = "f32" if ti_dtype == ti.f32 else "f64"
             self._lattice = VLMLattice(self.max_n_panels, ti_dtype)
             self._transported_bound = ti.Vector.field(3, ti_dtype, shape=self.max_n_panels)
             self._bound_exchange_rate = ti.Vector.field(3, ti_dtype, shape=self.max_n_panels)
@@ -307,35 +234,17 @@ class VLMSolver:
             self._surface_panels[name] = slice(start, stop)
             start = stop
         self._place_surfaces()
-        self.field_settings = BoundSurfaceFieldSettings(
-            filament_core_radius=self.lattice.filament_core_radius,
-            near_wake_treatment=(
-                "affine_row_history_transport_v2"
-                if self.boundary_response == "responsive"
-                else "partial_newborn_row_stage_responsive"
-            ),
-        )
 
         # Populate panel group IDs
         group_id = self.get_panel_group_ids()
 
-        # Pad group_id to match max_n_panels for Taichi field assignment
-        if group_id.size < self.max_n_panels:
-            padded_ids = np.zeros(self.max_n_panels, dtype=np.int32)
-            padded_ids[: group_id.size] = group_id
-            self.lattice.group_id.from_numpy(padded_ids)
-        else:
-            self.lattice.group_id.from_numpy(group_id)
+        self.lattice.group_id.from_numpy(group_id)
 
         from .restart import restart_configuration_hash
 
         self._restart_geometry_references = metadata_value(self.aircraft.refs)
         self._restart_configuration_hash = restart_configuration_hash(self)
-        from .restart import restart_physics_hash
-
-        self._restart_physics_hash = restart_physics_hash(self)
         self._mesh_generated = True
-        self._aerodynamic_influence_coefficient_computed = False
         self._solved = False
 
         elapsed = time.time() - t0
@@ -469,9 +378,6 @@ class VLMSolver:
         self.surfaces[surface_name] = (aircraft, kinematics)
         self.surface_poses[surface_name] = RigidPose()
         self._surface_group_ids[surface_name] = surface.group_id
-        self._surface_sampling[surface_name] = (
-            self.sample_surface_forces if surface.sample_forces is None else surface.sample_forces
-        )
         self._surface_transforms[surface_name] = {
             "translation": surface.translation,
             "rotation_degrees": surface.rotation_degrees,
@@ -520,7 +426,6 @@ class VLMSolver:
             # Single surface mode
             name, (aircraft, _) = next(iter(self.surfaces.items()))
             self.aircraft = aircraft
-            self.surface = aircraft
         else:
             # Multi-surface: merge into combined aircraft
             combined = Aircraft(uid="combined")
@@ -533,7 +438,6 @@ class VLMSolver:
                     combined.wings[combined_uid] = new_wing
             combined.compute_default_refs()
             self.aircraft = combined
-            self.surface = combined
 
     def surface_rotation_centre(self, surface_name: str) -> np.ndarray:
         """Return the current position in m of a surface's rotation centre.
@@ -626,8 +530,6 @@ class VLMSolver:
             # Use local velocity field
             update_trailing_directions_local(self.lattice, transport_velocity)
 
-        self._aerodynamic_influence_coefficient_computed = False
-
     def _compute_panel_kinematic_velocity(
         self,
         kinematics: RigidMotion,
@@ -681,30 +583,7 @@ class VLMSolver:
                 )
         self.lattice.set_kinematic_velocity(kinematic_velocity)
         if moving:
-            self._aerodynamic_influence_coefficient_computed = False
             self._solved = False
-
-    def compute_aerodynamic_influence_coefficient_matrix(self, force: bool = False) -> None:
-        """Compute aerodynamic_influence_coefficient matrix."""
-        if self._aerodynamic_influence_coefficient_computed and not force:
-            return
-
-        if not self._mesh_generated:
-            self.generate_mesh()
-
-        compute_aerodynamic_influence_coefficient_matrix(
-            self.lattice.collocation_point,
-            self.lattice.vortex_point_position,
-            self.lattice.panel_corner_position,
-            self.lattice.normal,
-            self.lattice.is_trailing_edge,
-            self.lattice.trailing_edge_index,
-            self.lattice.aerodynamic_influence_coefficient,
-            self.lattice.n_panels,
-            self.lattice.filament_core_radius,
-            0,  # coupled_mode = 0 (standalone)
-        )
-        self._aerodynamic_influence_coefficient_computed = True
 
     def _minimum_panel_chord(self) -> float:
         """Return the shortest chordwise panel edge in the geometry [m]."""
@@ -786,27 +665,9 @@ class VLMSolver:
             )
         return result
 
-    def _run_linear_solver(self, n_panels: int) -> np.ndarray:
-        """Solve aerodynamic_influence_coefficient@circulation=right_hand_side and return circulation numpy array."""
-        if self._linear_solver_instance is None:
-            self._linear_solver_instance = get_linear_solver(
-                self.linear_solver, max_n_panels=self.max_n_panels
-            )
-        solver = self._linear_solver_instance
-        solver.solve(
-            self.lattice.aerodynamic_influence_coefficient,
-            self.lattice.right_hand_side,
-            self.lattice.circulation,
-            self.lattice.n_panels,
-        )
-        if self.circulation_relaxation < 1.0:
-            self.lattice.apply_relaxation(self.circulation_relaxation)
-        return self.lattice.circulation.to_numpy()[:n_panels]
-
     def solve(
         self,
         external_velocity: np.ndarray | None = None,
-        time_step_size: float | None = None,
         coupled: bool = False,
     ) -> np.ndarray:
         """
@@ -815,15 +676,11 @@ class VLMSolver:
         Args:
             external_velocity: Total external velocity field at collocation_point points (N x 3).
                        If None, assumes data is already in lattice.external_velocity (GPU-resident).
-            time_step_size: Time step size (optional, used for wake shedding updates if needed)
             coupled: If True, uses bound-only aerodynamic_influence_coefficient for coupling with VPM particles.
 
         Returns:
             Computed circulation (circulation) array
         """
-        # A native accepted solve starts a new coupling epoch; never let a
-        # temporary responsive-stage circulation leak into later evaluations.
-        self._stage_response_active = False
         self._stage_geometry_time = None
         self._coupled_mode = bool(coupled)
         solve_start_time = time.time()
@@ -841,10 +698,7 @@ class VLMSolver:
             external_velocity_array = external_velocity
         else:
             external_velocity_array = self.lattice.external_velocity.to_numpy()[:n_panels]
-        if self.lattice.has_kinematic_velocity():
-            relative_velocity = external_velocity_array - self.lattice.get_kinematic_velocity()
-        else:
-            relative_velocity = external_velocity_array
+        relative_velocity = external_velocity_array - self.lattice.get_kinematic_velocity()
         velocity_upload_end_time = time.time()
         self.update_trailing_directions(relative_velocity)
         trailing_direction_end_time = time.time()
@@ -874,7 +728,13 @@ class VLMSolver:
         self.lattice.save_old_circulation()
         if coupled:
             self._augment_near_wake_particles()
-        circulation_np = self._run_linear_solver(n_panels)
+        self._circulation_solver.solve(
+            self.lattice.aerodynamic_influence_coefficient,
+            self.lattice.right_hand_side,
+            self.lattice.circulation,
+            n_panels,
+        )
+        circulation_np = self.lattice.circulation.to_numpy()[:n_panels]
         linear_solve_end_time = time.time()
         total_time = linear_solve_end_time - solve_start_time
         if total_time > 1.0:
@@ -975,109 +835,6 @@ class VLMSolver:
         fields = self._ensure_stage_geometry_fields(float(stage_time))
         return fields[0], fields[1]
 
-    def _ensure_stage_workspace(self) -> None:
-        """Allocate temporary boundary-system fields used by responsive stages."""
-        if self._stage_circulation is not None:
-            return
-        dtype = self.lattice.dtype
-        self._stage_circulation = ti.field(dtype=dtype, shape=self.max_n_panels)
-        self._stage_external_velocity = ti.Vector.field(3, dtype=dtype, shape=self.max_n_panels)
-        self._stage_kinematic_velocity = ti.field(dtype=dtype, shape=(self.max_n_panels, 3))
-        self._stage_influence = ti.field(dtype=dtype, shape=(self.max_n_panels, self.max_n_panels))
-        self._stage_rhs = ti.field(dtype=dtype, shape=self.max_n_panels)
-
-    def solve_stage_boundary(
-        self,
-        stage_state: "StageState",
-        stage_time: float,
-        physics: "PhysicsBase",
-        particles: "_StageParticleView",
-    ) -> None:
-        """Solve a pure temporary VLM response for one particle RK stage.
-
-        The stage response uses stage particles, prescribed stage geometry,
-        and an affine partial newborn row including its old closing vector.
-        Stage reaction uses the same RK stage coefficients as the particles.
-        The virtual row contributes velocity and stretching but is never
-        inserted into the accepted cloud. Only the accepted solve publishes
-        the completed row and circulation history.
-        """
-        self._stage_response_active = False
-        self._stage_wake_sources = []
-        if self.boundary_response != "responsive" or stage_state.count <= 0:
-            return
-        self._ensure_stage_workspace()
-        geometry = self._ensure_stage_geometry_fields(float(stage_time))
-        vortex_points, corners, collocation, normal, kinematic = geometry
-        n = self.lattice.n_panels
-        collocation_np = collocation.to_numpy()[:n].astype(np.float64)
-        incident = physics.compute_target_velocity(
-            particles,
-            collocation_np,
-            include_freestream=True,
-        )
-        if incident is None:
-            incident = np.zeros((n, 3), dtype=np.float64)
-        incident = np.asarray(incident, dtype=np.float64)
-        external = np.zeros((self.max_n_panels, 3), dtype=self.lattice.np_dtype)
-        external[:n] = incident.astype(self.lattice.np_dtype)
-        self._stage_external_velocity.from_numpy(external)
-        self._stage_kinematic_velocity.from_numpy(
-            np.asarray(kinematic.to_numpy(), dtype=self.lattice.np_dtype)
-        )
-        compute_aerodynamic_influence_coefficient_matrix(
-            collocation,
-            vortex_points,
-            corners,
-            normal,
-            self.lattice.is_trailing_edge,
-            self.lattice.trailing_edge_index,
-            self._stage_influence,
-            n,
-            self.lattice.filament_core_radius,
-            coupled_mode=1,
-        )
-        compute_coupled_right_hand_side(
-            collocation,
-            normal,
-            self._stage_external_velocity,
-            self._stage_kinematic_velocity,
-            self._stage_rhs,
-            n,
-        )
-        accepted_time = float(self._current_time if self._current_time is not None else stage_time)
-        elapsed = max(float(stage_time) - accepted_time, 0.0)
-        if elapsed > 1.0e-14:
-            # The temporary matrix contains the partial newborn row for this
-            # stage.  Its coefficients depend on the actual stage-particle
-            # incident velocity; no accepted wake field is inserted or
-            # overwritten.  This is the explicit coupled-substep temporal
-            # formulation used by ``boundary_response='responsive'``.
-            partial_matrix, old_velocity = self._near_wake_stage_influence(
-                geometry,
-                particles,
-                physics,
-                elapsed,
-            )
-            stage_influence = self._stage_influence.to_numpy()
-            stage_influence[:n, :n] += partial_matrix
-            self._stage_influence.from_numpy(stage_influence)
-            rhs = self._stage_rhs.to_numpy()
-            rhs[:n] -= old_velocity
-            self._stage_rhs.from_numpy(rhs)
-        if self._linear_solver_instance is None:
-            self._linear_solver_instance = get_linear_solver(
-                self.linear_solver,
-                max_n_panels=self.max_n_panels,
-            )
-        self._linear_solver_instance.solve(
-            self._stage_influence,
-            self._stage_rhs,
-            self._stage_circulation,
-            n,
-        )
-        self._stage_response_active = True
-
     def add_stage_velocity(
         self, target_position: ti.Field, target_velocity: ti.Field, count: int, stage_time: float
     ) -> None:
@@ -1104,35 +861,6 @@ class VLMSolver:
             self.lattice.filament_core_radius,
         )
 
-    def add_stage_velocity_and_gradient(
-        self,
-        target_position: ti.Field,
-        target_velocity: ti.Field,
-        target_gradient: ti.Field,
-        count: int,
-        stage_time: float,
-        *,
-        target_core_radius: ti.Field | None,
-    ) -> None:
-        """Accumulate stage velocity and the Jacobian of the same VLM field."""
-        if not self._solved or self._lattice is None or count <= 0:
-            return
-        vortex_points, corners = self._stage_geometry(stage_time)
-        add_induced_velocity_and_gradient_at_targets(
-            target_position,
-            target_velocity,
-            target_gradient,
-            target_core_radius,
-            vortex_points,
-            corners,
-            self.lattice.trailing_edge_index,
-            self.lattice.circulation,
-            int(count),
-            int(self.lattice.n_panels),
-            int(self._coupled_mode),
-            self.lattice.filament_core_radius,
-        )
-
     def _initialize_bound_transport(self) -> None:
         """Seed each trailing strip's integrated bound strength before RK exchange."""
         initialize_bound_transport(
@@ -1144,9 +872,7 @@ class VLMSolver:
         )
 
     @contextmanager
-    def particle_transport_step(
-        self, tableau: "RKTableau | None" = None, time_step_size: float = 0.0
-    ) -> Iterator[None]:
+    def particle_transport_step(self) -> Iterator[None]:
         """Publish strip exchange only after all particle RK stages succeed.
 
         This bound-vorticity exchange is consumed by the next accepted wake emission. It is not
@@ -1155,10 +881,6 @@ class VLMSolver:
         transported_before = self._transported_bound.to_numpy().copy()
         self._bound_transport_ready = False
         self._initialize_bound_transport()
-        self._transport_tableau = tableau
-        self._transport_dt = float(time_step_size)
-        self._stage_exchange_history = {}
-        self._stage_bound_initial = self._transported_bound.to_numpy().copy()
         try:
             yield
         except BaseException:
@@ -1168,13 +890,9 @@ class VLMSolver:
             self._transported_bound.from_numpy(transported_before)
             self._bound_exchange_rate.fill(0.0)
             self._bound_transport_ready = False
-            self._stage_response_active = False
             raise
         else:
             self._bound_transport_ready = True
-        finally:
-            self._transport_tableau = None
-            self._stage_exchange_history = {}
 
     def add_stage_rates(
         self,
@@ -1185,14 +903,10 @@ class VLMSolver:
         weighted_dt: float,
     ) -> None:
         """Accumulate the bound field and its stage-weighted strip reaction."""
-        if (not self._solved and not self._stage_response_active) or state.count <= 0:
+        if not self._solved or state.count <= 0:
             return
         vortex_points, corners = self._stage_geometry(stage_time)
         lattice = self.lattice
-        circulation = (
-            self._stage_circulation if self._stage_response_active else lattice.circulation
-        )
-        coupled_mode = int(self._coupled_mode or self._stage_response_active)
         if weighted_dt != 0.0:
             self._bound_exchange_rate.fill(0.0)
         add_stage_rates_with_bound_exchange(
@@ -1206,56 +920,16 @@ class VLMSolver:
             corners,
             lattice.trailing_edge_index,
             lattice.is_trailing_edge,
-            circulation,
+            lattice.circulation,
             self._bound_exchange_rate,
             state.count,
             lattice.n_panels,
-            coupled_mode,
+            int(self._coupled_mode),
             mode,
             weighted_dt,
             rates.velocity_gradient is not None,
             lattice.filament_core_radius,
         )
-        if self._stage_response_active and self._stage_wake_sources:
-            if self._virtual_wake_kernel is None:
-                self._virtual_wake_kernel = make_virtual_wake_kernel(
-                    self._wake_kernel.name, lattice.dtype
-                )
-            sources = self._stage_wake_sources
-            gamma = self._stage_circulation.to_numpy()[: lattice.n_panels]
-            strip_gamma = np.bincount(self._stage_wake_strip_map, weights=gamma)
-            positions = np.ascontiguousarray(
-                [source[0] for source in sources], dtype=lattice.np_dtype
-            )
-            strengths = np.ascontiguousarray(
-                [strip_gamma @ source[2] + source[3] for source in sources], dtype=lattice.np_dtype
-            )
-            radii = np.ascontiguousarray([source[1] for source in sources], dtype=lattice.np_dtype)
-            strip_indices = np.ascontiguousarray([source[4] for source in sources], dtype=np.int32)
-            self._virtual_wake_kernel(
-                state.position,
-                state.vortex_strength,
-                state.core_radius,
-                rates.velocity,
-                rates.vortex_strength_rate,
-                rates.velocity_gradient,
-                positions,
-                strengths,
-                radii,
-                strip_indices,
-                self._bound_exchange_rate,
-                state.count,
-                len(sources),
-                mode,
-                int(weighted_dt != 0.0),
-                rates.velocity_gradient is not None,
-            )
-        if weighted_dt != 0.0 and self._transport_tableau is not None:
-            stage_index = getattr(state, "stage_index", None)
-            if stage_index is not None:
-                self._stage_exchange_history[int(stage_index)] = (
-                    self._bound_exchange_rate.to_numpy().copy()
-                )
         if weighted_dt != 0.0:
             accumulate_bound_transport(
                 self._transported_bound,
@@ -1298,7 +972,7 @@ class VLMSolver:
         # 0. Keep cumulative circulation current for wake diagnostics.
         self._compute_cumulative_circulation_cpu()
 
-        # 1. Compute velocity at collocation points for the pressure coefficient.
+        # 1. Compute velocity at collocation points.
         compute_induced_velocities(
             self.lattice.n_panels,
             self.lattice.collocation_point,
@@ -1317,15 +991,7 @@ class VLMSolver:
         relative_velocity[: self.lattice.n_panels] = velocity - kinematic_velocity
         self.lattice.relative_velocity.from_numpy(relative_velocity)
 
-        # 2. Compute pressure coefficients (using collocation_point velocity)
-        compute_pressure_coefficients(
-            self.lattice.velocity,
-            self.lattice.pressure_coefficient,
-            self.lattice.n_panels,
-            float(reference_velocity_magnitude**2),
-        )
-
-        # 3. Compute velocity at BOUND VORTEX midpoints (for Forces)
+        # 2. Compute velocity at BOUND VORTEX midpoints (for Forces)
         incident_at_bound = (
             external_velocity if bound_external_velocity is None else bound_external_velocity
         )
@@ -1799,31 +1465,6 @@ class VLMSolver:
             for name in self.surfaces
         }
 
-    def log_forces_table(
-        self, density: float, reference_velocity: np.ndarray | None = None
-    ) -> dict[str, float | np.ndarray]:
-        """Compute boundary loads and report them through the owning logger.
-
-        Parameters
-        ----------
-        density : float
-            Fluid density in kg/m³.
-        reference_velocity : numpy.ndarray or None
-            Wind-axis reference vector, shape (3,), in m/s. None uses the
-            owning force model's reference velocity.
-
-        Returns
-        -------
-        dict[str, float or numpy.ndarray]
-            Native scalar coefficients and force/reference vectors. Loads are
-            in N, moments in N m, and reference positions in m. Coefficients
-            are dimensionless.
-        """
-        totals = self.compute_forces(density, reference_velocity)
-        surfaces = self.compute_per_surface_forces(density, reference_velocity)
-        Logging.boundary_forces("VLM", totals, surfaces)
-        return totals
-
     def save_results(self, filename: str, time: float = 0.0) -> None:
         """
         Save VLM results to VTK file.
@@ -1836,76 +1477,6 @@ class VLMSolver:
             Logging.warning("VLM is unsolved; saving geometry without solved loads")
 
         self.lattice.save_vtk(filename, time=time)
-
-    def advance(
-        self,
-        time_step_size: float,
-        external_velocity: np.ndarray,
-        density: float = 1.0,
-        reference_velocity: np.ndarray | None = None,
-        logging_interval_steps: int | None = None,
-        step: int = 0,
-        time: float | None = None,
-    ) -> dict[str, bool] | None:
-        """
-        Advance VLM-VPM coupled simulation by one time step.
-
-        Args:
-            time_step_size: Time step size (s)
-            external_velocity: Total external velocity field at collocation_point points (N, 3)
-            density: Fluid density
-            reference_velocity: Reference velocity vector (defaults to auto-computed)
-            logging_interval_steps: Print forces every N steps (None=use solver default)
-            step: Current time step number
-            time: Current simulation time (s) - prevents drift if provided
-
-        Returns:
-             Dictionary with new wake particles or None
-        """
-        if time is None:
-            raise ValueError("VLM advance requires the current physical time")
-        if not self._mesh_generated:
-            self.generate_mesh()
-
-        # 1. Advance kinematics (handles both single and multi-surface)
-        # advance_time() internally handles multi-surface kinematics
-        self.advance_time(time_step_size, current_time=time)
-
-        # 2. Solve VLM system
-        self.lattice.set_external_velocity(external_velocity)
-        self._prepare_near_wake(time_step_size)
-        self.solve(external_velocity, time_step_size)
-
-        # Determine reference values if not provided
-        if reference_velocity is None:
-            kinematic_velocity = self._get_active_kinematic_velocity()
-            background_velocity = (
-                np.mean(external_velocity, axis=0) if len(external_velocity) > 0 else np.zeros(3)
-            )
-            resolved_velocity: np.ndarray = background_velocity - kinematic_velocity
-            if np.linalg.norm(resolved_velocity) < 1e-10:
-                resolved_velocity = np.array([1.0, 0.0, 0.0])
-            reference_velocity = resolved_velocity
-
-        # Compute postprocess (velocity, forces) to enable logging
-        self.compute_postprocess(
-            external_velocity, reference_velocity, density, time_step_size=time_step_size
-        )
-
-        # Automatically compute and cache forces
-        self._last_forces = self.compute_forces(density, reference_velocity)
-        self._last_reference_velocity = reference_velocity
-
-        # 3. Log forces if requested
-        log_freq = (
-            self.logging_interval_steps
-            if logging_interval_steps is None
-            else int(logging_interval_steps)
-        )
-        if log_freq > 0 and step % log_freq == 0:
-            self.log_forces_table(density, reference_velocity)
-
-        return self._compute_wake_particles()
 
     def _fill_segment_cumulative(
         self,
@@ -1970,10 +1541,7 @@ class VLMSolver:
         self.lattice.cumulative_circulation.from_numpy(circulation_full)
 
     def _prepare_near_wake(
-        self,
-        time_step_size: float,
-        physics: "PhysicsBase | None" = None,
-        particles: "Particles | None" = None,
+        self, time_step_size: float, physics: "PhysicsBase", particles: "Particles"
     ) -> None:
         """Construct one row from previous TE positions convected to the new clock."""
         n = self.lattice.n_panels
@@ -1981,13 +1549,10 @@ class VLMSolver:
         old = corners if self._previous_panel_corners is None else self._previous_panel_corners
         indices = np.flatnonzero(self.lattice.is_trailing_edge.to_numpy()[:n])
         points = corners[indices][:, [3, 2]].reshape(-1, 3)
-        if physics is None or particles is None:
-            fluid = np.repeat(self.lattice.external_velocity.to_numpy()[indices], 2, axis=0)
-        else:
-            target_velocity = physics.compute_target_velocity(
-                particles, points, include_freestream=True
-            )
-            fluid = np.zeros_like(points) if target_velocity is None else target_velocity
+        target_velocity = physics.compute_target_velocity(
+            particles, points, include_freestream=True
+        )
+        fluid = np.zeros_like(points) if target_velocity is None else target_velocity
         fluid = fluid.reshape(-1, 2, 3)
         offset = self.lattice.wake_offset.to_numpy()
         velocity = self.lattice.trailing_edge_velocity.to_numpy()
@@ -1998,16 +1563,9 @@ class VLMSolver:
         self.lattice.wake_offset.from_numpy(offset)
         self.lattice.trailing_edge_velocity.from_numpy(velocity)
 
-    def _compute_wake_particles(
-        self,
-        *,
-        reset_buffer: bool = True,
-    ) -> dict[str, bool] | None:
+    def _compute_wake_particles(self) -> None:
         """Discretize the completed near-wake row at edge midpoints and its far edge."""
-        if self.lattice.n_panels == 0:
-            return None
-        if reset_buffer:
-            self.lattice.reset_wake_buffer()
+        self.lattice.reset_wake_buffer()
         self._compute_cumulative_circulation_cpu()
         # Antisymmetric signed root circulations cancel to solver roundoff.
         # Do not turn frame-dependent last-bit noise into extra wake particles.
@@ -2015,10 +1573,8 @@ class VLMSolver:
         shed_wake_particles_kernel(
             self.lattice.n_panels,
             self.wake_core_overlap,
-            float(self.transverse_shedding_threshold),
             32.0 * np.finfo(dtype).eps,
             self.lattice.cumulative_circulation,
-            self.lattice.cumulative_circulation_old,
             self.lattice.panel_corner_position,
             self.lattice.neighbor_indices,
             self.lattice.is_trailing_edge,
@@ -2034,7 +1590,6 @@ class VLMSolver:
             self.lattice.wake_group_id,
             self.lattice.n_wake_particles,
             self._transported_bound,
-            self._bound_transport_ready,
         )
 
         n_particles_shed = self.lattice.n_wake_particles[None]
@@ -2044,9 +1599,6 @@ class VLMSolver:
                 f"VLM wake buffer overflow: {n_particles_shed} particles exceed "
                 f"capacity {wake_buffer_capacity}"
             )
-
-        # We return a specific marker to indicate GPU data is ready
-        return {"_gpu_transfer_ready": True}
 
     # Implicit starting-vortex aerodynamic_influence_coefficient augmentation
     @staticmethod
@@ -2105,10 +1657,9 @@ class VLMSolver:
         """Return affine native-row sources in cumulative strip circulation.
 
         Each source is (position, radius, strip-vector coefficients, constant
-        strength, solver TE panel). The same geometry and strengths are used by
-        boundary assembly and virtual-row transport. Strength units are m³/s;
-        circulation coefficients have length units. A strip's old closing
-        vector is kept in the inertial frame, including transported reaction.
+        strength). Strength units are m³/s; circulation coefficients have
+        length units. A strip's old closing vector is kept in the inertial
+        frame, including transported reaction.
         """
         edges, strip_by_panel = self._build_trailing_edge_strip_map()
         n = self.lattice.n_panels
@@ -2132,11 +1683,11 @@ class VLMSolver:
                 coefficients[strip] -= dl
                 if left_index != -1:
                     coefficients[strip_by_panel[left_index]] += -dl if shared_root else dl
-                sources.append((left + 0.5 * dl, left_radius, coefficients, np.zeros(3), panel))
+                sources.append((left + 0.5 * dl, left_radius, coefficients, np.zeros(3)))
             if right_index == -1:
                 coefficients = np.zeros((len(edges), 3))
                 coefficients[strip] = dr
-                sources.append((right + 0.5 * dr, right_radius, coefficients, np.zeros(3), panel))
+                sources.append((right + 0.5 * dr, right_radius, coefficients, np.zeros(3)))
             far_left, far_right = left + dl, right + dr
             coefficients = np.zeros((len(edges), 3))
             coefficients[strip] = far_left - far_right
@@ -2146,7 +1697,6 @@ class VLMSolver:
                     transverse_radius,
                     coefficients,
                     old_bound[panel],
-                    panel,
                 )
             )
         return sources, strip_by_panel, len(edges)
@@ -2160,7 +1710,7 @@ class VLMSolver:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Project an affine native row onto all receiving collocation normals."""
         matrix, old_velocity = np.zeros((len(targets), n_strips)), np.zeros(len(targets))
-        for position, radius, coefficients, constant, _ in sources:
+        for position, radius, coefficients, constant in sources:
             displacement = targets - position
             for strip in np.flatnonzero(np.any(coefficients != 0, axis=1)):
                 velocity = self._wake_kernel.velocity_pair(
@@ -2177,14 +1727,7 @@ class VLMSolver:
         lattice, n = self.lattice, self.lattice.n_panels
         corners = lattice.panel_corner_position.to_numpy()[:n]
         offsets = lattice.wake_offset.to_numpy()[:n]
-        old_bound = (
-            self._transported_bound.to_numpy()[:n]
-            if self._bound_transport_ready
-            else (
-                lattice.cumulative_circulation_old.to_numpy()[:n, None]
-                * (corners[:, 2] + offsets[:, 1] - corners[:, 3] - offsets[:, 0])
-            )
-        )
+        old_bound = self._transported_bound.to_numpy()[:n]
         sources, strip_map, n_strips = self._near_wake_row(corners, offsets, old_bound)
         matrix, old_velocity = self._near_wake_row_influence(
             sources,
@@ -2193,63 +1736,6 @@ class VLMSolver:
             n_strips,
         )
         return matrix, old_velocity, strip_map
-
-    def _near_wake_stage_influence(
-        self,
-        geometry: tuple[ti.Field, ti.Field, ti.Field, ti.Field, ti.Field],
-        stage_particles: "_StageParticleView",
-        physics: "PhysicsBase",
-        elapsed: float,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Return the virtual row matrix AND its old-strength normal velocity.
-
-        Convect the accepted TE pose to the stage time, then subtract the
-        stage TE pose. This includes translation and rotation of the body.
-        The row convection is a first-order endpoint approximation, shared
-        with accepted emission; a higher-order particle RK tableau does not
-        make the complete boundary/birth formulation the same order.
-        """
-        n = self.lattice.n_panels
-        edges, strip_map = self._build_trailing_edge_strip_map()
-        self._stage_wake_sources = []
-        if elapsed <= 1e-14 or not edges:
-            return np.zeros((n, n)), np.zeros(n)
-        corners = geometry[1].to_numpy()[:n].astype(np.float64)
-        accepted = self.lattice.panel_corner_position.to_numpy()[:n].astype(np.float64)
-        edge_points = corners[edges][:, [3, 2]].reshape(-1, 3)
-        fluid = physics.compute_target_velocity(
-            stage_particles, edge_points, include_freestream=True
-        )
-        if fluid is None:
-            fluid = np.zeros_like(edge_points)
-        offsets = np.zeros((n, 2, 3))
-        offsets[edges] = (
-            accepted[edges][:, [3, 2]]
-            - corners[edges][:, [3, 2]]
-            + np.asarray(fluid).reshape(-1, 2, 3) * elapsed
-        )
-        old_bound = self.lattice.cumulative_circulation.to_numpy()[:n, None] * (
-            accepted[:, 2] - accepted[:, 3]
-        )
-        stage_index = getattr(stage_particles, "stage_index", None)
-        tableau = self._transport_tableau
-        if tableau is not None and stage_index is not None:
-            old_bound = self._stage_bound_initial[:n].copy()
-            for j, coefficient in enumerate(tableau.a[int(stage_index)]):
-                if coefficient:
-                    old_bound += (
-                        self._transport_dt * coefficient * self._stage_exchange_history[j][:n]
-                    )
-        sources, strip_map, n_strips = self._near_wake_row(corners, offsets, old_bound)
-        self._stage_wake_sources = sources
-        self._stage_wake_strip_map = strip_map
-        matrix, old_velocity = self._near_wake_row_influence(
-            sources,
-            geometry[2].to_numpy()[:n].astype(np.float64),
-            geometry[3].to_numpy()[:n].astype(np.float64),
-            n_strips,
-        )
-        return matrix[:, strip_map], old_velocity
 
     def _augment_near_wake_particles(self) -> None:
         """Include the actual newborn particle row in the circulation solve."""
@@ -2262,17 +1748,18 @@ class VLMSolver:
         rhs[:n] -= old_velocity
         self.lattice.right_hand_side.from_numpy(rhs)
 
-    def _resolve_coupling_reference_velocity(self, config: "Numerics") -> np.ndarray:
+    def _resolve_coupling_reference_velocity(
+        self, freestream_velocity: tuple[float, float, float]
+    ) -> np.ndarray:
         """Resolve the reference velocity used by coupled advance."""
         if (
             self.freestream_velocity is not None
             and np.linalg.norm(self.freestream_velocity) > 1e-10
         ):
             return self.freestream_velocity
-        if config.freestream_velocity is not None:
-            background_velocity = np.array(config.freestream_velocity)
-            if np.linalg.norm(background_velocity) > 1e-10:
-                return background_velocity
+        background_velocity = np.array(freestream_velocity)
+        if np.linalg.norm(background_velocity) > 1e-10:
+            return background_velocity
         kinematic_velocity = self._get_active_kinematic_velocity()
         kinematic_speed = np.linalg.norm(kinematic_velocity)
         return -kinematic_velocity if kinematic_speed > 1e-10 else np.array([1.0, 0.0, 0.0])
@@ -2281,12 +1768,10 @@ class VLMSolver:
         self,
         particles: "Particles",
         physics: "PhysicsBase",
-        config: "Numerics",
+        freestream_velocity: tuple[float, float, float],
         time_step_size: float,
-        step: int,
         time: float | None = None,
-        release_wake: bool = True,
-    ) -> dict[str, np.ndarray] | None:
+    ) -> None:
         """Complete the VLM solve and wake row at the newly accepted particle clock.
 
         The VPM stepper has already transported the old wake. Move the geometry,
@@ -2308,7 +1793,7 @@ class VLMSolver:
             self._bound_transport_ready = True
         self.advance_time(time_step_size, current_time=time)
 
-        reference_velocity = self._resolve_coupling_reference_velocity(config)
+        reference_velocity = self._resolve_coupling_reference_velocity(freestream_velocity)
         self._last_reference_velocity = reference_velocity
 
         # The old wake has already moved; new particles are shed after this solve.
@@ -2320,31 +1805,26 @@ class VLMSolver:
         )
 
         self._prepare_near_wake(time_step_size, physics, particles)
-        self.solve(external_velocity=None, time_step_size=time_step_size, coupled=True)
+        self.solve(external_velocity=None, coupled=True)
 
-        result = None
-        if release_wake:
-            self.lattice.reset_wake_buffer()
-            result = self._compute_wake_particles(reset_buffer=False)
-
-        if release_wake and result and result.get("_gpu_transfer_ready"):
-            n_particles_shed = self.lattice.n_wake_particles[None]
-            if n_particles_shed > 0:
-                added = particles.add_vortex_particles_from_fields_grouped(
-                    n_particles_shed,
-                    self.lattice.wake_position,
-                    self.lattice.wake_velocity,
-                    self.lattice.wake_vortex_strength,
-                    self.lattice.wake_core_radius,
-                    self.lattice.wake_volume,
-                    self.lattice.wake_group_id,
-                    kinematic_viscosity=self.kinematic_viscosity,
+        self._compute_wake_particles()
+        n_particles_shed = self.lattice.n_wake_particles[None]
+        if n_particles_shed > 0:
+            added = particles.add_vortex_particles_from_fields_grouped(
+                n_particles_shed,
+                self.lattice.wake_position,
+                self.lattice.wake_velocity,
+                self.lattice.wake_vortex_strength,
+                self.lattice.wake_core_radius,
+                self.lattice.wake_volume,
+                self.lattice.wake_group_id,
+                kinematic_viscosity=self.kinematic_viscosity,
+            )
+            if not added:
+                raise ValueError(
+                    f"VLM wake insertion exceeds particle capacity: {particles.n_particles_total}"
+                    f" + {n_particles_shed} > {particles.capacity}. Increase max_n_particles."
                 )
-                if not added:
-                    raise ValueError(
-                        f"VLM wake insertion exceeds particle capacity: {particles.n_particles_total}"
-                        f" + {n_particles_shed} > {particles.capacity}. Increase max_n_particles."
-                    )
 
         self._bound_transport_ready = False
         physics.compute_target_velocity(
@@ -2368,5 +1848,3 @@ class VLMSolver:
             bound_external_velocity=bound_external_velocity,
         )
         self._last_forces = self.compute_forces(self.density, self._last_reference_velocity)
-
-        return None

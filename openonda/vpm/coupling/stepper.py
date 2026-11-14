@@ -24,24 +24,18 @@ class CouplingStepper:
             return
 
         particles_before = solver.particles.n_particles_total
-        wake_particles = solver.vlm_solver.advance_coupled(
+        solver.vlm_solver.advance_coupled(
             particles=solver.particles,
             physics=solver.physics,
-            config=solver.numerics,
+            freestream_velocity=solver.numerics.freestream_velocity,
             time_step_size=time_step_size,
-            step=solver.stepper.step,
             time=solver.stepper.time,
         )
 
-        if wake_particles is not None:
-            solver.add_vortex_particles(**wake_particles)
-        else:
-            particles_added = solver.particles.n_particles_total - particles_before
-            if particles_added > 0 and solver.stabilization.reference_vortex_strength is not None:
-                # VLM inserts on the device; read only its shed batch for refinement reference.
-                lattice = solver.vlm_solver.lattice
-                strength = lattice.wake_vortex_strength.to_numpy()[:particles_added]
-                volume = lattice.wake_volume.to_numpy()[:particles_added]
-                solver.stabilization.on_add(
-                    np.linalg.norm(strength, axis=1), volume, particles_before
-                )
+        particles_added = solver.particles.n_particles_total - particles_before
+        if particles_added > 0 and solver.stabilization.reference_vortex_strength is not None:
+            # VLM inserts on the device; read only its shed batch for refinement reference.
+            lattice = solver.vlm_solver.lattice
+            strength = lattice.wake_vortex_strength.to_numpy()[:particles_added]
+            volume = lattice.wake_volume.to_numpy()[:particles_added]
+            solver.stabilization.on_add(np.linalg.norm(strength, axis=1), volume, particles_before)

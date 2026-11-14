@@ -20,14 +20,10 @@ def _configuration(solver: VPMSolver) -> dict[str, Any]:
     vlm = solver.vlm_solver
     if vlm is not None:
         from ..boundary_elements.vlm.geometry.surface_io import surface_to_dict
-        from ..boundary_elements.vlm.solver.restart import (
-            restart_configuration_hash,
-            restart_physics_hash,
-        )
+        from ..boundary_elements.vlm.solver.restart import restart_configuration_hash
 
         record = configuration["numerics"]["vlm"]
         record["configuration_hash"] = restart_configuration_hash(vlm)
-        record["physics_hash"] = restart_physics_hash(vlm)
         # The geometry the solver loaded, not its source file, which may change later.
         for surface, (geometry, _) in zip(record["surfaces"], vlm.surfaces.values(), strict=True):
             surface["geometry"] = surface_to_dict(geometry)

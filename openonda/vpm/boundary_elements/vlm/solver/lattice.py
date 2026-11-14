@@ -130,9 +130,6 @@ class VLMLattice:
         self._trailing_temp: Any = None
         self._trailing_temp_np: np.ndarray | None = None
 
-        # Pressure coefficient (N,) - matching VPM convention
-        self.pressure_coefficient = ti.field(dtype=dtype, shape=(max_n_panels,))
-
         # Panel forces (N x 3)
         self.panel_force = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
         self.unsteady_panel_force = ti.Vector.field(3, dtype=dtype, shape=(max_n_panels,))
@@ -177,11 +174,6 @@ class VLMLattice:
         # 1 if panel is at Leading Edge (no upstream neighbor), 0 otherwise
         # Static topology — set once after mesh generation via mark_le_panels()
         self.is_leading_edge = ti.field(dtype=ti.i32, shape=(max_n_panels,))
-
-        # Leading Edge Suction Parameter (per LE panel, recomputed every step)
-        # Convention: LESP = |Γ_panel| / (chord_ref * V_ref)  (dimensionless, ≥ 0)
-        # Shedding triggers when LESP > lesp_crit (Ramesh et al. 2014)
-        self.leading_edge_suction_parameter = ti.field(dtype=dtype, shape=(max_n_panels,))
 
         # WAKE PARTICLE BUFFER (for direct Taichi-to-VPM transfer)
         # Pre-allocated buffer for wake particles shed per time step.
@@ -234,52 +226,6 @@ class VLMLattice:
             self.circulation_old[i] = self.circulation[i]
             self.cumulative_circulation_old[i] = self.cumulative_circulation[i]
 
-    @ti.kernel
-    def apply_relaxation(self, relaxation_factor: float):
-        """
-        Apply under-relaxation to circulation: circulation = alpha * circulation_new + (1-alpha) * circulation_old.
-
-        This stabilizes the VLM solution when coupled with strong wake influence.
-        Called AFTER linear solve to blend new solution with previous values.
-
-        Args:
-            relaxation_factor: Relaxation factor in ``(0, 1]``.
-                   1.0 = no relaxation (direct solve)
-                   0.5 = 50% blend with previous step
-        """
-        for i in range(self.n_panels):
-            circulation_new = self.circulation[i]
-            circulation_old = self.circulation_old[i]
-            self.circulation[i] = (
-                relaxation_factor * circulation_new + (1.0 - relaxation_factor) * circulation_old
-            )
-
-    def reset(self) -> None:
-        """Clear active panel state and reset the active count to zero.
-
-        Geometry and solution fields across the fixed capacity are cleared or
-        reinitialized as appropriate.  Host-side panel metadata is retained;
-        callers that reuse the object must upload bodies again before solving.
-        """
-        self.n_panels = 0
-        self.force_density = None
-        self.circulation.fill(0.0)
-        self.circulation_old.fill(0.0)
-        self.cumulative_circulation.fill(0.0)
-        self.cumulative_circulation_old.fill(0.0)
-        self.aerodynamic_influence_coefficient.fill(0.0)
-        self.right_hand_side.fill(0.0)
-        self.right_hand_side.fill(0.0)
-        self.kinematic_velocity.fill(0.0)
-        self.relative_velocity.fill(0.0)
-        self.bound_relative_velocity.fill(0.0)
-        self.external_velocity.fill(0.0)
-        self.neighbor_indices.fill(-1)
-        self.trailing_edge_index.fill(-1)
-        self.is_trailing_edge.fill(0)
-        self.is_leading_edge.fill(0)
-        self.leading_edge_suction_parameter.fill(0.0)
-
     def get_collocation_points(self) -> np.ndarray:
         """Return active collocation points, shape ``(N, 3)`` in metres."""
         return self.collocation_point.to_numpy()[: self.n_panels]
@@ -296,50 +242,16 @@ class VLMLattice:
         """Return active prescribed panel velocities, shape ``(N, 3)`` in m/s."""
         return self.kinematic_velocity.to_numpy()[: self.n_panels]
 
-    def has_kinematic_velocity(self) -> bool:
-        """Return whether any active panel has non-zero prescribed velocity."""
-        if self.kinematic_velocity is None:
-            return False
-        kinematic_velocity = self.kinematic_velocity.to_numpy()[: self.n_panels]
-        return bool(np.any(np.abs(kinematic_velocity) > 1e-10))
-
     def set_kinematic_velocity(self, kinematic_velocity: np.ndarray) -> None:
-        """Upload prescribed panel velocities.
-
-        Parameters
-        ----------
-        kinematic_velocity : array_like, shape (N, 3) or (3,)
-            Velocity values in m/s.  A single 3-vector is broadcast to all
-            active panels; a longer array is truncated to active capacity and
-            a shorter array leaves the remaining values at zero.
-
-        Notes
-        -----
-        The full fixed-capacity Taichi field is rewritten.  The input is not
-        modified.
-        """
-        if kinematic_velocity is None:
-            return
-
-        # Validate shape
-        if kinematic_velocity.shape[0] != self.n_panels:
-            # If only 3 components, broadcast to all panels
-            if kinematic_velocity.shape == (3,):
-                kinematic_velocity = np.tile(kinematic_velocity, (self.n_panels, 1))
-            else:
-                # We can be lenient and just use the provided slice if n_panels is smaller
-                n = min(kinematic_velocity.shape[0], self.n_panels)
-                kinematic_velocity = kinematic_velocity[:n]
-
-        if kinematic_velocity.ndim == 1:
-            kinematic_velocity = kinematic_velocity.reshape(-1, 3)
-
-        # Use from_numpy for better stability than custom kernels for simple transfers
-        full_kinematic_velocity = np.zeros((self.max_n_panels, 3), dtype=self.np_dtype)
-        n = min(kinematic_velocity.shape[0], self.n_panels)
-        full_kinematic_velocity[:n] = kinematic_velocity[:n]
-
-        self.kinematic_velocity.from_numpy(full_kinematic_velocity)
+        """Upload prescribed panel velocities, shape ``(n_panels, 3)`` in m/s."""
+        if kinematic_velocity.shape != (self.n_panels, 3):
+            raise ValueError(
+                f"Expected kinematic velocity of shape {(self.n_panels, 3)}, "
+                f"got {kinematic_velocity.shape}"
+            )
+        full = np.zeros((self.max_n_panels, 3), dtype=self.np_dtype)
+        full[: self.n_panels] = kinematic_velocity
+        self.kinematic_velocity.from_numpy(full)
 
     def set_external_velocity(self, external_velocity: np.ndarray) -> None:
         """Upload the incident velocity at each active panel.
@@ -385,7 +297,6 @@ class VLMLattice:
             "panel_corner_position",
             "vortex_point_position",
             *CELL_FIELDS,
-            "pressure_coefficient",
         )
         fields = {name: getattr(self, name).to_numpy()[: self.n_panels] for name in names}
         return write_lattice_vtk(

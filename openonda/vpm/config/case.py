@@ -380,33 +380,9 @@ class VPMCase:
         ):
             if not isinstance(getattr(self, name), kind):
                 raise TypeError(f"VPMCase.{name} must be a {kind.__name__} instance")
-        if self.numerics.vlm is not None:
-            self._validate_coupled_vlm_output()
         object.__setattr__(self, "initial_conditions", tuple(self.initial_conditions))
 
     @property
     def n_steps(self) -> int:
         """Number of accepted steps from time zero to ``RunPlan.end_time``."""
         return self.run.n_steps(self.numerics.time_step_size)
-
-    def _validate_coupled_vlm_output(self) -> None:
-        """Keep attached VLM output under the VPM run.
-
-        Standalone ``VLMSolver`` callers retain their own force
-        logging. Once VLM is attached to a VPM case,
-        accepted-step force/loading records are mandatory in the VPM-owned
-        sample directory, and the surface frames follow the particle frames.
-        """
-        vlm = self.numerics.vlm
-        if vlm.logging_interval_steps != 1:
-            raise ValueError(
-                "attached VLM cannot configure logging_interval_steps; "
-                "the VPM solver emits mandatory accepted-step samples"
-            )
-        if not vlm.sample_surface_forces:
-            raise ValueError(
-                "attached VLM requires sample_surface_forces=True; "
-                "VLM scientific output is mandatory in the VPM sample path"
-            )
-        if any(surface.sample_forces is False for surface in vlm.surfaces):
-            raise ValueError("attached VLM surfaces cannot opt out of mandatory scientific output")

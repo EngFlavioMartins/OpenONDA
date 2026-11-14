@@ -129,14 +129,6 @@ def write_lattice_vtk(
             pressure += fields["unsteady_pressure_jump_coefficient"]
         add(cell_data, "circulation_pressure_jump_proxy", pressure)
         cell_data.SetActiveScalars("circulation")
-    if "pressure_coefficient" in fields:
-        speed_pressure_coefficient = np.asarray(fields["pressure_coefficient"])
-        if (
-            speed_pressure_coefficient.shape != (count,)
-            or not np.isfinite(speed_pressure_coefficient).all()
-        ):
-            raise ValueError("Invalid saved VLM pressure coefficient")
-        add(cell_data, "speed_pressure_coefficient", speed_pressure_coefficient)
     if force_density is not None:
         force_density = float(force_density)
         if not np.isfinite(force_density) or force_density <= 0.0:
@@ -168,9 +160,6 @@ def write_lattice_vtk(
         "cell_association": "all VLM fields are cell-centred; panel_id is lattice order",
         "circulation_pressure_jump_proxy_definition": (
             "2*circulation/(reference_speed*panel_chord) + unsteady contribution when present"
-        ),
-        "speed_pressure_coefficient_definition": (
-            "Bernoulli speed coefficient 1-|velocity|^2/reference_speed^2 at collocation points; not a pressure jump"
         ),
     }
     if force_density is not None:

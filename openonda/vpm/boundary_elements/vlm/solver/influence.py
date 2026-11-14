@@ -238,51 +238,6 @@ def add_induced_velocity_at_targets(
 
 
 @ti.kernel
-def add_induced_velocity_and_gradient_at_targets(
-    target_position: ti.template(),  # type: ignore[invalid-annotation]
-    target_velocity: ti.template(),  # type: ignore[invalid-annotation]
-    target_gradient: ti.template(),  # type: ignore[invalid-annotation]
-    target_core_radius: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
-    panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
-    circulation: ti.template(),  # type: ignore[invalid-annotation]
-    n_targets: ti.i32,
-    n_panels: ti.i32,
-    coupled_mode: ti.i32,
-    core_radius: float,
-):
-    """Add particle-volume-filtered velocity and write its analytic Jacobian.
-
-    A particle represents a finite vortex volume. Filter filament induction
-    with that target particle's current core radius; using an almost singular
-    point derivative at a newly shed filament endpoint is not resolved by the
-    particle discretization. The gradient destination is provider-owned scratch
-    storage; its caller adds it to the other stage contributions.
-    """
-    for i in range(n_targets):
-        target = target_position[i]
-        induced = target * 0.0
-        gradient = target.outer_product(target) * 0.0
-        radius = ti.max(target_core_radius[i], core_radius)
-        for panel in range(n_panels):
-            value, jacobian = panel_velocity_and_gradient(
-                target,
-                panel,
-                vortex_point_position,
-                panel_corner_position,
-                trailing_edge_index,
-                circulation[panel],
-                coupled_mode,
-                radius,
-            )
-            induced += value
-            gradient += jacobian
-        target_velocity[i] += induced
-        target_gradient[i] = gradient
-
-
-@ti.kernel
 def add_stage_rates_with_bound_exchange(
     position: ti.template(),  # type: ignore[invalid-annotation]
     strength: ti.template(),  # type: ignore[invalid-annotation]
@@ -473,33 +428,6 @@ def compute_induced_velocities_at_bound(
 
         # Total velocity = External + Induced
         velocity[i] = external_velocity[i] + vel_induced
-
-
-@ti.kernel
-def compute_pressure_coefficients(
-    velocity: ti.template(),  # type: ignore[invalid-annotation]
-    pressure_coefficient: ti.template(),  # type: ignore[invalid-annotation]
-    n_panels: ti.i32,
-    freestream_velocity_mag_sq: float,
-):
-    """
-    Compute pressure coefficient at each panel.
-
-    pressure_coefficient = 1 - (|V|/|freestream_velocity|)²
-
-    Args:
-        velocity: Velocity at collocation_point points (N x 3)
-        pressure_coefficient: Output pressure coefficient (N,)
-        n_panels: Number of panels
-        freestream_velocity_mag_sq: Magnitude squared of freestream velocity
-    """
-    for i in range(n_panels):
-        v_mag_sq = velocity[i].dot(velocity[i])
-
-        if freestream_velocity_mag_sq > VLM_SMALL_VELOCITY * VLM_SMALL_VELOCITY:
-            pressure_coefficient[i] = 1.0 - v_mag_sq / freestream_velocity_mag_sq
-        else:
-            pressure_coefficient[i] = 0.0
 
 
 @ti.kernel

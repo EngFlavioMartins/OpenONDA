@@ -30,11 +30,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_1",
@@ -61,11 +57,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_2",
@@ -92,11 +84,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_3",
@@ -123,11 +111,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_4",
@@ -154,11 +138,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_5",
@@ -185,11 +165,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_6",
@@ -216,11 +192,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_7",
@@ -247,11 +219,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_8",
@@ -278,11 +246,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_9",
@@ -309,11 +273,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_10",
@@ -340,11 +300,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_11",
@@ -371,11 +327,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_12",
@@ -402,11 +354,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_13",
@@ -433,11 +381,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_14",
@@ -464,11 +408,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_15",
@@ -495,11 +435,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_16",
@@ -526,11 +462,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_17",
@@ -557,11 +489,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_18",
@@ -588,11 +516,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_19",
@@ -619,11 +543,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_20",
@@ -650,11 +570,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         },
         {
           "uid": "RotorFlow_OpenVSP_Blade_0_segment_21",
@@ -681,11 +597,7 @@
             ]
           },
           "n_chordwise_panels": 6,
-          "n_spanwise_panels": 1,
-          "airfoils": {
-            "inner": "flat",
-            "outer": "flat"
-          }
+          "n_spanwise_panels": 1
         }
       ]
     }

@@ -167,45 +167,6 @@ class Logging:
         Logging.section(topic if rows else "events", *(rows or ((topic, ""),)), flush=flush)
 
     @staticmethod
-    def boundary_forces(component: str, totals: dict, surfaces: dict) -> None:
-        """Report computed boundary loads through the shared record formatter.
-
-        ``totals`` and each surface record supply lift/drag in N and their
-        dimensionless coefficients. Optional moment coefficients and reference
-        position (m) are reported only when the owning force model supplies them.
-        This formatter never computes or substitutes physical measurements.
-        """
-        if len(surfaces) > 1:
-            for name, forces in surfaces.items():
-                Logging.record(
-                    f"{component} surface {name} forces",
-                    ("surface", name),
-                    ("lift", forces["lift"], "N"),
-                    ("drag", forces["drag"], "N"),
-                    ("lift coefficient", forces["lift_coefficient"]),
-                    ("drag coefficient", forces["drag_coefficient"]),
-                    ("panels", forces["panel_count"]),
-                )
-        rows = [
-            ("lift", totals["lift"], "N"),
-            ("drag", totals["drag"], "N"),
-            ("lift coefficient", totals["lift_coefficient"]),
-            ("drag coefficient", totals["drag_coefficient"]),
-        ]
-        for name in (
-            "side_force_coefficient",
-            "rolling_moment_coefficient",
-            "pitching_moment_coefficient",
-            "pitching_moment_coefficient_quarter_chord",
-            "yawing_moment_coefficient",
-        ):
-            if name in totals:
-                rows.append((name.replace("_", " "), totals[name]))
-        if "reference_point" in totals:
-            rows.append(("reference point", totals["reference_point"], "m"))
-        Logging.record(f"{component} forces", *rows, flush=True)
-
-    @staticmethod
     def warning_record(topic: str, *rows: log_style.Row) -> None:
         """Immediately publish a structured warning without routine suppression."""
         details = [(topic, ""), *rows]
@@ -398,13 +359,10 @@ class Logging:
         rows: list[log_style.Row] = [
             ("status", "active"),
             ("panels", f"{vlm.lattice.n_panels:,}"),
-            ("panels, max", f"{vlm.max_n_panels:,}"),
             ("surfaces", f"{len(vlm.surfaces):,}"),
             ("precision", str(vlm.dtype)),
-            ("linear solver", str(vlm.linear_solver)),
             ("density", f"{vlm.density:.3f}", "kg/m^3"),
             ("kinematic viscosity", f"{vlm.kinematic_viscosity:.3e}", "m^2/s"),
-            ("force evaluation", str(vlm.force.method)),
         ]
         if len(vlm.surfaces) > 0:
             rows.append(("surfaces:", ""))

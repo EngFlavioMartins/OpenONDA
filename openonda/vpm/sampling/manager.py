@@ -104,7 +104,7 @@ class SamplerManager:
             names.update(("vlm_forces", "vlm_surface_forces"))
             names.update(
                 f"vlm_{direction}_{name.replace('/', '_').replace(' ', '_')}"
-                for name in vlm._surface_sampling
+                for name in vlm.surfaces
                 for direction in ("spanwise", "chordwise")
             )
         return names

@@ -38,16 +38,12 @@ class WingSegment:
         vertex_position: Dict with keys 'a', 'b', 'c', 'd' mapping to [x, y, z] coordinates
         n_chordwise_panels: Number of chordwise panels
         n_spanwise_panels: Number of spanwise panels
-        airfoils: Optional dict with 'inner' and 'outer' airfoil file paths
-        geometry: Optional geometric properties (chord, span, sweep, dihedral, twist)
     """
 
     uid: str
     vertex_position: dict[str, np.ndarray]
     n_chordwise_panels: int = 8
     n_spanwise_panels: int = 16
-    airfoils: dict[str, str] | None = None
-    geometry: dict[str, float | str] | None = None
 
     def __post_init__(self) -> None:
         """Validate segment definition."""

@@ -47,7 +47,6 @@ class VLMDiagnostics:
         if vlm_solver is None or vlm_solver._last_forces is None:
             return
         forces = vlm_solver._last_forces
-        n_panels = vlm_solver.lattice.n_panels
         # Use the same integrated three-leg field as the solver budget. A
         # quarter-chord-only reconstruction is wrong for tapered/twisted wings.
         bound_vortex_strength = vlm_solver.compute_total_bound_vortex_strength()
@@ -55,9 +54,6 @@ class VLMDiagnostics:
 
         n_p = particles.n_particles_total
         wake_vortex_strength_y = float(particle_vortex_strength[:, 1].sum(dtype=np.float64))
-
-        lespnp = vlm_solver.lattice.leading_edge_suction_parameter.to_numpy()[:n_panels]
-        max_leading_edge_suction_parameter = float(np.max(lespnp)) if n_panels > 0 else 0.0
 
         # Coupled VLM is an owned VPM component.  The caller reaches this
         # method only after an accepted VPM step, so every row belongs to the
@@ -67,7 +63,6 @@ class VLMDiagnostics:
             forces,
             bound_vortex_strength_y,
             wake_vortex_strength_y,
-            max_leading_edge_suction_parameter,
             n_p,
             time,
             samples_dir,
@@ -81,7 +76,6 @@ class VLMDiagnostics:
         forces: dict,
         bound_vortex_strength: float,
         wake_vortex_strength: float,
-        max_leading_edge_suction_parameter: float,
         n_p: int,
         time: float,
         samples_dir: Path,
@@ -96,8 +90,6 @@ class VLMDiagnostics:
             Force dict returned by ``vlm_solver.compute_forces()``.
         bound_vortex_strength, wake_vortex_strength:
             Pre-computed bound and wake y-components of vector strength [m³/s].
-        max_leading_edge_suction_parameter:
-            Maximum Leading Edge Suction Parameter for this step.
         n_p:
             Number of VPM particles at this step.
         time:
@@ -150,7 +142,6 @@ class VLMDiagnostics:
             ),
             "bound_vortex_strength_y": bound_vortex_strength,
             "wake_vortex_strength_y": wake_vortex_strength,
-            "max_leading_edge_suction_parameter": max_leading_edge_suction_parameter,
             "n_particles_total": n_p,
             "force_density": force_density,
             "force_units": "N",

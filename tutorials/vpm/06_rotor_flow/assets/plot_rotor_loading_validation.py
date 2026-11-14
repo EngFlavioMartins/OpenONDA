@@ -40,7 +40,7 @@ def main():
         pd.DataFrame(read_csv_table(inputs.samples_dir / f"vlm_chordwise_{surface}.csv")),
         inputs.metadata,
     )
-    expected_cadence = vlm["logging_interval_steps"] * inputs.time_step_size
+    expected_cadence = inputs.time_step_size
     expected_chord_panels = chord_panel_indices(vlm["surfaces"][0])
     native_end_time = float(span["time"].max())
     span, chord, cutoff, end_time = shared_vlm_window(

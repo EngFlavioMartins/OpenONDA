@@ -1,10 +1,8 @@
-"""
-OpenVSP DegenGeom import helpers for OpenONDA VLM surfaces.
+"""Import of OpenVSP DegenGeom CSV files as VLM surfaces.
 
-The VLM solver operates on OpenONDA's Aircraft/Wing/WingSegment primitives.
-This module keeps OpenVSP optional by using DegenGeom CSV as the runtime-free
-exchange format and only importing the OpenVSP Python API inside the .vsp3
-export path.
+The VLM solver works on the Aircraft, Wing and WingSegment primitives. The CSV
+is read without the OpenVSP Python API, so a surface can be imported where
+OpenVSP is not installed.
 """
 
 from __future__ import annotations
@@ -20,67 +18,6 @@ from .aircraft import Aircraft, Wing, WingSegment
 
 
 @dataclass
-class OpenVSPImportConfig:
-    """Configuration for importing OpenVSP DegenGeom data into OpenONDA VLM surfaces.
-
-    Controls which components are imported, how they are discretised, and
-    how coordinate transformations are applied during the conversion.
-
-    Fields
-    ------
-    include_components
-        Only import components whose name matches one of these substrings
-        (``None`` = all components).
-    exclude_components
-        Skip components whose name matches one of these substrings.
-    target_surface_types
-        Surface-type(s) to import (default: wing, prop, rotor).
-    n_chordwise_panels
-        Override the number of chordwise panels (``None`` = use VSP settings).
-    n_spanwise_panels
-        Override the number of spanwise panels (``None`` = use VSP settings).
-    preserve_vsp_paneling
-        Use VSP-native panel distribution when no chord/span override is
-        given (default: ``True``).
-    symmetry
-        Symmetry-plane treatment (default: ``'from_openvsp'``).
-    length_scale
-        Factor applied to all coordinates (default: ``1.0``).
-    coordinate_transform
-        Affine transformation matrix (4×4) applied to imported node
-        coordinates (``None`` = identity).
-    strict
-        Raise on unrecognised surface types (default: ``True``).
-
-    Examples
-    --------
-    .. code-block:: python
-
-        # Default import (all components, VSP-native panelling)
-        cfg = OpenVSPImportConfig()
-
-        # Import only wings with a custom 20×10 panel distribution
-        cfg = OpenVSPImportConfig(
-            include_components=["wing"],
-            n_chordwise_panels=20,
-            n_spanwise_panels=10,
-            preserve_vsp_paneling=False,
-        )
-    """
-
-    include_components: list[str] | None = None
-    exclude_components: list[str] | None = None
-    target_surface_types: tuple[str, ...] = ("wing", "prop", "rotor")
-    n_chordwise_panels: int | None = None
-    n_spanwise_panels: int | None = None
-    preserve_vsp_paneling: bool = True
-    symmetry: str = "from_openvsp"
-    length_scale: float = 1.0
-    coordinate_transform: np.ndarray | None = None
-    strict: bool = True
-
-
-@dataclass
 class _PointTable:
     name: str
     surface_type: str
@@ -91,6 +28,8 @@ class _PointTable:
     dims: tuple[int, int] | None = None
 
 
+# Surface types imported from a DegenGeom file.
+_SURFACE_TYPES = {"wing", "prop", "rotor"}
 _POINT_SECTIONS = {
     "plate",
     "surface",
@@ -107,47 +46,36 @@ _NON_SURFACE_SECTIONS = {
 }
 
 
-def load_degengeom_csv(
-    csv_file: str | Path,
-    config: OpenVSPImportConfig | None = None,
-) -> Aircraft:
-    """Parse an OpenVSP DegenGeom CSV file into an OpenONDA
-    :class:`~.aircraft.Aircraft`.
+def load_degengeom_csv(csv_file: str | Path) -> Aircraft:
+    """Read the wing, propeller and rotor surfaces of an OpenVSP DegenGeom CSV file.
+
+    Each surface becomes one wing without symmetry. Its VSP cross sections give
+    the chordwise panels, and every spanwise cell between two cross sections is
+    one segment of one spanwise panel.
 
     Parameters
     ----------
     csv_file : str | Path
         Path to the DegenGeom CSV file.
-    config : OpenVSPImportConfig | None
-        Import configuration (see :class:`OpenVSPImportConfig`).  When
-        ``None``, defaults are used.
 
     Returns
     -------
     Aircraft
-        Populated aircraft model with wings and segments derived from the
-        CSV lifting-surface tables.
+        Aircraft with one wing per imported surface.
 
     Raises
     ------
     FileNotFoundError
         If the CSV file does not exist.
     ValueError
-        If no lifting-surface point tables are found.
-
-    Examples
-    --------
-    >>> aircraft = load_degengeom_csv("degen.csv")
-    >>> len(aircraft.wings)
-    2
+        If the file has no lifting-surface point table, a point row or a U/W
+        grid is incomplete, or a segment is degenerate.
     """
-
-    cfg = config or OpenVSPImportConfig()
     csv_path = Path(csv_file)
     if not csv_path.exists():
         raise FileNotFoundError(f"DegenGeom CSV file not found: {csv_path}")
 
-    tables = _read_degengeom_sections(csv_path, cfg)
+    tables = _read_degengeom_sections(csv_path)
     if not tables:
         raise ValueError(
             f"No lifting-surface point tables were found in {csv_path}. "
@@ -156,14 +84,13 @@ def load_degengeom_csv(
 
     aircraft = Aircraft(uid=_sanitize_uid(csv_path.stem or "openvsp_aircraft"))
     for index, table in enumerate(tables):
-        wing = _point_table_to_wing(table, cfg, index)
-        aircraft.add_wing(wing)
+        aircraft.add_wing(_point_table_to_wing(table, index))
 
     aircraft.compute_default_refs()
     return aircraft
 
 
-def _read_degengeom_sections(csv_path: Path, config: OpenVSPImportConfig) -> list[_PointTable]:
+def _read_degengeom_sections(csv_path: Path) -> list[_PointTable]:
     """Parse selected surface point tables while tracking component names and dimensions."""
     rows = _read_csv_rows(csv_path)
     tables: list[_PointTable] = []
@@ -212,9 +139,8 @@ def _read_degengeom_sections(csv_path: Path, config: OpenVSPImportConfig) -> lis
                 current_type,
                 current_section,
                 pending_dims,
-                config,
             )
-            if table is not None and _component_is_selected(table, config):
+            if table is not None and table.surface_type in _SURFACE_TYPES:
                 tables.append(table)
             pending_dims = None
             i = next_i
@@ -310,9 +236,8 @@ def _parse_point_table(
     current_type: str,
     current_section: str,
     dims: tuple[int, int] | None,
-    config: OpenVSPImportConfig,
 ) -> tuple[_PointTable | None, int]:
-    """Read and transform a coordinate table; return it and the next unconsumed row index."""
+    """Read a coordinate table; return it and the next unconsumed row index."""
     header = [_norm(cell) for cell in rows[header_index]]
     col = {name: idx for idx, name in enumerate(header)}
     x_idx, y_idx, z_idx = col["x"], col["y"], col["z"]
@@ -352,17 +277,15 @@ def _parse_point_table(
             if type_idx is not None and type_idx < len(row) and row[type_idx]:
                 table_type = _infer_surface_type(row[type_idx], table_name)
         except (IndexError, ValueError):
-            if config.strict:
-                raise ValueError(
-                    f"Invalid DegenGeom point row after header line {header_index + 1}: {row}"
-                ) from None
-            break
+            raise ValueError(
+                f"Invalid DegenGeom point row after header line {header_index + 1}: {row}"
+            ) from None
         i += 1
 
     if not points or current_section in _NON_SURFACE_SECTIONS:
         return None, i
 
-    points_np = _apply_coordinate_transform(np.asarray(points, dtype=float), config)
+    points_np = np.asarray(points, dtype=float)
     u_np = np.asarray(u_values, dtype=float) if len(u_values) == len(points) else None
     w_np = np.asarray(w_values, dtype=float) if len(w_values) == len(points) else None
     return (
@@ -379,9 +302,9 @@ def _parse_point_table(
     )
 
 
-def _point_table_to_wing(table: _PointTable, config: OpenVSPImportConfig, index: int) -> Wing:
-    """Build flat-airfoil wing segments from a structured imported point grid."""
-    grid = _point_table_to_grid(table, config)
+def _point_table_to_wing(table: _PointTable, index: int) -> Wing:
+    """Build the wing segments of a structured imported point grid."""
+    grid = _point_table_to_grid(table)
     n_chord, n_span = grid.shape[:2]
     if n_chord < 2 or n_span < 2:
         raise ValueError(
@@ -390,9 +313,7 @@ def _point_table_to_wing(table: _PointTable, config: OpenVSPImportConfig, index:
         )
 
     wing_uid = _sanitize_uid(table.name, fallback=f"openvsp_surface_{index}")
-    wing = Wing(uid=wing_uid, symmetry=_symmetry_to_int(config.symmetry))
-    span_panel_counts = _infer_span_panel_counts(n_span - 1, config)
-    n_chordwise_panels = _infer_chord_panel_count(n_chord, config)
+    wing = Wing(uid=wing_uid)
 
     for station in range(n_span - 1):
         segment = WingSegment(
@@ -403,10 +324,8 @@ def _point_table_to_wing(table: _PointTable, config: OpenVSPImportConfig, index:
                 "c": grid[-1, station + 1].copy(),
                 "d": grid[-1, station].copy(),
             },
-            n_chordwise_panels=n_chordwise_panels,
-            n_spanwise_panels=span_panel_counts[station],
-            airfoils={"inner": "flat", "outer": "flat"},
-            geometry={"source": "openvsp_degengeom"},
+            n_chordwise_panels=n_chord - 1,
+            n_spanwise_panels=1,
         )
         _validate_segment_orientation(segment, table.name)
         wing.add_segment(segment)
@@ -414,7 +333,7 @@ def _point_table_to_wing(table: _PointTable, config: OpenVSPImportConfig, index:
     return wing
 
 
-def _point_table_to_grid(table: _PointTable, config: OpenVSPImportConfig) -> np.ndarray:
+def _point_table_to_grid(table: _PointTable) -> np.ndarray:
     """Arrange U/W-indexed or dimensioned points as a chord-by-span coordinate grid."""
     if table.u is not None and table.w is not None:
         u_unique = _unique_sorted(table.u)
@@ -425,10 +344,7 @@ def _point_table_to_grid(table: _PointTable, config: OpenVSPImportConfig) -> np.
             w_idx = int(np.argmin(np.abs(w_unique - w_value)))
             grid[u_idx, w_idx] = point
         if np.isnan(grid).any():
-            message = f"DegenGeom table '{table.name}' has an incomplete U/W point grid."
-            if config.strict:
-                raise ValueError(message)
-            grid = _drop_incomplete_grid_lines(grid)
+            raise ValueError(f"DegenGeom table '{table.name}' has an incomplete U/W point grid.")
         return grid
 
     if table.dims is not None:
@@ -449,52 +365,6 @@ def _point_table_to_grid(table: _PointTable, config: OpenVSPImportConfig) -> np.
     )
 
 
-def _apply_coordinate_transform(points: np.ndarray, config: OpenVSPImportConfig) -> np.ndarray:
-    """Scale imported lengths then apply a linear or homogeneous coordinate transform."""
-    transformed = np.asarray(points, dtype=float) * float(config.length_scale)
-    transform = config.coordinate_transform
-    if transform is None:
-        return transformed
-
-    matrix = np.asarray(transform, dtype=float)
-    if matrix.shape == (3, 3):
-        return transformed @ matrix.T
-    if matrix.shape == (4, 4):
-        homogeneous = np.ones((transformed.shape[0], 4), dtype=float)
-        homogeneous[:, :3] = transformed
-        return (homogeneous @ matrix.T)[:, :3]
-    raise ValueError("coordinate_transform must be a 3x3 or 4x4 matrix.")
-
-
-def _drop_incomplete_grid_lines(grid: np.ndarray) -> np.ndarray:
-    """Remove every U or W grid line containing a missing coordinate."""
-    valid_u = ~np.isnan(grid).any(axis=(1, 2))
-    valid_w = ~np.isnan(grid).any(axis=(0, 2))
-    return grid[valid_u][:, valid_w]
-
-
-def _infer_chord_panel_count(n_chord_stations: int, config: OpenVSPImportConfig) -> int:
-    """Resolve chordwise panel count from explicit settings or imported station count."""
-    if config.n_chordwise_panels is not None:
-        return max(1, int(config.n_chordwise_panels))
-    if config.preserve_vsp_paneling:
-        return max(1, n_chord_stations - 1)
-    return 1
-
-
-def _infer_span_panel_counts(n_segments: int, config: OpenVSPImportConfig) -> list[int]:
-    """Distribute requested span panels across segments, retaining at least one per segment."""
-    if config.n_spanwise_panels is None:
-        return [1] * n_segments
-
-    total = max(n_segments, int(config.n_spanwise_panels))
-    counts = np.ones(n_segments, dtype=int)
-    remaining = total - n_segments
-    for idx in range(remaining):
-        counts[idx % n_segments] += 1
-    return counts.tolist()
-
-
 def _validate_segment_orientation(segment: WingSegment, surface_name: str) -> None:
     """Reject nonfinite/zero segment area and coincident leading/trailing edges."""
     if not np.isfinite(segment.area) or segment.area <= 1e-12:
@@ -512,20 +382,6 @@ def _validate_segment_orientation(segment: WingSegment, surface_name: str) -> No
         )
 
 
-def _component_is_selected(table: _PointTable, config: OpenVSPImportConfig) -> bool:
-    """Apply component name filters and the requested lifting-surface type set."""
-    name = table.name.lower()
-    include = config.include_components
-    exclude = config.exclude_components
-    targets = {item.lower() for item in config.target_surface_types}
-
-    if include and not any(item.lower() in name for item in include):
-        return False
-    if exclude and any(item.lower() in name for item in exclude):
-        return False
-    return table.surface_type.lower() in targets
-
-
 def _infer_surface_type(value: str, name: str) -> str:
     """Infer wing, rotor or propeller type from normalized component metadata."""
     text = f"{value} {name}".lower()
@@ -534,23 +390,6 @@ def _infer_surface_type(value: str, name: str) -> str:
     if "wing" in text or "lift" in text:
         return "wing"
     return value.lower() if value and value.lower() in {"wing", "prop", "rotor"} else "wing"
-
-
-def _symmetry_to_int(symmetry: str) -> int:
-    """Translate symmetry names into native plane codes 0 through 3."""
-    value = str(symmetry).strip().lower()
-    if value in {"none", "off", "false", "0", "from_openvsp"}:
-        return 0
-    mapping = {"xy": 1, "xz": 2, "yz": 3}
-    if value in mapping:
-        return mapping[value]
-    try:
-        integer = int(value)
-    except ValueError as exc:
-        raise ValueError(f"Unsupported symmetry option: {symmetry!r}") from exc
-    if integer not in (0, 1, 2, 3):
-        raise ValueError(f"symmetry must map to 0, 1, 2, or 3; got {symmetry!r}")
-    return integer
 
 
 def _unique_sorted(values: np.ndarray) -> np.ndarray:
@@ -583,7 +422,4 @@ def _norm(value: str) -> str:
     return re.sub(r"[^0-9a-zA-Z]+", "_", value.strip().lower()).strip("_")
 
 
-__all__ = [
-    "OpenVSPImportConfig",
-    "load_degengeom_csv",
-]
+__all__ = ["load_degengeom_csv"]

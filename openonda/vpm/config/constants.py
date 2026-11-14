@@ -3,17 +3,12 @@ Physical and numerical constants shared by the VPM solver.
 """
 
 import numpy as np
-import taichi as ti
 
 # Numerical epsilon for stability and convergence checks
 EPSILON = 1e-12
 
 # Biot-Savart constant 1/(4 pi)
 ONE_OVER_FOUR_PI = 1.0 / (4.0 * np.pi)
-
-# Precision of the VLM linear-system workspaces
-NP_FLOAT = np.float32
-TI_FLOAT = ti.f32
 
 # Default hard particle capacity
 MAX_N_PARTICLES = 500000

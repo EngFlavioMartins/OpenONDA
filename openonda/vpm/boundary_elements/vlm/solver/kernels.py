@@ -40,10 +40,8 @@ def _append_wake_particle(
 def shed_wake_particles_kernel(
     n_panels: ti.i32,
     core_overlap: float,
-    shedding_threshold: float,
     relative_cancellation_tolerance: float,
     cumulative_circulation: ti.template(),  # type: ignore[invalid-annotation]
-    cumulative_circulation_old: ti.template(),  # type: ignore[invalid-annotation]
     panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
     neighbor_indices: ti.template(),  # type: ignore[invalid-annotation]
     is_trailing_edge: ti.template(),  # type: ignore[invalid-annotation]
@@ -59,7 +57,6 @@ def shed_wake_particles_kernel(
     wake_group_id: ti.template(),  # type: ignore[invalid-annotation]
     n_wake: ti.template(),  # type: ignore[invalid-annotation]
     transported_bound: ti.template(),  # type: ignore[invalid-annotation]
-    use_bound_transport: ti.template(),  # type: ignore[invalid-annotation]
 ):
     """Deposit the completed row as trailing midpoints and a transverse far-edge element.
 
@@ -84,7 +81,7 @@ def shed_wake_particles_kernel(
                 left_index = neighbor_indices[i, 0]
                 right_index = neighbor_indices[i, 1]
                 delta_left = gamma
-                left_threshold = shedding_threshold
+                left_threshold = 0.0
                 shared_root = 0
                 owns_left = 1
                 if left_index != -1:
@@ -117,7 +114,7 @@ def shed_wake_particles_kernel(
                         wake_group_id,
                         n_wake,
                     )
-                if right_index == -1 and ti.abs(gamma) > shedding_threshold:
+                if right_index == -1 and gamma != 0.0:
                     _append_wake_particle(
                         right + 0.5 * dr,
                         ur,
@@ -135,12 +132,8 @@ def shed_wake_particles_kernel(
                     )
                 far_left, far_right = left + dl, right + dr
                 far_span = far_right - far_left
-                transverse_strength = (cumulative_circulation_old[i] - gamma) * far_span
-                if ti.static(use_bound_transport):
-                    transverse_strength = transported_bound[i] - gamma * far_span
-                # Retain the circulation threshold's units (m²/s), including
-                # exchange vectors that are not parallel to the far edge.
-                if transverse_strength.norm() > shedding_threshold * far_span.norm():
+                transverse_strength = transported_bound[i] - gamma * far_span
+                if transverse_strength.norm() > 0.0:
                     _append_wake_particle(
                         0.5 * (far_left + far_right),
                         0.5 * (ul + ur),

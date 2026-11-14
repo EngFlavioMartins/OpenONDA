@@ -40,12 +40,18 @@ _FIELDS = (
     "unsteady_panel_force",
     "unsteady_pressure_jump_coefficient",
     "panel_moment_correction",
-    "pressure_coefficient",
-    "leading_edge_suction_parameter",
 )
+# Operators of the coupled bound-surface field that the restart hash records.
+_FIELD_MODEL = {
+    "particle_core_rule": "max(particle_core_radius, filament_core_radius)",
+    "bound_representation": "finite_segment_global_horseshoe",
+    "bound_trace_operator": "finite_segment_rosenhead_point_trace",
+    "jacobian_operator": "finite_segment_rosenhead_same_source_kernel",
+    "transport_target_operator": "symmetric_pair_radius",
+    "near_wake_treatment": "partial_newborn_row",
+}
 # Accumulated rigid pose of each surface: x = rotation @ x_placed + translation.
 _POSE_SHAPES = {"rotation": (3, 3), "translation": (3,)}
-_OUTPUT_CONTROL_FIELDS = ("logging_interval_steps", "sample_surface_forces")
 
 
 def _portable_code(code: CodeType) -> CodeType:
@@ -56,29 +62,26 @@ def _portable_code(code: CodeType) -> CodeType:
     return code.replace(co_filename="<motion>", co_firstlineno=0, co_consts=constants)
 
 
-def _restart_controls(
-    vlm: "VLMSolver", *, include_output_controls: bool = True
-) -> dict[str, object]:
-    """Return the deterministic VLM controls used by restart hashes."""
+def _restart_controls(vlm: "VLMSolver") -> dict[str, object]:
+    """Return the deterministic VLM controls used by the restart hash."""
     controls = metadata_value(vlm.config)
-    # The setup describes user choices; this explicit field settings also
-    # describes the geometric source/trace/transport operators so a
-    # checkpoint cannot silently continue under a different field model.
-    controls["field_settings"] = vlm.field_settings.as_dict()
+    # The setup describes user choices; the field model names the geometric
+    # source, trace and transport operators, so a checkpoint cannot silently
+    # continue under a different field model.
+    controls["field_model"] = {
+        "filament_core_radius": float(vlm.lattice.filament_core_radius),
+        **_FIELD_MODEL,
+    }
     for surface in controls["surfaces"]:
         # Geometry and reference values are hashed below; a moved case retains
         # the same numerical configuration without depending on an absolute filename.
         surface.pop("surface")
-        if not include_output_controls:
-            surface.pop("sample_forces", None)
-    if not include_output_controls:
-        for name in _OUTPUT_CONTROL_FIELDS:
-            controls.pop(name, None)
     return controls
 
 
-def _configuration_hash(vlm: "VLMSolver", controls: dict[str, object]) -> str:
-    """Hash controls, callbacks and generated geometry for one configuration hash."""
+def restart_configuration_hash(vlm: "VLMSolver") -> str:
+    """Hash the declared controls, motion callbacks and generated initial geometry."""
+    controls = _restart_controls(vlm)
     controls["geometry_references"] = getattr(
         vlm,
         "_restart_geometry_references",
@@ -108,25 +111,10 @@ def _configuration_hash(vlm: "VLMSolver", controls: dict[str, object]) -> str:
     return digest.hexdigest()
 
 
-def restart_configuration_hash(vlm: "VLMSolver") -> str:
-    """Hash declared physics and output controls plus generated initial geometry."""
-    return _configuration_hash(vlm, _restart_controls(vlm))
-
-
-def restart_physics_hash(vlm: "VLMSolver") -> str:
-    """Hash only VLM controls that can change solved or emitted physics.
-
-    Logging cadence and per-surface sampling do not change evolution and are
-    omitted from the physics hash. The full configuration hash separately records them.
-    """
-    return _configuration_hash(vlm, _restart_controls(vlm, include_output_controls=False))
-
-
 def write_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:
     """Store lattice fields and the accumulated surface poses without reducing precision."""
-    group.attrs["version"] = 9
+    group.attrs["version"] = 10
     group.attrs["configuration_hash"] = vlm._restart_configuration_hash
-    group.attrs["physics_hash"] = vlm._restart_physics_hash
     group.attrs["solved"] = vlm._solved
     group.attrs["coupled_mode"] = vlm._coupled_mode
     group.attrs["time"] = vlm._current_time if vlm._current_time is not None else 0.0
@@ -153,7 +141,7 @@ def validate_vlm_restart(vlm: "VLMSolver", group: "h5py.Group | None") -> None:
     if group is None:
         raise ValueError("VPM backup is missing VLM continuation state")
     version = int(group.attrs.get("version", -1))
-    if version != 9:
+    if version != 10:
         raise ValueError("Incompatible VLM restart version; start a new run with this solver")
     expected_attributes = {
         "version",
@@ -163,7 +151,6 @@ def validate_vlm_restart(vlm: "VLMSolver", group: "h5py.Group | None") -> None:
         "time",
         "reference_speed",
         "reference_velocity",
-        "physics_hash",
     }
     allowed_attributes = (expected_attributes, expected_attributes | {"force_density"})
     if set(group.attrs) not in allowed_attributes:
@@ -173,8 +160,6 @@ def validate_vlm_restart(vlm: "VLMSolver", group: "h5py.Group | None") -> None:
             raise ValueError(f"Invalid VLM restart flag {name}")
     if np.shape(group.attrs["reference_velocity"]) != (3,):
         raise ValueError("Invalid VLM restart reference velocity")
-    if group.attrs.get("physics_hash") != vlm._restart_physics_hash:
-        raise ValueError("VLM restart physics configuration does not match this solver")
     if group.attrs.get("configuration_hash") != vlm._restart_configuration_hash:
         raise ValueError("VLM restart geometry or configuration does not match this solver")
     expected_fields = set(_FIELDS)
@@ -233,8 +218,6 @@ def restore_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:
         vlm._force_density = vlm.density
         vlm.lattice.force_density = None
     vlm._last_reference_velocity = np.asarray(group.attrs["reference_velocity"])
-    vlm._aerodynamic_influence_coefficient_computed = False
-    vlm._linear_solver_instance = None
     vlm._bound_transport_ready = False
     if vlm._solved:
         vlm._last_forces = vlm.compute_forces(vlm.density, vlm._last_reference_velocity)

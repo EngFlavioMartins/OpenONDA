@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "13.0"
+_BACKUP_FORMAT_VERSION = "14.0"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",

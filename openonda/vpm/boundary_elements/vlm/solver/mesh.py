@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 _SYMMETRY_ROOT_TOLERANCE = 1e-6
 # Coordinate that a symmetry plane (1: XY, 2: XZ, 3: YZ) mirrors.
 _MIRRORED_AXIS = {1: 2, 2: 1, 3: 0}
+# Length of the far trailing legs of the standalone horseshoe, in geometry length units.
+TRAILING_LEG_LENGTH = 10000.0
 
 
 def _check_wing_topology(aircraft: Aircraft) -> None:
@@ -92,7 +94,7 @@ def _stitch_segment_neighbors(blocks: list[dict], neigh_np: np.ndarray) -> None:
 def generate_vlm_mesh(
     aircraft: Aircraft,
     lattice: "VLMLattice",
-    trailing_edge_infty: float = 10000.0,
+    trailing_edge_infty: float = TRAILING_LEG_LENGTH,
     spanwise_spacing: str = "uniform",
     spanwise_spacing_ratio: float = 1.0,
     spanwise_spacing_region: str = "both",
@@ -109,9 +111,9 @@ def generate_vlm_mesh(
         lattice: VLMLattice object to populate. Mesh arrays use its configured
             precision (``float32`` or ``float64``).
         trailing_edge_infty: Initial trailing-leg length in geometry length units.
-        spanwise_spacing: Panel distribution method ('uniform' or 'geometric')
+        spanwise_spacing: Panel distribution of every wing segment ('uniform' or 'geometric')
         spanwise_spacing_ratio: Concentration ratio for geometric spacing
-        spanwise_spacing_region: Refinement region ('start', 'end', 'both')
+        spanwise_spacing_region: Refinement region ('start', 'end', 'both') within each segment
     """
     _check_wing_topology(aircraft)
     # Pre-allocate numpy arrays for all mesh data
@@ -139,26 +141,13 @@ def generate_vlm_mesh(
     segment_blocks: list[dict] = []
 
     for _wing_uid, wing in aircraft.wings.items():
-        total_ns = sum(seg.n_spanwise_panels for seg in wing.segments.values())
-        global_edges = _compute_spanwise_edges(
-            total_ns, spanwise_spacing, spanwise_spacing_ratio, spanwise_spacing_region
-        )
-
-        global_span_idx = 0
-
         for segment_id, (_seg_uid, segment) in enumerate(wing.segments.items()):
-            ns_segment = segment.n_spanwise_panels
-
-            segment_start = global_span_idx
-            segment_end = global_span_idx + ns_segment
-            segment_edges = global_edges[segment_start : segment_end + 1]
-
-            s_start = segment_edges[0]
-            s_end = segment_edges[-1]
-            if s_end > s_start:
-                local_edges = (segment_edges - s_start) / (s_end - s_start)
-            else:
-                local_edges = np.linspace(0, 1, ns_segment + 1)
+            local_edges = _compute_spanwise_edges(
+                segment.n_spanwise_panels,
+                spanwise_spacing,
+                spanwise_spacing_ratio,
+                spanwise_spacing_region,
+            )
 
             # Generate to numpy arrays (no GPU transfer yet)
             start_orig = panel_idx
@@ -231,7 +220,6 @@ def generate_vlm_mesh(
                     }
                 )
 
-            global_span_idx += ns_segment
         wing_id += 1
 
     vortex_np[:panel_idx, 0] = (
@@ -316,10 +304,7 @@ def _fill_panel_geometry(
     c_vort_front = 0.5 * (c_min + c_max) - 0.25 * dc
     V2 = _bilinear_interp(alpha, s_min, c_vort_front)
     V3 = _bilinear_interp(alpha, s_max, c_vort_front)
-    V1 = V2 + trail_dir * 1000.0
-    V4 = V3 + trail_dir * 1000.0
-    vortex[idx, 0], vortex[idx, 1] = V1, V2
-    vortex[idx, 2], vortex[idx, 3] = V3, V4
+    vortex[idx, 1], vortex[idx, 2] = V2, V3
     bound[idx] = 0.5 * (V2 + V3)
 
 
@@ -524,8 +509,7 @@ def _update_trailing_uniform_kernel(
         # the freestream (which carries an angle-of-attack vertical component)
         # lifts the wake out of the wing plane and suppresses the tip downwash,
         # erasing the spanwise taper expected from finite-wing theory. The
-        # trailing_direction field (used for VPM particle shedding) is left along
-        # the relative velocity on purpose.
+        # trailing_direction field is left along the relative velocity on purpose.
         n = normal[i]
         d_plane = trail_dir - trail_dir.dot(n) * n
         d_mag = d_plane.norm()
@@ -599,13 +583,13 @@ def update_trailing_edge_directions(lattice: "VLMLattice", freestream_velocity: 
         float(trail_dir[0]),
         float(trail_dir[1]),
         float(trail_dir[2]),
-        10000.0,
+        TRAILING_LEG_LENGTH,
     )
 
 
 def _prepare_trailing_temp(lattice: "VLMLattice", freestream_velocity: np.ndarray) -> ti.Field:
     """Allocate/reuse Taichi temp field and upload freestream_velocity for trailing direction update."""
-    if not hasattr(lattice, "_trailing_temp") or lattice._trailing_temp is None:
+    if lattice._trailing_temp is None:
         lattice._trailing_temp = ti.Vector.field(
             3, dtype=lattice.external_velocity.dtype, shape=lattice.external_velocity.shape[0]
         )
@@ -623,8 +607,7 @@ def _prepare_trailing_temp(lattice: "VLMLattice", freestream_velocity: np.ndarra
     temp_field = lattice._trailing_temp
     dtype_np = np.float32 if lattice.external_velocity.dtype == ti.f32 else np.float64
     if (
-        not hasattr(lattice, "_trailing_temp_np")
-        or lattice._trailing_temp_np is None
+        lattice._trailing_temp_np is None
         or lattice._trailing_temp_np.shape[0] < temp_field.shape[0]
     ):
         lattice._trailing_temp_np = np.zeros((temp_field.shape[0], 3), dtype=dtype_np)
@@ -654,7 +637,7 @@ def update_trailing_directions_local(lattice: "VLMLattice", transport_velocity: 
         lattice.normal,
         temp_field,
         lattice.n_panels,
-        10000.0,
+        TRAILING_LEG_LENGTH,
         VLM_SMALL_VELOCITY,
     )
 
@@ -744,11 +727,11 @@ def _compute_spanwise_edges(
     n: int, spacing_type: str = "uniform", ratio: float = 1.0, region: str = "both"
 ) -> np.ndarray:
     """
-    Compute spanwise panel edge locations in [0, 1].
+    Compute the spanwise panel edge locations of one wing segment in [0, 1].
 
     Args:
-        n: Number of panels
-        spacing_type: 'uniform', 'cosine', 'geometric'
+        n: Number of panels of the segment
+        spacing_type: 'uniform' or 'geometric'
         ratio: Concentration ratio (d_max / d_min) for geometric spacing
         region: Where to apply refinement for geometric spacing:
                 'start': Refine at s=0 (smallest panels at start)
@@ -758,21 +741,11 @@ def _compute_spanwise_edges(
     Returns:
         Array of n+1 edge locations starting at 0 and ending at 1
     """
-    if spacing_type == "cosine":
-        return np.array([0.5 * (1 - np.cos(np.pi * j / n)) for j in range(n + 1)])
-
-    elif spacing_type == "geometric":
-        if n < 2 or ratio < 1.0 + 1e-9:
-            return np.linspace(0, 1, n + 1)
-
-        if region == "both":
-            return _geometric_spacing_both_ends(n, ratio)
-        elif region == "end":
-            return _geometric_spacing_single_end(n, ratio, refine_start=False)
-        elif region == "start":
-            return _geometric_spacing_single_end(n, ratio, refine_start=True)
-        else:
-            return np.linspace(0, 1, n + 1)
-
-    else:  # uniform
+    if spacing_type != "geometric" or n < 2 or ratio < 1.0 + 1e-9:
         return np.linspace(0, 1, n + 1)
+    if region == "both":
+        edges = _geometric_spacing_both_ends(n, ratio)
+    else:
+        edges = _geometric_spacing_single_end(n, ratio, refine_start=region == "start")
+    # Rounding in the cumulative sum must not leave the last edge off the segment end.
+    return edges / edges[-1]

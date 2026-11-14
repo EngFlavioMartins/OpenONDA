@@ -43,7 +43,6 @@ class VLMForceEvaluator:
             reference = reference / np.linalg.norm(reference) * reference_speed
         forces = vlm_solver.compute_forces(density, reference_velocity=reference)
         return {
-            "method": "kutta_joukowski",
             "unsteady_pressure": vlm_solver.force.unsteady,
             "force": np.array([forces["force_x"], forces["force_y"], forces["force_z"]]),
             **forces,

@@ -55,7 +55,6 @@ def create_rotor_blade(
         vertex_position={"a": le_root, "b": le_tip, "c": te_tip, "d": te_root},
         n_chordwise_panels=n_chord,
         n_spanwise_panels=n_span,
-        airfoils={"inner": "flat", "outer": "flat"},
     )
     wing.add_segment(segment)
     aircraft.add_wing(wing)
