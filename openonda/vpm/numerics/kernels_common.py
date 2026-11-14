@@ -351,48 +351,8 @@ def _create_gradient_kernels(kernel_functions: dict[str, Callable]) -> dict[str,
             # Symmetric strain tensor for Mixed Scheme
             strain_rate[i] = 0.5 * (gradu + gradu.transpose())
 
-    @ti.kernel
-    def compute_velocity_and_gradient_kernel(
-        position: ti.template(),
-        vortex_strength: ti.template(),
-        core_radius: ti.template(),
-        velocity: ti.template(),
-        velocity_gradient: ti.template(),
-        strain_rate: ti.template(),
-        freestream_velocity: ti.template(),
-        n_particles_total: ti.i32,
-    ):
-        """Fused direct evaluation: u, ∇u and S in a single j-loop.
-
-        The solver needs both u (advection) and ∇u (stretching) each RK stage;
-        sharing the one j-loop reuses r_ij / r_mag / sigma / q per pair instead of
-        recomputing them in a second O(N²) sweep. Both paths include the finite
-        source-centre Jacobian and the algebraic far field."""
-        N = n_particles_total
-        freestream_vec = freestream_velocity[None]
-        for i in range(N):
-            pos_i = position[i]
-            vel = pos_i * 0.0
-            gradu = pos_i.outer_product(pos_i) * 0.0
-            radii_i = core_radius[i]
-            for j in range(N):
-                str_j = vortex_strength[j]
-                r_ij = pos_i - position[j]
-                r_sq = r_ij.dot(r_ij)
-                r_mag = ti.sqrt(r_sq)
-                sigma = 0.5 * (radii_i + core_radius[j])
-                factors = radial_factors_(r_mag / sigma, sigma, True)
-                vel += factors[0] * r_ij.cross(str_j)
-                gradu += factors[0] * skew(str_j) + factors[1] * (
-                    r_ij.cross(str_j).outer_product(r_ij)
-                )
-            velocity[i] = -vel + freestream_vec
-            velocity_gradient[i] = gradu
-            strain_rate[i] = 0.5 * (gradu + gradu.transpose())
-
     return {
         "compute_velocity_gradients_kernel": compute_velocity_gradients_kernel,
-        "compute_velocity_and_gradient_kernel": compute_velocity_and_gradient_kernel,
     }
 
 

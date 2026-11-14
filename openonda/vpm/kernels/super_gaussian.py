@@ -68,18 +68,6 @@ def create_super_gaussian_kernels(dtype: object = ti.f32) -> dict[str, Callable]
         return ti.cast(2.0, dtype)
 
     @ti.func
-    def energy_equivalence_constant_():
-        return ti.cast(ti.sqrt(15.0 / 2.0), dtype)
-
-    @ti.func
-    def volume_correction_constant_():
-        """Volume correction constant for radius evolution: dσ/dt = σ * C * div(u).
-
-        For 3D spherical particles, C = 1/3 (Alvarez 2022).
-        """
-        return ti.cast(1.0 / 3.0, dtype)
-
-    @ti.func
     def angular_impulse_correction_constant_():
         """Second moment m2 = ∫|q|² ζ(|q|) d³q of the regularization kernel.
 
@@ -96,8 +84,6 @@ def create_super_gaussian_kernels(dtype: object = ti.f32) -> dict[str, Callable]
         "radial_factors_": radial_factors_,
         "g_": g_,
         "diffusivity_constant_": diffusivity_constant_,
-        "energy_equivalence_constant_": energy_equivalence_constant_,
-        "volume_correction_constant_": volume_correction_constant_,
         "angular_impulse_correction_constant_": angular_impulse_correction_constant_,
     }
 

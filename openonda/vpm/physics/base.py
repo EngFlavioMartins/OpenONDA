@@ -108,7 +108,6 @@ class PhysicsBase:
     compute_velocities_kernel: TaichiKernel
     compute_vorticities_kernel: TaichiKernel
     compute_velocity_gradients_kernel: TaichiKernel
-    compute_velocity_and_gradient_kernel: TaichiKernel
     compute_target_velocity_kernel: TaichiKernel
     compute_target_vorticity_kernel: TaichiKernel
     compute_target_velocity_gradient_kernel: TaichiKernel

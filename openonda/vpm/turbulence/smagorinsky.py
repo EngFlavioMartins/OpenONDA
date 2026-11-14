@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import taichi as ti
 
-from ..config.constants import MAX_N_PARTICLES, SMAGORINSKY_CONSTANT
+from ..config.constants import SMAGORINSKY_CONSTANT
 
 if TYPE_CHECKING:
     from ..particles.container import Particles
@@ -16,17 +16,14 @@ class SmagorinskyModel:
 
     def __init__(
         self,
-        max_n_particles: int = MAX_N_PARTICLES,
         particle_kernel: str = "gaussian",
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
         filter_width: float | None = None,
     ) -> None:
-        """Configure and allocate the equilibrium Smagorinsky model.
+        """Configure the equilibrium Smagorinsky model.
 
         Parameters
         ----------
-        max_n_particles : int, default=MAX_N_PARTICLES
-            Fixed particle capacity for model work fields.
         particle_kernel : str, default="gaussian"
             Kernel label used by the surrounding VPM configuration. It is
             normalized to uppercase for reporting.
@@ -42,7 +39,6 @@ class SmagorinskyModel:
         for the active particle prefix in m²/s, with ``|S| = sqrt(2 S:S)``.
         """
         self.model_name = "smagorinsky"
-        self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.lower()
         self.smagorinsky_coefficient = smagorinsky_coefficient
         self.filter_width = filter_width

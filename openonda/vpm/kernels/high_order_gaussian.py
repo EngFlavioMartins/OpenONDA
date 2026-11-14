@@ -79,14 +79,6 @@ def create_high_order_gaussian_kernels(dtype: object = ti.f32) -> dict[str, Call
         return ti.cast(4.0, dtype)
 
     @ti.func
-    def energy_equivalence_constant_():
-        return ti.cast(ti.sqrt(6.0), dtype)
-
-    @ti.func
-    def volume_correction_constant_():
-        return ti.cast(1.0 / 3.0, dtype)
-
-    @ti.func
     def angular_impulse_correction_constant_():
         # The 2nd-order polynomial correction cancels the standard Gaussian
         # angular-impulse correction term; constant = 0.
@@ -98,8 +90,6 @@ def create_high_order_gaussian_kernels(dtype: object = ti.f32) -> dict[str, Call
         "radial_factors_": radial_factors_,
         "g_": g_,
         "diffusivity_constant_": diffusivity_constant_,
-        "energy_equivalence_constant_": energy_equivalence_constant_,
-        "volume_correction_constant_": volume_correction_constant_,
         "angular_impulse_correction_constant_": angular_impulse_correction_constant_,
     }
 

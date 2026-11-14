@@ -94,10 +94,8 @@ class ParticleLES:
             )
         else:
             self.model = SmagorinskyModel(
-                max_n_particles=max_n_particles,
                 particle_kernel=particle_kernel,
                 smagorinsky_coefficient=smagorinsky_coefficient,
-                accumulator_dtype=accumulator_dtype,
                 filter_width=filter_width,
             )
         self.strength_exchange = (

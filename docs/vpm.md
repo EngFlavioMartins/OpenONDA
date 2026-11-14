@@ -135,6 +135,7 @@ span = (-0.5 * h, 0.5 * h)  # slip planes, m
 plane = (-5.0, 30.0, -5.0, 5.0)  # x and y bounds, m
 
 numerics = vpm.Numerics(
+    time_step_size=0.01,  # s
     induction=vpm.SlipSlabInduction(vpm.FMMInduction(), z_min=span[0], z_max=span[1]),
     viscous=vpm.ViscousConfig.gbd(particle_spacing=h, kinematic_viscosity=nu),
     domain_bounds=(*plane, *span),

@@ -279,9 +279,8 @@ class TaichiTreecode:
         particle_output_capacity = 1 if self.hierarchy_only else max_n_particles
         self.velocity = fields.vector(3, dtype=ti.f32, shape=particle_output_capacity)
 
-        # Output velocity gradients and strain rates
+        # Output velocity gradients
         self.velocity_gradient = fields.matrix(3, 3, dtype=ti.f32, shape=particle_output_capacity)
-        self.strain_rate = fields.matrix(3, 3, dtype=ti.f32, shape=particle_output_capacity)
 
         # Target-point fields
         target_field_capacity = 1 if self.hierarchy_only else evaluation_capacity
@@ -1686,41 +1685,6 @@ class TaichiTreecode:
             )
 
     @ti.kernel
-    def compute_velocity_gradients_kernel(
-        self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32
-    ):
-        """Evaluate particle velocity gradients and strain rates in place.
-
-        Parameters
-        ----------
-        theta_sq : float
-            Square of the Barnes--Hut opening angle.
-        start_slot, count : int
-            Traversal batch range, in sorted-slot space when sorting is active.
-
-        Notes
-        -----
-        ``self.velocity_gradient`` and ``self.strain_rate`` are overwritten
-        with arrays of shape ``(N, 3, 3)`` and units s⁻¹.  The strain is the
-        symmetric part ``0.5*(grad_u + grad_u.T)``.
-        """
-        n_nodes = self.n_nodes[None]
-        if ti.static(self.traversal_block_dim > 0):
-            ti.loop_config(block_dim=self.traversal_block_dim)
-        for local_slot in range(count):
-            slot = start_slot + local_slot
-            i = slot
-            if self.sort_particle_targets[None] != 0:
-                i = self.sorted_indices[slot]
-            gradu = self._traverse_particle_grad(i, theta_sq, n_nodes)
-            self.velocity_gradient[i] = gradu
-            strain = ti.Matrix.zero(ti.f32, 3, 3)
-            for p in ti.static(range(3)):
-                for q in ti.static(range(3)):
-                    strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
-            self.strain_rate[i] = strain
-
-    @ti.kernel
     def compute_velocity_and_gradient_kernel(
         self, theta_sq: ti.f32, start_slot: ti.i32, count: ti.i32
     ):
@@ -1779,11 +1743,6 @@ class TaichiTreecode:
                     stack_ptr = self._push_children_particle(i, node, stack_ptr)
             self.velocity[i] = vel + freestream_velocity
             self.velocity_gradient[i] = gradu
-            strain = ti.Matrix.zero(ti.f32, 3, 3)
-            for p in ti.static(range(3)):
-                for q in ti.static(range(3)):
-                    strain[p, q] = 0.5 * (gradu[p, q] + gradu[q, p])
-            self.strain_rate[i] = strain
 
     @ti.kernel
     def _copy_freestream_from_field(self, src: ti.template()):  # type: ignore[invalid-annotation]
@@ -1807,11 +1766,10 @@ class TaichiTreecode:
             ti.sync()
 
     def compute_velocity_and_gradient_gpu(self) -> None:
-        """Evaluate velocity, Jacobian, and strain in one device traversal.
+        """Evaluate velocity and Jacobian in one device traversal.
 
-        Results remain in the Taichi fields ``velocity``,
-        ``velocity_gradient``, and ``strain_rate``, without a freestream;
-        gradients and strain have units 1/s.
+        Results remain in the Taichi fields ``velocity`` and
+        ``velocity_gradient``, without a freestream; gradients have units 1/s.
         """
         self.freestream_velocity[None] = ti.Vector([0.0, 0.0, 0.0])
         N = int(self.n_particles_total[None])
