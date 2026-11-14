@@ -20,6 +20,7 @@ import taichi as ti
 
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.grid_connectivity import connected_grid_components
+from openonda.core.m4_kernel import m4_prime, m4_prime_ti
 from openonda.core.profiling import Profiler
 from openonda.core.slip_slab_images import (
     add_slab_images,
@@ -30,7 +31,6 @@ from openonda.core.slip_slab_images import (
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
 from ...io.logging import Logging
-from ...numerics.m4_kernel import m4_prime
 from ..induction.base import TaichiField
 from .body_geometry import BodyGeometryKey, BodyGridGeometryCache, ImmutableBodyGeometryQueries
 
@@ -383,18 +383,6 @@ def _dvh_scatter_numba(
                         grid_out[ii, jj, kk, 0] += w * cx
                         grid_out[ii, jj, kk, 1] += w * cy
                         grid_out[ii, jj, kk, 2] += w * cz
-
-
-@ti.func
-def _m4_prime_1d_ti(q: ti.f32) -> ti.f32:
-    """Taichi form of :func:`openonda.vpm.numerics.m4_kernel.m4_prime`."""
-    r = ti.abs(q)
-    w = 0.0
-    if r <= 1.0:
-        w = 1.0 - 2.5 * r * r + 1.5 * r * r * r
-    elif r <= 2.0:
-        w = 0.5 * (2.0 - r) * (2.0 - r) * (1.0 - r)
-    return w
 
 
 @ti.data_oriented
@@ -3591,13 +3579,12 @@ class _GridDiffusionMixin:
         start_particle: ti.i32,
         count: ti.i32,
     ):
-        """GPU M4' remeshing scatter: each particle deposits to 4³=64 grid nodes.
+        """Device M4' remeshing scatter: each particle deposits to 4³=64 grid nodes.
 
-        Mirrors ``_cic_scatter_vortex_strength`` but runs entirely on GPU — no CPU↔GPU
-        data transfer for the scatter itself.  Atomic adds ensure correctness
+        The scatter needs no host-device data transfer. Atomic adds ensure correctness
         when multiple particles contribute to the same grid node.
 
-        Accuracy: same quadratic moment reproduction as the CPU M4' scatter.
+        Accuracy: same quadratic moment reproduction as the host M4' scatters.
         """
         for local_particle in range(count):
             p = start_particle + local_particle
@@ -3617,13 +3604,13 @@ class _GridDiffusionMixin:
             # M4' 4³ stencil: offsets -1, 0, 1, 2 relative to base index
             for di in ti.static(range(-1, 3)):
                 rx = ti.abs(fx - ti.cast(ix0 + di, ti.f32))
-                wx = _m4_prime_1d_ti(rx)
+                wx = m4_prime_ti(rx)
                 for dj in ti.static(range(-1, 3)):
                     ry = ti.abs(fy - ti.cast(iy0 + dj, ti.f32))
-                    wy = _m4_prime_1d_ti(ry)
+                    wy = m4_prime_ti(ry)
                     for dk in ti.static(range(-1, 3)):
                         rz = ti.abs(fz - ti.cast(iz0 + dk, ti.f32))
-                        wz = _m4_prime_1d_ti(rz)
+                        wz = m4_prime_ti(rz)
                         w = wx * wy * wz
 
                         ii = ix0 + di

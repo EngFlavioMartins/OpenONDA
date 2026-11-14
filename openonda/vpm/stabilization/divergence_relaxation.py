@@ -39,11 +39,11 @@ from scipy import fft
 from scipy.ndimage import gaussian_filter
 from scipy.sparse.linalg import LinearOperator, cg
 
+from openonda.core.m4_kernel import m4_axis_weights
 from openonda.core.slip_slab_images import AXIAL_PARITY, slab_period_images, slab_period_lattice
 
 from ..config.divergence_relaxation import DivergenceRelaxationConfig
 from ..numerics.fourier_integrals import gaussian_fourier_integrals
-from ..numerics.m4_kernel import m4_prime
 from .filament_refinement import gaussian_particle_moments, particle_moments
 
 
@@ -277,13 +277,7 @@ class GaussianParticleGridOperator:
         base = np.floor(coordinates).astype(np.int64)
         fractions = coordinates - base
         offsets = np.arange(-1, 3, dtype=np.int64)
-        axis_weights = tuple(
-            np.stack(
-                [m4_prime(fractions[:, axis] - offset) for offset in offsets],
-                axis=1,
-            )
-            for axis in range(3)
-        )
+        axis_weights = m4_axis_weights(fractions)
 
         indices: list[np.ndarray] = []
         weights: list[np.ndarray] = []

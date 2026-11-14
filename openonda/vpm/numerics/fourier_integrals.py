@@ -9,9 +9,8 @@ import numpy as np
 from scipy import fft
 from scipy.special import erf
 
+from openonda.core.m4_kernel import m4_axis_weights
 from openonda.core.slip_slab_images import slab_period_images, slab_period_lattice
-
-from .m4_kernel import m4_prime
 
 
 @dataclass(frozen=True)
@@ -111,10 +110,7 @@ def _scatter_vortex_strength_m4(
     base = np.floor(coordinates).astype(np.int64)
     fractions = coordinates - base
     offsets = np.arange(-1, 3, dtype=np.int64)
-    weights = tuple(
-        np.stack([m4_prime(fractions[:, axis] - offset) for offset in offsets], axis=1)
-        for axis in range(3)
-    )
+    weights = m4_axis_weights(fractions)
 
     result = np.zeros((*grid.shape, 3), dtype=np.float64)
     flat = result.reshape(-1, 3)

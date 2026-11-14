@@ -178,7 +178,7 @@ Constants: `TRANSFER_INSET_SPACINGS = 8.75`, `BLEND_START_SPACINGS = 2`,
 | Module | Contents |
 | --- | --- |
 | `coupler/transfer_lattice.py` | `TransferLattice`, `build_transfer_lattice`, `blending_weight(positions, transfer_region_bounds, blend_start_depth, blend_end_depth)`, `fvm_target_strength`, `scatter_m4_prime_to_lattice`, `blend_lattice_strength`, `remove_weak_strengths`, `redistribute_removed_strength`, `VortexMoments`, `vortex_moments`, `correct_vortex_moments` (moment correction), `vortex_moment_residual`, `transfer_on_lattice` → `LatticeTransferResult` |
-| `coupler/m4_kernel.py` | `m4_prime` |
+| `core/m4_kernel.py` | `m4_prime`, `m4_prime_scalar`, `m4_prime_ti`, `m4_axis_weights` |
 | `coupler/vorticity_transfer.py` | `VorticityTransfer`, `transfer_vorticity_to_particles`, `remeshing_extension_length`, `TransferResult` |
 | `coupler/coupling_iteration.py` | `advance_coupling_iterations`, `_first_estimate`, `BoundaryData`, `CouplingIterationRow` |
 | `coupler/interpolation.py` | `FVMVelocityInterpolator`, `InterpolationStencil` |

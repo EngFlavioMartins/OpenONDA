@@ -16,8 +16,8 @@ import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.grid_connectivity import connected_grid_components
+from openonda.core.m4_kernel import m4_prime, m4_prime_scalar
 from openonda.core.slip_slab_images import add_slab_images
-from openonda.vpm.numerics.m4_kernel import m4_prime, m4_prime_scalar
 
 ArrayFunction = Callable[[np.ndarray], np.ndarray]
 
