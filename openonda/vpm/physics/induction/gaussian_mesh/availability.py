@@ -110,7 +110,7 @@ def require_gaussian_mesh_runtime() -> dict[str, object]:
             or not (Path(header_directory) / "cuda_runtime.h").is_file()
         ):
             raise RuntimeError("CUDA runtime headers were not found")
-    except Exception as error:
+    except (ImportError, OSError, RuntimeError) as error:
         raise GaussianMeshUnavailableError(
             "Gaussian mesh NVRTC compilation requires discoverable CUDA 12 runtime "
             "headers (cuda_runtime.h). Install the compatible toolkit headers, or "
@@ -133,7 +133,7 @@ def require_gaussian_mesh_runtime() -> dict[str, object]:
             raise RuntimeError("no CUDA device is available")
         if not 12000 <= cuda_version < 13000 or nvrtc_version[0] != 12:
             raise RuntimeError("this optional backend requires the qualified CUDA 12 runtime/NVRTC")
-    except Exception as error:
+    except (ImportError, OSError, RuntimeError) as error:
         raise GaussianMeshUnavailableError(
             "Gaussian mesh CUDA 12 runtime/NVRTC/cuFFT validation failed. Check the "
             "NVIDIA driver and compatible CUDA toolkit libraries; run python -m "

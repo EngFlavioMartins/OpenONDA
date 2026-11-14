@@ -19,6 +19,7 @@ import numpy as np
 import taichi as ti
 
 from openonda.core._numba import cacheable_njit as njit
+from openonda.core.errors import NonFiniteSolutionError
 from openonda.core.grid_connectivity import connected_grid_components
 from openonda.core.m4_kernel import m4_prime, m4_prime_ti
 from openonda.core.profiling import Profiler
@@ -2408,7 +2409,7 @@ class _GridDiffusionMixin:
         """Return stable forward-Euler stages for the 3-D 7-point Laplacian."""
         values = np.asarray([max_diffusivity, time_step_size, particle_spacing], dtype=np.float64)
         if not np.isfinite(values).all():
-            raise FloatingPointError(
+            raise NonFiniteSolutionError(
                 "GBD diffusion requires finite diffusivity, time step, and grid spacing."
             )
         if max_diffusivity < 0.0:
@@ -2420,7 +2421,7 @@ class _GridDiffusionMixin:
 
         max_diffusion_number = float(max_diffusivity * time_step_size / particle_spacing**2)
         if not np.isfinite(max_diffusion_number):
-            raise FloatingPointError("GBD diffusion produced a non-finite Fourier number.")
+            raise NonFiniteSolutionError("GBD diffusion produced a non-finite Fourier number.")
         if max_diffusion_number == 0.0:
             return 1, 0.0
 

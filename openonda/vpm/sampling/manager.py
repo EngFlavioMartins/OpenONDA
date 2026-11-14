@@ -202,12 +202,7 @@ class SamplerManager:
             event=event,
             continuing_output=solver._restart_loaded or name in self._written_names,
         )
-        try:
-            self._write(sampler, name, context)
-        except Exception as error:
-            raise RuntimeError(
-                f"Sampler {name!r} failed at step {context.step}, time {context.time}: {error}"
-            ) from error
+        self._write(sampler, name, context)
         self._last_written[key] = state
         self._written_names.add(name)
         Logging.debug(f"Sampler {name} written at step {context.step}")

@@ -642,17 +642,33 @@ def _solve_pressure(
     except ImportError as error:
         raise LinearSolveError("AMG pressure solve requires pyamg") from error
 
-    try:
-        ml, rebuilt = _get_or_build_amg(A, pyamg, amg_key=amg_key)
+    ml, rebuilt = _get_or_build_amg(A, pyamg, amg_key=amg_key)
+    M = ml.aspreconditioner(cycle="V")
+    setup_seconds = time.perf_counter() - setup_start
+    solve_start = time.perf_counter()
+    iterations = 0
+
+    def count_iteration(_value):
+        nonlocal iterations
+        iterations += 1
+
+    x, info = cg(
+        A,
+        b,
+        M=M,
+        rtol=tol,
+        maxiter=maxiter,
+        x0=x0,
+        callback=count_iteration,
+    )
+    if info != 0 and _breakdown_converged(A, b, x, tol, "pressure CG", info, log_sink, x0=x0):
+        info = 0
+    if info != 0:
+        # One rebuild handles coefficient drift that made a cached
+        # hierarchy ineffective without silently accepting a poor solve.
+        ml, rebuilt = _get_or_build_amg(A, pyamg, force_rebuild=True, amg_key=amg_key)
         M = ml.aspreconditioner(cycle="V")
         setup_seconds = time.perf_counter() - setup_start
-        solve_start = time.perf_counter()
-        iterations = 0
-
-        def count_iteration(_value):
-            nonlocal iterations
-            iterations += 1
-
         x, info = cg(
             A,
             b,
@@ -664,38 +680,17 @@ def _solve_pressure(
         )
         if info != 0 and _breakdown_converged(A, b, x, tol, "pressure CG", info, log_sink, x0=x0):
             info = 0
-        if info != 0:
-            # One rebuild handles coefficient drift that made a cached
-            # hierarchy ineffective without silently accepting a poor solve.
-            ml, rebuilt = _get_or_build_amg(A, pyamg, force_rebuild=True, amg_key=amg_key)
-            M = ml.aspreconditioner(cycle="V")
-            setup_seconds = time.perf_counter() - setup_start
-            x, info = cg(
-                A,
-                b,
-                M=M,
-                rtol=tol,
-                maxiter=maxiter,
-                x0=x0,
-                callback=count_iteration,
-            )
-            if info != 0 and _breakdown_converged(
-                A, b, x, tol, "pressure CG", info, log_sink, x0=x0
-            ):
-                info = 0
-        if info != 0:
-            raise RuntimeError(f"AMG-preconditioned pressure CG did not converge (info={info})")
-        solve_seconds = time.perf_counter() - solve_start
-        return x, {
-            "preconditioner": "pyamg",
-            "iterations": iterations,
-            "reason": "AMG-preconditioned CG converged",
-            "setup_seconds": setup_seconds,
-            "solve_seconds": solve_seconds,
-            "preconditioner_rebuilt": rebuilt,
-        }
-    except Exception as error:
-        raise LinearSolveError("AMG pressure solve failed") from error
+    if info != 0:
+        raise LinearSolveError(f"AMG-preconditioned pressure CG did not converge (info={info})")
+    solve_seconds = time.perf_counter() - solve_start
+    return x, {
+        "preconditioner": "pyamg",
+        "iterations": iterations,
+        "reason": "AMG-preconditioned CG converged",
+        "setup_seconds": setup_seconds,
+        "solve_seconds": solve_seconds,
+        "preconditioner_rebuilt": rebuilt,
+    }
 
 
 @njit(cache=True)
@@ -806,30 +801,25 @@ def _solve_preconditioned_bicgstab(
             "setup_seconds": time.perf_counter() - setup_start,
             "solve_seconds": 0.0,
         }
-    try:
-        M = _build_dilu_preconditioner(A)
-        setup_seconds = time.perf_counter() - setup_start
-        solve_start = time.perf_counter()
-        x, info, iterations = _run_bicgstab(A, b, M, tol, maxiter, x0)
-        if info != 0 and _breakdown_converged(A, b, x, tol, "bicgstab", info, log_sink, x0=x0):
-            info = 0
-        if info != 0:
-            raise LinearSolveError(
-                f"bicgstab did not converge after {maxiter} iterations (info={info})"
-            )
-        solve_seconds = time.perf_counter() - solve_start
-        return x, {
-            "preconditioner": "dilu",
-            "iterations": iterations,
-            "reason": "Krylov solver converged",
-            "setup_seconds": setup_seconds,
-            "solve_seconds": solve_seconds,
-            "preconditioner_rebuilt": True,
-        }
-    except LinearSolveError:
-        raise
-    except Exception as error:
-        raise LinearSolveError("bicgstab with dilu preconditioner setup or solve failed") from error
+    M = _build_dilu_preconditioner(A)
+    setup_seconds = time.perf_counter() - setup_start
+    solve_start = time.perf_counter()
+    x, info, iterations = _run_bicgstab(A, b, M, tol, maxiter, x0)
+    if info != 0 and _breakdown_converged(A, b, x, tol, "bicgstab", info, log_sink, x0=x0):
+        info = 0
+    if info != 0:
+        raise LinearSolveError(
+            f"bicgstab did not converge after {maxiter} iterations (info={info})"
+        )
+    solve_seconds = time.perf_counter() - solve_start
+    return x, {
+        "preconditioner": "dilu",
+        "iterations": iterations,
+        "reason": "Krylov solver converged",
+        "setup_seconds": setup_seconds,
+        "solve_seconds": solve_seconds,
+        "preconditioner_rebuilt": True,
+    }
 
 
 def solve_linear_system(

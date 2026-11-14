@@ -20,6 +20,7 @@ from scipy.fft import irfftn, next_fast_len, rfftn
 from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
 from openonda.core._numba import cacheable_njit as njit
+from openonda.core.errors import NonFiniteSolutionError
 
 from .coordinates import finite_images, image_tail_edges, slab_coordinates
 from .correction import _correction_factors, _possibly_near, _residual_factors, residual_family
@@ -62,7 +63,7 @@ def _stencil(points: np.ndarray, order: int, dtype: np.dtype) -> tuple[np.ndarra
                 value *= (argument - j) / (i - j)
         weights[:, :, i] = value
     if not np.isfinite(weights).all():
-        raise FloatingPointError("nonfinite cardinal weights")
+        raise NonFiniteSolutionError("nonfinite cardinal weights")
     return first, weights
 
 
@@ -181,7 +182,7 @@ def _kernels(
         2 * cells * steps[2],
     )
     if not np.isfinite(result).all():
-        raise FloatingPointError("nonfinite Gaussian radial grid")
+        raise NonFiniteSolutionError("nonfinite Gaussian radial grid")
     return result
 
 
@@ -777,7 +778,7 @@ class GaussianHostImageFields:
                 report["host_memory_retries"] += 1
             output += self._correction(query, report).astype(self.dtype)
             if not np.isfinite(output).all():
-                raise FloatingPointError("nonfinite complete Gaussian host field")
+                raise NonFiniteSolutionError("nonfinite complete Gaussian host field")
         except BaseException:
             self._prepared_images = self._prepared_world_images = self._integer_images = None
             raise

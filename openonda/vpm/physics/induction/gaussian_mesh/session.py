@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from openonda.core.errors import NonFiniteSolutionError
+
 from ....kernels.registry import kernel_definition
 from ....numerics.ieee import ieee_arithmetic, require_round_to_nearest
 from ..gaussian_tail import prepare_tail_source, query_tail_bound, validate_source_values
@@ -592,7 +594,7 @@ class GaussianSlabFieldSession:
             velocity = field.cp.asnumpy(velocity)
             gradient = field.cp.asnumpy(gradient)
             if not np.isfinite(velocity).all() or not np.isfinite(gradient).all():
-                raise FloatingPointError("nonfinite complete Gaussian slab query")
+                raise NonFiniteSolutionError("nonfinite complete Gaussian slab query")
         except BaseException as failure:
             try:
                 self._close_field()

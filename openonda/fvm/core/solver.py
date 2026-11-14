@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from openonda.core.clock import time_tolerance
+from openonda.core.errors import NonFiniteSolutionError
 from openonda.core.output_events import OutputEvent
 from openonda.core.parallel import collective_phase
 from openonda.core.solution_layout import (
@@ -1385,7 +1386,7 @@ class FVMSolver(CouplerInterfaceMixin):
         from dataclasses import replace
 
         if diagnostics.n_nonfinite_values:
-            raise FloatingPointError(
+            raise NonFiniteSolutionError(
                 f"FVM step contains {diagnostics.n_nonfinite_values} non-finite field values"
             )
         failed = [result for result in diagnostics.linear_solves if not result.converged]

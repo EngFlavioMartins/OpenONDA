@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 import taichi as ti
 
 from openonda.core.clock import time_tolerance
+from openonda.core.errors import NonFiniteSolutionError
 from openonda.core.log_style import close_logging, configure_logging
 from openonda.core.output_events import OutputEvent
 from openonda.core.profiling import Profiler
@@ -506,19 +507,16 @@ class VPMSolver:
             self.vlm_solver = VLMSolver(final_setup.vlm)
 
         if self.vlm_solver is not None:
-            try:
-                self._initialize_vlm_coupling()
-                # The VLM circulation is solved in the accepted-step coupling
-                # phase. Its induced field is sampled at each temporary
-                # particle RK position through the common StageRHS boundary.
-                # Construct the immutable provider tuple only after optional
-                # solvers have initialized.
-                self._stage_providers.insert(
-                    0,
-                    VLMStageContribution(self.vlm_solver, self.physics),
-                )
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize VLM solver: {e}") from e
+            self._initialize_vlm_coupling()
+            # The VLM circulation is solved in the accepted-step coupling
+            # phase. Its induced field is sampled at each temporary
+            # particle RK position through the common StageRHS boundary.
+            # Construct the immutable provider tuple only after optional
+            # solvers have initialized.
+            self._stage_providers.insert(
+                0,
+                VLMStageContribution(self.vlm_solver, self.physics),
+            )
 
     @staticmethod
     def _require_consistent_molecular_viscosity(
@@ -1027,7 +1025,7 @@ class VPMSolver:
             ).metrics.strain_increment_infinity
         )
         if not np.isfinite(strain_rate) or strain_rate < 0.0:
-            raise FloatingPointError("The particle strain-rate field is not finite")
+            raise NonFiniteSolutionError("The particle strain-rate field is not finite")
         return strain_rate
 
     def _refresh_diagnostics_for_output(self) -> None:

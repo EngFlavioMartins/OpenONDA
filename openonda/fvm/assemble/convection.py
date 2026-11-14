@@ -11,6 +11,8 @@ Converted from uFVM cfdAssembleConvectionTerm.m
 
 import numpy as np
 
+from openonda.core.errors import NonFiniteSolutionError
+
 from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..schemes.limiters import apply_limiter, is_limited_scheme
 from ..utils.vector_algebra import gathered_vector_dot
@@ -132,7 +134,7 @@ def _tvd_face_psi(
             "Limited convection schemes require scalar_field_gradient (cell gradient)."
         )
     if not np.all(np.isfinite(scalar_field)) or not np.all(np.isfinite(scalar_field_gradient)):
-        raise FloatingPointError("TVD convection received a non-finite field or gradient")
+        raise NonFiniteSolutionError("TVD convection received a non-finite field or gradient")
 
     scalar_field_p = scalar_field[owners]
     scalar_field_n = scalar_field[neighbours]

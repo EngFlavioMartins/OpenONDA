@@ -18,6 +18,7 @@ import time
 import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
+from openonda.core.errors import NonFiniteSolutionError
 
 from ....kernels.high_order_gaussian import corrected_gaussian_residual
 from ....kernels.registry import kernel_definition
@@ -498,7 +499,9 @@ class GaussianCoreCorrectionGPU:
                 if int(error.item()) or not bool(
                     (cp.isfinite(u).all() & cp.isfinite(j).all()).item()
                 ):
-                    raise FloatingPointError("nonfinite Gaussian correction; no fields published")
+                    raise NonFiniteSolutionError(
+                        "nonfinite Gaussian correction; no fields published"
+                    )
             candidate, accepted = map(int, cp.asnumpy(work))
             self.diagnostics["pool_high_water_bytes"] = max(
                 self.diagnostics["pool_high_water_bytes"], self.pool.total_bytes()

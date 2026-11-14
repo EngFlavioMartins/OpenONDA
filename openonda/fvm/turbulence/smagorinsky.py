@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from openonda.core.errors import NonFiniteSolutionError
+
 from ..fields import gradients
 
 EQUILIBRIUM_CK = 0.094
@@ -272,7 +274,7 @@ class EquilibriumSmagorinskyModel:
                 f"Velocity gradient has shape {velocity_gradient.shape}; expected at least ({n_cells}, 3, 3)"
             )
         if not np.all(np.isfinite(velocity_gradient)):
-            raise FloatingPointError("Smagorinsky velocity gradient contains non-finite values")
+            raise NonFiniteSolutionError("Smagorinsky velocity gradient contains non-finite values")
 
         delta = self.filter_width
         k_sgs = np.empty(n_cells, dtype=np.float64)

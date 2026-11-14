@@ -13,6 +13,8 @@ import time
 import numpy as np
 from scipy.fft import next_fast_len
 
+from openonda.core.errors import NonFiniteSolutionError
+
 from .coordinates import finite_images, image_tail_edges, slab_coordinates
 from .correction import GaussianCoreCorrectionGPU
 from .planning import (
@@ -1153,7 +1155,7 @@ class GaussianImageFields:
                 self._stream_fields(families, diagnostics)
             self.stream.synchronize()
             if not bool(cp.isfinite(self._compact_fields).all()):
-                raise FloatingPointError("nonfinite fused smooth GPU output; nothing published")
+                raise NonFiniteSolutionError("nonfinite fused smooth GPU output; nothing published")
             free, total = cp.cuda.runtime.memGetInfo()
             diagnostics.update(
                 seconds=time.perf_counter() - started,
@@ -1286,7 +1288,9 @@ class GaussianImageFields:
                             bool(self.cp.isfinite(chunk_velocity).all())
                             and bool(self.cp.isfinite(chunk_gradient).all())
                         ):
-                            raise FloatingPointError("nonfinite compact query; nothing published")
+                            raise NonFiniteSolutionError(
+                                "nonfinite compact query; nothing published"
+                            )
                     except MemoryError:
                         if count == 1:
                             raise

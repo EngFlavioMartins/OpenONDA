@@ -7,6 +7,8 @@ from numbers import Integral
 
 import numpy as np
 
+from openonda.core.errors import NonFiniteSolutionError
+
 from .runtime import positive_integer
 
 
@@ -37,7 +39,7 @@ def slab_coordinates(
         result = points / steps
         result[:, 2] = count * ((points[:, 2] - zmin) / width - 0.5)
     if not np.isfinite(result).all():
-        raise FloatingPointError("nonfinite normalized slab coordinates")
+        raise NonFiniteSolutionError("nonfinite normalized slab coordinates")
     return result, steps, count
 
 

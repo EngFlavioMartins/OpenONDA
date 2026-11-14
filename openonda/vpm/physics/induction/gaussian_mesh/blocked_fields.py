@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import psutil
 
+from openonda.core.errors import NonFiniteSolutionError
+
 from .coordinates import finite_images, slab_coordinates
 from .runtime import Diagnostics, positive_integer
 
@@ -291,7 +293,7 @@ class GaussianBlockedCUDAFields:
             finally:
                 del u, j
             if not np.isfinite(values).all():
-                raise FloatingPointError("nonfinite complete Gaussian CUDA block")
+                raise NonFiniteSolutionError("nonfinite complete Gaussian CUDA block")
             return values, report
         finally:
             self._retire_leaf()
@@ -396,7 +398,7 @@ class GaussianBlockedCUDAFields:
                 report["gather_seconds"] += float(leaf_report.get("gather_seconds", 0.0))
             values = output.astype(self.dtype, copy=False)
             if not np.isfinite(values).all():
-                raise FloatingPointError("nonfinite complete blocked Gaussian CUDA field")
+                raise NonFiniteSolutionError("nonfinite complete blocked Gaussian CUDA field")
         except BaseException:
             self._prepared_images = self._prepared_world_images = self._integer_images = None
             raise

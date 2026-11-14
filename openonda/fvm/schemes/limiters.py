@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from openonda.core.errors import NonFiniteSolutionError
+
 
 def _limited_linear(r: np.ndarray, k: float = 1.0) -> np.ndarray:
     """Limited-linear interpolation: symmetric and bounded for k ∈ (0, 1].
@@ -47,5 +49,5 @@ def apply_limiter(name: str, r: np.ndarray) -> np.ndarray:
         raise ValueError(f"Unknown TVD limiter '{name}'. Known: {sorted(LIMITERS)}")
     values = fn(r)
     if not np.all(np.isfinite(values)):
-        raise FloatingPointError(f"TVD limiter {name!r} returned non-finite values")
+        raise NonFiniteSolutionError(f"TVD limiter {name!r} returned non-finite values")
     return values
