@@ -3,11 +3,11 @@ Vortex-lattice-method solver (VLMSolver): assembles and solves the panel
 circulation system and evaluates forces.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from contextlib import contextmanager
 import copy
 import time
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -59,14 +59,6 @@ EPSILON = VLM_SMALL_VELOCITY
 # One near-wake source: (position, core radius, strip-circulation
 # coefficients, constant vortex strength).
 NearWakeSource: TypeAlias = tuple[np.ndarray, float, np.ndarray, np.ndarray]
-
-
-class SurfaceTransform(TypedDict):
-    """Initial placement of one surface applied after mesh generation."""
-
-    translation: tuple[float, float, float] | None
-    rotation_degrees: tuple[float, float, float] | None
-    rotation_centre: tuple[float, float, float] | None
 
 
 # Lattice fields that move rigidly with their surface.
@@ -160,7 +152,7 @@ class VLMSolver:
         self._previous_panel_corners: np.ndarray | None = None
 
         # Explicit initialization of optional attributes to avoid AttributeError
-        self._surface_transforms: dict[str, SurfaceTransform] = {}
+        self._surface_placements: dict[str, RigidPose] = {}
         self._surface_group_ids: dict[str, int] = {}
         # Contiguous lattice panels of each surface, set by generate_mesh.
         self._surface_panels: dict[str, slice] = {}
@@ -269,21 +261,9 @@ class VLMSolver:
             name: getattr(self.lattice, name).to_numpy()[:n_panels].astype(np.float64)
             for name in _GEOMETRY_FIELDS
         }
-        for surface_name, transform in self._surface_transforms.items():
-            if transform["rotation_degrees"] is None and transform["translation"] is None:
-                continue
-            rotation = self._build_rotation_matrix(transform["rotation_degrees"])
-            translation = (
-                np.zeros(3) if transform["translation"] is None else transform["translation"]
-            )
-            centre = (
-                np.zeros(3)
-                if transform["rotation_centre"] is None
-                else np.asarray(transform["rotation_centre"], dtype=np.float64)
-            )
-            # x -> R (x - c) + c + t as one rigid pose.
-            placement = RigidPose(rotation, centre + translation - rotation @ centre)
-            _map_rigidly(geometry, placement, self._surface_panels[surface_name])
+        for surface_name, placement in self._surface_placements.items():
+            if not placement.is_identity():
+                _map_rigidly(geometry, placement, self._surface_panels[surface_name])
         self._placed_geometry = geometry
         self._placed_centroid = np.average(
             geometry["panel_corner_position"].mean(axis=1),
@@ -317,52 +297,6 @@ class VLMSolver:
         for name, values in geometry.items():
             getattr(self.lattice, name).from_numpy(_padded(values, self.lattice))
 
-    def _build_rotation_matrix(self, rotation_degrees: Sequence[float] | None) -> np.ndarray:
-        """Build 3x3 rotation matrix from [rx, ry, rz] angles in degrees."""
-        rotation_matrix = np.eye(3)
-        if rotation_degrees is None:
-            return rotation_matrix
-
-        angles = np.array(rotation_degrees, dtype=np.float64)
-
-        # Rotation about X
-        if abs(angles[0]) > 1e-10:
-            rotation_x_radians = np.radians(angles[0])
-            rotation_matrix_x = np.array(
-                [
-                    [1, 0, 0],
-                    [0, np.cos(rotation_x_radians), -np.sin(rotation_x_radians)],
-                    [0, np.sin(rotation_x_radians), np.cos(rotation_x_radians)],
-                ]
-            )
-            rotation_matrix = rotation_matrix_x @ rotation_matrix
-
-        # Rotation about Y
-        if abs(angles[1]) > 1e-10:
-            rotation_y_radians = np.radians(angles[1])
-            rotation_matrix_y = np.array(
-                [
-                    [np.cos(rotation_y_radians), 0, np.sin(rotation_y_radians)],
-                    [0, 1, 0],
-                    [-np.sin(rotation_y_radians), 0, np.cos(rotation_y_radians)],
-                ]
-            )
-            rotation_matrix = rotation_matrix_y @ rotation_matrix
-
-        # Rotation about Z
-        if abs(angles[2]) > 1e-10:
-            rotation_z_radians = np.radians(angles[2])
-            rotation_matrix_z = np.array(
-                [
-                    [np.cos(rotation_z_radians), -np.sin(rotation_z_radians), 0],
-                    [np.sin(rotation_z_radians), np.cos(rotation_z_radians), 0],
-                    [0, 0, 1],
-                ]
-            )
-            rotation_matrix = rotation_matrix_z @ rotation_matrix
-
-        return rotation_matrix
-
     def _register_surface(self, surface: VLMSurface) -> str:
         """Load one declared surface before any Taichi fields are allocated."""
         aircraft = (
@@ -378,11 +312,7 @@ class VLMSolver:
         self.surfaces[surface_name] = (aircraft, kinematics)
         self.surface_poses[surface_name] = RigidPose()
         self._surface_group_ids[surface_name] = surface.group_id
-        self._surface_transforms[surface_name] = {
-            "translation": surface.translation,
-            "rotation_degrees": surface.rotation_degrees,
-            "rotation_centre": surface.rotation_centre,
-        }
+        self._surface_placements[surface_name] = surface.placement()
 
         self._update_combined_aircraft()
         Logging.record(

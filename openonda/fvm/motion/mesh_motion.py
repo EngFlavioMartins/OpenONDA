@@ -7,35 +7,11 @@ mesh and its description for the run metadata and restart digest.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, fields
-import math
 
-import numpy as np
+from openonda.core.kinematics import RigidMotion, RigidPose, finite_placement, placement_pose
 
-from openonda.core.kinematics import RigidMotion, RigidPose, axis_rotation_matrix, finite_vector
-
-__all__ = ["MeshMotion", "mesh_motion_to_dict", "placement_pose"]
-
-
-def placement_pose(
-    translation: Sequence[float] | None,
-    rotation_degrees: Sequence[float] | None,
-    rotation_centre: Sequence[float] | None,
-) -> RigidPose:
-    """Return the initial placement used by :class:`MeshMotion`.
-
-    The rotations about global x, then y, then z (degrees) act about
-    ``rotation_centre`` and are followed by ``translation``, the convention of
-    :class:`~openonda.vpm.boundary_elements.vlm.config.VLMSurface`.
-    """
-    rotation = np.eye(3)
-    if rotation_degrees is not None:
-        for axis, angle in zip(np.eye(3), rotation_degrees, strict=True):
-            rotation = axis_rotation_matrix(axis, math.radians(angle)) @ rotation
-    centre = np.zeros(3) if rotation_centre is None else np.asarray(rotation_centre, dtype=float)
-    shift = np.zeros(3) if translation is None else np.asarray(translation, dtype=float)
-    return RigidPose(rotation, centre - rotation @ centre + shift)
+__all__ = ["MeshMotion", "mesh_motion_to_dict"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,10 +51,12 @@ class MeshMotion:
     def __post_init__(self) -> None:
         if not isinstance(self.kinematics, RigidMotion):
             raise TypeError("MeshMotion.kinematics must be a RigidMotion instance")
-        for name in ("translation", "rotation_degrees", "rotation_centre"):
-            value = getattr(self, name)
-            if value is not None:
-                object.__setattr__(self, name, finite_vector(f"MeshMotion.{name}", value))
+        translation, rotation_degrees, rotation_centre = finite_placement(
+            "MeshMotion", self.translation, self.rotation_degrees, self.rotation_centre
+        )
+        object.__setattr__(self, "translation", translation)
+        object.__setattr__(self, "rotation_degrees", rotation_degrees)
+        object.__setattr__(self, "rotation_centre", rotation_centre)
 
     def placement(self) -> RigidPose:
         """Return the initial placement pose of the constructed mesh."""

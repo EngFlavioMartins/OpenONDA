@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import math
 from typing import TYPE_CHECKING, Literal
 
-from openonda.core.kinematics import RigidMotion
+from openonda.core.kinematics import RigidMotion, RigidPose, finite_placement, placement_pose
 
 if TYPE_CHECKING:
     from .geometry.aircraft import Aircraft
@@ -108,14 +108,12 @@ class VLMSurface:
 
     def __post_init__(self) -> None:
         """Validate declared settings and normalize immutable configuration values."""
-        for field_name in ("translation", "rotation_degrees", "rotation_centre"):
-            value = getattr(self, field_name)
-            if value is not None:
-                if len(value) != 3:
-                    raise ValueError(f"{field_name} must contain three coordinates")
-                if not all(math.isfinite(float(item)) for item in value):
-                    raise ValueError(f"{field_name} coordinates must be finite")
-                object.__setattr__(self, field_name, tuple(float(item) for item in value))
+        translation, rotation_degrees, rotation_centre = finite_placement(
+            "VLMSurface", self.translation, self.rotation_degrees, self.rotation_centre
+        )
+        object.__setattr__(self, "translation", translation)
+        object.__setattr__(self, "rotation_degrees", rotation_degrees)
+        object.__setattr__(self, "rotation_centre", rotation_centre)
         if self.kinematics is not None and not isinstance(self.kinematics, RigidMotion):
             raise TypeError("VLMSurface.kinematics must be a RigidMotion instance or None")
         if (
@@ -124,6 +122,10 @@ class VLMSurface:
             or self.group_id < 0
         ):
             raise ValueError("VLM surface group_id must be a non-negative integer")
+
+    def placement(self) -> RigidPose:
+        """Return the initial placement pose of the surface geometry."""
+        return placement_pose(self.translation, self.rotation_degrees, self.rotation_centre)
 
 
 @dataclass(frozen=True, slots=True)

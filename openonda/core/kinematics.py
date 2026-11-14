@@ -36,7 +36,9 @@ __all__ = [
     "TranslatingMotion",
     "advance_pose",
     "axis_rotation_matrix",
+    "finite_placement",
     "finite_vector",
+    "placement_pose",
 ]
 
 
@@ -51,6 +53,29 @@ def finite_vector(name: str, value: ArrayLike, *, unit: bool = False) -> tuple[f
             raise ValueError(f"{name} must be non-zero")
         array = array / norm
     return tuple(float(item) for item in array)
+
+
+def finite_placement(
+    owner: str,
+    translation: ArrayLike | None,
+    rotation_degrees: ArrayLike | None,
+    rotation_centre: ArrayLike | None,
+) -> tuple[tuple[float, float, float] | None, ...]:
+    """Return the placement triple as finite three-component tuples, ``None`` kept.
+
+    ``owner`` prefixes the field names in the error messages. Every configuration
+    that places a body (:class:`~openonda.fvm.motion.mesh_motion.MeshMotion`, a VLM
+    surface) validates its triple here.
+    """
+    values = {
+        "translation": translation,
+        "rotation_degrees": rotation_degrees,
+        "rotation_centre": rotation_centre,
+    }
+    return tuple(
+        None if value is None else finite_vector(f"{owner}.{name}", value)
+        for name, value in values.items()
+    )
 
 
 def _finite(name: str, value: float, *, minimum: float | None = None) -> float:
@@ -103,6 +128,26 @@ class RigidPose:
     def is_identity(self) -> bool:
         """Return whether the pose leaves every reference point in place."""
         return bool(np.array_equal(self.rotation, np.eye(3)) and not np.any(self.translation))
+
+
+def placement_pose(
+    translation: ArrayLike | None,
+    rotation_degrees: ArrayLike | None,
+    rotation_centre: ArrayLike | None,
+) -> RigidPose:
+    """Return the initial placement pose of a body from its placement triple.
+
+    The rotations about global x, then y, then z (degrees) act about
+    ``rotation_centre`` and are followed by ``translation``. A missing entry is
+    zero.
+    """
+    rotation = np.eye(3)
+    if rotation_degrees is not None:
+        for axis, angle in zip(np.eye(3), rotation_degrees, strict=True):
+            rotation = axis_rotation_matrix(axis, math.radians(angle)) @ rotation
+    centre = np.zeros(3) if rotation_centre is None else np.asarray(rotation_centre, dtype=float)
+    shift = np.zeros(3) if translation is None else np.asarray(translation, dtype=float)
+    return RigidPose(rotation, centre - rotation @ centre + shift)
 
 
 class RigidMotion(ABC):
