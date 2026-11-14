@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import taichi as ti
 
-from openonda.vpm.io.logging import Logging
-
 from ....config.constants import VLM_SMALL_VELOCITY
 from ..geometry.aircraft import Aircraft, WingSegment
 
@@ -137,10 +135,9 @@ def generate_vlm_mesh(
     te_idx_np = np.full(max_n_panels, -1, dtype=np.int32)
 
     panel_idx = 0
-    wing_id = 0
     segment_blocks: list[dict] = []
 
-    for _wing_uid, wing in aircraft.wings.items():
+    for wing_id, wing in enumerate(aircraft.wings.values()):
         for segment_id, (_seg_uid, segment) in enumerate(wing.segments.items()):
             local_edges = _compute_spanwise_edges(
                 segment.n_spanwise_panels,
@@ -220,8 +217,6 @@ def generate_vlm_mesh(
                     }
                 )
 
-        wing_id += 1
-
     vortex_np[:panel_idx, 0] = (
         vortex_np[:panel_idx, 1] + trailing_edge_infty * trail_np[:panel_idx, 0]
     )
@@ -256,8 +251,6 @@ def generate_vlm_mesh(
 
     # Mark LE panels (static topology; must run after neighbor_indices is uploaded)
     lattice.mark_le_panels()
-
-    Logging.record("VLM mesh", ("panels", lattice.n_panels), ("wings", wing_id))
 
 
 def _fill_panel_geometry(

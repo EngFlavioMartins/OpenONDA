@@ -8,9 +8,10 @@ private capped pool; allocator selection is scoped and always restored.
 from collections.abc import Sequence
 import math
 from numbers import Integral
-import time
 
 import numpy as np
+
+from openonda.core.profiling import Stopwatch
 
 from .runtime import CuPyArray, CuPyMemoryPool, Diagnostics
 
@@ -124,17 +125,17 @@ def cardinal_stencil_gpu(
     # No operator action occurs before validation. Input arrays are never used
     # as scratch or passed to a write-enabled kernel argument.
     stream.synchronize()
-    start = time.perf_counter()
+    start = Stopwatch()
     before_used, before_reserved = pool.used_bytes(), pool.total_bytes()
     with cp.cuda.using_allocator(pool.malloc):
-        copy_started = time.perf_counter()
+        copy_started = Stopwatch()
         coordinate = points if borrow else cp.asarray(points, dtype=cp.float64, order="C")
         stream.synchronize()
-        copy_seconds = time.perf_counter() - copy_started
+        copy_seconds = copy_started.seconds
         first = cp.empty((count, 3), dtype=cp.int32)
         weights = cp.empty((count, 3, order), dtype=dtype)
         error = cp.zeros(1, dtype=cp.int32)
-        kernel_started = time.perf_counter()
+        kernel_started = Stopwatch()
         if count:
             kernel = cp.RawKernel(
                 _source(dtype, order), "cardinal_stencil", options=("--std=c++11",)
@@ -153,7 +154,7 @@ def cardinal_stencil_gpu(
                 ),
             )
         stream.synchronize()
-        kernel_seconds = time.perf_counter() - kernel_started
+        kernel_seconds = kernel_started.seconds
         status = int(error.item())
         if status:
             raise ValueError(
@@ -170,7 +171,7 @@ def cardinal_stencil_gpu(
             "borrowed_f64_device_coordinates": borrow,
             "copy_seconds": copy_seconds,
             "kernel_and_check_seconds": kernel_seconds,
-            "wall_seconds": time.perf_counter() - start,
+            "wall_seconds": start.seconds,
             "pool_used_before": before_used,
             "pool_reserved_before": before_reserved,
             "pool_used_after": pool.used_bytes(),

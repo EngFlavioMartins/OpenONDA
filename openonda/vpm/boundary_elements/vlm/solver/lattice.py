@@ -9,8 +9,6 @@ from typing import Any
 import numpy as np
 import taichi as ti
 
-from openonda.vpm.io.logging import Logging
-
 
 @ti.data_oriented
 class VLMLattice:
@@ -53,7 +51,6 @@ class VLMLattice:
         self.n_panels = 0
         # Regularization length of the bound filaments [m], set by generate_vlm_mesh.
         self.filament_core_radius = 0.0
-        Logging.record("VLM mesh allocation", ("panel capacity", self.max_n_panels))
 
         # Panel corner points (N x 4 x 3)
         # Order: [P, Q, R, S] where P-Q is LE, R-S is TE

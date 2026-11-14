@@ -8,12 +8,12 @@ solver alone grants neither. No CuPy import at module load.
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 import math
-import time
 
 import numpy as np
 from scipy.fft import next_fast_len
 
 from openonda.core.errors import NonFiniteSolutionError
+from openonda.core.profiling import Stopwatch
 
 from .coordinates import finite_images, image_tail_edges, slab_coordinates
 from .correction import GaussianCoreCorrectionGPU
@@ -816,13 +816,13 @@ class GaussianImageFields:
             yield
             return
         self.stream.synchronize()
-        started = time.perf_counter()
+        started = Stopwatch()
         try:
             yield
         finally:
             self.stream.synchronize()
             diagnostics.setdefault("passes", {}).setdefault(name, 0.0)
-            diagnostics["passes"][name] += time.perf_counter() - started
+            diagnostics["passes"][name] += started.seconds
 
     def _launch(self, name: str, count: int, arguments: tuple) -> None:
         self._program.get_function(name)(((count + 255) // 256,), (256,), arguments)
@@ -1105,7 +1105,7 @@ class GaussianImageFields:
         }
         diagnostics["execution_plan"] = vars(self.execution_plan).copy()
         diagnostics["device_checks"] = self.device_checks.copy()
-        started = time.perf_counter()
+        started = Stopwatch()
         memory_pool = self._owned_memory_pool
         with memory_pool.allocation_scope():
             if self._plans is None:
@@ -1158,7 +1158,7 @@ class GaussianImageFields:
                 raise NonFiniteSolutionError("nonfinite fused smooth GPU output; nothing published")
             free, total = cp.cuda.runtime.memGetInfo()
             diagnostics.update(
-                seconds=time.perf_counter() - started,
+                seconds=started.seconds,
                 pool_used_bytes=self.pool.used_bytes(),
                 pool_reserved_bytes=self.pool.total_bytes(),
                 plan_bytes=self._plans.work_bytes,
@@ -1203,7 +1203,7 @@ class GaussianImageFields:
             source_shape=self.source_shape,
         ):
             raise ValueError("query stencil lies outside the retained Gaussian field window")
-        started = time.perf_counter()
+        started = Stopwatch()
         free, _ = self.cp.cuda.runtime.memGetInfo()
         batch = query_batch_size(
             len(q),
@@ -1252,7 +1252,7 @@ class GaussianImageFields:
                             max_points=count,
                             max_new_bytes=self.max_scratch_bytes,
                         )
-                        gather_started = time.perf_counter()
+                        gather_started = Stopwatch()
                         for column in range(12):
                             self._launch(
                                 "gather",
@@ -1272,7 +1272,7 @@ class GaussianImageFields:
                                 ),
                             )
                         self.stream.synchronize()
-                        current_gather_seconds = time.perf_counter() - gather_started
+                        current_gather_seconds = gather_started.seconds
                         # Stencils and corrections do not need to coexist.
                         first = weight = None
                         correction_u, correction_j, current_correction = (
@@ -1382,7 +1382,7 @@ class GaussianImageFields:
                     "stencil": stencil,
                     "gather_seconds": gather_seconds,
                     "correction": correction,
-                    "query_seconds": time.perf_counter() - started,
+                    "query_seconds": started.seconds,
                     "query_batches": batches,
                     "query_batch_size": batch,
                     "query_allocation_retries": retries,

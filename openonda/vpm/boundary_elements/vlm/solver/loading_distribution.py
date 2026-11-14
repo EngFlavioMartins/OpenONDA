@@ -26,8 +26,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from openonda.vpm.io.logging import Logging
-
 if TYPE_CHECKING:
     from .vlm_solver import VLMSolver
 
@@ -115,7 +113,7 @@ class VLMLoadingDistribution:
                     expected_segment_id = local_segment_id
                     observed = panel_segment_id[original_flat_indices]
                     if not np.all(observed == expected_segment_id):
-                        Logging.warning(
+                        vlm_solver.logger.warning(
                             f"[VLMLoadingDistribution] segment_id mismatch for "
                             f"wing '{wing_uid}' segment '{segment_uid}' (expected {expected_segment_id}, "
                             f"got unique {np.unique(observed)}). Using index arithmetic."

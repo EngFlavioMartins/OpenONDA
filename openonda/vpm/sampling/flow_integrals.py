@@ -10,7 +10,7 @@ from openonda.core.file_output import append_csv_rows
 from openonda.core.sampling import Sampler
 from openonda.core.schedules import EverySteps, Schedule
 
-from ..io.logging import Logging
+from ..io.logging import flow_diagnostics, les_diagnostics
 
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
@@ -144,10 +144,10 @@ class FlowIntegralsSampler(Sampler):
     def write(self, context: SamplingContext) -> None:
         """Append the integrals of the current state and log them."""
         solver = context.solver
-        Logging.flow_diagnostics(solver)
+        flow_diagnostics(solver)
         if solver.turbulence_model is not None:
             solver.turbulence_model.update_turbulence_statistics(solver.particles)
-            Logging.les_diagnostics(solver)
+            les_diagnostics(solver)
         path = context.output_directory / f"{self.name}.csv"
         if not context.continuing_output:
             path.unlink(missing_ok=True)

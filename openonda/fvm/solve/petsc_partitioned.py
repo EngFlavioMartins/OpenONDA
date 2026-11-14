@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-import time
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -11,6 +10,7 @@ import numpy as np
 from scipy import sparse
 
 from openonda.core._numba import cacheable_njit as njit
+from openonda.core.profiling import Stopwatch
 
 from .linear_interface import (
     LINEAR_RESIDUAL_FLOOR,
@@ -332,7 +332,7 @@ class PartitionedLinearWorkspace:
         system.validate()
         if self.context.size != PETSc.COMM_WORLD.getSize():
             raise RuntimeError("mpi4py and PETSc communicator sizes differ")
-        setup_start = time.perf_counter()
+        setup_start = Stopwatch()
         objects_rebuilt = self._build(system, method, constant_nullspace, PETSc)
         assert self.matrix is not None
         assert self.rhs is not None
@@ -429,11 +429,11 @@ class PartitionedLinearWorkspace:
         )
         self.ksp.setTolerances(rtol=rtol_eff, max_it=max_iterations)
         self.ksp.setInitialGuessNonzero(initial_guess is not None)
-        setup_seconds = time.perf_counter() - setup_start
+        setup_seconds = setup_start.seconds
 
-        solve_start = time.perf_counter()
+        solve_start = Stopwatch()
         self.ksp.solve(self.rhs, self.solution)
-        solve_seconds = time.perf_counter() - solve_start
+        solve_seconds = solve_start.seconds
         reason_code = int(self.ksp.getConvergedReason())
         self.matrix.mult(self.solution, self.residual)
         self.residual.axpy(-1.0, self.rhs)

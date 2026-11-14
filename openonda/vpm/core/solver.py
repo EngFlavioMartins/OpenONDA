@@ -6,11 +6,9 @@ viscous diffusion, diagnostics, sampling, and restart support.
 
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
-import logging
 import math
 from numbers import Real
 from pathlib import Path
-from time import perf_counter
 from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
@@ -19,9 +17,9 @@ import taichi as ti
 
 from openonda.core.clock import time_tolerance
 from openonda.core.errors import NonFiniteSolutionError
-from openonda.core.log_style import close_logging, configure_logging
+from openonda.core.log_style import StepLog
 from openonda.core.output_events import OutputEvent
-from openonda.core.profiling import Profiler
+from openonda.core.profiling import Profiler, Stopwatch
 from openonda.core.restart import reset_run_outputs
 from openonda.core.status import RunStatus
 
@@ -41,7 +39,7 @@ from ..diagnostics.particle_state import measure_particle_state
 from ..diagnostics.resolution import particle_resolution_metrics
 from ..io.backup import _BackupIO, rewind_vpm_frames, select_vpm_backup
 from ..io.frames import write_solution_frames
-from ..io.logging import Logging, run_header
+from ..io.logging import run_finished, run_header, startup
 from ..io.metadata import write_vpm_metadata
 from ..kernels.base import make_vortex_kernel
 from ..numerics.runge_kutta import RungeKutta
@@ -183,8 +181,7 @@ class VPMSolver:
         self._external_clock = bool(external_clock)
         self._run_final_step = None if self._external_clock else case.n_steps
         self._run_started = False
-        self._run_wall_started_at: float | None = None
-        self._run_wall_finished_at: float | None = None
+        self._run_clock: Stopwatch | None = None
         self._last_backup_state: tuple | None = None
         self._last_frame_state: tuple | None = None
         self._preparing_output = False
@@ -196,28 +193,24 @@ class VPMSolver:
         self.run_status = RunStatus.not_started
         self.run_failure: BaseException | None = None
         self._evolution_failure: BaseException | None = None
+        self.logger = StepLog(
+            "VPM",
+            self.solution_dir / "vpm.log",
+            case.logging.schedule,
+            console=case.logging.console,
+            debug=case.logging.mode == "debug",
+        )
         try:
             self.solution_dir.mkdir(parents=True, exist_ok=True)
             self.samples_dir.mkdir(parents=True, exist_ok=True)
-            configure_logging(
-                "openonda.vpm",
-                self.solution_dir / "vpm.log",
-                console=case.logging.console,
-                level=logging.DEBUG if case.logging.mode == "debug" else logging.INFO,
-            )
-            Logging.configure(case.logging.schedule, case.numerics.time_step_size)
             self._initialize_numerics(case)
             self._initialize_backend(case.numerics)
             self._initialize_particles_and_physics(case.numerics)
             self._initialize_turbulence(case.numerics)
             self._initialize_solvers(case.numerics)
             self._sampler_manager = SamplerManager(self)
-            Logging.startup(self)
+            startup(self)
             self.write_run_metadata(status=RunStatus.created)
-            # Initial particles are added after construction. Keep those
-            # mutations out of the event stream; the first requested
-            # diagnostics describe their state.
-            Logging.set_routine_messages_enabled(False)
         except BaseException:
             self._cleanup_failed_construction()
             raise
@@ -233,7 +226,7 @@ class VPMSolver:
     def _cleanup_failed_construction(self) -> None:
         """Release every resource acquired before construction failed."""
         with suppress(Exception):
-            close_logging("openonda.vpm")
+            self.logger.close()
         if self._backend_claimed:
             # Preserve the original construction exception if cleanup fails.
             with suppress(Exception):
@@ -262,7 +255,7 @@ class VPMSolver:
         ):
             rwm_max_time_step_size = vc.rwm_accuracy_time_step_size()
             if self.time_step_size > rwm_max_time_step_size * (1.0 + 1e-6):
-                Logging.warning_record(
+                self.logger.warning(
                     "RWM time step exceeds the accuracy limit",
                     ("time step", self.time_step_size, "s"),
                     ("accuracy limit", rwm_max_time_step_size, "s"),
@@ -316,16 +309,17 @@ class VPMSolver:
             random_seed=final_setup.random_seed,
             supported_devices=self.induction.supported_devices,
             minimum_pool_bytes=minimum_pool_bytes,
+            logger=self.logger,
         )
         self._backend_claimed = True
         # ``close()`` releases the runtime before the terminal metadata is
         # written, so the metadata records the device resolved here.
         self._backend_name = str(self.compute_device)
-        Logging.message(run_header(self.precision, self._backend_name))
-        # Initialization can call the same particle/model helpers used at run
-        # time.  Suppress their routine event records until the complete,
-        # resolved configuration is printed once after initial conditions.
-        Logging.set_routine_messages_enabled(False)
+        self.logger.report(run_header(self.precision, self._backend_name))
+        # Initialization and the initial particles call the same helpers as
+        # the run. Their routine records stay out of the log until the first
+        # step output; the first requested diagnostics describe the state.
+        self.logger.muted = True
         set_flow_model(self, flow_model=self.flow_model)
         self.compute_dtype = ti.f64 if self.precision == "f64" else ti.f32
         self.accumulator_dtype = self.compute_dtype
@@ -334,7 +328,9 @@ class VPMSolver:
     def _initialize_particles_and_physics(self, final_setup: Numerics) -> None:
         """Create particle container, physics engine, source fields, background velocity."""
         max_p = final_setup.max_n_particles
-        self.particles = Particles(max_n_particles=max_p, float_dtype=self.precision)
+        self.particles = Particles(
+            max_n_particles=max_p, float_dtype=self.precision, logger=self.logger
+        )
         self.physics = PhysicsEngine(
             particle_kernel=self.particle_kernel,
             max_n_particles=max_p,
@@ -461,12 +457,13 @@ class VPMSolver:
                 flow_model=self.flow_model,
                 state=stabilization_state,
                 mutations=SolverParticleMutations(self, stabilization_state),
+                logger=self.logger,
                 slip_slab=getattr(self.physics, "_slip_slab_bounds", None),
             )
         )
         active = self.stabilization.active_mechanisms()
         if active:
-            Logging.record(
+            self.logger.section(
                 "stabilization",
                 *(("  " + mechanism, "active") for mechanism in active),
             )
@@ -475,6 +472,7 @@ class VPMSolver:
         # opt-in; the whole-step timer of a normal run adds no device wait.
         self.profiler = Profiler(enabled=self.case.logging.detailed_timing, synchronize=ti.sync)
         self.physics.profiler = self.profiler
+        self.physics.logger = self.logger
         self.stage_rhs = StageRHS(
             self.induction,
             providers=tuple(self._stage_providers),
@@ -491,7 +489,7 @@ class VPMSolver:
         self.vlm_solver._wake_kernel = self.induction.kernel
         self.vlm_solver.ensure_mesh_generated()
         if getattr(self.vlm_solver, "lattice", None) is not None:
-            Logging.record("vlm", ("panels", f"{self.vlm_solver.lattice.n_panels:,}"))
+            self.logger.section("vlm", ("panels", f"{self.vlm_solver.lattice.n_panels:,}"))
             self.vlm_solver.check_coupling_stability(
                 self.time_step_size, self.numerics.freestream_velocity
             )
@@ -504,7 +502,7 @@ class VPMSolver:
             self._require_consistent_molecular_viscosity(final_setup.viscous, final_setup.vlm)
             from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
 
-            self.vlm_solver = VLMSolver(final_setup.vlm)
+            self.vlm_solver = VLMSolver(final_setup.vlm, self.logger)
 
         if self.vlm_solver is not None:
             self._initialize_vlm_coupling()
@@ -584,7 +582,7 @@ class VPMSolver:
         self._ensure_evolution_usable()
         if not self._initial_conditions_built:
             self._build_initial_conditions()
-        self._enable_routine_messages()
+        self.logger.muted = False
         if time is not None and not math.isclose(
             time,
             self.time + self.time_step_size,
@@ -600,7 +598,7 @@ class VPMSolver:
             self._external_clock = True
         if not self._run_started:
             self.run_status = RunStatus.running
-        step_started = perf_counter()
+        step_clock = Stopwatch()
         try:
             self.stepper.advance(defer_output=defer_output, time=time)
         except BaseException as error:
@@ -612,7 +610,7 @@ class VPMSolver:
         if defer_output:
             return
         self.write_step_output()
-        Logging.section("STEP TIMING", ("Step total wall time", perf_counter() - step_started, "s"))
+        self.logger.section("STEP TIMING", ("Step total wall time", step_clock.seconds, "s"))
 
     def _ensure_evolution_usable(self) -> None:
         """Reject continuation after a physical step has failed."""
@@ -662,7 +660,7 @@ class VPMSolver:
         if path is None:
             return self.start_from("initial")
         self.load_backup(path)
-        Logging.info(f"Continuing from {path}: step {self.step}, time {self.time:.17g}")
+        self.logger.event(f"Continuing from {path}: step {self.step}, time {self.time:.17g}")
         return True
 
     def _start_run_from(self, selection: str | Path) -> None:
@@ -685,7 +683,9 @@ class VPMSolver:
         self._restart_terminal_noop = True
         self._restart_particle_count = particle_count
         self._initial_conditions_built = True
-        Logging.info(f"Latest backup already reaches the end time: step {step}, time {time:.17g}")
+        self.logger.event(
+            f"Latest backup already reaches the end time: step {step}, time {time:.17g}"
+        )
 
     def run(self, *, start_from: str | Path | None = "latest") -> None:
         """Run the case to ``RunPlan.end_time`` and close the solver.
@@ -717,16 +717,15 @@ class VPMSolver:
             self.close(failure=error)
             raise
         self._run_started = True
-        self._run_wall_started_at = perf_counter()
-        self._run_wall_finished_at = None
+        self._run_clock = Stopwatch()
         self._run_initial_step = self.step
         self._run_initial_time = self.time
         remaining_steps = max(0, self._run_final_step - self.step)
         if self._restart_terminal_noop:
-            self._run_wall_finished_at = perf_counter()
+            self._run_clock.stop()
             self.run_status = RunStatus.completed
             try:
-                Logging.run_finished(self, self.run_status)
+                run_finished(self, self.run_status)
                 self.write_run_metadata(status=self.run_status)
             finally:
                 self.close()
@@ -740,7 +739,7 @@ class VPMSolver:
                 self.save_backup()
             self.run_status = RunStatus.running
             self.write_run_metadata(status=self.run_status)
-            self._enable_routine_messages()
+            self.logger.muted = False
             state_limit_failure = None
             invalid_state_failure = None
             if self._restart_loaded:
@@ -782,14 +781,14 @@ class VPMSolver:
             with suppress(BaseException):
                 self._sampler_manager.dispatch(OutputEvent.failed)
         finally:
-            self._run_wall_finished_at = perf_counter()
+            self._run_clock.stop()
             if primary_failure is not None:
                 status = RunStatus.failed
                 failure = primary_failure
             self.run_status = status
             self.run_failure = failure
             for finalizer in (
-                lambda: Logging.run_finished(self, self.run_status, self.run_failure),
+                lambda: run_finished(self, self.run_status, self.run_failure),
                 lambda: self.write_run_metadata(status=self.run_status),
                 self.close,
             ):
@@ -817,7 +816,7 @@ class VPMSolver:
             return
         self._ensure_evolution_usable()
         self._build_initial_conditions()
-        self._enable_routine_messages()
+        self.logger.muted = False
         with self._output_preparation():
             self._refresh_diagnostics_for_output()
             self.write_vtk()
@@ -890,8 +889,7 @@ class VPMSolver:
 
     def flush_output(self) -> None:
         """Finish pending file output; VPM output is written synchronously."""
-        for handler in logging.getLogger("openonda.vpm").handlers:
-            handler.flush()
+        self.logger.flush()
 
     @property
     def state_revision(self) -> int:
@@ -945,7 +943,7 @@ class VPMSolver:
             except BaseException as error:
                 if primary_failure is None:
                     primary_failure = error
-        close_logging("openonda.vpm")
+        self.logger.close()
         if self._backend_claimed and mesh_failure is None:
             try:
                 reset_taichi_backend(solver=self)
@@ -1041,18 +1039,18 @@ class VPMSolver:
         ``defer_output=True``; a coupled driver calls it after exchanging the
         particle cloud.
         """
-        self._enable_routine_messages()
-        started = perf_counter()
+        self.logger.muted = False
+        phase_clock = Stopwatch()
         with self._output_preparation():
             with remainder_section(self.profiler, "Particle state checks"):
                 self._check_accepted_particle_state()
-            state_check_finished = perf_counter()
+            state_check_seconds = phase_clock.lap()
             with remainder_section(self.profiler, "Flow and VLM diagnostics"):
                 if self.vlm_solver is not None:
                     self._record_vlm_diagnostics()
                 if self._sampler_manager.flow_integrals_due():
                     self._update_all_flow_integrals()
-            diagnostics_finished = perf_counter()
+            diagnostics_seconds = phase_clock.lap()
             with remainder_section(self.profiler, "Backups, frames and samplers"):
                 if self._is_due(self.case.backup.schedule):
                     self._allow_backup_velocity_reuse = True
@@ -1063,11 +1061,11 @@ class VPMSolver:
                 if self._is_due(self.case.output.schedule):
                     self.write_vtk()
                 self._sampler_manager.dispatch(OutputEvent.accepted_step)
-        Logging.section(
+        self.logger.section(
             "OUTPUT TIMING",
-            ("Particle state checks", state_check_finished - started, "s"),
-            ("Flow and VLM diagnostics", diagnostics_finished - state_check_finished, "s"),
-            ("Backups, frames and samplers", perf_counter() - diagnostics_finished, "s"),
+            ("Particle state checks", state_check_seconds, "s"),
+            ("Flow and VLM diagnostics", diagnostics_seconds, "s"),
+            ("Backups, frames and samplers", phase_clock.lap(), "s"),
         )
 
     @property
@@ -1137,10 +1135,7 @@ class VPMSolver:
     @property
     def elapsed_wall_time(self) -> float:
         """Wall-clock seconds of the run, or of the evolution steps without a run."""
-        if self._run_wall_started_at is None:
-            return self.wall_time
-        finished = self._run_wall_finished_at
-        return (perf_counter() if finished is None else finished) - self._run_wall_started_at
+        return self.wall_time if self._run_clock is None else self._run_clock.seconds
 
     # Particle properties
     def _get_particle_field(self, method_name: str) -> np.ndarray:
@@ -1604,11 +1599,6 @@ class VPMSolver:
             raise RuntimeError("Mixed VPM target evaluation returned non-finite data")
         return np.asarray(complete_velocity, dtype=np.float64), tangential
 
-    # Diagnostics
-    def _enable_routine_messages(self) -> None:
-        """Enable per-step messages; the configuration was logged at construction."""
-        Logging.set_routine_messages_enabled(True)
-
     # Particle management
     def remove_all_particles(self) -> None:
         """Remove the complete active cloud and record removed-strength diagnostics.
@@ -1951,7 +1941,7 @@ class VPMSolver:
         self.particles.touch_state()
 
         property_names = list(properties)
-        Logging.record(
+        self.logger.section(
             "particle fields updated",
             ("fields", f"{len(property_names):,}"),
             *(("  " + name, "updated") for name in property_names),
@@ -2039,16 +2029,16 @@ class VPMSolver:
         default = path is None
         if default:
             path = self.solution_dir / "vpm" / f"vpm_{self.step:06d}.h5"
-        started = perf_counter()
+        backup_clock = Stopwatch()
         self._refresh_backup_particle_fields()
         # Serialization downloads the fields anyway; charge the device work here.
         ti.sync()
-        prepared = perf_counter()
+        preparation_seconds = backup_clock.lap()
         written = _BackupIO.save(self, path)
-        Logging.section(
+        self.logger.section(
             "BACKUP TIMING",
-            ("Field preparation", prepared - started, "s"),
-            ("File writing", perf_counter() - prepared, "s"),
+            ("Field preparation", preparation_seconds, "s"),
+            ("File writing", backup_clock.lap(), "s"),
         )
         if default:
             self._last_backup_state = self._state_key()
@@ -2182,7 +2172,7 @@ class VPMSolver:
         if n_removed > 0:
             self.stabilization.on_removal(keep_mask=keep_mask)
             action = "outside" if invert_selection else "inside"
-            Logging.record(
+            self.logger.section(
                 "particles removed",
                 ("particles", f"{n_removed:,}"),
                 ("region", f"{action} box"),

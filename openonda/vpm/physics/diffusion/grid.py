@@ -21,6 +21,7 @@ import taichi as ti
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.errors import NonFiniteSolutionError
 from openonda.core.grid_connectivity import connected_grid_components
+from openonda.core.log_style import StepLog
 from openonda.core.m4_kernel import m4_prime, m4_prime_ti
 from openonda.core.profiling import Profiler
 from openonda.core.slip_slab_images import (
@@ -31,7 +32,6 @@ from openonda.core.slip_slab_images import (
 )
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
-from ...io.logging import Logging
 from ..induction.base import TaichiField
 from .body_geometry import BodyGeometryKey, BodyGridGeometryCache, ImmutableBodyGeometryQueries
 
@@ -458,6 +458,8 @@ class _GridDiffusionMixin:
 
         # Step profiler of the owning solver; it times the GBD phases.
         self.profiler = Profiler(enabled=False)
+        # Log of the owning solver; it receives the diffusion records and warnings.
+        self.logger = StepLog.disabled()
 
     def require_fixed_grid_allocation(self, enabled: bool = True) -> None:
         """Require grid-based diffusion to pre-allocate one fixed grid.
@@ -665,7 +667,7 @@ class _GridDiffusionMixin:
                 for n, old in zip(requested, previous, strict=True)
             )
         self._allocate_grid(shape)
-        Logging.record(
+        self.logger.section(
             "diffusion grid allocation",
             ("requested shape", requested),
             ("allocated shape", shape),
@@ -734,7 +736,7 @@ class _GridDiffusionMixin:
 
         if self._grid_shape != (nx, ny, nz):
             self._allocate_grid((nx, ny, nz))
-            Logging.record(
+            self.logger.section(
                 "diffusion grid preallocated",
                 ("shape", f"{nx}x{ny}x{nz}"),
             )
@@ -2497,7 +2499,7 @@ class _GridDiffusionMixin:
         max_substep_diffusion_number = max_diffusion_number / n_diffusion_substeps
 
         if n_diffusion_substeps > 1:
-            Logging.record(
+            self.logger.section(
                 "gaussian blob diffusion substepping",
                 ("substeps", f"{n_diffusion_substeps:,}"),
                 ("diffusion number, max", f"{max_diffusion_number:.6f}"),
@@ -2844,7 +2846,9 @@ class _GridDiffusionMixin:
         max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
 
         if max_vortex_strength_magnitude < 1e-30:
-            Logging.warning("GBD skipped: the scattered grid is empty; particle state is unchanged")
+            self.logger.warning(
+                "GBD skipped: the scattered grid is empty; particle state is unchanged"
+            )
             self._ping = True
             return None
 
@@ -2858,7 +2862,7 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
-            Logging.warning(
+            self.logger.warning(
                 f"GBD skipped: no grid nodes reach the strength threshold "
                 f"{threshold:.2e} m^3/s; particle state is unchanged"
             )
@@ -2881,7 +2885,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        Logging.record(
+        self.logger.section(
             "gaussian blob diffusion regeneration",
             ("threshold", f"{threshold:.3e}"),
             ("nodes retained", f"{len(ix):,}"),
@@ -2922,7 +2926,7 @@ class _GridDiffusionMixin:
                     strict_labels=wall_correction,
                 )
                 if support_augmented_node_count:
-                    Logging.record(
+                    self.logger.section(
                         "gaussian blob diffusion moment support",
                         ("nodes, threshold/cap result", f"{retained_before_support:,}"),
                         ("nodes, support added", f"{support_augmented_node_count:,}"),
@@ -2978,7 +2982,7 @@ class _GridDiffusionMixin:
                             removed_node_count=int(nonzero_node_count - len(ix)),
                             support_augmented_node_count=int(support_augmented_node_count),
                         )
-                        Logging.record(
+                        self.logger.section(
                             "gaussian blob diffusion retained diffused component",
                             ("component", str(error.correction_label)),
                             ("diffused nodes retained", f"{added:,}"),
@@ -2995,7 +2999,7 @@ class _GridDiffusionMixin:
                 raw_net = raw_retained.sum(axis=0, dtype=np.float64)
                 corrected_net = corrected_retained.sum(axis=0, dtype=np.float64)
                 net_scale = vortex_strength_total + 1.0e-30
-                Logging.record(
+                self.logger.section(
                     "gaussian blob diffusion moment correction",
                     ("correction strength fraction", f"{correction_l1 / net_scale:.6e}"),
                     (
@@ -3390,7 +3394,9 @@ class _GridDiffusionMixin:
         max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
 
         if max_vortex_strength_magnitude < 1e-30:
-            Logging.warning("DVH skipped: the scattered grid is empty; particle state is unchanged")
+            self.logger.warning(
+                "DVH skipped: the scattered grid is empty; particle state is unchanged"
+            )
             return None
 
         vortex_strength_total = float(vortex_strength_magnitude.sum(dtype=np.float64))
@@ -3403,7 +3409,7 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
-            Logging.warning(
+            self.logger.warning(
                 f"DVH skipped: no grid nodes reach the strength threshold "
                 f"{threshold:.2e} m^3/s; particle state is unchanged"
             )
@@ -3425,7 +3431,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        Logging.record(
+        self.logger.section(
             "discrete vortex heat method regeneration",
             ("threshold", f"{threshold:.3e}"),
             ("nodes retained", f"{len(ix):,}"),

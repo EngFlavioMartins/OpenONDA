@@ -19,8 +19,8 @@ import weakref
 
 import taichi as ti
 
+from openonda.core.log_style import StepLog
 from openonda.runtime import worker_thread_count
-from openonda.vpm.io.logging import Logging
 
 # Taichi owns one process-global runtime.  VPM solvers may share that runtime
 # only when they use the same device and precision.  A weak solver set
@@ -102,8 +102,9 @@ _INTEGRATED_GPU_POOL_BYTES: int = 1536 * (1 << 20)  # 1.5 GiB
 
 def _safe_device_memory_for_init(
     desired_fraction: float,
-    backend: str = "vulkan",
-    minimum_pool_bytes: int = 0,
+    backend: str,
+    minimum_pool_bytes: int,
+    logger: StepLog,
 ) -> dict[str, float]:
     """Return ``ti.init()`` memory kwargs for a CUDA or Vulkan device.
 
@@ -147,7 +148,7 @@ def _safe_device_memory_for_init(
         pool_gb = pool / (1 << 30)
         budget_mb = budget_info[1] / (1 << 20) if budget_info else -1
 
-        Logging.record(
+        logger.section(
             f"backend {backend}",
             ("memory pool", f"{pool_mb:.0f}", "MiB"),
             ("device budget", f"{budget_mb:.0f}", "MiB"),
@@ -335,6 +336,7 @@ def start_taichi(
     random_seed: int = 42,
     supported_devices: set[str] | frozenset[str] | None = None,
     minimum_pool_bytes: int = 0,
+    logger: StepLog | None = None,
 ) -> str:
     """Start the Taichi runtime on ``device``, or join the running one.
 
@@ -363,6 +365,8 @@ def start_taichi(
         Devices qualified for the numerical method.
     minimum_pool_bytes : int, default=0
         Fixed workspace that an integrated-GPU memory pool must hold.
+    logger : StepLog or None, default=None
+        Log that receives the start-up notes.
 
     Returns
     -------
@@ -378,6 +382,7 @@ def start_taichi(
         If the request is invalid for this platform or numerical method.
     """
     global _BACKEND_CONFIGURATION
+    logger = logger or StepLog.disabled()
     device = str(device).lower()
     precision = str(precision).lower()
     if precision not in _PRECISION_MAP:
@@ -398,10 +403,10 @@ def start_taichi(
                 _BACKEND_CONFIGURATION = None
 
         if ti.lang.impl.get_runtime().prog is not None:
-            resolved = _join_runtime(device, precision, supported_devices)
+            resolved = _join_runtime(device, precision, supported_devices, logger)
         else:
             resolved = _initialize_runtime(
-                device, precision, debug, random_seed, supported_devices, minimum_pool_bytes
+                device, precision, debug, random_seed, supported_devices, minimum_pool_bytes, logger
             )
         _BACKEND_CONFIGURATION = (resolved, precision)
         if solver is not None:
@@ -413,6 +418,7 @@ def _join_runtime(
     device: str,
     precision: str,
     supported_devices: set[str] | frozenset[str] | None,
+    logger: StepLog,
 ) -> str:
     """Return the device of the running runtime if ``device`` may use it, or raise."""
     active = _active_backend_name()
@@ -441,7 +447,7 @@ def _join_runtime(
             f"numerical method; supported devices: {sorted(supported_devices)}"
         )
     if device == "auto":
-        Logging.info(f"compute device auto resolved to the running {active} runtime")
+        logger.event(f"compute device auto resolved to the running {active} runtime")
     return active
 
 
@@ -452,11 +458,12 @@ def _initialize_runtime(
     random_seed: int,
     supported_devices: set[str] | frozenset[str] | None,
     minimum_pool_bytes: int,
+    logger: StepLog,
 ) -> str:
     """Start Taichi on the one backend that ``device`` selects, or raise."""
     arch, name = _select_backend(device, precision, supported_devices)
     if device == "auto":
-        Logging.info(f"compute device auto resolved to {name}")
+        logger.event(f"compute device auto resolved to {name}")
     device_memory_fraction = 0.5
     default_fp, default_ip = _PRECISION_MAP[precision]
     init_kwargs = {
@@ -474,7 +481,7 @@ def _initialize_runtime(
         init_kwargs["device_memory_fraction"] = device_memory_fraction
     elif name != "metal":
         init_kwargs.update(
-            _safe_device_memory_for_init(device_memory_fraction, name, minimum_pool_bytes)
+            _safe_device_memory_for_init(device_memory_fraction, name, minimum_pool_bytes, logger)
         )
     if name != "metal":
         init_kwargs["random_seed"] = random_seed
@@ -488,7 +495,7 @@ def _initialize_runtime(
         finally:
             for line in startup_output.getvalue().splitlines():
                 if not line.startswith("[Taichi] Starting on arch="):
-                    Logging.info(f"Taichi runtime: {line}")
+                    logger.event(f"Taichi runtime: {line}")
         active_arch = ti.lang.impl.current_cfg().arch
         if active_arch != arch:
             raise RuntimeError(
@@ -503,5 +510,5 @@ def _initialize_runtime(
             f"Taichi could not start compute_device={device!r} on {name} at precision "
             f"{precision}; the error is chained below"
         ) from error
-    Logging.info(f"backend {name} initialized at precision {precision}")
+    logger.event(f"backend {name} initialized at precision {precision}")
     return name

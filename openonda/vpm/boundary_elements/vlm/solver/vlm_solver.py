@@ -6,7 +6,6 @@ circulation system and evaluates forces.
 from collections.abc import Iterator
 from contextlib import contextmanager
 import copy
-import time
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import numpy as np
@@ -20,10 +19,11 @@ from openonda.core.kinematics import (
     StaticMotion,
     advance_pose,
 )
+from openonda.core.log_style import StepLog
 from openonda.core.metadata import metadata_value
+from openonda.core.profiling import Stopwatch
 
 from ....config.constants import VLM_SMALL_VELOCITY
-from ....io.logging import Logging
 from ....kernels import make_vortex_kernel
 from ..config import VLMConfig, VLMSurface
 from ..geometry.aircraft import Aircraft, Wing
@@ -98,10 +98,15 @@ class VLMSolver:
     configuration mutation methods.
     """
 
-    def __init__(self, config: VLMConfig):
-        """Initialize from one complete, immutable VLM definition."""
+    def __init__(self, config: VLMConfig, logger: StepLog | None = None):
+        """Initialize from one complete, immutable VLM definition.
+
+        ``logger`` receives the solver's records and warnings; without it the
+        solver reports nothing.
+        """
         # Solver configuration
         self.config = config
+        self.logger = logger or StepLog.disabled()
 
         # Multi-body storage: Dict[uid -> (Aircraft, kinematics)]
         self.surfaces: dict[str, tuple[Aircraft, RigidMotion]] = {}
@@ -164,7 +169,7 @@ class VLMSolver:
         self.max_n_panels = self.aircraft.total_n_panels()
         self.dtype: Literal["f32", "f64"]
 
-        Logging.record("VLM initialized", ("panels", self.max_n_panels))
+        self.logger.section("VLM initialized", ("panels", self.max_n_panels))
 
     @property
     def lattice(self) -> VLMLattice:
@@ -209,7 +214,7 @@ class VLMSolver:
         if self._mesh_generated:
             return
 
-        t0 = time.time()
+        mesh_clock = Stopwatch()
 
         generate_vlm_mesh(
             self.aircraft,
@@ -239,14 +244,13 @@ class VLMSolver:
         self._mesh_generated = True
         self._solved = False
 
-        elapsed = time.time() - t0
         total_area = float(self.lattice.area.to_numpy()[: self.lattice.n_panels].sum())
-        Logging.record(
+        self.logger.section(
             "VLM mesh generated",
             ("panels", self.lattice.n_panels),
             ("wings", len(self.aircraft.wings)),
             ("area", total_area, "m²"),
-            ("elapsed", elapsed, "s"),
+            ("elapsed", mesh_clock.seconds, "s"),
         )
 
     def _place_surfaces(self) -> None:
@@ -315,7 +319,7 @@ class VLMSolver:
         self._surface_placements[surface_name] = surface.placement()
 
         self._update_combined_aircraft()
-        Logging.record(
+        self.logger.section(
             "VLM surface",
             ("name", surface_name),
             ("panels", aircraft.total_n_panels()),
@@ -588,7 +592,7 @@ class VLMSolver:
             "min_panel_chord": min_panel_chord,
         }
         if not stable:
-            Logging.warning(
+            self.logger.warning(
                 "VLM-VPM wake convection is under-resolved: "
                 f"wake_courant_number={courant:.3g} > 1. Reduce time_step_size to "
                 f"<= {max_time_step_size:.3g} s."
@@ -613,7 +617,7 @@ class VLMSolver:
         """
         self._stage_geometry_time = None
         self._coupled_mode = bool(coupled)
-        solve_start_time = time.time()
+        solve_clock = Stopwatch()
         if not self._mesh_generated:
             self.generate_mesh()
         n_panels = self.lattice.n_panels
@@ -629,9 +633,9 @@ class VLMSolver:
         else:
             external_velocity_array = self.lattice.external_velocity.to_numpy()[:n_panels]
         relative_velocity = external_velocity_array - self.lattice.get_kinematic_velocity()
-        velocity_upload_end_time = time.time()
+        velocity_upload_seconds = solve_clock.lap()
         self.update_trailing_directions(relative_velocity)
-        trailing_direction_end_time = time.time()
+        trailing_direction_seconds = solve_clock.lap()
         compute_aerodynamic_influence_coefficient_matrix(
             self.lattice.collocation_point,
             self.lattice.vortex_point_position,
@@ -644,7 +648,7 @@ class VLMSolver:
             self.lattice.filament_core_radius,
             coupled_mode=1 if coupled else 0,
         )
-        influence_matrix_end_time = time.time()
+        influence_matrix_seconds = solve_clock.lap()
         compute_coupled_right_hand_side(
             self.lattice.collocation_point,
             self.lattice.normal,
@@ -653,7 +657,7 @@ class VLMSolver:
             self.lattice.right_hand_side,
             self.lattice.n_panels,
         )
-        right_hand_side_end_time = time.time()
+        right_hand_side_seconds = solve_clock.lap()
         # The unsteady load differences against the circulation of the previous step.
         self.lattice.save_old_circulation()
         if coupled:
@@ -665,20 +669,22 @@ class VLMSolver:
             n_panels,
         )
         circulation_np = self.lattice.circulation.to_numpy()[:n_panels]
-        linear_solve_end_time = time.time()
-        total_time = linear_solve_end_time - solve_start_time
+        linear_solve_seconds = solve_clock.lap()
+        total_time = (
+            velocity_upload_seconds
+            + trailing_direction_seconds
+            + influence_matrix_seconds
+            + right_hand_side_seconds
+            + linear_solve_seconds
+        )
         if total_time > 1.0:
-            Logging.record(
+            self.logger.section(
                 "VLM solve timing",
-                ("velocity upload", velocity_upload_end_time - solve_start_time, "s"),
-                (
-                    "trailing directions",
-                    trailing_direction_end_time - velocity_upload_end_time,
-                    "s",
-                ),
-                ("influence matrix", influence_matrix_end_time - trailing_direction_end_time, "s"),
-                ("right-hand side", right_hand_side_end_time - influence_matrix_end_time, "s"),
-                ("linear solve", linear_solve_end_time - right_hand_side_end_time, "s"),
+                ("velocity upload", velocity_upload_seconds, "s"),
+                ("trailing directions", trailing_direction_seconds, "s"),
+                ("influence matrix", influence_matrix_seconds, "s"),
+                ("right-hand side", right_hand_side_seconds, "s"),
+                ("linear solve", linear_solve_seconds, "s"),
                 ("total", total_time, "s"),
             )
         self._solved = True
@@ -1404,7 +1410,7 @@ class VLMSolver:
             time: Physical simulation time stored in the output field.
         """
         if not self._solved:
-            Logging.warning("VLM is unsolved; saving geometry without solved loads")
+            self.logger.warning("VLM is unsolved; saving geometry without solved loads")
 
         self.lattice.save_vtk(filename, time=time)
 

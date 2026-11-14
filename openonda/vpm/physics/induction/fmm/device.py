@@ -15,11 +15,11 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 import math
 from typing import TYPE_CHECKING, NamedTuple, Self
+import warnings
 
 import numpy as np
 import taichi as ti
 
-from ....io.logging import Logging
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ....kernels.registry import kernel_names, treecode_kernel_names
 from ..base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
@@ -1505,9 +1505,10 @@ class FMMInduction:
         )
         if max(proposed) > _MAX_PAIR_CAPACITY:
             raise RuntimeError("FMM interaction lists exceed the safe i32 capacity") from error
-        Logging.runtime_warning(
+        warnings.warn(
             f"Growing FMM interaction-list storage from {current.list_capacities} to {proposed}; "
             "retrying the unchanged particle stage",
+            RuntimeWarning,
             stacklevel=2,
         )
         self._replace_workspace(current.max_n_particles, proposed, current.max_active_cells)
@@ -1517,9 +1518,10 @@ class FMMInduction:
         current = self.workspace
         assert current is not None
         active_cells = math.ceil(1.25 * error.active_cells)
-        Logging.runtime_warning(
+        warnings.warn(
             f"Growing FMM expansion storage from {current.max_active_cells} to {active_cells} "
             "active cells; retrying the unchanged particle stage",
+            RuntimeWarning,
             stacklevel=2,
         )
         self._replace_workspace(current.max_n_particles, current.list_capacities, active_cells)

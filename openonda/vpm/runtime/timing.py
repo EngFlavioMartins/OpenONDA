@@ -10,11 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from time import perf_counter
 
 import taichi as ti
 
-from openonda.core.profiling import Profiler
+from openonda.core.profiling import Profiler, Stopwatch
 
 __all__ = ["remainder_section"]
 
@@ -46,11 +45,11 @@ def remainder_section(
         return
     synchronize()
     recorded_before = sum(profiler.step_sections.values())
-    started = perf_counter()
+    started = Stopwatch()
     try:
         yield
     finally:
         synchronize()
-        elapsed = perf_counter() - started
+        elapsed = started.seconds
         recorded_inside = sum(profiler.step_sections.values()) - recorded_before
         profiler.record(name, max(0.0, elapsed - recorded_inside))

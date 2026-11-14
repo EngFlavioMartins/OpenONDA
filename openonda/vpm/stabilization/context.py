@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 
 if TYPE_CHECKING:
+    from openonda.core.log_style import StepLog
+
     from ..config.stabilization import StabilizationConfig
 
 
@@ -130,5 +132,6 @@ class StabilizationContext:
 
     state: StabilizationStepState
     mutations: ParticleMutationPort
+    logger: StepLog
     # Free-slip planes (z_min, z_max) of a slip-slab case, or None.
     slip_slab: tuple[float, float] | None = None

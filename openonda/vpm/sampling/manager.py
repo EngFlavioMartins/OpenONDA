@@ -15,8 +15,6 @@ from openonda.core.restart import output_has_time
 from openonda.core.schedules import FinalOnly
 from openonda.core.vtk_output import add_frame, read_collection, rewind_collection
 
-from ..io.logging import Logging
-
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
 
@@ -205,7 +203,7 @@ class SamplerManager:
         self._write(sampler, name, context)
         self._last_written[key] = state
         self._written_names.add(name)
-        Logging.debug(f"Sampler {name} written at step {context.step}")
+        self.solver.logger.debug(f"Sampler {name} written at step {context.step}")
 
     def _write(self, sampler: object, name: str, context: SamplingContext) -> None:
         if isinstance(sampler, _WritingSampler):

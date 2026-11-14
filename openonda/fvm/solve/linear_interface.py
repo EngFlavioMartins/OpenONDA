@@ -10,7 +10,6 @@ and PETSc can stop on slightly different internal norms; the reported
 
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
-import time
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -19,11 +18,13 @@ from scipy import sparse
 from scipy.sparse.linalg import LinearOperator, bicgstab, cg, splu, spsolve
 
 from openonda.core._numba import cacheable_njit as njit
+from openonda.core.profiling import Stopwatch
 
 if TYPE_CHECKING:
+    from openonda.core.log_style import StepLog
+
     from ..assemble.matrix_assembly import MatrixAssemblyWorkspace
     from ..core.parallel import ParallelContext
-    from ..io.logging import Logging
     from .petsc_partitioned import PartitionedLinearWorkspace
 
 _AMG_CACHE = {}
@@ -63,7 +64,7 @@ class _DirectFactorization:
 def _solve_direct_with_workspace(
     A: sparse.spmatrix, b: np.ndarray, workspace: "MatrixAssemblyWorkspace"
 ) -> tuple[np.ndarray, float, float]:
-    setup_start = time.perf_counter()
+    setup_start = Stopwatch()
     matrix = A.tocsr(copy=False)
     dtype = np.result_type(matrix.dtype, np.asarray(b).dtype)
     if dtype.kind not in "fc":
@@ -77,13 +78,13 @@ def _solve_direct_with_workspace(
         except (RuntimeError, ValueError) as error:
             raise LinearSolveError(f"Sparse direct factorization failed: {error}") from error
         workspace.direct_factorization = cached
-    setup_seconds = time.perf_counter() - setup_start
-    solve_start = time.perf_counter()
+    setup_seconds = setup_start.seconds
+    solve_start = Stopwatch()
     solution = cached.factor.solve(np.asarray(b, dtype=dtype))
-    return solution, setup_seconds, time.perf_counter() - solve_start
+    return solution, setup_seconds, solve_start.seconds
 
 
-def _emit_debug(log_sink: "Logging | None", message: str, *args: object) -> None:
+def _emit_debug(log_sink: "StepLog | None", message: str, *args: object) -> None:
     """Route a debug-mode note through the active FVM logger."""
     if log_sink is not None:
         log_sink.debug(message, *args)
@@ -258,7 +259,7 @@ def _breakdown_converged(
     tol: float,
     method: str,
     info: int,
-    log_sink: "Logging | None" = None,
+    log_sink: "StepLog | None" = None,
     x0: np.ndarray | None = None,
 ) -> bool:
     """True when a nonzero ``info`` iterate nevertheless meets the tolerance.
@@ -371,7 +372,7 @@ def _solve_petsc(
         raise ValueError("PETSc solve requires a square matrix and matching RHS")
 
     with ExitStack() as resources:
-        setup_start = time.perf_counter()
+        setup_start = Stopwatch()
         max_row_nnz = max(int(np.max(np.diff(A_csr.indptr))), 1)
         mat = PETSc.Mat().createAIJ(
             size=A_csr.shape,
@@ -484,11 +485,11 @@ def _solve_petsc(
         )
         ksp.setOptionsPrefix(prefix)
         ksp.setFromOptions()
-        setup_seconds = time.perf_counter() - setup_start
+        setup_seconds = setup_start.seconds
 
-        solve_start = time.perf_counter()
+        solve_start = Stopwatch()
         ksp.solve(rhs, solution)
-        solve_seconds = time.perf_counter() - solve_start
+        solve_seconds = solve_start.seconds
         reason_code = int(ksp.getConvergedReason())  # type: ignore[bad-argument-type]
         iterations = int(ksp.getIterationNumber())
 
@@ -610,7 +611,7 @@ def _solve_pressure(
     tol: float,
     maxiter: int,
     x0: np.ndarray | None,
-    log_sink: "Logging | None",
+    log_sink: "StepLog | None",
     amg_key: tuple[str, int] | None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Solve the pressure Poisson equation.
@@ -627,14 +628,14 @@ def _solve_pressure(
     Returns:
         Solution vector and solve metadata.
     """
-    setup_start = time.perf_counter()
+    setup_start = Stopwatch()
     x_early = _trivial_solution(A, b, x0, tol)
     if x_early is not None:
         return x_early, {
             "preconditioner": "pyamg",
             "iterations": 0,
             "reason": "initial residual satisfied tolerance",
-            "setup_seconds": time.perf_counter() - setup_start,
+            "setup_seconds": setup_start.seconds,
             "solve_seconds": 0.0,
         }
     try:
@@ -644,8 +645,8 @@ def _solve_pressure(
 
     ml, rebuilt = _get_or_build_amg(A, pyamg, amg_key=amg_key)
     M = ml.aspreconditioner(cycle="V")
-    setup_seconds = time.perf_counter() - setup_start
-    solve_start = time.perf_counter()
+    setup_seconds = setup_start.seconds
+    solve_start = Stopwatch()
     iterations = 0
 
     def count_iteration(_value):
@@ -668,7 +669,7 @@ def _solve_pressure(
         # hierarchy ineffective without silently accepting a poor solve.
         ml, rebuilt = _get_or_build_amg(A, pyamg, force_rebuild=True, amg_key=amg_key)
         M = ml.aspreconditioner(cycle="V")
-        setup_seconds = time.perf_counter() - setup_start
+        setup_seconds = setup_start.seconds
         x, info = cg(
             A,
             b,
@@ -682,7 +683,7 @@ def _solve_pressure(
             info = 0
     if info != 0:
         raise LinearSolveError(f"AMG-preconditioned pressure CG did not converge (info={info})")
-    solve_seconds = time.perf_counter() - solve_start
+    solve_seconds = solve_start.seconds
     return x, {
         "preconditioner": "pyamg",
         "iterations": iterations,
@@ -788,22 +789,22 @@ def _solve_preconditioned_bicgstab(
     tol: float,
     maxiter: int,
     x0: np.ndarray | None,
-    log_sink: "Logging | None",
+    log_sink: "StepLog | None",
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Solve a linear system with DILU-preconditioned BiCGSTAB; a failure raises."""
-    setup_start = time.perf_counter()
+    setup_start = Stopwatch()
     x_early = _trivial_solution(A, b, x0, tol)
     if x_early is not None:
         return x_early, {
             "preconditioner": "dilu",
             "iterations": 0,
             "reason": "initial residual satisfied tolerance",
-            "setup_seconds": time.perf_counter() - setup_start,
+            "setup_seconds": setup_start.seconds,
             "solve_seconds": 0.0,
         }
     M = _build_dilu_preconditioner(A)
-    setup_seconds = time.perf_counter() - setup_start
-    solve_start = time.perf_counter()
+    setup_seconds = setup_start.seconds
+    solve_start = Stopwatch()
     x, info, iterations = _run_bicgstab(A, b, M, tol, maxiter, x0)
     if info != 0 and _breakdown_converged(A, b, x, tol, "bicgstab", info, log_sink, x0=x0):
         info = 0
@@ -811,7 +812,7 @@ def _solve_preconditioned_bicgstab(
         raise LinearSolveError(
             f"bicgstab did not converge after {maxiter} iterations (info={info})"
         )
-    solve_seconds = time.perf_counter() - solve_start
+    solve_seconds = solve_start.seconds
     return x, {
         "preconditioner": "dilu",
         "iterations": iterations,
@@ -837,7 +838,7 @@ def solve_linear_system(
     partitioned_workspace: "PartitionedLinearWorkspace | None" = None,
     amg_key: tuple[str, int] | None = None,
     return_info: bool = False,
-    log_sink: "Logging | None" = None,
+    log_sink: "StepLog | None" = None,
     matrix_values_unchanged: bool = False,
     direct_workspace: "MatrixAssemblyWorkspace | None" = None,
 ) -> "np.ndarray | tuple[np.ndarray, LinearSolveResult]":
@@ -923,10 +924,10 @@ def solve_linear_system(
 
     if method == "spsolve":
         if direct_workspace is None:
-            solve_start = time.perf_counter()
+            solve_start = Stopwatch()
             solution = spsolve(A, b)
             setup_seconds = 0.0
-            solve_seconds = time.perf_counter() - solve_start
+            solve_seconds = solve_start.seconds
         else:
             solution, setup_seconds, solve_seconds = _solve_direct_with_workspace(
                 A, b, direct_workspace

@@ -1,6 +1,5 @@
 """Transient incompressible PIMPLE solver."""
 
-from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -307,17 +306,16 @@ class PIMPLESolver:
                     return_operator=True,
                 )
 
-            section_start = perf_counter()
-            velocity_star, momentum_diagonal, momentum_diagnostics, momentum_operator = (
-                _solve_predictor()
-            )
-            # Pressure assembly reuses the momentum CSR storage; later PISO
-            # correctors need their own copy of the relaxed momentum matrix.
-            momentum_operator = _copy_operator(momentum_operator) if n_corr > 1 else None
-            linear_results.extend(
-                values["linear_result"] for values in momentum_diagnostics.values()
-            )
-            self._profiler.record("momentum predictor", perf_counter() - section_start)
+            with self._profiler.section("momentum predictor"):
+                velocity_star, momentum_diagonal, momentum_diagnostics, momentum_operator = (
+                    _solve_predictor()
+                )
+                # Pressure assembly reuses the momentum CSR storage; later PISO
+                # correctors need their own copy of the relaxed momentum matrix.
+                momentum_operator = _copy_operator(momentum_operator) if n_corr > 1 else None
+                linear_results.extend(
+                    values["linear_result"] for values in momentum_diagnostics.values()
+                )
 
             # The predictor is no longer needed as an immutable field: later
             # pressure correctors advance this same state in place. Reuse its
@@ -368,80 +366,82 @@ class PIMPLESolver:
                         )
                         pressure_geometry = None
                     reuse_pressure_matrix = pressure_geometry is not None
-                    section_start = perf_counter()
-                    (
-                        pressure_matrix,
-                        pressure_right_hand_side,
-                        volumetric_face_flux_star,
-                        pressure_workspace,
-                    ) = simple_solver.assemble_pressure_correction_equation_rhie_chow(
-                        velocity_iter,
-                        momentum_diagonal,
-                        kinematic_pressure,
-                        density,
-                        self.mesh_data,
-                        self.geo_data,
-                        self.boundaries,
-                        velocity_relaxation=outer_velocity_relaxation,
-                        pressure_constraint=pressure_constraint,
-                        matrix_workspace=self._pressure_matrix_workspace,
-                        boundary_layout=self._pressure_boundary_layout,
-                        ddt_flux_correction=ddt_flux_correction,
-                        correction_workspace=pressure_geometry,
-                        reuse_matrix=reuse_pressure_matrix,
-                        frozen_velocity_h_over_a=frozen_velocity_h_over_a,
-                        return_workspace=True,
-                        mesh_face_flux=mesh_face_flux,
-                    )
-                    pressure_geometry = pressure_workspace
-                    if frozen_velocity_h_over_a is None:
-                        frozen_velocity_h_over_a = pressure_workspace.velocity_h_over_a
-                    self._profiler.record("pressure assembly", perf_counter() - section_start)
+                    with self._profiler.section("pressure assembly"):
+                        (
+                            pressure_matrix,
+                            pressure_right_hand_side,
+                            volumetric_face_flux_star,
+                            pressure_workspace,
+                        ) = simple_solver.assemble_pressure_correction_equation_rhie_chow(
+                            velocity_iter,
+                            momentum_diagonal,
+                            kinematic_pressure,
+                            density,
+                            self.mesh_data,
+                            self.geo_data,
+                            self.boundaries,
+                            velocity_relaxation=outer_velocity_relaxation,
+                            pressure_constraint=pressure_constraint,
+                            matrix_workspace=self._pressure_matrix_workspace,
+                            boundary_layout=self._pressure_boundary_layout,
+                            ddt_flux_correction=ddt_flux_correction,
+                            correction_workspace=pressure_geometry,
+                            reuse_matrix=reuse_pressure_matrix,
+                            frozen_velocity_h_over_a=frozen_velocity_h_over_a,
+                            return_workspace=True,
+                            mesh_face_flux=mesh_face_flux,
+                        )
+                        pressure_geometry = pressure_workspace
+                        if frozen_velocity_h_over_a is None:
+                            frozen_velocity_h_over_a = pressure_workspace.velocity_h_over_a
                     has_pressure_nullspace = simple_solver._pressure_requires_constraint(
                         self.boundaries, self.mesh_data, self.geo_data
                     )
 
-                    section_start = perf_counter()
-                    final_pressure_solve = _corr == n_corr - 1 and non_ortho == n_non_ortho
-                    pressure_tolerance, pressure_relative_tolerance = _linear_tolerances(
-                        "pressure", final=final_pressure_solve
-                    )
-                    pressure_max_iterations = int(self.params["pressure_max_iterations"])
-                    kinematic_pressure_correction, kinematic_pressure_result = solve_linear_system(
-                        pressure_matrix,
-                        pressure_right_hand_side,
-                        method=pressure_method,
-                        equation_type="kinematic_pressure",
-                        tol=pressure_tolerance,
-                        rel_tol=pressure_relative_tolerance,
-                        maxiter=pressure_max_iterations,
-                        amg_key=(
-                            "kinematic_pressure",
-                            self._pressure_matrix_workspace.cache_namespace,
-                        ),
-                        backend=self.params["_linear_backend"],
-                        parallel_context=self.params.get("_parallel_context"),
-                        log_sink=logger,
-                        nullspace=(
-                            "constant"
-                            if has_pressure_nullspace and pressure_constraint == "nullspace"
-                            else None
-                        ),
-                        partitioned_workspace=self._partitioned_workspace(
-                            "kinematic_pressure_final"
-                            if final_iteration
-                            else "kinematic_pressure_relaxed"
-                        ),
-                        matrix_values_unchanged=reuse_pressure_matrix,
-                        return_info=True,
-                        direct_workspace=self._pressure_matrix_workspace,
-                    )
-                    linear_results.append(kinematic_pressure_result)
-                    initial_kinematic_pressure_residual = kinematic_pressure_result.initial_residual
-                    final_kinematic_pressure_residual = kinematic_pressure_result.final_residual
-                    parallel = self.params.get("_parallel_context")
-                    del pressure_matrix, pressure_right_hand_side
-                    self._profiler.record("pressure solve", perf_counter() - section_start)
+                    with self._profiler.section("pressure solve"):
+                        final_pressure_solve = _corr == n_corr - 1 and non_ortho == n_non_ortho
+                        pressure_tolerance, pressure_relative_tolerance = _linear_tolerances(
+                            "pressure", final=final_pressure_solve
+                        )
+                        pressure_max_iterations = int(self.params["pressure_max_iterations"])
+                        kinematic_pressure_correction, kinematic_pressure_result = (
+                            solve_linear_system(
+                                pressure_matrix,
+                                pressure_right_hand_side,
+                                method=pressure_method,
+                                equation_type="kinematic_pressure",
+                                tol=pressure_tolerance,
+                                rel_tol=pressure_relative_tolerance,
+                                maxiter=pressure_max_iterations,
+                                amg_key=(
+                                    "kinematic_pressure",
+                                    self._pressure_matrix_workspace.cache_namespace,
+                                ),
+                                backend=self.params["_linear_backend"],
+                                parallel_context=self.params.get("_parallel_context"),
+                                log_sink=logger,
+                                nullspace=(
+                                    "constant"
+                                    if has_pressure_nullspace and pressure_constraint == "nullspace"
+                                    else None
+                                ),
+                                partitioned_workspace=self._partitioned_workspace(
+                                    "kinematic_pressure_final"
+                                    if final_iteration
+                                    else "kinematic_pressure_relaxed"
+                                ),
+                                matrix_values_unchanged=reuse_pressure_matrix,
+                                return_info=True,
+                                direct_workspace=self._pressure_matrix_workspace,
+                            )
+                        )
+                        linear_results.append(kinematic_pressure_result)
+                        initial_kinematic_pressure_residual = (
+                            kinematic_pressure_result.initial_residual
+                        )
+                        final_kinematic_pressure_residual = kinematic_pressure_result.final_residual
+                        parallel = self.params.get("_parallel_context")
+                        del pressure_matrix, pressure_right_hand_side
 
                     if non_ortho < n_non_ortho:
                         # Iterate only the explicit non-orthogonal pressure
@@ -459,32 +459,32 @@ class PIMPLESolver:
                             - pressure_before_nonorthogonal_sweeps
                             + kinematic_pressure_correction
                         )
-                        section_start = perf_counter()
-                        velocity_iter, corrected_volumetric_face_flux = (
-                            simple_solver.correct_velocity_and_flux(
-                                velocity_iter,
-                                volumetric_face_flux_star,
-                                kinematic_pressure_correction,
-                                momentum_diagonal,
-                                self.mesh_data,
-                                self.geo_data,
-                                self.boundaries,
-                                density=density,
-                                velocity_relaxation=outer_velocity_relaxation,
-                                pressure_relaxation=outer_pressure_relaxation,
-                                workspace=pressure_workspace,
-                                velocity_kinematic_pressure_correction=(
-                                    accumulated_kinematic_pressure_correction
-                                ),
+                        with self._profiler.section("velocity correction"):
+                            velocity_iter, corrected_volumetric_face_flux = (
+                                simple_solver.correct_velocity_and_flux(
+                                    velocity_iter,
+                                    volumetric_face_flux_star,
+                                    kinematic_pressure_correction,
+                                    momentum_diagonal,
+                                    self.mesh_data,
+                                    self.geo_data,
+                                    self.boundaries,
+                                    density=density,
+                                    velocity_relaxation=outer_velocity_relaxation,
+                                    pressure_relaxation=outer_pressure_relaxation,
+                                    workspace=pressure_workspace,
+                                    velocity_kinematic_pressure_correction=(
+                                        accumulated_kinematic_pressure_correction
+                                    ),
+                                )
                             )
-                        )
-                        volumetric_face_flux = corrected_volumetric_face_flux
-                        pressure_flux_for_boundaries = volumetric_face_flux
-                        kinematic_pressure[:n_elem] = (
-                            pressure_before_nonorthogonal_sweeps
-                            + outer_pressure_relaxation * accumulated_kinematic_pressure_correction
-                        )
-                        self._profiler.record("velocity correction", perf_counter() - section_start)
+                            volumetric_face_flux = corrected_volumetric_face_flux
+                            pressure_flux_for_boundaries = volumetric_face_flux
+                            kinematic_pressure[:n_elem] = (
+                                pressure_before_nonorthogonal_sweeps
+                                + outer_pressure_relaxation
+                                * accumulated_kinematic_pressure_correction
+                            )
 
                     simple_solver.update_scalar_boundaries(
                         kinematic_pressure,

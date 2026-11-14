@@ -15,10 +15,11 @@ from contextlib import contextmanager
 import math
 from numbers import Integral
 import threading
-import time
 from typing import Any
 
 import numpy as np
+
+from openonda.core.profiling import Stopwatch
 
 # CuPy is an optional GPU dependency without type information; its device
 # arrays and cuFFT plans are dynamic values.
@@ -156,7 +157,7 @@ class FFTPlanPair:
             self.work_bytes = 0
             if self._release_idle_workspaces:
                 self.memory_pool.pool.free_all_blocks()
-        started = time.perf_counter()
+        started = Stopwatch()
         try:
             if forward:
                 kind = self.cufft.CUFFT_R2C if self.dtype.itemsize == 4 else self.cufft.CUFFT_D2Z
@@ -196,7 +197,7 @@ class FFTPlanPair:
             self.close()
             raise
         finally:
-            self.plan_build_seconds += time.perf_counter() - started
+            self.plan_build_seconds += started.seconds
 
     def measure_directional_work(self) -> tuple[int, int]:
         """Measure one owned direction at a time for low-memory validation.

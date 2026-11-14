@@ -13,6 +13,7 @@ from openonda.core.restart import output_has_time
 from openonda.core.schedules import FinalOnly
 from openonda.core.vtk_output import add_frame
 
+from ..io.logging import record_forces, record_y_plus
 from .fields import LineSampler, SurfaceSampler
 from .forces import ForceSampler, YPlusSampler
 from .motion import MotionSampler
@@ -54,11 +55,11 @@ def execute_samplers(solver: FVMSolver, event: OutputEvent) -> None:
             forces = sampler.sample(solver)
             if parallel.is_root:
                 sampler.write_csv(solver, samples_dir, forces)
-                solver.logger.forces(forces)
+                record_forces(solver.logger, forces)
         elif isinstance(sampler, YPlusSampler):
             statistics = sampler.sample(solver)
             if parallel.is_root:
-                solver.logger.y_plus(statistics)
+                record_y_plus(solver.logger, statistics)
                 sampler.write_csv(solver, samples_dir, statistics)
         elif isinstance(sampler, SurfaceSampler):
             file_name = f"{sampler.name}_{solver.step:06d}.vts"

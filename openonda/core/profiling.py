@@ -1,6 +1,9 @@
 """Wall-clock timing of solver sections, with optional MPI and memory reports.
 
-The solvers time named sections of a time step with :meth:`Profiler.section`.
+This module holds the only wall-clock reads of the solvers. A
+:class:`Stopwatch` measures a time that a log, a diagnostics record or a
+result reports whether or not profiling is enabled. The solvers time named
+sections of a time step with :meth:`Profiler.section`.
 GPU kernels run asynchronously, so a profiler given a ``synchronize``
 function (for example ``taichi.sync``) waits for the device before and after
 each timed section. With MPI, :meth:`Profiler.end_step` gathers the section
@@ -31,6 +34,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "Profiler",
+    "Stopwatch",
 ]
 
 _LOGGER = logging.getLogger("openonda")
@@ -67,6 +71,36 @@ def _statistics(values: Iterable[float]) -> dict[str, float]:
     if not samples:
         return {"min": 0.0, "mean": 0.0, "max": 0.0}
     return {"min": min(samples), "mean": sum(samples) / len(samples), "max": max(samples)}
+
+
+class Stopwatch:
+    """Wall-clock time since construction, or since the last lap.
+
+    The time is measured with :func:`time.perf_counter`, whether or not any
+    profiler is enabled. :meth:`stop` freezes :attr:`seconds`.
+    """
+
+    def __init__(self) -> None:
+        self._start = clock.perf_counter()
+        self._stop: float | None = None
+
+    @property
+    def seconds(self) -> float:
+        """Seconds since construction or the last lap; frozen after :meth:`stop`."""
+        end = clock.perf_counter() if self._stop is None else self._stop
+        return end - self._start
+
+    def lap(self) -> float:
+        """Return :attr:`seconds` and restart the count from now."""
+        now = clock.perf_counter()
+        seconds = now - self._start
+        self._start = now
+        return seconds
+
+    def stop(self) -> float:
+        """Freeze :attr:`seconds` at the current time and return it."""
+        self._stop = clock.perf_counter()
+        return self.seconds
 
 
 class Profiler:

@@ -16,13 +16,13 @@ from functools import partial
 import math
 from numbers import Integral
 from threading import current_thread
-from time import perf_counter
 from types import TracebackType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from openonda.core.errors import NonFiniteSolutionError
+from openonda.core.profiling import Stopwatch
 
 from ....kernels.registry import kernel_definition
 from ....numerics.ieee import ieee_arithmetic, require_round_to_nearest
@@ -400,12 +400,12 @@ class GaussianSlabFieldSession:
             raise RuntimeError("Gaussian slab controls changed; construct a new session")
         if type(source_only) is not bool:
             raise TypeError("source-only role must be explicit boolean")
-        started = perf_counter()
+        started = Stopwatch()
         query = _query_snapshot(targets, self.settings.max_query_points)
         ratio = self._split.partner_ratio
         partner = radius if ratio == 1.0 else np.asarray(radius, dtype=np.float64) * ratio
         snapshot, source_hit = self._source(position, strength, partner)
-        source_finished = perf_counter()
+        source_finished = started.seconds
         if not snapshot.source_count or not len(query):
             self._close_field()
             return (
@@ -507,7 +507,7 @@ class GaussianSlabFieldSession:
                 cutoff_growth *= _CUTOFF_GROWTH
             else:
                 shells = min(2 * shells + 1, self.max_shells - 1)
-        error_bound_finished = perf_counter()
+        error_bound_finished = started.seconds
         field_reused = False
         field_close_seconds = field_build_seconds = field_prepare_seconds = 0.0
         field_rebuild_reason = None
@@ -525,11 +525,11 @@ class GaussianSlabFieldSession:
             else:
                 field_reused = True
             if not field_reused:
-                phase_started = perf_counter()
+                phase_started = Stopwatch()
                 self._close_field()
-                field_close_seconds = perf_counter() - phase_started
+                field_close_seconds = phase_started.seconds
                 try:
-                    phase_started = perf_counter()
+                    phase_started = Stopwatch()
                     self._field = _new_field(
                         *source,
                         query,
@@ -553,7 +553,7 @@ class GaussianSlabFieldSession:
                         max_total_bytes=self.settings.max_total_bytes,
                         kernel=self.kernel,
                     )
-                    field_build_seconds = perf_counter() - phase_started
+                    field_build_seconds = phase_started.seconds
                 except _FieldConstructionError as outcome:
                     if outcome.cleanup_failure is not None:
                         self._failed_field = outcome.field
@@ -572,11 +572,11 @@ class GaussianSlabFieldSession:
                     self._cleanup_uncertain = True
                     self.closed = True
                     raise
-                phase_started = perf_counter()
+                phase_started = Stopwatch()
                 self._field.prepare(images)
                 self._shells, self._cutoff = shells, cutoff
                 self._cutoff_growth = cutoff_growth
-                field_prepare_seconds = perf_counter() - phase_started
+                field_prepare_seconds = phase_started.seconds
                 # The field's retained stencil domain decides reuse; these
                 # initial query bounds are descriptive only.
                 self._role, self._bounds = source_only, (lower.copy(), upper.copy())
@@ -616,7 +616,7 @@ class GaussianSlabFieldSession:
                 "query_count": len(query),
                 "query_lower": lower.tolist(),
                 "query_upper": upper.tolist(),
-                "source_snapshot_seconds": source_finished - started,
+                "source_snapshot_seconds": source_finished,
                 "tail_bound_seconds": error_bound_finished - source_finished,
                 "field_close_seconds": field_close_seconds,
                 "field_build_seconds": field_build_seconds,
@@ -631,7 +631,7 @@ class GaussianSlabFieldSession:
                 "correction_cutoff": cutoff,
                 "kernel": self.kernel,
                 "finite_evaluation": finite,
-                "seconds": perf_counter() - started,
+                "seconds": started.seconds,
                 "error_bound_scope": "mathematical truncation only; not finite-grid/GPU error",
             },
         )

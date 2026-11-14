@@ -21,7 +21,6 @@ from ...core.vtk_output import rewind_collection
 from ..config.configuration_values import numerical_configuration
 from ..config.restart_changes import validate_configuration_changes
 from ..config.state_limits import ParticleStateMetrics
-from .logging import Logging
 
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
@@ -293,7 +292,7 @@ class _BackupIO:
         destination = Path(path)
         with atomic_path(destination) as temporary:
             _BackupIO._write_numerical_data(solver, str(temporary), float(solver.time))
-        Logging.record(
+        solver.logger.section(
             "backup written",
             ("step", f"{solver.step:,}"),
             ("time", f"{solver.time:.6e}", "s"),

@@ -11,7 +11,6 @@ the omitted local correction; the enclosing session performs those checks.
 from collections.abc import Iterator, Sequence
 import math
 import threading
-from time import perf_counter
 from types import SimpleNamespace
 
 import numpy as np
@@ -21,6 +20,7 @@ from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.errors import NonFiniteSolutionError
+from openonda.core.profiling import Stopwatch
 
 from .coordinates import finite_images, image_tail_edges, slab_coordinates
 from .correction import _correction_factors, _possibly_near, _residual_factors, residual_family
@@ -719,7 +719,7 @@ class GaussianHostImageFields:
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         query = self._query(targets)
-        started = perf_counter()
+        started = Stopwatch()
         available_bytes = int(psutil.virtual_memory().available)
         # Outside the per-job FFT cap: full reflected source coordinates,
         # global IDs/query lattice, final field and correction field outputs.
@@ -782,7 +782,7 @@ class GaussianHostImageFields:
         except BaseException:
             self._prepared_images = self._prepared_world_images = self._integer_images = None
             raise
-        report["query_seconds"] = perf_counter() - started
+        report["query_seconds"] = started.seconds
         return output[:, :3], output[:, 3:].reshape(-1, 3, 3), report
 
     def evaluate(

@@ -43,7 +43,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ..io.logging import Logging
 from ..runtime.timing import remainder_section
 from .context import StabilizationContext
 from .operators import StabilizationOperators
@@ -286,7 +285,7 @@ class StabilizationManager:
         ]
         if detail:
             rows.append(("detail", detail))
-        Logging.record("stabilization", *rows)
+        self.ctx.logger.section("stabilization", *rows)
 
         return after
 

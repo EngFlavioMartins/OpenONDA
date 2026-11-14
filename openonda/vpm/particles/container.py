@@ -9,7 +9,6 @@ from openonda.core import log_style
 
 from ..config.constants import MAX_N_PARTICLES
 from ..config.state import cached_particle_property
-from ..io.logging import Logging
 from ..runtime.host_staging import HostStagingBuffers
 
 
@@ -107,13 +106,21 @@ class Particles:
 
     _COPY_CHUNK_SIZE = 65_536
 
-    def __init__(self, max_n_particles: int = MAX_N_PARTICLES, float_dtype: str = "f32"):
+    def __init__(
+        self,
+        max_n_particles: int = MAX_N_PARTICLES,
+        float_dtype: str = "f32",
+        logger: log_style.StepLog | None = None,
+    ):
         """Allocate the fixed-capacity Taichi particle fields.
 
         Construction allocates device memory and starts with zero active
         particles. It does not insert an initial condition. A new solver must
-        be constructed when a larger capacity is required.
+        be constructed when a larger capacity is required. ``logger`` receives
+        the particle-count records and the capacity warning; without it the
+        container reports nothing.
         """
+        self._logger = logger or log_style.StepLog.disabled()
         self._max_particles = max_n_particles
         self._capacity_warning_emitted = False
         self.float_dtype = float_dtype or "f32"
@@ -199,7 +206,7 @@ class Particles:
             and self.n_particles_total >= 0.80 * self._max_particles
         ):
             self._capacity_warning_emitted = True
-            Logging.warning(
+            self._logger.warning(
                 f"Particle capacity warning: active particle count={self.n_particles_total}, "
                 f"configured capacity={self._max_particles}, threshold=80%"
             )
@@ -849,12 +856,10 @@ class Particles:
 
     def _log_particle_count(self, change: log_style.Row) -> None:
         """Report the particle count left behind by an operation that changed it."""
-        if not Logging._routine_messages_enabled:
-            return
         total = int(self.n_particles_total)
         capacity = self.capacity
         fraction = 100.0 * total / capacity if capacity else 0.0
-        Logging.record(
+        self._logger.section(
             "particles",
             change,
             ("count", total),

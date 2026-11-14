@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import taichi as ti
 
-from ..io.logging import Logging
+from ..io.logging import step_timing
 from ..physics.induction.base import StageRates, StageState
 from ..runtime.timing import remainder_section
 from ..wall_errors import WallCorrectionTooLargeError
@@ -201,7 +201,7 @@ class EvolutionStepper:
 
         target_step = self.solver.step + 1
         target_time = self.solver._clock_time(target_step) if time is None else float(time)
-        Logging.begin_step(target_step)
+        self.solver.logger.begin_step(target_step, target_time, self.time_step_size)
         self.profiler.begin_step(self.solver.step, self.solver.time, self.time_step_size)
 
         self.stabilization.begin_step(
@@ -258,23 +258,24 @@ class EvolutionStepper:
         self.particles.touch_state()
         self.profiler.end_step()
         self._commit_accepted_step()
-        Logging.step_timing(
+        step_timing(
+            self.solver,
             self.profiler.step_seconds,
             self.profiler.step_sections if self.profiler.enabled else None,
-            label="Evolution wall time",
         )
         self.solver.wall_time = self.profiler.total_seconds
-        Logging.end_step(
-            self.solver.step,
-            self.solver.time,
-            self.solver.elapsed_wall_time,
-            total_steps=(
-                None
-                if getattr(self.solver, "_external_clock", False)
-                else getattr(self.solver, "_run_final_step", None)
-            ),
-            n_particles=self.particles.n_particles_total,
-        )
+        total_steps = None if self.solver._external_clock else self.solver._run_final_step
+        log = self.solver.logger
+        if log.is_due(self.solver.step, self.solver.time, self.time_step_size, total_steps):
+            log.publish(
+                self.solver.step,
+                self.solver.time,
+                self.solver.elapsed_wall_time,
+                total_steps=total_steps,
+                sections=(
+                    ("particles", (("active particles", self.particles.n_particles_total),)),
+                ),
+            )
 
     def _commit_accepted_step(self) -> None:
         """Publish a fully accepted numerical step to the standard clock."""

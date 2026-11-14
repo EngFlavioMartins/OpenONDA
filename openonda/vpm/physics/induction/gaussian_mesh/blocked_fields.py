@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 import math
 import threading
-from time import perf_counter
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +10,7 @@ import numpy as np
 import psutil
 
 from openonda.core.errors import NonFiniteSolutionError
+from openonda.core.profiling import Stopwatch
 
 from .coordinates import finite_images, slab_coordinates
 from .runtime import Diagnostics, positive_integer
@@ -304,7 +304,7 @@ class GaussianBlockedCUDAFields:
         if self._prepared_images is None:
             raise RuntimeError("no successfully prepared finite image field")
         query = self._query(targets)
-        started = perf_counter()
+        started = Stopwatch()
         if (
             self._cached_query is not None
             and self._cached_values is not None
@@ -314,7 +314,7 @@ class GaussianBlockedCUDAFields:
             values = self._cached_values.copy()
             report: Diagnostics = {
                 **self._cached_report,
-                "query_seconds": perf_counter() - started,
+                "query_seconds": started.seconds,
                 "exact_query_output_hit": True,
                 "fft_blocks": 0,
             }
@@ -402,7 +402,7 @@ class GaussianBlockedCUDAFields:
         except BaseException:
             self._prepared_images = self._prepared_world_images = self._integer_images = None
             raise
-        report["query_seconds"] = perf_counter() - started
+        report["query_seconds"] = started.seconds
         cache_bytes = query.nbytes + values.nbytes
         if (
             cache_bytes <= self.max_total_bytes

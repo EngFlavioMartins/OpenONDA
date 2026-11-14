@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..diagnostics.resolution import particle_resolution_metrics
-from ..io.logging import Logging
 
 if TYPE_CHECKING:
     from ..config.types import StabilizationConfig
@@ -348,7 +347,7 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
                 )
 
         if adaptive_core_used:
-            Logging.record(
+            ctx.logger.section(
                 "regularization, adaptive core",
                 ("core radius, configured", f"{configured_core_radius:.3e}", "m"),
                 ("core radius, selected", f"{float(new_core_radius.mean()):.3e}", "m"),

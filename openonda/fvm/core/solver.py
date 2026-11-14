@@ -6,16 +6,17 @@ import gc
 import math
 from pathlib import Path
 import sys
-from time import perf_counter
 from types import TracebackType
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from openonda.core import log_style
 from openonda.core.clock import time_tolerance
 from openonda.core.errors import NonFiniteSolutionError
 from openonda.core.output_events import OutputEvent
 from openonda.core.parallel import collective_phase
+from openonda.core.profiling import Profiler, Stopwatch
 from openonda.core.solution_layout import (
     collection_path,
     component_directory,
@@ -30,7 +31,8 @@ from ..coupling import CouplerInterfaceMixin
 from ..fields.mixed_velocity_boundary import (
     update_mixed_velocity_boundary,
 )
-from ..io import logging, solver_io
+from ..io import logging as step_log
+from ..io import solver_io
 from ..mesh import geometry
 from ..sampling.executor import execute_samplers
 from ..solve import pimple_solver, simple_solver
@@ -345,7 +347,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self._configuration = configuration
         numerics = configuration.numerics
         RunConfig(cpu_cores=case.cores, parallel_mode="mpi").ensure_runtime(sys.argv[0])
-        initialization_start = perf_counter()
+        initialization = Stopwatch()
         self.case_dir = case.directory.resolve()
         self.solution_dir = case.solution_directory.resolve()
         self.samples_dir = case.samples_directory.resolve()
@@ -367,13 +369,14 @@ class FVMSolver(CouplerInterfaceMixin):
         self.geo_data: Any
         self.auto_write = True
         self.parallel = ParallelContext.create(numerics.execution)
-        self.logger = logging.Logging(
+        self.logger = log_style.StepLog(
+            "FVM",
             self.solution_dir / "fvm.log",
-            configuration.logging,
+            configuration.logging.schedule,
             enabled=self.parallel.is_root,
+            console=configuration.logging.console,
+            debug=configuration.logging.mode == "debug",
         )
-        from openonda.core.profiling import Profiler
-
         self.profiler = Profiler(
             enabled=configuration.logging.detailed_timing,
             parallel=self.parallel,
@@ -410,7 +413,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 "petsc_partitioned requires pressure_nullspace_method='auto' or 'petsc'; "
                 "a rank-local reference row is not a valid global pressure constraint"
             )
-        self.logger.run_header("f64")
+        self.logger.report(log_style.run_header("FVM", "f64"))
 
         from ..mesh.validation import (
             enforce_quality_thresholds,
@@ -594,7 +597,7 @@ class FVMSolver(CouplerInterfaceMixin):
             "max_velocity_magnitude": 0,
         }
 
-        self.logger.solver_configuration(self, perf_counter() - initialization_start)
+        self.logger.report(step_log.configuration_report(self, initialization.seconds))
 
         simple_solver.update_scalar_boundaries(
             self.kinematic_pressure,
@@ -1053,7 +1056,7 @@ class FVMSolver(CouplerInterfaceMixin):
         self.run_failure = self._evolution_failure
         # Reporting must never replace the numerical failure.
         with suppress(Exception):
-            self.logger.warning(f"FVM step failed: {type(error).__name__}: {error}")
+            self.logger.warning(f"step failed: {type(error).__name__}: {error}")
 
     def _execute_sampler_event(self, event: OutputEvent) -> None:
         """Dispatch one sampler event and envelope rank-local failures."""
@@ -1173,7 +1176,7 @@ class FVMSolver(CouplerInterfaceMixin):
             residuals = {str(name): float(value) for name, value in residuals.items()}
             self._invalidate_derived_fields()
             self._publish_state()
-            self.logger.convergence(residuals)
+            step_log.record_convergence(self.logger, residuals)
         except BaseException as error:
             self._mark_evolution_failure(error)
             raise
@@ -1182,25 +1185,25 @@ class FVMSolver(CouplerInterfaceMixin):
         # has ~0 net flux per cell.  Surfacing this makes loss of mass
         # conservation visible instead of silent.
         try:
-            continuity_start = perf_counter()
-            continuity_error = diagnostics.compute_continuity_error(
-                self.volumetric_face_flux, self.mesh_data
-            )
-            cell_volume = self.geo_data["cell_volume"]
-            n_owned = self.parallel.n_owned if self.parallel.is_partitioned else len(cell_volume)
-            local_max = (
-                float(np.max(np.abs(continuity_error[:n_owned]) / cell_volume[:n_owned]))
-                if n_owned
-                else 0.0
-            )
-            local_sum = float(np.sum(np.abs(continuity_error[:n_owned])))
-            self.max_continuity_error = float(self.parallel.global_max(local_max))
-            self.sum_absolute_continuity_error = float(self.parallel.global_sum(local_sum))
-            self.logger.continuity(
-                self.max_continuity_error,
-                self.sum_absolute_continuity_error,
-            )
-            self.profiler.record("continuity diagnostics", perf_counter() - continuity_start)
+            with self.profiler.section("continuity diagnostics"):
+                continuity_error = diagnostics.compute_continuity_error(
+                    self.volumetric_face_flux, self.mesh_data
+                )
+                cell_volume = self.geo_data["cell_volume"]
+                n_owned = (
+                    self.parallel.n_owned if self.parallel.is_partitioned else len(cell_volume)
+                )
+                local_max = (
+                    float(np.max(np.abs(continuity_error[:n_owned]) / cell_volume[:n_owned]))
+                    if n_owned
+                    else 0.0
+                )
+                local_sum = float(np.sum(np.abs(continuity_error[:n_owned])))
+                self.max_continuity_error = float(self.parallel.global_max(local_max))
+                self.sum_absolute_continuity_error = float(self.parallel.global_sum(local_sum))
+                step_log.record_continuity(
+                    self.logger, self.max_continuity_error, self.sum_absolute_continuity_error
+                )
 
             with self.profiler.section("acceptance checks"):
                 self.last_diagnostics = self._build_step_diagnostics(step_time_step_size, residuals)
@@ -1364,7 +1367,8 @@ class FVMSolver(CouplerInterfaceMixin):
                 )
         self._pending_acceptance_counters = trial_counters
         self.last_diagnostics = replace(diagnostics, warnings=tuple(warnings))
-        self.logger.warnings(tuple(warnings))
+        for warning in warnings:
+            self.logger.warning(warning)
 
     def _measure_maximum_courant_number(self, time_step_size: float) -> float:
         """Return the global maximum CFL for the current field state."""
@@ -1574,7 +1578,7 @@ class FVMSolver(CouplerInterfaceMixin):
         if selected is None:
             return self.start_from("initial")
         self.load_backup(selected)
-        self.logger.info(f"Continuing from {selected}: step {self.step}, time {self.time:.17g}")
+        self.logger.event(f"Continuing from {selected}: step {self.step}, time {self.time:.17g}")
         return True
 
     def run(self, *, start_from: str | Path | None = "latest") -> None:
@@ -1705,8 +1709,11 @@ class FVMSolver(CouplerInterfaceMixin):
         try:
             self.solve_step(step_time_step_size)
             control = self._configuration.numerics.time_step_control
-            self.logger.courant_number(
-                self.max_courant_number, control.maximum if control is not None else None
+            step_log.record_courant(
+                self.logger,
+                step_time_step_size,
+                self.max_courant_number,
+                control.maximum if control is not None else None,
             )
             self.accept_step(defer_output=defer_output, time=time)
         except BaseException as error:
@@ -1723,9 +1730,11 @@ class FVMSolver(CouplerInterfaceMixin):
                 key = f"{result.equation or 'linear'} iterations"
                 iterations[key] = iterations.get(key, 0.0) + float(result.iterations)
             record = self.profiler.end_step(details=iterations)
-            self.logger.end_step(self.profiler.step_seconds, accepted=primary_failure is None)
-            if record is not None:
-                self.logger.profile(record)
+            published = step_log.end_step(
+                self.logger, self.profiler.step_seconds, accepted=primary_failure is None
+            )
+            if record is not None and published:
+                step_log.record_profile(self.logger, record)
         except BaseException:
             if primary_failure is None:
                 raise
@@ -1853,7 +1862,8 @@ class FVMSolver(CouplerInterfaceMixin):
             )
             n_eddy_viscosity_values = int(self.parallel.global_sum(int(n_owned)))
             assert self.last_diagnostics is not None
-            self.logger.turbulence(
+            step_log.record_turbulence(
+                self.logger,
                 self.last_diagnostics.min_eddy_viscosity,
                 self.last_diagnostics.max_eddy_viscosity,
                 sum_eddy_viscosity / n_eddy_viscosity_values,
@@ -1941,7 +1951,7 @@ class FVMSolver(CouplerInterfaceMixin):
             saved = destination
         # A restart from this backup starts without reused preconditioners.
         self.algorithm.rebuild_preconditioners()
-        self.logger.output(f"Restart backup written: {saved}")
+        self.logger.event(f"Restart backup written: {saved}", immediate=True)
         return saved
 
     def load_backup(self, path: str | Path) -> None:
@@ -2072,7 +2082,7 @@ class FVMSolver(CouplerInterfaceMixin):
             )
             if self.parallel.is_root:
                 add_frame(collection, self.time, frame)
-                self.logger.output(f"Output written: {Path(frame).name}")
+                self.logger.event(f"Output written: {Path(frame).name}", immediate=True)
             return
 
         if output.asynchronous:
@@ -2088,7 +2098,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.vtk_exporter.export(str(filename), fields)
             add_frame(collection, self.time, filename)
             action = "written"
-        self.logger.output(f"Output {action}: {filename.name}")
+        self.logger.event(f"Output {action}: {filename.name}", immediate=True)
 
     def flush_output(self) -> None:
         """Wait for queued visualization frames and surface writer errors."""
@@ -2134,7 +2144,9 @@ class FVMSolver(CouplerInterfaceMixin):
                 if primary_failure is None:
                     primary_failure = error
         try:
-            self.logger.close(status=self.run_status, failure=failure, profiler=self.profiler)
+            step_log.close_log(
+                self.logger, status=self.run_status, failure=failure, profiler=self.profiler
+            )
         except BaseException as error:
             if primary_failure is None:
                 primary_failure = error

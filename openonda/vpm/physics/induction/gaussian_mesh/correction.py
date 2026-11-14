@@ -13,12 +13,12 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 import math
 from numbers import Integral
-import time
 
 import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 from openonda.core.errors import NonFiniteSolutionError
+from openonda.core.profiling import Stopwatch
 
 from ....kernels.high_order_gaussian import corrected_gaussian_residual
 from ....kernels.registry import kernel_definition
@@ -334,7 +334,7 @@ class GaussianCoreCorrectionGPU:
             "pool_high_water_bytes": 0,
         }
         try:
-            start = time.perf_counter()
+            start = Stopwatch()
             with cp.cuda.using_allocator(self.pool.malloc):
                 x = cp.array(source_x, dtype=cp.float64, order="C", copy=True)
                 gamma = cp.array(source_gamma, dtype=cp.float64, order="C", copy=True)
@@ -419,7 +419,7 @@ class GaussianCoreCorrectionGPU:
                 self.diagnostics.update(
                     source_count=self.count,
                     cell_shape=self.shape,
-                    build_seconds=time.perf_counter() - start,
+                    build_seconds=start.seconds,
                     pool_high_water_bytes=self.pool.total_bytes(),
                 )
         except BaseException:
@@ -448,7 +448,7 @@ class GaussianCoreCorrectionGPU:
         """Complete finite-image correction; strict cutoff, private publication."""
         cp = self.cp
         images = _image_list(images, self.max_images)
-        start = time.perf_counter()
+        start = Stopwatch()
         with self._allocation_scope():
             target = cp.array(target_x, dtype=cp.float64, order="C", copy=True)
             if target.ndim != 2 or target.shape[1:] != (3,) or len(target) > np.iinfo(np.int32).max:
@@ -514,7 +514,7 @@ class GaussianCoreCorrectionGPU:
                 "aabb_skipped_images": skipped_images,
                 "candidate_pairs": candidate,
                 "accepted_pairs": accepted,
-                "query_seconds": time.perf_counter() - start,
+                "query_seconds": start.seconds,
                 "pool_used_bytes": self.pool.used_bytes(),
                 "pool_reserved_bytes": self.pool.total_bytes(),
             }

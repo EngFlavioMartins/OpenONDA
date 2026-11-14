@@ -21,8 +21,9 @@ from . import convection, diffusion, matrix_assembly
 from .time_integration import backward_coefficients
 
 if TYPE_CHECKING:
+    from openonda.core.log_style import StepLog
+
     from ..core.parallel import ParallelContext
-    from ..io.logging import Logging
     from ..solve.petsc_partitioned import PartitionedLinearWorkspace
     from .matrix_assembly import MatrixAssemblyWorkspace
 
@@ -530,7 +531,7 @@ def solve_momentum_predictor(
     parallel_context: "ParallelContext | None" = None,
     partitioned_workspace: "PartitionedLinearWorkspace | None" = None,
     matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
-    log_sink: "Logging | None" = None,
+    log_sink: "StepLog | None" = None,
 ) -> Any:
     """Assemble and solve the three momentum predictors.
 
