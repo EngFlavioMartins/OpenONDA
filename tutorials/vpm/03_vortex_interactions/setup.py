@@ -11,7 +11,6 @@ import openonda.vpm as vpm
 from assets.initial_conditions import ToroidalDistribution, VortexRing
 from assets.ring_diagnostics import AzimuthalModeSampler, RingDiagnosticsSampler
 
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 RING_RADIUS = 1.0
 RING_CIRCULATION = np.pi
@@ -64,7 +63,6 @@ def core_section_samplers(*, interval=0.15):
         bounds=[-2, 17, 0, 1.8],
         spacing=0.02,
         file_name="core_section",
-        include_derivatives=False,
     )
     return (
         vpm.SurfaceSampler(**plane, schedule=vpm.EveryTime(interval)),
@@ -96,11 +94,7 @@ def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, end_time=END_TIME, direct
     # Remeshing spreads the Re = 3000 rings over up to 3e5 particles, where the
     # fast multipole method is quicker; below about 5e4 particles (one ring, or
     # Re = 3e4 where the cores hardly grow) direct summation is faster and exact.
-    induction = (
-        vpm.DirectInduction(stretching_scheme="transposed")
-        if direct
-        else vpm.FMMInduction(stretching_scheme="transposed")
-    )
+    induction = vpm.DirectInduction() if direct else vpm.FMMInduction()
     return vpm.VPMCase(
         name=name,
         directory=TUTORIAL_DIR,
@@ -169,4 +163,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", nargs="?", default="dns", choices=CASES)
     case = build_case(parser.parse_args().case)
-    vpm.VPMSolver(case).run(start_from=START_FROM)
+    vpm.VPMSolver(case).run()

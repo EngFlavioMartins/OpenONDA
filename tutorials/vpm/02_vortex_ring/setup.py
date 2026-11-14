@@ -24,7 +24,6 @@ from assets.ring_diagnostics import (
 
 
 # Physics
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 RING_RADIUS = 1.0  # major radius [m]
 RING_STRENGTH = np.pi  # filament circulation [m²/s]
@@ -157,9 +156,7 @@ def run_case(
     end_time: float = END_TIME,
 ) -> None:
     """Construct and run one vortex-ring comparison case."""
-    vpm.VPMSolver(build_case(variant, compute_device=compute_device, end_time=end_time)).run(
-        start_from=START_FROM
-    )
+    vpm.VPMSolver(build_case(variant, compute_device=compute_device, end_time=end_time)).run()
 
 
 if __name__ == "__main__":

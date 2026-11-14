@@ -676,12 +676,12 @@ class CoupledSolver:
             )
         return True
 
-    def run(self, *, start_from: str | Path | None = None) -> None:
+    def run(self, *, start_from: str | Path | None = "latest") -> None:
         """Run the coupled case to ``RunPlan.end_time`` and close the solver.
 
         Parameters
         ----------
-        start_from : {'latest', 'initial'}, path or None, default=None
+        start_from : {'latest', 'initial'}, path or None, default='latest'
             Passed to :meth:`start_from` before the run; ``None`` continues
             from the state in memory.
 

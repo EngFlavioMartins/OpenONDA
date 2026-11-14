@@ -159,7 +159,7 @@ A lifting surface is a lattice of vortex rings whose circulation cancels the nor
 - **Geometry:** a JSON surface of quadrilateral segments with vertices `a,b` on the leading edge and `d,c` on the trailing edge, and `n_chordwise_panels`, `n_spanwise_panels`. The [flat-plate setup](../tutorials/vpm/04_flat_plate/setup.py) writes one; `VLMMeshConfig.geometric(ratio, region)` clusters the spanwise panels of each segment toward an edge.
 - **Placement:** `VLMSurface(surface, translation=..., rotation_degrees=..., rotation_centre=..., kinematics=...)`, collected in `Numerics(vlm=VLMConfig(surfaces=(...), density=..., kinematic_viscosity=...))`.
 - **Motion:** the rigid motions shared with the FVM moving mesh ([moving meshes](fvm.md#moving-meshes)): `StaticMotion`, `TranslatingMotion`, `SmoothRampMotion`, `RotatingMotion`, `PitchingMotion`, `HeavingMotion`, `LinearPeriodicMotion`, `CompositeMotion`, or `ManeuverMotion` driven by your own velocity functions. Closed-form motions move the panels exactly; the solver keeps each surface's accumulated pose and stores it in its backups.
-- **Loads:** `ForceConfig.kutta_joukowski(unsteady=True)` adds the unsteady pressure load to the bound-vortex forces.
+- **Loads:** the bound-vortex forces include the unsteady pressure load; `ForceConfig.kutta_joukowski(unsteady=False)` leaves it out, and then `compute_postprocess` needs no time step.
 - **Wake:** `wake_core_overlap` (default 2.5) sets the core of shed particles relative to the panel and row size; refine $\Delta t$ with the panels.
 
 VLM assumes attached, inviscid flow: it does not model boundary layers, skin friction, stall or leading-edge separation. Progress from the [flat plate](../tutorials/vpm/04_flat_plate/README.md) to [moving wings](../tutorials/vpm/05_delta_wing/README.md), the [wind turbine](../tutorials/vpm/06_rotor_flow/README.md) and the [quadcopter](../tutorials/vpm/07_quadcopter/README.md).
@@ -216,11 +216,11 @@ case = vpm.VPMCase(
     )),
     backup=vpm.Backup(schedule=vpm.EverySteps(10)),
 )
-vpm.VPMSolver(case).run(start_from="latest")
+vpm.VPMSolver(case).run()
 ```
 
 `RunPlan.end_time` is a whole number of time steps, and a resumed run continues to it; see [continuation](continuation.md). Set `max_n_particles` for the largest cloud the run will reach.
 
-Samplers write to `samples/` on an `EverySteps`, `EveryTime` or `FinalOnly` schedule and record the initial state unless `initial=False`. `FlowIntegralsSampler` records the global invariants per unit density: total strength, linear and angular impulse, kinetic energy and enstrophy. `LineSampler` and `SurfaceSampler` record velocity and vorticity on probes, with the same leading columns as the FVM samplers. Particle frames `solution/vpm/vpm_{step:06d}.vtu`, listed in `solution/vpm.pvd` for ParaView, follow `Output.schedule`; restart backups `solution/vpm/vpm_{step:06d}.h5` follow `Backup.schedule`. `VPMCase.variant` places both trees below a sub-directory. Logs go to `solution/vpm.log` through the `openonda.vpm` logger, and the run metadata to `solution/vpm_metadata.json`.
+Samplers write to `samples/` on an `EverySteps`, `EveryTime` or `FinalOnly` schedule and record the initial state unless `initial=False`. `FlowIntegralsSampler` records the global invariants per unit density: total strength, linear and angular impulse, kinetic energy and enstrophy. `LineSampler` and `SurfaceSampler` record velocity and vorticity on probes, with the same leading columns as the FVM samplers; `include_derivatives=True` adds the velocity gradient. Particle frames `solution/vpm/vpm_{step:06d}.vtu`, listed in `solution/vpm.pvd` for ParaView, follow `Output.schedule`; restart backups `solution/vpm/vpm_{step:06d}.h5` follow `Backup.schedule`. `VPMCase.variant` places both trees below a sub-directory. Logs go to `solution/vpm.log` through the `openonda.vpm` logger, and the run metadata to `solution/vpm_metadata.json`.
 
 [Numerical references](../openonda/vpm/REFERENCES.md).

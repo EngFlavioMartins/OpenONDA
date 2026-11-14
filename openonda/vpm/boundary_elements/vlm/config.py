@@ -21,16 +21,16 @@ class ForceConfig:
 
     Parameters
     ----------
-    unsteady : bool, default=False
+    unsteady : bool, default=True
         Include the backward time difference of the surface potential jump
         from unsteady Bernoulli, integrated over the physical panels. Requires
         a positive physical time step in postprocessing.
     """
 
-    unsteady: bool = False
+    unsteady: bool = True
 
     @staticmethod
-    def kutta_joukowski(*, unsteady: bool = False) -> ForceConfig:
+    def kutta_joukowski(*, unsteady: bool = True) -> ForceConfig:
         """Configure bound-leg loads and optional pressure-time forces/moments."""
         return ForceConfig(unsteady=unsteady)
 

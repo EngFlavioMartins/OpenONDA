@@ -25,7 +25,6 @@ from assets.generate_surface import (
     save_surface,
 )
 
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "delta_wing"
 
@@ -131,8 +130,6 @@ def build_case() -> vpm.VPMCase:
         mesh=vpm.VLMMeshConfig.geometric(ratio=3.0, region="end"),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
-        wake_core_overlap=2.5,
-        force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
     )
 
     samplers = tuple(
@@ -142,7 +139,6 @@ def build_case() -> vpm.VPMCase:
             bounds=[-0.9, 0.9, -1.5, 0.9],  # include the descending far wake
             spacing=0.04,
             file_name=f"wake_{distance}span",
-            include_derivatives=False,
             schedule=vpm.EverySteps(sample_steps),
         )
         for distance in (1, 5, 10)
@@ -157,7 +153,7 @@ def build_case() -> vpm.VPMCase:
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.DirectInduction(stretching_scheme="transposed"),
+            induction=vpm.DirectInduction(),
             turbulence=vpm.TurbulenceConfig.smagorinsky(),
             freestream_velocity=[-FREESTREAM_VELOCITY, 0, 0],
             stabilization=vpm.StabilizationConfig(
@@ -187,7 +183,7 @@ def build_case() -> vpm.VPMCase:
 
 
 def main() -> None:
-    vpm.VPMSolver(build_case()).run(start_from=START_FROM)
+    vpm.VPMSolver(build_case()).run()
 
 
 if __name__ == "__main__":

@@ -105,7 +105,7 @@ config = coupler.CouplerConfig(
     backup=coupler.Backup(schedule=coupler.EveryTime(1.0)),
 )
 with coupler.CoupledSolver(FVM_CASE, VPM_CASE, config) as solver:
-    solver.run(start_from="latest")
+    solver.run()
 ```
 
 `CoupledSolver` builds the FVM solver on every MPI rank and the VPM solver on the root rank. `run()` advances both solvers to their common end time; each `advance()` accepts one VPM interval containing an integer number of FVM substeps. In adaptive coupled runs, `EveryTime` schedules for samples, frames and coupled backups are exact physical-time deadlines, while `EverySteps` counts accepted steps of the solver that owns that schedule. Coupled backups `solution/coupled/coupled_{step:06d}/` hold both solver states, the boundary data, and the boundary-data corrections of the last two intervals with their lengths, so a restarted run takes the same first estimate as a continuous one; they replace the backups of the two solvers, so neither case takes a separate backup schedule. Only backups of the current format are read. Each coupled backup also writes the FVM and particle frames of its time (`solution/fvm.pvd`, `solution/vpm.pvd`); whenever the particles write a frame on `VPMCase.output`, the FVM writes one at the same time. The run status and the coupling settings are recorded in `solution/coupler_metadata.json` and the log in `solution/coupler.log`.

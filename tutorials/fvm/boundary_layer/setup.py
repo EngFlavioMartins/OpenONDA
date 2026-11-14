@@ -17,7 +17,6 @@ from assets.mesh_plate import flat_plate_mesh
 from assets.profiles import write_profiles
 
 # Case definition
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "boundary_layer"
 PLATE_LENGTH = 1.0  # plate length [m]
@@ -69,7 +68,9 @@ def create_fvm_case(kinematic_viscosity: float) -> fvm.FVMCase:
             time_step_size=TIME_STEP_SIZE,
             time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-            schemes=fvm.DiscretizationConfig(gradient_scheme=GRADIENT_SCHEME),
+            schemes=fvm.DiscretizationConfig(
+                gradient_scheme=GRADIENT_SCHEME, time_scheme="euler_implicit"
+            ),
         ),
         initial_conditions=fvm.InitialFields(velocity=(FREESTREAM_VELOCITY, 0.0, 0.0)),
         run=fvm.RunPlan(end_time=FINAL_TIME),
@@ -79,7 +80,7 @@ def create_fvm_case(kinematic_viscosity: float) -> fvm.FVMCase:
         mesh=mesh,
         boundaries=(
             fvm.BoundaryConfig.inlet("inlet", (FREESTREAM_VELOCITY, 0.0, 0.0)),
-            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            fvm.BoundaryConfig.outlet("outlet"),
             fvm.BoundaryConfig(name="floor", velocity_type="slip"),
             fvm.BoundaryConfig.wall("plate"),
             fvm.BoundaryConfig(name="top", velocity_type="slip"),
@@ -92,7 +93,7 @@ def create_fvm_case(kinematic_viscosity: float) -> fvm.FVMCase:
 def main() -> None:
     kinematic_viscosity = FREESTREAM_VELOCITY * PLATE_LENGTH / REYNOLDS_NUMBER
     with fvm.FVMSolver(create_fvm_case(kinematic_viscosity)) as solver:
-        solver.run(start_from=START_FROM)
+        solver.run()
         solver.evaluate(
             write_profiles,
             solver.solution_dir,

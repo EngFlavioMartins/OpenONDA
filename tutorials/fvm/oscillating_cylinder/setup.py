@@ -14,7 +14,6 @@ import openonda.fvm as fvm
 from assets.mesh_cylinder import cylinder_o_grid
 
 # Case definition
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "oscillating_cylinder"
 DIAMETER = 1.0  # m
@@ -64,10 +63,8 @@ def create_fvm_case() -> fvm.FVMCase:
         numerics=fvm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-            schemes=fvm.DiscretizationConfig(time_scheme="backward"),
             # The wall cells are thin (nu dt / dy^2 = 4); three outer passes converge each step
             pimple=fvm.PimpleConfig(n_outer_correctors=3),
-            execution=fvm.ComputeConfig(operator_backend="numba"),
         ),
         initial_conditions=fvm.InitialFields(velocity=(FREESTREAM_VELOCITY, 0.0, 0.0)),
         run=fvm.RunPlan(end_time=FINAL_TIME),
@@ -101,7 +98,7 @@ def create_fvm_case() -> fvm.FVMCase:
 
 def main() -> None:
     with fvm.FVMSolver(create_fvm_case()) as solver:
-        solver.run(start_from=START_FROM)
+        solver.run()
 
 
 if __name__ == "__main__":

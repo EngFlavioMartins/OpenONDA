@@ -17,7 +17,6 @@ import openonda.fvm as fvm
 from assets.mesh_square import square_cylinder_mesh
 
 # Case definition
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "cube_flow"
 SIDE = 1.0  # side length of the square cylinder [m]
@@ -70,7 +69,7 @@ def create_fvm_case(depth: float) -> fvm.FVMCase:
             time_step_size=TIME_STEP_SIZE,
             time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-            schemes=fvm.DiscretizationConfig(gradient_scheme="gauss"),
+            schemes=fvm.DiscretizationConfig(gradient_scheme="gauss", time_scheme="euler_implicit"),
         ),
         # A small transverse perturbation seeds asymmetric shedding.
         initial_conditions=fvm.InitialFields(
@@ -83,7 +82,7 @@ def create_fvm_case(depth: float) -> fvm.FVMCase:
         mesh=mesh,
         boundaries=(
             fvm.BoundaryConfig.inlet("inlet", (FREESTREAM_VELOCITY, 0.0, 0.0)),
-            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            fvm.BoundaryConfig.outlet("outlet"),
             # Slip lateral boundaries: 20 D apart (5% blockage), no wall boundary layer.
             fvm.BoundaryConfig(name="bottom", velocity_type="slip"),
             fvm.BoundaryConfig(name="top", velocity_type="slip"),
@@ -96,7 +95,7 @@ def create_fvm_case(depth: float) -> fvm.FVMCase:
 
 def main() -> None:
     with fvm.FVMSolver(create_fvm_case(SPACING)) as solver:
-        solver.run(start_from=START_FROM)
+        solver.run()
 
 
 if __name__ == "__main__":

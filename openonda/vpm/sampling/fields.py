@@ -125,7 +125,7 @@ class SurfaceSampler(Sampler):
         z-normal plane.
     spacing : float
         Largest grid spacing in m; both bounds are grid points.
-    include_derivatives : bool, default=True
+    include_derivatives : bool, default=False
         Also write the velocity gradient.
     file_name, schedule, initial
         Output arguments of :class:`~openonda.core.sampling.Sampler`.
@@ -139,7 +139,7 @@ class SurfaceSampler(Sampler):
         normal: np.ndarray | list,
         bounds: np.ndarray | list,
         spacing: float,
-        include_derivatives: bool = True,
+        include_derivatives: bool = False,
         *,
         file_name: str | None = None,
         schedule: Schedule = EverySteps(1),
@@ -278,7 +278,7 @@ class LineSampler(Sampler):
     spacing : float or None, default=None
         Largest point spacing in m. Give exactly one of ``n_points`` and
         ``spacing``.
-    include_derivatives : bool, default=True
+    include_derivatives : bool, default=False
         Also write the strain rate and velocity gradient columns.
     file_name, schedule, initial
         Output arguments of :class:`~openonda.core.sampling.Sampler`.
@@ -290,7 +290,7 @@ class LineSampler(Sampler):
         end: np.ndarray | list,
         n_points: int | None = None,
         spacing: float | None = None,
-        include_derivatives: bool = True,
+        include_derivatives: bool = False,
         *,
         file_name: str | None = None,
         schedule: Schedule = EverySteps(1),

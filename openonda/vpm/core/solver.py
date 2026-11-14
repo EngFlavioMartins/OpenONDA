@@ -689,12 +689,12 @@ class VPMSolver:
         self._initial_conditions_built = True
         Logging.info(f"Latest backup already reaches the end time: step {step}, time {time:.17g}")
 
-    def run(self, *, start_from: str | Path | None = None) -> None:
+    def run(self, *, start_from: str | Path | None = "latest") -> None:
         """Run the case to ``RunPlan.end_time`` and close the solver.
 
         Parameters
         ----------
-        start_from : str, pathlib.Path or None, default=None
+        start_from : {'latest', 'initial'}, path or None, default='latest'
             Passed to :meth:`start_from` before the run; ``None`` continues
             from the state in memory.
 

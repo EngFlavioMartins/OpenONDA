@@ -1648,12 +1648,12 @@ class FVMSolver(CouplerInterfaceMixin):
         self.logger.info(f"Continuing from {selected}: step {self.step}, time {self.time:.17g}")
         return True
 
-    def run(self, *, start_from: str | Path | None = None) -> None:
+    def run(self, *, start_from: str | Path | None = "latest") -> None:
         """Run the case to ``RunPlan.end_time``.
 
         Parameters
         ----------
-        start_from : {'latest', 'initial'}, path or None, default=None
+        start_from : {'latest', 'initial'}, path or None, default='latest'
             Initial-state selection passed to :meth:`start_from`; ``None``
             keeps the current in-memory state.
 

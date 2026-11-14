@@ -35,7 +35,6 @@ from assets.generate_surface import (
 
 
 # Plate and flow
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CHORD = 1.0  # [m]
 SPAN = 10.0  # [m]
@@ -50,7 +49,6 @@ TIME_STEP_SIZE = 0.0125  # [s]
 RAMP_LENGTH = 0.6
 FINAL_TRAVEL = 24.0
 SMAGORINSKY_COEFFICIENT = 0.30
-PARTICLE_CORE_FACTOR = 2.5
 SAMPLE_INTERVAL_TIME = 0.0625  # write a snapshot every this many seconds
 BACKUP_INTERVAL_TIME = 0.5  # checkpoints every five chord lengths
 ANIMATED_CASE = "exp_moving_aoa12"  # its wake is animated in the README
@@ -109,8 +107,6 @@ def run(mode: str, angle_of_attack: float) -> None:
         density=DENSITY,
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         freestream_velocity=reference_velocity,
-        force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
-        wake_core_overlap=PARTICLE_CORE_FACTOR,
     )
     backup_steps = round(BACKUP_INTERVAL_TIME / TIME_STEP_SIZE)
     frame_interval = FRAME_INTERVAL_TIME if name == ANIMATED_CASE else BACKUP_INTERVAL_TIME
@@ -130,7 +126,7 @@ def run(mode: str, angle_of_attack: float) -> None:
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
             freestream_velocity=freestream_velocity,
-            induction=vpm.DirectInduction(stretching_scheme="transposed"),
+            induction=vpm.DirectInduction(),
             max_n_particles=120_000,
         ),
         run=vpm.RunPlan(end_time=n_steps * TIME_STEP_SIZE),
@@ -140,7 +136,7 @@ def run(mode: str, angle_of_attack: float) -> None:
         ),
         backup=vpm.Backup(schedule=vpm.EverySteps(backup_steps)),
     )
-    vpm.VPMSolver(case).run(start_from=START_FROM)
+    vpm.VPMSolver(case).run()
 
 
 def main() -> None:

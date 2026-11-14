@@ -17,7 +17,6 @@ from openonda.fvm.mesher import box_mesh_3d
 
 from assets.decay_errors import flow_integrals, history_row
 
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_DIR = Path(__file__).resolve().parent
 
@@ -27,7 +26,6 @@ DENSITY = 1.0  # fluid density [kg/m^3]
 KINEMATIC_VISCOSITY = 0.1  # [m^2/s]
 
 # Mesh and numerics
-TIME_SCHEME = "backward"
 LINEAR_SOLVER = "spsolve"
 NUMBER_OF_CELLS = 24
 TIME_STEP_SIZE = 0.005  # [s]
@@ -75,9 +73,7 @@ def create_fvm_case() -> fvm.FVMCase:
             # CFL control may reduce the nominal time step but never coarsens it.
             time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=TIME_STEP_SIZE),
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=KINEMATIC_VISCOSITY),
-            schemes=fvm.DiscretizationConfig(
-                convection_scheme=CONVECTION_SCHEME, time_scheme=TIME_SCHEME
-            ),
+            schemes=fvm.DiscretizationConfig(convection_scheme=CONVECTION_SCHEME),
             linear=fvm.LinearSolverConfig(linear_solver=LINEAR_SOLVER),
         ),
         run=fvm.RunPlan(end_time=FINAL_TIME),
@@ -113,7 +109,7 @@ def main() -> None:
         centres = solver.geo_data["cell_centre"]
         solver.set_initial_velocity(exact_velocity(centres, 0.0, KINEMATIC_VISCOSITY))
         initial_total_kinetic_energy, initial_enstrophy = solver.evaluate(flow_integrals)
-        restored = solver.start_from(START_FROM)
+        restored = solver.start_from()
         recorded = solver.restore_history("history.csv")
         if not restored:
             solver.save_backup()

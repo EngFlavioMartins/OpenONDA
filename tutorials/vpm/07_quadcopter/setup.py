@@ -23,7 +23,6 @@ import openonda.vpm as vpm
 
 from assets.generate_blade import create_rotor_blade, save_blade
 
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "quadcopter"
 
@@ -102,6 +101,7 @@ def run() -> None:
         ),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
+        force=vpm.ForceConfig.kutta_joukowski(unsteady=False),
     )
 
     sample_steps = round(SAMPLE_INTERVAL_TIME / TIME_STEP_SIZE)
@@ -117,7 +117,7 @@ def run() -> None:
             viscous=vpm.ViscousConfig.cs(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
             ),
-            induction=vpm.FMMInduction(stretching_scheme="transposed"),
+            induction=vpm.FMMInduction(),
             turbulence=vpm.TurbulenceConfig.smagorinsky(smagorinsky_coefficient=0.3),
             freestream_velocity=[0.0, 0.0, -CLIMB_SPEED],
             stabilization=vpm.StabilizationConfig(
@@ -141,7 +141,6 @@ def run() -> None:
                         bounds=[-0.4, 0.4, -0.4, 0.4],
                         spacing=0.0075,
                         file_name=plane_name,
-                        include_derivatives=False,
                         schedule=vpm.EverySteps(sample_steps),
                     )
                     for plane_name, height in WAKE_PLANES
@@ -150,7 +149,7 @@ def run() -> None:
         ),
         backup=vpm.Backup(schedule=backup_schedule),
     )
-    vpm.VPMSolver(case).run(start_from=START_FROM)
+    vpm.VPMSolver(case).run()
 
 
 if __name__ == "__main__":

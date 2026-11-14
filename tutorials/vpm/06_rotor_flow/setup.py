@@ -11,7 +11,6 @@ import openonda.vpm as vpm
 from assets.output_files import read_json
 
 CASE_NAME = "rotor"
-START_FROM = "latest"
 
 FREESTREAM_SPEED = 7.0  # [m/s]
 TIP_SPEED_RATIO = 7.0
@@ -69,8 +68,6 @@ def build_case(
         ),
         kinematic_viscosity=KINEMATIC_VISCOSITY,
         density=AIR_DENSITY,
-        wake_core_overlap=2.5,
-        force=vpm.ForceConfig.kutta_joukowski(unsteady=True),
     )
 
     plane_half_width = 0.65 * (2.0 * ROTOR_RADIUS)
@@ -83,7 +80,6 @@ def build_case(
             bounds=[-plane_half_width, plane_half_width, -plane_half_width, plane_half_width],
             spacing=sample_spacing,
             file_name=f"wake_{distance}D",
-            include_derivatives=False,
             schedule=plane_schedule,
         )
         for distance in WAKE_PLANE_DIAMETERS
@@ -94,7 +90,6 @@ def build_case(
             end=[6.0 * ROTOR_RADIUS, radial_fraction * ROTOR_RADIUS, 0.0],
             spacing=sample_spacing,
             file_name=f"streamwise_r{label}",
-            include_derivatives=False,
             schedule=plane_schedule,
         )
         for label, radial_fraction in STREAMWISE_STATIONS
@@ -140,7 +135,7 @@ def build_case(
 
 def run() -> None:
     """Run or continue the rotor case."""
-    vpm.VPMSolver(build_case()).run(start_from=START_FROM)
+    vpm.VPMSolver(build_case()).run()
 
 
 if __name__ == "__main__":

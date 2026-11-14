@@ -18,7 +18,6 @@ from assets.generate_surface import create_airfoil_surface
 from assets.surface_pressure import write_surface_cp
 
 # Case definition
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "airfoil_flow"
 CHORD = 1.0  # airfoil chord length [m]
@@ -89,6 +88,7 @@ def create_fvm_case(velocity: tuple[float, float, float]) -> fvm.FVMCase:
             time_step_size=TIME_STEP_SIZE,
             time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
+            schemes=fvm.DiscretizationConfig(time_scheme="euler_implicit"),
             pimple=fvm.PimpleConfig(n_nonorthogonal_correctors=ORTHOGONAL_CORRECTORS),
         ),
         initial_conditions=fvm.InitialFields(velocity=velocity),
@@ -99,7 +99,7 @@ def create_fvm_case(velocity: tuple[float, float, float]) -> fvm.FVMCase:
         mesh=create_fvm_mesh,
         boundaries=(
             fvm.BoundaryConfig.inlet("inlet", velocity),
-            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            fvm.BoundaryConfig.outlet("outlet"),
             fvm.BoundaryConfig.freestream("walls", velocity),
             fvm.BoundaryConfig.wall("airfoil"),
             fvm.BoundaryConfig.empty("frontAndBack"),
@@ -112,7 +112,7 @@ def main() -> None:
     velocity = (FREESTREAM_VELOCITY * math.cos(angle), FREESTREAM_VELOCITY * math.sin(angle), 0.0)
     case = create_fvm_case(velocity)
     with fvm.FVMSolver(case) as solver:
-        solver.run(start_from=START_FROM)
+        solver.run()
         solver.evaluate(write_surface_cp, solver.solution_dir, CHORD, FREESTREAM_VELOCITY)
 
 

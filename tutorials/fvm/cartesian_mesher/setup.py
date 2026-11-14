@@ -13,7 +13,6 @@ from pathlib import Path
 import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_DIR = Path(__file__).resolve().parent
 OBJECT_STL = CASE_DIR / "assets" / "object.stl"
@@ -56,7 +55,9 @@ def create_fvm_case() -> fvm.FVMCase:
         numerics=fvm.Numerics(
             time_step_size=0.01,
             transport=fvm.TransportConfig(density=1.0, kinematic_viscosity=0.01),
-            schemes=fvm.DiscretizationConfig(convection_scheme="upwind", gradient_scheme="gauss"),
+            schemes=fvm.DiscretizationConfig(
+                convection_scheme="upwind", gradient_scheme="gauss", time_scheme="euler_implicit"
+            ),
             linear=fvm.LinearSolverConfig(linear_solver="spsolve"),
             pimple=fvm.PimpleConfig(n_correctors=1),
         ),
@@ -77,7 +78,7 @@ def create_fvm_case() -> fvm.FVMCase:
 
 def main() -> None:
     with fvm.FVMSolver(create_fvm_case()) as solver:
-        solver.run(start_from=START_FROM)
+        solver.run()
 
 
 if __name__ == "__main__":

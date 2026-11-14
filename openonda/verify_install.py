@@ -193,7 +193,6 @@ def _verify_native_fvm() -> dict[str, float | int]:
             directory=case_dir,
             numerics=fvm.Numerics(
                 time_step_size=0.01,
-                execution=fvm.ComputeConfig(operator_backend="numpy"),
                 schemes=fvm.DiscretizationConfig(convection_scheme="upwind"),
                 linear=fvm.LinearSolverConfig(linear_solver="bicgstab", pressure_solver="amg"),
                 pimple=fvm.PimpleConfig(n_correctors=1, n_outer_correctors=1),
@@ -268,7 +267,7 @@ def _verify_native_vpm() -> dict[str, object]:
                 particle_volume=np.full(2, 0.2**3),
                 kinematic_viscosity=np.full(2, 0.01),
             )
-            solver.run()
+            solver.run(start_from=None)
             if solver.run_status != "completed":
                 raise RuntimeError(f"VPM installation check stopped: {solver.run_status}")
         finally:
@@ -318,7 +317,6 @@ def _verify_native_coupled() -> dict[str, object]:
             directory=directory,
             numerics=fvm.Numerics(
                 time_step_size=0.01,
-                execution=fvm.ComputeConfig(operator_backend="numpy"),
                 transport=fvm.TransportConfig(kinematic_viscosity=0.01),
             ),
             initial_conditions=fvm.InitialFields(velocity=velocity),
@@ -361,7 +359,7 @@ def _verify_native_coupled() -> dict[str, object]:
                 raise RuntimeError(
                     "Installed coupled solver did not resume its accepted coupling step"
                 )
-            resumed.run()
+            resumed.run(start_from=None)
             fvm_step = resumed.fvm_solver.step
             vpm_step = resumed.vpm_solver.step
             field = resumed.fvm_solver.gather_velocity_field()

@@ -58,9 +58,9 @@ class DiscretizationConfig:
         central + 0.25 linear upwind), or the TVD-limited ``limited_linear``.
     gradient_scheme : {'gauss', 'lsq'}, default='lsq'
         Cell-centred gradient: Gauss divergence theorem or least squares.
-    time_scheme : {'euler_implicit', 'backward'}, default='euler_implicit'
+    time_scheme : {'euler_implicit', 'backward'}, default='backward'
         Time derivative. ``backward`` is the second-order BDF2 formula once
-        two accepted time levels exist.
+        two accepted time levels exist; ``euler_implicit`` is first order.
     """
 
     convection_scheme: Literal[
@@ -71,7 +71,7 @@ class DiscretizationConfig:
         "limited_linear",
     ] = "limited_linear"
     gradient_scheme: Literal["gauss", "lsq"] = "lsq"
-    time_scheme: Literal["euler_implicit", "backward"] = "euler_implicit"
+    time_scheme: Literal["euler_implicit", "backward"] = "backward"
 
     def __post_init__(self) -> None:
         lowercase_choice(

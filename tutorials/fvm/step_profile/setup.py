@@ -19,7 +19,6 @@ from assets.mesh_step import backward_facing_step_mesh
 from assets.reattachment import history_row, write_solution_tables
 
 # Case definition
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CASE_NAME = "step_profile"
 STEP_HEIGHT = 1.0  # step height h [m]
@@ -87,7 +86,9 @@ def create_fvm_case(inlet_values: np.ndarray, kinematic_viscosity: float) -> fvm
             time_step_size=TIME_STEP_SIZE,
             time_step_control=fvm.MaximumCourantTimeStep(maximum_time_step_size=MAX_TIME_STEP_SIZE),
             transport=fvm.TransportConfig(density=DENSITY, kinematic_viscosity=kinematic_viscosity),
-            schemes=fvm.DiscretizationConfig(gradient_scheme=GRADIENT_SCHEME),
+            schemes=fvm.DiscretizationConfig(
+                gradient_scheme=GRADIENT_SCHEME, time_scheme="euler_implicit"
+            ),
         ),
         run=fvm.RunPlan(end_time=FINAL_TIME),
         output=fvm.Output(schedule=snapshots),
@@ -95,7 +96,7 @@ def create_fvm_case(inlet_values: np.ndarray, kinematic_viscosity: float) -> fvm
         mesh=mesh,
         boundaries=(
             fvm.BoundaryConfig.inlet("inlet", inlet_values),
-            fvm.BoundaryConfig.outlet("outlet", kinematic_pressure=0.0),
+            fvm.BoundaryConfig.outlet("outlet"),
             fvm.BoundaryConfig.wall("walls"),
             fvm.BoundaryConfig.empty("front"),
             fvm.BoundaryConfig.empty("back"),
@@ -116,7 +117,7 @@ def main() -> None:
 
     with fvm.FVMSolver(case) as solver:
         solver.set_initial_velocity(initial_velocity(solver.geo_data, solver.mesh_data["n_cells"]))
-        restored = solver.start_from(START_FROM)
+        restored = solver.start_from()
         recorded = solver.restore_history("reattachment_history.csv")
         if not restored:
             solver.save_backup()

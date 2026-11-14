@@ -1,6 +1,6 @@
 # Continue or extend a simulation
 
-Every tutorial starts its solver from the latest backup (`start_from="latest"`, set in `setup.py` directly or through a `START_FROM` constant): if a numerical backup exists the run resumes from it, otherwise it starts from the initial conditions. From a case directory:
+Every tutorial starts its solver from the latest backup, the default of `run()`: if a numerical backup exists the run resumes from it, otherwise it starts from the initial conditions. From a case directory:
 
 ```bash
 ./allrun.sh        # delete solution/, samples/ and figures/, then run from t = 0
@@ -9,13 +9,14 @@ Every tutorial starts its solver from the latest backup (`start_from="latest"`, 
 
 A finished run adds nothing when resumed. To extend it, raise the end time in `setup.py` (the value passed to `RunPlan(end_time=...)`), then run `./allcontinue.sh`. Outputs written after the restored time are trimmed first, so the histories stay continuous. Regenerate the figures afterwards with `./allplot.sh`.
 
-In your own script, pass `start_from` to `run()`:
+In your own script, `run()` resumes the latest backup unless you pass `start_from`:
 
 | `start_from` | Behaviour |
 | --- | --- |
-| `"latest"` | Resume the backup with the highest step, or start fresh |
+| `"latest"` (default) | Resume the backup with the highest step, or start fresh |
 | `"initial"` | Start a new history from the initial conditions, replacing earlier output |
 | a path | Resume from that backup |
+| `None` | Keep the state in memory |
 
 ## What a backup contains
 

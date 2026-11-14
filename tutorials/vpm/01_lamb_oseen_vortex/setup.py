@@ -25,7 +25,6 @@ from assets.initial_conditions import TriangularPrismDistribution, VortexFilamen
 
 
 # Physics (Lamb--Oseen benchmark)
-START_FROM = "latest"  # Resume the latest backup; ./allrun.sh cleans first.
 
 CIRCULATION_REYNOLDS_NUMBER = 530.0  # Re_Γ = |Γ|/ν — sets the vortex Reynolds number
 BETA_RMAX = 1.12  # r(u_θ,max)/a — velocity-peak radius / Gaussian core radius
@@ -238,7 +237,6 @@ def run_case(
                 bounds=field_bounds,
                 spacing=field_spacing,
                 file_name=f"{case_name}_zq",
-                include_derivatives=False,
                 schedule=vpm.EverySteps(field_interval_steps),
             )
         )
@@ -264,7 +262,7 @@ def run_case(
     )
 
     solver = vpm.VPMSolver(case)
-    solver.run(start_from=START_FROM)
+    solver.run()
 
 
 if __name__ == "__main__":

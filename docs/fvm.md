@@ -71,7 +71,7 @@ case = fvm.FVMCase(
     ),
 )
 with fvm.FVMSolver(case) as solver:
-    solver.run(start_from="latest")
+    solver.run()
 ```
 
 `run()` writes the initial state, advances to `RunPlan.end_time` and writes the final state and a backup. A custom time loop calls `start_from("latest")`, then `advance()` per step; a driver that owns the clock, such as the coupler, passes the accepted time, `advance(time=...)`. Output, backups, samplers and log records take a schedule: `EverySteps(n)`, `EveryTime(interval)` or `FinalOnly()`.
@@ -120,7 +120,7 @@ A time-dependent inflow uses `VelocityRamp(initial=..., final=..., start_time=..
 | Setting | Options |
 | --- | --- |
 | `PimpleConfig(...)` | Transient PIMPLE: `n_correctors` pressure corrections per outer pass and `n_outer_correctors` nonlinear outer passes (one pass is PISO), with `velocity_relaxation`/`pressure_relaxation`. Each pressure correction updates the momentum prediction with the previous correction's velocity change (Issa 1986). |
-| `DiscretizationConfig(time_scheme=...)` | `euler_implicit` (first order) or `backward` (second-order BDF). |
+| `DiscretizationConfig(time_scheme=...)` | `backward` (default, second-order BDF) or `euler_implicit` (first order). |
 | `convection_scheme` | `upwind` (robust, dissipative), `central` (accurate when resolved, may oscillate), bounded `limited_linear` (default), `linear_upwind`, `lust`. |
 | `gradient_scheme` | `lsq` (default) or `gauss`. |
 | `Numerics(time_step_control=MaximumCourantTimeStep(maximum, maximum_time_step_size))` | Adapts the step to a Courant limit; physical-time output events are reached exactly, at their configured decimal times. |
