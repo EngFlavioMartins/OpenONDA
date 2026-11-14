@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from openonda.core.output_events import OutputEvent
 from openonda.core.restart import output_has_time
 from openonda.core.schedules import FinalOnly
-from openonda.core.vtk_output import read_collection, write_collection
+from openonda.core.vtk_output import add_frame
 
 from .fields import LineSampler, SurfaceSampler
 from .forces import ForceSampler, YPlusSampler
@@ -63,12 +63,7 @@ def execute_samplers(solver: FVMSolver, event: OutputEvent) -> None:
         elif isinstance(sampler, SurfaceSampler):
             file_name = f"{sampler.name}_{solver.step:06d}.vts"
             if sampler.write_vtk(solver, samples_dir / file_name):
-                collection = samples_dir / f"{sampler.name}.pvd"
-                frames = solver._sample_collections.get(sampler.name)
-                if frames is None:
-                    frames = solver._sample_collections[sampler.name] = read_collection(collection)
-                frames.append((solver.time, file_name))
-                write_collection(collection, frames)
+                add_frame(samples_dir / f"{sampler.name}.pvd", solver.time, file_name)
         elif isinstance(sampler, LineSampler):
             sampler.write_csv(solver, samples_dir)
         elif isinstance(sampler, MotionSampler):

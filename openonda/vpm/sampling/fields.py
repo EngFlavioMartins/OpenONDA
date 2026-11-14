@@ -19,7 +19,7 @@ import numpy as np
 from openonda.core.file_output import append_csv_rows
 from openonda.core.sampling import FIELD_SAMPLE_COLUMNS, Sampler, line_points, surface_points
 from openonda.core.schedules import EverySteps, Schedule
-from openonda.core.vtk_output import write_vtk_dataset
+from openonda.core.vtk_output import write_surface_frame
 from openonda.core.write_precision import cast_for_write
 
 if TYPE_CHECKING:
@@ -234,34 +234,37 @@ class SurfaceSampler(Sampler):
             Solution time in s, stored in the ``time`` and ``TimeValue``
             field data.
         """
-        import pyvista as pv
-
         data = self.sample(solver)
-        shape = self._grid_shape
-
-        def grid_order(name: str) -> np.ndarray:
-            return np.asarray(data[name]).reshape(shape).ravel(order="F")
-
-        x, y, z = (
-            np.asarray(data[f"position_{axis}"]).reshape(shape)[:, :, np.newaxis] for axis in "xyz"
-        )
-        grid = pv.StructuredGrid(x, y, z)
-        grid.field_data["openonda_sampling_grid"] = np.array(
-            [json.dumps(self._grid_metadata(), sort_keys=True, separators=(",", ":"))]
-        )
         precision = solver.write_precision
+
+        def points_order(name: str) -> np.ndarray:
+            return np.asarray(data[name]).reshape(-1)
+
+        point_data = {}
         for name in ("velocity", "vorticity"):
-            vector = np.column_stack([grid_order(f"{name}_{axis}") for axis in "xyz"])
-            grid.point_data[name] = cast_for_write(vector, precision)
+            vector = np.column_stack([points_order(f"{name}_{axis}") for axis in "xyz"])
+            point_data[name] = cast_for_write(vector, precision)
         if self.include_derivatives:
             components = ("xx", "xy", "xz", "yx", "yy", "yz", "zx", "zy", "zz")
             tensor = np.column_stack(
-                [grid_order(f"velocity_gradient_{component}") for component in components]
+                [points_order(f"velocity_gradient_{component}") for component in components]
             )
-            grid.point_data["velocity_gradient"] = cast_for_write(tensor, precision)
-        for name in ("time", "TimeValue"):
-            grid.field_data[name] = np.array([float(time)], dtype=np.float64)
-        return write_vtk_dataset(grid, Path(path), compression=solver.case.output.compression)
+            point_data["velocity_gradient"] = cast_for_write(tensor, precision)
+        field_data = {
+            "openonda_sampling_grid": np.array(
+                [json.dumps(self._grid_metadata(), sort_keys=True, separators=(",", ":"))]
+            ),
+            "time": np.array([float(time)], dtype=np.float64),
+            "TimeValue": np.array([float(time)], dtype=np.float64),
+        }
+        return write_surface_frame(
+            path,
+            [np.asarray(data[f"position_{axis}"]) for axis in "xyz"],
+            self._grid_shape,
+            point_data,
+            field_data,
+            compression=solver.case.output.compression,
+        )
 
 
 class LineSampler(Sampler):

@@ -13,7 +13,7 @@ from openonda.core.file_output import append_csv_rows, rewind_csv
 from openonda.core.output_events import OutputEvent
 from openonda.core.restart import output_has_time
 from openonda.core.schedules import FinalOnly
-from openonda.core.vtk_output import read_collection, rewind_collection, write_collection
+from openonda.core.vtk_output import add_frame, read_collection, rewind_collection
 
 from ..io.logging import Logging
 
@@ -219,9 +219,10 @@ class SamplerManager:
             extension = getattr(sampler, "vtk_extension", ".vts")
             file_name = f"{name}_{context.step:06d}{extension}"
             collection = context.output_directory / f"{name}.pvd"
-            entries = read_collection(collection) if context.continuing_output else []
+            if not context.continuing_output:
+                collection.unlink(missing_ok=True)
             sampler.write_vtk(context.solver, context.output_directory / file_name, context.time)
-            write_collection(collection, [*entries, (context.time, file_name)])
+            add_frame(collection, context.time, file_name)
         elif isinstance(sampler, _TableSampler):
             columns = tuple(sampler.csv_columns)
             data = sampler.sample(context.solver)

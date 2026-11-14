@@ -358,7 +358,6 @@ class FVMSolver(CouplerInterfaceMixin):
         self._state_revision = 0
         self._derived_fields: dict[object, np.ndarray] = {}
         self._samplers = configuration.samplers
-        self._sample_collections: dict[str, list[tuple[float, str]]] = {}
         self.solution_dir.mkdir(parents=True, exist_ok=True)
         if self._samplers:
             self.samples_dir.mkdir(parents=True, exist_ok=True)
@@ -586,7 +585,6 @@ class FVMSolver(CouplerInterfaceMixin):
         # Final housekeeping
         self.io = solver_io.SolverIO(self)
         self.vtk_exporter = None
-        self._frame_collection: list[tuple[float, str]] | None = None
         self._buffered_vtk_writer = None
         self.max_courant_number = 0.0
         # Coupling / driver-split state
@@ -2134,7 +2132,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
     def _write_vtk_local(self) -> None:
         """Write this rank's part of the visualization frame."""
-        from openonda.core.vtk_output import read_collection, write_collection
+        from openonda.core.vtk_output import add_frame
 
         from ..io.vtk_exporter import VTKExporter, mesh_cell_fields
 
@@ -2172,7 +2170,7 @@ class FVMSolver(CouplerInterfaceMixin):
                 exporter=self.vtk_exporter,
             )
             if self.parallel.is_root:
-                self._add_frame(collection, frame, read_collection, write_collection)
+                add_frame(collection, self.time, frame)
                 self.logger.output(f"Output written: {Path(frame).name}")
             return
 
@@ -2187,19 +2185,9 @@ class FVMSolver(CouplerInterfaceMixin):
             if self.vtk_exporter is None:
                 self.vtk_exporter = VTKExporter(self.mesh_data, output)
             self.vtk_exporter.export(str(filename), fields)
-            self._add_frame(collection, filename, read_collection, write_collection)
+            add_frame(collection, self.time, filename)
             action = "written"
         self.logger.output(f"Output {action}: {filename.name}")
-
-    def _add_frame(self, collection: Path, frame: str | Path, read, write) -> None:
-        """List one frame in the visualization collection at the accepted time."""
-        if self._frame_collection is None:
-            self._frame_collection = read(collection)
-        relative = Path(frame).resolve().relative_to(collection.parent.resolve()).as_posix()
-        self._frame_collection = [
-            entry for entry in self._frame_collection if entry[1] != relative
-        ] + [(self.time, relative)]
-        write(collection, self._frame_collection)
 
     def flush_output(self) -> None:
         """Wait for queued visualization frames and surface writer errors."""

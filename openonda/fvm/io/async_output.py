@@ -8,7 +8,7 @@ from threading import Lock
 
 import numpy as np
 
-from openonda.core.vtk_output import read_collection, write_collection
+from openonda.core.vtk_output import add_frame
 
 from ..config.output import Output
 from .vtk_exporter import VTKExporter
@@ -58,7 +58,6 @@ class BufferedVTKWriter:
         # The worker is single-threaded, so these objects are constructed once
         # on that worker and safely reused for every snapshot.
         self._exporter: VTKExporter | None = None
-        self._entries: list[tuple[float, str]] | None = None
 
     def submit(self, filename: Path, time: float, fields: dict[str, np.ndarray]) -> None:
         """Queue one immutable snapshot, waiting for the previous write if needed."""
@@ -85,15 +84,8 @@ class BufferedVTKWriter:
     ) -> None:
         if self._exporter is None:
             self._exporter = VTKExporter(self._mesh_data, self._output)
-        if self._entries is None:
-            self._entries = read_collection(self._collection)
         self._exporter.export(str(filename), fields, vertex_position=vertex_position)
-        relative = (
-            Path(filename).resolve().relative_to(self._collection.parent.resolve()).as_posix()
-        )
-        self._entries = [entry for entry in self._entries if entry[1] != relative]
-        self._entries.append((time, relative))
-        write_collection(self._collection, self._entries)
+        add_frame(self._collection, time, filename)
 
     def flush(self) -> None:
         """Wait for pending output and propagate any writer exception."""
@@ -101,12 +93,6 @@ class BufferedVTKWriter:
             if self._pending is not None:
                 self._pending.result()
                 self._pending = None
-
-    def rewind(self, time: float) -> None:
-        """Flush pending output and reread the rewound collection at the next frame."""
-        del time
-        self.flush()
-        self._entries = None
 
     def close(self) -> None:
         """Flush and stop the writer. This method is idempotent."""

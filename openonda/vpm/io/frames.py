@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from openonda.core.solution_layout import collection_path, component_directory
-from openonda.core.vtk_output import read_collection, write_collection, write_vtk_dataset
+from openonda.core.vtk_output import add_frame, write_vtk_dataset
 from openonda.core.write_precision import cast_for_write
 
 if TYPE_CHECKING:
@@ -78,12 +78,6 @@ def write_particle_frame(solver: VPMSolver, path: str | Path) -> Path:
     return write_vtk_dataset(grid, Path(path), compression=output.compression)
 
 
-def _add_to_collection(solution_dir: Path, component: str, frame: Path, time: float) -> None:
-    collection = collection_path(solution_dir, component)
-    entries = read_collection(collection)
-    write_collection(collection, [*entries, (time, frame.relative_to(solution_dir).as_posix())])
-
-
 def write_solution_frames(solver: VPMSolver) -> Path:
     """Write the particle frame and lattice surface of the current state.
 
@@ -98,11 +92,13 @@ def write_solution_frames(solver: VPMSolver) -> Path:
     time = float(solver.time)
     particle_frame = component_directory(solution_dir, "vpm") / f"vpm_{solver.step:06d}.vtu"
     write_particle_frame(solver, particle_frame)
-    _add_to_collection(solution_dir, "vpm", particle_frame, time)
+    add_frame(collection_path(solution_dir, "vpm"), time, particle_frame.relative_to(solution_dir))
     vlm = solver.vlm_solver
     if vlm is not None:
         surface_frame = component_directory(solution_dir, "vlm") / f"vlm_{solver.step:06d}.vtp"
         surface_frame.parent.mkdir(parents=True, exist_ok=True)
         vlm.save_results(str(surface_frame.with_suffix("")), time=time)
-        _add_to_collection(solution_dir, "vlm", surface_frame, time)
+        add_frame(
+            collection_path(solution_dir, "vlm"), time, surface_frame.relative_to(solution_dir)
+        )
     return particle_frame

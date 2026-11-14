@@ -9,23 +9,26 @@ restored time.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 import math
 from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import quoteattr
 
 from defusedxml import ElementTree
+import numpy as np
 
 from .clock import time_tolerance
 from .file_output import atomic_path, write_text_atomic
 
 __all__ = [
     "DEFAULT_COMPRESSION",
+    "add_frame",
     "configure_writer",
     "read_collection",
     "rewind_collection",
     "write_collection",
+    "write_surface_frame",
     "write_vtk_dataset",
 ]
 
@@ -80,6 +83,56 @@ def write_vtk_dataset(
         if writer.Write() != 1:
             raise OSError(f"VTK failed to write {target}")
     return target
+
+
+def write_surface_frame(
+    path: str | Path,
+    positions: Sequence[np.ndarray],
+    grid_shape: tuple[int, int],
+    point_data: Mapping[str, np.ndarray],
+    field_data: Mapping[str, np.ndarray],
+    *,
+    compression: str = DEFAULT_COMPRESSION,
+) -> Path:
+    """Atomically write the samples on a plane as a VTK structured grid (``.vts``).
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Destination file.
+    positions : sequence of numpy.ndarray
+        The x, y and z coordinates of the sample points in m, each with
+        ``n_1 * n_2`` values in the order of
+        :func:`openonda.core.sampling.surface_points`, the second in-plane
+        axis varying fastest.
+    grid_shape : tuple of int
+        ``(n_1, n_2)`` of :func:`openonda.core.sampling.surface_points`.
+    point_data : mapping of str to numpy.ndarray
+        Point arrays with one row per sample point in the same order, shape
+        ``(n_1 * n_2,)`` or ``(n_1 * n_2, k)``, already in the dtype to store.
+    field_data : mapping of str to numpy.ndarray
+        Field arrays stored as given, for example the solution time.
+    compression : str, default="zlib"
+        VTK compressor, see :func:`configure_writer`.
+
+    Returns
+    -------
+    pathlib.Path
+        The destination path.
+    """
+    import pyvista as pv
+
+    n_first, n_second = grid_shape
+    grid = pv.StructuredGrid(
+        *(np.asarray(values).reshape((n_first, n_second, 1)) for values in positions)
+    )
+    for name, values in point_data.items():
+        # Sample points are in C order; VTK structured points are in Fortran order.
+        grid_values = np.asarray(values).reshape((n_first, n_second, -1)).transpose(1, 0, 2)
+        grid.point_data[name] = grid_values.reshape((n_first * n_second, *np.shape(values)[1:]))
+    for name, values in field_data.items():
+        grid.field_data[name] = values
+    return write_vtk_dataset(grid, path, compression=compression)
 
 
 def read_collection(path: str | Path) -> list[tuple[float, str]]:
@@ -164,6 +217,40 @@ def write_collection(path: str | Path, entries: Iterable[tuple[float, str | Path
         "</VTKFile>",
     ]
     return write_text_atomic(path, "\n".join(lines) + "\n")
+
+
+def add_frame(collection: str | Path, time: float, frame: str | Path) -> Path:
+    """List one frame in a ParaView collection, replacing an earlier entry for the file.
+
+    The collection is read and written whole, so every writer of a series
+    sees the entries on disk and nothing is cached between frames.
+
+    Parameters
+    ----------
+    collection : str or pathlib.Path
+        ``.pvd`` file. A missing file starts a new collection.
+    time : float
+        Solution time of the frame in s.
+    frame : str or pathlib.Path
+        Frame file, relative to the collection directory or an absolute path
+        below it.
+
+    Returns
+    -------
+    pathlib.Path
+        The collection path.
+
+    Raises
+    ------
+    ValueError
+        If the collection is invalid, ``time`` is not finite, or an absolute
+        ``frame`` lies outside the collection directory.
+    """
+    source = Path(collection)
+    relative = Path(frame)
+    if relative.is_absolute():
+        relative = relative.resolve().relative_to(source.parent.resolve())
+    return write_collection(source, [*read_collection(source), (time, relative)])
 
 
 def _frame_path(collection: Path, name: str) -> Path:

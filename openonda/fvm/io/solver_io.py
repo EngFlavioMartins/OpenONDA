@@ -59,7 +59,5 @@ class SolverIO:
         rewind_jsonl(solution / "diagnostics.jsonl", time)
         rewind_jsonl(solution / "performance.jsonl", time)
         rewind_collection(collection_path(solution, "fvm"), time)
-        solver._frame_collection = None
         if solver._buffered_vtk_writer is not None:
-            solver._buffered_vtk_writer.rewind(time)
-        solver._sample_collections.clear()
+            solver._buffered_vtk_writer.flush()

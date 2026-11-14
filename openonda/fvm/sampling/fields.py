@@ -409,29 +409,17 @@ class SurfaceSampler(_PointProbe):
         Collective in a partitioned run; rank 0 writes and returns ``True``.
         The values use the precision and compression of the case output.
         """
-        import pyvista as pv
-
-        from openonda.core.vtk_output import write_vtk_dataset
+        from openonda.core.vtk_output import write_surface_frame
         from openonda.core.write_precision import cast_for_write
 
         data = self.sample(context)
         if data is None:
             return False
         output = context.case.output
-        n_first, n_second = self.grid_shape
-
-        def grid_coordinates(values: np.ndarray) -> np.ndarray:
-            return np.asarray(values, dtype=np.float64).reshape((n_first, n_second, 1))
 
         def point_values(values: np.ndarray) -> np.ndarray:
-            # Sampler points are in C order; VTK structured points in Fortran order.
-            return np.asarray(values).reshape(self.grid_shape).ravel(order="F")
+            return np.asarray(values).reshape(-1)
 
-        grid = pv.StructuredGrid(
-            grid_coordinates(data["position_x"]),
-            grid_coordinates(data["position_y"]),
-            grid_coordinates(data["position_z"]),
-        )
         velocity = np.column_stack([point_values(data[f"velocity_{axis}"]) for axis in "xyz"])
         vorticity = np.column_stack([point_values(data[f"vorticity_{axis}"]) for axis in "xyz"])
         pressure = point_values(data["kinematic_pressure"]).astype(np.float64)
@@ -442,10 +430,17 @@ class SurfaceSampler(_PointProbe):
             velocity[inside] = np.nan
             vorticity[inside] = np.nan
             pressure[inside] = np.nan
-        grid.point_data["velocity"] = cast_for_write(velocity, output.precision)
-        grid.point_data["vorticity"] = cast_for_write(vorticity, output.precision)
-        grid.point_data["kinematic_pressure"] = cast_for_write(pressure, output.precision)
-        grid.point_data["vtkValidPointMask"] = valid
-        grid.field_data["time"] = np.asarray([context.time], dtype=np.float64)
-        write_vtk_dataset(grid, path, compression=output.compression)
+        write_surface_frame(
+            path,
+            [np.asarray(data[f"position_{axis}"], dtype=np.float64) for axis in "xyz"],
+            self.grid_shape,
+            {
+                "velocity": cast_for_write(velocity, output.precision),
+                "vorticity": cast_for_write(vorticity, output.precision),
+                "kinematic_pressure": cast_for_write(pressure, output.precision),
+                "vtkValidPointMask": valid,
+            },
+            {"time": np.asarray([context.time], dtype=np.float64)},
+            compression=output.compression,
+        )
         return True
