@@ -2,7 +2,9 @@
 
 The symmetric tolerance is ``max(1e-12 s, 1e-10 * max(|a|, |b|))``.
 It permits accumulated floating-point clock roundoff, not neighbouring output
-steps. Ambiguous clocks in one source are rejected rather than rounded/merged.
+steps. It is looser than ``core.clock.time_tolerance`` because it compares
+the clocks of different runs, not one run's own clock.
+Ambiguous clocks in one source are rejected rather than rounded/merged.
 This module deliberately has no solver or NumPy dependencies.
 """
 

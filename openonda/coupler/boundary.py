@@ -7,9 +7,9 @@ import time
 
 import numpy as np
 
+from openonda.core.clock import time_tolerance
 from openonda.core.parallel import collective_phase
 
-from .clock import time_tolerance
 from .reporting import boundary_induction_summary, format_coupler_log
 
 logger = logging.getLogger("openonda.coupler")

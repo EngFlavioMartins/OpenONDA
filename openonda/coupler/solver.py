@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from openonda.core.clock import time_tolerance
 from openonda.core.metadata import write_run_metadata
 from openonda.core.parallel import collective_phase
 from openonda.core.restart import reset_run_outputs, select_backup
@@ -31,7 +32,6 @@ from .boundary import (
     report_coupling_patch_quality,
     update_boundary_history_after_replacement,
 )
-from .clock import time_tolerance
 from .config import CouplerConfig
 from .frame import MeshFrame
 from .reporting import (
