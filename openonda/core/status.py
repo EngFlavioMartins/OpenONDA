@@ -32,8 +32,6 @@ class RunStatus(StrEnum):
     resolution_lost
         The discretization no longer resolves the flow, for example the
         particle overlap or core size limits were violated.
-    wall_time_limit
-        The run stopped at its wall-clock limit with a valid last state.
     """
 
     not_started = "not_started"
@@ -44,4 +42,3 @@ class RunStatus(StrEnum):
     failed = "failed"
     unstable = "unstable"
     resolution_lost = "resolution_lost"
-    wall_time_limit = "wall_time_limit"

@@ -28,22 +28,18 @@ class LoggingConfig:
         Synchronize the compute device around each solver phase and report
         the time of every phase, also in :attr:`VPMSolver.phase_seconds`.
         Synchronization slows accelerator runs.
-    validate_stages : bool, default=False
-        Check particle core radii and volumes after every evolution stage.
-        The check copies fields from the compute device.
     """
 
     mode: Literal["simple", "debug"] = "simple"
     schedule: Schedule = field(default_factory=lambda: EverySteps(1))
     console: bool = True
     detailed_timing: bool = False
-    validate_stages: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in {"simple", "debug"}:
             raise ValueError("LoggingConfig.mode must be 'simple' or 'debug'")
         if not isinstance(self.schedule, EverySteps | EveryTime):
             raise TypeError("LoggingConfig.schedule must be EverySteps or EveryTime")
-        for name in ("console", "detailed_timing", "validate_stages"):
+        for name in ("console", "detailed_timing"):
             if not isinstance(getattr(self, name), bool):
                 raise TypeError(f"LoggingConfig.{name} must be a bool")

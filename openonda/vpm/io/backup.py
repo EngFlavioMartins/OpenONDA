@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "12.0"
+_BACKUP_FORMAT_VERSION = "13.0"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -317,22 +317,6 @@ class _BackupIO:
             **_COMPRESSION,
         )
 
-        if (
-            n_particles_total > 0
-            and hasattr(solver, "physics")
-            and hasattr(solver.physics, "get_total_enstrophy")
-        ):
-            total_enstrophy = solver.physics.get_total_enstrophy(
-                solver.particles.position_cpu(),
-                solver.particles.vortex_strength_cpu(),
-                solver.particles.core_radius_cpu(),
-            )
-            particles_group.create_dataset(
-                "total_enstrophy",
-                data=_cast_for_restart(total_enstrophy, restart_dtype),
-                **_COMPRESSION,
-            )
-
     @staticmethod
     def _write_numerical_data(
         solver: VPMSolver,
@@ -358,9 +342,6 @@ class _BackupIO:
             solver_group.attrs["time_step_size"] = float(solver.time_step_size)
             solver_group.attrs["n_steps_since_dvh_diffusion"] = int(
                 solver._n_steps_since_dvh_diffusion
-            )
-            solver_group.attrs["particle_regeneration_pending"] = int(
-                solver._particle_regeneration_pending
             )
             solver_group.attrs["n_particles_total"] = int(solver.particles.n_particles_total)
 
@@ -475,9 +456,6 @@ class _BackupIO:
             solver._n_steps_since_dvh_diffusion = int(
                 _read_attribute(solver_group, "n_steps_since_dvh_diffusion")
             )
-            solver._particle_regeneration_pending = bool(
-                _read_attribute(solver_group, "particle_regeneration_pending")
-            )
 
             stabilization = _stabilization(solver)
             if stabilization is not None:
@@ -565,8 +543,7 @@ class _BackupIO:
                 solver._loading_numerical_state = False
 
             solver.particles.set_field("vorticity", vorticity)
-            if solver.flow_model != "potential":
-                solver.stepper._update_velocity_and_gradients(announce=False)
+            solver.stepper._update_velocity_and_gradients(announce=False)
             if auxiliary["effective_viscosity"] is not None:
                 solver.particles.set_field(
                     "effective_viscosity",
@@ -630,7 +607,6 @@ class _BackupIO:
                     "step",
                     "time_step_size",
                     "n_steps_since_dvh_diffusion",
-                    "particle_regeneration_pending",
                     "n_particles_total",
                 }
                 required_solver_attributes.update(_STABILIZATION_DIAGNOSTIC_NAMES)
@@ -722,9 +698,6 @@ class _BackupIO:
                     value = _read_attribute(solver_group, name)
                     if not isinstance(value, int | np.integer) or int(value) < 0:
                         invalid(f"solver attribute {name!r} must be a non-negative integer")
-                pending = _read_attribute(solver_group, "particle_regeneration_pending")
-                if not isinstance(pending, bool | int | np.integer) or int(pending) not in (0, 1):
-                    invalid("solver attribute 'particle_regeneration_pending' must be 0 or 1")
 
                 n_particles_total = _read_particle_count(solver_group)
                 particles_group = file["particles"]
@@ -745,7 +718,6 @@ class _BackupIO:
                 optional = {
                     "filament_reference_vortex_strength",
                     "filament_reference_length",
-                    "total_enstrophy",
                 }
                 particle_field_names = set(particles_group.keys())
                 if not required <= particle_field_names:
@@ -812,8 +784,6 @@ class _BackupIO:
                 )
                 if filament_fields <= particle_field_names:
                     floating_fields += tuple(sorted(filament_fields))
-                if "total_enstrophy" in particle_field_names:
-                    floating_fields += ("total_enstrophy",)
                 for name in floating_fields:
                     dataset = particles_group[name]
                     if not np.issubdtype(dataset.dtype, np.floating):

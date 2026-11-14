@@ -128,13 +128,8 @@ class EvolutionStepper:
 
     @property
     def flow_model(self) -> str:
-        """Return the configured flow model, such as ``POTENTIAL`` or ``LES``."""
+        """Return the configured flow model, such as ``DNS`` or ``LES``."""
         return self.solver.flow_model
-
-    @property
-    def n_sources(self) -> int:
-        """Return the active source count used by induction queries."""
-        return self.solver.n_sources
 
     @property
     def stabilization_config(self) -> StabilizationConfig:
@@ -181,26 +176,6 @@ class EvolutionStepper:
         """Return integer spatial-zone labels with logical shape ``(N,)``."""
         return self.solver.particle_zone_id
 
-    @property
-    def source_position(self) -> ti.Field:
-        """Return the current induction source positions in m."""
-        return self.solver.source_position
-
-    @property
-    def source_strength(self) -> ti.Field:
-        """Return the current source vortex strengths in m³/s."""
-        return self.solver.source_strength
-
-    @property
-    def source_core_radius(self) -> ti.Field:
-        """Return the current source core radii in m."""
-        return self.solver.source_core_radius
-
-    @property
-    def axisymmetric_axis(self) -> int:
-        """Return the axisymmetric coordinate index, or ``-1`` if disabled."""
-        return self.solver.axisymmetric_axis
-
     def replace_vortex_particles(self, **properties: np.ndarray | None) -> None:
         """Replace the active particle set through the owning solver.
 
@@ -234,7 +209,6 @@ class EvolutionStepper:
             time=self.solver.time,
             time_step_size=self.time_step_size,
         )
-        self._apply_pending_particle_regeneration()
         self.stabilization.run_phase("pre_evolution")
 
         # Stage the new clock for kernels and scheduled workers.  The standard
@@ -243,26 +217,16 @@ class EvolutionStepper:
         self._staged_time = target_time
         self.stabilization.stage_clock(step=self._staged_step, time=self._staged_time)
 
-        self.particles.step = self.step
-        self._debug_validate_particle_geometry("step entry")
-
         _gradients_required = (
             self.flow_model == "les"
             or (self.stabilization_config.selective_eddy_viscosity_coefficient or 0.0) > 0.0
-            or (
-                self.stabilization_config.pedrizzetti_relaxation_enabled
-                and self.flow_model != "potential"
-            )
+            or self.stabilization_config.pedrizzetti_relaxation_enabled
         )
         if _gradients_required:
             self._update_velocity_and_gradients()
 
         with remainder_section(self.profiler, "LES update"):
             self._update_les_state()
-            self.stabilization.refresh_metrics(
-                kinetic_energy_rate=self.solver.kinetic_energy_rate,
-                viscous_kinetic_energy_rate=self.solver.viscous_kinetic_energy_rate,
-            )
             self.stabilization.update_selective_eddy_viscosity()
 
         # Relax against the same t_n gradient used by the strength update.
@@ -273,13 +237,10 @@ class EvolutionStepper:
         self._apply_coupled_update(
             self.time_step_size,
         )
-        self._debug_validate_particle_geometry("coupled evolution")
 
-        if self.flow_model != "potential":
-            self.stabilization.run_phase("post_evolution", profiler=self.profiler)
+        self.stabilization.run_phase("post_evolution", profiler=self.profiler)
 
         self.stabilization.run_phase("post_step", profiler=self.profiler)
-        self._debug_validate_particle_geometry("particle retention")
 
         if self.vlm_solver is not None:
             # Transport the existing wake with the previous bound solution,
@@ -314,51 +275,6 @@ class EvolutionStepper:
             ),
             n_particles=self.particles.n_particles_total,
         )
-
-    def _apply_pending_particle_regeneration(self) -> None:
-        """Regenerate externally modified GBD particles without advancing time."""
-        if not self.solver._particle_regeneration_pending:
-            return
-        if self.viscous_scheme != "gbd":
-            self.solver._particle_regeneration_pending = False
-            return
-        with remainder_section(self.profiler, "Viscous diffusion"):
-            self._apply_viscous_diffusion(0.0)
-        self.solver._particle_regeneration_pending = False
-
-    def _debug_validate_particle_geometry(self, stage: str) -> None:
-        """Validate active particle core_radius and particle_volume when stage tracing is enabled."""
-        if not self.solver.case.logging.validate_stages:
-            return
-        n = self.particles.n_particles_total
-        if n == 0:
-            return
-        core_radius = self.particles.core_radius_cpu(use_cache=False)
-        particle_volume = self.particles.particle_volume_cpu()
-        invalid_radii = ~np.isfinite(core_radius) | (core_radius <= 0.0)
-        invalid_volumes = ~np.isfinite(particle_volume) | (particle_volume <= 0.0)
-        n_bad_radii = int(np.count_nonzero(invalid_radii))
-        n_bad_volumes = int(np.count_nonzero(invalid_volumes))
-        Logging.record(
-            "particle geometry validation",
-            ("stage", stage),
-            ("particles", n),
-            ("core radius, minimum", np.nanmin(core_radius), "m"),
-            ("core radius, maximum", np.nanmax(core_radius), "m"),
-            ("invalid core radii", n_bad_radii),
-            ("particle volume, minimum", np.nanmin(particle_volume), "m^3"),
-            ("particle volume, maximum", np.nanmax(particle_volume), "m^3"),
-            ("invalid particle volumes", n_bad_volumes),
-            flush=True,
-        )
-        if n_bad_radii or n_bad_volumes:
-            bad_radius_index = int(np.flatnonzero(invalid_radii)[0]) if n_bad_radii else -1
-            bad_volume_index = int(np.flatnonzero(invalid_volumes)[0]) if n_bad_volumes else -1
-            raise RuntimeError(
-                f"Invalid VPM particle geometry after {stage}: "
-                f"radius_bad={n_bad_radii} first={bad_radius_index}, "
-                f"volume_bad={n_bad_volumes} first={bad_volume_index}"
-            )
 
     def _commit_accepted_step(self) -> None:
         """Publish a fully accepted numerical step to the standard clock."""
@@ -406,79 +322,9 @@ class EvolutionStepper:
         """Update LES viscosity from the current strain-rate field."""
         if self.flow_model == "les":
             self.turbulence_model.compute(self.particles, time_step_size=self.time_step_size)
-            if self.axisymmetric_axis >= 0:
-                self._validate_axisymmetric_orbits()
-                self.physics.average_axisymmetric_scalar(
-                    self.particles.eddy_viscosity,
-                    self.particles.zone_id,
-                    len(self.particles),
-                )
-                self.physics.average_axisymmetric_scalar(
-                    self.particles.effective_viscosity,
-                    self.particles.zone_id,
-                    len(self.particles),
-                )
-
-    def _validate_axisymmetric_orbits(self) -> None:
-        """Reject malformed orbit IDs before applying rotational stage averages."""
-        if self.axisymmetric_axis < 0 or getattr(
-            self.solver, "_axisymmetric_orbits_validated", False
-        ):
-            return
-        # Read the stepper's own particle container; the stepper has no
-        # forwarding view of the solver fields.
-        position = self.particles.position_cpu(use_cache=False).astype(np.float64)
-        orbit_id = self.particles.zone_id_cpu().astype(np.int64)
-        group_id = self.particles.group_id_cpu().astype(np.int64)
-        count = len(position)
-        if count == 0:
-            return
-        if np.any(orbit_id < 0) or int(orbit_id.max()) >= count:
-            raise ValueError(
-                "axisymmetric particles require non-negative zone_id orbit labels below "
-                "the particle count"
-            )
-
-        present = np.unique(orbit_id)
-        if not np.array_equal(present, np.arange(len(present))):
-            raise ValueError("axisymmetric zone_id orbit labels must be contiguous from zero")
-
-        axis = self.axisymmetric_axis
-        b = (axis + 1) % 3
-        c = (axis + 2) % 3
-        radial = np.hypot(position[:, b], position[:, c])
-        scale = max(1.0, float(np.abs(position).max(initial=0.0)))
-        geometry_tolerance = 256.0 * np.finfo(self.np_dtype).eps * scale
-        angle_tolerance = 512.0 * np.finfo(self.np_dtype).eps
-        for orbit in present:
-            selected = orbit_id == orbit
-            orbit_count = int(np.count_nonzero(selected))
-            if orbit_count < 8:
-                raise ValueError(
-                    f"axisymmetric orbit {orbit} has {orbit_count} particles; at least 8 are required"
-                )
-            if np.ptp(group_id[selected]) != 0:
-                raise ValueError(f"axisymmetric orbit {orbit} spans more than one particle group")
-            if (
-                np.ptp(position[selected, axis]) > geometry_tolerance
-                or np.ptp(radial[selected]) > geometry_tolerance
-            ):
-                raise ValueError(
-                    f"axisymmetric orbit {orbit} does not have one axial and radial coordinate"
-                )
-            angles = np.sort(
-                np.mod(np.arctan2(position[selected, c], position[selected, b]), 2 * np.pi)
-            )
-            gaps = np.diff(np.append(angles, angles[0] + 2 * np.pi))
-            expected_gap = 2.0 * np.pi / orbit_count
-            if np.max(np.abs(gaps - expected_gap)) > angle_tolerance:
-                raise ValueError(f"axisymmetric orbit {orbit} is not uniformly periodic")
-
-        self.solver._axisymmetric_orbits_validated = True
 
     def _advance_particles(self, time_step_size: float) -> None:
         """Advance position and vortex strength at common Runge--Kutta stages."""
-        self._validate_axisymmetric_orbits()
         accepted_projector = getattr(self.solver.stage_rhs, "accepted_position_projector", None)
         guard = getattr(accepted_projector, "__self__", None)
         can_retry_wall = bool(

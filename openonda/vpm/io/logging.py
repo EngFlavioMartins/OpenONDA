@@ -34,7 +34,6 @@ class Logging:
     All methods are static and can be called directly without instantiation.
     Example:
         >>> Logging.flow_diagnostics(solver)
-        >>> Logging.solver_summary(solver)
     """
 
     _routine_messages_enabled = True
@@ -91,11 +90,6 @@ class Logging:
     def runtime_warning(text: str, *, stacklevel: int = 2) -> None:
         """Report an operator warning through Python's warning filters."""
         warnings.warn(text, RuntimeWarning, stacklevel=stacklevel + 1)
-
-    @staticmethod
-    def error(text: str) -> None:
-        """Immediately report a module error."""
-        LOGGER.error(text)
 
     @staticmethod
     def begin_step(step: int) -> None:
@@ -301,9 +295,6 @@ class Logging:
         mesh_backend = getattr(induction, "mesh_execution_backend", None)
         if mesh_backend is not None:
             rows.append(("  slab image fields", mesh_backend))
-        axis = system.numerics.axisymmetric_no_swirl_axis
-        if axis is not None:
-            rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))
         rows.extend(
             (
                 ("compute device", system.compute_device),
@@ -384,8 +375,6 @@ class Logging:
             return system.turbulence_model.report_rows()
         if system.flow_model == "inviscid":
             return [("status", "not applicable, inviscid, stretching only")]
-        if system.flow_model == "potential":
-            return [("status", "not applicable, potential flow")]
         return [("status", "not applicable, direct numerical simulation")]
 
     @staticmethod
@@ -512,60 +501,6 @@ class Logging:
         return log_style.block_report("VPM SOLVER CONFIGURATION", sections)
 
     @staticmethod
-    def solver_summary(system: "VPMSolver") -> str:
-        """Return the shorter VPM initialization summary."""
-        from ..config.constants import DEFAULT_CUTOFF_RADIUS_FACTOR
-
-        rows: list[log_style.Row] = [
-            ("flow model", getattr(system, "flow_model_description", system.flow_model)),
-            ("integrator", getattr(getattr(system, "integrator", None), "name", "unknown")),
-        ]
-        axis = system.numerics.axisymmetric_no_swirl_axis
-        if axis is not None:
-            rows.append(("  symmetry", f"axisymmetric no-swirl about {axis}"))
-        rows.extend(
-            (
-                ("compute device", system.compute_device),
-                ("particle kernel", system.particle_kernel),
-                ("viscous scheme", system.viscous_scheme),
-                ("cutoff radius factor", str(DEFAULT_CUTOFF_RADIUS_FACTOR)),
-                ("time step", f"{system.time_step_size:.2e}", "s"),
-                ("turbulence:", ""),
-            )
-        )
-
-        if (
-            system.turbulence_model is not None
-            and system.turbulence_model
-            and hasattr(system.turbulence_model, "get_filter_info")
-        ):
-            filter_info = system.turbulence_model.get_filter_info()
-            rows.extend(
-                (
-                    ("  grid filter particles", f"{filter_info['grid_filter_particles']:,}"),
-                    ("  grid filter width", f"{filter_info['grid_filter_width']:.4f}"),
-                    ("  test filter particles", f"{filter_info['test_filter_particles']:,}"),
-                    ("  test filter width", f"{filter_info['test_filter_width']:.4f}"),
-                    ("  max neighbours needed", f"{filter_info['max_neighbors_needed']:,}"),
-                )
-            )
-        elif system.flow_model != "potential":
-            rows.append(("  model", system.flow_model))
-        else:
-            rows.append(("  model", "potential, no turbulence"))
-
-        rows.extend(
-            (
-                ("state:", ""),
-                ("  current step", f"{system.step:,}"),
-                ("  simulation time", f"{system.time:.2e}", "s"),
-                ("  evolution wall time", f"{system.wall_time:.2e}", "s"),
-                ("  vortex strength", f"{system.vortex_strength_magnitude_sum:.2e}", "m^3/s"),
-            )
-        )
-        return log_style.section("vpm solver  initialization summary", rows)
-
-    @staticmethod
     def les_diagnostics(system: "VPMSolver") -> None:
         """
         Log detailed LES turbulence diagnostics.
@@ -608,30 +543,6 @@ class Logging:
             ("Coefficient reference area", f"{forces['reference_area']:.4e}", "m^2"),
             ("Active particles", f"{system.particles.n_particles_total:,}"),
             flush=True,
-        )
-
-    @staticmethod
-    def particle_cleanup(
-        percent: float, particles_before: int, particles_removed: int, particles_after: int
-    ) -> None:
-        """Log one weak-particle-removal event.
-
-        Args:
-            percent: Percentage threshold used for removal
-            particles_before: Number of particles before cleanup
-            particles_removed: Number of particles removed
-            particles_after: Number of particles after cleanup
-        """
-        if not Logging._routine_messages_enabled:
-            return
-        removal_fraction = particles_removed / particles_before if particles_before else 0.0
-        Logging.record(
-            "weak-strength removal",
-            ("threshold", percent, "%"),
-            ("particles, before", particles_before),
-            ("particles, removed", particles_removed),
-            ("particles, after", particles_after),
-            ("fraction removed", removal_fraction),
         )
 
     @staticmethod

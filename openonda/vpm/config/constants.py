@@ -22,9 +22,6 @@ MAX_N_PARTICLES = 500000
 # Controls the Gaussian width of the heat-kernel scatter: 4nu·Δt_d = β·R_d².
 _DVH_BETA = 0.077
 
-# Default time step size [s]
-DEFAULT_TIME_STEP = 0.01
-
 # Default cutoff radius factor for particle interactions
 DEFAULT_CUTOFF_RADIUS_FACTOR = 100
 

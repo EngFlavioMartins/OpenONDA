@@ -270,7 +270,7 @@ class StabilizationConfig:
 
         Parameters
         ----------
-        flow_model : {'dns', 'les', 'inviscid', 'potential'}
+        flow_model : {'dns', 'les', 'inviscid'}
             Flow model of the VPM turbulence configuration.
         """
         if self.selective_eddy_viscosity_coefficient is not None:

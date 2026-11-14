@@ -24,11 +24,9 @@ from .induction.stretching import stretching_rate
 
 if TYPE_CHECKING:
     from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
-    from ..core.solver import VPMSolver
     from ..numerics.rk_tableaux import RKTableau
     from ..particles.container import Particles
     from .base import PhysicsBase
-    from .engine import PhysicsEngine
 
 
 class ExternalStageContribution(Protocol):
@@ -513,88 +511,17 @@ def _zero_stage_field(field: ti.template(), count: ti.i32):  # type: ignore[inva
         field[i] = ti.Vector([0.0, 0.0, 0.0])
 
 
-def _stage_array(
-    field: TaichiField, count: int, physics: "PhysicsEngine | None" = None
-) -> np.ndarray:
-    """Return a bounded NumPy view/copy for host-side external providers."""
-    if (
-        physics is not None
-        and hasattr(field, "to_numpy")
-        and hasattr(physics, "download_vector_field")
-    ):
-        return physics.download_vector_field(field, count).astype(np.float64, copy=False)
-    values = field.to_numpy() if hasattr(field, "to_numpy") else np.asarray(field)
-    return np.asarray(values[:count]).copy()
-
-
-def _accumulate_stage_array(
-    field: TaichiField, values: np.ndarray, count: int, physics: "PhysicsEngine | None" = None
-) -> None:
-    """Accumulate a host provider result into NumPy or Taichi output storage."""
-    if (
-        physics is not None
-        and hasattr(field, "to_numpy")
-        and hasattr(physics, "download_vector_field")
-    ):
-        if values.ndim == 2 and values.shape[1] == 3:
-            stored = physics.download_vector_field(field, count)
-            stored += values.astype(stored.dtype, copy=False)
-            physics.upload_vector_array(stored, field, count)
-            return
-        if values.ndim == 3 and hasattr(physics, "_download_matrix_field"):
-            stored = physics._download_matrix_field(field, count)
-            stored += values.astype(stored.dtype, copy=False)
-            physics._upload_matrix_array(stored, field, count)
-            return
-    if hasattr(field, "to_numpy") and hasattr(field, "from_numpy"):
-        stored = field.to_numpy()
-        stored[:count] += values.astype(stored.dtype, copy=False)
-        field.from_numpy(stored)
-    else:
-        field[:count] += values
-
-
 @ti.data_oriented
 class ParticleExternalStageContribution:
-    """Apply stage-time external velocities to a particle RHS.
+    """Add the uniform background velocity to the stage velocity.
 
-    The provider is small: self-induced induction belongs to the
-    selected induction object, while freestream, body and overlap corrections
-    are explicit stage contributions.  Python callbacks are given the supplied
-    stage positions, never the accepted particle field.
+    Self-induced induction belongs to the selected induction object; the
+    freestream is the only external term evaluated at the temporary stage
+    positions.
     """
 
-    def __init__(
-        self,
-        particles: "Particles",
-        physics: "PhysicsEngine",
-        surface_sources: "VPMSolver | None" = None,
-    ) -> None:
-        """Create a provider for particle background/body/source fields.
-
-        Parameters
-        ----------
-        particles : Particles
-            Particle container supplying the uniform background velocity.
-        physics : PhysicsEngine
-            Device workspace used for source kernels, stage transfers, and
-            optional body callbacks.
-        surface_sources : object, optional
-            Object exposing source arrays and ``n_sources`` for surface-source
-            or blockage contributions.
-
-        Notes
-        -----
-        The provider retains references but does not copy the particle or
-        physics workspaces.  It allocates one reusable ``(max_n_particles, 3,
-        3)`` gradient field on the Taichi device.
-        """
+    def __init__(self, particles: "Particles") -> None:
         self.particles = particles
-        self.physics = physics
-        self.surface_sources = surface_sources
-        self._source_gradient = ti.Matrix.field(
-            3, 3, dtype=physics.accumulator_dtype, shape=(physics.max_n_particles,)
-        )
 
     @ti.kernel
     def _add_background(self, velocity: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
@@ -604,191 +531,13 @@ class ParticleExternalStageContribution:
     def add_stage_rates(
         self, stage_state: StageState, stage_time: float, stage_rates: StageRates
     ) -> None:
-        """Add background, source, body, and override rates for a stage.
-
-        Callbacks are evaluated at temporary stage positions.  Velocity,
-        velocity-gradient, and vortex-strength-rate outputs are mutated in
-        place; body gradients use the convention ``J[i, j] = d u_i / d x_j``
-        and stretching is ``J.T @ Gamma``.
-        """
-        count = stage_state.count
-        if count == 0:
-            return
-        self._add_background(stage_rates.velocity, count)
-
-        # Surface-source/blockage particles are an external velocity term, not
-        # a diagnostic-only target correction.  Evaluate them against the exact
-        # temporary RK positions so every coupled stage sees the same source
-        # contribution as arbitrary target queries.
-        sources = self.surface_sources
-        source_count = int(getattr(sources, "n_sources", 0)) if sources is not None else 0
-        source_gradient = None
-        if sources is not None and source_count:
-            batches = (
-                sources._surface_source_batches()
-                if hasattr(sources, "_surface_source_batches")
-                else (source_count,)
-            )
-            need_gradient = (
-                stage_rates.strength_rate_enabled or stage_rates.velocity_gradient is not None
-            )
-            if need_gradient:
-                source_gradient = np.zeros((count, 3, 3), dtype=np.float64)
-            for batch_count in batches:
-                self.physics.kernels["compute_target_source_velocity_kernel"](
-                    stage_state.position,
-                    sources.source_position,
-                    sources.source_strength,
-                    sources.source_core_radius,
-                    stage_rates.velocity,
-                    count,
-                    batch_count,
-                )
-                if need_gradient:
-                    self.physics.kernels["compute_target_source_velocity_gradient_kernel"](
-                        stage_state.position,
-                        sources.source_position,
-                        sources.source_strength,
-                        sources.source_core_radius,
-                        self._source_gradient,
-                        count,
-                        batch_count,
-                    )
-                    source_gradient += self.physics._download_matrix_field(
-                        self._source_gradient, count
-                    )
-
-        body = getattr(self.physics, "body_velocity", None)
-        body_gradient = getattr(self.physics, "body_velocity_gradient", None)
-        if body is None and body_gradient is None and source_gradient is None:
-            return
-        if hasattr(self.physics, "download_vector_field"):
-            position = self.physics.download_vector_field(stage_state.position, count)
-            velocity = self.physics.download_vector_field(stage_rates.velocity, count)
-        else:
-            position = stage_state.position.to_numpy()[:count]
-            velocity = stage_rates.velocity.to_numpy()[:count]
-        external_gradient = np.zeros((count, 3, 3), dtype=np.float64)
-        if source_gradient is not None:
-            external_gradient += source_gradient
-        if body is not None:
-            velocity += np.asarray(body(position, stage_time), dtype=velocity.dtype).reshape(
-                count, 3
-            )
-            if body_gradient is None:
-                # Preserve old velocity-only callbacks while making their
-                # stretching contribution explicit and stage-consistent.
-                def body_gradient(points, current_time):
-                    return _finite_difference_gradient(body, points, current_time)
-
-            external_gradient += _validate_external_gradient(
-                body_gradient(position, stage_time), count
-            )
-        if hasattr(self.physics, "upload_vector_array"):
-            self.physics.upload_vector_array(velocity, stage_rates.velocity, count)
-        else:
-            uploaded = np.zeros((self.physics.max_n_particles, 3), dtype=velocity.dtype)
-            uploaded[:count] = velocity
-            stage_rates.velocity.from_numpy(uploaded)
-
-        # Body and source gradients use J[i,j] = d u_i / d x_j.  The
-        # vortex-strength stretching convention is J^T Γ, matching the
-        # self-induced induction.
-        if np.any(external_gradient):
-            strength = _stage_array(stage_state.vortex_strength, count, self.physics)
-            external_rate = np.einsum("nji,nj->ni", external_gradient, strength)
-            _accumulate_stage_array(
-                stage_rates.vortex_strength_rate,
-                external_rate,
-                count,
-                self.physics,
-            )
-            if stage_rates.velocity_gradient is not None:
-                _accumulate_stage_array(
-                    stage_rates.velocity_gradient,
-                    external_gradient,
-                    count,
-                    self.physics,
-                )
-
-
-@ti.data_oriented
-class AxisymmetricNoSwirlStageProjection:
-    """Project stage velocity and strength rates onto the declared symmetry."""
-
-    def __init__(self, physics: "PhysicsBase", orbit_id: TaichiField, axis: int) -> None:
-        """Create a projection provider for one Cartesian symmetry axis.
-
-        Parameters
-        ----------
-        physics : PhysicsEngine
-            Workspace providing ``average_axisymmetric_no_swirl_rhs``.
-        orbit_id : object
-            Identifier of the axisymmetric orbit/particle group to average.
-        axis : {0, 1, 2}
-            Cartesian axis about which the no-swirl projection is defined.
-
-        Raises
-        ------
-        ValueError
-            If ``axis`` is not 0, 1, or 2.
-        """
-        if axis not in (0, 1, 2):
-            raise ValueError("axis must be 0, 1, or 2")
-        self.physics = physics
-        self.orbit_id = orbit_id
-        self.axis = int(axis)
-
-    def add_stage_rates(
-        self, stage_state: StageState, stage_time: float, stage_rates: StageRates
-    ) -> None:
-        """Project stage velocity and strength-rate fields in place."""
+        """Add the background velocity to the stage velocity."""
         del stage_time
-        self.physics.average_axisymmetric_no_swirl_rhs(
-            stage_state.position,
-            stage_rates.velocity,
-            stage_rates.vortex_strength_rate,
-            self.orbit_id,
-            self.axis,
-            stage_state.count,
-        )
-
-
-def _validate_external_gradient(value: np.ndarray, count: int) -> np.ndarray:
-    gradient = np.asarray(value, dtype=np.float64)
-    if gradient.shape != (count, 3, 3):
-        raise ValueError(
-            f"external velocity gradient must have shape ({count}, 3, 3), got {gradient.shape}"
-        )
-    if not np.all(np.isfinite(gradient)):
-        raise ValueError("external velocity gradient contains non-finite values")
-    return gradient
-
-
-def _finite_difference_gradient(
-    callback: Callable, position: np.ndarray, stage_time: float
-) -> np.ndarray:
-    """Differentiate a velocity-only callback using a centered stage probe."""
-    position = np.asarray(position, dtype=np.float64)
-    max_position = float(np.max(np.abs(position))) if position.size else 0.0
-    scale = max(1.0, max_position)
-    step = max(1.0e-7, 1.0e-5 * scale)
-    gradient = np.empty((len(position), 3, 3), dtype=np.float64)
-    for axis in range(3):
-        offset = np.zeros(3, dtype=np.float64)
-        offset[axis] = step
-        plus = np.asarray(callback(position + offset, stage_time), dtype=np.float64).reshape(
-            len(position), 3
-        )
-        minus = np.asarray(callback(position - offset, stage_time), dtype=np.float64).reshape(
-            len(position), 3
-        )
-        gradient[:, :, axis] = (plus - minus) / (2.0 * step)
-    return gradient
+        if stage_state.count:
+            self._add_background(stage_rates.velocity, stage_state.count)
 
 
 __all__ = [
-    "AxisymmetricNoSwirlStageProjection",
     "ExternalStageContribution",
     "ParticleExternalStageContribution",
     "StageRHS",

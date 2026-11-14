@@ -116,14 +116,6 @@ class StabilizationStepState:
     domain_bounds_enforced: bool = False
 
 
-@dataclass
-class StabilizationMetrics:
-    """Latest scalar diagnostics available to stabilization workers."""
-
-    kinetic_energy_rate: float = 0.0
-    viscous_kinetic_energy_rate: float = 0.0
-
-
 @dataclass(frozen=True)
 class StabilizationContext:
     """Narrow typed interface between ``VPMSolver`` and stabilization workers."""
@@ -138,6 +130,5 @@ class StabilizationContext:
 
     state: StabilizationStepState
     mutations: ParticleMutationPort
-    metrics: StabilizationMetrics
     # Free-slip planes (z_min, z_max) of a slip-slab case, or None.
     slip_slab: tuple[float, float] | None = None

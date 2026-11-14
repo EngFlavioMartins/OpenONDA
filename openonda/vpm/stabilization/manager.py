@@ -382,13 +382,6 @@ class StabilizationManager:
         self.ctx.state.step = step
         self.ctx.state.time = time
 
-    def refresh_metrics(
-        self, *, kinetic_energy_rate: float, viscous_kinetic_energy_rate: float
-    ) -> None:
-        """Publish diagnostics already computed by the evolution sequence."""
-        self.ctx.metrics.kinetic_energy_rate = kinetic_energy_rate
-        self.ctx.metrics.viscous_kinetic_energy_rate = viscous_kinetic_energy_rate
-
     # -- run phases -------------------------------------------------------
 
     def run_phase(self, phase: str, profiler: Profiler | None = None) -> None:
@@ -451,7 +444,6 @@ class StabilizationManager:
         cfg = self.config
         if (
             not cfg.pedrizzetti_relaxation_enabled
-            or self.ctx.flow_model == "potential"
             or self.ctx.particles.n_particles_total == 0
             or (
                 cfg.pedrizzetti_relaxation_end_step is not None
@@ -714,7 +706,7 @@ class StabilizationManager:
         ctx = self.ctx
         cfg = self.config
         depth = cfg.outflow_fringe_depth
-        if depth is None or ctx.flow_model == "potential" or ctx.particles.n_particles_total == 0:
+        if depth is None or ctx.particles.n_particles_total == 0:
             return
         speed = float(np.linalg.norm(ctx.particles.velocity_background_cpu()))
         if speed == 0.0:
@@ -743,15 +735,12 @@ class StabilizationManager:
 
     def apply_retention(self) -> None:
         """Remove particles that have left the configured VPM domain."""
-        ctx = self.ctx
-        if ctx.flow_model == "potential":
-            return
         bounds = self.config.remove_particles_by_bounds
         if bounds is not None:
             if self.ctx.state.domain_bounds_enforced:
                 return
             # Removal compacts the stored vorticity field; no O(N²) rebuild is needed.
-            ctx.mutations.remove_by_bounds(bounds, invert_selection=True)
+            self.ctx.mutations.remove_by_bounds(bounds, invert_selection=True)
 
     # -- refinement reference bookkeeping ---------------------------------------------------
 

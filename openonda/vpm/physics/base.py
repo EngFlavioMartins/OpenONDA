@@ -111,8 +111,6 @@ class PhysicsBase:
     compute_velocity_and_gradient_kernel: TaichiKernel
     compute_target_velocity_kernel: TaichiKernel
     compute_transport_target_velocity_kernel: TaichiKernel
-    compute_target_source_velocity_kernel: TaichiKernel
-    compute_target_source_velocity_gradient_kernel: TaichiKernel
     compute_target_vorticity_kernel: TaichiKernel
     compute_target_velocity_gradient_kernel: TaichiKernel
     update_radius_csm_kernel: TaichiKernel
@@ -195,14 +193,6 @@ class PhysicsBase:
 
         self._host_staging = HostStagingBuffers(_HOST_TRANSFER_CHUNK_SIZE)
 
-        self._axisymmetric_vector_sum_a = ti.Vector.field(
-            3, dtype=compute_dtype, shape=(self.max_n_particles,)
-        )
-        self._axisymmetric_vector_sum_b = ti.Vector.field(
-            3, dtype=compute_dtype, shape=(self.max_n_particles,)
-        )
-        self._axisymmetric_scalar_sum = ti.field(dtype=compute_dtype, shape=(self.max_n_particles,))
-        self._axisymmetric_orbit_count = ti.field(dtype=ti.i32, shape=(self.max_n_particles,))
         self._angular_core_coefficient = kernel_definition(
             self.particle_kernel
         ).angular_core_coefficient
@@ -240,134 +230,6 @@ class PhysicsBase:
             f"{self._temp_field_size}. Increase Numerics.max_n_particles before "
             "constructing the solver."
         )
-
-    @ti.kernel
-    def _reset_axisymmetric_accumulators(self, count: ti.i32):
-        for i in range(count):
-            self._axisymmetric_vector_sum_a[i] = ti.Vector([0.0, 0.0, 0.0])
-            self._axisymmetric_vector_sum_b[i] = ti.Vector([0.0, 0.0, 0.0])
-            self._axisymmetric_scalar_sum[i] = 0.0
-            self._axisymmetric_orbit_count[i] = ti.cast(0, ti.i32)
-
-    @ti.func
-    def _cylindrical_components(self, position, value, axis: ti.i32):
-        b = ti.cast((axis + 1) % 3, ti.i32)
-        c = ti.cast((axis + 2) % 3, ti.i32)
-        cylindrical_radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
-        inverse_radius = 1.0 / ti.max(cylindrical_radius, ti.cast(1.0e-20, self.accumulator_dtype))
-        return ti.Vector(
-            [
-                value[axis],
-                (position[b] * value[b] + position[c] * value[c]) * inverse_radius,
-                (-position[c] * value[b] + position[b] * value[c]) * inverse_radius,
-            ]
-        )
-
-    @ti.func
-    def _cartesian_from_cylindrical(self, position, value, axis: ti.i32):
-        b = ti.cast((axis + 1) % 3, ti.i32)
-        c = ti.cast((axis + 2) % 3, ti.i32)
-        cylindrical_radius = ti.sqrt(position[b] ** 2 + position[c] ** 2)
-        inverse_radius = 1.0 / ti.max(cylindrical_radius, ti.cast(1.0e-20, self.accumulator_dtype))
-        result = ti.Vector.zero(self.accumulator_dtype, 3)
-        result[axis] = value[0]
-        result[b] = (value[1] * position[b] - value[2] * position[c]) * inverse_radius
-        result[c] = (value[1] * position[c] + value[2] * position[b]) * inverse_radius
-        return result
-
-    @ti.kernel
-    def _reduce_axisymmetric_vectors(
-        self,
-        position: ti.template(),  # type: ignore[invalid-annotation]
-        vector_a: ti.template(),  # type: ignore[invalid-annotation]
-        vector_b: ti.template(),  # type: ignore[invalid-annotation]
-        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
-        axis: ti.i32,
-        count: ti.i32,
-    ):
-        for i in range(count):
-            orbit = ti.cast(orbit_id[i], ti.i32)
-            a = self._cylindrical_components(position[i], vector_a[i], axis)
-            b = self._cylindrical_components(position[i], vector_b[i], axis)
-            for component in ti.static(range(3)):
-                ti.atomic_add(self._axisymmetric_vector_sum_a[orbit][component], a[component])
-                ti.atomic_add(self._axisymmetric_vector_sum_b[orbit][component], b[component])
-            ti.atomic_add(self._axisymmetric_orbit_count[orbit], ti.cast(1, ti.i32))
-
-    @ti.kernel
-    def _apply_axisymmetric_vectors(
-        self,
-        position: ti.template(),  # type: ignore[invalid-annotation]
-        vector_a: ti.template(),  # type: ignore[invalid-annotation]
-        vector_b: ti.template(),  # type: ignore[invalid-annotation]
-        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
-        axis: ti.i32,
-        count: ti.i32,
-    ):
-        for i in range(count):
-            orbit = ti.cast(orbit_id[i], ti.i32)
-            denominator = ti.cast(self._axisymmetric_orbit_count[orbit], self.accumulator_dtype)
-            mean_a = self._axisymmetric_vector_sum_a[orbit] / denominator
-            mean_b = self._axisymmetric_vector_sum_b[orbit] / denominator
-            # vector_a is polar velocity: no swirl means u_theta = 0.
-            # vector_b is an axial vortex strength rate: reflection symmetry leaves
-            # only its azimuthal component.
-            mean_a[2] = 0.0
-            mean_b[0] = 0.0
-            mean_b[1] = 0.0
-            vector_a[i] = self._cartesian_from_cylindrical(position[i], mean_a, axis)
-            vector_b[i] = self._cartesian_from_cylindrical(position[i], mean_b, axis)
-
-    def average_axisymmetric_no_swirl_rhs(
-        self,
-        position: TaichiField,
-        vector_a: TaichiField,
-        vector_b: TaichiField,
-        orbit_id: TaichiField,
-        axis: int,
-        count: int,
-    ) -> None:
-        """Average velocity/rate over the axisymmetric no-swirl manifold."""
-        if count <= 0:
-            return
-        self._reset_axisymmetric_accumulators(count)
-        self._reduce_axisymmetric_vectors(position, vector_a, vector_b, orbit_id, axis, count)
-        self._apply_axisymmetric_vectors(position, vector_a, vector_b, orbit_id, axis, count)
-
-    @ti.kernel
-    def _reduce_axisymmetric_scalar(
-        self,
-        scalar: ti.template(),  # type: ignore[invalid-annotation]
-        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
-        count: ti.i32,
-    ):
-        for i in range(count):
-            orbit = ti.cast(orbit_id[i], ti.i32)
-            ti.atomic_add(self._axisymmetric_scalar_sum[orbit], scalar[i])
-            ti.atomic_add(self._axisymmetric_orbit_count[orbit], ti.cast(1, ti.i32))
-
-    @ti.kernel
-    def _apply_axisymmetric_scalar(
-        self,
-        scalar: ti.template(),  # type: ignore[invalid-annotation]
-        orbit_id: ti.template(),  # type: ignore[invalid-annotation]
-        count: ti.i32,
-    ):
-        for i in range(count):
-            orbit = ti.cast(orbit_id[i], ti.i32)
-            scalar[i] = self._axisymmetric_scalar_sum[orbit] / ti.cast(
-                self._axisymmetric_orbit_count[orbit], self.accumulator_dtype
-            )
-
-    def average_axisymmetric_scalar(
-        self, scalar: TaichiField, orbit_id: TaichiField, count: int
-    ) -> None:
-        """Average one scalar field over declared particle orbits."""
-        if count <= 0:
-            return
-        self._reset_axisymmetric_accumulators(count)
-        self._reduce_axisymmetric_scalar(scalar, orbit_id, count)
-        self._apply_axisymmetric_scalar(scalar, orbit_id, count)
 
     # TARGET FIELD MANAGEMENT (for at-point evaluations)
 

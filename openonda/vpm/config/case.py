@@ -13,7 +13,7 @@ from ..kernels.registry import kernel_definition, kernel_names
 from ..numerics.rk_tableaux import SSPRK3, RKTableau
 from ..physics.induction.base import InductionMethod
 from ..physics.induction.direct import DirectInduction
-from .constants import DEFAULT_CUTOFF_RADIUS_FACTOR, DEFAULT_TIME_STEP, MAX_N_PARTICLES
+from .constants import MAX_N_PARTICLES
 from .logging_config import LoggingConfig
 from .output import Backup, Output, Samplers
 from .stabilization import StabilizationConfig
@@ -43,8 +43,6 @@ class Numerics:
         Explicit tableau shared by position and vortex-strength updates.
     induction : InductionMethod
         Backend/formulation construction object, cloned/bound for runtime use.
-    axisymmetric_no_swirl_axis : {'x', 'y', 'z'} or None
-        Optional rotational orbit projection axis.
     viscous, turbulence, stabilization : object
         Diffusion, LES, and accepted-step stabilization settings.
     vlm : VLMConfig or None
@@ -61,20 +59,15 @@ class Numerics:
         Accepted-state validation settings.
     freestream_velocity : tuple[float, float, float]
         Uniform background velocity in m/s.
-    cutoff_radius_factor : float
-        Kernel cutoff ``r/sigma`` beyond which particle interactions are
-        skipped. The kernels use the fixed value 100, and no other value is
-        accepted.
     domain_bounds : tuple or None
         Optional diffusion-domain bounds ``(xmin, xmax, ymin, ymax, zmin, zmax)``
         in metres.
 
     """
 
-    time_step_size: float = DEFAULT_TIME_STEP
+    time_step_size: float
     integrator: RKTableau = field(default_factory=SSPRK3)
     induction: InductionMethod = field(default_factory=DirectInduction)
-    axisymmetric_no_swirl_axis: Literal["x", "y", "z"] | None = None
     viscous: ViscousConfig = field(default_factory=ViscousConfig.cs)
     turbulence: TurbulenceConfig = field(default_factory=TurbulenceConfig.dns)
     stabilization: StabilizationConfig = field(default_factory=StabilizationConfig)
@@ -87,7 +80,6 @@ class Numerics:
     precision: Literal["f32", "f64"] = "f32"
     random_seed: int = 42
     state_limits: ParticleStateLimits = field(default_factory=ParticleStateLimits)
-    cutoff_radius_factor: float = DEFAULT_CUTOFF_RADIUS_FACTOR
     freestream_velocity: tuple[float, float, float] = (0.0, 0.0, 0.0)
     domain_bounds: tuple[float, ...] | None = None
 
@@ -123,11 +115,6 @@ class Numerics:
         if kernel not in kernel_names():
             raise ValueError(
                 f"particle_kernel must be one of {sorted(kernel_names())} (got {kernel!r})"
-            )
-        if self.cutoff_radius_factor != DEFAULT_CUTOFF_RADIUS_FACTOR:
-            raise ValueError(
-                f"cutoff_radius_factor is fixed at {DEFAULT_CUTOFF_RADIUS_FACTOR} by the kernels "
-                f"(got {self.cutoff_radius_factor})"
             )
         if kernel != "gaussian" and (
             self.stabilization.regularization_interval_steps > 0
@@ -183,8 +170,6 @@ class Numerics:
             "freestream_velocity",
             tuple(float(value) for value in self.freestream_velocity),
         )
-        if self.axisymmetric_no_swirl_axis not in {None, "x", "y", "z"}:
-            raise ValueError("axisymmetric_no_swirl_axis must be x, y, z, or None")
         if self.domain_bounds is not None:
             if len(self.domain_bounds) != 6:
                 raise ValueError("domain_bounds must contain (xmin, xmax, ymin, ymax, zmin, zmax)")
@@ -278,10 +263,6 @@ class RunPlan:
         ``raise`` propagates the error. ``stop`` writes the final output and
         a backup and returns with status ``resolution_lost``; a nonfinite
         state returns with status ``unstable`` without final output.
-    wall_time_limit_seconds : float or None
-        Optional positive wall-clock budget, checked between accepted steps.
-        A stopped run writes its final output and backup and has status
-        ``wall_time_limit``.
     runtime_compute_device : {'auto', 'cpu', 'vulkan', 'cuda', 'metal'} or None
         Compute device for this process only. It overrides
         ``Numerics.compute_device`` without entering the restart
@@ -292,7 +273,6 @@ class RunPlan:
     initial_output: bool = True
     final_output: bool = True
     state_limit_action: Literal["raise", "stop"] = "raise"
-    wall_time_limit_seconds: float | None = None
     runtime_compute_device: Literal["auto", "cpu", "vulkan", "cuda", "metal"] | None = None
 
     def __post_init__(self) -> None:
@@ -306,12 +286,6 @@ class RunPlan:
                 raise TypeError(f"RunPlan.{name} must be a bool")
         if self.state_limit_action not in {"raise", "stop"}:
             raise ValueError("RunPlan.state_limit_action must be 'raise' or 'stop'")
-        limit = self.wall_time_limit_seconds
-        if limit is not None:
-            if isinstance(limit, bool) or not isinstance(limit, Real):
-                raise TypeError("RunPlan.wall_time_limit_seconds must be a positive number")
-            if not math.isfinite(limit) or limit <= 0:
-                raise ValueError("RunPlan.wall_time_limit_seconds must be finite and positive")
         valid_devices = {"auto", "cpu", "vulkan", "cuda", "metal"}
         if self.runtime_compute_device is not None and (
             self.runtime_compute_device not in valid_devices
@@ -367,9 +341,6 @@ class VPMCase:
         Restart backups.
     logging : LoggingConfig
         Log verbosity and cadence.
-    initial_weak_particle_percent : float, default=0
-        Remove initial particles whose strength is below this percentage
-        (0--100) of the largest particle strength.
     """
 
     name: str
@@ -382,7 +353,6 @@ class VPMCase:
     samplers: Samplers = field(default_factory=Samplers)
     backup: Backup = field(default_factory=Backup)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-    initial_weak_particle_percent: float = 0.0
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
@@ -412,12 +382,6 @@ class VPMCase:
                 raise TypeError(f"VPMCase.{name} must be a {kind.__name__} instance")
         if self.numerics.vlm is not None:
             self._validate_coupled_vlm_output()
-        percent = self.initial_weak_particle_percent
-        if isinstance(percent, bool) or not isinstance(percent, Real):
-            raise TypeError("initial_weak_particle_percent must be a real number")
-        if not math.isfinite(percent) or percent < 0.0 or percent > 100.0:
-            raise ValueError("initial_weak_particle_percent must be finite and between 0 and 100")
-        object.__setattr__(self, "initial_weak_particle_percent", float(percent))
         object.__setattr__(self, "initial_conditions", tuple(self.initial_conditions))
 
     @property
@@ -429,7 +393,7 @@ class VPMCase:
         """Keep attached VLM output under the VPM run.
 
         Standalone ``VLMSolver`` callers retain their own force
-        logging and ``VLMSampler`` API. Once VLM is attached to a VPM case,
+        logging. Once VLM is attached to a VPM case,
         accepted-step force/loading records are mandatory in the VPM-owned
         sample directory, and the surface frames follow the particle frames.
         """
@@ -446,11 +410,3 @@ class VPMCase:
             )
         if any(surface.sample_forces is False for surface in vlm.surfaces):
             raise ValueError("attached VLM surfaces cannot opt out of mandatory scientific output")
-        from ..sampling.vlm import VLMSampler
-
-        if any(isinstance(sample, VLMSampler) for sample in self.samplers.samples):
-            raise ValueError(
-                "VLMSampler is standalone-only for coupled VPM cases; "
-                "surface frames follow the particle frames and VLM tables "
-                "use the solver sample path"
-            )

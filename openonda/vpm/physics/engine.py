@@ -55,8 +55,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         -----
         Construction allocates device workspaces and diffusion support but
         does not move particles, advance time, or select a Runge--Kutta stage.
-        External velocity/body hooks are initialized to ``None`` and are
-        consumed by :mod:`stage_rhs`.
         """
         super().__init__(particle_kernel, max_n_particles, accumulator_dtype, max_evaluation_points)
         self._event_observer = event_observer or NullPhysicsEventObserver()
@@ -64,10 +62,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         # Reset by the coupler before each accepted VPM advance when a solid
         # numerical-exclusion guard is installed.
         self.last_solid_projection: dict[str, Any] | None = None
-
-        # Host body-velocity callbacks, consumed by StageRHS, never by the RK engine.
-        self.body_velocity = None
-        self.body_velocity_gradient = None
 
     def report_rows(self) -> list:
         """Return the physics-model configuration as log detail rows."""

@@ -36,7 +36,6 @@ def _physics(record: dict[str, object]) -> str:
     physics = {
         "numerics": numerics,
         "initial_conditions": configuration["initial_conditions"],
-        "initial_weak_particle_percent": configuration["initial_weak_particle_percent"],
     }
     return json.dumps(physics, sort_keys=True, allow_nan=False)
 

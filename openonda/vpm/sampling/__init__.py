@@ -3,7 +3,6 @@
 from .fields import LineSampler, SurfaceSampler
 from .flow_integrals import FlowIntegralsSampler
 from .manager import SamplerManager, SamplingContext
-from .vlm import VLMSampler
 
 __all__ = [
     "FlowIntegralsSampler",
@@ -11,5 +10,4 @@ __all__ = [
     "SamplerManager",
     "SamplingContext",
     "SurfaceSampler",
-    "VLMSampler",
 ]

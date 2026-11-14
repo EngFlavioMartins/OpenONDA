@@ -147,75 +147,6 @@ def _make_transport_target_velocity_kernel(radial_factors_: Callable) -> Callabl
     return compute_transport_target_velocity_kernel
 
 
-def _make_target_source_velocity_kernel(radial_factors_: Callable) -> Callable:
-    """Create the source-core radial velocity kernel with a finite centre limit."""
-
-    @ti.kernel
-    def compute_target_source_velocity_kernel(
-        target_position: ti.template(),
-        source_position: ti.template(),
-        source_strength: ti.template(),
-        source_core_radius: ti.template(),
-        target_velocity: ti.template(),
-        n_targets: ti.i32,
-        n_sources: ti.i32,
-    ):
-        """Compute velocity induced by source particles at target position."""
-        M = n_targets
-        N = n_sources
-        for i in range(M):
-            target_pos = target_position[i]
-            vel = target_pos * 0.0
-            for j in range(N):
-                pos_j = source_position[j]
-                strength_j = source_strength[j]
-                radii_j = source_core_radius[j]
-                r_ij = target_pos - pos_j
-                r_sq = r_ij.dot(r_ij)
-                r_mag = ti.sqrt(r_sq)
-                sigma = radii_j
-                factors = radial_factors_(r_mag / sigma, sigma, False)
-                vel += factors[0] * strength_j * r_ij
-            target_velocity[i] += vel
-
-    return compute_target_source_velocity_kernel
-
-
-def _make_target_source_velocity_gradient_kernel(radial_factors_: Callable) -> Callable:
-    """Create the Jacobian kernel for radial source-particle induction."""
-
-    @ti.kernel
-    def compute_target_source_velocity_gradient_kernel(
-        target_position: ti.template(),
-        source_position: ti.template(),
-        source_strength: ti.template(),
-        source_core_radius: ti.template(),
-        target_velocity_gradient: ti.template(),
-        n_targets: ti.i32,
-        n_sources: ti.i32,
-    ):
-        for i in range(n_targets):
-            # Derive the accumulator type from the destination field so the
-            # gradient path does not silently demote f64 VPM runs to f32.
-            gradient = target_velocity_gradient[i] * 0.0
-            target_pos = target_position[i]
-            for j in range(n_sources):
-                r_vec = target_pos - source_position[j]
-                r_sq = r_vec.dot(r_vec)
-                r_mag = ti.sqrt(r_sq)
-                sigma = source_core_radius[j]
-                factors = radial_factors_(r_mag / sigma, sigma, True)
-                for row in ti.static(range(3)):
-                    for column in ti.static(range(3)):
-                        identity = 1.0 if row == column else 0.0
-                        gradient[row, column] += source_strength[j] * (
-                            identity * factors[0] - factors[1] * r_vec[row] * r_vec[column]
-                        )
-            target_velocity_gradient[i] = gradient
-
-    return compute_target_source_velocity_gradient_kernel
-
-
 def _make_target_vorticity_kernel(zeta_: Callable) -> Callable:
     """Mini-factory: creates compute_target_vorticity_kernel capturing zeta_."""
 
@@ -539,12 +470,6 @@ def _create_target_eval_kernels(kernel_functions: dict[str, Callable]) -> dict[s
     return {
         "compute_target_velocity_kernel": _make_target_velocity_kernel(radial_factors_),
         "compute_transport_target_velocity_kernel": _make_transport_target_velocity_kernel(
-            radial_factors_
-        ),
-        "compute_target_source_velocity_kernel": _make_target_source_velocity_kernel(
-            radial_factors_
-        ),
-        "compute_target_source_velocity_gradient_kernel": _make_target_source_velocity_gradient_kernel(
             radial_factors_
         ),
         "compute_target_vorticity_kernel": _make_target_vorticity_kernel(zeta_),

@@ -161,6 +161,5 @@ class ParticleSnapshot:
         _copy_fields(self.buffer, particles, self.count, False)
         _rebuild_replacement_fields(particles, self.count)
         particles.n_particles_total = self.count
-        particles.sync_device_counter()
         particles.touch_state()
         particles._log_particles_replaced(previous)

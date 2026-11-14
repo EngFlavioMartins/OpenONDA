@@ -50,7 +50,6 @@ from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
 from ..physics.induction.base import StageRates, StageState
 from ..physics.stage_rhs import (
-    AxisymmetricNoSwirlStageProjection,
     ParticleExternalStageContribution,
     StageRHS,
     VLMStageContribution,
@@ -65,7 +64,6 @@ from ..stabilization import StabilizationManager
 from ..stabilization.context import (
     SolverParticleMutations,
     StabilizationContext,
-    StabilizationMetrics,
     StabilizationStepState,
 )
 from ..turbulence.les import ParticleLES
@@ -251,12 +249,6 @@ class VPMSolver:
         """Set the scalar solver state derived from the numerical settings."""
         final_setup = case.numerics
         self.time_step_size = final_setup.time_step_size
-        self._particle_regeneration_pending = False
-        axisymmetric_axis = final_setup.axisymmetric_no_swirl_axis
-        self.axisymmetric_axis = (
-            -1 if axisymmetric_axis is None else {"x": 0, "y": 1, "z": 2}[axisymmetric_axis]
-        )
-        self._axisymmetric_orbits_validated = False
 
         vc = final_setup.viscous
 
@@ -369,17 +361,7 @@ class VPMSolver:
             max_n_particles=max_p,
             dtype=self.accumulator_dtype,
         )
-        self._stage_providers = [
-            ParticleExternalStageContribution(self.particles, self.physics, self)
-        ]
-        if self.axisymmetric_axis >= 0:
-            self._stage_providers.append(
-                AxisymmetricNoSwirlStageProjection(
-                    self.physics,
-                    self.particles.zone_id,
-                    self.axisymmetric_axis,
-                )
-            )
+        self._stage_providers = [ParticleExternalStageContribution(self.particles)]
         from ..physics.induction.slip_slab import SlipSlabInduction
 
         viscous = final_setup.viscous
@@ -416,14 +398,6 @@ class VPMSolver:
                 )
 
             self.physics.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
-        self._source_batch_size = self.physics.max_evaluation_points
-        self.source_position = ti.Vector.field(
-            3, dtype=self.compute_dtype, shape=self._source_batch_size
-        )
-        self.source_strength = ti.field(dtype=self.compute_dtype, shape=self._source_batch_size)
-        self.source_core_radius = ti.field(dtype=self.compute_dtype, shape=self._source_batch_size)
-        self._surface_sources = None
-        self.n_sources = 0
         self.particles.set_freestream_velocity(np.array(self.numerics.freestream_velocity))
 
     def _initialize_turbulence(self, final_setup: Numerics) -> None:
@@ -465,7 +439,6 @@ class VPMSolver:
         # (xmin, xmax, ymin, ymax, zmin, zmax) in m: particles inside do not set the
         # Lagrangian CFL number. The coupler excludes the particles the FVM replaces.
         self.strain_excluded_bounds: tuple[float, ...] | None = None
-        self._body_induced_fn = None
         self._particles_removed_this_step = 0
         self._vortex_strength_removed_this_step = np.zeros(3, dtype=self.np_dtype)
 
@@ -491,7 +464,6 @@ class VPMSolver:
                 flow_model=self.flow_model,
                 state=stabilization_state,
                 mutations=SolverParticleMutations(self, stabilization_state),
-                metrics=StabilizationMetrics(),
                 slip_slab=getattr(self.physics, "_slip_slab_bounds", None),
             )
         )
@@ -509,7 +481,6 @@ class VPMSolver:
         self.stage_rhs = StageRHS(
             self.induction,
             providers=tuple(self._stage_providers),
-            strength_enabled=self.flow_model != "potential",
             # Core spreading changes every core radius before the first stage.
             retain_strength_rate=self.viscous_scheme != "cs",
             profiler=self.profiler,
@@ -545,8 +516,7 @@ class VPMSolver:
                 # phase. Its induced field is sampled at each temporary
                 # particle RK position through the common StageRHS boundary.
                 # Construct the immutable provider tuple only after optional
-                # solvers have initialized. VLM is first so the axisymmetric
-                # provider, when present, remains the final projection.
+                # solvers have initialized.
                 self._stage_providers.insert(
                     0,
                     VLMStageContribution(self.vlm_solver, self.physics, self.particles),
@@ -587,36 +557,6 @@ class VPMSolver:
             )
 
     # Basic protocol
-
-    def __len__(self) -> int:
-        """Return the number of particles in the system."""
-        return len(self.particles)
-
-    def __getitem__(self, index: int) -> ParticleRecord:
-        """Return a CPU snapshot of one active particle record.
-
-        Parameters
-        ----------
-        index : int
-            Zero-based active-particle index; negative indices follow the
-            container's normal Python indexing behavior.
-
-        Returns
-        -------
-        ParticleRecord
-            Dictionary of scalar/vector fields in SI units. Values are copies,
-            so editing the record does not mutate device state.
-        """
-        return self.particles[index]
-
-    def __iter__(self) -> Iterator[ParticleRecord]:
-        """Yield CPU snapshots for active particles in index order."""
-        for i in range(len(self)):
-            yield self[i]
-
-    def __str__(self) -> str:
-        """Return a formatted string summarizing the solver state."""
-        return Logging.solver_summary(self)
 
     # Time stepping
 
@@ -799,9 +739,6 @@ class VPMSolver:
             return
         status = RunStatus.failed
         failure: BaseException | None = None
-        limit = self.case.run.wall_time_limit_seconds
-        deadline = None if limit is None else self._run_wall_started_at + limit
-        budget_exhausted = False
         primary_failure: BaseException | None = None
         try:
             self._build_initial_conditions()
@@ -816,9 +753,6 @@ class VPMSolver:
                 self._sampler_manager.resume()
             self.write_initial_output()
             for _ in range(remaining_steps):
-                if deadline is not None and perf_counter() >= deadline:
-                    budget_exhausted = True
-                    break
                 try:
                     self.advance()
                 except ParticleStateError as error:
@@ -843,9 +777,7 @@ class VPMSolver:
                             f"{type(state_limit_failure).__name__}: {state_limit_failure}"
                         )
                     raise
-                if budget_exhausted:
-                    status = RunStatus.wall_time_limit
-                elif state_limit_failure is not None:
+                if state_limit_failure is not None:
                     status = RunStatus.resolution_lost
                     failure = state_limit_failure
                 else:
@@ -947,8 +879,6 @@ class VPMSolver:
                 group_id=particles.group_id,
                 zone_id=particles.zone_id,
             )
-        if self.case.initial_weak_particle_percent > 0.0:
-            self.remove_weak_particles(self.case.initial_weak_particle_percent)
         self._n_initial_particles = int(self.particles.n_particles_total)
         self._initial_conditions_built = True
 
@@ -1408,11 +1338,6 @@ class VPMSolver:
             self.particle_vortex_strength.astype(np.float64),
         ).sum(axis=0, dtype=np.float64)
 
-    @property
-    def vortex_centroid(self) -> np.ndarray:
-        """Return the global strength-magnitude-weighted centroid, shape ``(3,)`` in m."""
-        return self.field_diagnostics.compute_vortex_centroid(self.particles)
-
     def compute_forces(
         self, density: float | None = None, reference_speed: float | None = None
     ) -> dict[str, np.ndarray | float]:
@@ -1503,7 +1428,7 @@ class VPMSolver:
         *,
         include_body: bool,
     ) -> np.ndarray:
-        """Add source-particle and body-potential terms to particle induction."""
+        """Add the attached VLM velocity to particle induction."""
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
         velocity = np.array(particle_velocity, dtype=self.np_dtype, copy=True).reshape(-1, 3)
         if len(velocity) != len(points):
@@ -1511,56 +1436,26 @@ class VPMSolver:
 
         vlm = self.vlm_solver
         add_vlm = include_body and vlm is not None and vlm._solved
-        if self.n_sources > 0 or add_vlm:
+        if add_vlm:
             for start, stop in self.physics._target_batch_slices(len(points)):
                 count = stop - start
                 positions = self.physics.target_position
                 velocities = self.physics.target_velocity
                 self.physics.upload_vector_array(points[start:stop], positions, count)
                 self.physics.upload_vector_array(velocity[start:stop], velocities, count)
-                for source_count in self._surface_source_batches():
-                    self.physics.kernels["compute_target_source_velocity_kernel"](
-                        positions,
-                        self.source_position,
-                        self.source_strength,
-                        self.source_core_radius,
-                        velocities,
-                        count,
-                        source_count,
-                    )
-                if add_vlm:
-                    vlm.add_stage_velocity(positions, velocities, count, self.time)
+                vlm.add_stage_velocity(positions, velocities, count, self.time)
                 velocity[start:stop] = self.physics.extract_target_velocity(count)
-
-        body_fn = self._body_induced_fn
-        if include_body and body_fn is not None:
-            velocity = velocity + np.asarray(
-                body_fn(points, self.time), dtype=velocity.dtype
-            ).reshape(velocity.shape)
 
         return velocity
 
     def _nonparticle_target_velocity(self, evaluation_position: np.ndarray) -> np.ndarray:
-        """Return only regularized-source and body-potential target velocity."""
+        """Return only the attached-VLM target velocity."""
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
         return self._add_target_velocity_corrections(
             points,
             np.zeros((len(points), 3), dtype=self.np_dtype),
             include_body=True,
         )
-
-    def _surface_source_batches(self) -> Iterator[int]:
-        """Upload every source through the reusable device workspace."""
-        if not self.n_sources:
-            return
-        positions, strengths, radii = self._surface_sources
-        for start in range(0, self.n_sources, self._source_batch_size):
-            stop = min(start + self._source_batch_size, self.n_sources)
-            count = stop - start
-            self.physics.upload_vector_array(positions[start:stop], self.source_position, count)
-            self.physics._upload_scalar_array(strengths[start:stop], self.source_strength, count)
-            self.physics._upload_scalar_array(radii[start:stop], self.source_core_radius, count)
-            yield count
 
     def compute_velocity_gradient_at_points(
         self, evaluation_position: np.ndarray, *, particle_spacing: float
@@ -1579,7 +1474,7 @@ class VPMSolver:
             Target coordinates, shape ``(N, 3)``, in m.
         particle_spacing : float
             Positive coupling/resolution spacing in m. It scales the centered
-            difference used only for auxiliary source/body terms.
+            difference used only for the attached-VLM term.
 
         Returns
         -------
@@ -1589,7 +1484,7 @@ class VPMSolver:
         Raises
         ------
         RuntimeError
-            If a body callback returns non-finite or incorrectly shaped data.
+            If the complete gradient is not finite.
         """
         points = np.asarray(evaluation_position, dtype=np.float64).reshape(-1, 3)
         # Use the same approximation as the target velocity.  Mixing a
@@ -1612,8 +1507,7 @@ class VPMSolver:
         if len(points) == 0:
             return gradient
 
-        needs_finite_difference = self.n_sources > 0 or has_vlm or self._body_induced_fn is not None
-        if not needs_finite_difference:
+        if not has_vlm:
             return gradient
 
         step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
@@ -1623,8 +1517,6 @@ class VPMSolver:
             offset[axis] = step
             plus = velocity_at(points + offset)
             minus = velocity_at(points - offset)
-            if plus.shape != points.shape or minus.shape != points.shape:
-                raise RuntimeError("VPM body-velocity callback returned an invalid shape")
             gradient[:, :, axis] += (plus - minus) / (2.0 * step)
         if not np.all(np.isfinite(gradient)):
             raise RuntimeError("Complete VPM target-gradient evaluation returned non-finite data")
@@ -1636,14 +1528,14 @@ class VPMSolver:
         """Evaluate body-complete target velocity and Jacobian together.
 
         Treecode runs build and traverse the particle hierarchy once, then add
-        the regularized-source and body-potential velocity and Jacobian terms.
+        the attached-VLM velocity and Jacobian terms.
 
         Parameters
         ----------
         evaluation_position : numpy.ndarray
             Target coordinates, shape ``(N, 3)``, in m.
         particle_spacing : float
-            Coupling spacing in m for centered differences of auxiliary terms.
+            Coupling spacing in m for centered differences of the attached-VLM term.
 
         Returns
         -------
@@ -1674,7 +1566,7 @@ class VPMSolver:
 
         The mixed FVM boundary condition does not consume the full nine-component
         Jacobian. Particle induction is still evaluated by the configured fused
-        target operation. Auxiliary source, VLM, and body-callback terms use
+        target operation. The attached-VLM term uses
         only two centred samples along each face normal instead of three
         coordinate-direction pairs.
 
@@ -1684,7 +1576,7 @@ class VPMSolver:
             Face points and normals, both shape ``(N, 3)``. Positions are in m;
             normals are dimensionless and must be finite/non-zero.
         particle_spacing : float
-            Centered-difference spacing in m for auxiliary source/body terms.
+            Centered-difference spacing in m for the attached-VLM term.
 
         Returns
         -------
@@ -1717,14 +1609,11 @@ class VPMSolver:
             "fij,fj->fi", np.asarray(gradient, dtype=np.float64).reshape(-1, 3, 3), unit_normals
         )
         has_vlm = self.vlm_solver is not None and self.vlm_solver._solved
-        needs_finite_difference = self.n_sources > 0 or has_vlm or self._body_induced_fn is not None
-        if needs_finite_difference:
+        if has_vlm:
             step = max(1.0e-6, 1.0e-3 * float(particle_spacing))
             velocity_at = self._nonparticle_target_velocity
             plus = velocity_at(points + step * unit_normals)
             minus = velocity_at(points - step * unit_normals)
-            if plus.shape != points.shape or minus.shape != points.shape:
-                raise RuntimeError("VPM body-velocity callback returned an invalid shape")
             normal_velocity_gradient += (plus - minus) / (2.0 * step)
         tangential = (
             normal_velocity_gradient
@@ -1751,7 +1640,7 @@ class VPMSolver:
         self._particles_removed_this_step = len(self.particles)
         self._vortex_strength_removed_this_step = self.particles.net_vortex_strength()
         self.stabilization.on_removal(remove_all=True)
-        self.particles.remove_vortex_particles((), remove_all=True)
+        self.particles.remove_all_particles()
 
     def add_vortex_particles(
         self,
@@ -1797,8 +1686,8 @@ class VPMSolver:
 
         Side Effects
         ------------
-        Appends and copies the batch into device fields, resets axisymmetric
-        orbit validation, and updates stabilization refinement reference/reference totals.
+        Appends and copies the batch into device fields and updates stabilization
+        refinement reference/reference totals.
         """
         if kinematic_viscosity is None:
             kinematic_viscosity = getattr(self._viscous_config, "kinematic_viscosity", None)
@@ -1824,7 +1713,6 @@ class VPMSolver:
             zone_id=zone_id,
             velocity_gradient=velocity_gradient,
         )
-        self._axisymmetric_orbits_validated = False
         magnitude = np.linalg.norm(np.asarray(vortex_strength, dtype=np.float64), axis=1)
         self.stabilization.on_add(
             magnitude,
@@ -1879,8 +1767,8 @@ class VPMSolver:
 
         Side Effects
         ------------
-        Clears/repopulates active device fields, invalidates caches, resets
-        axisymmetric validation, and notifies stabilization of replacement.
+        Clears/repopulates active device fields, invalidates caches, and
+        notifies stabilization of replacement.
         """
         if report_removal:
             vortex_strength_removed = (
@@ -1916,7 +1804,6 @@ class VPMSolver:
             velocity_gradient=velocity_gradient,
             strain_rate=strain_rate,
         )
-        self._axisymmetric_orbits_validated = False
         magnitude = np.linalg.norm(np.asarray(vortex_strength, dtype=np.float64), axis=1)
         self.stabilization.on_replacement(magnitude, particle_volume)
 
@@ -1959,24 +1846,8 @@ class VPMSolver:
             else None
         )
         snapshot.restore(self.particles)
-        self._axisymmetric_orbits_validated = False
         if refinement_reference is not None:
             self.stabilization.on_replacement(*refinement_reference)
-
-    def load_particle_field(
-        self, particle_file_name: str | Path, remove_current_particles: bool = False
-    ) -> None:
-        """Add the particles of a particle file to the active cloud.
-
-        Parameters
-        ----------
-        particle_file_name : str or pathlib.Path
-            Particle file readable by :meth:`Particles.load_vortex_particles`.
-        remove_current_particles : bool, default=False
-            Remove the current particles first.
-        """
-        self.particles.load_vortex_particles(str(particle_file_name), remove_current_particles)
-        Logging.info(f"Particle field loaded: {particle_file_name}")
 
     @staticmethod
     def _validate_particle_property(
@@ -2257,18 +2128,6 @@ class VPMSolver:
             )
         self.physics.compute_vorticities(self.particles)
 
-    def write_state(self, path: str | Path) -> Path:
-        """Write the active particles to the VTK PolyData file ``path``.
-
-        Returns
-        -------
-        pathlib.Path
-            The written file.
-        """
-        path = Path(path)
-        self.particles.save_vortex_particles(str(path), write_precision=self.write_precision)
-        return path
-
     # Particle updates
 
     def set_freestream_velocity(self, velocity: list[float] | np.ndarray) -> None:
@@ -2352,47 +2211,3 @@ class VPMSolver:
             )
 
         return n_removed
-
-    def remove_weak_particles(self, percent: float) -> int:
-        """Remove particles below a percentage of maximum strength.
-
-        Parameters
-        ----------
-        percent : float
-            Threshold in ``[0, 100]`` applied to particle-strength vector magnitude.
-
-        Returns
-        -------
-        int
-            Number of removed particles.
-
-        Raises
-        ------
-        ValueError
-            If ``percent`` is outside ``[0, 100]``.
-        """
-        if percent < 0 or percent > 100:
-            raise ValueError("Percent must be between 0 and 100")
-
-        if len(self.particles) == 0:
-            return 0
-
-        particles_before = len(self.particles)
-
-        removed_indices = self.particles._remove_weak_particles(
-            percent=percent,
-        )
-        if removed_indices is not None and len(removed_indices) > 0:
-            keep = np.ones(particles_before, dtype=bool)
-            keep[np.asarray(removed_indices, dtype=np.int64)] = False
-            self.stabilization.on_removal(keep_mask=keep)
-
-        if len(self.particles) > 0:
-            self.physics.compute_vorticities(self.particles)
-
-        particles_after = len(self.particles)
-        particles_removed = particles_before - particles_after
-
-        Logging.particle_cleanup(percent, particles_before, particles_removed, particles_after)
-
-        return particles_removed

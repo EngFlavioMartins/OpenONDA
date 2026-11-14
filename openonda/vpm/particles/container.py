@@ -3,12 +3,9 @@
 from collections.abc import Sequence
 
 import numpy as np
-import pyvista as pv
 import taichi as ti
 
 from openonda.core import log_style
-from openonda.core.vtk_output import write_vtk_dataset
-from openonda.core.write_precision import DEFAULT_WRITE_PRECISION, cast_for_write
 
 from ..config.constants import MAX_N_PARTICLES
 from ..config.state import cached_particle_property
@@ -122,7 +119,6 @@ class Particles:
         self.float_dtype = float_dtype or "f32"
         self._taichi_dtype = ti.f32 if self.float_dtype == "f32" else ti.f64
         self.n_particles_total = 0
-        self.step = 0  # For cache invalidation
         # Monotone source-state version for consumers that cache spatial
         # acceleration structures.  Velocity/diagnostic writes do not affect
         # Biot-Savart sources; position, vortex strength, core_radius, and particle count do.
@@ -171,9 +167,6 @@ class Particles:
         self.strain_rate = ti.Matrix.field(3, 3, dtype=dtype, shape=self._max_particles)
         self.zone_id = ti.field(dtype=ti.i32, shape=self._max_particles)
 
-        # Device-side counter for atomic operations
-        self.device_n_particles = ti.field(dtype=ti.i32, shape=())
-
         # Removal tag field for GPU-based particle filtering (1 = remove, 0 = keep)
 
         # Device-side accumulators for subset moment reductions (e.g. vortex strength
@@ -184,10 +177,6 @@ class Particles:
         # Global background velocity (single 3D vector shared by all particles)
         self.velocity_background = ti.Vector.field(3, dtype=dtype, shape=())
         self.velocity_background[None] = [0.0, 0.0, 0.0]
-
-    def sync_device_counter(self) -> None:
-        """Sync host particle count to device field."""
-        self.device_n_particles[None] = self.n_particles_total
 
     def _grow_capacity(self, needed: int) -> None:
         """Validate that a particle insertion fits the startup allocation."""
@@ -295,25 +284,6 @@ class Particles:
             "int": self._copy_ints_chunked,
         }[family]
         copy(values, field, 0, count)
-
-    def _extract_cpu_data(self, n_particles_total: int) -> dict[str, np.ndarray]:
-        """Extract current data as NumPy arrays (only active prefix)."""
-        n = n_particles_total
-        return {
-            "position": self._extract_vector(self.position, n),
-            "velocity": self._extract_vector(self.velocity, n),
-            "vortex_strength": self._extract_vector(self.vortex_strength, n),
-            "core_radius": self._extract_scalar(self.core_radius, n),
-            "particle_volume": self._extract_scalar(self.particle_volume, n),
-            "kinematic_viscosity": self._extract_scalar(self.kinematic_viscosity, n),
-            "eddy_viscosity": self._extract_scalar(self.eddy_viscosity, n),
-            "effective_viscosity": self._extract_scalar(self.effective_viscosity, n),
-            "group_id": self._extract_int(self.group_id, n),
-            "velocity_gradient": self._extract_matrix(self.velocity_gradient, n),
-            "strain_rate": self._extract_matrix(self.strain_rate, n),
-            "vorticity": self._extract_vector(self.vorticity, n),
-            "zone_id": self._extract_int(self.zone_id, n),
-        }
 
     @ti.kernel
     def _compute_strain_rate_tensor(
@@ -521,7 +491,7 @@ class Particles:
         zone_id: np.ndarray,
         velocity_gradient: np.ndarray,
         strain_rate: np.ndarray,
-    ) -> bool:
+    ) -> None:
         """Fast batch addition using direct NumPy-to-Taichi copy kernels.
 
         This method uses the pre-compiled _copy_to_taichi_* kernels to copy
@@ -533,9 +503,6 @@ class Particles:
         """
         N = position.shape[0]
         start_idx = self.n_particles_total
-
-        if start_idx + N > self._max_particles:
-            return False
 
         # Copy vectors directly using pre-compiled kernels (no temp fields!)
         self._copy_vectors_chunked(position, self.position, start_idx, N)
@@ -554,8 +521,6 @@ class Particles:
 
         self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
         self._copy_matrices_chunked(strain_rate, self.strain_rate, start_idx, N)
-
-        return True
 
     def _copy_vectors_chunked(
         self, src: np.ndarray, dest: ti.Field, start_idx: int, count: int
@@ -1007,10 +972,7 @@ class Particles:
         total_particles = self.n_particles_total + N
         self._grow_capacity(total_particles)
 
-        start_idx = self.n_particles_total
-
-        # Try fast batch add first (for initial particle loading)
-        if not self._fast_batch_add(
+        self._fast_batch_add(
             position,
             velocity,
             vortex_strength,
@@ -1024,21 +986,7 @@ class Particles:
             zone_id,
             velocity_gradient,
             strain_rate,
-        ):
-            # Fall back to element-by-element copy for appending
-            self._copy_vectors_chunked(position, self.position, start_idx, N)
-            self._copy_vectors_chunked(velocity, self.velocity, start_idx, N)
-            self._copy_vectors_chunked(vortex_strength, self.vortex_strength, start_idx, N)
-            self._copy_vectors_chunked(vorticity, self.vorticity, start_idx, N)
-            self._copy_scalars_chunked(core_radius, self.core_radius, start_idx, N)
-            self._copy_scalars_chunked(particle_volume, self.particle_volume, start_idx, N)
-            self._copy_scalars_chunked(kinematic_viscosity, self.kinematic_viscosity, start_idx, N)
-            self._copy_scalars_chunked(eddy_viscosity, self.eddy_viscosity, start_idx, N)
-            self._copy_scalars_chunked(effective_viscosity, self.effective_viscosity, start_idx, N)
-            self._copy_ints_chunked(group_id, self.group_id, start_idx, N)
-            self._copy_ints_chunked(zone_id, self.zone_id, start_idx, N)
-            self._copy_matrices_chunked(velocity_gradient, self.velocity_gradient, start_idx, N)
-            self._copy_matrices_chunked(strain_rate, self.strain_rate, start_idx, N)
+        )
 
         self.n_particles_total = total_particles
 
@@ -1113,7 +1061,6 @@ class Particles:
         N = position.shape[0]
         if N == 0:
             self.n_particles_total = 0
-            self.sync_device_counter()
             self.touch_state()
             self._log_particles_replaced(previous)
             return
@@ -1168,227 +1115,15 @@ class Particles:
             vorticity,
             zone_id,
         )
-        self.sync_device_counter()
         self.touch_state()
         self._log_particles_replaced(previous)
 
-    # GPU-to-GPU data transfer
+    def remove_all_particles(self) -> None:
+        """Set the active count to zero and increment the source-state revision.
 
-    def save_vortex_particles(
-        self,
-        particle_file_name: str,
-        write_precision: str = DEFAULT_WRITE_PRECISION,
-    ) -> None:
-        """Export the particle cloud to a VTP point cloud.
-
-        Point coordinates already carry the positions, and strain rate is the
-        symmetric part of the velocity gradient, so neither is stored again;
-        ParaView derives the magnitude of any vector on its own.
-
-        Parameters
-        ----------
-        particle_file_name : str
-            Destination VTP path. Parent-directory handling is delegated to
-            the VTK writer.
-        write_precision : str, default=DEFAULT_WRITE_PRECISION
-            Decimal precision used for serialized arrays; compute precision is
-            unchanged.
-
-        Side Effects
-        ------------
-        Downloads active fields to the CPU and writes a VTK PolyData file. It
-        does not mutate numerical fields.
+        Unused capacity is retained.
         """
-        n = int(self.n_particles_total)
-        point_cloud = pv.PolyData(cast_for_write(self.position_cpu(), write_precision))
-        fields = {
-            "velocity": self.velocity_cpu(),
-            "vortex_strength": self.vortex_strength_cpu(),
-            "core_radius": self.core_radius_cpu(),
-            "particle_volume": self.particle_volume_cpu(),
-            "kinematic_viscosity": self.kinematic_viscosity_cpu(),
-            "eddy_viscosity": self.eddy_viscosity_cpu(),
-            "effective_viscosity": self.effective_viscosity_cpu(),
-            "group_id": self.group_id_cpu(),
-            "zone_id": self.zone_id_cpu(),
-            "vorticity": self.vorticity_cpu(),
-            "velocity_gradient": self.velocity_gradient_cpu().reshape(n, 9),
-        }
-        for name, values in fields.items():
-            point_cloud.point_data[name] = cast_for_write(values, write_precision)
-        write_vtk_dataset(point_cloud, particle_file_name)
-
-        Logging.record(
-            "particle output written",
-            ("format", "vtk"),
-            ("particles", f"{n:,}"),
-            ("path", str(particle_file_name)),
-        )
-
-    def load_vortex_particles(
-        self, particle_file_name: str, remove_current_particles: bool = True
-    ) -> None:
-        """Import particle data from a VTP file.
-
-        Parameters
-        ----------
-        particle_file_name : str
-            Input VTP path containing the standard particle arrays.
-        remove_current_particles : bool, default=True
-            Replace the active cloud when true; append loaded values otherwise.
-
-        Raises
-        ------
-        KeyError
-            If a required point-data field is missing.
-
-        Side Effects
-        ------------
-        Reads the file, mutates the active device cloud, and records a load
-        event. The loaded arrays are converted to the container precision.
-        """
-
-        if remove_current_particles:
-            self.n_particles_total = 0
-
-        point_cloud = pv.read(particle_file_name)
-        position = np.array(point_cloud.points, dtype=np.float32)
-        point_data = point_cloud.point_data
-
-        def _read(name: str) -> np.ndarray:
-            if name in point_data:
-                return point_data[name]
-            raise KeyError(f"particle field {name!r} is missing from {particle_file_name!r}")
-
-        velocity = np.array(_read("velocity"), dtype=np.float32)
-        vortex_strength = np.array(_read("vortex_strength"), dtype=np.float32)
-        core_radius = np.array(_read("core_radius"), dtype=np.float32)
-        particle_volume = np.array(_read("particle_volume"), dtype=np.float32)
-        kinematic_viscosity = np.array(_read("kinematic_viscosity"), dtype=np.float32)
-        viscosities_t = np.array(_read("eddy_viscosity"), dtype=np.float32)
-        group_id = np.array(_read("group_id"), dtype=np.int32)
-        velocity_gradient = np.array(_read("velocity_gradient"), dtype=np.float32)
-        velocity_gradient = velocity_gradient.reshape(len(velocity_gradient), 3, 3)
-
-        # Use the class's add_particle_field method for consistency
-        self.add_vortex_particles(
-            position=position,
-            velocity=velocity,
-            vortex_strength=vortex_strength,
-            core_radius=core_radius,
-            particle_volume=particle_volume,
-            kinematic_viscosity=kinematic_viscosity,
-            eddy_viscosity=viscosities_t,
-            group_id=group_id,
-            velocity_gradient=velocity_gradient,
-        )
-
-        Logging.record(
-            "particle field loaded",
-            ("format", "vtk"),
-            ("particles", f"{len(self):,}"),
-            ("path", str(particle_file_name)),
-        )
-
-    def _remove_weak_particles(self, percent: float = 0.0) -> np.ndarray:
-        """Remove particles below a fraction of the global maximum strength.
-
-        Parameters
-        ----------
-        percent : float, default=0.0
-            Percentage threshold relative to the cloud-wide maximum
-            vortex-strength magnitude, in the range 0--100.
-
-        Returns
-        -------
-        numpy.ndarray
-            Original active indices removed, shape ``(K,)``, dtype int64.
-
-        Notes
-        -----
-        This low-level helper keeps at least one particle when all entries
-        would otherwise be selected. The public solver wrapper handles
-        stabilization bookkeeping.
-        """
-        N = self.n_particles_total
-
-        # Early return if no particles or no removal requested
-        if N == 0 or percent <= 0.0:
-            return np.empty(0, dtype=np.int64)
-
-        vortex_strength = self.vortex_strength_cpu()
-        vortex_strength_magnitudes = np.linalg.norm(vortex_strength, axis=1)
-
-        max_strength_global = np.max(vortex_strength_magnitudes)
-        if max_strength_global == 0:
-            Logging.warning(
-                "Weak-strength removal skipped because the vortex-strength field is zero"
-            )
-            return np.empty(0, dtype=np.int64)
-        else:
-            cutoff = (percent / 100.0) * max_strength_global
-            remove_mask = vortex_strength_magnitudes < cutoff
-
-        indices_to_remove = np.where(remove_mask)[0]
-
-        if len(indices_to_remove) > 0:
-            # Never remove all particles by weak-strength removal (keep at least one)
-            if len(indices_to_remove) >= N:
-                Logging.warning_record(
-                    "Weak-strength removal skipped: all particles were selected for removal",
-                    ("particles retained", N),
-                )
-                return np.empty(0, dtype=np.int64)
-
-            self.remove_vortex_particles(indices=indices_to_remove, remove_all=False)
-        return indices_to_remove
-
-    def remove_vortex_particles(
-        self, indices: np.ndarray | list[int], remove_all: bool = False
-    ) -> None:
-        """Remove indexed particles or clear the active cloud.
-
-        Parameters
-        ----------
-        indices : array-like or None
-            Active indices to remove when ``remove_all`` is false.
-        remove_all : bool, default=False
-            Set the active count to zero when true.
-
-        Side Effects
-        ------------
-        Compacts/repopulates every particle field, updates the active count,
-        and increments the source-state revision. Unused capacity is retained.
-        """
-        if remove_all:
-            self.n_particles_total = 0
-        else:
-            current_data = self._extract_cpu_data(self.n_particles_total)
-
-            mask = np.ones(self.n_particles_total, dtype=bool)
-            mask[indices] = False
-
-            # Filter all arrays
-            filtered_data = {
-                "position": current_data["position"][mask],
-                "velocity": current_data["velocity"][mask],
-                "vortex_strength": current_data["vortex_strength"][mask],
-                "core_radius": current_data["core_radius"][mask],
-                "particle_volume": current_data["particle_volume"][mask],
-                "kinematic_viscosity": current_data["kinematic_viscosity"][mask],
-                "eddy_viscosity": current_data["eddy_viscosity"][mask],
-                "effective_viscosity": current_data["effective_viscosity"][mask],
-                "group_id": current_data["group_id"][mask],
-                "velocity_gradient": current_data["velocity_gradient"][mask],
-                "strain_rate": current_data["strain_rate"][mask],
-                "vorticity": current_data["vorticity"][mask],
-                "zone_id": current_data["zone_id"][mask],
-            }
-
-            # Repopulate fields with filtered data
-            self.n_particles_total = 0  # Reset count
-            if filtered_data["position"].shape[0] > 0:
-                self._populate_from_numpy(**filtered_data)
+        self.n_particles_total = 0
         self.touch_state()
 
     def set_field(self, field_name: str, values: np.ndarray) -> None:
@@ -1539,7 +1274,6 @@ class Particles:
         )
 
         self.n_particles_total += count
-        self.sync_device_counter()
         self.touch_state()
         self._log_particles_added(count)
         return True

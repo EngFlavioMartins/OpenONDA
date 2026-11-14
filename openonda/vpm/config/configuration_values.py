@@ -74,8 +74,6 @@ def numerical_configuration(setup: Numerics) -> dict[str, Any]:
     the JSON strings ``Infinity`` and ``-Infinity``.
     """
     return {
-        "axisymmetric_no_swirl_axis": setup.axisymmetric_no_swirl_axis,
-        "cutoff_radius_factor": setup.cutoff_radius_factor,
         "domain_bounds": _configuration_value(setup.domain_bounds),
         "state_limits": _configuration_value(setup.state_limits),
         "max_n_particles": setup.max_n_particles,

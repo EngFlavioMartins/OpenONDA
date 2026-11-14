@@ -52,7 +52,7 @@ from .physics.induction.gaussian_mesh.parameters import GaussianMeshParameters
 from .physics.induction.gaussian_mesh.session import GaussianSlabSettings
 from .physics.induction.slip_slab import SlipSlabInduction
 from .physics.induction.treecode import TreecodeInduction
-from .sampling import FlowIntegralsSampler, LineSampler, SurfaceSampler, VLMSampler
+from .sampling import FlowIntegralsSampler, LineSampler, SurfaceSampler
 from .stabilization import (
     DivergenceRelaxationError,
     FilamentRefinementError,
@@ -112,7 +112,6 @@ __all__ = [
     "TurbulenceConfig",
     "VLMConfig",
     "VLMMeshConfig",
-    "VLMSampler",
     "VLMSurface",
     "VPMCase",
     "VPMSolver",

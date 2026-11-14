@@ -27,10 +27,9 @@ class ViscousConfig:
     dvh_grid_spacing : float or None
         Positive DVH regeneration-grid spacing ``h`` in m. The factory defaults
         it to ``particle_spacing``.
-    dvh_domain_padding, gbd_domain_padding : float, default=3.0
-        Number of grid cells padded beyond the active particle bounds. The
-        :meth:`dvh` and :meth:`gbd` factories default to 20.
-    dvh_threshold, gbd_threshold : float, default=0.01
+    dvh_domain_padding, gbd_domain_padding : float, default=20.0
+        Number of grid cells padded beyond the active particle bounds.
+    dvh_threshold, gbd_threshold : float, default=1e-5
         Weak-strength removal thresholds interpreted by the corresponding threshold mode.
         ``budget`` is the allowed discarded L1 fraction, ``relative_max`` is a
         fraction of peak node strength, and ``absolute`` is a threshold in m³/s.
@@ -82,10 +81,10 @@ class ViscousConfig:
     dvh_grid_spacing: float | None = None
     """DVH regeneration-grid spacing [m]."""
 
-    dvh_domain_padding: float = 3.0
+    dvh_domain_padding: float = 20.0
     """DVH domain padding in grid cells."""
 
-    dvh_threshold: float = 0.01
+    dvh_threshold: float = 1e-5
     """DVH weak-strength removal threshold interpreted by ``dvh_threshold_mode``."""
 
     dvh_threshold_mode: str = "budget"
@@ -94,10 +93,10 @@ class ViscousConfig:
     gbd_grid_spacing: float | None = None
     """GBD regeneration-grid spacing [m]."""
 
-    gbd_domain_padding: float = 3.0
+    gbd_domain_padding: float = 20.0
     """GBD domain padding in grid cells."""
 
-    gbd_threshold: float = 0.01
+    gbd_threshold: float = 1e-5
     """GBD weak-strength removal threshold interpreted by ``gbd_threshold_mode``."""
 
     gbd_threshold_mode: str = "budget"
