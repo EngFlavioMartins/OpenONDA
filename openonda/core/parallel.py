@@ -1,10 +1,14 @@
 """Error propagation around local work in a collective solver run."""
 
+from __future__ import annotations
+
+from collections.abc import Iterator
 from contextlib import contextmanager
 import time
+from typing import Any
 
 
-def _wait_completion(request):
+def _wait_completion(request: Any) -> BaseException | None:
     """Complete a phase rendezvous without spending the wait busy-polling.
 
     A few immediate tests keep short phases cheap. Longer waits sleep for
@@ -40,7 +44,7 @@ def _wait_completion(request):
 
 
 @contextmanager
-def collective_phase(comm, description: str):
+def collective_phase(comm: Any, description: str) -> Iterator[None]:
     """Finish local work on every rank before propagating any failure.
 
     All ranks enter in the same order. The body must contain local work only;

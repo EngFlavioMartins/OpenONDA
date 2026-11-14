@@ -1,6 +1,6 @@
 """Configuration classes of the FVM solver."""
 
-from .boundaries import BoundaryConfig
+from .boundaries import BoundaryConfig, VelocityBoundary
 from .case import FVMCase, InitialFields, MeshSource, RunPlan
 from .mesh_quality import MeshQualityConfig
 from .numerics import (
@@ -36,4 +36,5 @@ __all__ = [
     "Samplers",
     "TransportConfig",
     "TurbulenceConfig",
+    "VelocityBoundary",
 ]

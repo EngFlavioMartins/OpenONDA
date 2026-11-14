@@ -4,8 +4,8 @@ from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
+from openonda.core.forcing import VelocityRamp
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly, Schedule
-from openonda.core.simulation.forcing import VelocityRamp
 
 __all__ = ["Backup", "CouplerConfig"]
 

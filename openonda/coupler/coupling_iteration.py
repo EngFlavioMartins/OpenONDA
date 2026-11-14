@@ -8,7 +8,7 @@ from typing import TypeAlias, TypedDict
 
 import numpy as np
 
-from openonda.core.simulation.parallel import collective_phase
+from openonda.core.parallel import collective_phase
 from openonda.fvm.io.backup import capture_restart_state, restore_restart_state
 
 from .boundary import advance_fvm, reference_speed, update_boundary_history_after_replacement

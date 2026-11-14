@@ -11,8 +11,8 @@ outer wake::
         solver.run(start_from="latest")
 """
 
+from openonda.core.forcing import VelocityRamp
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly
-from openonda.core.simulation.forcing import VelocityRamp
 from openonda.core.status import RunStatus
 
 from .config import Backup, CouplerConfig

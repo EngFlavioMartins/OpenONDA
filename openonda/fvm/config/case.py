@@ -10,11 +10,9 @@ from typing import Protocol, TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 
-from openonda.core.simulation.forcing import VelocityBoundary
-
 from ..motion.mesh_motion import MeshMotion
 from ._validation import finite_real, vector_or_field
-from .boundaries import BoundaryConfig
+from .boundaries import BoundaryConfig, VelocityBoundary
 from .mesh_quality import MeshQualityConfig
 from .numerics import Numerics
 from .output import Backup, LoggingConfig, Output, Samplers

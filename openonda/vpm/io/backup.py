@@ -8,12 +8,16 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import h5py
 import numpy as np
 
 from ...core.clock import time_tolerance
+from ...core.restart import select_backup
+from ...core.solution_layout import vpm_backup_files
+from ...core.vtk_output import rewind_collection
 from ..config.configuration_values import numerical_configuration
 from ..config.restart_changes import validate_configuration_changes
 from ..config.state_limits import ParticleStateMetrics
@@ -112,6 +116,41 @@ def _numerical_configuration(solver: Any) -> dict[str, Any]:
 def _configuration_values(configuration: dict[str, Any]) -> str:
     """Serialize a numerical configuration deterministically for a restart."""
     return json.dumps(configuration, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def select_vpm_backup(start_from: str | Path | None, directory: str | Path) -> Path | None:
+    """Select the backup a VPM run starts from, checking the latest file's step.
+
+    ``start_from`` and the result follow :func:`openonda.core.restart.select_backup`.
+    For ``"latest"`` the step recorded inside the file must equal the step in
+    its name, so a renamed or truncated file is not taken for the newest state.
+    """
+    latest = select_backup(start_from, vpm_backup_files(directory))
+    if latest is None or start_from != "latest":
+        return latest
+    try:
+        with h5py.File(latest, "r") as archive:
+            recorded = int(archive["solver"].attrs["step"])
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid latest VPM backup {latest}: {exc}") from exc
+    named = int(latest.stem.removeprefix("vpm_"))
+    if recorded != named:
+        raise ValueError(
+            f"VPM backup {latest} records step {recorded}, but its filename says {named}"
+        )
+    return latest
+
+
+def rewind_vpm_frames(directory: str | Path, step: int, time: float) -> None:
+    """Delete output frames beyond the restored step and flow time."""
+    directory = Path(directory)
+    for component in ("vpm", "vlm"):
+        rewind_collection(directory / f"{component}.pvd", time)
+    for component in ("vpm", "vlm"):
+        for path in (directory / component).glob(f"{component}_*"):
+            match = re.fullmatch(rf"{component}_(\d+)\.(h5|vtu|vtp)(\.tmp)?", path.name)
+            if match and int(match[1]) > step and path.is_file():
+                path.unlink()
 
 
 class _BackupIO:

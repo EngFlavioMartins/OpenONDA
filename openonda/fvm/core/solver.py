@@ -15,8 +15,12 @@ import numpy as np
 
 from openonda.core.clock import time_tolerance
 from openonda.core.output_events import OutputEvent
-from openonda.core.simulation.parallel import collective_phase
-from openonda.core.solution_layout import collection_path, component_directory
+from openonda.core.parallel import collective_phase
+from openonda.core.solution_layout import (
+    collection_path,
+    component_directory,
+    fvm_backup_files,
+)
 from openonda.core.status import RunStatus
 from openonda.runtime import RunConfig
 
@@ -1633,7 +1637,7 @@ class FVMSolver(CouplerInterfaceMixin):
         error = None
         if self.parallel.is_root:
             try:
-                selected = select_backup(selection, directory=self.solution_dir, kind="fvm")
+                selected = select_backup(selection, fvm_backup_files(self.solution_dir))
             except Exception as exc:
                 error = exc
         self._collective_io_failure(error, "restart selection")

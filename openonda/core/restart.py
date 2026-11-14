@@ -1,24 +1,23 @@
 """Common start selection for native and coupled simulation runs."""
 
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
 import csv
 from pathlib import Path
 import re
 import shutil
 
 from openonda.core.clock import time_tolerance
-from openonda.core.solution_layout import (
-    coupled_backup_directories,
-    fvm_backup_files,
-    vpm_backup_files,
-)
-from openonda.core.vtk_output import read_collection, rewind_collection
+from openonda.core.vtk_output import read_collection
 
 
-def select_backup(start_from, *, directory, kind):
+def select_backup(start_from: str | Path | None, candidates: Sequence[Path]) -> Path | None:
     """Select a complete backup, never a temporary file or visualization.
 
-    ``None`` keeps the caller's in-memory state. ``initial`` ignores all saved
-    states; ``latest`` returns the numbered backup with the highest step, or
+    ``candidates`` are the complete numbered backups of the calling solver,
+    sorted by step. ``None`` keeps the caller's in-memory state. ``initial``
+    ignores all saved states; ``latest`` returns the last candidate, or
     ``None`` when there is none. Explicit paths are passed to the strict
     native reader without fallback.
     """
@@ -36,35 +35,16 @@ def select_backup(start_from, *, directory, kind):
                 "backup path"
             )
         return path
-    directory = Path(directory)
-    if kind == "vpm":
-        candidates = vpm_backup_files(directory)
-        latest = candidates[-1] if candidates else None
-        if latest is not None:
-            import h5py
-
-            try:
-                with h5py.File(latest, "r") as archive:
-                    recorded = int(archive["solver"].attrs["step"])
-            except (OSError, KeyError, TypeError, ValueError) as exc:
-                raise ValueError(f"Invalid latest VPM backup {latest}: {exc}") from exc
-            named = int(latest.stem.removeprefix("vpm_"))
-            if recorded != named:
-                raise ValueError(
-                    f"VPM backup {latest} records step {recorded}, but its filename says {named}"
-                )
-    elif kind == "fvm":
-        candidates = fvm_backup_files(directory)
-        latest = candidates[-1] if candidates else None
-    elif kind == "coupled":
-        candidates = coupled_backup_directories(directory)
-        latest = candidates[-1] if candidates else None
-    else:
-        raise ValueError(f"Unknown restart kind {kind!r}")
-    return latest
+    return candidates[-1] if candidates else None
 
 
-def reset_run_outputs(directory, *, kind, samples_dir=None, sample_names=()):
+def reset_run_outputs(
+    directory: str | Path,
+    *,
+    kind: str,
+    samples_dir: str | Path | None = None,
+    sample_names: Iterable[str] = (),
+) -> None:
     """Delete an old output series before a fresh initial run.
 
     Only native output files, numbered backups, journals, the coupled backup
@@ -84,10 +64,11 @@ def reset_run_outputs(directory, *, kind, samples_dir=None, sample_names=()):
         pattern = re.compile(
             rf"{component}_\d+(?:-rank-\d+|_particles)?\.(?:h5|npz|vtu|vtp|pvtu)(?:\.tmp)?$"
         )
-        for folder in (directory, directory / component):
-            output_files.extend(
-                path for path in folder.glob(f"{component}_*") if pattern.fullmatch(path.name)
-            )
+        output_files.extend(
+            path
+            for path in (directory / component).glob(f"{component}_*")
+            if pattern.fullmatch(path.name)
+        )
     journals = {
         "coupled": ("coupler_diagnostics.jsonl",),
         "fvm": ("diagnostics.jsonl", "performance.jsonl"),
@@ -120,20 +101,7 @@ def reset_run_outputs(directory, *, kind, samples_dir=None, sample_names=()):
             shutil.rmtree(path)
 
 
-def rewind_vpm_frames(directory, step, time):
-    """Delete output frames beyond the restored step and flow time."""
-    directory = Path(directory)
-    for component in ("vpm", "vlm"):
-        rewind_collection(directory / f"{component}.pvd", time)
-    for component in ("vpm", "vlm"):
-        for folder in (directory / component, directory):
-            for path in folder.glob(f"{component}_*"):
-                match = re.fullmatch(rf"{component}_(\d+)\.(h5|vtu|vtp)(\.tmp)?", path.name)
-                if match and int(match[1]) > step and path.is_file():
-                    path.unlink()
-
-
-def output_has_time(directory, name, time):
+def output_has_time(directory: str | Path, name: str, time: float) -> bool:
     """Check whether a saved CSV/PVD time series contains the sampling time."""
     directory = Path(directory)
     table = directory / f"{name}.csv"

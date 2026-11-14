@@ -10,7 +10,7 @@ import numpy as np
 
 from openonda.core import log_style
 from openonda.core.file_output import append_jsonl
-from openonda.core.simulation.parallel import collective_phase
+from openonda.core.parallel import collective_phase
 
 from .clock import time_tolerance
 

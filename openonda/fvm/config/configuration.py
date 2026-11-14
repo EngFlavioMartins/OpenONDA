@@ -5,10 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import Any
 
-from openonda.core.simulation.forcing import VelocityBoundary
-
 from ..motion.mesh_motion import MeshMotion, mesh_motion_to_dict
-from .boundaries import BoundaryConfig
+from .boundaries import BoundaryConfig, VelocityBoundary
 from .case import FVMCase, InitialFields, RunPlan
 from .mesh_quality import MeshQualityConfig
 from .numerics import Numerics

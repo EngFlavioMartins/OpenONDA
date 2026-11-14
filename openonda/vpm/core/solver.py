@@ -21,7 +21,7 @@ from openonda.core.clock import time_tolerance
 from openonda.core.log_style import close_logging, configure_logging
 from openonda.core.output_events import OutputEvent
 from openonda.core.profiling import Profiler
-from openonda.core.restart import reset_run_outputs, rewind_vpm_frames, select_backup
+from openonda.core.restart import reset_run_outputs
 from openonda.core.status import RunStatus
 
 from ..boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
@@ -38,7 +38,7 @@ from ..config.state_limits import (
 from ..coupling import CouplingStepper
 from ..diagnostics.particle_state import measure_particle_state
 from ..diagnostics.resolution import particle_resolution_metrics
-from ..io.backup import _BackupIO
+from ..io.backup import _BackupIO, rewind_vpm_frames, select_vpm_backup
 from ..io.frames import write_solution_frames
 from ..io.logging import Logging, run_header
 from ..io.metadata import write_vpm_metadata
@@ -660,7 +660,7 @@ class VPMSolver:
             )
             self._sampler_manager.rewind(-1.0e100)
             return False
-        path = select_backup(selection, directory=self.solution_dir, kind="vpm")
+        path = select_vpm_backup(selection, self.solution_dir)
         if path is None:
             return self.start_from("initial")
         self.load_backup(path)
@@ -672,7 +672,7 @@ class VPMSolver:
         if selection == "initial":
             self.start_from(selection)
             return
-        path = select_backup(selection, directory=self.solution_dir, kind="vpm")
+        path = select_vpm_backup(selection, self.solution_dir)
         if path is None:
             self.start_from("initial")
             return

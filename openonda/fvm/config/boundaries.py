@@ -7,6 +7,8 @@ from typing import Literal
 
 import numpy as np
 
+from openonda.core.forcing import VelocityRamp
+
 from ._validation import finite_real, vector_or_field
 
 VELOCITY_BOUNDARY_TYPES = frozenset(
@@ -148,3 +150,29 @@ class BoundaryConfig:
         return BoundaryConfig(
             name=name, velocity_type="empty", pressure_type="empty", mesh_type="empty"
         )
+
+
+@dataclass(frozen=True)
+class VelocityBoundary:
+    """Apply a velocity history to named FVM patches.
+
+    ``normal_only`` prescribes the normal velocity with zero tangential
+    normal gradient. A configured slip patch recovers native slip when its
+    prescribed normal velocity reaches zero.
+    """
+
+    patches: tuple[str, ...]
+    velocity: VelocityRamp
+    normal_only: bool = False
+
+    def __post_init__(self) -> None:
+        patches = tuple(self.patches)
+        if not patches or any(not isinstance(name, str) or not name for name in patches):
+            raise ValueError("VelocityBoundary requires named patches")
+        if len(set(patches)) != len(patches):
+            raise ValueError("VelocityBoundary patches must be unique")
+        if not isinstance(self.velocity, VelocityRamp):
+            raise TypeError("VelocityBoundary.velocity must be a VelocityRamp")
+        if not isinstance(self.normal_only, bool):
+            raise TypeError("VelocityBoundary.normal_only must be a bool")
+        object.__setattr__(self, "patches", patches)

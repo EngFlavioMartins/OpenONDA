@@ -14,9 +14,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from openonda.core.metadata import write_run_metadata
+from openonda.core.parallel import collective_phase
 from openonda.core.restart import reset_run_outputs, select_backup
 from openonda.core.schedules import EverySteps
-from openonda.core.simulation.parallel import collective_phase
+from openonda.core.solution_layout import coupled_backup_directories
 from openonda.core.status import RunStatus
 from openonda.fvm.core.time_step import event_aligned_time_step_size
 from openonda.runtime import detected_world_size
@@ -663,7 +664,7 @@ class CoupledSolver:
         selected = None
         with collective_phase(self._comm, "coupled backup selection"):
             if self._is_root:
-                selected = select_backup(selection, directory=self.solution_dir, kind="coupled")
+                selected = select_backup(selection, coupled_backup_directories(self.solution_dir))
         if self._comm is not None and self._comm.Get_size() > 1:
             selected = self._comm.bcast(selected, root=0)
         if selected is None:

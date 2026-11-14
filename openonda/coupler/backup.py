@@ -19,7 +19,7 @@ import shutil
 import numpy as np
 
 from openonda.core.file_output import rewind_jsonl, write_json_atomic
-from openonda.core.simulation.parallel import collective_phase
+from openonda.core.parallel import collective_phase
 from openonda.fvm.io.backup import decode_state, encode_state
 from openonda.vpm.config.restart_changes import validate_exact_configuration_changes
 

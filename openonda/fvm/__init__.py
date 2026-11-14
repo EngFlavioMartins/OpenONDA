@@ -15,6 +15,7 @@ runs it. Meshes are generated with :mod:`openonda.fvm.mesher`::
 The first case of ``docs/fvm.md`` gives the boundaries and numerics in full.
 """
 
+from openonda.core.forcing import VelocityRamp
 from openonda.core.kinematics import (
     CompositeMotion,
     HeavingMotion,
@@ -29,7 +30,6 @@ from openonda.core.kinematics import (
     TranslatingMotion,
 )
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly
-from openonda.core.simulation.forcing import VelocityBoundary, VelocityRamp
 from openonda.core.status import RunStatus
 from openonda.core.version import __version__
 
@@ -53,6 +53,7 @@ from .config import (
     Samplers,
     TransportConfig,
     TurbulenceConfig,
+    VelocityBoundary,
 )
 from .core.solver import AcceptanceLimitError, FVMSolver
 from .core.state import FieldState

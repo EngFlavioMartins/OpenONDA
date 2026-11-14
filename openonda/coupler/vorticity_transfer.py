@@ -1083,7 +1083,7 @@ class VorticityTransfer:
         if wall_triangles is not None:
             wall_triangles = frame.to_body(frame.to_frame(wall_triangles))
 
-        from openonda.core.simulation.parallel import collective_phase
+        from openonda.core.parallel import collective_phase
 
         comm = fvm.parallel.comm
         with collective_phase(comm, "transfer geometry"):
