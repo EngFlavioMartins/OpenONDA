@@ -11,7 +11,6 @@ from .base import _HOST_TRANSFER_CHUNK_SIZE, PhysicsBase
 from .diffusion.core_spreading import apply_core_spreading
 from .diffusion.grid import _GridDiffusionMixin
 from .diffusion.random_walk import apply_random_walk
-from .events import NullPhysicsEventObserver, PhysicsEventObserver
 from .induction.base import TaichiDataType
 
 if TYPE_CHECKING:
@@ -33,7 +32,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: TaichiDataType = ti.f32,
         max_evaluation_points: int = _HOST_TRANSFER_CHUNK_SIZE,
-        event_observer: PhysicsEventObserver | None = None,
     ):
         """Allocate the shared VPM physics workspace.
 
@@ -47,9 +45,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
             Precision of reusable accumulation fields.
         max_evaluation_points : int, default=_HOST_TRANSFER_CHUNK_SIZE
             Capacity for arbitrary target-point velocity/gradient evaluation.
-        event_observer : PhysicsEventObserver, optional
-            Diagnostic sink for warnings and numerical events.  A silent
-            :class:`NullPhysicsEventObserver` is used when omitted.
 
         Notes
         -----
@@ -57,7 +52,6 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         does not move particles, advance time, or select a Runge--Kutta stage.
         """
         super().__init__(particle_kernel, max_n_particles, accumulator_dtype, max_evaluation_points)
-        self._event_observer = event_observer or NullPhysicsEventObserver()
         self._init_grid_diffusion()
         # Reset by the coupler before each accepted VPM advance when a solid
         # numerical-exclusion guard is installed.

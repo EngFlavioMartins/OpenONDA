@@ -95,7 +95,6 @@ def apply_random_walk(
             "use DVH or GBD for variable-viscosity diffusion"
         )
 
-    physics._resize_temp_fields(N)
     # No temp field is touched, so the temp-field zeroing is skipped.
     physics.update_position_rwm_kernel(
         particles.position,

@@ -38,7 +38,6 @@ class ParticleLES:
         max_n_particles: int = MAX_N_PARTICLES,
         particle_kernel: str = "gaussian",
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
-        subgrid_dissipation_coefficient: float = 1.048,
         accumulator_dtype: ti.types = ti.f32,
         filter_width: float | None = None,
         sigma_coefficient: float = SIGMA_CONSTANT,
@@ -58,8 +57,6 @@ class ParticleLES:
             VPM radial kernel used by the wrapped model.
         smagorinsky_coefficient : float, default=SMAGORINSKY_CONSTANT
             Dimensionless Smagorinsky coefficient.
-        subgrid_dissipation_coefficient : float, default=1.048
-            Dimensionless model coefficient for sub-grid dissipation.
         accumulator_dtype : taichi scalar type, default=ti.f32
             Precision of device reduction fields.
         filter_width : float or None, default=None
@@ -100,7 +97,6 @@ class ParticleLES:
                 max_n_particles=max_n_particles,
                 particle_kernel=particle_kernel,
                 smagorinsky_coefficient=smagorinsky_coefficient,
-                subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
                 accumulator_dtype=accumulator_dtype,
                 filter_width=filter_width,
             )
@@ -151,9 +147,6 @@ class ParticleLES:
             particle_kernel=particle_kernel,
             smagorinsky_coefficient=getattr(
                 turbulence_config, "smagorinsky_coefficient", SMAGORINSKY_CONSTANT
-            ),
-            subgrid_dissipation_coefficient=getattr(
-                turbulence_config, "subgrid_dissipation_coefficient", 1.048
             ),
             accumulator_dtype=accumulator_dtype,
             filter_width=getattr(turbulence_config, "filter_width", None),

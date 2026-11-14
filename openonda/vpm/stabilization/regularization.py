@@ -167,7 +167,6 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
     }
     removed_before = ctx.state.particles_removed
     vortex_strength_removed_before = ctx.state.vortex_strength_removed.copy()
-    mean_kinematic_viscosity = float(kinematic_viscosity.mean())
     configured_core_radius = cfg.regularization_core_radius
     from .remeshing import gaussian_core_remesh
 
@@ -184,28 +183,16 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         preserve_groups=cfg.regularization_preserve_groups,
         slip_slab=slip_slab,
     )
-    if proposal is None:
-        raise RuntimeError("conservative regularization produced no particle field")
-
     new_position = np.asarray(proposal["position"], dtype=np.float64)
     proposed_vortex_strength = np.asarray(proposal["vortex_strength"], dtype=np.float64)
     new_core_radius = np.asarray(proposal["core_radius"], dtype=np.float64)
     new_particle_volume = np.asarray(proposal["particle_volume"], dtype=np.float64)
     count = len(new_position)
-    new_velocity = np.asarray(proposal.get("velocity", np.zeros((count, 3))), dtype=ctx.np_dtype)
-    new_kinematic_viscosity = np.asarray(
-        proposal.get("kinematic_viscosity", np.full(count, mean_kinematic_viscosity)),
-        dtype=ctx.np_dtype,
-    )
-    new_eddy_viscosity = np.asarray(
-        proposal.get("eddy_viscosity", np.zeros(count)), dtype=ctx.np_dtype
-    )
-    new_zone_id = np.asarray(
-        proposal.get("zone_id", np.zeros(count, dtype=np.int32)), dtype=np.int32
-    )
-    new_group_id = np.asarray(
-        proposal.get("group_id", np.zeros(count, dtype=np.int32)), dtype=np.int32
-    )
+    new_velocity = np.asarray(proposal["velocity"], dtype=ctx.np_dtype)
+    new_kinematic_viscosity = np.asarray(proposal["kinematic_viscosity"], dtype=ctx.np_dtype)
+    new_eddy_viscosity = np.asarray(proposal["eddy_viscosity"], dtype=ctx.np_dtype)
+    new_zone_id = np.asarray(proposal["zone_id"], dtype=np.int32)
+    new_group_id = np.asarray(proposal["group_id"], dtype=np.int32)
     from ..numerics.fourier_integrals import _grid_for_particles
 
     audit_grid = _grid_for_particles(
@@ -381,11 +368,10 @@ def regularize(ctx: StabilizationContext, cfg: StabilizationConfig) -> Regulariz
         else:
             direction = nullspace.to_correction(moment_corrected / nullspace.sqrt_volume[:, None])
             direction_norm = float(np.linalg.norm(direction))
-            vortex_strength_norm = max(
-                float(np.linalg.norm(moment_corrected)),
-                np.finfo(float).tiny,
-            )
-            if direction_norm <= np.finfo(float).tiny:
+            vortex_strength_norm = float(np.linalg.norm(moment_corrected))
+            # The direction is the strength's own moment-preserving part; at
+            # round-off size relative to the strength no such direction exists.
+            if direction_norm <= np.sqrt(np.finfo(float).eps) * vortex_strength_norm:
                 raise RuntimeError("regularization has no enstrophy-restoration direction")
             direction *= vortex_strength_norm / direction_norm
             _, plus_integrals = upload_and_integrate(moment_corrected + direction)

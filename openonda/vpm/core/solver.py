@@ -42,7 +42,6 @@ from ..io.backup import _BackupIO
 from ..io.frames import write_solution_frames
 from ..io.logging import Logging, run_header
 from ..io.metadata import write_vpm_metadata
-from ..io.physics_events import LoggingPhysicsEventObserver
 from ..kernels.base import make_vortex_kernel
 from ..numerics.runge_kutta import RungeKutta
 from ..particles.container import Particles
@@ -339,7 +338,6 @@ class VPMSolver:
             particle_kernel=self.particle_kernel,
             max_n_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
-            event_observer=LoggingPhysicsEventObserver(),
         )
 
         if hasattr(self.induction, "bind"):
@@ -419,7 +417,6 @@ class VPMSolver:
                 max_n_particles=max_p,
                 particle_kernel=self.particle_kernel,
                 smagorinsky_coefficient=final_setup.turbulence.smagorinsky_coefficient,
-                subgrid_dissipation_coefficient=final_setup.turbulence.subgrid_dissipation_coefficient,
                 filter_width=final_setup.turbulence.filter_width,
                 sigma_coefficient=final_setup.turbulence.sigma_coefficient,
                 consistency_angle=final_setup.turbulence.consistency_angle,
@@ -431,7 +428,6 @@ class VPMSolver:
             particle_kernel=self.particle_kernel,
             max_n_particles=max_p,
             accumulator_dtype=self.accumulator_dtype,
-            event_observer=LoggingPhysicsEventObserver(),
         )
         self._flow_integrals: dict = {}
         self._particle_resolution_metrics: dict = {}

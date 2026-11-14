@@ -110,7 +110,6 @@ class PhysicsBase:
     compute_velocity_gradients_kernel: TaichiKernel
     compute_velocity_and_gradient_kernel: TaichiKernel
     compute_target_velocity_kernel: TaichiKernel
-    compute_transport_target_velocity_kernel: TaichiKernel
     compute_target_vorticity_kernel: TaichiKernel
     compute_target_velocity_gradient_kernel: TaichiKernel
     update_radius_csm_kernel: TaichiKernel
@@ -768,103 +767,6 @@ class PhysicsBase:
                 result[start:stop] = self.extract_target_velocity(count)
         return result
 
-    def compute_transport_target_velocity(
-        self,
-        particles: ParticleSources,
-        target_position: np.ndarray,
-        target_core_radius: np.ndarray | float,
-        *,
-        include_freestream: bool = True,
-        use_induction_backend: bool = False,
-    ) -> np.ndarray:
-        """Evaluate finite-target probe velocities with the exact Taichi pair sum.
-
-        Uses the configured vortex kernel and arithmetic mean of target/source
-        radii, as in particle transport. Target workspaces are reused and no
-        M-by-N host arrays are built. This remains a direct reference operator
-        even when the advancing solver selects a hierarchical approximation.
-        Inputs are positions (M, 3) in m and positive radii (M,) or scalar in m;
-        the returned velocity (M, 3) is in m/s and includes optional freestream.
-
-        For a scalar target radius, use_induction_backend=True replaces each
-        source core by its arithmetic mean with that target core and evaluates
-        through the configured target backend. This retains the pair filter
-        with the backend's approximation. Nonuniform target cores and the
-        default use the direct reference operator.
-        """
-        targets = np.asarray(target_position, dtype=self.np_dtype).reshape(-1, 3)
-        radii = np.broadcast_to(
-            np.asarray(target_core_radius, dtype=self.np_dtype), (len(targets),)
-        )
-        if not np.isfinite(targets).all() or not np.isfinite(radii).all() or np.any(radii <= 0):
-            raise ValueError(
-                "target positions must be finite and target_core_radius finite and positive"
-            )
-        if not len(targets):
-            return np.zeros((0, 3), dtype=self.np_dtype)
-        if len(targets) > self._target_field_size:
-            return np.concatenate(
-                [
-                    self.compute_transport_target_velocity(
-                        particles,
-                        targets[start:stop],
-                        target_core_radius
-                        if np.ndim(target_core_radius) == 0
-                        else radii[start:stop],
-                        include_freestream=include_freestream,
-                        use_induction_backend=use_induction_backend,
-                    )
-                    for start, stop in self._target_batch_slices(len(targets))
-                ]
-            )
-        self._resize_target_fields(len(targets))
-        if not hasattr(self, "_transport_target_core"):
-            self._transport_target_core = ti.field(
-                dtype=self.accumulator_dtype, shape=self.max_evaluation_points
-            )
-        self.upload_vector_array(targets, self.target_position, len(targets))
-        backend = getattr(self, "induction", None)
-        if use_induction_backend and np.ndim(target_core_radius) == 0 and backend is not None:
-            if not hasattr(self, "_transport_source_core"):
-                self._transport_source_core = ti.field(
-                    dtype=self.accumulator_dtype, shape=self.max_n_particles
-                )
-            count = len(particles)
-            cores = self._download_scalar_field(particles.core_radius, count)
-            self._upload_scalar_array(
-                0.5 * (cores + float(target_core_radius)), self._transport_source_core, count
-            )
-            backend.evaluate_targets(
-                target_position=self.target_position,
-                source_position=particles.position,
-                source_vortex_strength=particles.vortex_strength,
-                source_core_radius=self._transport_source_core,
-                target_velocity=self.target_velocity,
-                target_velocity_gradient=None,
-                target_count=len(targets),
-                source_count=count,
-                include_freestream=include_freestream,
-                background_velocity=particles.velocity_background
-                if include_freestream
-                else self._zero_velocity,
-            )
-            return self.download_vector_field(self.target_velocity, len(targets))
-        self._upload_scalar_array(
-            np.ascontiguousarray(radii), self._transport_target_core, len(targets)
-        )
-        self.compute_transport_target_velocity_kernel(
-            self.target_position,
-            self._transport_target_core,
-            particles.position,
-            particles.vortex_strength,
-            particles.core_radius,
-            self.target_velocity,
-            particles.velocity_background if include_freestream else self._zero_velocity,
-            len(targets),
-            len(particles),
-        )
-        return self.download_vector_field(self.target_velocity, len(targets))
-
     def _compute_target_velocity_taichi(
         self,
         particles: ParticleSources,
@@ -888,6 +790,9 @@ class PhysicsBase:
                 return None
             return result
         if N == 0:
+            if target_velocity is not None:
+                self._fill_vec3_from_background(target_velocity, background_velocity, 0, M)
+                return None
             if include_freestream:
                 freestream_velocity = np.array(
                     [
@@ -899,10 +804,6 @@ class PhysicsBase:
                 )
             else:
                 freestream_velocity = np.zeros(3, dtype=self.np_dtype)
-            if target_velocity is not None:
-                for i in range(M):
-                    target_velocity[i] = freestream_velocity
-                return None
             return np.tile(freestream_velocity, (M, 1))
 
         target_backend = getattr(self, "induction", None)

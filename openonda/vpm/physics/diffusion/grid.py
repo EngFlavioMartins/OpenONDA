@@ -29,8 +29,8 @@ from openonda.core.slip_slab_images import (
 )
 
 from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
+from ...io.logging import Logging
 from ...numerics.m4_kernel import m4_prime
-from ..events import NullPhysicsEventObserver, PhysicsEventObserver
 from ..induction.base import TaichiField
 from .body_geometry import BodyGeometryKey, BodyGridGeometryCache, ImmutableBodyGeometryQueries
 
@@ -406,16 +406,10 @@ class _GridDiffusionMixin:
     GBD diffusion.
     """
 
-    # Concrete physics engines replace this with their configured observer.
-    # The silent class default also permits focused numerical harnesses.
-    _event_observer: PhysicsEventObserver = NullPhysicsEventObserver()
-
     # Geometric growth amortizes grid allocation and kernel recompilation.
     _ALLOC_HEADROOM = 1.5
     _REALLOC_HEADROOM = 2.0
 
-    # Retained nodes preserve the diffused field's total vortex strength and impulse.
-    conserve_removed_moments: bool = True
     _body_link_grid: TaichiField = None
     _body_segment_classifier: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None
 
@@ -536,7 +530,6 @@ class _GridDiffusionMixin:
         pos: np.ndarray,
         particle_spacing: float,
         padding: float,
-        half_cell_offset: bool = True,
     ) -> tuple[np.ndarray, tuple[int, int, int]]:
         """Return an origin and dimensions covering every finite source and its halo."""
         pos = np.asarray(pos)
@@ -551,10 +544,6 @@ class _GridDiffusionMixin:
         margin = padding * particle_spacing
         lo = pos.min(axis=0) - margin
         hi = pos.max(axis=0) + margin
-
-        # Offset the lattice while retaining the complete upper support halo.
-        if half_cell_offset:
-            lo = lo - 0.5 * particle_spacing
 
         nx = max(5, int(np.ceil((hi[0] - lo[0]) / particle_spacing)) + 1)
         ny = max(5, int(np.ceil((hi[1] - lo[1]) / particle_spacing)) + 1)
@@ -687,7 +676,7 @@ class _GridDiffusionMixin:
                 for n, old in zip(requested, previous, strict=True)
             )
         self._allocate_grid(shape)
-        self._event_observer.record(
+        Logging.record(
             "diffusion grid allocation",
             ("requested shape", requested),
             ("allocated shape", shape),
@@ -756,7 +745,7 @@ class _GridDiffusionMixin:
 
         if self._grid_shape != (nx, ny, nz):
             self._allocate_grid((nx, ny, nz))
-            self._event_observer.record(
+            Logging.record(
                 "diffusion grid preallocated",
                 ("shape", f"{nx}x{ny}x{nz}"),
             )
@@ -2519,7 +2508,7 @@ class _GridDiffusionMixin:
         max_substep_diffusion_number = max_diffusion_number / n_diffusion_substeps
 
         if n_diffusion_substeps > 1:
-            self._event_observer.record(
+            Logging.record(
                 "gaussian blob diffusion substepping",
                 ("substeps", f"{n_diffusion_substeps:,}"),
                 ("diffusion number, max", f"{max_diffusion_number:.6f}"),
@@ -2681,7 +2670,6 @@ class _GridDiffusionMixin:
                 pos_np,
                 particle_spacing,
                 domain_padding,
-                half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         if slab_bounds is not None:
@@ -2867,9 +2855,7 @@ class _GridDiffusionMixin:
         max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
 
         if max_vortex_strength_magnitude < 1e-30:
-            self._event_observer.warning(
-                "GBD skipped: the scattered grid is empty; particle state is unchanged"
-            )
+            Logging.warning("GBD skipped: the scattered grid is empty; particle state is unchanged")
             self._ping = True
             return None
 
@@ -2883,7 +2869,7 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
-            self._event_observer.warning(
+            Logging.warning(
                 f"GBD skipped: no grid nodes reach the strength threshold "
                 f"{threshold:.2e} m^3/s; particle state is unchanged"
             )
@@ -2906,7 +2892,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        self._event_observer.record(
+        Logging.record(
             "gaussian blob diffusion regeneration",
             ("threshold", f"{threshold:.3e}"),
             ("nodes retained", f"{len(ix):,}"),
@@ -2922,11 +2908,11 @@ class _GridDiffusionMixin:
             preserve_group_correction = False
             wall_correction = self._body_segment_classifier is not None
             correction_labels = group_winner_grid
-            if wall_correction and self.conserve_removed_moments and len(ix) < nonzero_node_count:
+            if wall_correction and len(ix) < nonzero_node_count:
                 correction_labels = self._wall_correction_labels(
                     vortex_strength_magnitude, group_winner_grid
                 )
-            if self.conserve_removed_moments and len(ix) < nonzero_node_count:
+            if len(ix) < nonzero_node_count:
                 retained_before_support = len(ix)
                 (
                     ix,
@@ -2947,7 +2933,7 @@ class _GridDiffusionMixin:
                     strict_labels=wall_correction,
                 )
                 if support_augmented_node_count:
-                    self._event_observer.record(
+                    Logging.record(
                         "gaussian blob diffusion moment support",
                         ("nodes, threshold/cap result", f"{retained_before_support:,}"),
                         ("nodes, support added", f"{support_augmented_node_count:,}"),
@@ -2962,7 +2948,7 @@ class _GridDiffusionMixin:
                 support_augmented_node_count=int(support_augmented_node_count),
             )
             self._last_gbd_moment_correction = correction_diagnostics
-            if self.conserve_removed_moments and len(ix) < nonzero_node_count:
+            if len(ix) < nonzero_node_count:
                 moment_diagnostics: dict[str, bool | int | float] = {}
                 active_correction_labels = correction_labels if preserve_group_correction else None
                 while True:
@@ -3003,7 +2989,7 @@ class _GridDiffusionMixin:
                             removed_node_count=int(nonzero_node_count - len(ix)),
                             support_augmented_node_count=int(support_augmented_node_count),
                         )
-                        self._event_observer.record(
+                        Logging.record(
                             "gaussian blob diffusion retained diffused component",
                             ("component", str(error.correction_label)),
                             ("diffused nodes retained", f"{added:,}"),
@@ -3020,7 +3006,7 @@ class _GridDiffusionMixin:
                 raw_net = raw_retained.sum(axis=0, dtype=np.float64)
                 corrected_net = corrected_retained.sum(axis=0, dtype=np.float64)
                 net_scale = vortex_strength_total + 1.0e-30
-                self._event_observer.record(
+                Logging.record(
                     "gaussian blob diffusion moment correction",
                     ("correction strength fraction", f"{correction_l1 / net_scale:.6e}"),
                     (
@@ -3316,7 +3302,6 @@ class _GridDiffusionMixin:
                 pos_np,
                 particle_spacing,
                 heat_padding,
-                half_cell_offset=False,
             )
             nx, ny, nz = self._ensure_grid_capacity(nx, ny, nz)
         grid_max_np = grid_min_np + np.asarray((nx - 1, ny - 1, nz - 1), dtype=np.float64) * float(
@@ -3416,9 +3401,7 @@ class _GridDiffusionMixin:
         max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
 
         if max_vortex_strength_magnitude < 1e-30:
-            self._event_observer.warning(
-                "DVH skipped: the scattered grid is empty; particle state is unchanged"
-            )
+            Logging.warning("DVH skipped: the scattered grid is empty; particle state is unchanged")
             return None
 
         vortex_strength_total = float(vortex_strength_magnitude.sum(dtype=np.float64))
@@ -3431,7 +3414,7 @@ class _GridDiffusionMixin:
         )
         ix, iy, iz = np.where(vortex_strength_magnitude >= threshold)
         if len(ix) == 0:
-            self._event_observer.warning(
+            Logging.warning(
                 f"DVH skipped: no grid nodes reach the strength threshold "
                 f"{threshold:.2e} m^3/s; particle state is unchanged"
             )
@@ -3453,7 +3436,7 @@ class _GridDiffusionMixin:
             float(vortex_strength_magnitude[ix, iy, iz].sum(dtype=np.float64))
             / vortex_strength_total
         )
-        self._event_observer.record(
+        Logging.record(
             "discrete vortex heat method regeneration",
             ("threshold", f"{threshold:.3e}"),
             ("nodes retained", f"{len(ix):,}"),

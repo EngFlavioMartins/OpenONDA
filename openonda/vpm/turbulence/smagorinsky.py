@@ -19,8 +19,6 @@ class SmagorinskyModel:
         max_n_particles: int = MAX_N_PARTICLES,
         particle_kernel: str = "gaussian",
         smagorinsky_coefficient: float = SMAGORINSKY_CONSTANT,
-        subgrid_dissipation_coefficient: float = 1.048,
-        accumulator_dtype: ti.types = ti.f32,
         filter_width: float | None = None,
     ) -> None:
         """Configure and allocate the equilibrium Smagorinsky model.
@@ -34,33 +32,21 @@ class SmagorinskyModel:
             normalized to uppercase for reporting.
         smagorinsky_coefficient : float, default=SMAGORINSKY_CONSTANT
             Dimensionless model coefficient ``C_s``.
-        subgrid_dissipation_coefficient : float, default=1.048
-            Dimensionless equilibrium dissipation coefficient used to derive
-            the subgrid kinetic-energy coefficient.
-        accumulator_dtype : Taichi primitive type, default=ti.f32
-            Scalar type for filter-width and strain-rate work fields.
         filter_width : float or None, default=None
             Fixed LES filter in metres; None uses particle volume^(1/3).
 
         Notes
         -----
-        Construction allocates model-owned fields but does not read or mutate
-        a particle container. :meth:`compute` later writes eddy and effective
-        viscosity for the active particle prefix in m²/s.
+        Construction reads or mutates no particle container. :meth:`compute`
+        later writes ``nu_t = (C_s Delta)^2 |S|`` and the effective viscosity
+        for the active particle prefix in m²/s, with ``|S| = sqrt(2 S:S)``.
         """
         self.model_name = "smagorinsky"
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.lower()
         self.smagorinsky_coefficient = smagorinsky_coefficient
-        self.subgrid_dissipation_coefficient = subgrid_dissipation_coefficient
         self.filter_width = filter_width
         self._uses_fixed_filter = filter_width is not None
-        self.subgrid_kinetic_energy_coefficient = (
-            smagorinsky_coefficient**2 * subgrid_dissipation_coefficient**0.5
-        ) ** (2.0 / 3.0)
-
-        self._filter_width = ti.field(dtype=accumulator_dtype, shape=max_n_particles)
-        self._strain_rate_magnitude = ti.field(dtype=accumulator_dtype, shape=max_n_particles)
 
     def initialize(self, particles: "Particles") -> None:
         """Initialize model state; no additional state is required."""
@@ -77,26 +63,14 @@ class SmagorinskyModel:
         n_particles_total = len(particles)
         if n_particles_total == 0:
             return
-
-        self._compute_filter_width(
-            particles.particle_volume,
-            self._filter_width,
-            n_particles_total,
-        )
-        self._compute_strain_rate_magnitude(
-            particles.strain_rate,
-            self._strain_rate_magnitude,
-            n_particles_total,
-        )
         self._compute_eddy_viscosity(
-            self._filter_width,
-            self._strain_rate_magnitude,
+            particles.particle_volume,
+            particles.strain_rate,
             n_particles_total,
             particles.kinematic_viscosity,
             particles.eddy_viscosity,
             particles.effective_viscosity,
-            self.subgrid_kinetic_energy_coefficient,
-            self.subgrid_dissipation_coefficient,
+            self.smagorinsky_coefficient,
         )
 
     def report_rows(self) -> list:
@@ -104,8 +78,6 @@ class SmagorinskyModel:
         return [
             ("model", "Smagorinsky"),
             ("c_s", f"{self.smagorinsky_coefficient:.4f}"),
-            ("c_k", f"{self.subgrid_kinetic_energy_coefficient:.6f}"),
-            ("c_e", f"{self.subgrid_dissipation_coefficient:.4f}"),
             (
                 "filter width",
                 "V_p^(1/3)" if self.filter_width is None else f"{self.filter_width:.8g} m (fixed)",
@@ -113,67 +85,32 @@ class SmagorinskyModel:
         ]
 
     @ti.kernel
-    def _compute_filter_width(
+    def _compute_eddy_viscosity(
         self,
         particle_volume: ti.template(),
-        filter_width: ti.template(),
+        strain_rate: ti.template(),
         n_particles_total: ti.i32,
+        kinematic_viscosity: ti.template(),
+        eddy_viscosity: ti.template(),
+        effective_viscosity: ti.template(),
+        smagorinsky_coefficient: float,
     ):
         for i in range(n_particles_total):
+            delta = 0.0
             if ti.static(self._uses_fixed_filter):
-                filter_width[i] = self.filter_width
+                delta = self.filter_width
             else:
                 local_particle_volume = particle_volume[i]
-                filter_width[i] = (
+                delta = (
                     ti.pow(local_particle_volume, 1.0 / 3.0) if local_particle_volume > 0.0 else 0.0
                 )
-
-    @ti.kernel
-    def _compute_strain_rate_magnitude(
-        self,
-        strain_rate: ti.template(),
-        strain_rate_magnitude: ti.template(),
-        n_particles_total: ti.i32,
-    ):
-        for i in range(n_particles_total):
             squared_norm = 0.0
             for a in ti.static(range(3)):
                 for b in ti.static(range(3)):
                     component = strain_rate[i][a, b]
                     squared_norm += component * component
-            strain_rate_magnitude[i] = ti.sqrt(2.0 * squared_norm)
-
-    @ti.kernel
-    def _compute_eddy_viscosity(
-        self,
-        filter_width: ti.template(),
-        strain_rate_magnitude: ti.template(),
-        n_particles_total: ti.i32,
-        kinematic_viscosity: ti.template(),
-        eddy_viscosity: ti.template(),
-        effective_viscosity: ti.template(),
-        subgrid_kinetic_energy_coefficient: float,
-        subgrid_dissipation_coefficient: float,
-    ):
-        for i in range(n_particles_total):
-            delta = filter_width[i]
-            strain_magnitude = strain_rate_magnitude[i]
-            equilibrium_energy = (
-                subgrid_kinetic_energy_coefficient
-                * delta
-                * delta
-                * strain_magnitude
-                * strain_magnitude
-                / subgrid_dissipation_coefficient
-            )
             computed_eddy_viscosity = (
-                subgrid_kinetic_energy_coefficient
-                * delta
-                * ti.sqrt(ti.max(equilibrium_energy, 0.0))
-            )
-
-            if ti.math.isnan(computed_eddy_viscosity) or ti.math.isinf(computed_eddy_viscosity):
-                computed_eddy_viscosity = 0.0
-
+                smagorinsky_coefficient * smagorinsky_coefficient * delta * delta
+            ) * ti.sqrt(2.0 * squared_norm)
             eddy_viscosity[i] = computed_eddy_viscosity
             effective_viscosity[i] = kinematic_viscosity[i] + computed_eddy_viscosity

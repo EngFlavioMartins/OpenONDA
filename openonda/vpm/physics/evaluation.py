@@ -11,7 +11,6 @@ import taichi as ti
 
 from ...core.clock import time_tolerance
 from ..config.constants import EPSILON, MAX_N_PARTICLES
-from .events import NullPhysicsEventObserver, PhysicsEventObserver
 from .induction.base import TaichiDataType
 
 if TYPE_CHECKING:
@@ -43,7 +42,6 @@ class ParticleFieldEvaluation:
         particle_kernel: str = "gaussian",
         max_n_particles: int = MAX_N_PARTICLES,
         accumulator_dtype: TaichiDataType = ti.f32,
-        event_observer: PhysicsEventObserver | None = None,
     ):
         """
         Initialize particle field physics diagnostics.
@@ -56,7 +54,6 @@ class ParticleFieldEvaluation:
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.lower()
         self.accumulator_dtype = accumulator_dtype
-        self._event_observer = event_observer or NullPhysicsEventObserver()
 
         self._initialize_result_fields()
 

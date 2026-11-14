@@ -23,8 +23,6 @@ class TurbulenceConfig:
     smagorinsky_coefficient : float, default=0.17
         Non-negative dimensionless ``C_s`` in the filter-width eddy-viscosity
         model.
-    subgrid_dissipation_coefficient : float, default=1.048
-        Positive dimensionless equilibrium dissipation coefficient ``C_e``.
     filter_width : float or None, default=None
         Fixed LES filter width in metres. None retains the local particle
         volume^(1/3) rule. A fixed width separates the closure scale from
@@ -64,9 +62,6 @@ class TurbulenceConfig:
     smagorinsky_coefficient: float = constants_module.SMAGORINSKY_CONSTANT
     """Smagorinsky coefficient ``C_s``."""
 
-    subgrid_dissipation_coefficient: float = 1.048
-    """SGS dissipation coefficient ``C_e``."""
-
     filter_width: float | None = None
     """Optional fixed LES filter width in metres."""
 
@@ -91,11 +86,6 @@ class TurbulenceConfig:
             )
         if not math.isfinite(self.smagorinsky_coefficient) or self.smagorinsky_coefficient < 0.0:
             raise ValueError("smagorinsky_coefficient must be finite and non-negative")
-        if (
-            not math.isfinite(self.subgrid_dissipation_coefficient)
-            or self.subgrid_dissipation_coefficient <= 0.0
-        ):
-            raise ValueError("subgrid_dissipation_coefficient must be finite and positive")
         if self.filter_width is not None and (
             not math.isfinite(self.filter_width) or self.filter_width <= 0.0
         ):
@@ -119,13 +109,6 @@ class TurbulenceConfig:
 
         object.__setattr__(self, "flow_model", flow_model)
 
-    @property
-    def subgrid_kinetic_energy_coefficient(self) -> float:
-        """Return dimensionless ``C_k=(C_s²*sqrt(C_e))**(2/3)``."""
-        return (self.smagorinsky_coefficient**2 * self.subgrid_dissipation_coefficient**0.5) ** (
-            2.0 / 3.0
-        )
-
     @staticmethod
     def dns() -> TurbulenceConfig:
         """Return DNS configuration without an SGS closure."""
@@ -134,7 +117,6 @@ class TurbulenceConfig:
     @staticmethod
     def smagorinsky(
         smagorinsky_coefficient: float = constants_module.SMAGORINSKY_CONSTANT,
-        subgrid_dissipation_coefficient: float = 1.048,
         filter_width: float | None = None,
         consistency_angle: float | None = None,
         subgrid_transport: str = "core_spreading",
@@ -143,7 +125,6 @@ class TurbulenceConfig:
         return TurbulenceConfig(
             model="smagorinsky",
             smagorinsky_coefficient=smagorinsky_coefficient,
-            subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
             filter_width=filter_width,
             consistency_angle=consistency_angle,
             subgrid_transport=subgrid_transport,
@@ -197,7 +178,6 @@ class TurbulenceConfig:
         )
         return TurbulenceConfig.smagorinsky(
             smagorinsky_coefficient=smagorinsky_coefficient,
-            subgrid_dissipation_coefficient=subgrid_dissipation_coefficient,
         )
 
     @staticmethod

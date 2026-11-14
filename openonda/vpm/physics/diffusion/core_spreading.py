@@ -23,7 +23,6 @@ def apply_core_spreading(
     if N == 0 or time_step_size <= 0.0:
         return
 
-    physics._resize_temp_fields(N)
     physics.update_radius_csm_kernel(
         particles.core_radius, particles.effective_viscosity, time_step_size, N
     )

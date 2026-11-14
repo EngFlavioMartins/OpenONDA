@@ -117,36 +117,6 @@ def _make_target_velocity_kernel(radial_factors_: Callable) -> Callable:
     return compute_target_velocity_kernel
 
 
-def _make_transport_target_velocity_kernel(radial_factors_: Callable) -> Callable:
-    """Build a direct finite-target probe kernel with symmetric blob radii."""
-
-    @ti.kernel
-    def compute_transport_target_velocity_kernel(
-        targets: ti.template(),
-        target_core: ti.template(),
-        position: ti.template(),
-        strength: ti.template(),
-        core: ti.template(),
-        velocity: ti.template(),
-        background: ti.template(),
-        n_targets: ti.i32,
-        n_sources: ti.i32,
-    ):
-        """Write full pair sums in O(MN) work and O(M+N) field storage."""
-        for i in range(n_targets):
-            value = targets[i] * 0.0
-            for j in range(n_sources):
-                displacement = targets[i] - position[j]
-                distance_squared = displacement.dot(displacement)
-                distance = ti.sqrt(distance_squared)
-                sigma = 0.5 * (target_core[i] + core[j])
-                factors = radial_factors_(distance / sigma, sigma, False)
-                value += factors[0] * strength[j].cross(displacement)
-            velocity[i] = value + background[None]
-
-    return compute_transport_target_velocity_kernel
-
-
 def _make_target_vorticity_kernel(zeta_: Callable) -> Callable:
     """Mini-factory: creates compute_target_vorticity_kernel capturing zeta_."""
 
@@ -469,9 +439,6 @@ def _create_target_eval_kernels(kernel_functions: dict[str, Callable]) -> dict[s
 
     return {
         "compute_target_velocity_kernel": _make_target_velocity_kernel(radial_factors_),
-        "compute_transport_target_velocity_kernel": _make_transport_target_velocity_kernel(
-            radial_factors_
-        ),
         "compute_target_vorticity_kernel": _make_target_vorticity_kernel(zeta_),
         "compute_target_velocity_gradient_kernel": compute_target_velocity_gradient_kernel,
     }
