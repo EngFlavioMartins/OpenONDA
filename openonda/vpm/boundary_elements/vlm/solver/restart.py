@@ -2,13 +2,13 @@
 
 import hashlib
 import inspect
-import json
 import marshal
 from types import CodeType
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from openonda.core.digest import configuration_digest
 from openonda.core.kinematics import RigidPose
 from openonda.core.metadata import metadata_value
 
@@ -87,28 +87,36 @@ def restart_configuration_hash(vlm: "VLMSolver") -> str:
         "_restart_geometry_references",
         metadata_value(vlm.aircraft.refs),
     )
-    digest = hashlib.sha256(json.dumps(controls, sort_keys=True, allow_nan=False).encode())
     # Generic motion callbacks can depend on closed-over phase and case globals.
     # Record their code and captured construction values without executing them.
+    callbacks = []
     for surface in vlm.config.surfaces:
         motion = surface.kinematics
         for name in ("velocity_function", "angular_velocity_function"):
             function = getattr(motion, name, None)
             if inspect.isfunction(function):
                 closure = inspect.getclosurevars(function)
-                digest.update(marshal.dumps(_portable_code(function.__code__)))
-                captured = metadata_value(
+                callbacks.append(
                     {
-                        key: {"type": type(value).__name__}
-                        if inspect.ismodule(value) or callable(value)
-                        else value
-                        for key, value in {**closure.globals, **closure.nonlocals}.items()
+                        "code_sha256": hashlib.sha256(
+                            marshal.dumps(_portable_code(function.__code__))
+                        ).hexdigest(),
+                        "captured": metadata_value(
+                            {
+                                key: {"type": type(value).__name__}
+                                if inspect.ismodule(value) or callable(value)
+                                else value
+                                for key, value in {**closure.globals, **closure.nonlocals}.items()
+                            }
+                        ),
                     }
                 )
-                digest.update(json.dumps(captured, sort_keys=True, allow_nan=False).encode())
-    for name in ("panel_corner_position", "normal"):
-        digest.update(getattr(vlm.lattice, name).to_numpy()[: vlm.lattice.n_panels].tobytes())
-    return digest.hexdigest()
+    controls["motion_callbacks"] = callbacks
+    controls["lattice"] = {
+        name: getattr(vlm.lattice, name).to_numpy()[: vlm.lattice.n_panels]
+        for name in ("panel_corner_position", "normal")
+    }
+    return configuration_digest(controls)
 
 
 def write_vlm_restart(vlm: "VLMSolver", group: "h5py.Group") -> None:

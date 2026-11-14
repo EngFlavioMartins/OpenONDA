@@ -18,6 +18,7 @@ import shutil
 
 import numpy as np
 
+from openonda.core.digest import configuration_digest
 from openonda.core.file_output import rewind_jsonl, write_json_atomic
 from openonda.core.parallel import collective_phase
 from openonda.fvm.io.backup import decode_state, encode_state
@@ -65,12 +66,6 @@ logger = logging.getLogger("openonda.coupler")
 def coupled_backup_path(solution_directory: str | Path, step: int) -> Path:
     """Return the numbered coupled backup ``solution/coupled/coupled_{step:06d}``."""
     return Path(solution_directory) / "coupled" / f"coupled_{step:06d}"
-
-
-def configuration_digest(configuration: dict) -> str:
-    """Return the SHA-256 digest of a JSON-serializable configuration mapping."""
-    text = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def file_digest(path: Path) -> str:
@@ -384,7 +379,6 @@ def load_coupled_backup(
 
 __all__ = [
     "BACKUP_FORMAT_VERSION",
-    "configuration_digest",
     "coupled_backup_path",
     "load_coupled_backup",
     "save_coupled_backup",

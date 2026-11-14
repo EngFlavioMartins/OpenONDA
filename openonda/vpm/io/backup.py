@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from dataclasses import fields
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -14,6 +13,7 @@ import h5py
 import numpy as np
 
 from ...core.clock import time_tolerance
+from ...core.digest import canonical_json, configuration_digest
 from ...core.file_output import atomic_path
 from ...core.restart import select_backup
 from ...core.solution_layout import vpm_backup_files
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 # Restart data is numerical backup data, not visualization output. Bump the
 # version whenever its layout changes so an older (possibly lossy) file is
 # never accepted accidentally.
-_BACKUP_FORMAT_VERSION = "14.0"
+_BACKUP_FORMAT_VERSION = "15.0"
 _COMPRESSION = {
     "chunks": True,
     "compression": "gzip",
@@ -111,11 +111,6 @@ def _attribute_text(value: Any) -> str:
 def _numerical_configuration(solver: Any) -> dict[str, Any]:
     """Return the resolved configuration that determines VPM evolution."""
     return numerical_configuration(solver.numerics)
-
-
-def _configuration_values(configuration: dict[str, Any]) -> str:
-    """Serialize a numerical configuration deterministically for a restart."""
-    return json.dumps(configuration, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def select_vpm_backup(start_from: str | Path | None, directory: str | Path) -> Path | None:
@@ -359,11 +354,9 @@ class _BackupIO:
         with h5py.File(hdf5_file, "w") as file:
             solver_group = file.create_group("solver")
             solver_group.attrs["format_version"] = _BACKUP_FORMAT_VERSION
-            configuration = _configuration_values(_numerical_configuration(solver))
-            solver_group.attrs["configuration"] = configuration
-            solver_group.attrs["configuration_sha256"] = hashlib.sha256(
-                configuration.encode("utf-8")
-            ).hexdigest()
+            configuration = _numerical_configuration(solver)
+            solver_group.attrs["configuration"] = canonical_json(configuration)
+            solver_group.attrs["configuration_sha256"] = configuration_digest(configuration)
             solver_group.attrs["freestream_velocity"] = np.asarray(
                 solver.freestream_velocity,
                 dtype=restart_dtype,
@@ -673,15 +666,14 @@ class _BackupIO:
                 configuration_hash = _attribute_text(
                     _read_attribute(solver_group, "configuration_sha256")
                 )
-                computed_hash = hashlib.sha256(configuration_text.encode("utf-8")).hexdigest()
-                if configuration_hash != computed_hash:
-                    invalid("numerical configuration hash does not match its stored configuration")
                 try:
                     stored_configuration = json.loads(configuration_text)
                 except json.JSONDecodeError as exc:
                     invalid(f"numerical configuration is not valid JSON ({exc.msg})")
                 if not isinstance(stored_configuration, dict):
                     invalid("numerical configuration must be a JSON object")
+                if configuration_hash != configuration_digest(stored_configuration):
+                    invalid("numerical configuration hash does not match its stored configuration")
                 if expected_configuration is not None:
                     try:
                         configuration_changes = validate_configuration_changes(

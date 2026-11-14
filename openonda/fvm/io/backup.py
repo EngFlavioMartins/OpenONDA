@@ -11,13 +11,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ...core.clock import time_tolerance
+from ...core.digest import configuration_digest
 from ...core.file_output import write_npz_atomic
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
 
 # One version for the serial archive and the partitioned checkpoint.
-FORMAT_VERSION = 12
+FORMAT_VERSION = 13
 
 # Solution fields held at every restart, in the order the archives store them.
 STATE_FIELDS = (
@@ -171,10 +172,6 @@ def _update_digest(digest: hashlib._Hash, value: object) -> None:
             _update_digest(digest, item)
     elif isinstance(value, np.generic):
         _update_digest(digest, value.item())
-    elif callable(value) and hasattr(value, "__qualname__"):
-        # A function's repr contains its memory address; its name is stable.
-        digest.update(b"callable")
-        digest.update(f"{getattr(value, '__module__', '')}.{value.__qualname__}".encode())
     else:
         digest.update(type(value).__name__.encode())
         digest.update(repr(value).encode())
@@ -184,11 +181,6 @@ def _hash(value: dict[str, object]) -> str:
     digest = hashlib.sha256()
     _update_digest(digest, value)
     return digest.hexdigest()
-
-
-def configuration_digest(solver: FVMSolver) -> str:
-    """Return the SHA-256 digest of the settings a restart must match."""
-    return _hash(solver._configuration.restart_configuration())
 
 
 def mesh_digest(mesh_data: dict[str, object]) -> str:
@@ -225,7 +217,7 @@ def save_backup(solver: FVMSolver, path: Path | str) -> Path:
 
     metadata = {
         "format_version": FORMAT_VERSION,
-        "configuration_sha256": configuration_digest(solver),
+        "configuration_sha256": configuration_digest(solver._configuration.restart_configuration()),
         "mesh_sha256": mesh_digest(solver.mesh_data),
     }
     arrays = {"metadata": np.asarray(json.dumps(metadata, sort_keys=True)), **state_arrays(solver)}
@@ -487,7 +479,9 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState
             )
         if metadata.get("mesh_sha256") != mesh_digest(solver.mesh_data):
             raise ValueError("FVM backup mesh hash does not match the active mesh")
-        if metadata.get("configuration_sha256") != configuration_digest(solver):
+        if metadata.get("configuration_sha256") != configuration_digest(
+            solver._configuration.restart_configuration()
+        ):
             raise ValueError("FVM backup configuration hash does not match the active case")
         state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
         state.pop("metadata", None)

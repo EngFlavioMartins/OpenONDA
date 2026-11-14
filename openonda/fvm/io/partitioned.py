@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import numpy as np
 
+from openonda.core.digest import configuration_digest
 from openonda.core.file_output import (
     InsufficientStorageError,
     npz_size_bound,
@@ -84,7 +85,7 @@ def _raise_collective_backup_error(error_record: dict[str, object]) -> None:
 
 def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> Path:
     """Publish a complete backup without invalidating the prior generation."""
-    from .backup import configuration_digest, state_arrays
+    from .backup import state_arrays
 
     target = Path(directory)
     previous_info = None
@@ -155,7 +156,9 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
         checkpoint_info = {
             "format_version": FORMAT_VERSION,
             "generation": generation,
-            "configuration_sha256": configuration_digest(solver),
+            "configuration_sha256": configuration_digest(
+                solver._configuration.restart_configuration()
+            ),
             "mesh_sha256": solver.mesh_data["global_mesh_hash"],
             "n_global_cells": partition.n_global_cells,
             "n_ranks": partition.size,
@@ -186,7 +189,6 @@ def load_partitioned_solver_backup(
 ) -> None:
     """Collectively stage and restore a complete partitioned backup."""
     from .backup import (
-        configuration_digest,
         restore_restart_state,
         state_arrays,
         validate_restart_state,
@@ -227,7 +229,9 @@ def load_partitioned_solver_backup(
             raise ValueError("Partitioned backup communicator size does not match")
         if checkpoint_info.get("mesh_sha256") != solver.mesh_data.get("global_mesh_hash"):
             raise ValueError("Partitioned backup mesh hash does not match")
-        if checkpoint_info.get("configuration_sha256") != configuration_digest(solver):
+        if checkpoint_info.get("configuration_sha256") != configuration_digest(
+            solver._configuration.restart_configuration()
+        ):
             raise ValueError("Partitioned backup configuration hash does not match")
         files = checkpoint_info.get("files")
         if not isinstance(files, list) or len(files) != solver.parallel.size:
