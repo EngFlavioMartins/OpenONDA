@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from openonda.core.parallel import collective_phase
+
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
 
@@ -54,8 +56,7 @@ def evaluate(
     n_interior = mesh["n_interior_faces"]
     n_owned = parallel.n_owned if parallel.is_partitioned else n_cells
     local_fields = None
-    failure = None
-    try:
+    with collective_phase(parallel.comm, "analysis field preparation"):
         boundaries = {}
         for patch in solver.boundaries:
             start, count = patch["start_face"], patch["n_faces"]
@@ -83,14 +84,10 @@ def evaluate(
             boundaries,
             float(np.max(np.abs(continuity), initial=0.0)),
         )
-    except BaseException as error:
-        failure = error
-    solver._collective_io_failure(failure, "analysis field preparation")
     parts = parallel.comm.gather(local_fields, root=0) if parallel.is_parallel else [local_fields]
     result = None
-    failure = None
-    if parallel.is_root:
-        try:
+    with collective_phase(parallel.comm, "application analysis"):
+        if parallel.is_root:
             if not parallel.is_partitioned:
                 parts = parts[:1]
             cell_ids = np.concatenate([part[0] for part in parts])
@@ -120,9 +117,6 @@ def evaluate(
                 max(part[7] for part in parts),
             )
             result = callback(snapshot, *args, **kwargs)
-        except BaseException as error:
-            failure = error
-    solver._collective_io_failure(failure, "application analysis")
     return parallel.bcast(result)
 
 
@@ -138,9 +132,8 @@ def write_csv(
     import csv
     from pathlib import Path
 
-    failure = None
-    if solver.parallel.is_root:
-        try:
+    with collective_phase(solver.parallel.comm, "application CSV output"):
+        if solver.parallel.is_root:
             path = Path(filename)
             if not path.is_absolute():
                 path = Path(solver.solution_dir) / path
@@ -151,6 +144,3 @@ def write_csv(
                 if header:
                     writer.writerow(columns)
                 writer.writerows(rows)
-        except BaseException as error:
-            failure = error
-    solver._collective_io_failure(failure, "application CSV output")

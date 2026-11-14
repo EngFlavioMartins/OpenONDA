@@ -13,6 +13,7 @@ import numpy as np
 from ...core.clock import time_tolerance
 from ...core.digest import configuration_digest
 from ...core.file_output import write_npz_atomic
+from ...core.parallel import collective_phase
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
@@ -498,25 +499,11 @@ def load_backup(solver: FVMSolver, path: Path | str) -> None:
     """
     parallel = solver.parallel
     restart_state: FieldRestartState | None = None
-    local_error = None
-    try:
+    with collective_phase(parallel.comm, "FVM restart validation"):
         restart_state = _load_backup_local(solver, path)
-    except BaseException as error:
-        local_error = {
-            "rank": int(parallel.rank),
-            "type": type(error).__name__,
-            "message": str(error),
-        }
+    assert restart_state is not None
 
     if parallel.is_parallel and not parallel.is_partitioned:
-        errors = parallel.comm.allgather(local_error)
-        failure = next((item for item in errors if item is not None), None)
-        if failure is not None:
-            raise RuntimeError(
-                "FVM restart validation failed on rank "
-                f"{failure['rank']} ({failure['type']}): {failure['message']}"
-            )
-        assert restart_state is not None
         signatures = parallel.comm.allgather(
             (
                 restart_state.time,
@@ -528,11 +515,5 @@ def load_backup(solver: FVMSolver, path: Path | str) -> None:
         )
         if any(signature != signatures[0] for signature in signatures[1:]):
             raise RuntimeError("FVM restart validation found inconsistent clocks across ranks")
-    elif local_error is not None:
-        raise RuntimeError(
-            f"FVM restart validation failed ({local_error['type']}): {local_error['message']}"
-        )
 
-    if restart_state is None:
-        raise RuntimeError("FVM restart validation produced no restart state")
     restore_restart_state(solver, restart_state)

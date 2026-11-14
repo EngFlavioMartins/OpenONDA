@@ -10,6 +10,8 @@ from typing import Any
 import numpy as np
 from scipy.integrate import trapezoid
 
+from openonda.core.parallel import collective_phase
+
 
 def _table(path: Path) -> np.ndarray:
     data = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding="utf-8")
@@ -322,8 +324,7 @@ def update_grid_study(
     else:
         cell_count = int(solver.mesh_data["n_cells"])
     report = None
-    failure = None
-    try:
+    with collective_phase(solver.parallel.comm, "grid-study output"):
         if solver.parallel.is_root:
             samples_dir = Path(solver.samples_dir)
             samples_dir.mkdir(parents=True, exist_ok=True)
@@ -341,9 +342,6 @@ def update_grid_study(
             completed = list(samples_dir.parent.glob("*/grid_run.json"))
             if len(completed) >= 3:
                 report = analyse_grid_study(samples_dir.parent, Path(solver.solution_dir).parent)
-    except BaseException as error:
-        failure = error
-    solver._collective_io_failure(failure, "grid-study output")
     return report
 
 

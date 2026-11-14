@@ -3,7 +3,6 @@
 from collections.abc import Iterable, Sequence
 from contextlib import suppress
 import gc
-import json
 import math
 from pathlib import Path
 import sys
@@ -431,12 +430,11 @@ class FVMSolver(CouplerInterfaceMixin):
                     "not yet implemented"
                 )
             quality = None
-            preparation_error = None
             global_mesh = None
             global_geo = None
             global_hash = None
-            if self.parallel.is_root:
-                try:
+            with collective_phase(comm, "partitioned mesh preparation"):
+                if self.parallel.is_root:
                     global_mesh = mesh_data
                     validate_topology(global_mesh)
                     global_geo = geometry.compute_mesh_geometry(
@@ -449,79 +447,53 @@ class FVMSolver(CouplerInterfaceMixin):
                     from ..io.backup import mesh_digest
 
                     global_hash = mesh_digest(global_mesh)
-                except Exception as error:
-                    preparation_error = {
-                        "rank": self.parallel.rank,
-                        "type": type(error).__name__,
-                        "message": str(error),
-                    }
-            preparation_error = self.parallel.bcast(preparation_error, root=0)
-            if preparation_error is not None:
-                raise RuntimeError(
-                    "Partitioned mesh preparation failed: "
-                    + json.dumps(preparation_error, sort_keys=True)
-                )
 
             # Scatter would force rank zero to retain one complete localized
-            # mesh partition per rank.  Send one partition at a time instead; every
-            # receiver participates in the following error broadcast before
-            # it starts solver construction, so a late localization failure
-            # cannot leave a peer in an incompatible collective.
-            distribution_error = None
+            # mesh partition per rank.  Send one partition at a time instead.
+            # A localization failure on rank zero is sent to the ranks still
+            # waiting, so the phase below ends on every rank before solver
+            # construction starts.
             local_partition_data = None
             partition_data = None
-            received_partition_data = None
-            if self.parallel.is_root:
-                from ..mesh.partition import localize_mesh_and_geometry
+            with collective_phase(comm, "mesh partition distribution"):
+                if self.parallel.is_root:
+                    from ..mesh.partition import localize_mesh_and_geometry
 
-                assert (
-                    global_mesh is not None and global_geo is not None and global_hash is not None
-                )
-                # Send worker partitions first and build rank zero last. Drop
-                # each sent mesh partition before localizing the next partition so
-                # rank zero holds at most one local mesh partition beside the global mesh.
-                rank_order = [*range(1, self.parallel.size), 0]
-                delivered: set[int] = set()
-                for rank in rank_order:
-                    try:
-                        partition_data = localize_mesh_and_geometry(
-                            global_mesh,
-                            global_geo,
-                            rank,
-                            self.parallel.size,
-                            include_visualization_ghosts=configuration.output.ghost_layers == 1,
-                        )
-                        partition_data[0]["global_mesh_hash"] = global_hash
-                    except Exception as error:
-                        distribution_error = {
-                            "rank": rank,
-                            "type": type(error).__name__,
-                            "message": str(error),
-                        }
+                    assert (
+                        global_mesh is not None
+                        and global_geo is not None
+                        and global_hash is not None
+                    )
+                    # Send worker partitions first and build rank zero last. Drop
+                    # each sent mesh partition before localizing the next partition so
+                    # rank zero holds at most one local mesh partition beside the global mesh.
+                    rank_order = [*range(1, self.parallel.size), 0]
+                    delivered: set[int] = set()
+                    for rank in rank_order:
+                        try:
+                            partition_data = localize_mesh_and_geometry(
+                                global_mesh,
+                                global_geo,
+                                rank,
+                                self.parallel.size,
+                                include_visualization_ghosts=configuration.output.ghost_layers == 1,
+                            )
+                            partition_data[0]["global_mesh_hash"] = global_hash
+                        except BaseException:
+                            for destination in range(1, self.parallel.size):
+                                if destination not in delivered:
+                                    comm.send((False, None), dest=destination, tag=9131)
+                            raise
                         if rank == 0:
-                            local_partition_data = None
-                        for destination in range(1, self.parallel.size):
-                            if destination not in delivered:
-                                comm.send((False, distribution_error), dest=destination, tag=9131)
-                        break
-                    if rank == 0:
-                        local_partition_data = partition_data
-                    else:
-                        comm.send((True, partition_data), dest=rank, tag=9131)
-                        delivered.add(rank)
-                        partition_data = None
-            else:
-                received_ok, received_partition_data = comm.recv(source=0, tag=9131)
-                if received_ok:
-                    local_partition_data = received_partition_data
+                            local_partition_data = partition_data
+                        else:
+                            comm.send((True, partition_data), dest=rank, tag=9131)
+                            delivered.add(rank)
+                            partition_data = None
                 else:
-                    distribution_error = received_partition_data
-            distribution_error = self.parallel.bcast(distribution_error, root=0)
-            if distribution_error is not None:
-                raise RuntimeError(
-                    "Mesh partition distribution failed: "
-                    + json.dumps(distribution_error, sort_keys=True)
-                )
+                    # After a failure rank zero sends (False, None); the phase
+                    # then raises rank zero's error on this rank too.
+                    _, local_partition_data = comm.recv(source=0, tag=9131)
             assert local_partition_data is not None
             self.mesh_data, self.geo_data, partition = local_partition_data
             self.mesh_quality = self.parallel.bcast(quality, root=0)
@@ -537,7 +509,6 @@ class FVMSolver(CouplerInterfaceMixin):
             global_geo = None
             partition_data = None
             local_partition_data = None
-            received_partition_data = None
             gc.collect()
         else:
             self.mesh_data = mesh_data
@@ -1084,42 +1055,10 @@ class FVMSolver(CouplerInterfaceMixin):
         with suppress(Exception):
             self.logger.warning(f"FVM step failed: {type(error).__name__}: {error}")
 
-    def _collective_io_failure(self, error: BaseException | None, operation: str) -> None:
-        """Propagate a root/local output error before any rank continues.
-
-        Numerical kernels already use their own collectives.  Filesystem and
-        metadata output writing is different: a root-only exception must still
-        release every peer from the same stage, otherwise the next collective
-        turns a useful I/O error into an MPI hang.
-        """
-        parallel = self.__dict__.get("parallel")
-        if parallel is None or not parallel.is_parallel:
-            if error is not None:
-                raise error
-            return
-        local = None
-        if error is not None:
-            local = {
-                "rank": int(parallel.rank),
-                "type": type(error).__name__,
-                "message": str(error),
-            }
-        failures = parallel.comm.allgather(local)
-        failure = next((item for item in failures if item is not None), None)
-        if failure is not None:
-            raise RuntimeError(
-                f"FVM collective {operation} failed on rank {failure['rank']} "
-                f"({failure['type']}): {failure['message']}"
-            ) from error
-
     def _execute_sampler_event(self, event: OutputEvent) -> None:
         """Dispatch one sampler event and envelope rank-local failures."""
-        sampler_error = None
-        try:
+        with collective_phase(self.parallel.comm, f"{event} sampler output"):
             execute_samplers(self, event)
-        except BaseException as error:
-            sampler_error = error
-        self._collective_io_failure(sampler_error, f"{event} sampler output")
 
     def solve_step(self, time_step_size: float | None = None) -> dict[str, float]:
         """Solve one transient pressure--velocity candidate without advancing time.
@@ -1604,21 +1543,19 @@ class FVMSolver(CouplerInterfaceMixin):
         from openonda.core.restart import reset_run_outputs, select_backup
 
         if selection == "initial":
-            state_error = None
-            if (
-                self.step
-                or self.time != self._configuration.run.start_time
-                or self._n_committed_time_steps
-                or self._step_phase != "accepted"
-                or self._restart_loaded
-            ):
-                state_error = RuntimeError(
-                    "start_from('initial') requires a new FVM solver before advancing"
-                )
-            self._collective_io_failure(state_error, "initial state selection")
-            error = None
-            if self.parallel.is_root:
-                try:
+            with collective_phase(self.parallel.comm, "initial state selection"):
+                if (
+                    self.step
+                    or self.time != self._configuration.run.start_time
+                    or self._n_committed_time_steps
+                    or self._step_phase != "accepted"
+                    or self._restart_loaded
+                ):
+                    raise RuntimeError(
+                        "start_from('initial') requires a new FVM solver before advancing"
+                    )
+            with collective_phase(self.parallel.comm, "initial output reset"):
+                if self.parallel.is_root:
                     reset_run_outputs(
                         self.solution_dir,
                         kind="fvm",
@@ -1626,20 +1563,13 @@ class FVMSolver(CouplerInterfaceMixin):
                         sample_names={sampler.name for sampler in self._samplers},
                     )
                     self.io.rewind_histories(-1.0e100)
-                except Exception as exc:
-                    error = exc
-            self._collective_io_failure(error, "initial output reset")
             self._initial_run_selected = True
             return False
 
         selected = None
-        error = None
-        if self.parallel.is_root:
-            try:
+        with collective_phase(self.parallel.comm, "restart selection"):
+            if self.parallel.is_root:
                 selected = select_backup(selection, fvm_backup_files(self.solution_dir))
-            except Exception as exc:
-                error = exc
-        self._collective_io_failure(error, "restart selection")
         selected = self.parallel.bcast(selected, root=0)
         if selected is None:
             return self.start_from("initial")
@@ -1705,13 +1635,9 @@ class FVMSolver(CouplerInterfaceMixin):
             def finalize_collectively(operation: str, callback) -> None:
                 """Run one finalizer on every rank before propagating errors."""
                 nonlocal primary_failure
-                local_error = None
                 try:
-                    callback()
-                except BaseException as error:
-                    local_error = error
-                try:
-                    self._collective_io_failure(local_error, operation)
+                    with collective_phase(self.parallel.comm, operation):
+                        callback()
                 except BaseException as error:
                     if primary_failure is None:
                         primary_failure = error
@@ -1903,13 +1829,11 @@ class FVMSolver(CouplerInterfaceMixin):
         if self._step_phase != "accepted":
             raise RuntimeError("Output requires an accepted FVM state")
         step_time_step_size = self._accepted_time_step_size
-        with self.profiler.section("diagnostics output"):
-            diagnostics_error = None
-            try:
-                self.io.write_step_diagnostics()
-            except BaseException as error:
-                diagnostics_error = error
-            self._collective_io_failure(diagnostics_error, "diagnostics output")
+        with (
+            self.profiler.section("diagnostics output"),
+            collective_phase(self.parallel.comm, "diagnostics output"),
+        ):
+            self.io.write_step_diagnostics()
 
         with self.profiler.section("samplers"):
             self._execute_sampler_event(OutputEvent.accepted_step)
@@ -2002,12 +1926,8 @@ class FVMSolver(CouplerInterfaceMixin):
             if self._step_phase != "accepted":
                 raise RuntimeError("Cannot save a restart while an unaccepted FVM candidate exists")
         destination = self._backup_path(self.step) if path is None else Path(path)
-        flush_error = None
-        try:
+        with collective_phase(self.parallel.comm, "output flush before restart"):
             self.flush_output()
-        except BaseException as error:
-            flush_error = error
-        self._collective_io_failure(flush_error, "output flush before restart")
         if self.parallel.is_partitioned:
             from ..io.partitioned import save_partitioned_solver_backup
 
@@ -2015,13 +1935,9 @@ class FVMSolver(CouplerInterfaceMixin):
         else:
             from ..io.backup import save_backup
 
-            save_error = None
-            if self.parallel.is_root:
-                try:
+            with collective_phase(self.parallel.comm, "restart backup"):
+                if self.parallel.is_root:
                     save_backup(self, destination)
-                except BaseException as error:
-                    save_error = error
-            self._collective_io_failure(save_error, "restart backup")
             saved = destination
         # A restart from this backup starts without reused preconditioners.
         self.algorithm.rebuild_preconditioners()
@@ -2043,12 +1959,8 @@ class FVMSolver(CouplerInterfaceMixin):
             If the backup is corrupt or incompatible, or the output rewind
             fails on any rank.
         """
-        flush_error = None
-        try:
+        with collective_phase(self.parallel.comm, "output flush before restart"):
             self.flush_output()
-        except BaseException as error:
-            flush_error = error
-        self._collective_io_failure(flush_error, "output flush before restart")
         if self.parallel.is_partitioned:
             from ..io.partitioned import load_partitioned_solver_backup
 
@@ -2058,13 +1970,9 @@ class FVMSolver(CouplerInterfaceMixin):
 
             load_backup(self, path)
 
-        rewind_error = None
-        if self.parallel.is_root:
-            try:
+        with collective_phase(self.parallel.comm, "restart output rewind"):
+            if self.parallel.is_root:
                 self.io.rewind_histories(self.time)
-            except Exception as error:
-                rewind_error = error
-        self._collective_io_failure(rewind_error, "restart output rewind")
         self._restart_loaded = True
         self._last_backup_state = (self.step, self.time, self._state_revision)
 
@@ -2084,9 +1992,8 @@ class FVMSolver(CouplerInterfaceMixin):
         from openonda.core.metadata import write_run_metadata
 
         destination = self.solution_dir / "fvm_metadata.json"
-        metadata_error = None
-        if self.parallel.is_root:
-            try:
+        with collective_phase(self.parallel.comm, "solver metadata"):
+            if self.parallel.is_root:
                 n_points = self.mesh_data.get("n_points")
                 if n_points is None:
                     n_points = len(self.mesh_data["vertex_position"])
@@ -2106,9 +2013,6 @@ class FVMSolver(CouplerInterfaceMixin):
                         "state": {"step": int(self.step), "time": float(self.time)},
                     },
                 )
-            except BaseException as error:
-                metadata_error = error
-        self._collective_io_failure(metadata_error, "solver metadata")
         self._run_metadata_written = True
         return destination
 
@@ -2122,13 +2026,9 @@ class FVMSolver(CouplerInterfaceMixin):
         ``solution/fvm.pvd``. Asynchronous writes are queued; call
         :meth:`flush_output` to surface writer errors.
         """
-        local_error = None
-        try:
+        with collective_phase(self.parallel.comm, "visualization output"):
             if self.parallel.is_root or self.parallel.is_partitioned:
                 self._write_vtk_local()
-        except BaseException as error:
-            local_error = error
-        self._collective_io_failure(local_error, "visualization output")
         self._last_vtk_state = (self.step, self.time, self._state_revision)
 
     def _write_vtk_local(self) -> None:
@@ -2293,10 +2193,9 @@ class FVMSolver(CouplerInterfaceMixin):
 
         from openonda.core.file_output import rewind_csv
 
-        error = None
         current = False
-        if self.parallel.is_root:
-            try:
+        with collective_phase(self.parallel.comm, "history time alignment"):
+            if self.parallel.is_root:
                 path = Path(filename)
                 if not path.is_absolute():
                     path = self.solution_dir / path
@@ -2312,7 +2211,4 @@ class FVMSolver(CouplerInterfaceMixin):
                             abs(float(row["time"]) - self.time) <= time_tolerance(self.time)
                             for row in csv.DictReader(stream)
                         )
-            except Exception as exc:
-                error = exc
-        self._collective_io_failure(error, "history time alignment")
         return self.parallel.bcast(current, root=0)

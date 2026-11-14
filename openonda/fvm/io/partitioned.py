@@ -13,13 +13,13 @@ import numpy as np
 
 from openonda.core.digest import configuration_digest
 from openonda.core.file_output import (
-    InsufficientStorageError,
     npz_size_bound,
     require_free_space,
     write_json_atomic,
     write_npz_atomic,
     write_text_atomic,
 )
+from openonda.core.parallel import collective_phase
 from openonda.core.write_precision import cast_for_write
 
 from ..config.output import Output
@@ -63,35 +63,15 @@ def _resolve_backup_file(target: Path, name: str) -> Path:
     return target / relative
 
 
-def _error_record(error: Exception, *, rank: int) -> dict[str, object]:
-    return {
-        "rank": int(rank),
-        "type": type(error).__name__,
-        "errno": getattr(error, "errno", None),
-        "message": str(error),
-    }
-
-
-def _raise_collective_backup_error(error_record: dict[str, object]) -> None:
-    code = error_record.get("errno")
-    message = (
-        f"partitioned backup failed on rank {error_record['rank']} "
-        f"({error_record['type']}): {error_record['message']}"
-    )
-    if isinstance(code, int):
-        raise OSError(code, message)
-    raise RuntimeError(message)
-
-
 def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> Path:
     """Publish a complete backup without invalidating the prior generation."""
     from .backup import state_arrays
 
     target = Path(directory)
+    comm = solver.parallel.comm
     previous_info = None
-    preparation_error = None
-    if solver.parallel.is_root:
-        try:
+    with collective_phase(comm, "partitioned backup preparation"):
+        if solver.parallel.is_root:
             target.mkdir(parents=True, exist_ok=True)
             if (target / "checkpoint_info.json").is_file():
                 previous_info = json.loads((target / "checkpoint_info.json").read_text())
@@ -99,11 +79,6 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
                 # checkpoint description; guessing which old archives to retain is unsafe.
                 for name in previous_info["files"]:
                     _resolve_backup_file(target, name)
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            preparation_error = _error_record(error, rank=solver.parallel.rank)
-    preparation_error = solver.parallel.bcast(preparation_error, root=0)
-    if preparation_error is not None:
-        _raise_collective_backup_error(preparation_error)
     partition = solver.parallel.partition
     arrays = {
         "global_cell_id": partition.local_global_ids,
@@ -116,70 +91,38 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
     # affected.  The previous checkpoint information remains valid throughout this operation.
     local_archive_bytes = npz_size_bound(arrays)
     archive_bytes = int(solver.parallel.global_sum(local_archive_bytes))
-    capacity_error = None
-    if solver.parallel.is_root:
-        try:
+    with collective_phase(comm, "partitioned backup space check"):
+        if solver.parallel.is_root:
             require_free_space(target, archive_bytes)
-        except InsufficientStorageError as error:
-            capacity_error = {
-                "path": str(error.path),
-                "required_bytes": error.required_bytes,
-                "free_bytes": error.free_bytes,
-            }
-    capacity_error = solver.parallel.bcast(capacity_error, root=0)
-    if capacity_error is not None:
-        raise InsufficientStorageError(
-            capacity_error["path"],
-            int(capacity_error["required_bytes"]),
-            int(capacity_error["free_bytes"]),
-        )
 
     generation = solver.parallel.bcast(
         uuid4().hex if solver.parallel.is_root else None,
         root=0,
     )
     files = [f"rank-{rank:05d}-{generation}.npz" for rank in range(partition.size)]
-    local_error = None
-    try:
+    with collective_phase(comm, "partitioned backup write"):
         write_npz_atomic(
             target / files[partition.rank], encode_state(arrays), check_free_space=False
         )
-    except Exception as error:
-        local_error = _error_record(error, rank=partition.rank)
-    errors = solver.parallel.comm.allgather(local_error)
-    failure = next((error for error in errors if error is not None), None)
-    if failure is not None:
-        _raise_collective_backup_error(failure)
 
-    metadata_error = None
-    if solver.parallel.is_root:
-        checkpoint_info = {
-            "format_version": FORMAT_VERSION,
-            "generation": generation,
-            "configuration_sha256": configuration_digest(
-                solver._configuration.restart_configuration()
-            ),
-            "mesh_sha256": solver.mesh_data["global_mesh_hash"],
-            "n_global_cells": partition.n_global_cells,
-            "n_ranks": partition.size,
-            "files": files,
-        }
-        try:
+    checkpoint_info = None
+    with collective_phase(comm, "partitioned backup checkpoint information"):
+        if solver.parallel.is_root:
+            checkpoint_info = {
+                "format_version": FORMAT_VERSION,
+                "generation": generation,
+                "configuration_sha256": configuration_digest(
+                    solver._configuration.restart_configuration()
+                ),
+                "mesh_sha256": solver.mesh_data["global_mesh_hash"],
+                "n_global_cells": partition.n_global_cells,
+                "n_ranks": partition.size,
+                "files": files,
+            }
             write_json_atomic(target / "checkpoint_info.json", checkpoint_info)
-        except Exception as error:
-            metadata_error = _error_record(error, rank=partition.rank)
-    metadata_error = solver.parallel.bcast(metadata_error, root=0)
-    if metadata_error is not None:
-        _raise_collective_backup_error(metadata_error)
-    cleanup_error = None
-    if solver.parallel.is_root:
-        try:
+    with collective_phase(comm, "partitioned backup cleanup"):
+        if solver.parallel.is_root:
             _prune_partitioned_generations(target, checkpoint_info, previous_info)
-        except OSError as error:
-            cleanup_error = _error_record(error, rank=solver.parallel.rank)
-    cleanup_error = solver.parallel.bcast(cleanup_error, root=0)
-    if cleanup_error is not None:
-        _raise_collective_backup_error(cleanup_error)
     return target
 
 
@@ -195,23 +138,17 @@ def load_partitioned_solver_backup(
     )
 
     target = Path(directory)
+    comm = solver.parallel.comm
     checkpoint_info = None
-    metadata_error = None
-    if solver.parallel.is_root:
-        try:
+    with collective_phase(comm, "partitioned backup information"):
+        if solver.parallel.is_root:
             checkpoint_info = json.loads(
                 (target / "checkpoint_info.json").read_text(encoding="utf-8")
             )
-        except Exception as error:
-            metadata_error = _error_record(error, rank=solver.parallel.rank)
-    metadata_error = solver.parallel.bcast(metadata_error, root=0)
-    if metadata_error is not None:
-        _raise_collective_backup_error(metadata_error)
     checkpoint_info = solver.parallel.bcast(checkpoint_info, root=0)
 
-    local_error = None
     restart_state = None
-    try:
+    with collective_phase(comm, "partitioned backup validation"):
         expected_info_keys = {
             "format_version",
             "generation",
@@ -264,15 +201,7 @@ def load_partitioned_solver_backup(
         if not np.array_equal(state.pop("global_face_id"), solver.mesh_data["global_face_id"]):
             raise ValueError("Partitioned backup face IDs do not match")
         restart_state = validate_restart_state(solver, state)
-    except Exception as error:
-        local_error = _error_record(error, rank=solver.parallel.rank)
-
-    errors = solver.parallel.comm.allgather(local_error)
-    failure = next((error for error in errors if error is not None), None)
-    if failure is not None:
-        _raise_collective_backup_error(failure)
-    if restart_state is None:
-        raise RuntimeError("Partitioned restart validation produced no restart_state")
+    assert restart_state is not None
     signatures = solver.parallel.comm.allgather(
         (
             restart_state.time,
@@ -332,8 +261,7 @@ def write_partition_vtu(
     target = Path(directory)
     n_owned = len(partition.owned_global_ids)
     local_count = len(partition.local_global_ids)
-    local_error = None
-    try:
+    with collective_phase(comm, "partition visualization piece"):
         target.mkdir(parents=True, exist_ok=True)
         local_fields = {}
         for name, values in fields.items():
@@ -388,18 +316,10 @@ def write_partition_vtu(
                 dtype=np.int64,
             )
             exporter.export(str(target / piece_name), piece_fields)
-    except BaseException as error:
-        local_error = _error_record(error, rank=partition.rank)
-
-    failures = comm.allgather(local_error)
-    failure = next((item for item in failures if item is not None), None)
-    if failure is not None:
-        _raise_collective_backup_error(failure)
 
     collection = target / f"{stem}.pvtu"
-    output_error = None
-    if partition.rank == 0:
-        try:
+    with collective_phase(comm, "partition visualization collection"):
+        if partition.rank == 0:
             lines = [
                 '<?xml version="1.0"?>',
                 '<VTKFile type="PUnstructuredGrid" version="0.1" byte_order="LittleEndian">',
@@ -434,9 +354,4 @@ def write_partition_vtu(
             )
             lines.extend(["  </PUnstructuredGrid>", "</VTKFile>"])
             write_text_atomic(collection, "\n".join(lines) + "\n")
-        except BaseException as error:
-            output_error = _error_record(error, rank=partition.rank)
-    output_error = comm.bcast(output_error, root=0)
-    if output_error is not None:
-        _raise_collective_backup_error(output_error)
     return collection
