@@ -11,16 +11,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import math
-import os
 from pathlib import Path
-import tempfile
 from typing import Any
 from xml.sax.saxutils import quoteattr
 
 from defusedxml import ElementTree
 
 from .clock import time_tolerance
-from .file_output import write_text_atomic
+from .file_output import atomic_path, write_text_atomic
 
 __all__ = [
     "DEFAULT_COMPRESSION",
@@ -62,34 +60,25 @@ def write_vtk_dataset(
     filename: str | Path,
     *,
     compression: str = DEFAULT_COMPRESSION,
+    uint64_header: bool = False,
 ) -> Path:
-    """Atomically write any VTK dataset to the XML format matching its type."""
+    """Atomically write any VTK dataset to the XML format matching its type.
+
+    ``uint64_header`` selects 64-bit block headers, which arrays above 4 GiB need.
+    """
     if vtk is None:
         raise ImportError("VTK output requires the optional visualization dependencies")
 
     target = Path(filename)
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    writer = vtk.vtkXMLDataSetWriter()
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{target.stem}.",
-        suffix=f".tmp{target.suffix}",
-        dir=target.parent,
-    )
-    os.close(descriptor)
-    try:
-        writer.SetFileName(temporary)
+    with atomic_path(target) as temporary:
+        writer = vtk.vtkXMLDataSetWriter()
+        writer.SetFileName(str(temporary))
         writer.SetInputData(dataset)
         configure_writer(writer, compression)
+        if uint64_header:
+            writer.SetHeaderTypeToUInt64()
         if writer.Write() != 1:
             raise OSError(f"VTK failed to write {target}")
-        with open(temporary, "rb") as stream:
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-        raise
     return target
 
 

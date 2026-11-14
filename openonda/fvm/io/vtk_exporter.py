@@ -1,9 +1,6 @@
 """VTK unstructured-grid output of FVM cell fields and ParaView ``.pvd`` time series."""
 
 from array import array
-import os
-from pathlib import Path
-import tempfile
 from typing import Any
 
 import numpy as np
@@ -11,7 +8,7 @@ import pyvista as pv
 import vtk
 
 from openonda.core._numba import cacheable_njit as njit
-from openonda.core.vtk_output import configure_writer
+from openonda.core.vtk_output import write_vtk_dataset
 from openonda.core.write_precision import cast_for_write
 
 from ..config.output import Output
@@ -187,32 +184,6 @@ class VTKExporter:
     def _field_array(self, data: np.ndarray) -> np.ndarray:
         """Return a contiguous array matching the qualified output precision."""
         return cast_for_write(data, self.output.precision)
-
-    def _write_grid(self, filename: str, grid: "pv.UnstructuredGrid") -> None:
-        """Write one valid appended-binary VTU and publish it atomically."""
-        target = Path(filename)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=f".{target.stem}.",
-            suffix=".tmp.vtu",
-            dir=target.parent,
-        )
-        os.close(descriptor)
-        try:
-            writer = vtk.vtkXMLUnstructuredGridWriter()
-            writer.SetFileName(temporary)
-            writer.SetInputData(grid)
-            configure_writer(writer, self.output.compression)
-            writer.SetHeaderTypeToUInt64()
-            if writer.Write() != 1:
-                raise OSError(f"VTK failed to write {target}")
-            with open(temporary, "rb") as stream:
-                os.fsync(stream.fileno())
-            os.replace(temporary, target)
-        except BaseException:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
-            raise
 
     def _initialize_grid(self) -> Any:
         """Construct a :class:`pyvista.UnstructuredGrid` from mesh data.
@@ -433,9 +404,6 @@ class VTKExporter:
             The output file path.
         """
         self._set_vertex_position(vertex_position)
-        directory = os.path.dirname(filename)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
 
         self._grid.cell_data.clear()
         for name, data in fields.items():
@@ -463,6 +431,8 @@ class VTKExporter:
                 )
             self._grid.point_data[name] = values
 
-        self._write_grid(filename, self._grid)
+        write_vtk_dataset(
+            self._grid, filename, compression=self.output.compression, uint64_header=True
+        )
 
         return filename

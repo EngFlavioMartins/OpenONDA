@@ -4,21 +4,25 @@ from __future__ import annotations
 
 from html import escape
 import json
-import os
 from pathlib import Path
 import re
-import tempfile
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import numpy as np
 
-from openonda.core.file_output import write_text_atomic
+from openonda.core.file_output import (
+    InsufficientStorageError,
+    npz_size_bound,
+    require_free_space,
+    write_json_atomic,
+    write_npz_atomic,
+    write_text_atomic,
+)
 from openonda.core.write_precision import cast_for_write
 
 from ..config.output import Output
 from .backup import FORMAT_VERSION, decode_state, encode_state
-from .storage import InsufficientStorageError, require_free_space
 from .vtk_exporter import VTKExporter
 
 if TYPE_CHECKING:
@@ -56,27 +60,6 @@ def _resolve_backup_file(target: Path, name: str) -> Path:
     if relative.is_absolute() or ".." in relative.parts or len(relative.parts) != 1:
         raise ValueError(f"Unsafe partitioned backup file path: {name!r}")
     return target / relative
-
-
-def _atomic_npz(path: Path, arrays: dict[str, object]) -> None:
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            np.savez_compressed(stream, **arrays)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-        raise
-
-
-def _archive_upper_bound(arrays: dict[str, object]) -> int:
-    """Conservative capacity estimate for a compressed NumPy archive."""
-    return sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values()) + (4 << 20)
 
 
 def _error_record(error: Exception, *, rank: int) -> dict[str, object]:
@@ -130,7 +113,7 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
     # All ranks write their temporary archives concurrently, so reserve space
     # for the aggregate uncompressed upper bound before any old restart can be
     # affected.  The previous checkpoint information remains valid throughout this operation.
-    local_archive_bytes = _archive_upper_bound(arrays)
+    local_archive_bytes = npz_size_bound(arrays)
     archive_bytes = int(solver.parallel.global_sum(local_archive_bytes))
     capacity_error = None
     if solver.parallel.is_root:
@@ -157,7 +140,9 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
     files = [f"rank-{rank:05d}-{generation}.npz" for rank in range(partition.size)]
     local_error = None
     try:
-        _atomic_npz(target / files[partition.rank], encode_state(arrays))
+        write_npz_atomic(
+            target / files[partition.rank], encode_state(arrays), check_free_space=False
+        )
     except Exception as error:
         local_error = _error_record(error, rank=partition.rank)
     errors = solver.parallel.comm.allgather(local_error)
@@ -176,16 +161,9 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
             "n_ranks": partition.size,
             "files": files,
         }
-        temporary = target / f".checkpoint-info-{generation}.tmp"
         try:
-            with temporary.open("w", encoding="utf-8") as stream:
-                stream.write(json.dumps(checkpoint_info, indent=2) + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, target / "checkpoint_info.json")
+            write_json_atomic(target / "checkpoint_info.json", checkpoint_info)
         except Exception as error:
-            if temporary.exists():
-                temporary.unlink()
             metadata_error = _error_record(error, rank=partition.rank)
     metadata_error = solver.parallel.bcast(metadata_error, root=0)
     if metadata_error is not None:

@@ -5,15 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
-import os
 from pathlib import Path
-import tempfile
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ...core.clock import time_tolerance
-from .storage import require_free_space
+from ...core.file_output import write_npz_atomic
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
@@ -232,28 +230,7 @@ def save_backup(solver: FVMSolver, path: Path | str) -> Path:
     }
     arrays = {"metadata": np.asarray(json.dumps(metadata, sort_keys=True)), **state_arrays(solver)}
 
-    state_bytes = sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values())
-    require_free_space(
-        destination,
-        state_bytes + (4 << 20),
-    )
-
-    stored = encode_state(arrays)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-        dir=destination.parent,
-    )
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            np.savez_compressed(stream, **stored)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, destination)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-        raise
+    write_npz_atomic(destination, encode_state(arrays))
 
     return destination
 

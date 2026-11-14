@@ -6,7 +6,6 @@ from collections.abc import Collection, Mapping
 from dataclasses import fields
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any, NoReturn
@@ -15,6 +14,7 @@ import h5py
 import numpy as np
 
 from ...core.clock import time_tolerance
+from ...core.file_output import atomic_path
 from ...core.restart import select_backup
 from ...core.solution_layout import vpm_backup_files
 from ...core.vtk_output import rewind_collection
@@ -296,16 +296,8 @@ class _BackupIO:
     def save(solver: VPMSolver, path: str | Path) -> Path:
         """Atomically write the restart state of ``solver`` to the HDF5 file ``path``."""
         destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_name(f"{destination.name}.tmp")
-        try:
-            temporary.unlink(missing_ok=True)
+        with atomic_path(destination) as temporary:
             _BackupIO._write_numerical_data(solver, str(temporary), float(solver.time))
-            os.replace(temporary, destination)
-        except Exception as exc:
-            raise RuntimeError(f"Backup write failed: {exc}") from exc
-        finally:
-            temporary.unlink(missing_ok=True)
         Logging.record(
             "backup written",
             ("step", f"{solver.step:,}"),

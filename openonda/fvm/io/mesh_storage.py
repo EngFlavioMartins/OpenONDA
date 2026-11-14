@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-import tempfile
 from typing import Any
 
 import numpy as np
 
-from .storage import require_free_space
+from ...core.file_output import write_npz_atomic
 
 FORMAT_VERSION = 2
 
@@ -74,27 +72,7 @@ def save_native_mesh(mesh_data: dict[str, Any], path: str | Path) -> Path:
             metadata[name] = _jsonable(value)
     arrays["metadata"] = np.asarray(json.dumps(metadata, sort_keys=True, allow_nan=False))
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    archive_bytes = sum(int(value.nbytes) + 4096 for value in arrays.values())
-    require_free_space(destination, archive_bytes + (4 << 20))
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-        dir=destination.parent,
-    )
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            # NumPy accepts arbitrary archive member names here; its stub models
-            # one reserved keyword and consequently rejects a typed mapping.
-            np.savez_compressed(stream, **arrays)  # pyrefly: ignore[bad-argument-type]
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, destination)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-        raise
-    return destination
+    return write_npz_atomic(destination, arrays)
 
 
 def load_native_mesh(path: str | Path) -> dict[str, Any]:

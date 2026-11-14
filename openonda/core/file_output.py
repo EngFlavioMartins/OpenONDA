@@ -1,8 +1,10 @@
-"""Durable text, JSON, CSV and JSON-lines output shared by the solvers.
+"""Durable text, JSON, NumPy archive, CSV and JSON-lines output shared by the solvers.
 
 Whole files are replaced atomically: the content is written to a temporary
 file in the destination directory, synchronized to disk and renamed over the
-destination, so a reader never opens a partially written file. Time series
+destination, so a reader never opens a partially written file. A failed write
+leaves the old file and no temporary. :func:`atomic_path` is the one
+implementation; the text, JSON, ``.npz``, HDF5 and VTK writers use it. Time series
 are appended one record at a time; a record that fails to write is truncated
 so the file keeps a valid prefix. After a restart, ``rewind_*`` keeps the
 records up to and including the restored time.
@@ -10,25 +12,119 @@ records up to and including the restored time.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 import csv
+import errno
 import io
 import json
 import math
 import os
 from pathlib import Path
+import shutil
 import tempfile
+
+import numpy as np
 
 from .clock import time_tolerance
 
 __all__ = [
+    "InsufficientStorageError",
     "append_csv_rows",
     "append_jsonl",
+    "atomic_path",
+    "npz_size_bound",
+    "require_free_space",
     "rewind_csv",
     "rewind_jsonl",
     "write_json_atomic",
+    "write_npz_atomic",
     "write_text_atomic",
 ]
+
+_DEFAULT_RESERVE_BYTES = 1 << 30
+
+
+class InsufficientStorageError(OSError):
+    """Raised before an atomic output cannot fit alongside its old version."""
+
+    def __init__(self, path: str | Path, required_bytes: int, free_bytes: int) -> None:
+        """Describe a failed atomic-write capacity check.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Output path whose replacement could not be staged safely.
+        required_bytes : int
+            Bytes needed for the new file plus the configured reserve.
+        free_bytes : int
+            Bytes available when the check ran.
+        """
+        self.path = Path(path)
+        self.required_bytes = int(required_bytes)
+        self.free_bytes = int(free_bytes)
+        super().__init__(
+            errno.ENOSPC,
+            (
+                f"insufficient free space for atomic output at {self.path}: "
+                f"need {self.required_bytes} bytes including reserve, "
+                f"have {self.free_bytes} bytes"
+            ),
+            str(self.path),
+        )
+
+
+def require_free_space(
+    path: str | Path,
+    archive_bytes: int,
+) -> int:
+    """Verify an atomic temporary archive can fit and return current free bytes."""
+    destination = Path(path).resolve()
+    probe = destination if destination.exists() else destination.parent
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    free = int(shutil.disk_usage(probe).free)
+    required = max(0, int(archive_bytes)) + _DEFAULT_RESERVE_BYTES
+    if free < required:
+        raise InsufficientStorageError(destination, required, free)
+    return free
+
+
+@contextmanager
+def atomic_path(destination: str | Path) -> Iterator[Path]:
+    """Yield a temporary path that replaces ``destination`` when the block succeeds.
+
+    The temporary file lies in the destination directory, so the final rename
+    stays on one file system. On normal exit it is synchronized to disk and
+    renamed over ``destination``. If the block raises, the temporary file is
+    removed and ``destination`` is untouched.
+
+    Parameters
+    ----------
+    destination : str or pathlib.Path
+        Final file. Missing parent directories are created.
+
+    Yields
+    ------
+    pathlib.Path
+        An existing empty file with the destination's suffix to write into by
+        path, for example with ``h5py`` or a VTK writer.
+    """
+    target = Path(destination)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(
+        prefix=f".{target.stem}.", suffix=f".tmp{target.suffix}", dir=target.parent
+    )
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        yield temporary
+        with temporary.open("rb") as stream:
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def write_text_atomic(path: str | Path, text: str) -> Path:
@@ -47,20 +143,55 @@ def write_text_atomic(path: str | Path, text: str) -> Path:
         The destination path.
     """
     destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
-            stream.write(text)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, destination)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-        raise
+    with (
+        atomic_path(destination) as temporary,
+        temporary.open("w", encoding="utf-8", newline="") as stream,
+    ):
+        stream.write(text)
+    return destination
+
+
+def npz_size_bound(arrays: Mapping[str, object]) -> int:
+    """Return a conservative size in bytes of the compressed archive of ``arrays``."""
+    return sum(int(np.asarray(value).nbytes) + 4096 for value in arrays.values()) + (4 << 20)
+
+
+def write_npz_atomic(
+    path: str | Path,
+    arrays: Mapping[str, object],
+    *,
+    check_free_space: bool = True,
+) -> Path:
+    """Atomically replace a compressed NumPy archive.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Destination ``.npz`` file. Missing parent directories are created.
+    arrays : mapping of str to array_like
+        Archive members.
+    check_free_space : bool, default=True
+        Raise :class:`InsufficientStorageError` before writing when the disk
+        cannot hold the new archive next to the old one. A collective writer
+        that checks the aggregate of all ranks once passes ``False``.
+
+    Returns
+    -------
+    pathlib.Path
+        The destination path.
+
+    Raises
+    ------
+    InsufficientStorageError
+        If the capacity check fails.
+    """
+    destination = Path(path)
+    if check_free_space:
+        require_free_space(destination, npz_size_bound(arrays))
+    with atomic_path(destination) as temporary, temporary.open("wb") as stream:
+        # NumPy accepts arbitrary member names here; its stub models one
+        # reserved keyword and consequently rejects a typed mapping.
+        np.savez_compressed(stream, **arrays)  # pyrefly: ignore[bad-argument-type]
     return destination
 
 
