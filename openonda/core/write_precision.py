@@ -24,8 +24,6 @@ import numpy as np
 
 WritePrecision = Literal["f16", "f32", "f64"]
 
-WRITE_PRECISIONS: tuple[str, ...] = ("f16", "f32", "f64")
-
 DEFAULT_WRITE_PRECISION: WritePrecision = "f32"
 
 _STORAGE_DTYPE: dict[str, np.dtype] = {
@@ -38,9 +36,7 @@ _STORAGE_DTYPE: dict[str, np.dtype] = {
 def validate_write_precision(value: str, *, field_name: str = "write_precision") -> str:
     """Return *value* when it names a supported write precision."""
     if value not in _STORAGE_DTYPE:
-        raise ValueError(
-            f"{field_name} must be one of {', '.join(WRITE_PRECISIONS)}, got {value!r}"
-        )
+        raise ValueError(f"{field_name} must be one of {', '.join(_STORAGE_DTYPE)}, got {value!r}")
     return value
 
 

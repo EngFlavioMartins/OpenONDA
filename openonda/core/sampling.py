@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from .schedules import EverySteps, EveryTime, FinalOnly, Schedule, schedule_from_dict
+from .schedules import EverySteps, EveryTime, FinalOnly, Schedule
 
 __all__ = [
     "FIELD_SAMPLE_COLUMNS",
@@ -98,21 +98,13 @@ class Sampler:
         """Return the JSON-compatible constructor arguments.
 
         Subclasses add their geometry and numerical arguments to this
-        dictionary, under the constructor argument names, so
-        :meth:`from_config` rebuilds an equal sampler.
+        dictionary, under the constructor argument names.
         """
         return {
             "file_name": self.file_name,
             "schedule": self.schedule.to_dict(),
             "initial": self.initial,
         }
-
-    @classmethod
-    def from_config(cls, data: dict[str, Any]) -> Sampler:
-        """Rebuild a sampler from :meth:`config_dict` data."""
-        values = dict(data)
-        values["schedule"] = schedule_from_dict(values["schedule"])
-        return cls(**values)
 
     def __eq__(self, other: object) -> bool:
         """Samplers are equal when they have the same type and configuration."""

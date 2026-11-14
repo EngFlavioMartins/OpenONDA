@@ -21,45 +21,21 @@ from pathlib import Path
 import resource
 import sys
 import time as clock
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from . import log_style
 from .file_output import append_jsonl
 
+if TYPE_CHECKING:
+    from openonda.fvm.core.parallel import ParallelContext
+
 __all__ = [
-    "ParallelRanks",
     "Profiler",
-    "peak_resident_memory_bytes",
-    "resident_memory_bytes",
 ]
 
 _LOGGER = logging.getLogger("openonda")
 _DISABLED_SECTION = nullcontext()
 _UNTIMED = "untimed"
-
-
-class ParallelRanks(Protocol):
-    """MPI rank information used by the profiler (``ParallelContext``)."""
-
-    @property
-    def rank(self) -> int:
-        """Rank of this process."""
-        ...
-
-    @property
-    def is_parallel(self) -> bool:
-        """Whether more than one rank runs."""
-        ...
-
-    @property
-    def is_root(self) -> bool:
-        """Whether this process is rank 0."""
-        ...
-
-    @property
-    def comm(self) -> Any:
-        """MPI communicator with ``gather(value, root=0)``."""
-        ...
 
 
 def peak_resident_memory_bytes() -> int:
@@ -104,12 +80,12 @@ class Profiler:
     synchronize : callable or None, default=None
         Zero-argument function that waits for the compute device, called
         before and after every timed section and step when enabled.
-    parallel : ParallelRanks or None, default=None
+    parallel : ParallelContext or None, default=None
         MPI ranks. When given and parallel, each step's section times and
         memory are gathered to rank 0.
     output_path : str or pathlib.Path or None, default=None
         JSON-lines file to which rank 0 appends one record per step when
-        enabled, for example ``solution/fvm_performance.jsonl``.
+        enabled, for example ``solution/performance.jsonl``.
 
     Notes
     -----
@@ -123,7 +99,7 @@ class Profiler:
         *,
         enabled: bool,
         synchronize: Callable[[], None] | None = None,
-        parallel: ParallelRanks | None = None,
+        parallel: ParallelContext | None = None,
         output_path: str | Path | None = None,
     ) -> None:
         self.enabled = bool(enabled)

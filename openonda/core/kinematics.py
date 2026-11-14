@@ -37,7 +37,6 @@ __all__ = [
     "advance_pose",
     "axis_rotation_matrix",
     "finite_vector",
-    "rotation_vector_matrix",
 ]
 
 

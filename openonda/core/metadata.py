@@ -23,7 +23,6 @@ from .status import RunStatus
 from .version import __version__
 
 __all__ = [
-    "METADATA_SCHEMA_VERSION",
     "metadata_value",
     "write_run_metadata",
 ]

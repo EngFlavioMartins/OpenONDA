@@ -41,9 +41,7 @@ def component_directory(solution_directory: str | Path, component: str) -> Path:
 
 def collection_path(solution_directory: str | Path, component: str) -> Path:
     """Return the root-level ParaView collection path for one component."""
-    if component not in _COMPONENTS:
-        raise ValueError(f"Unsupported solution component {component!r}")
-    return Path(solution_directory) / f"{component}.pvd"
+    return component_directory(solution_directory, component).with_suffix(".pvd")
 
 
 def vpm_backup_files(directory: str | Path) -> list[Path]:

@@ -12,6 +12,7 @@ from openonda.core.clock import time_tolerance
 from openonda.core.file_output import append_csv_rows, rewind_csv
 from openonda.core.output_events import OutputEvent
 from openonda.core.restart import output_has_time
+from openonda.core.schedules import FinalOnly
 from openonda.core.vtk_output import read_collection, rewind_collection, write_collection
 
 from ..io.logging import Logging
@@ -169,9 +170,7 @@ class SamplerManager:
             return tuple(s for s in self.samplers if getattr(s, "initial", False))
         if event is OutputEvent.final:
             return tuple(
-                s
-                for s in self.samplers
-                if getattr(getattr(s, "schedule", None), "is_final_only", False)
+                s for s in self.samplers if isinstance(getattr(s, "schedule", None), FinalOnly)
             )
         return tuple(
             s

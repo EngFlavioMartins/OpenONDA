@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 import math
 from numbers import Real
-from typing import Protocol
 
 from .clock import time_tolerance
 
@@ -21,28 +20,9 @@ __all__ = [
     "EverySteps",
     "EveryTime",
     "FinalOnly",
-    "OutputSchedule",
     "Schedule",
     "schedule_from_dict",
 ]
-
-
-class OutputSchedule(Protocol):
-    """Pure predicate selecting accepted solver states for output.
-
-    Implementations retain no event history. They receive the current accepted
-    step, the time in s and the time-step size in s; exactly-once delivery
-    and restart history trimming belong to the solver.
-    """
-
-    @property
-    def is_final_only(self) -> bool:
-        """Whether the framework should dispatch this schedule only at final."""
-        ...
-
-    def is_due(self, step: int, time: float, time_step_size: float) -> bool:
-        """Return whether the accepted state is selected for output."""
-        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,14 +63,8 @@ class EverySteps:
                 raise ValueError("EverySteps.start_time must be finite and non-negative")
             object.__setattr__(self, "start_time", float(self.start_time))
 
-    @property
-    def is_final_only(self) -> bool:
-        """Return ``False`` because this schedule is driven by accepted steps."""
-        return False
-
     def next_time_after(self, time: float) -> float | None:
         """Return ``None``: step cadences do not constrain the time step."""
-        del time
         return None
 
     def describe(self) -> str:
@@ -148,11 +122,6 @@ class EveryTime:
                 )
             object.__setattr__(self, name, float(value))
 
-    @property
-    def is_final_only(self) -> bool:
-        """Return ``False`` because this schedule is driven by physical time."""
-        return False
-
     def next_time_after(self, time: float) -> float:
         """Return the next cadence time strictly after ``time``, in s.
 
@@ -206,14 +175,8 @@ class FinalOnly:
     exactly-once final dispatch and restart history trimming.
     """
 
-    @property
-    def is_final_only(self) -> bool:
-        """Return ``True`` so the output manager dispatches only at finalization."""
-        return True
-
     def next_time_after(self, time: float) -> None:
         """Return ``None``: a final event does not constrain the time step."""
-        del time
         return None
 
     def describe(self) -> str:
@@ -226,7 +189,6 @@ class FinalOnly:
 
     def is_due(self, step: int, time: float, time_step_size: float) -> bool:
         """Return false; the solver dispatches the final event explicitly."""
-        del step, time, time_step_size
         return False
 
 
