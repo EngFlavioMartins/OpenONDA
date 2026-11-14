@@ -25,7 +25,6 @@ from numpy.typing import ArrayLike
 __all__ = [
     "CompositeMotion",
     "HeavingMotion",
-    "LinearPeriodicMotion",
     "ManeuverMotion",
     "PitchingMotion",
     "RigidMotion",
@@ -489,55 +488,6 @@ class PitchingMotion(_ExactAxisRotation):
         """Return ``theta0 sin(omega t + phase)`` in rad."""
         omega = 2.0 * math.pi * self.frequency
         return math.radians(self.amplitude_degrees) * math.sin(omega * time + self.phase)
-
-
-@dataclass(frozen=True, slots=True)
-class LinearPeriodicMotion(_ExactTranslation):
-    """Sinusoidal translation ``r(t) = r0 + A sin(2 pi f t + phase) d``.
-
-    Parameters
-    ----------
-    amplitude : float
-        Motion amplitude in m.
-    frequency : float
-        Motion frequency in Hz.
-    direction : array-like, shape (3,)
-        Motion direction, normalized internally.
-    phase : float, default=0
-        Phase in rad.
-    """
-
-    amplitude: float
-    frequency: float
-    direction: tuple[float, float, float]
-    phase: float = 0.0
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "amplitude", _finite("LinearPeriodicMotion.amplitude", self.amplitude)
-        )
-        object.__setattr__(
-            self,
-            "frequency",
-            _finite("LinearPeriodicMotion.frequency", self.frequency, minimum=0.0),
-        )
-        object.__setattr__(
-            self,
-            "direction",
-            finite_vector("LinearPeriodicMotion.direction", self.direction, unit=True),
-        )
-        object.__setattr__(self, "phase", _finite("LinearPeriodicMotion.phase", self.phase))
-
-    def get_velocity(self, time: float) -> np.ndarray:
-        """Return ``A omega cos(omega t + phase) d`` in m/s."""
-        omega = 2.0 * math.pi * self.frequency
-        speed = self.amplitude * omega * math.cos(omega * time + self.phase)
-        return speed * np.array(self.direction)
-
-    def displacement(self, time: float) -> np.ndarray:
-        """Return ``A sin(omega t + phase) d`` in m."""
-        omega = 2.0 * math.pi * self.frequency
-        return self.amplitude * math.sin(omega * time + self.phase) * np.array(self.direction)
 
 
 @dataclass(frozen=True, slots=True)

@@ -19,7 +19,6 @@ from openonda.core.forcing import VelocityRamp
 from openonda.core.kinematics import (
     CompositeMotion,
     HeavingMotion,
-    LinearPeriodicMotion,
     ManeuverMotion,
     PitchingMotion,
     RigidMotion,
@@ -87,7 +86,6 @@ __all__ = [
     "HeavingMotion",
     "InitialFields",
     "LineSampler",
-    "LinearPeriodicMotion",
     "LinearSolveResult",
     "LinearSolverConfig",
     "LoggingConfig",

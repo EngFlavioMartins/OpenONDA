@@ -3,7 +3,6 @@
 from openonda.core.kinematics import (
     CompositeMotion,
     HeavingMotion,
-    LinearPeriodicMotion,
     ManeuverMotion,
     PitchingMotion,
     RigidMotion,
@@ -85,7 +84,6 @@ __all__ = [
     "InitialCondition",
     "LagrangianCFLLimit",
     "LineSampler",
-    "LinearPeriodicMotion",
     "LoggingConfig",
     "ManeuverMotion",
     "MisalignmentLimit",

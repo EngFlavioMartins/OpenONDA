@@ -150,7 +150,6 @@ The prescribed motion classes live in `openonda.core.kinematics` and are the sam
 | `TranslatingMotion(velocity)` | Constant velocity |
 | `RotatingMotion(angular_speed, rotation_axis, rotation_centre, acceleration_time)` | Constant rotation about a fixed axis, optional sin² spin-up |
 | `HeavingMotion(amplitude, frequency, phase, direction)` | $A\sin(2\pi ft+\phi)$ along `direction` (default z) |
-| `LinearPeriodicMotion(amplitude, frequency, direction, phase)` | The same sinusoidal translation with a required direction |
 | `PitchingMotion(amplitude_degrees, frequency, phase, rotation_axis, rotation_centre)` | $\theta_0\sin(2\pi ft+\phi)$ about a fixed pivot |
 | `SmoothRampMotion(final_velocity, acceleration_time, start_time)` | Acceleration from rest with a sin² velocity ramp |
 | `ManeuverMotion(velocity_function, angular_velocity_function, rotation_centre)` | Velocities given as functions of time |
