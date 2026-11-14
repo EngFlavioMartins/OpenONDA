@@ -4,8 +4,10 @@ from collections.abc import Iterable
 from pathlib import Path
 import shutil
 
+from matplotlib import colormaps
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_agg import RendererAgg
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from matplotlib.text import Text
@@ -26,7 +28,6 @@ DEFAULT_DPI = 400
 EXPORT_FORMATS = ("png", "pdf")
 FORMAT_CHOICES = (*EXPORT_FORMATS, "both")
 MAX_FIGURE_WIDTH_CM = 12.5
-WIDE_FIGURE_WIDTH_CM = 12.5
 MIN_TEXT_CANVAS_PADDING_PT = 2.0
 MIN_LINE_WIDTH_PT = 0.6  # At the 125 mm printed figure width.
 FONT_PATH = Path(__file__).parent / "_resources" / "DejaVuSerif.ttf"
@@ -38,20 +39,14 @@ FIGURE_SIZES_CM = {
     "trajectory": (MAX_FIGURE_WIDTH_CM, 7.5),
     "stacked": (MAX_FIGURE_WIDTH_CM, 12.5),
     "stacked_tall": (MAX_FIGURE_WIDTH_CM, 12.5),
-    "wide": (WIDE_FIGURE_WIDTH_CM, 9.0),
-    "wide_short": (WIDE_FIGURE_WIDTH_CM, 8.0),
-    "wide_stacked": (WIDE_FIGURE_WIDTH_CM, 12.5),
+    "wide": (MAX_FIGURE_WIDTH_CM, 9.0),
+    "wide_short": (MAX_FIGURE_WIDTH_CM, 8.0),
+    "wide_stacked": (MAX_FIGURE_WIDTH_CM, 12.5),
 }
 
 LINE_WIDTH = 1.0
-REFERENCE_LINE_WIDTH = 1.0
 MARKER_SIZE = 3.0
 MARKER_EDGE_WIDTH = MIN_LINE_WIDTH_PT
-MARK_EVERY = {
-    "default": 3,
-    "total_kinetic_energy": 4,
-    "trajectory": 5,
-}
 
 # Colour palette of the thesis figures.
 PALETTE = {
@@ -73,13 +68,12 @@ COLOR_CYCLE = tuple(
 )
 BACKGROUND_LIGHT = PALETTE["light_gray"]
 BACKGROUND_STRONG = PALETTE["strong_gray"]
-REFERENCE_GRAY = PALETTE["gray"]
 
 COLORS = {
     **PALETTE,
     "background_light": BACKGROUND_LIGHT,
     "background_strong": BACKGROUND_STRONG,
-    "reference": REFERENCE_GRAY,
+    "reference": PALETTE["gray"],
     "reference_fill": BACKGROUND_LIGHT,
     "vpm": PALETTE["blue"],
     "hybrid": PALETTE["amber"],
@@ -90,9 +84,6 @@ COLORS = {
 }
 
 # Sequential maps for magnitudes; a zero-centred diverging map for signed fields.
-from matplotlib import colormaps
-from matplotlib.colors import LinearSegmentedColormap
-
 for _name, _stops in {
     "thesis_blue": ["#0D3D45", "#156074", "#41A6C4", "#C8EDF5"],
     "thesis_amber": ["#6B3019", "#B45D1E", "#EF9C1F", "#FFF0CA"],
@@ -120,15 +111,8 @@ COLORMAPS.update(
 REFERENCE_STYLE = {
     "color": COLORS["reference"],
     "linestyle": "--",
-    "linewidth": REFERENCE_LINE_WIDTH,
+    "linewidth": 1.0,
 }
-
-
-def get_color(name: str, fallback: str | None = None) -> str:
-    """Return a named color from the central palette."""
-    if fallback is None:
-        fallback = COLORS["reference"]
-    return COLORS.get(name, fallback)
 
 
 def get_colormap(name: str) -> str:
@@ -165,7 +149,7 @@ def figure_renderer(fig) -> RendererAgg:
     return renderer
 
 
-def thesis_y_label_margin(fig, axes: Iterable[Axes] | Axes) -> float:
+def _y_label_margin(fig, axes: Iterable[Axes] | Axes) -> float:
     """Measure a symmetric plot margin with outer y text just inside the canvas.
 
     Measure rendered labels at their final font size. The returned fraction
@@ -199,7 +183,7 @@ def fit_thesis_y_label_margins(fig, axes: Iterable[Axes] | Axes) -> None:
     for _ in range(3):
         _separate_corner_tick_labels(fig, axes)
         _separate_title_from_y_ticks(fig, axes)
-        outer = thesis_y_label_margin(fig, axes)
+        outer = _y_label_margin(fig, axes)
         centered_subplots_adjust(fig, outer=outer)
 
 
@@ -271,7 +255,7 @@ def _separate_title_from_y_ticks(fig, axes: tuple[Axes, ...]) -> None:
             )
 
 
-class TwoSignificantDigitsFormatter(ScalarFormatter):
+class _TwoSignificantDigitsFormatter(ScalarFormatter):
     """Two significant digits, with a shared exponent/offset for close values."""
 
     def _set_format(self):
@@ -292,9 +276,9 @@ def prepare_figure(fig):
         for axis in (ax.xaxis, ax.yaxis):
             formatter = axis.get_major_formatter()
             if isinstance(formatter, ScalarFormatter) and not isinstance(
-                formatter, TwoSignificantDigitsFormatter
+                formatter, _TwoSignificantDigitsFormatter
             ):
-                new = TwoSignificantDigitsFormatter(useMathText=True)
+                new = _TwoSignificantDigitsFormatter(useMathText=True)
                 new.set_powerlimits(
                     formatter.get_powerlimits()
                     if hasattr(formatter, "get_powerlimits")
@@ -326,7 +310,7 @@ def prepare_figure(fig):
 
 
 def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
-    """Check thesis figure size, centring, and consistent fonts."""
+    """Prepare the figure, then check its size, centring, fonts and text clearance."""
     prepare_figure(fig)
     axes = (axes,) if isinstance(axes, Axes) else tuple(axes)
     if not axes:
@@ -412,65 +396,7 @@ def validate_thesis_figure(fig, axes: Iterable[Axes] | Axes) -> None:
         painted_text.append((item, bounds))
 
 
-def set_style(*, use_tex: bool = False):
-    """Apply the OpenONDA thesis plotting style.
-
-    Matplotlib's built-in math renderer is the portable default. Pass
-    ``use_tex=True`` only with a working LaTeX and dvipng installation.
-    """
-    if FONT_PATH.exists():
-        from matplotlib import font_manager
-
-        font_manager.fontManager.addfont(str(FONT_PATH))
-
-    tex_fonts = {
-        "text.usetex": use_tex,
-        "text.latex.preamble": r"\usepackage{amsmath}" if use_tex else "",
-        "font.family": "serif",
-        "font.serif": ["DejaVu Serif", "Computer Modern Roman"],
-        "font.size": FONT_SIZE_PT,
-        "axes.labelsize": FONT_SIZE_PT,
-        "axes.titlesize": FONT_SIZE_PT,
-        "figure.titlesize": FONT_SIZE_PT,
-        "figure.labelsize": FONT_SIZE_PT,
-        "legend.fontsize": FONT_SIZE_PT,
-        "legend.title_fontsize": FONT_SIZE_PT,
-        "xtick.labelsize": FONT_SIZE_PT,
-        "ytick.labelsize": FONT_SIZE_PT,
-        "figure.dpi": DEFAULT_DPI,
-        "savefig.dpi": DEFAULT_DPI,
-        "xtick.major.size": 6,
-        "ytick.major.size": 6,
-        "xtick.minor.size": 4,
-        "ytick.minor.size": 4,
-        "xtick.major.width": MIN_LINE_WIDTH_PT,
-        "ytick.major.width": MIN_LINE_WIDTH_PT,
-        "xtick.minor.width": MIN_LINE_WIDTH_PT,
-        "ytick.minor.width": MIN_LINE_WIDTH_PT,
-        "axes.grid": False,
-        "grid.linestyle": "--",
-        "grid.linewidth": 0.5,
-        "grid.alpha": 0.3,
-        "axes.grid.which": "both",
-        "axes.prop_cycle": plt.cycler(color=COLOR_CYCLE),
-        "xtick.minor.visible": True,
-        "ytick.minor.visible": True,
-        "xtick.top": True,
-        "ytick.right": True,
-        "axes.edgecolor": "black",
-        "axes.linewidth": MIN_LINE_WIDTH_PT,
-        "lines.linewidth": LINE_WIDTH,
-        "lines.markersize": MARKER_SIZE,
-        "xtick.direction": "in",
-        "ytick.direction": "in",
-        "savefig.bbox": "standard",
-        "savefig.pad_inches": 0.0,
-    }
-
-    plt.rcParams.update(tex_fonts)
-
-
-def requested_formats(figure_format="png"):
+def _requested_formats(figure_format="png"):
     """Expand the CLI format without treating 'both' as a filename extension."""
     if figure_format == "both":
         return ("pdf", "png")
@@ -480,15 +406,15 @@ def requested_formats(figure_format="png"):
 
 
 def export_figure(fig, path, *, figure_format=None, dpi=None, close=True):
-    """Export an already laid-out canvas at native size, without cropping.
+    """Prepare, validate and export an already laid-out canvas at native size.
 
-    PDF is saved first so both formats use identical physical geometry.
+    The canvas is not cropped. PDF is saved first so both formats use identical
+    physical geometry.
     """
-    prepare_figure(fig)
     validate_thesis_figure(fig, fig.axes)
     path = Path(path)
     suffix_format = path.suffix.lstrip(".")
-    formats = requested_formats(
+    formats = _requested_formats(
         figure_format or (suffix_format if suffix_format in FORMAT_CHOICES else "png")
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -508,9 +434,7 @@ def export_figure(fig, path, *, figure_format=None, dpi=None, close=True):
 
 
 def save_fig(fig, path, figure_format="png", dpi=None):
-    """Lay out, validate and export a simple thesis figure (PNG unless asked otherwise)."""
-    prepare_figure(fig)
-    validate_thesis_figure(fig, fig.axes)
+    """Prepare, validate and export a thesis figure (PNG unless asked otherwise)."""
     return export_figure(fig, path, figure_format=figure_format, dpi=dpi)
 
 
@@ -520,15 +444,21 @@ _THESIS_LATEX_PREAMBLE = r"\usepackage[T1]{fontenc}\usepackage{newpxtext}\usepac
 _PALATINO_LIKE_FONTS = ["TeX Gyre Pagella", "Palatino Linotype", "URW Palladio L", "DejaVu Serif"]
 
 
-def set_thesis_style():
+def set_thesis_style(*, use_tex: bool | None = None):
     """Use the thesis body fonts at final physical size.
 
     With LaTeX and dvipng on PATH, LaTeX typesets the text in Palatino
     (newpx). Without them, Matplotlib's math text renders the same labels in a
-    Palatino-like serif, so figures keep their sizes and layout.
+    Palatino-like serif, so figures keep their sizes and layout. ``use_tex``
+    forces LaTeX on or off; ``None`` selects it from the available tools.
     """
-    use_tex = all(shutil.which(tool) for tool in ("latex", "dvipng"))
-    set_style()
+    if use_tex is None:
+        use_tex = all(shutil.which(tool) for tool in ("latex", "dvipng"))
+    if FONT_PATH.exists():
+        from matplotlib import font_manager
+
+        font_manager.fontManager.addfont(str(FONT_PATH))
+
     plt.rcParams.update(
         {
             "text.usetex": use_tex,
@@ -539,20 +469,41 @@ def set_thesis_style():
             "mathtext.bf": "serif:bold",
             "font.family": "serif",
             "font.serif": ["Palatino"] if use_tex else _PALATINO_LIKE_FONTS,
-            **dict.fromkeys(
-                (
-                    "font.size",
-                    "axes.labelsize",
-                    "axes.titlesize",
-                    "figure.titlesize",
-                    "figure.labelsize",
-                    "legend.fontsize",
-                    "legend.title_fontsize",
-                    "xtick.labelsize",
-                    "ytick.labelsize",
-                ),
-                THESIS_FONT_SIZE_PT,
-            ),
+            "font.size": THESIS_FONT_SIZE_PT,
+            "axes.labelsize": THESIS_FONT_SIZE_PT,
+            "axes.titlesize": THESIS_FONT_SIZE_PT,
+            "figure.titlesize": THESIS_FONT_SIZE_PT,
+            "figure.labelsize": THESIS_FONT_SIZE_PT,
+            "legend.fontsize": THESIS_FONT_SIZE_PT,
+            "legend.title_fontsize": THESIS_FONT_SIZE_PT,
+            "xtick.labelsize": THESIS_FONT_SIZE_PT,
+            "ytick.labelsize": THESIS_FONT_SIZE_PT,
+            "figure.dpi": DEFAULT_DPI,
+            "savefig.dpi": DEFAULT_DPI,
+            "xtick.major.size": 6,
+            "ytick.major.size": 6,
+            "xtick.minor.size": 4,
+            "ytick.minor.size": 4,
+            "xtick.major.width": MIN_LINE_WIDTH_PT,
+            "ytick.major.width": MIN_LINE_WIDTH_PT,
+            "xtick.minor.width": MIN_LINE_WIDTH_PT,
+            "ytick.minor.width": MIN_LINE_WIDTH_PT,
+            "axes.grid": False,
+            "grid.linestyle": "--",
+            "grid.linewidth": 0.5,
+            "grid.alpha": 0.3,
+            "axes.grid.which": "both",
+            "axes.prop_cycle": plt.cycler(color=COLOR_CYCLE),
+            "xtick.minor.visible": True,
+            "ytick.minor.visible": True,
+            "xtick.top": True,
+            "ytick.right": True,
+            "axes.edgecolor": "black",
+            "axes.linewidth": MIN_LINE_WIDTH_PT,
+            "lines.linewidth": LINE_WIDTH,
+            "lines.markersize": MARKER_SIZE,
+            "xtick.direction": "in",
+            "ytick.direction": "in",
             "savefig.bbox": "standard",
             "savefig.pad_inches": 0.0,
         }
@@ -595,7 +546,5 @@ def validation_legend(fig, axis, *, ncol=2):
 
 
 def save_validation_figure(fig, path, *, figure_format="png", dpi=None):
-    """Check text extents and collisions before saving a comparison figure."""
-    prepare_figure(fig)
-    validate_thesis_figure(fig, fig.axes)
+    """Check text extents and collisions, then save a comparison figure."""
     return export_figure(fig, path, figure_format=figure_format, dpi=dpi)

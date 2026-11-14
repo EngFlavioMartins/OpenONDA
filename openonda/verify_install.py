@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest import mock
 
 import numba
 import numpy as np
@@ -59,13 +60,7 @@ def _verify_taichi() -> tuple[str, str]:
                 offline_cache_file_path=cache,
             )
             architecture = str(ti.lang.impl.current_cfg().arch)
-            version = ti.__version__
-            version_text = (
-                ".".join(str(value) for value in version)
-                if isinstance(version, tuple)
-                else str(version)
-            )
-            return version_text, architecture
+            return ".".join(str(value) for value in ti.__version__), architecture
     finally:
         ti.reset()
 
@@ -151,19 +146,18 @@ def _verify_cartesian_mesher() -> dict[str, str | int]:
     """Exercise the installed, compiled octree on a cube surface."""
     from openonda.fvm.mesh.cartesian.cfmesh_octree import _balance_selection_kernel
 
-    directory = Path(tempfile.mkdtemp(prefix="openonda-mesher-"))
-    _write_cube_stl(directory / "cube.stl", 0.5)
-    surface = msh.STLSurface(directory / "cube.stl", patch="body")
-    mesh = msh.CartesianMesher(
-        domain=msh.BoxDomain(
-            bounds=(-2.0, 2.0, -2.0, 2.0, -1.0, 1.0),
-            patches=msh.BoxPatches("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
-        ),
-        surfaces=(surface,),
-        max_cell_size=0.5,
-        patch_refinements=(msh.PatchRefinement("body", 0.125),),
-    ).build(stop_after="templateGeneration")
-    shutil.rmtree(directory)
+    with tempfile.TemporaryDirectory(prefix="openonda-mesher-") as directory:
+        _write_cube_stl(Path(directory) / "cube.stl", 0.5)
+        surface = msh.STLSurface(Path(directory) / "cube.stl", patch="body")
+        mesh = msh.CartesianMesher(
+            domain=msh.BoxDomain(
+                bounds=(-2.0, 2.0, -2.0, 2.0, -1.0, 1.0),
+                patches=msh.BoxPatches("xmin", "xmax", "ymin", "ymax", "zmin", "zmax"),
+            ),
+            surfaces=(surface,),
+            max_cell_size=0.5,
+            patch_refinements=(msh.PatchRefinement("body", 0.125),),
+        ).build(stop_after="templateGeneration")
     if not getattr(_balance_selection_kernel, "nopython_signatures", ()):
         raise RuntimeError(
             "Cartesian octree acceleration is inactive; check that NUMBA_DISABLE_JIT is unset"
@@ -379,38 +373,26 @@ def _verify_distribution_resources() -> dict[str, object]:
         workspace = Path(directory) / "workspace"
         cache = Path(directory) / "cache"
         cache.mkdir()
-        previous_matplotlib_cache = os.environ.get("MPLCONFIGDIR")
-        previous_xdg_cache = os.environ.get("XDG_CACHE_HOME")
-        os.environ["MPLCONFIGDIR"] = str(cache / "matplotlib")
-        os.environ["XDG_CACHE_HOME"] = str(cache)
-
-        import matplotlib
-
-        matplotlib.use("Agg")
-        from matplotlib import pyplot as plt
-
         workspace.mkdir()
-        from openonda import plotting as theme
+        # Matplotlib reads its cache location when it is first imported.
+        with mock.patch.dict(
+            os.environ, {"MPLCONFIGDIR": str(cache / "matplotlib"), "XDG_CACHE_HOME": str(cache)}
+        ):
+            import matplotlib
+            from matplotlib import pyplot as plt
 
-        theme.set_style()
-        figure, axes = plt.subplots(figsize=theme.figure_size("single_short"))
-        axes.plot([0.0, 1.0], [0.0, 1.0])
-        axes.set_xlabel(r"$x$")
-        theme.centered_subplots_adjust(figure, outer=0.18, bottom=0.28, top=0.94)
-        theme.fit_thesis_y_label_margins(figure, (axes,))
-        figure_path = workspace / "plot-check.png"
-        theme.save_fig(figure, figure_path, dpi=72)
-        if not figure_path.is_file() or figure_path.stat().st_size == 0:
-            raise RuntimeError("Matplotlib installation check did not create a figure")
+            from openonda import plotting as theme
 
-        if previous_matplotlib_cache is None:
-            os.environ.pop("MPLCONFIGDIR", None)
-        else:
-            os.environ["MPLCONFIGDIR"] = previous_matplotlib_cache
-        if previous_xdg_cache is None:
-            os.environ.pop("XDG_CACHE_HOME", None)
-        else:
-            os.environ["XDG_CACHE_HOME"] = previous_xdg_cache
+            theme.set_thesis_style(use_tex=False)
+            figure, axes = plt.subplots(figsize=theme.figure_size("single_short"))
+            axes.plot([0.0, 1.0], [0.0, 1.0])
+            axes.set_xlabel(r"$x$")
+            theme.centered_subplots_adjust(figure, outer=0.18, bottom=0.28, top=0.94)
+            theme.fit_thesis_y_label_margins(figure, (axes,))
+            figure_path = workspace / "plot-check.png"
+            theme.save_fig(figure, figure_path, dpi=72)
+            if not figure_path.is_file() or figure_path.stat().st_size == 0:
+                raise RuntimeError("Matplotlib installation check did not create a figure")
 
     return {
         "typed_package": True,

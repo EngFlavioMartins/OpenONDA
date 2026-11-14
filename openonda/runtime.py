@@ -125,6 +125,23 @@ def _mpi_executable() -> str:
     )
 
 
+def _limit_numerical_threads(count: int) -> None:
+    """Cap the live thread pools of Numba and the BLAS libraries at ``count``."""
+    # Numba fixes its pool capacity at import. Mutating NUMBA_NUM_THREADS
+    # later breaks subsequent JIT compilation, including VPM diffusion
+    # after an FVM solve in the same process. Mask active threads through
+    # its runtime API, leaving the process pool capacity unchanged.
+    for name in _THREAD_VARIABLES:
+        os.environ[name] = str(count)
+    import numba
+    from threadpoolctl import threadpool_limits
+
+    numba.set_num_threads(count)
+    # NumPy/SciPy are usually imported before solver construction. Merely
+    # setting environment variables here does not resize their live pools.
+    threadpool_limits(limits=count)
+
+
 @dataclass(frozen=True)
 class RunConfig:
     """Declare how one OpenONDA process uses CPU threads or MPI ranks.
@@ -161,23 +178,6 @@ class RunConfig:
         """Whether the configuration requests more than one worker or rank."""
         return self.cpu_cores > 1
 
-    def _set_thread_count(self, count: int) -> None:
-        global _WORKER_THREADS
-        _WORKER_THREADS = self.cpu_cores
-        # Numba fixes its pool capacity at import. Mutating NUMBA_NUM_THREADS
-        # later breaks subsequent JIT compilation, including VPM diffusion
-        # after an FVM solve in the same process. Mask active threads through
-        # its runtime API, leaving the process pool capacity unchanged.
-        for name in _THREAD_VARIABLES:
-            os.environ[name] = str(count)
-        import numba
-        from threadpoolctl import threadpool_limits
-
-        numba.set_num_threads(count)
-        # NumPy/SciPy are usually imported before solver construction. Merely
-        # setting environment variables here does not resize their live pools.
-        threadpool_limits(limits=count)
-
     def ensure_mpi(self, script: str | Path) -> None:
         """Ensure that ``script`` is running with the requested MPI world size.
 
@@ -198,6 +198,7 @@ class RunConfig:
         current process with ``mpiexec``. It also restricts each rank to one
         numerical-library thread to avoid oversubscription.
         """
+        global _WORKER_THREADS
         size = detected_world_size()
         if size > 1:
             if size != self.cpu_cores:
@@ -205,9 +206,13 @@ class RunConfig:
                     f"MPI launched {size} ranks, but the case requests cores={self.cpu_cores}"
                 )
             _configure_mpi_exception_reporting()
-            self._set_thread_count(1)
+            _limit_numerical_threads(1)
+            # Each rank limits BLAS and Numba to one thread; the thread count
+            # that Taichi may use between collective solves stays cpu_cores.
+            _WORKER_THREADS = self.cpu_cores
             return
-        self._set_thread_count(1)
+        _limit_numerical_threads(1)
+        _WORKER_THREADS = self.cpu_cores
         if not self.is_parallel:
             return
         if os.environ.get(_MPI_CHILD) == "1":
@@ -257,12 +262,14 @@ class RunConfig:
         Thread mode updates Numba and BLAS-related process environment limits;
         MPI mode delegates to :meth:`ensure_mpi`.
         """
+        global _WORKER_THREADS
         if self.parallel_mode == "mpi":
             self.ensure_mpi(script)
             return
         if detected_world_size() > 1:
             raise RuntimeError("A threaded case must not be launched with mpiexec")
-        self._set_thread_count(self.cpu_cores)
+        _limit_numerical_threads(self.cpu_cores)
+        _WORKER_THREADS = self.cpu_cores
 
 
 __all__ = ["RunConfig"]
