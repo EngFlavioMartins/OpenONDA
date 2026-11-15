@@ -11,7 +11,8 @@ At every saved state of the coupled run (solution/coupled/coupled_*) and of the 
 Each state is cached in samples/starting_vortex/, so a rerun only adds new states. Writes PNG
 figures to figures/starting_vortex/:
 - x<plane>_omega_z, x<plane>_omega_x: the maps at the five common states around the passage of
-  the starting vortex, coupled above reference;
+  the starting vortex (the first excursion of the integrated spanwise vorticity through the
+  plane, see starting_passage), coupled above reference;
 - histories: through each plane, the integrated spanwise vorticity (the starting vortex) and the
   streamwise circulation of each half-plane (the tip vortex of each wing half), against time.
 
@@ -53,6 +54,8 @@ SPACING = 0.04  # m, plane grid
 FIT_CELLS = 20  # reference cells of each affine velocity fit
 KERNEL_SUPPORT = 5.0  # core radii within which a particle contributes
 SHOWN_STATES = 5  # maps around the passage of the starting vortex
+ARRIVAL_FRACTION = 0.1  # |int omega_z| / its run maximum at which the starting vortex has arrived
+UNSTEADY_FRACTION = 0.25  # |int omega_z| / the passage peak from which the later wake is unsteady
 
 Y = np.linspace(
     CROSS_BOUNDS[0], CROSS_BOUNDS[1], round((CROSS_BOUNDS[1] - CROSS_BOUNDS[0]) / SPACING) + 1
@@ -215,15 +218,41 @@ def measures(states):
     return out
 
 
+def starting_passage(integral):
+    """Peak index of the starting vortex in a series of integrated omega_z, and the index at which
+    the later unsteady wake begins (None if it does not).
+
+    The starting vortex is the first excursion of the series: from the first value above
+    ARRIVAL_FRACTION of the run's largest |value|, while the sign stays that of the arrival. Its
+    peak is the largest |value| of that excursion. The wake after it is unsteady from the first
+    value whose magnitude exceeds UNSTEADY_FRACTION of that peak again.
+    """
+    integral = np.asarray(integral)
+    magnitude = np.abs(integral)
+    arrived = np.flatnonzero(magnitude > ARRIVAL_FRACTION * magnitude.max())
+    if not len(arrived):
+        return None, None
+    first = arrived[0]
+    sign = np.sign(integral[first])
+    end = first
+    while end + 1 < len(integral) and np.sign(integral[end + 1]) == sign:
+        end += 1
+    peak = first + int(np.argmax(magnitude[first : end + 1]))
+    later = np.flatnonzero(magnitude[end + 1 :] > UNSTEADY_FRACTION * magnitude[peak])
+    return peak, (end + 1 + later[0] if len(later) else None)
+
+
 def passage_states(reference, coupled, index):
-    """The common times around the largest |integrated omega_z| of the reference on a plane."""
+    """The common times around the passage of the starting vortex through a plane, in the reference."""
     common = sorted(
         set(np.round([t for t, _ in reference], 6)) & set(np.round([t for t, _ in coupled], 6))
     )
     if not common:
         return []
-    values = {round(t, 6): abs(f[index][2].sum()) for t, f in reference}
-    peak = common.index(max(common, key=lambda t: values[t]))
+    values = {round(t, 6): f[index][2].sum() for t, f in reference}
+    peak, _ = starting_passage([values[t] for t in common])
+    if peak is None:
+        return []
     start = min(max(0, peak - SHOWN_STATES // 2), max(0, len(common) - SHOWN_STATES))
     return common[start : start + SHOWN_STATES]
 
@@ -341,7 +370,8 @@ def history_figure(coupled, reference):
 
 
 def report(coupled, reference):
-    """Both runs at their common times: the passage of the starting vortex and the tip circulation."""
+    """Both runs at their common times: the passage of the starting vortex, the later unsteady wake
+    and the tip circulation."""
     for x in PLANES:
         c, r = coupled[x], reference[x]
         times = sorted(set(np.round(c["time"], 6)) & set(np.round(r["time"], 6)))
@@ -349,14 +379,28 @@ def report(coupled, reference):
             continue
         ci = [int(np.argmin(np.abs(c["time"] - t))) for t in times]
         ri = [int(np.argmin(np.abs(r["time"] - t))) for t in times]
-        passage = int(np.argmax(np.abs(r["omega_z_integral"][ri])))
+        passage, unsteady = starting_passage(r["omega_z_integral"][ri])
         last = -1
+        if passage is None:
+            print(f"x = {x:g} m: the starting vortex has not reached the plane")
+            continue
         print(
             f"x = {x:g} m, passage at t = {times[passage]:.2f} s: int omega_z coupled "
             f"{c['omega_z_integral'][ci[passage]]:+.3f}, reference "
             f"{r['omega_z_integral'][ri[passage]]:+.3f} m^2/s; peak omega_z coupled "
             f"{c['omega_z_peak'][ci[passage]]:+.2f}, reference {r['omega_z_peak'][ri[passage]]:+.2f} 1/s"
         )
+        if unsteady is not None:
+            late_c = c["omega_z_integral"][ci[unsteady:]]
+            late_r = r["omega_z_integral"][ri[unsteady:]]
+            big_c, big_r = int(np.argmax(np.abs(late_c))), int(np.argmax(np.abs(late_r)))
+            print(
+                f"x = {x:g} m, unsteady wake from t = {times[unsteady]:.2f} s ({len(late_r)} states): "
+                f"rms int omega_z coupled {np.sqrt(np.mean(late_c**2)):.3f}, reference "
+                f"{np.sqrt(np.mean(late_r**2)):.3f} m^2/s; largest |int omega_z| coupled "
+                f"{late_c[big_c]:+.3f} at t = {times[unsteady + big_c]:.2f} s, reference "
+                f"{late_r[big_r]:+.3f} at t = {times[unsteady + big_r]:.2f} s"
+            )
         print(
             f"x = {x:g} m, t = {times[last]:.2f} s: tip circulation z>0 coupled "
             f"{c['circulation_upper'][ci[last]]:+.3f}, reference {r['circulation_upper'][ri[last]]:+.3f}; "
