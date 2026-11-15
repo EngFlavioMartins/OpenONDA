@@ -29,13 +29,13 @@ from openonda.runtime import RunConfig
 from ..config.case import FVMCase
 from ..config.configuration import FVMConfiguration
 from ..coupling import CouplerInterfaceMixin
-from ..fields.boundary_values import update_velocity_boundaries
+from ..fields.boundary_values import update_scalar_boundaries, update_velocity_boundaries
 from ..io import logging as step_log
 from ..io import solver_io
 from ..io.backup import mesh_digest
 from ..mesh import geometry
 from ..sampling.executor import execute_samplers
-from ..solve import pimple_solver, simple_solver
+from ..solve import pimple_solver
 from .parallel import ParallelContext
 from .state import FieldState
 from .time_step import (
@@ -535,7 +535,7 @@ class FVMSolver(CouplerInterfaceMixin):
 
         self.logger.report(step_log.configuration_report(self, initialization.seconds))
 
-        simple_solver.update_scalar_boundaries(
+        update_scalar_boundaries(
             self.kinematic_pressure,
             self.mesh_data,
             self.boundaries,
@@ -836,7 +836,7 @@ class FVMSolver(CouplerInterfaceMixin):
             )
             self.volumetric_face_flux_old = self.volumetric_face_flux.copy()
             self.volumetric_face_flux_older = self.volumetric_face_flux.copy()
-            simple_solver.update_scalar_boundaries(
+            update_scalar_boundaries(
                 self.kinematic_pressure,
                 self.mesh_data,
                 self.boundaries,
@@ -925,7 +925,7 @@ class FVMSolver(CouplerInterfaceMixin):
             )
             self.volumetric_face_flux_old = self.volumetric_face_flux.copy()
             self.volumetric_face_flux_older = self.volumetric_face_flux.copy()
-            simple_solver.update_scalar_boundaries(
+            update_scalar_boundaries(
                 self.kinematic_pressure,
                 self.mesh_data,
                 self.boundaries,

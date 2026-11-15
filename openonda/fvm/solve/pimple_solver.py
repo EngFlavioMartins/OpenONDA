@@ -7,16 +7,150 @@ import numpy as np
 from openonda.core.profiling import Profiler
 
 from ..assemble import matrix_assembly, momentum
+from ..assemble.time_integration import backward_coefficients
 from ..diagnostics import fields as field_diagnostics
 from ..diagnostics.step import OuterCorrectorDiagnostics
 from ..fields import gradients
-from ..fields.boundary_values import update_velocity_boundaries
-from . import simple_solver
+from ..fields.boundary_values import (
+    prepare_freestream_boundaries,
+    update_scalar_boundaries,
+    update_velocity_boundaries,
+)
+from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
+from . import pressure_equation
 from .linear_interface import solve_linear_system
 
 if TYPE_CHECKING:
     from ..core.parallel import ParallelContext
     from .petsc_partitioned import PartitionedLinearWorkspace
+
+
+def compute_ddt_flux_correction(
+    velocity_old: np.ndarray,
+    velocity_older: np.ndarray | None,
+    volumetric_face_flux_old: np.ndarray,
+    volumetric_face_flux_older: np.ndarray | None,
+    time_step_size: float,
+    mesh_data: dict[str, object],
+    geo_data: dict[str, object],
+    boundaries: list[dict],
+    ddt_scheme: str,
+    previous_time_step_size: float | None = None,
+    mesh_face_flux: np.ndarray | None = None,
+) -> np.ndarray | None:
+    r"""Return the transient Rhie--Chow face-history correction.
+
+    This is the limited difference between the committed face flux and the
+    flux obtained by interpolating the committed cell velocity, divided by the
+    time step.  Variable-step BDF2 uses the same two-level history combination
+    as the cell derivative, and every non-coupled boundary contribution is zero.
+
+    The face value of ``H/A`` interpolates the cell velocity, whose transient
+    source carries ``V/dt * u_old``; scaled by the face pressure-velocity
+    coefficient, this correction replaces that interpolated old velocity by
+    the old face flux once, as ``fvc::ddtCorr`` does.  Fully periodic domains
+    skip it: it carries the difference between the face flux and the
+    interpolated cell velocity from step to step, and on a periodic
+    Taylor-Green vortex that difference builds up to a velocity error several
+    times larger, nearly independent of the time step.  On bounded domains it
+    keeps a steady state independent of the time step.
+
+    On a moving mesh the coupling coefficient is normalised by the old flux
+    relative to the moving faces, ``phi_old - mesh_face_flux``, so the
+    correction is independent of a uniform frame velocity.
+    """
+    if volumetric_face_flux_old is None or time_step_size is None or velocity_old is None:
+        return None
+
+    strategies = [boundary_strategy(b.get("velocity_type"), "velocity") for b in boundaries]
+    if strategies and all(
+        strategy in (BoundaryStrategy.CYCLIC, BoundaryStrategy.EMPTY) for strategy in strategies
+    ):
+        return None
+
+    n_faces = mesh_data["n_faces"]
+    n_interior = mesh_data["n_interior_faces"]
+
+    if str(ddt_scheme).lower() == "backward" and (
+        velocity_older is not None
+        and volumetric_face_flux_older is not None
+        and previous_time_step_size is not None
+    ):
+        _, coefft0, coefft00 = backward_coefficients(time_step_size, previous_time_step_size)
+    else:
+        coefft0, coefft00 = 1.0, 0.0
+
+    volumetric_face_flux_old = np.asarray(volumetric_face_flux_old, dtype=np.float64)
+    velocity_old = np.asarray(velocity_old, dtype=np.float64)
+    older_flux = (
+        np.zeros_like(volumetric_face_flux_old)
+        if volumetric_face_flux_older is None
+        else np.asarray(volumetric_face_flux_older, dtype=np.float64)
+    )
+    velocity_history = coefft0 * velocity_old
+    if coefft00 != 0.0:
+        velocity_history = velocity_history - coefft00 * np.asarray(
+            velocity_older, dtype=np.float64
+        )
+
+    owners = mesh_data["owners"]
+    neighbours = mesh_data["neighbours"]
+    weights = geo_data["face_interpolation_weight"]
+    face_area_vector = geo_data["face_area_vector"]
+    coupling_flux = (
+        volumetric_face_flux_old
+        if mesh_face_flux is None
+        else volumetric_face_flux_old - np.asarray(mesh_face_flux, dtype=np.float64)
+    )
+    correction = np.zeros(n_faces, dtype=np.float64)
+    chunk_size = 250_000
+
+    for start in range(0, n_interior, chunk_size):
+        stop = min(start + chunk_size, n_interior)
+        own = owners[start:stop]
+        nei = neighbours[start:stop]
+        w = weights[start:stop, np.newaxis]
+        history_face = w * velocity_history[nei] + (1.0 - w) * velocity_history[own]
+        old_face = w * velocity_old[nei] + (1.0 - w) * velocity_old[own]
+        history_flux = coefft0 * volumetric_face_flux_old[start:stop]
+        if coefft00 != 0.0:
+            history_flux -= coefft00 * older_flux[start:stop]
+        phi_corr = history_flux - np.einsum("ij,ij->i", history_face, face_area_vector[start:stop])
+        reference = volumetric_face_flux_old[start:stop] - np.einsum(
+            "ij,ij->i", old_face, face_area_vector[start:stop]
+        )
+        coupling = 1.0 - np.minimum(
+            np.abs(reference) / (np.abs(coupling_flux[start:stop]) + np.finfo(np.float64).tiny),
+            1.0,
+        )
+        correction[start:stop] = coupling * phi_corr / float(time_step_size)
+
+    boundary_neighbour_cell = mesh_data.get("boundary_neighbour_cell")
+    for boundary, strategy in zip(boundaries, strategies, strict=True):
+        if strategy is not BoundaryStrategy.CYCLIC:
+            continue
+        start = boundary["start_face"]
+        stop = start + boundary["n_faces"]
+        faces = np.arange(start, stop)
+        own = owners[faces]
+        paired = boundary_neighbour_cell[faces]
+        w = weights[faces, np.newaxis]
+        history_face = w * velocity_history[paired] + (1.0 - w) * velocity_history[own]
+        old_face = w * velocity_old[paired] + (1.0 - w) * velocity_old[own]
+        history_flux = coefft0 * volumetric_face_flux_old[faces]
+        if coefft00 != 0.0:
+            history_flux -= coefft00 * older_flux[faces]
+        phi_corr = history_flux - np.einsum("ij,ij->i", history_face, face_area_vector[faces])
+        reference = volumetric_face_flux_old[faces] - np.einsum(
+            "ij,ij->i", old_face, face_area_vector[faces]
+        )
+        coupling = 1.0 - np.minimum(
+            np.abs(reference) / (np.abs(coupling_flux[faces]) + np.finfo(np.float64).tiny),
+            1.0,
+        )
+        correction[faces] = coupling * phi_corr / float(time_step_size)
+
+    return correction
 
 
 class PIMPLESolver:
@@ -63,7 +197,7 @@ class PIMPLESolver:
             include_boundaries=mesh_data["n_faces"] > mesh_data["n_interior_faces"],
         )
         self._pressure_matrix_workspace = self._momentum_matrix_workspace
-        self._pressure_boundary_layout = simple_solver.build_pressure_boundary_layout(
+        self._pressure_boundary_layout = pressure_equation.build_pressure_boundary_layout(
             boundaries,
             mesh_data["n_interior_faces"],
             mesh_data["n_faces"],
@@ -151,7 +285,7 @@ class PIMPLESolver:
             raise ValueError("PIMPLESolver.step requires velocity_old and time_step_size")
         n_elem = self.mesh_data["n_cells"]
         ghost_velocity_before = None if velocity_gradient is None else velocity[n_elem:].copy()
-        simple_solver.prepare_freestream_boundaries(
+        prepare_freestream_boundaries(
             velocity,
             kinematic_pressure,
             volumetric_face_flux,
@@ -171,7 +305,7 @@ class PIMPLESolver:
         pressure_relaxation = self.params["pressure_relaxation"]
         momentum_method = self.params["linear_solver"]
         pressure_method = self.params.get("pressure_solver") or self.params["linear_solver"]
-        pressure_constraint = simple_solver._resolve_pressure_constraint(self.params)
+        pressure_constraint = pressure_equation._resolve_pressure_constraint(self.params)
 
         def _linear_tolerances(equation: str, *, final: bool) -> tuple[float, float]:
             absolute = float(self.params[f"{equation}_tolerance"])
@@ -185,7 +319,7 @@ class PIMPLESolver:
 
         # Frozen for the whole physical time step: only committed old-time
         # fields enter the face-history correction.
-        ddt_flux_correction = simple_solver.compute_ddt_flux_correction(
+        ddt_flux_correction = compute_ddt_flux_correction(
             velocity_old,
             velocity_older,
             volumetric_face_flux_old,
@@ -199,7 +333,7 @@ class PIMPLESolver:
             mesh_face_flux=mesh_face_flux,
         )
 
-        simple_solver.update_scalar_boundaries(
+        update_scalar_boundaries(
             kinematic_pressure,
             self.mesh_data,
             self.boundaries,
@@ -207,7 +341,7 @@ class PIMPLESolver:
             volumetric_face_flux=volumetric_face_flux,
         )
         # Boundary types and geometry are fixed for the step.
-        has_pressure_nullspace = simple_solver._pressure_requires_constraint(
+        has_pressure_nullspace = pressure_equation._pressure_requires_constraint(
             self.boundaries, self.mesh_data, self.geo_data
         )
         initial_kinematic_pressure_residual = 0.0
@@ -381,10 +515,10 @@ class PIMPLESolver:
                     # layout is unchanged.
                     if (
                         self._pressure_boundary_layout.signature
-                        != simple_solver._pressure_boundary_signature(self.boundaries)
+                        != pressure_equation._pressure_boundary_signature(self.boundaries)
                     ):
                         self._pressure_boundary_layout = (
-                            simple_solver.build_pressure_boundary_layout(
+                            pressure_equation.build_pressure_boundary_layout(
                                 self.boundaries,
                                 self.mesh_data["n_interior_faces"],
                                 self.mesh_data["n_faces"],
@@ -398,7 +532,7 @@ class PIMPLESolver:
                             pressure_right_hand_side,
                             volumetric_face_flux_star,
                             pressure_workspace,
-                        ) = simple_solver.assemble_pressure_correction_equation_rhie_chow(
+                        ) = pressure_equation.assemble_pressure_correction_equation_rhie_chow(
                             velocity_iter,
                             momentum_diagonal,
                             kinematic_pressure,
@@ -414,7 +548,6 @@ class PIMPLESolver:
                             correction_workspace=pressure_geometry,
                             reuse_matrix=reuse_pressure_matrix,
                             frozen_velocity_h_over_a=frozen_velocity_h_over_a,
-                            return_workspace=True,
                             mesh_face_flux=mesh_face_flux,
                             kinematic_pressure_gradient=predictor_pressure_gradient,
                             pressure_requires_constraint=has_pressure_nullspace,
@@ -480,7 +613,7 @@ class PIMPLESolver:
                         )
                         with self._profiler.section("velocity correction"):
                             velocity_iter, corrected_volumetric_face_flux = (
-                                simple_solver.correct_velocity_and_flux(
+                                pressure_equation.correct_velocity_and_flux(
                                     velocity_iter,
                                     volumetric_face_flux_star,
                                     kinematic_pressure_correction,
@@ -505,7 +638,7 @@ class PIMPLESolver:
                                 * accumulated_kinematic_pressure_correction
                             )
 
-                    simple_solver.update_scalar_boundaries(
+                    update_scalar_boundaries(
                         kinematic_pressure,
                         self.mesh_data,
                         self.boundaries,
