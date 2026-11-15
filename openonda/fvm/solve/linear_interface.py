@@ -631,21 +631,7 @@ def _solve_pressure(
     M = ml.aspreconditioner(cycle="V")
     setup_seconds = setup_start.seconds
     solve_start = Stopwatch()
-    iterations = 0
-
-    def count_iteration(_value):
-        nonlocal iterations
-        iterations += 1
-
-    x, info = cg(
-        A,
-        b,
-        M=M,
-        rtol=tol,
-        maxiter=maxiter,
-        x0=x0,
-        callback=count_iteration,
-    )
+    x, info, iterations = _run_krylov(cg, A, b, M, tol, maxiter, x0)
     if info != 0 and _breakdown_converged(A, b, x, tol, "pressure CG", info, log_sink, x0=x0):
         info = 0
     if info != 0:
@@ -654,15 +640,8 @@ def _solve_pressure(
         ml, rebuilt = _get_or_build_amg(A, pyamg, workspace, force_rebuild=True)
         M = ml.aspreconditioner(cycle="V")
         setup_seconds = setup_start.seconds
-        x, info = cg(
-            A,
-            b,
-            M=M,
-            rtol=tol,
-            maxiter=maxiter,
-            x0=x0,
-            callback=count_iteration,
-        )
+        x, info, retry_iterations = _run_krylov(cg, A, b, M, tol, maxiter, x0)
+        iterations += retry_iterations
         if info != 0 and _breakdown_converged(A, b, x, tol, "pressure CG", info, log_sink, x0=x0):
             info = 0
     if info != 0:
