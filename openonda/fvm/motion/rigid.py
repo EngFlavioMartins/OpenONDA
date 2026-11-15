@@ -156,7 +156,9 @@ class RigidMeshMotion:
             if key in self._reference:
                 self._reference[key] = self._reference[key] @ rotation.T
         if _LSQ_INVERSE in self._reference:
-            self._reference[_LSQ_INVERSE] = rotation @ self._reference[_LSQ_INVERSE] @ rotation.T
+            self._reference[_LSQ_INVERSE] = self._rotated_tensors(
+                rotation, self._reference[_LSQ_INVERSE]
+            )
         if _LSQ_OPERATOR in self._reference:
             self._reference[_LSQ_OPERATOR] = self._rotated_gradient_operator(
                 self._reference[_LSQ_OPERATOR], rotation
@@ -169,32 +171,66 @@ class RigidMeshMotion:
         block = sparse.kron(sparse.identity(n_owned, format="csr"), sparse.csr_matrix(rotation))
         return sparse.csr_matrix(block @ operator)
 
+    @staticmethod
+    def _rotated_tensors(rotation: np.ndarray, tensors: np.ndarray) -> np.ndarray:
+        """Return ``rotation @ T @ rotation.T`` for every 3 x 3 tensor ``T``.
+
+        Written out term by term, because a matrix product broadcast over many
+        small tensors is much slower. Each entry is summed in the order of the
+        matrix product.
+        """
+        turned = np.empty_like(tensors)
+        for i in range(3):
+            for k in range(3):
+                turned[:, i, k] = (
+                    rotation[i, 0] * tensors[:, 0, k]
+                    + rotation[i, 1] * tensors[:, 1, k]
+                    + rotation[i, 2] * tensors[:, 2, k]
+                )
+        result = np.empty_like(tensors)
+        for i in range(3):
+            for j in range(3):
+                result[:, i, j] = (
+                    turned[:, i, 0] * rotation[j, 0]
+                    + turned[:, i, 1] * rotation[j, 1]
+                    + turned[:, i, 2] * rotation[j, 2]
+                )
+        return result
+
     def _write_geometry(self, pose: RigidPose) -> None:
-        """Write the reference geometry mapped by ``pose`` into the solver arrays."""
+        """Write the reference geometry mapped by ``pose`` into the solver arrays.
+
+        Positions follow every pose. Vectors, the least-squares inverse and
+        the gradient operator depend on the rotation alone, so they are
+        rewritten only when it changes; a pure translation keeps them.
+        """
         geo_data = self._geo_data
         rotation = pose.rotation
         for key in _GEOMETRY_POINTS:
             if key in self._reference:
                 geo_data[key][...] = pose.apply(self._reference[key])
-        for key in _GEOMETRY_VECTORS:
-            if key in self._reference:
-                geo_data[key][...] = self._reference[key] @ rotation.T
         self._mesh_data["vertex_position"][...] = pose.apply(self._reference["vertex_position"])
         if "visualization_vertex_position" in self._reference:
             self._mesh_data["_visualization_mesh"]["vertex_position"][...] = pose.apply(
                 self._reference["visualization_vertex_position"]
             )
+        if np.array_equal(rotation, self._written_rotation):
+            return
+        for key in _GEOMETRY_VECTORS:
+            if key in self._reference:
+                geo_data[key][...] = self._reference[key] @ rotation.T
         if _LSQ_INVERSE in self._reference:
-            geo_data[_LSQ_INVERSE][...] = rotation @ self._reference[_LSQ_INVERSE] @ rotation.T
+            geo_data[_LSQ_INVERSE][...] = self._rotated_tensors(
+                rotation, self._reference[_LSQ_INVERSE]
+            )
         if _LSQ_OPERATOR in self._reference:
             geo_data[_LSQ_OPERATOR] = self._rotated_gradient_operator(
                 self._reference[_LSQ_OPERATOR], rotation
             )
         # Boundary least-squares stencils are cached for a fixed orientation.
-        if not np.array_equal(rotation, self._written_rotation):
-            for key in _BOUNDARY_STENCIL_CACHES:
-                geo_data.pop(key, None)
-            self._written_rotation = rotation
+        for key in _BOUNDARY_STENCIL_CACHES:
+            geo_data.pop(key, None)
+        self._written_rotation = np.array(rotation)
 
     def pose_at(self, time: float) -> RigidPose:
         """Advance the accepted pose to ``time`` with one kinematic increment."""
