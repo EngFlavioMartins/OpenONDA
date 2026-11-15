@@ -49,9 +49,11 @@ def storage_dtype(precision: str) -> np.dtype:
 def cast_for_write(values, precision: str) -> np.ndarray:
     """Return *values* as a contiguous array at the requested write precision.
 
-    Non-floating arrays pass through unchanged. Values outside the target
-    range are clamped to its finite limits rather than becoming infinities,
-    so a diverging field still produces a file a reader can open.
+    Non-floating arrays pass through unchanged. A value beyond the range of
+    ``f32`` is written as an infinity, as a NaN is written as a NaN; VTK and
+    HDF5 store both. Half precision is clamped to its finite limits, so
+    that a diverging field still produces a file ParaView colour maps can
+    scale.
     """
     validate_write_precision(precision)
     array = np.asarray(values)
@@ -60,12 +62,14 @@ def cast_for_write(values, precision: str) -> np.ndarray:
 
     if precision == "f16":
         limit = np.finfo(np.float16)
-        rounded = np.clip(array, float(limit.min), float(limit.max)).astype(np.float16)
-        return np.ascontiguousarray(rounded.astype(np.float32))
+        with np.errstate(over="ignore"):
+            half = array.astype(np.float16, order="C")
+        single = half.astype(np.float32)
+        np.clip(single, float(limit.min), float(limit.max), out=single)
+        return single
 
     target = _STORAGE_DTYPE[precision]
     if array.dtype == target:
         return np.ascontiguousarray(array)
-    limit = np.finfo(target)
-    clamped = np.clip(array, float(limit.min), float(limit.max))
-    return np.ascontiguousarray(clamped.astype(target))
+    with np.errstate(over="ignore"):
+        return array.astype(target, order="C")
