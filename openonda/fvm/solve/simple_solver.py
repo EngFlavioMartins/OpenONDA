@@ -228,11 +228,15 @@ def compute_ddt_flux_correction(
     time step.  Variable-step BDF2 uses the same two-level history combination
     as the cell derivative, and every non-coupled boundary contribution is zero.
 
-    Fully periodic domains are special here: their conservative face flux is
-    already the complete old-time history used by this solver's H/A
-    reconstruction.  Applying a second correction double-counts that history.
-    Boundary-driven domains still require the correction to couple the cell
-    and face transient operators.
+    The face value of ``H/A`` interpolates the cell velocity, whose transient
+    source carries ``V/dt * u_old``; scaled by the face pressure-velocity
+    coefficient, this correction replaces that interpolated old velocity by
+    the old face flux once, as ``fvc::ddtCorr`` does.  Fully periodic domains
+    skip it: it carries the difference between the face flux and the
+    interpolated cell velocity from step to step, and on a periodic
+    Taylor-Green vortex that difference builds up to a velocity error several
+    times larger, nearly independent of the time step.  On bounded domains it
+    keeps a steady state independent of the time step.
 
     On a moving mesh the coupling coefficient is normalised by the old flux
     relative to the moving faces, ``phi_old - mesh_face_flux``, so the
