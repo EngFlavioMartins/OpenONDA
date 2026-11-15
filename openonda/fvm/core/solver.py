@@ -29,9 +29,7 @@ from openonda.runtime import RunConfig
 from ..config.case import FVMCase
 from ..config.configuration import FVMConfiguration
 from ..coupling import CouplerInterfaceMixin
-from ..fields.mixed_velocity_boundary import (
-    update_mixed_velocity_boundary,
-)
+from ..fields.boundary_values import update_velocity_boundaries
 from ..io import logging as step_log
 from ..io import solver_io
 from ..io.backup import mesh_digest
@@ -70,76 +68,6 @@ def _initial_velocity_field(
         f"InitialFields.velocity must have shape (3,) or ({mesh_data['n_cells']}, 3); "
         f"got {initial.shape}"
     )
-
-
-def _enforce_velocity_boundary_constraints(
-    velocity: np.ndarray, boundaries: list, n_cells: int, mesh_data: dict, geo_data: dict
-) -> None:
-    """Enforce velocity boundary constraints on ghost cells after initialisation.
-
-    Iterates over all boundary patches and sets the ghost-layer values
-    in *velocity* according to each patch's boundary condition type
-    (fixed_value, zero_gradient, empty, etc.).
-
-    Args:
-        velocity:    Velocity array (mutated in place).
-        boundaries: List of boundary patch dictionaries.
-        n_cells: Number of interior cells.
-        mesh_data:  Mesh dictionary.
-        geo_data:   Geometry dictionary.
-    """
-    from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
-
-    for boundary in boundaries:
-        boundary_condition_type = boundary.get("velocity_type")
-        strategy = boundary_strategy(boundary_condition_type, "velocity")
-        start = n_cells + (boundary["start_face"] - mesh_data["n_interior_faces"])
-        end = start + boundary["n_faces"]
-        if (
-            strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM)
-            and boundary.get("velocity_value_field") is not None
-        ):
-            velocity[start:end] = boundary["velocity_value_field"]
-        elif strategy in (BoundaryStrategy.FIXED_VALUE, BoundaryStrategy.FREESTREAM) and (
-            "velocity_value" in boundary
-        ):
-            velocity[start:end] = boundary["velocity_value"]
-        elif strategy in (
-            BoundaryStrategy.ZERO_GRADIENT,
-            BoundaryStrategy.INLET_OUTLET,
-        ):
-            owners_b = mesh_data["owners"][
-                boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
-            ]
-            velocity[start:end] = velocity[owners_b]
-        elif strategy is BoundaryStrategy.MIXED_VELOCITY:
-            update_mixed_velocity_boundary(velocity, boundary, mesh_data, geo_data)
-        elif strategy is BoundaryStrategy.CYCLIC:
-            faces = np.arange(boundary["start_face"], boundary["start_face"] + boundary["n_faces"])
-            paired = mesh_data["boundary_neighbour_cell"][faces]
-            if np.any(paired < 0):
-                raise ValueError(f"Cyclic patch {boundary['name']!r} is not paired")
-            velocity[start:end] = velocity[paired]
-        elif strategy in (
-            BoundaryStrategy.EMPTY,
-            BoundaryStrategy.SLIP,
-        ):
-            owners_b = mesh_data["owners"][
-                boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
-            ]
-            face_area_vector = geo_data["face_area_vector"][
-                boundary["start_face"] : boundary["start_face"] + boundary["n_faces"]
-            ]
-            owner_velocity = velocity[owners_b]
-            magnitudes = np.linalg.norm(face_area_vector, axis=1)
-            valid = magnitudes > 1e-10
-            projected = owner_velocity.copy()
-            if np.any(valid):
-                normals = face_area_vector[valid] / magnitudes[valid, np.newaxis]
-                projected[valid] -= (
-                    np.sum(owner_velocity[valid] * normals, axis=1)[:, np.newaxis] * normals
-                )
-            velocity[start:end] = projected
 
 
 class FVMSolver(CouplerInterfaceMixin):
@@ -735,9 +663,7 @@ class FVMSolver(CouplerInterfaceMixin):
         # Second history level for BDF2 (u^{n-1}); ignored by BDF1.
         self.velocity_older = self.velocity.copy()
 
-        _enforce_velocity_boundary_constraints(
-            self.velocity, self.boundaries, n_cells, self.mesh_data, self.geo_data
-        )
+        self._set_velocity_ghosts()
         self.parallel.exchange_halo(self.velocity[:n_cells])
         self.parallel.exchange_halo(self.kinematic_pressure[:n_cells])
 
@@ -750,6 +676,24 @@ class FVMSolver(CouplerInterfaceMixin):
         # (``fvc::ddtCorr``), which needs flux and velocity at the same levels.
         self.volumetric_face_flux_old = self.volumetric_face_flux.copy()
         self.volumetric_face_flux_older = self.volumetric_face_flux.copy()
+
+    def _set_velocity_ghosts(self) -> None:
+        """Set the velocity boundary ghosts from the interior cells.
+
+        No face flux exists yet, so inflow and outflow faces of ``inlet_outlet``
+        and ``freestream`` patches are told apart by the flux of the owner-cell
+        velocity, the rule the algorithm applies after every correction.
+        """
+        n_interior = self.mesh_data["n_interior_faces"]
+        owner_flux = np.zeros(self.mesh_data["n_faces"])
+        owner_flux[n_interior:] = np.einsum(
+            "ij,ij->i",
+            self.velocity[self.mesh_data["owners"][n_interior:]],
+            self.geo_data["face_area_vector"][n_interior:],
+        )
+        update_velocity_boundaries(
+            self.velocity, owner_flux, self.boundaries, self.mesh_data, self.geo_data
+        )
 
     def _initialize_mesh_motion(self) -> None:
         """Place a moving mesh at its start pose and impose its boundary motion."""
@@ -881,9 +825,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.velocity[:n_cells] = field
             if self.parallel.is_partitioned:
                 self.parallel.exchange_halo(self.velocity[:n_cells])
-            _enforce_velocity_boundary_constraints(
-                self.velocity, self.boundaries, n_cells, self.mesh_data, self.geo_data
-            )
+            self._set_velocity_ghosts()
             self.velocity_old[:] = self.velocity
             self.velocity_older[:] = self.velocity
 
@@ -972,9 +914,7 @@ class FVMSolver(CouplerInterfaceMixin):
             self.velocity[:n_cells] = velocity
             if self.parallel.is_partitioned:
                 self.parallel.exchange_halo(self.velocity[:n_cells])
-            _enforce_velocity_boundary_constraints(
-                self.velocity, self.boundaries, n_cells, self.mesh_data, self.geo_data
-            )
+            self._set_velocity_ghosts()
             self.velocity_old[:] = self.velocity
             self.velocity_older[:] = self.velocity
             from ..assemble import convection

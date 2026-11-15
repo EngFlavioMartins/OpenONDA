@@ -10,6 +10,7 @@ from ..assemble import matrix_assembly, momentum
 from ..diagnostics import fields as field_diagnostics
 from ..diagnostics.step import OuterCorrectorDiagnostics
 from ..fields import gradients
+from ..fields.boundary_values import update_velocity_boundaries
 from . import simple_solver
 from .linear_interface import solve_linear_system
 
@@ -531,15 +532,12 @@ class PIMPLESolver:
                         del corrected_volumetric_face_flux
                         del accumulated_kinematic_pressure_correction
 
-            simple_solver._update_velocity_bcs(
+            update_velocity_boundaries(
                 velocity_iter,
                 volumetric_face_flux,
                 self.boundaries,
-                self.mesh_data["owners"],
+                self.mesh_data,
                 self.geo_data,
-                n_elem,
-                self.mesh_data["n_interior_faces"],
-                mesh_data=self.mesh_data,
             )
             # Preserve updated ghost values for the next gradient assembly.
             velocity[:] = velocity_iter[:]

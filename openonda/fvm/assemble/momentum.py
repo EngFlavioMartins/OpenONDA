@@ -8,9 +8,7 @@ import numpy as np
 from openonda.core._numba import cacheable_njit as njit
 
 from ..fields import gradients
-from ..fields.mixed_velocity_boundary import (
-    update_mixed_velocity_boundary,
-)
+from ..fields.boundary_values import update_velocity_boundaries
 from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..solve.linear_interface import (
     LINEAR_RESIDUAL_FLOOR,
@@ -186,112 +184,6 @@ def compute_dev2_stress_source(
 
     source /= geo_data["cell_volume"][:, np.newaxis]
     return source
-
-
-def _apply_empty_bc_ustar(
-    velocity_star: np.ndarray,
-    b_elem_indices: np.ndarray,
-    owners_b: np.ndarray,
-    face_area_vector: np.ndarray,
-) -> None:
-    """Apply empty boundary condition: zero out normal velocity component.
-
-    For ``empty`` boundaries (used in 2D extruded meshes for the
-    non-solved dimension), the face-normal component of the predicted
-    velocity is removed, leaving only the tangential components.
-
-    Args:
-        velocity_star: Predicted velocity field (n_cells + n_boundary, 3),
-            modified in-place.
-        b_elem_indices: Indices of boundary elements to update.
-        owners_b: Owner element indices for each boundary face.
-        face_area_vector: Face surface area vectors for each boundary face.
-    """
-    # Empty/slip planes commonly account for O(n) faces in pseudo-2D cases.
-    # Keep this path in ndarray operations: the scalar formulation below is
-    # identical to the former per-face loop, including its degenerate-face
-    # fallback.
-    owner_velocity = velocity_star[owners_b]
-    magnitudes = np.linalg.norm(face_area_vector, axis=1)
-    valid = magnitudes > 1e-10
-    projected = owner_velocity.copy()
-    if np.any(valid):
-        normals = face_area_vector[valid] / magnitudes[valid, np.newaxis]
-        normal_velocity = np.sum(owner_velocity[valid] * normals, axis=1)
-        projected[valid] -= normal_velocity[:, np.newaxis] * normals
-    velocity_star[b_elem_indices] = projected
-
-
-def _apply_ustar_bc(
-    velocity_star: np.ndarray,
-    boundary: dict[str, object],
-    mesh_data: dict[str, object],
-    geo_data: dict[str, object],
-    n_cells: int,
-    volumetric_face_flux: np.ndarray = None,
-) -> None:
-    """Apply post-solve boundary condition to the predicted velocity field.
-
-    Modifies ``velocity_star`` in-place at the boundary elements according to
-    the boundary condition type specified in the boundary dictionary.
-
-    Args:
-        velocity_star: Predicted velocity field (n_cells + n_boundary, 3),
-            modified in-place.
-        boundary: Boundary dictionary with keys ``start_face``, ``n_faces``,
-            ``velocity_type``, and optionally ``velocity_value`` /
-            ``velocity_value_field``.
-        mesh_data: Mesh connectivity containing ``owners`` and
-            ``n_interior_faces``.
-        geo_data: Geometric data containing ``face_area_vector``.
-        n_cells: Number of interior cells.
-        volumetric_face_flux: Face flux that selects the outflow faces of an
-            ``inlet_outlet`` patch; inflow faces keep their prescribed ghost.
-    """
-    start_face = boundary["start_face"]
-    n_faces = boundary["n_faces"]
-    b_elem_start = start_face - mesh_data["n_interior_faces"]
-    b_elem_indices = np.arange(n_cells + b_elem_start, n_cells + b_elem_start + n_faces)
-    boundary_condition_type = boundary.get("velocity_type")
-    strategy = boundary_strategy(boundary_condition_type, "velocity")
-
-    if strategy is BoundaryStrategy.ZERO_GRADIENT:
-        owners_b = mesh_data["owners"][start_face : start_face + n_faces]
-        velocity_star[b_elem_indices] = velocity_star[owners_b]
-    elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
-        outflow = boundary.get("_freestream_outflow")
-        if outflow is None and volumetric_face_flux is not None:
-            outflow = np.asarray(volumetric_face_flux)[start_face : start_face + n_faces] >= 0.0
-        if outflow is None:
-            sf = geo_data["face_area_vector"][start_face : start_face + n_faces]
-            outflow = np.einsum("ij,ij->i", velocity_star[b_elem_indices], sf) >= 0.0
-        owners_b = mesh_data["owners"][start_face : start_face + n_faces]
-        velocity_star[b_elem_indices] = np.where(
-            np.asarray(outflow)[:, np.newaxis],
-            velocity_star[owners_b],
-            velocity_star[b_elem_indices],
-        )
-    elif strategy is BoundaryStrategy.CYCLIC:
-        paired = mesh_data["boundary_neighbour_cell"][start_face : start_face + n_faces]
-        velocity_star[b_elem_indices] = velocity_star[paired]
-    elif strategy is BoundaryStrategy.FIXED_VALUE:
-        if boundary.get("velocity_value_field") is not None:
-            velocity_star[b_elem_indices] = boundary["velocity_value_field"]
-        elif "velocity_value" in boundary:
-            velocity_star[b_elem_indices] = np.array(boundary["velocity_value"])
-        else:
-            raise ValueError(
-                f"Fixed velocity boundary {boundary.get('name')!r} has no configured value"
-            )
-    elif strategy is BoundaryStrategy.MIXED_VELOCITY:
-        update_mixed_velocity_boundary(velocity_star, boundary, mesh_data, geo_data)
-    elif strategy in (
-        BoundaryStrategy.EMPTY,
-        BoundaryStrategy.SLIP,
-    ):
-        owners_b = mesh_data["owners"][start_face : start_face + n_faces]
-        face_area_vector = geo_data["face_area_vector"][start_face : start_face + n_faces]
-        _apply_empty_bc_ustar(velocity_star, b_elem_indices, owners_b, face_area_vector)
 
 
 def assemble_momentum_equation(
@@ -642,8 +534,8 @@ def solve_momentum_predictor(
 
     # Solve for each component
     velocity_star = np.zeros((n_cells + n_boundary, 3))
-    # Boundary ghosts start from the prescribed state; _apply_ustar_bc then
-    # refreshes the extrapolated ones from the predicted interior.
+    # Boundary ghosts start from the current state; update_velocity_boundaries
+    # then sets every one of them from the predicted interior and the prescribed values.
     velocity_star[n_cells:] = velocity[n_cells : n_cells + n_boundary]
     matrices_are_shared = all(mom_eqs[name]["A"] is mom_eqs["x"]["A"] for name in ("y", "z"))
     component_diagonal = not matrices_are_shared
@@ -731,10 +623,9 @@ def solve_momentum_predictor(
                     ),
                 }
 
-        for boundary in boundaries:
-            _apply_ustar_bc(
-                velocity_star, boundary, mesh_data, geo_data, n_cells, volumetric_face_flux
-            )
+        update_velocity_boundaries(
+            velocity_star, volumetric_face_flux, boundaries, mesh_data, geo_data
+        )
         return _predictor_result(
             velocity_star,
             momentum_diagonal,
@@ -798,8 +689,7 @@ def solve_momentum_predictor(
     if parallel_context is not None and parallel_context.is_partitioned:
         parallel_context.exchange_halo(momentum_diagonal)
 
-    for boundary in boundaries:
-        _apply_ustar_bc(velocity_star, boundary, mesh_data, geo_data, n_cells, volumetric_face_flux)
+    update_velocity_boundaries(velocity_star, volumetric_face_flux, boundaries, mesh_data, geo_data)
 
     return _predictor_result(
         velocity_star,

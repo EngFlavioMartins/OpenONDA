@@ -11,9 +11,7 @@ from openonda.core._numba import cacheable_njit as njit
 from ..assemble import matrix_assembly
 from ..fields import gradients
 from ..fields.boundary_reconstruction import boundary_owner_gradient, boundary_resolved_displacement
-from ..fields.mixed_velocity_boundary import (
-    update_mixed_velocity_boundary,
-)
+from ..fields.boundary_values import update_velocity_boundaries
 from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..utils.vector_algebra import vector_dot, vector_magnitude
 from .pressure_reference import fix_pressure_reference
@@ -189,16 +187,7 @@ def prepare_freestream_boundaries(
             continue
         changed = True
     if changed:
-        _update_velocity_bcs(
-            velocity,
-            face_flux,
-            boundaries,
-            mesh_data["owners"],
-            geo_data,
-            mesh_data["n_cells"],
-            mesh_data["n_interior_faces"],
-            mesh_data=mesh_data,
-        )
+        update_velocity_boundaries(velocity, face_flux, boundaries, mesh_data, geo_data)
         update_scalar_boundaries(
             pressure,
             mesh_data,
@@ -1732,205 +1721,6 @@ def _correct_boundary_fluxes(
             raise RuntimeError(f"Unhandled pressure flux strategy {strategy!r}")
 
 
-def _apply_inlet_outlet_bc(
-    velocity: np.ndarray,
-    volumetric_face_flux: np.ndarray,
-    boundary: dict[str, object],
-    owners: np.ndarray,
-    n_cells: int,
-    n_interior: int,
-) -> None:
-    """inlet_outlet velocity BC: zero_gradient on outflow, fixed value on inflow.
-
-    Per face: outgoing flux (φ ≥ 0) → extrapolate from the owner cell
-    (zero_gradient); incoming flux (φ < 0) → impose ``value_velocity_field`` when
-    present, otherwise the uniform ``value_velocity`` (the inletValue, default 0).
-    The per-face path is required by the FVM--VPM characteristic VPM boundary condition:
-    pressure-correction refreshes must not replace its non-uniform VPM boundary data
-    with the uniform freestream.
-    """
-    start = boundary["start_face"]
-    nf = boundary["n_faces"]
-    idx = n_cells + (start - n_interior)
-    own = owners[start : start + nf]
-    if boundary.get("velocity_value_field") is not None:
-        inlet_val = np.asarray(boundary["velocity_value_field"], dtype=float)
-        if inlet_val.shape != (nf, 3):
-            raise ValueError(
-                f"Per-face inlet velocity for patch {boundary.get('name')!r} "
-                f"must have shape ({nf}, 3), got {inlet_val.shape}"
-            )
-    else:
-        inlet_val = np.asarray(boundary.get("velocity_value", [0.0, 0.0, 0.0]), dtype=float)
-        if inlet_val.shape != (3,):
-            raise ValueError(
-                f"Uniform inlet velocity for patch {boundary.get('name')!r} "
-                f"must have shape (3,), got {inlet_val.shape}"
-            )
-    outflow = boundary.get("_freestream_outflow")
-    if outflow is None:
-        outflow = volumetric_face_flux[start : start + nf] >= 0.0
-    velocity[idx : idx + nf] = np.where(outflow[:, np.newaxis], velocity[own], inlet_val)
-
-
-def _apply_zero_gradient_bc(
-    velocity: np.ndarray,
-    boundary: dict,
-    owners: np.ndarray,
-    n_cells: int,
-    n_interior: int,
-) -> None:
-    """Apply a zero-gradient velocity BC (extrapolate from the owner cell).
-
-    Sets the ghost-cell velocity equal to the owner-cell value.
-
-    Args:
-        velocity:           Velocity array (mutated in place).
-        boundary:    Boundary patch dictionary.
-        owners:      Owner index array.
-        n_cells:  Number of interior cells.
-        n_interior:  Number of interior faces.
-    """
-    start = boundary["start_face"]
-    nf = boundary["n_faces"]
-    idx = n_cells + (start - n_interior)
-    own = owners[start : start + nf]
-    velocity[idx : idx + nf] = velocity[own]
-
-
-def _apply_cyclic_bc(
-    velocity: np.ndarray,
-    boundary: dict[str, object],
-    mesh_data: dict[str, object],
-    n_cells: int,
-    n_interior: int,
-) -> None:
-    """Copy paired owner values into the cyclic patch ghost layer."""
-    start = boundary["start_face"]
-    nf = boundary["n_faces"]
-    idx = n_cells + (start - n_interior)
-    paired = mesh_data["boundary_neighbour_cell"][start : start + nf]
-    if np.any(paired < 0):
-        raise ValueError(f"Cyclic patch {boundary['name']!r} is not paired")
-    velocity[idx : idx + nf] = velocity[paired]
-
-
-def _apply_fixed_value_bc(
-    velocity: np.ndarray,
-    boundary: dict[str, object],
-    n_cells: int,
-    n_interior: int,
-) -> None:
-    """Apply a fixed_value velocity BC.
-
-    Honours a per-face ``value_velocity_field`` (n_faces_patch, 3) when present (e.g. a
-    non-uniform coupler VPM boundary condition), otherwise the uniform ``value_velocity``.
-    """
-    start = boundary["start_face"]
-    nf = boundary["n_faces"]
-    idx = n_cells + (start - n_interior)
-    if boundary.get("velocity_value_field") is not None:
-        velocity[idx : idx + nf] = boundary["velocity_value_field"]
-    elif "velocity_value" in boundary:
-        velocity[idx : idx + nf] = np.array(boundary["velocity_value"])
-
-
-def _apply_slip_bc(
-    velocity: np.ndarray,
-    boundary: dict[str, object],
-    owners: np.ndarray,
-    geo_data: dict[str, object],
-    n_cells: int,
-    n_interior: int,
-) -> None:
-    """Apply a slip / empty velocity BC.
-
-    Removes the component normal to the boundary face from the
-    ghost-cell velocity, leaving only the tangential part.
-
-    Args:
-        velocity:          Velocity array (mutated in place).
-        boundary:   Boundary patch dictionary.
-        owners:     Owner index array.
-        geo_data:   Geometry dictionary (needs ``face_area_vector``).
-        n_cells: Number of interior cells.
-        n_interior: Number of interior faces.
-    """
-    start = boundary["start_face"]
-    nf = boundary["n_faces"]
-    idx = n_cells + (start - n_interior)
-    own = owners[start : start + nf]
-    face_area_vector = geo_data["face_area_vector"][start : start + nf]
-    # Match the predictor's empty-boundary projection; a degenerate face
-    # retains its owner velocity.
-    owner_velocity = velocity[own]
-    magnitudes = np.linalg.norm(face_area_vector, axis=1)
-    valid = magnitudes > 1e-10
-    projected = owner_velocity.copy()
-    if np.any(valid):
-        normals = face_area_vector[valid] / magnitudes[valid, np.newaxis]
-        normal_velocity = np.sum(owner_velocity[valid] * normals, axis=1)
-        projected[valid] -= normal_velocity[:, np.newaxis] * normals
-    velocity[idx : idx + nf] = projected
-
-
-def _update_velocity_bcs(
-    velocity: np.ndarray,
-    volumetric_face_flux: np.ndarray,
-    boundaries: list[dict],
-    owners: np.ndarray,
-    geo_data: dict[str, object],
-    n_cells: int,
-    n_interior: int,
-    mesh_data: dict[str, object] = None,
-) -> None:
-    """Update all velocity boundary conditions after a pressure-correction step.
-
-    Dispatches to individual BC handlers based on each patch's
-    ``bc_type_velocity``:
-
-    - ``zero_gradient`` → :func:`_apply_zero_gradient_bc`
-    - ``inlet_outlet``  → :func:`_apply_inlet_outlet_bc`
-    - ``fixed_value``   → :func:`_apply_fixed_value_bc`
-    - ``empty`` / ``slip`` → :func:`_apply_slip_bc`
-
-    Args:
-        velocity:           Velocity array (mutated in place).
-        volumetric_face_flux:         Face flux array.
-        boundaries:  List of boundary patch dictionaries.
-        owners:      Owner index array.
-        geo_data:    Geometry dictionary.
-        n_cells:  Number of interior cells.
-        n_interior:  Number of interior faces.
-    """
-    for boundary in boundaries:
-        bc_type_u = boundary.get("velocity_type") or boundary.get("boundary_condition_type")
-        strategy = boundary_strategy(bc_type_u, "velocity")
-        if strategy is BoundaryStrategy.ZERO_GRADIENT:
-            _apply_zero_gradient_bc(velocity, boundary, owners, n_cells, n_interior)
-        elif strategy in (BoundaryStrategy.INLET_OUTLET, BoundaryStrategy.FREESTREAM):
-            _apply_inlet_outlet_bc(
-                velocity, volumetric_face_flux, boundary, owners, n_cells, n_interior
-            )
-        elif strategy is BoundaryStrategy.FIXED_VALUE:
-            _apply_fixed_value_bc(velocity, boundary, n_cells, n_interior)
-        elif strategy is BoundaryStrategy.MIXED_VELOCITY:
-            if mesh_data is None:
-                raise ValueError("Mixed velocity boundary update requires mesh_data")
-            update_mixed_velocity_boundary(velocity, boundary, mesh_data, geo_data)
-        elif strategy in (
-            BoundaryStrategy.EMPTY,
-            BoundaryStrategy.SLIP,
-        ):
-            _apply_slip_bc(velocity, boundary, owners, geo_data, n_cells, n_interior)
-        elif strategy is BoundaryStrategy.CYCLIC:
-            if mesh_data is None:
-                raise ValueError("Cyclic boundary update requires mesh_data")
-            _apply_cyclic_bc(velocity, boundary, mesh_data, n_cells, n_interior)
-        else:
-            raise RuntimeError(f"Unhandled velocity ghost strategy {strategy!r}")
-
-
 def correct_velocity_and_flux(
     velocity: np.ndarray,
     volumetric_face_flux: np.ndarray,
@@ -1968,7 +1758,6 @@ def correct_velocity_and_flux(
     the pressure-relaxation-independent solution.
     """
     n_cells = mesh_data["n_cells"]
-    n_interior = mesh_data["n_interior_faces"]
     owners = mesh_data["owners"]
     _validate_reference_density(density)
 
@@ -2030,16 +1819,7 @@ def correct_velocity_and_flux(
     )
 
     # 3. Update Velocity BCs
-    _update_velocity_bcs(
-        velocity,
-        volumetric_face_flux,
-        boundaries,
-        owners,
-        geo_data,
-        n_cells,
-        n_interior,
-        mesh_data=mesh_data,
-    )
+    update_velocity_boundaries(velocity, volumetric_face_flux, boundaries, mesh_data, geo_data)
 
     return velocity, volumetric_face_flux
 
