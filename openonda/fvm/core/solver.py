@@ -1040,7 +1040,11 @@ class FVMSolver(CouplerInterfaceMixin):
             Effective kinematic viscosity (scalar or per-element array).
         """
         if self.turbulence is not None:
-            self.eddy_viscosity = self.turbulence.compute_eddy_viscosity(self.velocity)
+            # The velocity gradient stays in the derived-field cache; the
+            # solver passes it on to the first momentum assembly of the step.
+            self.eddy_viscosity = self.turbulence.compute_eddy_viscosity(
+                self.velocity, self._velocity_gradient()
+            )
             self.parallel.exchange_halo(self.eddy_viscosity[: self.mesh_data["n_cells"]])
             if not np.all(np.isfinite(self.eddy_viscosity)) or np.any(self.eddy_viscosity < 0.0):
                 raise FloatingPointError("Turbulence model returned invalid eddy viscosity")
@@ -1177,6 +1181,7 @@ class FVMSolver(CouplerInterfaceMixin):
                     mesh_face_flux=(
                         None if self.mesh_motion is None else self.mesh_motion.mesh_face_flux
                     ),
+                    velocity_gradient=self._derived_fields.pop("velocity_gradient", None),
                 )
             )
         except BaseException as error:

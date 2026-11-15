@@ -1197,6 +1197,8 @@ def assemble_pressure_correction_equation_rhie_chow(
     frozen_velocity_h_over_a: np.ndarray | None = None,
     return_workspace: bool = False,
     mesh_face_flux: np.ndarray | None = None,
+    kinematic_pressure_gradient: np.ndarray | None = None,
+    pressure_requires_constraint: bool | None = None,
 ) -> "tuple[sparse.spmatrix, np.ndarray, np.ndarray, PressureCorrectionWorkspace] | tuple[sparse.spmatrix, np.ndarray, np.ndarray]":
     """Assemble the Rhie--Chow pressure-correction equation for one PIMPLE pass.
 
@@ -1244,6 +1246,17 @@ def assemble_pressure_correction_equation_rhie_chow(
     mesh_face_flux : ndarray, shape (n_faces,) or None, optional
         Face flux swept by a moving mesh, used to balance boundary outflow
         relative to the moving faces.
+    kinematic_pressure_gradient : ndarray, shape (n_cells + n_boundary, 3) or None, optional
+        Gradient of ``kinematic_pressure`` that the caller computed from the
+        array passed here, for example in the momentum assembly just before the
+        first pressure assembly of an outer iteration. It is used only if the
+        boundary update at the start of this call leaves the field unchanged;
+        ``None`` computes the gradient here.
+    pressure_requires_constraint : bool or None, optional
+        Result of :func:`_pressure_requires_constraint` for the current
+        boundaries, evaluated once per step by the caller. ``None`` evaluates it
+        here. In a partitioned run every rank must pass the same value, as the
+        test is a collective reduction.
 
     Returns
     -------
@@ -1277,9 +1290,16 @@ def assemble_pressure_correction_equation_rhie_chow(
             boundary["_freestream_pressure_outflow"] = _freestream_pressure_outflow(
                 boundary, geo_data
             )
+    ghost_pressure_before = (
+        None if kinematic_pressure_gradient is None else kinematic_pressure[n_cells:].copy()
+    )
     update_scalar_boundaries(
         kinematic_pressure, mesh_data, boundaries, field_name="kinematic_pressure"
     )
+    if ghost_pressure_before is not None and not np.array_equal(
+        ghost_pressure_before, kinematic_pressure[n_cells:]
+    ):
+        kinematic_pressure_gradient = None
 
     # 1. Compute pressure_velocity_coefficient and kinematic_pressure_gradient. The momentum diagonal is fixed for all
     # pressure/non-orthogonal corrections in one PIMPLE outer iteration, so
@@ -1301,8 +1321,8 @@ def assemble_pressure_correction_equation_rhie_chow(
     if reuse_matrix and (correction_workspace is None or correction_workspace.matrix is None):
         raise ValueError("reuse_matrix requires an assembled pressure-correction workspace")
 
-    # Use direct gradient computation for full pressure field kinematic_pressure
-    kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
+    if kinematic_pressure_gradient is None:
+        kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
     scalar_diagonal = np.asarray(pressure_velocity_coefficient).ndim == 1
     pressure_velocity_coefficient_vector = (
         pressure_velocity_coefficient[:, np.newaxis]
@@ -1501,7 +1521,10 @@ def assemble_pressure_correction_equation_rhie_chow(
     # constraint test and adjustPhi are global reductions that every partition
     # enters, including interior-only partitions with no physical boundary
     # faces; skipping them locally deadlocks the next PETSc collective.
-    pressure_requires_constraint = _pressure_requires_constraint(boundaries, mesh_data, geo_data)
+    if pressure_requires_constraint is None:
+        pressure_requires_constraint = _pressure_requires_constraint(
+            boundaries, mesh_data, geo_data
+        )
     if pressure_requires_constraint:
         adjust_boundary_flux_for_continuity(
             flux_vf, boundaries, mesh_data, n_interior, n_faces, mesh_face_flux=mesh_face_flux
@@ -1526,9 +1549,13 @@ def assemble_pressure_correction_equation_rhie_chow(
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.
     if pressure_requires_constraint:
         if pressure_constraint == "reference":
-            pressure_matrix, pressure_right_hand_side = fix_pressure_reference(
-                pressure_matrix, pressure_right_hand_side
-            )
+            if reuse_matrix:
+                # The stored matrix already carries the constraint.
+                pressure_right_hand_side[0] = 0.0
+            else:
+                pressure_matrix, pressure_right_hand_side = fix_pressure_reference(
+                    pressure_matrix, pressure_right_hand_side
+                )
         elif pressure_constraint == "nullspace":
             # A finite-volume all-Neumann RHS should already be compatible;
             # remove only accumulated roundoff before the backend projection.

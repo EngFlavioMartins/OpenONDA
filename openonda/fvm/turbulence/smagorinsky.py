@@ -119,11 +119,15 @@ class SmagorinskyModel:
             "mean_filter_width": float(np.mean(delta)),
         }
 
-    def compute_eddy_viscosity(self, velocity: np.ndarray) -> np.ndarray:
+    def compute_eddy_viscosity(
+        self, velocity: np.ndarray, velocity_gradient: np.ndarray | None = None
+    ) -> np.ndarray:
         """Compute eddy viscosity per cell.
 
         Args:
             velocity: Velocity field with shape ``(n_cells + n_boundary, 3)``.
+            velocity_gradient: Gradient of ``velocity`` if the caller has it;
+                ``None`` computes it here.
 
         Returns:
             Eddy viscosity with shape ``(n_cells,)``.
@@ -133,7 +137,8 @@ class SmagorinskyModel:
         n_cells = mesh_data["n_cells"]
 
         # Compute velocity gradient on elements (returns gradients for interior+boundary elements)
-        velocity_gradient = gradients.gradient(velocity, mesh_data, geo_data)
+        if velocity_gradient is None:
+            velocity_gradient = gradients.gradient(velocity, mesh_data, geo_data)
 
         # We are only interested in interior element gradients (first n_cells)
         interior_velocity_gradient = velocity_gradient[:n_cells]
@@ -261,14 +266,16 @@ class EquilibriumSmagorinskyModel:
             / self.subgrid_dissipation_coefficient**0.25
         )
 
-    def _compute_sgs_state(self, velocity: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def _compute_sgs_state(
+        self, velocity: np.ndarray, velocity_gradient: np.ndarray | None
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return ``(k_sgs, delta)`` with bounded tensor working storage."""
         mesh = self.mesh_data
         geometry = self.geo_data
         n_cells = int(mesh["n_cells"])
-        velocity_gradient = np.asarray(
-            gradients.gradient(velocity, mesh, geometry), dtype=np.float64
-        )
+        if velocity_gradient is None:
+            velocity_gradient = gradients.gradient(velocity, mesh, geometry)
+        velocity_gradient = np.asarray(velocity_gradient, dtype=np.float64)
         if velocity_gradient.shape[1:] != (3, 3) or velocity_gradient.shape[0] < n_cells:
             raise ValueError(
                 f"Velocity gradient has shape {velocity_gradient.shape}; expected at least ({n_cells}, 3, 3)"
@@ -299,9 +306,15 @@ class EquilibriumSmagorinskyModel:
             raise FloatingPointError("Equilibrium Smagorinsky produced invalid SGS energy")
         return k_sgs, delta
 
-    def compute_eddy_viscosity(self, velocity: np.ndarray) -> np.ndarray:
-        """Compute algebraic-equilibrium SGS kinematic viscosity ``eddy_viscosity``."""
-        k_sgs, delta = self._compute_sgs_state(velocity)
+    def compute_eddy_viscosity(
+        self, velocity: np.ndarray, velocity_gradient: np.ndarray | None = None
+    ) -> np.ndarray:
+        """Compute algebraic-equilibrium SGS kinematic viscosity ``eddy_viscosity``.
+
+        ``velocity_gradient`` is the gradient of ``velocity`` if the caller has
+        it; ``None`` computes it here.
+        """
+        k_sgs, delta = self._compute_sgs_state(velocity, velocity_gradient)
         eddy_viscosity = self.subgrid_kinetic_energy_coefficient * delta * np.sqrt(k_sgs)
         if not np.all(np.isfinite(eddy_viscosity)) or np.any(eddy_viscosity < 0.0):
             raise FloatingPointError("Equilibrium Smagorinsky produced invalid eddy viscosity")

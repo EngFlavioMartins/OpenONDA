@@ -281,6 +281,8 @@ def assemble_momentum_equation(
     previous_time_step_size: float | None = None,
     ddt_scheme: str = "euler_implicit",
     matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
+    velocity_gradient: np.ndarray | None = None,
+    kinematic_pressure_gradient: np.ndarray | None = None,
 ) -> dict[str, dict[str, object]]:
     """
     Assemble momentum equation for all three velocity components.
@@ -301,6 +303,12 @@ def assemble_momentum_equation(
         time_step_size: Time step size (optional)
         velocity_old: Previous time step velocity (optional, for transient term)
         previous_time_step_size: Preceding accepted step size for variable-step BDF2.
+        velocity_gradient: Gradient of ``velocity`` that the caller already
+            computed from the same array, ``(n_cells + n_boundary, 3, 3)``;
+            ``None`` computes it here.
+        kinematic_pressure_gradient: Gradient of ``kinematic_pressure`` that the
+            caller already computed from the same array, ``(n_cells + n_boundary, 3)``;
+            ``None`` computes it here. Neither gradient is modified.
 
     Returns:
         dict: For each component (x, y, z):
@@ -334,8 +342,10 @@ def assemble_momentum_equation(
                 f"kinematic_viscosity must be finite and positive with shape ({n_cells},)"
             )
 
-    velocity_gradient = gradients.gradient(velocity, mesh_data, geo_data)
-    kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
+    if velocity_gradient is None:
+        velocity_gradient = gradients.gradient(velocity, mesh_data, geo_data)
+    if kinematic_pressure_gradient is None:
+        kinematic_pressure_gradient = gradients.gradient(kinematic_pressure, mesh_data, geo_data)
 
     # The incompressible equation is divided by the constant reference
     # density. ``volumetric_face_flux`` therefore remains volumetric flux and
@@ -532,8 +542,14 @@ def solve_momentum_predictor(
     partitioned_workspace: "PartitionedLinearWorkspace | None" = None,
     matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
     log_sink: "StepLog | None" = None,
+    velocity_gradient: np.ndarray | None = None,
+    kinematic_pressure_gradient: np.ndarray | None = None,
 ) -> Any:
     """Assemble and solve the three momentum predictors.
+
+    ``velocity_gradient`` and ``kinematic_pressure_gradient`` are gradients the
+    caller computed from ``velocity`` and ``kinematic_pressure`` as passed;
+    ``None`` computes them in the assembly.
 
     Returns the predicted cell-and-boundary velocity and relaxed cell
     diagonals used by the pressure correction.
@@ -563,6 +579,8 @@ def solve_momentum_predictor(
         previous_time_step_size=previous_time_step_size,
         ddt_scheme=ddt_scheme,
         matrix_workspace=matrix_workspace,
+        velocity_gradient=velocity_gradient,
+        kinematic_pressure_gradient=kinematic_pressure_gradient,
     )
 
     # Solve for each component

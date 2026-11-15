@@ -9,6 +9,7 @@ from openonda.core.profiling import Profiler
 from ..assemble import matrix_assembly, momentum
 from ..diagnostics import fields as field_diagnostics
 from ..diagnostics.step import OuterCorrectorDiagnostics
+from ..fields import gradients
 from . import simple_solver
 from .linear_interface import solve_linear_system
 
@@ -119,6 +120,7 @@ class PIMPLESolver:
         volumetric_face_flux_older: np.ndarray | None = None,
         previous_time_step_size: float | None = None,
         mesh_face_flux: np.ndarray | None = None,
+        velocity_gradient: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, object]]:
         """Perform one PIMPLE time step.
 
@@ -139,6 +141,10 @@ class PIMPLESolver:
                 [m³/s], on the end-of-step geometry. Momentum is convected and
                 inflow/outflow faces are selected with ``phi - mesh_face_flux``;
                 continuity keeps the absolute flux ``phi``.
+            velocity_gradient: Gradient of ``velocity`` as passed in, which the
+                caller computed for the eddy viscosity. The first momentum
+                assembly reuses it unless the boundary selection below changes
+                the velocity ghosts.
 
         Returns:
             tuple: Updated ``(velocity, kinematic_pressure, volumetric_face_flux, residuals)``.
@@ -146,6 +152,7 @@ class PIMPLESolver:
         if velocity_old is None or time_step_size is None:
             raise ValueError("PIMPLESolver.step requires velocity_old and time_step_size")
         n_elem = self.mesh_data["n_cells"]
+        ghost_velocity_before = None if velocity_gradient is None else velocity[n_elem:].copy()
         simple_solver.prepare_freestream_boundaries(
             velocity,
             kinematic_pressure,
@@ -155,6 +162,11 @@ class PIMPLESolver:
             self.boundaries,
             mesh_face_flux=mesh_face_flux,
         )
+        if ghost_velocity_before is not None and not np.array_equal(
+            ghost_velocity_before, velocity[n_elem:]
+        ):
+            velocity_gradient = None
+        del ghost_velocity_before
         n_outer = int(self.params["n_outer_correctors"])
         n_corr = int(self.params["n_correctors"])
         velocity_relaxation = self.params["velocity_relaxation"]
@@ -195,6 +207,10 @@ class PIMPLESolver:
             self.boundaries,
             field_name="kinematic_pressure",
             volumetric_face_flux=volumetric_face_flux,
+        )
+        # Boundary types and geometry are fixed for the step.
+        has_pressure_nullspace = simple_solver._pressure_requires_constraint(
+            self.boundaries, self.mesh_data, self.geo_data
         )
         initial_kinematic_pressure_residual = 0.0
         final_kinematic_pressure_residual = 0.0
@@ -265,6 +281,8 @@ class PIMPLESolver:
             )
 
             def _solve_predictor(
+                predictor_pressure_gradient,
+                reusable_velocity_gradient,
                 volumetric_face_flux=(
                     volumetric_face_flux
                     if mesh_face_flux is None
@@ -304,12 +322,22 @@ class PIMPLESolver:
                     matrix_workspace=self._momentum_matrix_workspace,
                     return_diagnostics=True,
                     return_operator=True,
+                    velocity_gradient=reusable_velocity_gradient,
+                    kinematic_pressure_gradient=predictor_pressure_gradient,
                 )
 
             with self._profiler.section("momentum predictor"):
-                velocity_star, momentum_diagonal, momentum_diagnostics, momentum_operator = (
-                    _solve_predictor()
+                # The first pressure assembly of this outer iteration sees the
+                # same pressure array, so it takes this gradient too.
+                predictor_pressure_gradient = gradients.gradient(
+                    kinematic_pressure, self.mesh_data, self.geo_data
                 )
+                velocity_star, momentum_diagonal, momentum_diagnostics, momentum_operator = (
+                    _solve_predictor(predictor_pressure_gradient, velocity_gradient)
+                )
+                # Only the first assembly sees the velocity it was computed from;
+                # release it before the pressure solve.
+                velocity_gradient = None
                 # Pressure assembly reuses the momentum CSR storage; later PISO
                 # correctors need their own copy of the relaxed momentum matrix.
                 momentum_operator = _copy_operator(momentum_operator) if n_corr > 1 else None
@@ -390,13 +418,13 @@ class PIMPLESolver:
                             frozen_velocity_h_over_a=frozen_velocity_h_over_a,
                             return_workspace=True,
                             mesh_face_flux=mesh_face_flux,
+                            kinematic_pressure_gradient=predictor_pressure_gradient,
+                            pressure_requires_constraint=has_pressure_nullspace,
                         )
+                        predictor_pressure_gradient = None
                         pressure_geometry = pressure_workspace
                         if frozen_velocity_h_over_a is None:
                             frozen_velocity_h_over_a = pressure_workspace.velocity_h_over_a
-                    has_pressure_nullspace = simple_solver._pressure_requires_constraint(
-                        self.boundaries, self.mesh_data, self.geo_data
-                    )
 
                     with self._profiler.section("pressure solve"):
                         final_pressure_solve = _corr == n_corr - 1 and non_ortho == n_non_ortho
