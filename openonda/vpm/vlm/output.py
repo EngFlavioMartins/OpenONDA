@@ -13,7 +13,7 @@ import taichi as ti
 
 from openonda.core.vtk_output import write_vtk_dataset
 
-from .loads import lift_direction
+from .loads import compute_per_surface_forces, lift_direction, resolve_reference_velocity
 
 if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkFieldData
@@ -156,8 +156,8 @@ class VLMDiagnostics:
         reference_velocity = vlm_solver._last_reference_velocity
         if reference_velocity is None:
             reference_velocity = vlm_solver.freestream_velocity
-        surface_forces = vlm_solver.compute_per_surface_forces(
-            vlm_solver.density, reference_velocity
+        surface_forces = compute_per_surface_forces(
+            vlm_solver, vlm_solver.density, reference_velocity
         )
         for key in ("power", "rotational_power", "translational_power"):
             row[key] = sum(surface[key] for surface in surface_forces.values())

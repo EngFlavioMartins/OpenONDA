@@ -6,12 +6,10 @@ circulation system and evaluates forces.
 from collections.abc import Iterator
 from contextlib import contextmanager
 import copy
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias
-import warnings
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from numpy.typing import ArrayLike
-import scipy.linalg
 import taichi as ti
 
 from openonda.core.kinematics import (
@@ -30,26 +28,32 @@ from ..kernels import make_vortex_kernel
 from ..runtime.backend import active_precision
 from .config import VLMConfig, VLMSurface
 from .filament import (
+    CirculationSolver,
     accumulate_bound_transport,
     add_induced_velocity_at_targets,
     add_stage_rates_with_bound_exchange,
     compute_aerodynamic_influence_coefficient_matrix,
     compute_coupled_right_hand_side,
-    compute_induced_velocities,
-    compute_induced_velocities_at_bound,
-    compute_panel_force_coupled,
     initialize_bound_transport,
 )
 from .geometry import Aircraft, Wing
 from .geometry import load_surface as _load_surface
 from .lattice import VLMLattice
-from .loads import add_unsteady_pressure_loads, lift_direction, resolve_reference_velocity
+from .loads import (
+    compute_bound_linear_impulse,
+    compute_forces,
+    compute_per_surface_forces,
+    compute_postprocess,
+    compute_total_bound_vortex_strength,
+    panel_kinematic_velocity,
+    resolve_reference_velocity,
+)
 from .mesh import (
     generate_vlm_mesh,
     update_trailing_directions_local,
     update_trailing_edge_directions,
 )
-from .wake import shed_wake_particles_kernel
+from .wake import augment_near_wake_particles, prepare_near_wake, shed_wake_particles
 
 if TYPE_CHECKING:
     from ..particles.container import Particles
@@ -57,11 +61,6 @@ if TYPE_CHECKING:
     from ..physics.induction.base import StageRates, StageState
 
 EPSILON = VLM_SMALL_VELOCITY
-
-# One near-wake source: (position, core radius, strip-circulation
-# coefficients, constant vortex strength).
-NearWakeSource: TypeAlias = tuple[np.ndarray, float, np.ndarray, np.ndarray]
-
 
 # Lattice fields that move rigidly with their surface.
 _GEOMETRY_FIELDS = (
@@ -86,60 +85,6 @@ def _padded(values: np.ndarray, lattice: VLMLattice) -> np.ndarray:
     padded = np.zeros((lattice.max_n_panels, *values.shape[1:]), dtype=lattice.np_dtype)
     padded[: len(values)] = values
     return padded
-
-
-class CirculationSolver:
-    """Solve ``influence @ circulation = right_hand_side`` with SciPy LU factors.
-
-    Factorization costs O(N³); right-hand sides of an identical matrix reuse
-    the factors. A singular or non-finite system raises before either the
-    cache or the output circulation is changed.
-    """
-
-    def __init__(self) -> None:
-        """Start with an empty matrix and factor cache."""
-        self._matrix: np.ndarray | None = None
-        self._factorization: tuple[np.ndarray, np.ndarray] | None = None
-
-    def solve(
-        self, influence: ti.Field, right_hand_side: ti.Field, circulation: ti.Field, n_panels: int
-    ) -> None:
-        """Solve the active ``n_panels`` system in the precision of the fields.
-
-        Parameters
-        ----------
-        influence : Taichi field, shape (capacity, capacity)
-            Dense influence matrix; entries map panel circulation to the
-            collocation-point normal velocity.
-        right_hand_side : Taichi field, shape (capacity,)
-            Boundary-condition vector.
-        circulation : Taichi field, shape (capacity,)
-            Solution storage; the active prefix is overwritten and the rest
-            set to zero.
-        n_panels : int
-            Active system size.
-
-        Raises
-        ------
-        numpy.linalg.LinAlgError
-            If the influence matrix is singular or the solution is not finite.
-        """
-        matrix = influence.to_numpy()[:n_panels, :n_panels]
-        rhs = right_hand_side.to_numpy()[:n_panels]
-        if self._matrix is None or not np.array_equal(matrix, self._matrix):
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("error", scipy.linalg.LinAlgWarning)
-                    factorization = scipy.linalg.lu_factor(matrix)
-            except scipy.linalg.LinAlgWarning as error:
-                raise np.linalg.LinAlgError("VLM influence matrix is singular") from error
-            self._matrix, self._factorization = matrix, factorization
-        solution = scipy.linalg.lu_solve(self._factorization, rhs)
-        if not np.all(np.isfinite(solution)):
-            raise np.linalg.LinAlgError("VLM circulation solve produced non-finite values")
-        full = np.zeros(circulation.shape[0], dtype=matrix.dtype)
-        full[:n_panels] = solution
-        circulation.from_numpy(full)
 
 
 class VLMSolver:
@@ -495,21 +440,6 @@ class VLMSolver:
             # Use local velocity field
             update_trailing_directions_local(self.lattice, transport_velocity)
 
-    def _compute_panel_kinematic_velocity(
-        self,
-        kinematics: RigidMotion,
-        rotation_centre: np.ndarray,
-        time: float,
-        collocation_point: np.ndarray,
-        start_idx: int,
-        end_idx: int,
-    ) -> np.ndarray:
-        """Return the rigid-body velocity ``V + Omega x (x - c)`` of a panel slice."""
-        angular_velocity = kinematics.get_angular_velocity(time)
-        translational_velocity = kinematics.get_velocity(time)
-        radial_position = collocation_point[start_idx:end_idx] - rotation_centre
-        return translational_velocity + np.cross(angular_velocity, radial_position)
-
     def advance_time(self, time_step_size: float, current_time: float) -> None:
         """Advance the surface poses to ``current_time`` and map the geometry through them."""
         self.generate_mesh()
@@ -537,7 +467,7 @@ class VLMSolver:
             self._write_geometry(geometry)
             for name, motion in moving.items():
                 panels = self._surface_panels[name]
-                kinematic_velocity[panels] = self._compute_panel_kinematic_velocity(
+                kinematic_velocity[panels] = panel_kinematic_velocity(
                     motion,
                     self.surface_rotation_centre(name),
                     time,
@@ -692,7 +622,7 @@ class VLMSolver:
         # The unsteady load differences against the circulation of the previous step.
         self.lattice.save_old_circulation()
         if coupled:
-            self._augment_near_wake_particles()
+            augment_near_wake_particles(self)
         self._circulation_solver.solve(
             self.lattice.aerodynamic_influence_coefficient,
             self.lattice.right_hand_side,
@@ -753,7 +683,7 @@ class VLMSolver:
         for name, motion in moving.items():
             panels = self._surface_panels[name]
             centre = poses[name].apply(np.asarray(motion.rotation_centre)[np.newaxis])[0]
-            kinematic[panels] = self._compute_panel_kinematic_velocity(
+            kinematic[panels] = panel_kinematic_velocity(
                 motion,
                 centre,
                 float(stage_time),
@@ -900,6 +830,8 @@ class VLMSolver:
                 lattice.n_panels,
             )
 
+    # Implicit starting-vortex aerodynamic_influence_coefficient augmentation
+
     def compute_postprocess(
         self,
         external_velocity: np.ndarray,
@@ -909,181 +841,15 @@ class VLMSolver:
         coupled: bool = False,
         bound_external_velocity: np.ndarray | None = None,
     ) -> None:
-        """
-        Compute derived quantities (velocity, pressures, forces).
-
-        Args:
-           external_velocity: External velocity (N, 3).
-           reference_velocity: Reference velocity vector [ux, uy, uz] (m/s).
-           density: Fluid density
-           time_step_size: Time step size
-           coupled: Whether in coupled mode (bound only aerodynamic_influence_coefficient)
-        """
-        if self.force.unsteady and (
-            time_step_size is None or not np.isfinite(time_step_size) or time_step_size <= 0
-        ):
-            raise ValueError("Unsteady VLM pressure requires a finite positive time_step_size")
-        self._force_density = density
-        self.lattice.force_density = float(density)
-        self.lattice.set_external_velocity(external_velocity)
-
-        reference_velocity_magnitude = float(np.linalg.norm(reference_velocity))
-        if reference_velocity_magnitude < 1e-10:
-            reference_velocity_magnitude = 1.0
-
-        # 0. Keep cumulative circulation current for wake diagnostics.
-        self._compute_cumulative_circulation_cpu()
-
-        # 1. Compute velocity at collocation points.
-        compute_induced_velocities(
-            self.lattice.n_panels,
-            self.lattice.collocation_point,
-            self.lattice.vortex_point_position,
-            self.lattice.panel_corner_position,
-            self.lattice.trailing_edge_index,
-            self.lattice.circulation,
-            self.lattice.velocity,
-            self.lattice.external_velocity,
-            int(coupled),
-            self.lattice.filament_core_radius,
-        )
-        velocity = self.lattice.velocity.to_numpy()[: self.lattice.n_panels]
-        kinematic_velocity = self.lattice.get_kinematic_velocity()
-        relative_velocity = np.zeros((self.max_n_panels, 3), dtype=self.lattice.np_dtype)
-        relative_velocity[: self.lattice.n_panels] = velocity - kinematic_velocity
-        self.lattice.relative_velocity.from_numpy(relative_velocity)
-
-        # 2. Compute velocity at BOUND VORTEX midpoints (for Forces)
-        incident_at_bound = (
-            external_velocity if bound_external_velocity is None else bound_external_velocity
-        )
-        padded = np.zeros((self.max_n_panels, 3), dtype=self.lattice.np_dtype)
-        padded[: self.lattice.n_panels] = incident_at_bound
-        self.lattice.bound_external_velocity.from_numpy(padded)
-        bound_kinematics = np.zeros_like(padded)
-        points = self.lattice.bound_vortex_midpoint.to_numpy()[: self.lattice.n_panels]
-        for name, (_, motion) in self.surfaces.items():
-            panels = self._surface_panels[name]
-            bound_kinematics[panels] = self._compute_panel_kinematic_velocity(
-                motion,
-                self.surface_rotation_centre(name),
-                self._current_time or 0.0,
-                points,
-                panels.start,
-                panels.stop,
-            )
-        self.lattice.bound_kinematic_velocity.from_numpy(bound_kinematics)
-        self.lattice.reference_speed = float(reference_velocity_magnitude)
-        compute_induced_velocities_at_bound(
-            self.lattice.n_panels,
-            self.lattice.bound_vortex_midpoint,
-            self.lattice.vortex_point_position,
-            self.lattice.panel_corner_position,
-            self.lattice.trailing_edge_index,
-            self.lattice.circulation,
-            self.lattice.bound_vortex_velocity,
-            self.lattice.bound_external_velocity,
-            1 if coupled else 0,
-            self.lattice.filament_core_radius,
-        )
-        bound_velocity = self.lattice.bound_vortex_velocity.to_numpy()[: self.lattice.n_panels]
-        bound_relative_velocity = np.zeros((self.max_n_panels, 3), dtype=self.lattice.np_dtype)
-        bound_relative_velocity[: self.lattice.n_panels] = (
-            bound_velocity - bound_kinematics[: self.lattice.n_panels]
-        )
-        self.lattice.bound_relative_velocity.from_numpy(bound_relative_velocity)
-
-        compute_panel_force_coupled(
-            self.lattice.bound_vortex_velocity,
-            self.lattice.vortex_point_position,
-            self.lattice.circulation,
-            self.lattice.bound_kinematic_velocity,
-            self.lattice.panel_force,
-            self.lattice.n_panels,
+        """Compute velocities and panel loads; see :func:`loads.compute_postprocess`."""
+        compute_postprocess(
+            self,
+            external_velocity,
+            reference_velocity,
             density,
-        )
-        self.lattice.unsteady_panel_force.fill(0.0)
-        self.lattice.panel_moment_correction.fill(0.0)
-        self.lattice.unsteady_pressure_jump_coefficient.fill(0.0)
-        if self.force.unsteady and time_step_size is not None:
-            add_unsteady_pressure_loads(
-                self.lattice.panel_corner_position,
-                self.lattice.vortex_point_position,
-                self.lattice.circulation,
-                self.lattice.circulation_old,
-                self.lattice.cumulative_circulation,
-                self.lattice.cumulative_circulation_old,
-                self.lattice.panel_force,
-                self.lattice.unsteady_panel_force,
-                self.lattice.panel_moment_correction,
-                self.lattice.unsteady_pressure_jump_coefficient,
-                self.lattice.n_panels,
-                density / time_step_size,
-                2.0 / (density * reference_velocity_magnitude**2),
-            )
-
-    def _decompose_wind_axes(
-        self,
-        total_force: np.ndarray,
-        reference_velocity_magnitude: float,
-        reference_velocity: np.ndarray,
-    ) -> tuple[float, float, float]:
-        """Decompose total force into lift, drag, side-force in wind axes."""
-        if reference_velocity_magnitude > 1e-10:
-            reference_direction = reference_velocity / reference_velocity_magnitude
-            lift_axis = lift_direction(reference_direction)
-            side_force_direction = np.cross(reference_direction, lift_axis)
-            return (
-                float(np.dot(total_force, lift_axis)),
-                float(np.dot(total_force, reference_direction)),
-                float(np.dot(total_force, side_force_direction)),
-            )
-        force_x, force_y, force_z = total_force
-        return -float(force_z), float(force_x), float(force_y)
-
-    def _compute_force_moments(
-        self,
-        panel_force: np.ndarray,
-        panel_moment_correction: np.ndarray,
-    ) -> tuple[tuple[float, float, float], tuple[float, float, float], np.ndarray]:
-        """Compute moments about reference center and quarter-chord."""
-        bound_vortex_midpoint = self.lattice.bound_vortex_midpoint.to_numpy()[
-            : self.lattice.n_panels
-        ]
-        # A single surface carries its placed centroid; several surfaces share
-        # the fixed placed centroid of the whole lattice.
-        reference_point = self._placed_centroid
-        if len(self.surfaces) == 1:
-            pose = next(iter(self.surface_poses.values()))
-            reference_point = pose.apply(reference_point[np.newaxis])[0]
-        total_moment = np.sum(
-            np.cross(bound_vortex_midpoint - reference_point, panel_force)
-            + panel_moment_correction,
-            axis=0,
-        )
-        # Derive the quarter-chord point from the current physical strips, so
-        # prescribed placement, pitch and translation all transform it with the wing.
-        corners = self.lattice.panel_corner_position.to_numpy()[: self.lattice.n_panels]
-        leading = self.lattice.is_leading_edge.to_numpy()[: self.lattice.n_panels] == 1
-        trailing = self.lattice.trailing_edge_index.to_numpy()[: self.lattice.n_panels][leading]
-        leading_midpoint = 0.5 * (corners[leading, 0] + corners[leading, 1])
-        trailing_midpoint = 0.5 * (corners[trailing, 2] + corners[trailing, 3])
-        strip_chord = np.linalg.norm(trailing_midpoint - leading_midpoint, axis=1)
-        strip_span = np.linalg.norm(corners[leading, 1] - corners[leading, 0], axis=1)
-        quarter_chord_reference_point = np.average(
-            0.75 * leading_midpoint + 0.25 * trailing_midpoint,
-            axis=0,
-            weights=strip_chord * strip_span,
-        )
-        quarter_chord_total_moment = np.sum(
-            np.cross(bound_vortex_midpoint - quarter_chord_reference_point, panel_force)
-            + panel_moment_correction,
-            axis=0,
-        )
-        return (
-            tuple(total_moment),
-            tuple(quarter_chord_total_moment),
-            reference_point,
+            time_step_size,
+            coupled,
+            bound_external_velocity,
         )
 
     def compute_forces(
@@ -1094,441 +860,24 @@ class VLMSolver:
         reference_chord: float | None = None,
         reference_span: float | None = None,
     ) -> dict[str, float | np.ndarray]:
-        """
-        Compute integrated aerodynamic forces and moments.
-
-        lift_coefficient, drag_coefficient, side_force_coefficient are normalized by the dynamic pressure and reference area:
-        lift_coefficient = L / (0.5 * rho * reference_area * reference_velocity²)
-
-        Args:
-           density: Fluid density (kg/m³)
-           reference_velocity: Reference velocity vector [ux, uy, uz] (for coefficients and L/D axes).
-                  If None, auto-computed from freestream_velocity or kinematics.
-           reference_area: Reference area (m²). If None, uses aircraft defaults.
-           reference_chord: Reference chord (m). If None, uses aircraft defaults.
-           reference_span: Reference span (m). If None, uses aircraft defaults.
-
-        Returns:
-            Dictionary with force components and coefficients
-        """
-        if not self._solved:
-            raise RuntimeError("Must solve system before computing forces")
-        panel_force = self.lattice.get_forces() * (density / self._force_density)
-        total_force = np.sum(panel_force, axis=0)
-        force_x, force_y, force_z = total_force
-        reference_velocity = resolve_reference_velocity(self, reference_velocity)
-        reference_velocity_magnitude = float(np.linalg.norm(reference_velocity))
-        lift, drag, side_force = self._decompose_wind_axes(
-            total_force, reference_velocity_magnitude, reference_velocity
+        """Return the integrated forces and moments; see :func:`loads.compute_forces`."""
+        return compute_forces(
+            self, density, reference_velocity, reference_area, reference_chord, reference_span
         )
-        (moment_x, moment_y, moment_z), quarter_chord_moment, reference_point = (
-            self._compute_force_moments(
-                panel_force,
-                self.lattice.panel_moment_correction.to_numpy()[: self.lattice.n_panels]
-                * (density / self._force_density),
-            )
-        )
-        dynamic_pressure = 0.5 * density * reference_velocity_magnitude**2
-        if reference_area is None:
-            reference_area = float(self.aircraft.refs.get("area", 1.0))
-        if reference_span is None:
-            reference_span = float(self.aircraft.refs.get("span", 1.0))
-        if reference_chord is None:
-            reference_chord = float(self.aircraft.refs.get("chord", 1.0))
-        force_normalization = dynamic_pressure * reference_area
-        chord_moment_normalization = force_normalization * reference_chord
-        span_moment_normalization = force_normalization * reference_span
-        normalized = dynamic_pressure > 1e-10 and force_normalization > 1e-10
-
-        def coefficient(value: float, normalization: float) -> float:
-            return value / normalization if normalized else 0.0
-
-        result = {
-            "force_x": force_x,
-            "force_y": force_y,
-            "force_z": force_z,
-            "lift": lift,
-            "drag": drag,
-            "side_force": side_force,
-            "moment_x": moment_x,
-            "moment_y": moment_y,
-            "moment_z": moment_z,
-            "force_coefficient_x": coefficient(force_x, force_normalization),
-            "force_coefficient_y": coefficient(force_y, force_normalization),
-            "force_coefficient_z": coefficient(force_z, force_normalization),
-            "lift_coefficient": coefficient(lift, force_normalization),
-            "drag_coefficient": coefficient(drag, force_normalization),
-            "side_force_coefficient": coefficient(side_force, force_normalization),
-            "rolling_moment_coefficient": coefficient(moment_x, span_moment_normalization),
-            "pitching_moment_coefficient": coefficient(moment_y, chord_moment_normalization),
-            "yawing_moment_coefficient": coefficient(moment_z, span_moment_normalization),
-            "rolling_moment_coefficient_quarter_chord": coefficient(
-                quarter_chord_moment[0], span_moment_normalization
-            ),
-            "pitching_moment_coefficient_quarter_chord": coefficient(
-                quarter_chord_moment[1], chord_moment_normalization
-            ),
-            "yawing_moment_coefficient_quarter_chord": coefficient(
-                quarter_chord_moment[2], span_moment_normalization
-            ),
-            "dynamic_pressure": dynamic_pressure,
-            "reference_area": reference_area,
-            "reference_point": reference_point,
-            "reference_chord": reference_chord,
-            "reference_span": reference_span,
-        }
-        unsteady = self.lattice.unsteady_panel_force.to_numpy()[: self.lattice.n_panels].sum(axis=0)
-        unsteady *= density / self._force_density
-        result.update(
-            {
-                f"unsteady_force_{axis}": float(value)
-                for axis, value in zip("xyz", unsteady, strict=True)
-            }
-        )
-        return result
-
-    def compute_total_bound_vortex_strength(self) -> np.ndarray:
-        """
-        Compute the integrated vector strength of the bound VLM field.
-
-        A coupled horseshoe contains all three on-wing legs, from its strip's
-        left trailing edge to its right trailing edge. Their vectors telescope
-        to that endpoint difference, including sweep, taper and twist. The
-        standalone diagnostic retains the quarter-chord bound-leg convention.
-
-        Returns:
-            np.ndarray: Integrated bound vortex-strength vector [m³/s].
-
-        """
-        if not self._solved:
-            return np.zeros(3)
-
-        n_panels = self.lattice.n_panels
-        circulation = self.lattice.circulation.to_numpy()[:n_panels]
-        if self._coupled_mode:
-            trailing_edges = self.lattice.trailing_edge_index.to_numpy()[:n_panels]
-            corners = self.lattice.panel_corner_position.to_numpy()[trailing_edges]
-            l_vec = corners[:, 2] - corners[:, 3]
-        else:
-            vortex_pts = self.lattice.vortex_point_position.to_numpy()[:n_panels]
-            l_vec = vortex_pts[:, 2] - vortex_pts[:, 1]
-
-        net_vortex_strength = np.sum(circulation[:, np.newaxis] * l_vec, axis=0)
-
-        return net_vortex_strength
-
-    def compute_bound_linear_impulse(self) -> np.ndarray:
-        """Integrate half of ``x cross omega`` over the finite bound field [m⁴/s].
-
-        Coupled mode includes the three on-wing legs, ending at the actual
-        trailing edge. Standalone mode uses the same quarter-chord-only
-        convention as the bound-strength diagnostic. Density is applied by
-        the caller; the bound contribution alone is origin-dependent.
-        """
-        if not self._solved:
-            return np.zeros(3)
-        n = self.lattice.n_panels
-        gamma = self.lattice.circulation.to_numpy()[:n].astype(np.float64)
-        vortex = self.lattice.vortex_point_position.to_numpy()[:n].astype(np.float64)
-        crosses = np.cross(vortex[:, 1], vortex[:, 2])
-        if self._coupled_mode:
-            trailing = self.lattice.trailing_edge_index.to_numpy()[:n]
-            corners = self.lattice.panel_corner_position.to_numpy()[trailing].astype(np.float64)
-            crosses += np.cross(corners[:, 3], vortex[:, 1])
-            crosses += np.cross(vortex[:, 2], corners[:, 2])
-        return 0.5 * np.sum(gamma[:, None] * crosses, axis=0)
-
-    def _compute_one_surface_forces(
-        self,
-        surface_name: str,
-        panel_force: np.ndarray,
-        reference_direction: np.ndarray,
-        force_normalization: float,
-        panel_moment_correction: np.ndarray,
-    ) -> dict[str, float]:
-        """Compute forces, moment about the current pivot, and fluid-on-body power."""
-        panels = self._surface_panels[surface_name]
-        _, motion = self.surfaces[surface_name]
-        time = self._current_time if self._current_time is not None else 0.0
-        centre = self.surface_rotation_centre(surface_name)
-        positions = self.lattice.bound_vortex_midpoint.to_numpy()[panels]
-        forces = panel_force[panels]
-        panel_centers = self.lattice.panel_corner_position.to_numpy()[panels].mean(axis=1)
-        areas = self.lattice.area.to_numpy()[panels]
-        centroid = np.average(panel_centers, axis=0, weights=areas)
-        surface_force = forces.sum(axis=0)
-        moment = (np.cross(positions - centre, forces) + panel_moment_correction[panels]).sum(
-            axis=0
-        )
-        translation_velocity = motion.get_velocity(time)
-        angular_velocity = motion.get_angular_velocity(time)
-        rotational_power = float(moment @ angular_velocity)
-        translational_power = float(surface_force @ translation_velocity)
-        lift, drag, _ = self._decompose_wind_axes(surface_force, 1.0, reference_direction)
-        result = {
-            "lift": lift,
-            "drag": drag,
-            "lift_coefficient": lift / force_normalization if force_normalization > 1e-10 else 0.0,
-            "drag_coefficient": drag / force_normalization if force_normalization > 1e-10 else 0.0,
-            "panel_count": panels.stop - panels.start,
-            "rotational_power": rotational_power,
-            "translational_power": translational_power,
-            "power": rotational_power + translational_power,
-        }
-        for label, vector in (
-            ("force", surface_force),
-            ("moment", moment),
-            ("rotation_centre", centre),
-            ("translation_velocity", translation_velocity),
-            ("angular_velocity", angular_velocity),
-            ("position", self.surface_poses[surface_name].translation),
-            ("centroid", centroid),
-        ):
-            result.update(
-                {f"{label}_{axis}": float(value) for axis, value in zip("xyz", vector, strict=True)}
-            )
-        return result
 
     def compute_per_surface_forces(
-        self,
-        density: float,
-        reference_velocity: np.ndarray | None = None,
+        self, density: float, reference_velocity: np.ndarray | None = None
     ) -> dict[str, dict[str, float]]:
-        """
-        Compute forces for each individual surface.
+        """Return the forces of each surface; see :func:`loads.compute_per_surface_forces`."""
+        return compute_per_surface_forces(self, density, reference_velocity)
 
-        All coefficients are normalized by dynamic pressure and the aircraft
-        reference area: lift_coefficient = L / (0.5 * rho * S_ref * reference_velocity²)
+    def compute_total_bound_vortex_strength(self) -> np.ndarray:
+        """Return the integrated bound vector strength [m³/s]."""
+        return compute_total_bound_vortex_strength(self)
 
-        Args:
-            density: Fluid density (kg/m³)
-            reference_velocity: Reference velocity vector [ux, uy, uz]
-
-        Returns:
-            Dictionary mapping surface name to force dictionary
-        """
-        if not self._solved:
-            return {}
-        panel_force = self.lattice.get_forces() * (density / self._force_density)
-        reference_velocity = resolve_reference_velocity(self, reference_velocity)
-        reference_velocity_magnitude = float(np.linalg.norm(reference_velocity))
-        if reference_velocity_magnitude <= 1e-10:
-            raise ValueError("Per-surface forces need a nonzero reference velocity")
-        dynamic_pressure = 0.5 * density * reference_velocity_magnitude**2
-        force_normalization = dynamic_pressure * float(self.aircraft.refs.get("area", 1.0))
-        reference_direction = reference_velocity / reference_velocity_magnitude
-        moment_correction = self.lattice.panel_moment_correction.to_numpy()[: self.lattice.n_panels]
-        moment_correction *= density / self._force_density
-        return {
-            name: self._compute_one_surface_forces(
-                name,
-                panel_force,
-                reference_direction,
-                force_normalization,
-                moment_correction,
-            )
-            for name in self.surfaces
-        }
-
-    def _compute_cumulative_circulation_cpu(self) -> None:
-        """
-        Compute cumulative circulation for all panels using segment information.
-
-        This replaces the Taichi kernel version which relies on neighbor_indices
-        that may be incorrectly set for tapered/swept wings.
-
-        For each spanwise station, the cumulative circulation is the sum of all
-        chordwise panel circulations. This is what gets shed as trailing vortices.
-        """
-        n_panels = self.lattice.n_panels
-        circulation = self.lattice.circulation.to_numpy()[:n_panels]
-        circulation_cumulative = np.zeros(n_panels, dtype=np.float64)
-
-        for block in self.lattice.segment_blocks:
-            n_chordwise_panels, n_spanwise_panels = block["nc"], block["ns"]
-            panels = slice(block["start"], block["start"] + n_chordwise_panels * n_spanwise_panels)
-            circulation_cumulative[panels] = np.cumsum(
-                circulation[panels].reshape((n_spanwise_panels, n_chordwise_panels)),
-                axis=1,
-            ).ravel()
-
-        # Upload to Taichi field for kernel access
-        dtype_np = np.float32 if self.lattice.dtype == ti.f32 else np.float64
-        circulation_full = np.zeros(self.lattice.max_n_panels, dtype=dtype_np)
-        circulation_full[:n_panels] = circulation_cumulative
-        self.lattice.cumulative_circulation.from_numpy(circulation_full)
-
-    def _prepare_near_wake(
-        self, time_step_size: float, physics: "PhysicsBase", particles: "Particles"
-    ) -> None:
-        """Construct one row from previous TE positions convected to the new clock."""
-        n = self.lattice.n_panels
-        corners = self.lattice.panel_corner_position.to_numpy()[:n]
-        old = corners if self._previous_panel_corners is None else self._previous_panel_corners
-        indices = np.flatnonzero(self.lattice.is_trailing_edge.to_numpy()[:n])
-        points = corners[indices][:, [3, 2]].reshape(-1, 3)
-        target_velocity = physics.compute_target_velocity(
-            particles, points, include_freestream=True
-        )
-        fluid = np.zeros_like(points) if target_velocity is None else target_velocity
-        fluid = fluid.reshape(-1, 2, 3)
-        offset = self.lattice.wake_offset.to_numpy()
-        velocity = self.lattice.trailing_edge_velocity.to_numpy()
-        offset[indices] = (
-            old[indices][:, [3, 2]] - corners[indices][:, [3, 2]] + fluid * time_step_size
-        )
-        velocity[indices] = fluid
-        self.lattice.wake_offset.from_numpy(offset)
-        self.lattice.trailing_edge_velocity.from_numpy(velocity)
-
-    def _compute_wake_particles(self) -> None:
-        """Discretize the completed near-wake row at edge midpoints and its far edge."""
-        self.lattice.reset_wake_buffer()
-        self._compute_cumulative_circulation_cpu()
-        # Antisymmetric signed root circulations cancel to solver roundoff.
-        # Do not turn frame-dependent last-bit noise into extra wake particles.
-        dtype = np.float32 if self.lattice.dtype == ti.f32 else np.float64
-        shed_wake_particles_kernel(
-            self.lattice.n_panels,
-            self.wake_core_overlap,
-            32.0 * np.finfo(dtype).eps,
-            self.lattice.cumulative_circulation,
-            self.lattice.panel_corner_position,
-            self.lattice.neighbor_indices,
-            self.lattice.is_trailing_edge,
-            self.lattice.is_mirrored,
-            self.lattice.group_id,
-            self.lattice.wake_offset,
-            self.lattice.trailing_edge_velocity,
-            self.lattice.wake_position,
-            self.lattice.wake_velocity,
-            self.lattice.wake_vortex_strength,
-            self.lattice.wake_core_radius,
-            self.lattice.wake_volume,
-            self.lattice.wake_group_id,
-            self.lattice.n_wake_particles,
-            self._transported_bound,
-        )
-
-        n_particles_shed = self.lattice.n_wake_particles[None]
-        wake_buffer_capacity = self.lattice.wake_position.shape[0]
-        if n_particles_shed > wake_buffer_capacity:
-            raise RuntimeError(
-                f"VLM wake buffer overflow: {n_particles_shed} particles exceed "
-                f"capacity {wake_buffer_capacity}"
-            )
-
-    # Implicit starting-vortex aerodynamic_influence_coefficient augmentation
-    def _build_trailing_edge_strip_map(self) -> tuple[list[int], np.ndarray]:
-        """Map every panel to its trailing-edge strip."""
-        trailing_edge_indices: list[int] = []
-        strip_index_by_panel = np.zeros(self.lattice.n_panels, dtype=np.intp)
-        for block in self.lattice.segment_blocks:
-            n_chordwise_panels = block["nc"]
-            for spanwise_index in range(block["ns"]):
-                first_panel = block["start"] + spanwise_index * n_chordwise_panels
-                strip_index_by_panel[first_panel : first_panel + n_chordwise_panels] = len(
-                    trailing_edge_indices
-                )
-                trailing_edge_indices.append(first_panel + n_chordwise_panels - 1)
-        return trailing_edge_indices, strip_index_by_panel
-
-    def _near_wake_row(
-        self, corners: np.ndarray, offsets: np.ndarray, old_bound: np.ndarray
-    ) -> tuple[list[NearWakeSource], np.ndarray, int]:
-        """Return affine native-row sources in cumulative strip circulation.
-
-        Each source is (position, radius, strip-vector coefficients, constant
-        strength). Strength units are m³/s; circulation coefficients have
-        length units. A strip's old closing vector is kept in the inertial
-        frame, including transported reaction.
-        """
-        edges, strip_by_panel = self._build_trailing_edge_strip_map()
-        n = self.lattice.n_panels
-        neighbors = self.lattice.neighbor_indices.to_numpy()[:n]
-        mirrored = self.lattice.is_mirrored.to_numpy()[:n]
-        sources: list[NearWakeSource] = []
-        for strip, panel in enumerate(edges):
-            left, right = corners[panel, 3], corners[panel, 2]
-            dl, dr = offsets[panel]
-            span = np.linalg.norm(right - left)
-            length = 0.5 * (np.linalg.norm(dl) + np.linalg.norm(dr))
-            if span <= 1e-12 or length <= 1e-12:
-                continue
-            left_radius = float(self.wake_core_overlap * max(np.linalg.norm(dl), span))
-            right_radius = float(self.wake_core_overlap * max(np.linalg.norm(dr), span))
-            transverse_radius = float(self.wake_core_overlap * max(length, span))
-            left_index, right_index = neighbors[panel, :2]
-            shared_root = left_index != -1 and mirrored[panel] != mirrored[left_index]
-            if not shared_root or panel < left_index:
-                coefficients = np.zeros((len(edges), 3))
-                coefficients[strip] -= dl
-                if left_index != -1:
-                    coefficients[strip_by_panel[left_index]] += -dl if shared_root else dl
-                sources.append((left + 0.5 * dl, left_radius, coefficients, np.zeros(3)))
-            if right_index == -1:
-                coefficients = np.zeros((len(edges), 3))
-                coefficients[strip] = dr
-                sources.append((right + 0.5 * dr, right_radius, coefficients, np.zeros(3)))
-            far_left, far_right = left + dl, right + dr
-            coefficients = np.zeros((len(edges), 3))
-            coefficients[strip] = far_left - far_right
-            sources.append(
-                (
-                    0.5 * (far_left + far_right),
-                    transverse_radius,
-                    coefficients,
-                    old_bound[panel],
-                )
-            )
-        return sources, strip_by_panel, len(edges)
-
-    def _near_wake_row_influence(
-        self,
-        sources: list[NearWakeSource],
-        targets: np.ndarray,
-        normals: np.ndarray,
-        n_strips: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Project an affine native row onto all receiving collocation normals."""
-        matrix, old_velocity = np.zeros((len(targets), n_strips)), np.zeros(len(targets))
-        for position, radius, coefficients, constant in sources:
-            displacement = targets - position
-            for strip in np.flatnonzero(np.any(coefficients != 0, axis=1)):
-                velocity = self._wake_kernel.velocity_pair(
-                    displacement, coefficients[strip], radius, radius
-                )
-                matrix[:, strip] += np.einsum("ij,ij->i", velocity, normals)
-            if np.any(constant):
-                velocity = self._wake_kernel.velocity_pair(displacement, constant, radius, radius)
-                old_velocity += np.einsum("ij,ij->i", velocity, normals)
-        return matrix, old_velocity
-
-    def _near_wake_particle_influence(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Return the accepted row matrix, old-strength RHS and panel/strip map."""
-        lattice, n = self.lattice, self.lattice.n_panels
-        corners = lattice.panel_corner_position.to_numpy()[:n]
-        offsets = lattice.wake_offset.to_numpy()[:n]
-        old_bound = self._transported_bound.to_numpy()[:n]
-        sources, strip_map, n_strips = self._near_wake_row(corners, offsets, old_bound)
-        matrix, old_velocity = self._near_wake_row_influence(
-            sources,
-            lattice.collocation_point.to_numpy()[:n],
-            lattice.normal.to_numpy()[:n],
-            n_strips,
-        )
-        return matrix, old_velocity, strip_map
-
-    def _augment_near_wake_particles(self) -> None:
-        """Include the actual newborn particle row in the circulation solve."""
-        matrix, old_velocity, strip_by_panel = self._near_wake_particle_influence()
-        n = self.lattice.n_panels
-        influence = self.lattice.aerodynamic_influence_coefficient.to_numpy()
-        influence[:n, :n] += matrix[:, strip_by_panel]
-        self.lattice.aerodynamic_influence_coefficient.from_numpy(influence)
-        rhs = self.lattice.right_hand_side.to_numpy()
-        rhs[:n] -= old_velocity
-        self.lattice.right_hand_side.from_numpy(rhs)
+    def compute_bound_linear_impulse(self) -> np.ndarray:
+        """Return the bound linear impulse per unit density [m⁴/s]."""
+        return compute_bound_linear_impulse(self)
 
     def advance_coupled(
         self,
@@ -1571,10 +920,10 @@ class VLMSolver:
             include_freestream=True,
         )
 
-        self._prepare_near_wake(time_step_size, physics, particles)
+        prepare_near_wake(self, time_step_size, physics, particles)
         self.solve(external_velocity=None, coupled=True)
 
-        self._compute_wake_particles()
+        shed_wake_particles(self)
         n_particles_shed = self.lattice.n_wake_particles[None]
         if n_particles_shed > 0:
             added = particles.add_vortex_particles_from_fields_grouped(
