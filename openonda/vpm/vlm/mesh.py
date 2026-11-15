@@ -248,6 +248,7 @@ def generate_vlm_mesh(
     lattice.trailing_edge_index.from_numpy(te_idx_np)
 
     lattice.n_panels = panel_idx
+    lattice.segment_blocks = segment_blocks
 
     # Mark LE panels (static topology; must run after neighbor_indices is uploaded)
     lattice.mark_le_panels()

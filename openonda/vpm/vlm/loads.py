@@ -63,31 +63,32 @@ def add_unsteady_pressure_loads(
             )
 
 
-class VLMForceEvaluator:
-    """Static helpers for aerodynamic force evaluation in VLM-VPM coupling.
+def lift_direction(reference_direction: np.ndarray) -> np.ndarray:
+    """Return the unit wind-axis lift direction for the unit ``reference_direction``.
 
-    All methods are static and receive their required data explicitly from
-    the solver (no solver reference is held here).
+    It is the vertical (z) direction with its component along the reference
+    direction removed; a reference direction along z leaves the vertical itself.
     """
+    vertical_direction = np.array([0.0, 0.0, 1.0])
+    direction = (
+        vertical_direction - np.dot(vertical_direction, reference_direction) * reference_direction
+    )
+    magnitude = np.linalg.norm(direction)
+    return direction / magnitude if magnitude > 1e-10 else vertical_direction
 
-    # Kutta-Joukowski forces
 
-    @staticmethod
-    def compute_kutta_joukowski(
-        vlm_solver: "VLMSolver | None",
-        freestream_velocity: np.ndarray,
-        density: float,
-        reference_speed: float | None,
-    ) -> "dict[str, np.ndarray | float | str]":
-        """Return bound-leg KJ loads plus the configured unsteady pressure term."""
-        if vlm_solver is None or not vlm_solver._solved:
-            raise RuntimeError("Force evaluation requires a solved VLM lattice")
-        reference = vlm_solver._resolve_reference_velocity(None, vlm_solver.lattice.n_panels)
-        if reference_speed is not None:
-            reference = reference / np.linalg.norm(reference) * reference_speed
-        forces = vlm_solver.compute_forces(density, reference_velocity=reference)
-        return {
-            "unsteady_pressure": vlm_solver.force.unsteady,
-            "force": np.array([forces["force_x"], forces["force_y"], forces["force_z"]]),
-            **forces,
-        }
+def kutta_joukowski_forces(
+    vlm_solver: "VLMSolver", density: float, reference_speed: float | None
+) -> dict[str, np.ndarray | float | str]:
+    """Return bound-leg KJ loads plus the configured unsteady pressure term."""
+    if not vlm_solver._solved:
+        raise RuntimeError("Force evaluation requires a solved VLM lattice")
+    reference = vlm_solver._resolve_reference_velocity(None, vlm_solver.lattice.n_panels)
+    if reference_speed is not None:
+        reference = reference / np.linalg.norm(reference) * reference_speed
+    forces = vlm_solver.compute_forces(density, reference_velocity=reference)
+    return {
+        "unsteady_pressure": vlm_solver.force.unsteady,
+        "force": np.array([forces["force_x"], forces["force_y"], forces["force_z"]]),
+        **forces,
+    }

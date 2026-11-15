@@ -27,6 +27,7 @@ from openonda.core.profiling import Stopwatch
 
 from ..config.constants import VLM_SMALL_VELOCITY
 from ..kernels import make_vortex_kernel
+from ..runtime.backend import active_precision
 from .config import VLMConfig, VLMSurface
 from .filament import (
     accumulate_bound_transport,
@@ -42,7 +43,7 @@ from .filament import (
 from .geometry import Aircraft, Wing
 from .geometry import load_surface as _load_surface
 from .lattice import VLMLattice
-from .loads import add_unsteady_pressure_loads
+from .loads import add_unsteady_pressure_loads, lift_direction
 from .mesh import (
     generate_vlm_mesh,
     update_trailing_directions_local,
@@ -254,8 +255,8 @@ class VLMSolver:
                     "are created."
                 )
 
-            ti_dtype = ti.lang.impl.get_runtime().default_fp
-            self.dtype = "f32" if ti_dtype == ti.f32 else "f64"
+            self.dtype = active_precision()
+            ti_dtype = ti.f32 if self.dtype == "f32" else ti.f64
             self._lattice = VLMLattice(self.max_n_panels, ti_dtype)
             self._transported_bound = ti.Vector.field(3, ti_dtype, shape=self.max_n_panels)
             self._bound_exchange_rate = ti.Vector.field(3, ti_dtype, shape=self.max_n_panels)
@@ -263,7 +264,11 @@ class VLMSolver:
             self._lattice_initialized = True
 
     def generate_mesh(self) -> None:
-        """Generate the VLM mesh using the distribution declared in ``config``."""
+        """Generate the VLM mesh using the distribution declared in ``config``.
+
+        The mesh is generated once; later calls return at once, so every entry
+        point that needs it calls this method.
+        """
         self._ensure_lattice_initialized()
 
         if self._mesh_generated:
@@ -394,21 +399,6 @@ class VLMSolver:
             group_id[self._surface_panels[surface_name]] = gid
         return group_id
 
-    def ensure_mesh_generated(self) -> None:
-        """
-        Ensure mesh is generated. Called by VPMSolver after Taichi is initialized.
-
-        This deferred initialization ensures Taichi fields are created with the
-        correct backend (GPU/Vulkan) as configured by VPMSolver.
-        """
-        if self._mesh_generated:
-            return
-
-        if not self.aircraft:
-            return
-
-        self.generate_mesh()
-
     def _update_combined_aircraft(self) -> None:
         """Update combined aircraft from all loaded surfaces."""
         if len(self.surfaces) == 1:
@@ -486,19 +476,6 @@ class VLMSolver:
                 maximum_speed = tip_speed
         return representative_velocity
 
-    def _get_max_kinematic_speed(self) -> float:
-        """
-        Get maximum kinematic speed across all surfaces.
-
-        For rotating surfaces this is the tip speed (omega × R_max).
-        For translating surfaces this is the translational speed.
-
-        Returns:
-            Maximum kinematic speed [m/s], or 0.0 if no active kinematics
-        """
-        kinematic_velocity = self._get_active_kinematic_velocity()
-        return float(np.linalg.norm(kinematic_velocity))
-
     def update_trailing_directions(self, transport_velocity: np.ndarray) -> None:
         """
         Update trailing edge directions based on transport velocity.
@@ -509,8 +486,7 @@ class VLMSolver:
            transport_velocity: Velocity vector/field for wake transport (N, 3) or (3,)
                         Ideally this is external_velocity - V_skinematic at trailing edge.
         """
-        if not self._mesh_generated:
-            self.generate_mesh()
+        self.generate_mesh()
 
         # If scalar vector provided, apply uniformly
         if transport_velocity.ndim == 1:
@@ -536,8 +512,7 @@ class VLMSolver:
 
     def advance_time(self, time_step_size: float, current_time: float) -> None:
         """Advance the surface poses to ``current_time`` and map the geometry through them."""
-        if not self._mesh_generated:
-            self.generate_mesh()
+        self.generate_mesh()
         self._previous_panel_corners = self.lattice.panel_corner_position.to_numpy()[
             : self.lattice.n_panels
         ].copy()
@@ -631,7 +606,9 @@ class VLMSolver:
             raise ValueError("freestream_velocity must contain three finite components")
 
         min_panel_chord = self._minimum_panel_chord()
-        characteristic_speed = float(np.linalg.norm(background)) + self._get_max_kinematic_speed()
+        characteristic_speed = float(np.linalg.norm(background)) + float(
+            np.linalg.norm(self._get_active_kinematic_velocity())
+        )
         courant = characteristic_speed * time_step_size / min_panel_chord
         max_time_step_size = (
             min_panel_chord / characteristic_speed
@@ -673,8 +650,7 @@ class VLMSolver:
         self._stage_geometry_time = None
         self._coupled_mode = bool(coupled)
         solve_clock = Stopwatch()
-        if not self._mesh_generated:
-            self.generate_mesh()
+        self.generate_mesh()
         n_panels = self.lattice.n_panels
         if external_velocity is not None:
             if external_velocity.ndim == 1 and external_velocity.shape[0] == 3:
@@ -821,11 +797,6 @@ class VLMSolver:
         self._stage_geometry_time = float(stage_time)
         return fields
 
-    def _stage_geometry(self, stage_time: float) -> tuple[ti.Field, ti.Field]:
-        """Return pure stage source geometry while holding circulation fixed."""
-        fields = self._ensure_stage_geometry_fields(float(stage_time))
-        return fields[0], fields[1]
-
     def add_stage_velocity(
         self, target_position: ti.Field, target_velocity: ti.Field, count: int, stage_time: float
     ) -> None:
@@ -838,7 +809,7 @@ class VLMSolver:
         """
         if not self._solved or self._lattice is None or count <= 0:
             return
-        vortex_points, corners = self._stage_geometry(stage_time)
+        vortex_points, corners, *_ = self._ensure_stage_geometry_fields(float(stage_time))
         add_induced_velocity_at_targets(
             target_position,
             target_velocity,
@@ -896,7 +867,7 @@ class VLMSolver:
         """Accumulate the bound field and its stage-weighted strip reaction."""
         if not self._solved or state.count <= 0:
             return
-        vortex_points, corners = self._stage_geometry(stage_time)
+        vortex_points, corners, *_ = self._ensure_stage_geometry_fields(float(stage_time))
         lattice = self.lattice
         if weighted_dt != 0.0:
             self._bound_exchange_rate.fill(0.0)
@@ -1082,20 +1053,10 @@ class VLMSolver:
         """Decompose total force into lift, drag, side-force in wind axes."""
         if reference_velocity_magnitude > 1e-10:
             reference_direction = reference_velocity / reference_velocity_magnitude
-            vertical_direction = np.array([0.0, 0.0, 1.0])
-            lift_direction = (
-                vertical_direction
-                - np.dot(vertical_direction, reference_direction) * reference_direction
-            )
-            lift_direction_magnitude = np.linalg.norm(lift_direction)
-            lift_direction = (
-                lift_direction / lift_direction_magnitude
-                if lift_direction_magnitude > 1e-10
-                else vertical_direction
-            )
-            side_force_direction = np.cross(reference_direction, lift_direction)
+            lift_axis = lift_direction(reference_direction)
+            side_force_direction = np.cross(reference_direction, lift_axis)
             return (
-                float(np.dot(total_force, lift_direction)),
+                float(np.dot(total_force, lift_axis)),
                 float(np.dot(total_force, reference_direction)),
                 float(np.dot(total_force, side_force_direction)),
             )
@@ -1105,7 +1066,6 @@ class VLMSolver:
     def _compute_force_moments(
         self,
         panel_force: np.ndarray,
-        reference_chord: float | None,
         panel_moment_correction: np.ndarray,
     ) -> tuple[tuple[float, float, float], tuple[float, float, float], np.ndarray]:
         """Compute moments about reference center and quarter-chord."""
@@ -1123,8 +1083,6 @@ class VLMSolver:
             + panel_moment_correction,
             axis=0,
         )
-        if reference_chord is None:
-            reference_chord = float(self.aircraft.refs.get("chord", 1.0))
         # Derive the quarter-chord point from the current physical strips, so
         # prescribed placement, pitch and translation all transform it with the wing.
         corners = self.lattice.panel_corner_position.to_numpy()[: self.lattice.n_panels]
@@ -1149,96 +1107,6 @@ class VLMSolver:
             tuple(quarter_chord_total_moment),
             reference_point,
         )
-
-    def _build_force_coefficients(  # noqa: PLR0913
-        self,
-        lift: float,
-        drag: float,
-        side_force: float,
-        force_x: float,
-        force_y: float,
-        force_z: float,
-        moment: tuple[float, float, float],
-        quarter_chord_moment: tuple[float, float, float],
-        reference_point: np.ndarray,
-        density: float,
-        reference_velocity_magnitude: float,
-        reference_area: float | None,
-        reference_chord: float | None,
-        reference_span: float | None,
-    ) -> dict[str, float | np.ndarray]:
-        """Build normalised coefficient dict from raw forces/moments."""
-        moment_x, moment_y, moment_z = moment
-        quarter_chord_moment_x, quarter_chord_moment_y, quarter_chord_moment_z = (
-            quarter_chord_moment
-        )
-        dynamic_pressure = 0.5 * density * reference_velocity_magnitude**2
-        if reference_area is None:
-            reference_area = float(self.aircraft.refs.get("area", 1.0))
-        if reference_span is None:
-            reference_span = float(self.aircraft.refs.get("span", 1.0))
-        if reference_chord is None:
-            reference_chord = float(self.aircraft.refs.get("chord", 1.0))
-        force_normalization = dynamic_pressure * reference_area
-        chord_moment_normalization = force_normalization * reference_chord
-        span_moment_normalization = force_normalization * reference_span
-        if dynamic_pressure > 1e-10 and force_normalization > 1e-10:
-            lift_coefficient = lift / force_normalization
-            drag_coefficient = drag / force_normalization
-            side_force_coefficient = side_force / force_normalization
-            force_coefficient_x = force_x / force_normalization
-            force_coefficient_y = force_y / force_normalization
-            force_coefficient_z = force_z / force_normalization
-            rolling_moment_coefficient = moment_x / span_moment_normalization
-            pitching_moment_coefficient = moment_y / chord_moment_normalization
-            yawing_moment_coefficient = moment_z / span_moment_normalization
-            rolling_moment_coefficient_quarter_chord = (
-                quarter_chord_moment_x / span_moment_normalization
-            )
-            pitching_moment_coefficient_quarter_chord = (
-                quarter_chord_moment_y / chord_moment_normalization
-            )
-            yawing_moment_coefficient_quarter_chord = (
-                quarter_chord_moment_z / span_moment_normalization
-            )
-        else:
-            lift_coefficient = drag_coefficient = side_force_coefficient = force_coefficient_x = (
-                force_coefficient_y
-            ) = force_coefficient_z = 0.0
-            rolling_moment_coefficient = 0.0
-            pitching_moment_coefficient = 0.0
-            yawing_moment_coefficient = 0.0
-            rolling_moment_coefficient_quarter_chord = 0.0
-            pitching_moment_coefficient_quarter_chord = 0.0
-            yawing_moment_coefficient_quarter_chord = 0.0
-        return {
-            "force_x": force_x,
-            "force_y": force_y,
-            "force_z": force_z,
-            "lift": lift,
-            "drag": drag,
-            "side_force": side_force,
-            "moment_x": moment_x,
-            "moment_y": moment_y,
-            "moment_z": moment_z,
-            "force_coefficient_x": force_coefficient_x,
-            "force_coefficient_y": force_coefficient_y,
-            "force_coefficient_z": force_coefficient_z,
-            "lift_coefficient": lift_coefficient,
-            "drag_coefficient": drag_coefficient,
-            "side_force_coefficient": side_force_coefficient,
-            "rolling_moment_coefficient": rolling_moment_coefficient,
-            "pitching_moment_coefficient": pitching_moment_coefficient,
-            "yawing_moment_coefficient": yawing_moment_coefficient,
-            "rolling_moment_coefficient_quarter_chord": rolling_moment_coefficient_quarter_chord,
-            "pitching_moment_coefficient_quarter_chord": pitching_moment_coefficient_quarter_chord,
-            "yawing_moment_coefficient_quarter_chord": yawing_moment_coefficient_quarter_chord,
-            "dynamic_pressure": dynamic_pressure,
-            "reference_area": reference_area,
-            "reference_point": reference_point,
-            "reference_chord": reference_chord,
-            "reference_span": reference_span,
-        }
 
     def compute_forces(
         self,
@@ -1277,28 +1145,62 @@ class VLMSolver:
         lift, drag, side_force = self._decompose_wind_axes(
             total_force, reference_velocity_magnitude, reference_velocity
         )
-        moment, quarter_chord_moment, reference_point = self._compute_force_moments(
-            panel_force,
-            reference_chord,
-            self.lattice.panel_moment_correction.to_numpy()[: self.lattice.n_panels]
-            * (density / self._force_density),
+        (moment_x, moment_y, moment_z), quarter_chord_moment, reference_point = (
+            self._compute_force_moments(
+                panel_force,
+                self.lattice.panel_moment_correction.to_numpy()[: self.lattice.n_panels]
+                * (density / self._force_density),
+            )
         )
-        result = self._build_force_coefficients(
-            lift,
-            drag,
-            side_force,
-            force_x,
-            force_y,
-            force_z,
-            moment,
-            quarter_chord_moment,
-            reference_point,
-            density,
-            reference_velocity_magnitude,
-            reference_area,
-            reference_chord,
-            reference_span,
-        )
+        dynamic_pressure = 0.5 * density * reference_velocity_magnitude**2
+        if reference_area is None:
+            reference_area = float(self.aircraft.refs.get("area", 1.0))
+        if reference_span is None:
+            reference_span = float(self.aircraft.refs.get("span", 1.0))
+        if reference_chord is None:
+            reference_chord = float(self.aircraft.refs.get("chord", 1.0))
+        force_normalization = dynamic_pressure * reference_area
+        chord_moment_normalization = force_normalization * reference_chord
+        span_moment_normalization = force_normalization * reference_span
+        normalized = dynamic_pressure > 1e-10 and force_normalization > 1e-10
+
+        def coefficient(value: float, normalization: float) -> float:
+            return value / normalization if normalized else 0.0
+
+        result = {
+            "force_x": force_x,
+            "force_y": force_y,
+            "force_z": force_z,
+            "lift": lift,
+            "drag": drag,
+            "side_force": side_force,
+            "moment_x": moment_x,
+            "moment_y": moment_y,
+            "moment_z": moment_z,
+            "force_coefficient_x": coefficient(force_x, force_normalization),
+            "force_coefficient_y": coefficient(force_y, force_normalization),
+            "force_coefficient_z": coefficient(force_z, force_normalization),
+            "lift_coefficient": coefficient(lift, force_normalization),
+            "drag_coefficient": coefficient(drag, force_normalization),
+            "side_force_coefficient": coefficient(side_force, force_normalization),
+            "rolling_moment_coefficient": coefficient(moment_x, span_moment_normalization),
+            "pitching_moment_coefficient": coefficient(moment_y, chord_moment_normalization),
+            "yawing_moment_coefficient": coefficient(moment_z, span_moment_normalization),
+            "rolling_moment_coefficient_quarter_chord": coefficient(
+                quarter_chord_moment[0], span_moment_normalization
+            ),
+            "pitching_moment_coefficient_quarter_chord": coefficient(
+                quarter_chord_moment[1], chord_moment_normalization
+            ),
+            "yawing_moment_coefficient_quarter_chord": coefficient(
+                quarter_chord_moment[2], span_moment_normalization
+            ),
+            "dynamic_pressure": dynamic_pressure,
+            "reference_area": reference_area,
+            "reference_point": reference_point,
+            "reference_chord": reference_chord,
+            "reference_span": reference_span,
+        }
         unsteady = self.lattice.unsteady_panel_force.to_numpy()[: self.lattice.n_panels].sum(axis=0)
         unsteady *= density / self._force_density
         result.update(
@@ -1456,40 +1358,6 @@ class VLMSolver:
             for name in self.surfaces
         }
 
-    def save_results(self, filename: str, time: float = 0.0) -> None:
-        """
-        Save VLM results to VTK file.
-
-        Args:
-            filename: Output filename (without extension)
-            time: Physical simulation time stored in the output field.
-        """
-        if not self._solved:
-            self.logger.warning("VLM is unsolved; saving geometry without solved loads")
-
-        self.lattice.save_vtk(filename, time=time)
-
-    def _fill_segment_cumulative(
-        self,
-        circulation: np.ndarray,
-        circulation_cumulative: np.ndarray,
-        panel_index: int,
-        n_chordwise_panels: int,
-        n_spanwise_panels: int,
-    ) -> int:
-        """Fill cumulative circulation for one segment and return the next panel index."""
-        n_segment_panels = n_chordwise_panels * n_spanwise_panels
-        if panel_index + n_segment_panels <= len(circulation_cumulative):
-            segment_circulation = circulation[panel_index : panel_index + n_segment_panels]
-            segment_cumulative_circulation = np.cumsum(
-                segment_circulation.reshape((n_spanwise_panels, n_chordwise_panels)),
-                axis=1,
-            )
-            circulation_cumulative[panel_index : panel_index + n_segment_panels] = (
-                segment_cumulative_circulation.ravel()
-            )
-        return panel_index + n_segment_panels
-
     def _compute_cumulative_circulation_cpu(self) -> None:
         """
         Compute cumulative circulation for all panels using segment information.
@@ -1504,26 +1372,13 @@ class VLMSolver:
         circulation = self.lattice.circulation.to_numpy()[:n_panels]
         circulation_cumulative = np.zeros(n_panels, dtype=np.float64)
 
-        panel_index = 0
-        for _wing_uid, wing in self.aircraft.wings.items():
-            for _segment_uid, segment in wing.segments.items():
-                n_chordwise_panels = segment.n_chordwise_panels
-                n_spanwise_panels = segment.n_spanwise_panels
-                panel_index = self._fill_segment_cumulative(
-                    circulation,
-                    circulation_cumulative,
-                    panel_index,
-                    n_chordwise_panels,
-                    n_spanwise_panels,
-                )
-                if wing.symmetry > 0:
-                    panel_index = self._fill_segment_cumulative(
-                        circulation,
-                        circulation_cumulative,
-                        panel_index,
-                        n_chordwise_panels,
-                        n_spanwise_panels,
-                    )
+        for block in self.lattice.segment_blocks:
+            n_chordwise_panels, n_spanwise_panels = block["nc"], block["ns"]
+            panels = slice(block["start"], block["start"] + n_chordwise_panels * n_spanwise_panels)
+            circulation_cumulative[panels] = np.cumsum(
+                circulation[panels].reshape((n_spanwise_panels, n_chordwise_panels)),
+                axis=1,
+            ).ravel()
 
         # Upload to Taichi field for kernel access
         dtype_np = np.float32 if self.lattice.dtype == ti.f32 else np.float64
@@ -1592,54 +1447,18 @@ class VLMSolver:
             )
 
     # Implicit starting-vortex aerodynamic_influence_coefficient augmentation
-    @staticmethod
-    def _fill_trailing_edge_strip_segment(
-        trailing_edge_indices: list[int],
-        strip_index_by_panel: np.ndarray,
-        panel_offset: int,
-        n_chordwise_panels: int,
-        n_spanwise_panels: int,
-    ) -> int:
-        """Register trailing-edge strips and return the next panel offset."""
-        for spanwise_index in range(n_spanwise_panels):
-            strip_index = len(trailing_edge_indices)
-            trailing_edge_indices.append(
-                panel_offset + spanwise_index * n_chordwise_panels + n_chordwise_panels - 1
-            )
-            strip_index_by_panel[
-                panel_offset + spanwise_index * n_chordwise_panels : panel_offset
-                + (spanwise_index + 1) * n_chordwise_panels
-            ] = strip_index
-        return panel_offset + n_chordwise_panels * n_spanwise_panels
-
     def _build_trailing_edge_strip_map(self) -> tuple[list[int], np.ndarray]:
         """Map every panel to its trailing-edge strip."""
-        n_panels = self.lattice.n_panels
         trailing_edge_indices: list[int] = []
-        strip_index_by_panel = np.zeros(n_panels, dtype=np.intp)
-        panel_offset = 0
-        for _wing_uid, wing in self.aircraft.wings.items():
-            for _segment_uid, segment in wing.segments.items():
-                n_chordwise_panels = segment.n_chordwise_panels
-                n_spanwise_panels = segment.n_spanwise_panels
-                panel_offset = self._fill_trailing_edge_strip_segment(
-                    trailing_edge_indices,
-                    strip_index_by_panel,
-                    panel_offset,
-                    n_chordwise_panels,
-                    n_spanwise_panels,
+        strip_index_by_panel = np.zeros(self.lattice.n_panels, dtype=np.intp)
+        for block in self.lattice.segment_blocks:
+            n_chordwise_panels = block["nc"]
+            for spanwise_index in range(block["ns"]):
+                first_panel = block["start"] + spanwise_index * n_chordwise_panels
+                strip_index_by_panel[first_panel : first_panel + n_chordwise_panels] = len(
+                    trailing_edge_indices
                 )
-                if (
-                    wing.symmetry > 0
-                    and panel_offset + n_chordwise_panels * n_spanwise_panels <= n_panels
-                ):
-                    panel_offset = self._fill_trailing_edge_strip_segment(
-                        trailing_edge_indices,
-                        strip_index_by_panel,
-                        panel_offset,
-                        n_chordwise_panels,
-                        n_spanwise_panels,
-                    )
+                trailing_edge_indices.append(first_panel + n_chordwise_panels - 1)
         return trailing_edge_indices, strip_index_by_panel
 
     def _near_wake_row(
@@ -1772,8 +1591,7 @@ class VLMSolver:
         """
         if time is None:
             raise ValueError("Coupled VLM advance requires the accepted physical time")
-        if not self._mesh_generated:
-            self.generate_mesh()
+        self.generate_mesh()
 
         n_panels = self.lattice.n_panels
 

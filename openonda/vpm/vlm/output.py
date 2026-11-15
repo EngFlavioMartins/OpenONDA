@@ -5,13 +5,15 @@ span- and chord-wise loading) and the lattice surface for VTK.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import taichi as ti
 
 from openonda.core.vtk_output import write_vtk_dataset
+
+from .loads import lift_direction
 
 if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkFieldData
@@ -223,71 +225,40 @@ class VLMLoadingDistribution:
           original_panel_indices  : np.ndarray (n_spanwise_panels, n_chordwise_panels) of panel flat indices,
           mirrored_panel_indices: np.ndarray (n_spanwise_panels, n_chordwise_panels) | None
         """
-        n_panels = vlm_solver.lattice.n_panels
-        panel_segment_id = vlm_solver.lattice.segment_id.to_numpy()[:n_panels]
         surface_panels = vlm_solver._surface_panels[surface_name]
+        blocks = {
+            (block["wing_id"], block["segment_order"], block["is_mirrored"]): block
+            for block in vlm_solver.lattice.segment_blocks
+        }
+
+        def panel_indices(block: dict) -> np.ndarray:
+            first = block["start"]
+            return np.arange(first, first + block["nc"] * block["ns"]).reshape(
+                block["ns"], block["nc"]
+            )
 
         surface_blocks: list[dict] = []
         global_segment_id = 0  # sequential segment ID across all wings of the aircraft
-        wing_panel_start = 0
-        for wing_uid, wing in vlm_solver.aircraft.wings.items():
-            is_selected = surface_panels.start <= wing_panel_start < surface_panels.stop
-            for local_segment_id, (segment_uid, segment) in enumerate(wing.segments.items()):
-                n_chordwise_panels = segment.n_chordwise_panels
-                n_spanwise_panels = segment.n_spanwise_panels
-                if is_selected:
-                    # cursor inside this wing
-                    cursor = wing_panel_start
-                    for _prev_seg_uid, prev_seg in wing.segments.items():
-                        if _prev_seg_uid == segment_uid:
-                            break
-                        n = prev_seg.n_chordwise_panels * prev_seg.n_spanwise_panels
-                        cursor += n
-                        if wing.symmetry > 0:
-                            cursor += n
-
-                    n = n_chordwise_panels * n_spanwise_panels
-                    original_flat_indices = np.arange(cursor, cursor + n)
-                    original_panel_indices = original_flat_indices.reshape(
-                        n_spanwise_panels, n_chordwise_panels
-                    )
-
-                    mirrored_panel_indices = None
-                    if wing.symmetry > 0:
-                        mirrored_flat_indices = np.arange(cursor + n, cursor + 2 * n)
-                        mirrored_panel_indices = mirrored_flat_indices.reshape(
-                            n_spanwise_panels, n_chordwise_panels
-                        )
-
-                    # cross-check: segment IDs should match
-                    expected_segment_id = local_segment_id
-                    observed = panel_segment_id[original_flat_indices]
-                    if not np.all(observed == expected_segment_id):
-                        vlm_solver.logger.warning(
-                            f"[VLMLoadingDistribution] segment_id mismatch for "
-                            f"wing '{wing_uid}' segment '{segment_uid}' (expected {expected_segment_id}, "
-                            f"got unique {np.unique(observed)}). Using index arithmetic."
-                        )
-
+        for wing_id, (wing_uid, wing) in enumerate(vlm_solver.aircraft.wings.items()):
+            for segment_order, (segment_uid, segment) in enumerate(wing.segments.items()):
+                original = blocks[(wing_id, segment_order, False)]
+                mirrored = blocks.get((wing_id, segment_order, True))
+                if surface_panels.start <= original["start"] < surface_panels.stop:
                     surface_blocks.append(
                         {
                             "wing_uid": wing_uid,
                             "segment_uid": segment_uid,
                             "segment_id": global_segment_id,
-                            "n_chordwise_panels": n_chordwise_panels,
-                            "n_spanwise_panels": n_spanwise_panels,
+                            "n_chordwise_panels": segment.n_chordwise_panels,
+                            "n_spanwise_panels": segment.n_spanwise_panels,
                             "symmetry": wing.symmetry,
-                            "original_panel_indices": original_panel_indices,
-                            "mirrored_panel_indices": mirrored_panel_indices,
+                            "original_panel_indices": panel_indices(original),
+                            "mirrored_panel_indices": (
+                                None if mirrored is None else panel_indices(mirrored)
+                            ),
                         }
                     )
                 global_segment_id += 1
-            wing_panel_start += sum(
-                segment.n_chordwise_panels
-                * segment.n_spanwise_panels
-                * (2 if wing.symmetry > 0 else 1)
-                for segment in wing.segments.values()
-            )
 
         return surface_blocks
 
@@ -355,17 +326,7 @@ class VLMLoadingDistribution:
             )
         else:
             reference_direction = np.array([1.0, 0.0, 0.0])
-        vertical_direction = np.array([0.0, 0.0, 1.0])
-        lift_direction = (
-            vertical_direction
-            - np.dot(vertical_direction, reference_direction) * reference_direction
-        )
-        lift_direction_magnitude = np.linalg.norm(lift_direction)
-        lift_direction = (
-            lift_direction / lift_direction_magnitude
-            if lift_direction_magnitude > 1e-10
-            else vertical_direction
-        )
+        lift_axis = lift_direction(reference_direction)
         drag_direction = reference_direction.copy()
 
         # ΔCp denominator: panel chord from panel_corner_position (TE_mid − LE_mid)
@@ -473,7 +434,7 @@ class VLMLoadingDistribution:
 
                     # sectional forces
                     section_force = station_panel_force.sum(axis=0)  # (3,)
-                    section_lift = float(np.dot(section_force, lift_direction))
+                    section_lift = float(np.dot(section_force, lift_axis))
                     section_drag = float(np.dot(section_force, drag_direction))
                     section_circulation = float(station_circulation.sum())
                     circulation_magnitude = abs(section_circulation)
@@ -687,21 +648,15 @@ CELL_FIELDS = (
 )
 
 
-def write_lattice_vtk(
-    fields: Mapping[str, np.ndarray],
-    filename: Path | str,
-    *,
-    reference_speed: float,
-    time: float,
-    force_density: float | None = None,
-) -> Path:
-    """Write saved or live arrays without advancing motion or recomputing loads.
+def write_lattice_vtk(vlm_solver: VLMSolver, filename: Path | str, *, time: float) -> Path:
+    """Atomically write the accepted lattice and its loads as PolyData.
 
-    Panel corners retain their stored precision. ``velocity`` and
+    The lattice is written as it is: motion is not advanced and loads are not
+    recomputed. Panel corners retain their stored precision. ``velocity`` and
     ``bound_vortex_velocity`` are inertial fluid velocities; the corresponding
     ``relative_velocity`` fields subtract the prescribed body motion. Circulation
     is in [m^2/s], and ``panel_force`` is the force in newtons at the solve
-    density when ``force_density`` is supplied. The dimensionless
+    density when the lattice records a force density. The dimensionless
     ``circulation_pressure_jump_proxy`` combines the circulation-based
     lifting-surface estimate and any recorded unsteady contribution. It is
     distinct from ``panel_normal_load_coefficient``, which normalizes the
@@ -709,6 +664,17 @@ def write_lattice_vtk(
     """
     from vtk import vtkCellArray, vtkPoints, vtkPolyData
     from vtkmodules.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
+
+    if not vlm_solver._solved:
+        vlm_solver.logger.warning("VLM is unsolved; saving geometry without solved loads")
+    lattice = vlm_solver.lattice
+    ti.sync()
+    fields = {
+        name: getattr(lattice, name).to_numpy()[: lattice.n_panels]
+        for name in ("panel_corner_position", "vortex_point_position", *CELL_FIELDS)
+    }
+    reference_speed = lattice.reference_speed
+    force_density = lattice.force_density
 
     corners = np.asarray(fields["panel_corner_position"])
     if corners.ndim != 3 or corners.shape[1:] != (4, 3) or not np.isfinite(corners).all():

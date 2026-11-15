@@ -17,6 +17,8 @@ from openonda.core.solution_layout import collection_path, component_directory
 from openonda.core.vtk_output import add_frame, write_vtk_dataset
 from openonda.core.write_precision import cast_for_write
 
+from ..vlm.output import write_lattice_vtk
+
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
 
@@ -97,7 +99,7 @@ def write_solution_frames(solver: VPMSolver) -> Path:
     if vlm is not None:
         surface_frame = component_directory(solution_dir, "vlm") / f"vlm_{solver.step:06d}.vtp"
         surface_frame.parent.mkdir(parents=True, exist_ok=True)
-        vlm.save_results(str(surface_frame.with_suffix("")), time=time)
+        write_lattice_vtk(vlm, surface_frame, time=time)
         add_frame(
             collection_path(solution_dir, "vlm"), time, surface_frame.relative_to(solution_dir)
         )

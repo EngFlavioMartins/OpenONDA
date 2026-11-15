@@ -3,7 +3,6 @@ GPU-resident VLM lattice data structure (VLMLattice): panel geometry,
 circulations, and topology.
 """
 
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -51,6 +50,10 @@ class VLMLattice:
         self.n_panels = 0
         # Regularization length of the bound filaments [m], set by generate_vlm_mesh.
         self.filament_core_radius = 0.0
+        # Contiguous panel block of every segment and mirrored half, in lattice
+        # order, set by generate_vlm_mesh: wing_id, segment_order, is_mirrored,
+        # start (first panel), nc and ns (chordwise and spanwise panel counts).
+        self.segment_blocks: list[dict] = []
 
         # Panel corner points (N x 4 x 3)
         # Order: [P, Q, R, S] where P-Q is LE, R-S is TE
@@ -284,22 +287,3 @@ class VLMLattice:
     def get_forces(self) -> np.ndarray:
         """Return active panel force vectors, shape ``(N, 3)`` in newtons."""
         return self.panel_force.to_numpy()[: self.n_panels]
-
-    def save_vtk(self, filename: str, time: float = 0.0) -> Path:
-        """Atomically write the accepted lattice and its properties as PolyData."""
-        from .output import CELL_FIELDS, write_lattice_vtk
-
-        ti.sync()
-        names = (
-            "panel_corner_position",
-            "vortex_point_position",
-            *CELL_FIELDS,
-        )
-        fields = {name: getattr(self, name).to_numpy()[: self.n_panels] for name in names}
-        return write_lattice_vtk(
-            fields,
-            f"{filename}.vtp",
-            reference_speed=self.reference_speed,
-            time=time,
-            force_density=self.force_density,
-        )

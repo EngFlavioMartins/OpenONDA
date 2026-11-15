@@ -322,7 +322,7 @@ def _active_backend_name() -> str:
     raise RuntimeError(f"The running Taichi runtime uses the unsupported arch {active_arch}")
 
 
-def _active_precision() -> str:
+def active_precision() -> str:
     """Return the default floating-point precision of the running Taichi runtime."""
     return "f64" if ti.lang.impl.current_cfg().default_fp == ti.f64 else "f32"
 
@@ -422,7 +422,7 @@ def _join_runtime(
 ) -> str:
     """Return the device of the running runtime if ``device`` may use it, or raise."""
     active = _active_backend_name()
-    active_precision = _active_precision()
+    running_precision = active_precision()
     started_here = _BACKEND_CONFIGURATION is not None and _BACKEND_CONFIGURATION[0] == active
     if started_here:
         if device not in {"auto", active}:
@@ -436,9 +436,9 @@ def _join_runtime(
             f"compute_device={device!r} cannot use it. Call ti.reset() before building "
             "the solver, or request compute_device='cpu' on a CPU runtime."
         )
-    if active_precision != precision:
+    if running_precision != precision:
         raise RuntimeError(
-            f"The running Taichi runtime has precision={active_precision!r}; "
+            f"The running Taichi runtime has precision={running_precision!r}; "
             f"precision={precision!r} was requested"
         )
     if supported_devices is not None and active not in supported_devices:

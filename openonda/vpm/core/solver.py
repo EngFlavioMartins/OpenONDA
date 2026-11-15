@@ -62,7 +62,7 @@ from ..stabilization.context import (
     StabilizationStepState,
 )
 from ..turbulence.les import ParticleLES
-from ..vlm.loads import VLMForceEvaluator
+from ..vlm.loads import kutta_joukowski_forces
 from ..vlm.output import VLMDiagnostics, VLMLoadingDistribution
 from .evolution import EvolutionStepper
 
@@ -486,7 +486,7 @@ class VPMSolver:
     def _initialize_vlm_coupling(self) -> None:
         """Configure VLM solver coupling: mesh generation, force config, stability check."""
         self.vlm_solver._wake_kernel = self.induction.kernel
-        self.vlm_solver.ensure_mesh_generated()
+        self.vlm_solver.generate_mesh()
         if getattr(self.vlm_solver, "lattice", None) is not None:
             self.logger.section("vlm", ("panels", f"{self.vlm_solver.lattice.n_panels:,}"))
             self.vlm_solver.check_coupling_stability(
@@ -1354,9 +1354,7 @@ class VPMSolver:
             raise RuntimeError("Force evaluation requires a VLM setup")
         if density is None:
             density = self.vlm_solver.density
-        return VLMForceEvaluator.compute_kutta_joukowski(
-            self.vlm_solver, self.freestream_velocity, density, reference_speed
-        )
+        return kutta_joukowski_forces(self.vlm_solver, density, reference_speed)
 
     # Per-particle diagnostics
     # Field evaluation
