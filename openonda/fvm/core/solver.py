@@ -792,15 +792,17 @@ class FVMSolver(CouplerInterfaceMixin):
         target = self.time + float(time_step_size)
         if self.mesh_motion.time == target:
             return
-        previous_mesh_flux = self.mesh_motion.mesh_face_flux.copy()
-        previous_surface = self.mesh_motion.move_to(target)
-        # The convecting flux starts from the flux relative to the mesh, a
-        # scalar carried with the faces: it is exact for fluid moving with the
-        # mesh, for still fluid around a steadily rotating mesh, and for
-        # steady translation. The history fluxes keep their Rhie-Chow part.
-        self.volumetric_face_flux += self.mesh_motion.mesh_face_flux - previous_mesh_flux
-        self._carry_face_fluxes(previous_surface, include_current=False)
-        self.mesh_motion.update_boundaries(self)
+        with self.profiler.section("move mesh"):
+            previous_mesh_flux = self.mesh_motion.mesh_face_flux.copy()
+            previous_surface = self.mesh_motion.move_to(target)
+            # The convecting flux starts from the flux relative to the mesh, a
+            # scalar carried with the faces: it is exact for fluid moving with the
+            # mesh, for still fluid around a steadily rotating mesh, and for
+            # steady translation. The history fluxes keep their Rhie-Chow part.
+            self.volumetric_face_flux += self.mesh_motion.mesh_face_flux - previous_mesh_flux
+            self._carry_face_fluxes(previous_surface, include_current=False)
+        with self.profiler.section("update mesh boundaries"):
+            self.mesh_motion.update_boundaries(self)
         self._invalidate_derived_fields()
         self._publish_state()
 
@@ -1778,21 +1780,22 @@ class FVMSolver(CouplerInterfaceMixin):
             self._n_committed_time_steps += 1
             self.step += 1
             self.time = summed_time if time is None else float(time)
-            if self.mesh_motion is not None:
+        if self.mesh_motion is not None:
+            with self.profiler.section("accept mesh motion"):
                 self.mesh_motion.accept(self.time, self)
-            self._run_metadata_written = False
-            self._previous_time_step_size = self._accepted_time_step_size
-            self._courant_time_step_size = (
-                self._accepted_time_step_size
-                if self._selected_courant_time_step_size is None
-                else self._selected_courant_time_step_size
-            )
-            self._selected_courant_time_step_size = None
-            self._selected_landing_time = None
-            self._n_consecutive_accepted_steps = pending_counters
-            self._pending_acceptance_counters = None
-            self._pending_step_size = None
-            self._step_phase = "accepted"
+        self._run_metadata_written = False
+        self._previous_time_step_size = self._accepted_time_step_size
+        self._courant_time_step_size = (
+            self._accepted_time_step_size
+            if self._selected_courant_time_step_size is None
+            else self._selected_courant_time_step_size
+        )
+        self._selected_courant_time_step_size = None
+        self._selected_landing_time = None
+        self._n_consecutive_accepted_steps = pending_counters
+        self._pending_acceptance_counters = None
+        self._pending_step_size = None
+        self._step_phase = "accepted"
 
         if not defer_output:
             self.write_step_output()
