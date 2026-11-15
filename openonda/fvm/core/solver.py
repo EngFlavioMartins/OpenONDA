@@ -67,6 +67,25 @@ class AcceptanceLimitError(RuntimeError):
     """A candidate FVM step exceeded a configured :class:`RunAcceptanceLimits` threshold."""
 
 
+def _solver_owned_mesh(mesh_data: dict[str, Any]) -> dict[str, Any]:
+    """Return ``mesh_data`` with its own mapping and its own vertex coordinates.
+
+    The solver adds entries to its mesh and a moving mesh rewrites the vertex
+    coordinates in place. A mesh mapping held by the case, or returned again by
+    its mesher, keeps the constructed coordinates, so a second solver of the
+    same case starts from the constructed mesh.
+    """
+    owned = dict(mesh_data)
+    owned["vertex_position"] = np.array(mesh_data["vertex_position"])
+    visualization = mesh_data.get("_visualization_mesh")
+    if visualization is not None:
+        owned["_visualization_mesh"] = {
+            **visualization,
+            "vertex_position": np.array(visualization["vertex_position"]),
+        }
+    return owned
+
+
 def _initial_velocity_field(
     configuration: FVMConfiguration, n_total: int, mesh_data: dict
 ) -> np.ndarray:
@@ -479,7 +498,9 @@ class FVMSolver(CouplerInterfaceMixin):
         ):
             if is_root:
                 with mesh_stage("mesh construction") as construction:
-                    mesh_data = build_or_load_mesh(source, cache_path=self.case.mesh_path)
+                    mesh_data = _solver_owned_mesh(
+                        build_or_load_mesh(source, cache_path=self.case.mesh_path)
+                    )
                     construction.details(
                         cells=mesh_data.get("n_cells"),
                         faces=mesh_data.get("n_faces"),
