@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+import numpy as np
 
 from ..solve.linear_interface import LinearSolveResult
+from . import fields as field_diagnostics
+
+if TYPE_CHECKING:
+    from ..core.solver import FVMSolver
 
 
 @dataclass(frozen=True)
@@ -108,3 +115,111 @@ class StepDiagnostics:
     min_eddy_viscosity: float | None = None
     max_eddy_viscosity: float | None = None
     warnings: tuple[str, ...] = field(default_factory=tuple)
+
+
+def build_step_diagnostics(
+    solver: FVMSolver, step_time_step_size: float, residuals: dict[str, object]
+) -> StepDiagnostics:
+    """Build the backend-neutral field and convergence record of the solved candidate step.
+
+    Reads the solved fields of ``solver`` and sets its ``max_courant_number``.
+    """
+    n_cells = solver.mesh_data["n_cells"]
+    n_owned = solver.parallel.n_owned if solver.parallel.is_partitioned else n_cells
+    interior_velocity = np.asarray(solver.velocity[:n_owned])
+    interior_kinematic_pressure = np.asarray(solver.kinematic_pressure[:n_owned])
+    solver.max_courant_number = solver._measure_maximum_courant_number(step_time_step_size)
+    local_nonfinite = int(
+        np.count_nonzero(~np.isfinite(interior_velocity))
+        + np.count_nonzero(~np.isfinite(interior_kinematic_pressure))
+        + np.count_nonzero(~np.isfinite(solver.volumetric_face_flux))
+    )
+    n_nonfinite_values = int(solver.parallel.global_sum(local_nonfinite))
+    min_eddy_viscosity = None
+    max_eddy_viscosity = None
+    if solver.eddy_viscosity is not None:
+        n_nonfinite_values += int(
+            solver.parallel.global_sum(
+                int(np.count_nonzero(~np.isfinite(solver.eddy_viscosity[:n_owned])))
+            )
+        )
+        local_eddy = np.asarray(solver.eddy_viscosity[:n_owned])
+        min_eddy_viscosity = float(
+            solver.parallel.global_min(float(np.nanmin(local_eddy)) if n_owned else float("inf"))
+        )
+        max_eddy_viscosity = float(
+            solver.parallel.global_max(float(np.nanmax(local_eddy)) if n_owned else float("-inf"))
+        )
+    n_interior = solver.mesh_data["n_interior_faces"]
+    linear_results = tuple(getattr(solver.algorithm, "last_linear_results", ()))
+    local_min_velocity = np.nanmin(interior_velocity, axis=0) if n_owned else np.full(3, np.inf)
+    local_max_velocity = np.nanmax(interior_velocity, axis=0) if n_owned else np.full(3, -np.inf)
+    min_velocity = np.asarray(
+        [solver.parallel.global_min(float(value)) for value in local_min_velocity]
+    )
+    max_velocity = np.asarray(
+        [solver.parallel.global_max(float(value)) for value in local_max_velocity]
+    )
+    if n_owned:
+        finite_velocity = np.where(np.isfinite(interior_velocity), interior_velocity, 0.0)
+        local_max_velocity_magnitude = float(np.max(np.linalg.norm(finite_velocity, axis=1)))
+    else:
+        local_max_velocity_magnitude = 0.0
+    max_velocity_magnitude = float(solver.parallel.global_max(local_max_velocity_magnitude))
+    min_kinematic_pressure = float(
+        solver.parallel.global_min(
+            float(np.nanmin(interior_kinematic_pressure)) if n_owned else float("inf")
+        )
+    )
+    max_kinematic_pressure = float(
+        solver.parallel.global_max(
+            float(np.nanmax(interior_kinematic_pressure)) if n_owned else float("-inf")
+        )
+    )
+    local_kinetic_energy = (
+        0.5
+        * solver._configuration.numerics.transport.density
+        * float(
+            np.sum(
+                solver.geo_data["cell_volume"][:n_owned]
+                * np.sum(interior_velocity * interior_velocity, axis=1)
+            )
+        )
+    )
+    local_enstrophy_integral = field_diagnostics.enstrophy_from_gradient(
+        solver._velocity_gradient(),
+        solver.geo_data["cell_volume"],
+        n_owned,
+    )
+    return StepDiagnostics(
+        step=solver.step + 1,
+        time=solver.time + step_time_step_size,
+        time_step_size=float(step_time_step_size),
+        residuals={key: float(value) for key, value in residuals.items()},
+        outer_correctors=tuple(getattr(solver.algorithm, "last_outer_diagnostics", ())),
+        linear_solves=linear_results,
+        max_continuity_error=solver.max_continuity_error,
+        sum_absolute_continuity_error=solver.sum_absolute_continuity_error,
+        net_boundary_volumetric_flux=float(
+            solver.parallel.global_sum(float(np.sum(solver.volumetric_face_flux[n_interior:])))
+        ),
+        max_courant_number=solver.max_courant_number,
+        min_velocity=(
+            float(min_velocity[0]),
+            float(min_velocity[1]),
+            float(min_velocity[2]),
+        ),
+        max_velocity=(
+            float(max_velocity[0]),
+            float(max_velocity[1]),
+            float(max_velocity[2]),
+        ),
+        max_velocity_magnitude=max_velocity_magnitude,
+        min_kinematic_pressure=min_kinematic_pressure,
+        max_kinematic_pressure=max_kinematic_pressure,
+        n_nonfinite_values=n_nonfinite_values,
+        total_kinetic_energy=float(solver.parallel.global_sum(local_kinetic_energy)),
+        total_enstrophy=float(solver.parallel.global_sum(local_enstrophy_integral)),
+        min_eddy_viscosity=min_eddy_viscosity,
+        max_eddy_viscosity=max_eddy_viscosity,
+    )
