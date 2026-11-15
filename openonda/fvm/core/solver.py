@@ -13,6 +13,7 @@ import numpy as np
 
 from openonda.core import log_style
 from openonda.core.clock import time_tolerance
+from openonda.core.digest import configuration_digest
 from openonda.core.errors import NonFiniteSolutionError
 from openonda.core.output_events import OutputEvent
 from openonda.core.parallel import collective_phase
@@ -33,6 +34,7 @@ from ..fields.mixed_velocity_boundary import (
 )
 from ..io import logging as step_log
 from ..io import solver_io
+from ..io.backup import mesh_digest
 from ..mesh import geometry
 from ..sampling.executor import execute_samplers
 from ..solve import pimple_solver, simple_solver
@@ -447,8 +449,6 @@ class FVMSolver(CouplerInterfaceMixin):
                     )
                     quality = validate_geometry(global_mesh, global_geo)
                     enforce_quality_thresholds(quality, configuration.mesh_quality)
-                    from ..io.backup import mesh_digest
-
                     global_hash = mesh_digest(global_mesh)
 
             # Scatter would force rank zero to retain one complete localized
@@ -556,6 +556,14 @@ class FVMSolver(CouplerInterfaceMixin):
         self._initialize_algorithm()
         self._initialize_turbulence()
         self._initialize_mesh_motion()
+        # The digests that tie a backup to this mesh and case never change
+        # during a run; every save and load reads them from here.
+        self._configuration_sha256 = configuration_digest(configuration.restart_configuration())
+        self._mesh_sha256 = (
+            self.mesh_data["global_mesh_hash"]
+            if self.parallel.is_partitioned
+            else mesh_digest(self.mesh_data)
+        )
 
         # Final housekeeping
         self.io = solver_io.SolverIO(self)

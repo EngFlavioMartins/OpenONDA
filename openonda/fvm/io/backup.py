@@ -11,15 +11,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ...core.clock import time_tolerance
-from ...core.digest import configuration_digest
 from ...core.file_output import write_npz_atomic
 from ...core.parallel import collective_phase
+from .mesh_storage import packed_faces
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
 
 # One version for the serial archive and the partitioned checkpoint.
-FORMAT_VERSION = 13
+FORMAT_VERSION = 14
 
 # Solution fields held at every restart, in the order the archives store them.
 STATE_FIELDS = (
@@ -187,7 +187,9 @@ def _hash(value: dict[str, object]) -> str:
 def mesh_digest(mesh_data: dict[str, object]) -> str:
     """Hash the mesh topology, coordinates, and stable patch names and types.
 
-    A moving mesh is identified by its constructed coordinates.
+    A moving mesh is identified by its constructed coordinates. The faces are
+    hashed as their packed nodes and offsets, so the digest does not depend on
+    whether they are held as an array or as a list.
     """
     patches = [
         {
@@ -198,9 +200,11 @@ def mesh_digest(mesh_data: dict[str, object]) -> str:
         }
         for patch in mesh_data["boundary"]
     ]
+    face_vertices, face_offsets = packed_faces(mesh_data["faces"])
     mesh_description = {
         "vertex_position": mesh_data.get("reference_vertex_position", mesh_data["vertex_position"]),
-        "faces": mesh_data["faces"],
+        "face_vertices": face_vertices,
+        "face_offsets": face_offsets,
         "owners": mesh_data["owners"],
         "neighbours": mesh_data["neighbours"],
         "boundary": patches,
@@ -218,8 +222,8 @@ def save_backup(solver: FVMSolver, path: Path | str) -> Path:
 
     metadata = {
         "format_version": FORMAT_VERSION,
-        "configuration_sha256": configuration_digest(solver._configuration.restart_configuration()),
-        "mesh_sha256": mesh_digest(solver.mesh_data),
+        "configuration_sha256": solver._configuration_sha256,
+        "mesh_sha256": solver._mesh_sha256,
     }
     arrays = {"metadata": np.asarray(json.dumps(metadata, sort_keys=True)), **state_arrays(solver)}
 
@@ -478,11 +482,9 @@ def _load_backup_local(solver: FVMSolver, path: Path | str) -> FieldRestartState
             raise ValueError(
                 f"Unsupported FVM backup version {version!r}; expected {FORMAT_VERSION}"
             )
-        if metadata.get("mesh_sha256") != mesh_digest(solver.mesh_data):
+        if metadata.get("mesh_sha256") != solver._mesh_sha256:
             raise ValueError("FVM backup mesh hash does not match the active mesh")
-        if metadata.get("configuration_sha256") != configuration_digest(
-            solver._configuration.restart_configuration()
-        ):
+        if metadata.get("configuration_sha256") != solver._configuration_sha256:
             raise ValueError("FVM backup configuration hash does not match the active case")
         state = decode_state({name: np.array(archive[name], copy=True) for name in archive.files})
         state.pop("metadata", None)

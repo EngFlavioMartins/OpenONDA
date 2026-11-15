@@ -30,20 +30,20 @@ def _jsonable(value: Any) -> Any:
     raise TypeError(f"Mesh metadata contains unsupported {type(value).__name__}")
 
 
-def _packed_faces(faces: Any) -> tuple[np.ndarray, np.ndarray, bool]:
-    """Pack fixed- or variable-width polygon connectivity without pickling."""
-    fixed_width = isinstance(faces, np.ndarray) and faces.ndim == 2
-    polygons = [np.asarray(face, dtype=np.int32) for face in faces]
-    counts = np.fromiter((len(face) for face in polygons), dtype=np.int64, count=len(polygons))
-    offsets = np.empty(len(polygons) + 1, dtype=np.int64)
-    offsets[0] = 0
+def packed_faces(faces: Any) -> tuple[np.ndarray, np.ndarray]:
+    """Pack fixed- or variable-width polygon connectivity into two arrays.
+
+    Returns the nodes of all faces in one ``int32`` array and an ``int64``
+    array with the position of each face in it, one entry more than faces.
+    """
+    if isinstance(faces, np.ndarray) and faces.ndim == 2:
+        offsets = np.arange(len(faces) + 1, dtype=np.int64) * faces.shape[1]
+        return np.ascontiguousarray(faces, dtype=np.int32).reshape(-1), offsets
+    counts = np.fromiter(map(len, faces), dtype=np.int64, count=len(faces))
+    offsets = np.zeros(len(faces) + 1, dtype=np.int64)
     np.cumsum(counts, out=offsets[1:])
-    vertices = (
-        np.ascontiguousarray(np.concatenate(polygons), dtype=np.int32)
-        if polygons
-        else np.empty(0, dtype=np.int32)
-    )
-    return vertices, offsets, fixed_width
+    vertices = np.concatenate(faces) if len(faces) else np.empty(0)
+    return np.ascontiguousarray(vertices, dtype=np.int32), offsets
 
 
 def save_native_mesh(mesh_data: dict[str, Any], path: str | Path) -> Path:
@@ -52,7 +52,8 @@ def save_native_mesh(mesh_data: dict[str, Any], path: str | Path) -> Path:
     if destination.suffix.lower() != ".npz":
         raise ValueError("Native FVM mesh files must use the '.npz' extension")
 
-    face_vertices, face_offsets, fixed_width = _packed_faces(mesh_data["faces"])
+    face_vertices, face_offsets = packed_faces(mesh_data["faces"])
+    fixed_width = isinstance(mesh_data["faces"], np.ndarray) and mesh_data["faces"].ndim == 2
     arrays: dict[str, np.ndarray] = {
         "face_vertices": face_vertices,
         "face_offsets": face_offsets,

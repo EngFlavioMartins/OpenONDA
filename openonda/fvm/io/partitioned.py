@@ -11,7 +11,6 @@ from uuid import uuid4
 
 import numpy as np
 
-from openonda.core.digest import configuration_digest
 from openonda.core.file_output import (
     npz_size_bound,
     require_free_space,
@@ -111,10 +110,8 @@ def save_partitioned_solver_backup(solver: FVMSolver, directory: str | Path) -> 
             checkpoint_info = {
                 "format_version": FORMAT_VERSION,
                 "generation": generation,
-                "configuration_sha256": configuration_digest(
-                    solver._configuration.restart_configuration()
-                ),
-                "mesh_sha256": solver.mesh_data["global_mesh_hash"],
+                "configuration_sha256": solver._configuration_sha256,
+                "mesh_sha256": solver._mesh_sha256,
                 "n_global_cells": partition.n_global_cells,
                 "n_ranks": partition.size,
                 "files": files,
@@ -164,11 +161,9 @@ def load_partitioned_solver_backup(
             raise ValueError("Unsupported partitioned FVM backup version")
         if checkpoint_info.get("n_ranks") != solver.parallel.size:
             raise ValueError("Partitioned backup communicator size does not match")
-        if checkpoint_info.get("mesh_sha256") != solver.mesh_data.get("global_mesh_hash"):
+        if checkpoint_info.get("mesh_sha256") != solver._mesh_sha256:
             raise ValueError("Partitioned backup mesh hash does not match")
-        if checkpoint_info.get("configuration_sha256") != configuration_digest(
-            solver._configuration.restart_configuration()
-        ):
+        if checkpoint_info.get("configuration_sha256") != solver._configuration_sha256:
             raise ValueError("Partitioned backup configuration hash does not match")
         files = checkpoint_info.get("files")
         if not isinstance(files, list) or len(files) != solver.parallel.size:
