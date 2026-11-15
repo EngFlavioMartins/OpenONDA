@@ -8,6 +8,7 @@ and PETSc can stop on slightly different internal norms; the reported
 ``final_residual`` remains the common algebraic quantity.
 """
 
+from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from types import ModuleType
@@ -27,8 +28,6 @@ if TYPE_CHECKING:
     from ..core.parallel import ParallelContext
     from .petsc_partitioned import PartitionedLinearWorkspace
 
-_AMG_CACHE = {}
-_MAX_TRANSIENT_CACHE_ENTRIES = 16
 _AMG_BUILD_SEED = 0
 # Relative diagonal change above which a cached AMG hierarchy is rebuilt.
 AMG_REUSE_TOLERANCE = 0.05
@@ -284,15 +283,16 @@ def _breakdown_converged(
     return False
 
 
-def _run_bicgstab(
+def _run_krylov(
+    krylov: Callable[..., tuple[np.ndarray, int]],
     A: sparse.spmatrix,
     b: np.ndarray,
     M: LinearOperator,
     tol: float,
     maxiter: int,
-    x0: np.ndarray,
+    x0: np.ndarray | None,
 ) -> tuple[np.ndarray, int, int]:
-    """Run SciPy BiCGSTAB in residual-correction form.
+    """Run a SciPy Krylov method (``bicgstab`` or ``cg``) in residual-correction form.
 
     Solves ``A e = r0 / ||r0||`` with ``r0 = b - A x0`` and returns
     ``x0 + ||r0|| e``.  The unit-normalized RHS keeps the recurrence scalars
@@ -322,9 +322,7 @@ def _run_bicgstab(
         nonlocal iterations
         iterations += 1
 
-    e, info = bicgstab(
-        A, r0 / r0_norm, rtol=rtol_eff, maxiter=maxiter, callback=count_iteration, M=M
-    )
+    e, info = krylov(A, r0 / r0_norm, rtol=rtol_eff, maxiter=maxiter, callback=count_iteration, M=M)
     return x0 + r0_norm * e, info, iterations
 
 
@@ -553,63 +551,39 @@ def _solve_petsc(
         return x, info
 
 
-def _amg_cache_key(
-    A: sparse.spmatrix, amg_key: tuple[str, int] | None = None
-) -> tuple[str, tuple[str, int], tuple[int, int]] | None:
-    """Return an owner-scoped AMG key, or decline caching without an owner."""
-    if amg_key is not None:
-        return ("key", amg_key, A.shape)
-    return None
-
-
-def clear_linear_solver_caches(cache_namespace: tuple[str, int] = None) -> None:
-    """Clear AMG hierarchies for one owner namespace, or all owners."""
-    if cache_namespace is None:
-        _AMG_CACHE.clear()
-        return
-    stale = [key for key in _AMG_CACHE if len(key) > 1 and key[1] == cache_namespace]
-    for key in stale:
-        _AMG_CACHE.pop(key, None)
-
-
 def _get_or_build_amg(
     A: sparse.spmatrix,
     pyamg: ModuleType,
-    reuse_tol: float = AMG_REUSE_TOLERANCE,
+    workspace: "MatrixAssemblyWorkspace | None",
     force_rebuild: bool = False,
-    amg_key: tuple[str, int] = None,
 ) -> tuple[object, bool]:
-    """Build or reuse an AMG hierarchy as a preconditioner.
+    """Build or reuse the AMG hierarchy kept on ``workspace`` as a preconditioner.
 
     Reusing the hierarchy directly as a solver would solve its stale level-0
     matrix.  Instead callers apply it as a preconditioner to CG operating on
-    the current matrix, preserving the exact current linear system.
+    the current matrix, preserving the exact current linear system.  Without a
+    workspace the hierarchy is built for this solve only.
     """
-    key = _amg_cache_key(A, amg_key)
-    cached = _AMG_CACHE.get(key) if key is not None else None
+    cached = None if workspace is None else workspace.amg_hierarchy
     diagonal = A.diagonal()
     rebuild = force_rebuild or cached is None
     if cached is not None and not rebuild:
         _, old_diagonal = cached
-        relative_change = np.linalg.norm(diagonal - old_diagonal) / (
-            np.linalg.norm(old_diagonal) + 1e-30
+        rebuild = old_diagonal.shape != diagonal.shape or (
+            np.linalg.norm(diagonal - old_diagonal) / (np.linalg.norm(old_diagonal) + 1e-30)
+            > AMG_REUSE_TOLERANCE
         )
-        rebuild = relative_change > reuse_tol
-    if rebuild:
-        _rng_state = np.random.get_state()
-        np.random.seed(_AMG_BUILD_SEED)
-        try:
-            hierarchy = pyamg.smoothed_aggregation_solver(A)
-        finally:
-            np.random.set_state(_rng_state)
-        if key is not None:
-            if len(_AMG_CACHE) >= _MAX_TRANSIENT_CACHE_ENTRIES and key not in _AMG_CACHE:
-                _AMG_CACHE.pop(next(iter(_AMG_CACHE)))
-            _AMG_CACHE[key] = (hierarchy, diagonal.copy())
-        return hierarchy, True
-    if cached is None:
-        raise RuntimeError("AMG cache entry disappeared before reuse")
-    return cached[0], False
+    if not rebuild:
+        return cached[0], False
+    _rng_state = np.random.get_state()
+    np.random.seed(_AMG_BUILD_SEED)
+    try:
+        hierarchy = pyamg.smoothed_aggregation_solver(A)
+    finally:
+        np.random.set_state(_rng_state)
+    if workspace is not None:
+        workspace.amg_hierarchy = (hierarchy, diagonal.copy())
+    return hierarchy, True
 
 
 def _solve_pressure(
@@ -619,11 +593,12 @@ def _solve_pressure(
     maxiter: int,
     x0: np.ndarray | None,
     log_sink: "StepLog | None",
-    amg_key: tuple[str, int] | None,
+    workspace: "MatrixAssemblyWorkspace | None",
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Solve the pressure Poisson equation.
 
-    Runs algebraic-multigrid-preconditioned CG via ``pyamg``; a failure raises.
+    Runs algebraic-multigrid-preconditioned CG via ``pyamg``, reusing the
+    hierarchy kept on ``workspace``; a failure raises.
 
     Args:
         A:           Sparse matrix.
@@ -631,6 +606,8 @@ def _solve_pressure(
         tol:         CG tolerance.
         maxiter:     CG iteration cap.
         x0:          Initial guess (optional).
+        log_sink:    Step log for debug notes.
+        workspace:   Owner of the AMG hierarchy, or ``None`` to build one for this solve.
 
     Returns:
         Solution vector and solve metadata.
@@ -650,7 +627,7 @@ def _solve_pressure(
     except ImportError as error:
         raise LinearSolveError("AMG pressure solve requires pyamg") from error
 
-    ml, rebuilt = _get_or_build_amg(A, pyamg, amg_key=amg_key)
+    ml, rebuilt = _get_or_build_amg(A, pyamg, workspace)
     M = ml.aspreconditioner(cycle="V")
     setup_seconds = setup_start.seconds
     solve_start = Stopwatch()
@@ -674,7 +651,7 @@ def _solve_pressure(
     if info != 0:
         # One rebuild handles coefficient drift that made a cached
         # hierarchy ineffective without silently accepting a poor solve.
-        ml, rebuilt = _get_or_build_amg(A, pyamg, force_rebuild=True, amg_key=amg_key)
+        ml, rebuilt = _get_or_build_amg(A, pyamg, workspace, force_rebuild=True)
         M = ml.aspreconditioner(cycle="V")
         setup_seconds = setup_start.seconds
         x, info = cg(
@@ -812,7 +789,7 @@ def _solve_preconditioned_bicgstab(
     M = _build_dilu_preconditioner(A)
     setup_seconds = setup_start.seconds
     solve_start = Stopwatch()
-    x, info, iterations = _run_bicgstab(A, b, M, tol, maxiter, x0)
+    x, info, iterations = _run_krylov(bicgstab, A, b, M, tol, maxiter, x0)
     if info != 0 and _breakdown_converged(A, b, x, tol, "bicgstab", info, log_sink, x0=x0):
         info = 0
     if info != 0:
@@ -833,6 +810,7 @@ def _solve_preconditioned_bicgstab(
 def solve_linear_system(
     A: sparse.spmatrix,
     b: np.ndarray,
+    *,
     method: str = "spsolve",
     equation_type: str | None = None,
     tol: float = 1e-6,
@@ -843,18 +821,18 @@ def solve_linear_system(
     parallel_context: "ParallelContext | None" = None,
     nullspace: str | None = None,
     partitioned_workspace: "PartitionedLinearWorkspace | None" = None,
-    amg_key: tuple[str, int] | None = None,
-    return_info: bool = False,
     log_sink: "StepLog | None" = None,
     matrix_values_unchanged: bool = False,
-    direct_workspace: "MatrixAssemblyWorkspace | None" = None,
-) -> "np.ndarray | tuple[np.ndarray, LinearSolveResult]":
+    matrix_workspace: "MatrixAssemblyWorkspace | None" = None,
+) -> tuple[np.ndarray, LinearSolveResult]:
     """Solve ``A·x = b`` using the explicitly selected serial or PETSc path.
 
-    SciPy solves use DILU-preconditioned BiCGSTAB, AMG-preconditioned CG
-    (pressure) or a sparse direct factorization; PETSc uses its own
-    block-Jacobi or Jacobi preconditioner. A solve that does not converge
-    raises ``LinearSolveError``.
+    Returns the solution and its :class:`LinearSolveResult`. SciPy solves use
+    DILU-preconditioned BiCGSTAB, AMG-preconditioned CG (pressure) or a sparse
+    direct factorization; PETSc uses its own block-Jacobi or Jacobi
+    preconditioner. ``matrix_workspace`` keeps the direct factorization and the
+    AMG hierarchy between calls. A solve that does not converge raises
+    ``LinearSolveError``.
     """
     method = str(method).lower()
 
@@ -893,7 +871,7 @@ def solve_linear_system(
             )
         if equation_type is not None and info.equation is None:
             info = replace(info, equation=str(equation_type))
-        return (solution, info) if return_info else solution
+        return solution, info
     if str(backend).lower() != "scipy":
         raise ValueError(f"Unknown linear backend {backend!r}")
     if nullspace is not None:
@@ -906,7 +884,7 @@ def solve_linear_system(
 
     def finish(
         solution: np.ndarray, metadata: dict[str, object]
-    ) -> "np.ndarray | tuple[np.ndarray, LinearSolveResult]":
+    ) -> tuple[np.ndarray, LinearSolveResult]:
         final_residual = float(np.linalg.norm(np.asarray(b) - A @ solution) / norm_factor)
         residual_limit = max(LINEAR_VERIFICATION_FACTOR * tol, LINEAR_RESIDUAL_FLOOR)
         result = LinearSolveResult(
@@ -929,17 +907,17 @@ def solve_linear_system(
                 f"SciPy {method} returned residual {final_residual:.3e}, "
                 f"above the verified limit {residual_limit:.3e}"
             )
-        return (solution, result) if return_info else solution
+        return solution, result
 
     if method == "spsolve":
-        if direct_workspace is None:
+        if matrix_workspace is None:
             solve_start = Stopwatch()
             solution = spsolve(A, b)
             setup_seconds = 0.0
             solve_seconds = solve_start.seconds
         else:
             solution, setup_seconds, solve_seconds = _solve_direct_with_workspace(
-                A, b, direct_workspace
+                A, b, matrix_workspace
             )
         return finish(
             solution,
@@ -955,7 +933,7 @@ def solve_linear_system(
     if method == "amg":
         if equation_type != "kinematic_pressure":
             raise ValueError("AMG is supported only for pressure equations")
-        solution, metadata = _solve_pressure(A, b, tol, maxiter, x0, log_sink, amg_key)
+        solution, metadata = _solve_pressure(A, b, tol, maxiter, x0, log_sink, matrix_workspace)
         return finish(solution, metadata)
 
     if method == "bicgstab":

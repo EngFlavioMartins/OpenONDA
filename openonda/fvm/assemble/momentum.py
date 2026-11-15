@@ -1,6 +1,5 @@
 """Assemble ``∂velocity/∂t + ∇·(UU) = -∇(kinematic_pressure/ρ) + ∇·(ν∇velocity) + ∇·(ν dev2(∇velocityᵀ)) + f``."""
 
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -11,10 +10,6 @@ from ..fields import gradients
 from ..fields.boundary_values import update_velocity_boundaries
 from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
 from ..solve.linear_interface import (
-    LINEAR_RESIDUAL_FLOOR,
-    LINEAR_VERIFICATION_FACTOR,
-    LinearSolveError,
-    normalized_residual_target,
     solve_linear_system,
 )
 from . import convection, diffusion, matrix_assembly
@@ -550,89 +545,6 @@ def solve_momentum_predictor(
     momentum_diagonal = np.empty((n_cells, 3) if component_diagonal else n_cells, dtype=np.float64)
     solve_diagnostics = {}
 
-    if solver == "spsolve" and linear_backend == "scipy":
-        # Components that share a matrix share one SuperLU factorization and
-        # solve their right-hand sides together.
-        groups: dict[int, list[int]] = {}
-        for i_comp, comp_name in enumerate(("x", "y", "z")):
-            groups.setdefault(id(mom_eqs[comp_name]["A"]), []).append(i_comp)
-        for components in groups.values():
-            A_group = mom_eqs["xyz"[components[0]]]["A"]
-            diag_new = A_group.diagonal() / under_relaxation
-            A_group.setdiag(diag_new)
-            B = np.column_stack(
-                [
-                    mom_eqs["xyz"[i_comp]]["b"]
-                    + (1.0 - under_relaxation) * diag_new * velocity[:n_cells, i_comp]
-                    for i_comp in components
-                ]
-            )
-            X, group_result = solve_linear_system(
-                A_group,
-                B,
-                method="spsolve",
-                tol=momentum_tolerance,
-                rel_tol=momentum_relative_tolerance,
-                return_info=True,
-                direct_workspace=matrix_workspace,
-            )
-            if X.ndim == 1:
-                X = X[:, np.newaxis]
-            for column, i_comp in enumerate(components):
-                comp_name = "xyz"[i_comp]
-                if component_diagonal:
-                    momentum_diagonal[:, i_comp] = diag_new
-                else:
-                    momentum_diagonal[:] = diag_new
-                velocity_star[:n_cells, i_comp] = X[:, column]
-                b_relaxed = B[:, column]
-                x_initial = (
-                    velocity_old[:n_cells, i_comp]
-                    if velocity_old is not None
-                    else np.zeros(n_cells)
-                )
-                initial_residual, residual_target, norm_factor = normalized_residual_target(
-                    A_group,
-                    b_relaxed,
-                    x_initial,
-                    momentum_tolerance,
-                    momentum_relative_tolerance,
-                )
-                final_residual = float(
-                    np.linalg.norm(b_relaxed - A_group @ X[:, column]) / norm_factor
-                )
-                residual_limit = max(
-                    LINEAR_VERIFICATION_FACTOR * residual_target,
-                    LINEAR_RESIDUAL_FLOOR,
-                )
-                if not np.isfinite(final_residual) or final_residual > residual_limit:
-                    raise LinearSolveError(
-                        f"SciPy spsolve returned component {comp_name} residual "
-                        f"{final_residual:.3e}, above the verified limit {residual_limit:.3e}"
-                    )
-                solve_diagnostics[comp_name] = {
-                    "initial_residual": initial_residual,
-                    "final_residual": final_residual,
-                    "linear_result": replace(
-                        group_result,
-                        initial_residual=initial_residual,
-                        final_residual=final_residual,
-                        converged=True,
-                        setup_seconds=group_result.setup_seconds if column == 0 else 0.0,
-                        solve_seconds=group_result.solve_seconds if column == 0 else 0.0,
-                    ),
-                }
-
-        update_velocity_boundaries(
-            velocity_star, volumetric_face_flux, boundaries, mesh_data, geo_data
-        )
-        return _predictor_result(
-            velocity_star,
-            momentum_diagonal,
-            solve_diagnostics if return_diagnostics else None,
-            {name: mom_eqs[name]["A"] for name in "xyz"} if return_operator else None,
-        )
-
     # Relax each distinct matrix once: components may share one matrix.
     relaxed_diagonals: dict[int, np.ndarray] = {}
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
@@ -674,8 +586,7 @@ def solve_momentum_predictor(
             backend=linear_backend,
             parallel_context=parallel_context,
             partitioned_workspace=partitioned_workspace,
-            return_info=True,
-            direct_workspace=matrix_workspace,
+            matrix_workspace=matrix_workspace,
             log_sink=log_sink,
         )
         solve_diagnostics[comp_name] = {

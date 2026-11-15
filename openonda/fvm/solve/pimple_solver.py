@@ -92,12 +92,9 @@ class PIMPLESolver:
 
     def rebuild_preconditioners(self) -> None:
         """Rebuild the reused serial and PETSc preconditioners at the next solves."""
-        from .linear_interface import clear_linear_solver_caches
-
         for workspace in self._partitioned_linear_workspaces.values():
             workspace.rebuild_preconditioner()
-        namespace = self._momentum_matrix_workspace.cache_namespace
-        clear_linear_solver_caches(("kinematic_pressure", namespace))
+        self._pressure_matrix_workspace.amg_hierarchy = None
 
     def close(self) -> None:
         """Release collectively-owned persistent PETSc workspaces."""
@@ -442,10 +439,6 @@ class PIMPLESolver:
                                 tol=pressure_tolerance,
                                 rel_tol=pressure_relative_tolerance,
                                 maxiter=pressure_max_iterations,
-                                amg_key=(
-                                    "kinematic_pressure",
-                                    self._pressure_matrix_workspace.cache_namespace,
-                                ),
                                 backend=self.params["_linear_backend"],
                                 parallel_context=self.params.get("_parallel_context"),
                                 log_sink=logger,
@@ -458,8 +451,7 @@ class PIMPLESolver:
                                     "kinematic_pressure"
                                 ),
                                 matrix_values_unchanged=reuse_pressure_matrix,
-                                return_info=True,
-                                direct_workspace=self._pressure_matrix_workspace,
+                                matrix_workspace=self._pressure_matrix_workspace,
                             )
                         )
                         linear_results.append(kinematic_pressure_result)

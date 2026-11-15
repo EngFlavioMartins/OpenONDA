@@ -1,15 +1,12 @@
 """Assemble finite-volume face coefficients into ``A φ = b``."""
 
 from dataclasses import dataclass, field
-from itertools import count
 
 import numpy as np
 from scipy import sparse
 from scipy.sparse import csr_matrix
 
 from openonda.core._numba import cacheable_njit as njit
-
-_WORKSPACE_IDS = count()
 
 
 @dataclass(frozen=True)
@@ -34,8 +31,8 @@ class MatrixAssemblyWorkspace:
     matrix: csr_matrix
     pattern: _CSRPattern
     include_boundaries: bool
-    cache_namespace: int = field(default_factory=lambda: next(_WORKSPACE_IDS))
     direct_factorization: object | None = field(default=None, init=False, repr=False)
+    amg_hierarchy: tuple[object, np.ndarray] | None = field(default=None, init=False, repr=False)
 
     @classmethod
     def create(
