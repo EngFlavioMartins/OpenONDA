@@ -43,7 +43,7 @@ from .filament import (
 from .geometry import Aircraft, Wing
 from .geometry import load_surface as _load_surface
 from .lattice import VLMLattice
-from .loads import add_unsteady_pressure_loads, lift_direction
+from .loads import add_unsteady_pressure_loads, lift_direction, resolve_reference_velocity
 from .mesh import (
     generate_vlm_mesh,
     update_trailing_directions_local,
@@ -1022,28 +1022,6 @@ class VLMSolver:
                 2.0 / (density * reference_velocity_magnitude**2),
             )
 
-    def _resolve_reference_velocity(
-        self, reference_velocity: np.ndarray | None, n_panels: int
-    ) -> np.ndarray:
-        """Return a valid reference velocity, auto-computed if not provided."""
-        if reference_velocity is not None:
-            return np.asarray(reference_velocity, dtype=float)
-        if (
-            self.freestream_velocity is not None
-            and np.linalg.norm(self.freestream_velocity) > 1e-10
-        ):
-            return self.freestream_velocity
-        kinematic_velocity = self._get_active_kinematic_velocity()
-        background_velocity = (
-            np.mean(self.lattice.external_velocity.to_numpy()[:n_panels], axis=0)
-            if n_panels > 0
-            else np.zeros(3)
-        )
-        resolved_velocity = background_velocity - kinematic_velocity
-        if np.linalg.norm(resolved_velocity) < 1e-10:
-            return np.array([1.0, 0.0, 0.0])
-        return resolved_velocity
-
     def _decompose_wind_axes(
         self,
         total_force: np.ndarray,
@@ -1138,9 +1116,7 @@ class VLMSolver:
         panel_force = self.lattice.get_forces() * (density / self._force_density)
         total_force = np.sum(panel_force, axis=0)
         force_x, force_y, force_z = total_force
-        reference_velocity = self._resolve_reference_velocity(
-            reference_velocity, self.lattice.n_panels
-        )
+        reference_velocity = resolve_reference_velocity(self, reference_velocity)
         reference_velocity_magnitude = float(np.linalg.norm(reference_velocity))
         lift, drag, side_force = self._decompose_wind_axes(
             total_force, reference_velocity_magnitude, reference_velocity
@@ -1334,17 +1310,13 @@ class VLMSolver:
         if not self._solved:
             return {}
         panel_force = self.lattice.get_forces() * (density / self._force_density)
-        reference_velocity = self._resolve_reference_velocity(
-            reference_velocity, self.lattice.n_panels
-        )
+        reference_velocity = resolve_reference_velocity(self, reference_velocity)
         reference_velocity_magnitude = float(np.linalg.norm(reference_velocity))
+        if reference_velocity_magnitude <= 1e-10:
+            raise ValueError("Per-surface forces need a nonzero reference velocity")
         dynamic_pressure = 0.5 * density * reference_velocity_magnitude**2
         force_normalization = dynamic_pressure * float(self.aircraft.refs.get("area", 1.0))
-        reference_direction = (
-            reference_velocity / reference_velocity_magnitude
-            if reference_velocity_magnitude > 1e-10
-            else np.array([1.0, 0.0, 0.0])
-        )
+        reference_direction = reference_velocity / reference_velocity_magnitude
         moment_correction = self.lattice.panel_moment_correction.to_numpy()[: self.lattice.n_panels]
         moment_correction *= density / self._force_density
         return {
@@ -1558,22 +1530,6 @@ class VLMSolver:
         rhs[:n] -= old_velocity
         self.lattice.right_hand_side.from_numpy(rhs)
 
-    def _resolve_coupling_reference_velocity(
-        self, freestream_velocity: tuple[float, float, float]
-    ) -> np.ndarray:
-        """Resolve the reference velocity used by coupled advance."""
-        if (
-            self.freestream_velocity is not None
-            and np.linalg.norm(self.freestream_velocity) > 1e-10
-        ):
-            return self.freestream_velocity
-        background_velocity = np.array(freestream_velocity)
-        if np.linalg.norm(background_velocity) > 1e-10:
-            return background_velocity
-        kinematic_velocity = self._get_active_kinematic_velocity()
-        kinematic_speed = np.linalg.norm(kinematic_velocity)
-        return -kinematic_velocity if kinematic_speed > 1e-10 else np.array([1.0, 0.0, 0.0])
-
     def advance_coupled(
         self,
         particles: "Particles",
@@ -1602,7 +1558,9 @@ class VLMSolver:
             self._bound_transport_ready = True
         self.advance_time(time_step_size, current_time=time)
 
-        reference_velocity = self._resolve_coupling_reference_velocity(freestream_velocity)
+        reference_velocity = resolve_reference_velocity(
+            self, background=np.array(freestream_velocity)
+        )
         self._last_reference_velocity = reference_velocity
 
         # The old wake has already moved; new particles are shed after this solve.

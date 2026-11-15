@@ -200,6 +200,8 @@ class VLMLoadingDistribution:
         while required scientific samples are missing.
         """
         reference_velocity = vlm_solver._last_reference_velocity
+        if reference_velocity is None:
+            reference_velocity = resolve_reference_velocity(vlm_solver)
         density = vlm_solver.density
 
         for surface_name in vlm_solver.surfaces:
@@ -274,6 +276,9 @@ class VLMLoadingDistribution:
         """Extract spanwise and chordwise loading from existing per-panel arrays.
 
         Returns {'spanwise': pd.DataFrame, 'chordwise': pd.DataFrame}.
+
+        Raises ValueError if the solver is solved and ``reference_velocity`` is
+        missing or zero.
         """
         import pandas as pd
 
@@ -305,27 +310,16 @@ class VLMLoadingDistribution:
             : vlm_solver.lattice.n_panels
         ]  # (N,4,3)
 
-        # V∞ — prefer explicit reference_velocity over the kinematic_velocity heuristic to
-        # handle the static wind-frame case where kinematic_velocity is ~0.
-        if reference_velocity is not None:
-            freestream_speed = float(np.linalg.norm(reference_velocity))
-        else:
-            kinematic_speed = np.linalg.norm(kinematic_velocity, axis=1)
-            freestream_speed = (
-                float(np.median(kinematic_speed[kinematic_speed > 1e-8]))
-                if kinematic_speed.max() > 1e-8
-                else 1.0
+        if reference_velocity is None or np.linalg.norm(reference_velocity) <= 1e-10:
+            raise ValueError(
+                "Loading distributions need a nonzero reference velocity; "
+                "the VLM solver has not advanced and none was given"
             )
-        freestream_speed = max(freestream_speed, 1e-10)
+        freestream_speed = float(np.linalg.norm(reference_velocity))
         dynamic_pressure = 0.5 * density * freestream_speed**2
 
         # Lift direction in wind axes (perpendicular to reference_velocity in the vertical plane)
-        if reference_velocity is not None and np.linalg.norm(reference_velocity) > 1e-10:
-            reference_direction = np.asarray(reference_velocity) / np.linalg.norm(
-                reference_velocity
-            )
-        else:
-            reference_direction = np.array([1.0, 0.0, 0.0])
+        reference_direction = np.asarray(reference_velocity) / np.linalg.norm(reference_velocity)
         lift_axis = lift_direction(reference_direction)
         drag_direction = reference_direction.copy()
 

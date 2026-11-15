@@ -77,13 +77,60 @@ def lift_direction(reference_direction: np.ndarray) -> np.ndarray:
     return direction / magnitude if magnitude > 1e-10 else vertical_direction
 
 
+def resolve_reference_velocity(
+    vlm_solver: "VLMSolver",
+    explicit: np.ndarray | None = None,
+    background: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return the velocity of the flow relative to the surfaces [m/s].
+
+    Force coefficients and wind axes refer to it. In order, it is ``explicit``;
+    the freestream declared in the VLM configuration; ``background``, the flow
+    velocity of the caller, when it is not zero; and otherwise the flow minus
+    the representative velocity of the moving surfaces. Without ``background``
+    the flow is the mean velocity at the collocation points; with it, the
+    surfaces' velocity is subtracted from zero.
+
+    Raises
+    ------
+    ValueError
+        If nothing is declared and the surfaces do not move relative to a
+        still flow, so that the reference velocity is zero.
+    """
+    if explicit is not None:
+        return np.asarray(explicit, dtype=float)
+    freestream = vlm_solver.freestream_velocity
+    if freestream is not None and np.linalg.norm(freestream) > 1e-10:
+        return freestream
+    if background is not None and np.linalg.norm(background) > 1e-10:
+        return np.array(background)
+    kinematic_velocity = vlm_solver._get_active_kinematic_velocity()
+    if background is not None:
+        resolved = -kinematic_velocity
+    else:
+        n_panels = vlm_solver.lattice.n_panels
+        mean_flow = (
+            np.mean(vlm_solver.lattice.external_velocity.to_numpy()[:n_panels], axis=0)
+            if n_panels > 0
+            else np.zeros(3)
+        )
+        resolved = mean_flow - kinematic_velocity
+    if np.linalg.norm(resolved) <= 1e-10:
+        raise ValueError(
+            "The VLM reference velocity is zero: no reference velocity was given, "
+            "VLMConfig.freestream_velocity is not set, and the surfaces do not move "
+            "relative to a still flow. Set VLMConfig.freestream_velocity or pass a reference velocity."
+        )
+    return resolved
+
+
 def kutta_joukowski_forces(
     vlm_solver: "VLMSolver", density: float, reference_speed: float | None
 ) -> dict[str, np.ndarray | float | str]:
     """Return bound-leg KJ loads plus the configured unsteady pressure term."""
     if not vlm_solver._solved:
         raise RuntimeError("Force evaluation requires a solved VLM lattice")
-    reference = vlm_solver._resolve_reference_velocity(None, vlm_solver.lattice.n_panels)
+    reference = resolve_reference_velocity(vlm_solver)
     if reference_speed is not None:
         reference = reference / np.linalg.norm(reference) * reference_speed
     forces = vlm_solver.compute_forces(density, reference_velocity=reference)
