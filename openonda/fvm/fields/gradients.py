@@ -242,6 +242,80 @@ def compute_gauss_gradient(
     return _compute_gauss_gradient_compiled(field_values, mesh_data, geo_data)
 
 
+@njit(cache=True)
+def _skew_correction_pass(
+    field_gradient: np.ndarray,
+    uncorrected: np.ndarray,
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    paired: np.ndarray,
+    weights: np.ndarray,
+    connections: np.ndarray,
+    face_centres: np.ndarray,
+    cell_centres: np.ndarray,
+    areas: np.ndarray,
+    volumes: np.ndarray,
+    n_cells: int,
+    n_interior: int,
+) -> None:
+    """One fixed-point pass of :func:`_correct_gauss_skewness`, in compiled code.
+
+    ``field_gradient[:n_cells]`` is replaced by ``uncorrected`` plus the
+    face-centroid increments of the current ``field_gradient``, divided by the
+    cell volume. Interior faces add to the owner and subtract from the
+    neighbour; a cyclic face (``paired >= 0`` on a boundary face) adds to the
+    owner only. Faces whose centroid offset is below ``1e-12`` of the cell
+    distance carry no correction.
+    """
+    n_components = field_gradient.shape[2]
+    correction = np.zeros((n_cells, 3, n_components))
+    increment = np.empty(n_components)
+    delta = np.empty(3)
+    n_faces = len(owners)
+    for face in range(n_faces):
+        if face < n_interior:
+            other = neighbours[face]
+        else:
+            other = paired[face - n_interior]
+            if other < 0:
+                continue
+        owner = owners[face]
+        weight = weights[face]
+        offset_squared = 0.0
+        connection_squared = 0.0
+        for axis in range(3):
+            delta[axis] = (
+                face_centres[face, axis]
+                - cell_centres[owner, axis]
+                - weight * connections[face, axis]
+            )
+            offset_squared += delta[axis] * delta[axis]
+            connection_squared += connections[face, axis] * connections[face, axis]
+        if np.sqrt(offset_squared) <= 1e-12 * np.sqrt(connection_squared):
+            continue
+        for component in range(n_components):
+            value = 0.0
+            for axis in range(3):
+                value += delta[axis] * (
+                    weight * field_gradient[other, axis, component]
+                    + (1.0 - weight) * field_gradient[owner, axis, component]
+                )
+            increment[component] = value
+        for axis in range(3):
+            for component in range(n_components):
+                contribution = increment[component] * areas[face, axis]
+                correction[owner, axis, component] += contribution
+                if face < n_interior:
+                    correction[other, axis, component] -= contribution
+    for cell in range(n_cells):
+        for axis in range(3):
+            for component in range(n_components):
+                field_gradient[cell, axis, component] = (
+                    uncorrected[cell, axis, component]
+                    + correction[cell, axis, component] / volumes[cell]
+                )
+
+
 def _correct_gauss_skewness(
     field_gradient: np.ndarray, mesh_data: MeshData, geo_data: GeometryData
 ) -> None:
@@ -260,55 +334,32 @@ def _correct_gauss_skewness(
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
-    owners = mesh_data["owners"]
-    paired = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
+    paired = mesh_data.get("boundary_neighbour_cell")
+    paired_boundary = (
+        np.full(n_faces - n_interior, -1, dtype=np.int32)
+        if paired is None
+        else np.asarray(paired)[n_interior:n_faces]
     )
-    cyclic = n_interior + np.flatnonzero(paired[n_interior:n_faces] >= 0)
-    faces = np.concatenate((np.arange(n_interior), cyclic))
-    other = np.concatenate((np.asarray(mesh_data["neighbours"])[:n_interior], paired[cyclic]))
-    weights = geo_data["face_interpolation_weight"][faces]
-    connection = geo_data["cell_connection_vector"][faces]
-    delta = (
-        geo_data["face_centre"][faces]
-        - geo_data["cell_centre"][owners[faces]]
-        - weights[:, np.newaxis] * connection
-    )
-    skewed = np.linalg.norm(delta, axis=1) > 1e-12 * np.linalg.norm(connection, axis=1)
-    if not np.any(skewed):
-        return
-    faces, other, weights, delta = faces[skewed], other[skewed], weights[skewed], delta[skewed]
-    own = owners[faces]
-    interior = faces < n_interior
-    area = geo_data["face_area_vector"][faces]
-    volume = geo_data["cell_volume"][:n_cells, np.newaxis, np.newaxis]
     parallel = mesh_data.get("_parallel_context")
     uncorrected = field_gradient[:n_cells].copy()
-    n_components = field_gradient.shape[2]
     for _ in range(GAUSS_SKEW_CORRECTIONS):
         if parallel is not None and parallel.is_partitioned:
             parallel.exchange_halo(field_gradient[:n_cells])
-        correction = np.zeros_like(uncorrected)
-        chunk_size = 200_000
-        for start in range(0, len(faces), chunk_size):
-            block = slice(start, start + chunk_size)
-            w = weights[block, np.newaxis, np.newaxis]
-            face_gradient = (
-                w * field_gradient[other[block]] + (1.0 - w) * field_gradient[own[block]]
-            )
-            increment = np.einsum("fd,fdc->fc", delta[block], face_gradient)
-            for dimension in range(3):
-                for component in range(n_components):
-                    contribution = increment[:, component] * area[block, dimension]
-                    correction[:, dimension, component] += np.bincount(
-                        own[block], weights=contribution, minlength=n_cells
-                    )
-                    correction[:, dimension, component] -= np.bincount(
-                        other[block][interior[block]],
-                        weights=contribution[interior[block]],
-                        minlength=n_cells,
-                    )
-        field_gradient[:n_cells] = uncorrected + correction / volume
+        _skew_correction_pass(
+            field_gradient,
+            uncorrected,
+            mesh_data["owners"][:n_faces],
+            mesh_data["neighbours"],
+            paired_boundary,
+            geo_data["face_interpolation_weight"],
+            geo_data["cell_connection_vector"],
+            geo_data["face_centre"],
+            geo_data["cell_centre"],
+            geo_data["face_area_vector"],
+            geo_data["cell_volume"],
+            n_cells,
+            n_interior,
+        )
 
 
 def _finish_gauss_gradient(
