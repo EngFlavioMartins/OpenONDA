@@ -74,7 +74,7 @@ class PIMPLESolver:
         self._partitioned_linear_workspaces = {}
 
     def _partitioned_workspace(self, equation: str) -> "PartitionedLinearWorkspace | None":
-        """Return the solver-owned PETSc workspace for a partitioned equation."""
+        """Return the solver-owned PETSc workspace of ``"momentum"`` or ``"kinematic_pressure"``."""
         parallel = self.params.get("_parallel_context")
         if parallel is None or not parallel.is_partitioned:
             return None
@@ -85,7 +85,7 @@ class PIMPLESolver:
         if workspace is None:
             from .petsc_partitioned import PartitionedLinearWorkspace
 
-            workspace = PartitionedLinearWorkspace(parallel)
+            workspace = PartitionedLinearWorkspace(parallel, equation)
             self._partitioned_linear_workspaces[key] = workspace
         return workspace
 
@@ -454,9 +454,7 @@ class PIMPLESolver:
                                     else None
                                 ),
                                 partitioned_workspace=self._partitioned_workspace(
-                                    "kinematic_pressure_final"
-                                    if final_iteration
-                                    else "kinematic_pressure_relaxed"
+                                    "kinematic_pressure"
                                 ),
                                 matrix_values_unchanged=reuse_pressure_matrix,
                                 return_info=True,

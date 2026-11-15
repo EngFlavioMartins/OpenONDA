@@ -328,6 +328,16 @@ def _run_bicgstab(
     return x0 + r0_norm * e, info, iterations
 
 
+def petsc_options_prefix(equation_type: str | None) -> str:
+    """Return the PETSc options prefix of an equation.
+
+    Command-line options such as ``-fvm_kinematic_pressure_pc_type hypre`` then
+    reach one equation only. Everything but the pressure reads the momentum
+    options.
+    """
+    return "fvm_kinematic_pressure_" if equation_type == "kinematic_pressure" else "fvm_momentum_"
+
+
 def _solve_petsc(
     A: sparse.spmatrix,
     b: np.ndarray,
@@ -480,10 +490,7 @@ def _solve_petsc(
         ksp.setTolerances(rtol=rtol_eff, max_it=int(maxiter))
         ksp.setInitialGuessNonzero(x0 is not None)
         # Allow command-line PETSc options such as ``-fvm_kinematic_pressure_pc_type hypre``.
-        prefix = (
-            "fvm_kinematic_pressure_" if equation_type == "kinematic_pressure" else "fvm_momentum_"
-        )
-        ksp.setOptionsPrefix(prefix)
+        ksp.setOptionsPrefix(petsc_options_prefix(equation_type))
         ksp.setFromOptions()
         setup_seconds = setup_start.seconds
 
@@ -855,6 +862,8 @@ def solve_linear_system(
         if parallel_context is not None and parallel_context.is_partitioned:
             from .petsc_partitioned import solve_local_partitioned_system
 
+            if partitioned_workspace is None:
+                raise ValueError("A partitioned PETSc solve requires the solver's workspace")
             solution, info = solve_local_partitioned_system(
                 A,
                 b,

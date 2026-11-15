@@ -18,6 +18,7 @@ from .linear_interface import (
     LINEAR_VERIFICATION_FACTOR,
     LinearSolveError,
     LinearSolveResult,
+    petsc_options_prefix,
 )
 
 if TYPE_CHECKING:
@@ -164,13 +165,17 @@ class PartitionedLinearWorkspace:
     tolerances unchanged, with a fresh setup if the lagged hierarchy fails.
     """
 
-    def __init__(self, context: ParallelContext) -> None:
-        """Create an unallocated PETSc workspace for one partitioned solve.
+    def __init__(self, context: ParallelContext, equation_type: str) -> None:
+        """Create an unallocated PETSc workspace for one partitioned equation.
 
         Parameters
         ----------
         context : ParallelContext
             Partitioned MPI context owning the communicator and local mesh.
+        equation_type : str
+            Equation the workspace solves, ``"momentum"`` or
+            ``"kinematic_pressure"``. It selects the PETSc options prefix, as
+            in the replicated path.
 
         Notes
         -----
@@ -179,6 +184,7 @@ class PartitionedLinearWorkspace:
         unchanged. Call :meth:`close` to release them.
         """
         self.context = context
+        self.options_prefix = petsc_options_prefix(equation_type)
         self.matrix = None
         self.rhs = None
         self.solution = None
@@ -305,7 +311,7 @@ class PartitionedLinearWorkspace:
         ksp.setNormType(PETSc.KSP.NormType.UNPRECONDITIONED)
         # Equation-specific prefixes prevent pressure-PC experiments from
         # silently replacing the momentum preconditioner (and vice versa).
-        ksp.setOptionsPrefix("fvm_kinematic_pressure_" if method == "amg" else "fvm_momentum_")
+        ksp.setOptionsPrefix(self.options_prefix)
         ksp.setFromOptions()
         self.ksp = ksp
         self._signature = signature
@@ -494,33 +500,6 @@ class PartitionedLinearWorkspace:
         return self.solution.getArray(readonly=True).copy(), result
 
 
-def solve_owned_rows(
-    system: OwnedRowsCSR,
-    context: ParallelContext,
-    *,
-    method: str = "bicgstab",
-    tolerance: float = 1e-10,
-    relative_tolerance: float = 0.0,
-    max_iterations: int = 500,
-    constant_nullspace: bool = False,
-    initial_guess: np.ndarray | None = None,
-) -> tuple[np.ndarray, LinearSolveResult]:
-    """Solve one owned-row system without retaining a PETSc workspace."""
-    workspace = PartitionedLinearWorkspace(context)
-    try:
-        return workspace.solve(
-            system,
-            method=method,
-            tolerance=tolerance,
-            relative_tolerance=relative_tolerance,
-            max_iterations=max_iterations,
-            constant_nullspace=constant_nullspace,
-            initial_guess=initial_guess,
-        )
-    finally:
-        workspace.close()
-
-
 def solve_local_partitioned_system(
     matrix: sparse.spmatrix,
     rhs: np.ndarray,
@@ -532,7 +511,7 @@ def solve_local_partitioned_system(
     max_iterations: int,
     constant_nullspace: bool,
     initial_guess: np.ndarray | None = None,
-    workspace: PartitionedLinearWorkspace | None = None,
+    workspace: PartitionedLinearWorkspace,
     matrix_values_unchanged: bool = False,
     preconditioner_reuse_tolerance: float | None = None,
 ) -> tuple[np.ndarray, LinearSolveResult]:
@@ -542,29 +521,17 @@ def solve_local_partitioned_system(
     system = OwnedRowsCSR.from_local(matrix, rhs, context.partition)
     n_owned = len(context.partition.owned_global_ids)
     guess = None if initial_guess is None else np.asarray(initial_guess)[:n_owned]
-    if workspace is None:
-        owned, result = solve_owned_rows(
-            system,
-            context,
-            method=method,
-            tolerance=tolerance,
-            relative_tolerance=relative_tolerance,
-            max_iterations=max_iterations,
-            constant_nullspace=constant_nullspace,
-            initial_guess=guess,
-        )
-    else:
-        owned, result = workspace.solve(
-            system,
-            method=method,
-            tolerance=tolerance,
-            relative_tolerance=relative_tolerance,
-            max_iterations=max_iterations,
-            constant_nullspace=constant_nullspace,
-            initial_guess=guess,
-            matrix_values_unchanged=matrix_values_unchanged,
-            preconditioner_reuse_tolerance=preconditioner_reuse_tolerance,
-        )
+    owned, result = workspace.solve(
+        system,
+        method=method,
+        tolerance=tolerance,
+        relative_tolerance=relative_tolerance,
+        max_iterations=max_iterations,
+        constant_nullspace=constant_nullspace,
+        initial_guess=guess,
+        matrix_values_unchanged=matrix_values_unchanged,
+        preconditioner_reuse_tolerance=preconditioner_reuse_tolerance,
+    )
     local = np.empty(len(context.partition.local_global_ids), dtype=np.float64)
     local[:n_owned] = owned
     context.exchange_halo(local)
