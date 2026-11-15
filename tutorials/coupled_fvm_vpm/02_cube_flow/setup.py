@@ -41,8 +41,8 @@ FVM_MAX_TIME_STEP = 0.02  # s, also the first step
 FVM_CORES = 8
 
 # VPM: particles in the outer wake
-VPM_DOMAIN = (-4.5, 24.0, -3.0, 3.0, -3.0, 3.0)  # m
-OUTFLOW_FRINGE = 12.0  # m, smooth vorticity removal near the downstream boundary
+VPM_DOMAIN = (-4.5, 18.0, -3.0, 3.0, -3.0, 3.0)  # m
+OUTFLOW_FRINGE = 6.0  # m, smooth vorticity removal near the downstream boundary
 VORTICITY_FLOOR = 0.01  # 1/s, remove weak diffused particles (cylinder study: 1e-3 moved the forces, 1e-2 did not)
 CORE_RADIUS_RATIO = 1.05
 PARTICLE_LIMIT = 2_000_000

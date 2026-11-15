@@ -11,7 +11,7 @@ The FVM resolves separation from a no-slip unit cube and its near wake; vortex p
 | Cube side; freestream | 1 m; 1 m/s in $+x$ |
 | Density; viscosity | 1 kg/m³; 0.001 m²/s |
 | FVM domain | $[-1.8,5.05]\times[-1.8,1.8]^2$ m |
-| VPM domain; outflow fringe | $[-4.5,24]\times[-3,3]^2$ m; $x\in[12,24]$ m |
+| VPM domain; outflow fringe | $[-4.5,18]\times[-3,3]^2$ m; $x\in[12,18]$ m |
 | Cell and particle spacing | 0.045 m |
 | FVM step; coupling interval | Courant number 0.9, at most 0.02 s; 0.1 s (5 FVM steps), shorter only where the particle CFL number would pass 0.9; every output interval is a multiple of 0.1 s |
 | Coupling iterations | Up to 6 per interval, ended by the transfer tolerances |
