@@ -11,6 +11,7 @@ Converted from uFVM cfdAssembleConvectionTerm.m
 
 import numpy as np
 
+from openonda.core._numba import cacheable_njit as njit
 from openonda.core.errors import NonFiniteSolutionError
 
 from ..schemes.boundaries import BoundaryStrategy, boundary_strategy
@@ -475,6 +476,115 @@ def assemble_convection_term_gradient_upwind(
     return result
 
 
+@njit(cache=True)
+def _convection_interior_vector_compiled(
+    field: np.ndarray,
+    gradient: np.ndarray,
+    advective_face_flux: np.ndarray,
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    weights: np.ndarray,
+    face_centres: np.ndarray,
+    cell_centres: np.ndarray,
+    scheme: int,
+    linear_blend: float,
+    cf: np.ndarray,
+    ff: np.ndarray,
+    vf: np.ndarray,
+) -> None:
+    """Interior convection of every component of a vector field in one face pass.
+
+    ``scheme`` is 0 for upwind, 1 for central and 2 for the gradient-corrected
+    linear-upwind family with weight ``linear_blend`` on the linear value.
+    ``field`` is ``(n, n_components)``, ``gradient`` ``(n, 3, n_components)``
+    and ``vf`` ``(n_interior, n_components)``.
+    """
+    n_components = field.shape[1]
+    for face in range(len(cf)):
+        flux = advective_face_flux[face]
+        weight = weights[face]
+        if scheme == 1:
+            cf[face] = (1 - weight) * flux
+            ff[face] = weight * flux
+        else:
+            cf[face] = max(flux, 0.0)
+            ff[face] = min(flux, 0.0)
+        if scheme != 2:
+            for component in range(n_components):
+                vf[face, component] = 0.0
+            continue
+        owner, neighbour = owners[face], neighbours[face]
+        upwind = owner if flux >= 0.0 else neighbour
+        for component in range(n_components):
+            field_upwind = field[upwind, component]
+            offset = 0.0
+            for axis in range(3):
+                offset += gradient[upwind, axis, component] * (
+                    face_centres[face, axis] - cell_centres[upwind, axis]
+                )
+            field_linear_upwind = field_upwind + offset
+            field_linear = (
+                weight * field[neighbour, component] + (1.0 - weight) * field[owner, component]
+            )
+            target = linear_blend * field_linear + (1.0 - linear_blend) * field_linear_upwind
+            vf[face, component] = flux * (target - field_upwind)
+
+
+def assemble_convection_term_interior_vector(
+    field: np.ndarray,
+    advective_face_flux: np.ndarray,
+    mesh_data: dict[str, object],
+    geo_data: dict[str, object],
+    gradient: np.ndarray,
+    scheme: str,
+) -> dict[str, np.ndarray] | None:
+    """Assemble the interior-face convection of every component in one face pass.
+
+    Same discretization as the scalar interior assemblies of ``upwind``,
+    ``central``, ``lust`` and ``linear_upwind``; the implicit coefficients and
+    the upwind selection are evaluated once for all components.
+
+    Args:
+        field: Vector field ``(n, n_components)``
+        advective_face_flux: Volumetric face flux [m³/s], ``(n_faces,)``
+        mesh_data: Mesh connectivity
+        geo_data: Geometric data
+        gradient: Field gradient ``(n, 3, n_components)``, used by the
+            gradient-corrected schemes
+        scheme: Convection scheme name
+
+    Returns:
+        dict or None: ``flux_cf`` and ``flux_ff`` of shape ``(n_interior_faces,)``
+        and ``flux_vf`` of shape ``(n_interior_faces, n_components)``; ``None`` for a
+        scheme without a vector kernel (the TVD-limited ones), which the caller
+        assembles one component at a time.
+    """
+    codes = {"upwind": (0, 0.0), "central": (1, 0.0), "lust": (2, 0.75), "linear_upwind": (2, 0.0)}
+    if scheme not in codes:
+        return None
+    code, linear_blend = codes[scheme]
+    n_interior_faces = mesh_data["n_interior_faces"]
+    flux_cf = np.empty(n_interior_faces, dtype=np.float64)
+    flux_ff = np.empty(n_interior_faces, dtype=np.float64)
+    flux_vf = np.empty((n_interior_faces, field.shape[1]), dtype=np.float64)
+    _convection_interior_vector_compiled(
+        field,
+        gradient,
+        advective_face_flux,
+        mesh_data["owners"],
+        mesh_data["neighbours"],
+        geo_data["face_interpolation_weight"],
+        geo_data["face_centre"],
+        geo_data["cell_centre"],
+        code,
+        linear_blend,
+        flux_cf,
+        flux_ff,
+        flux_vf,
+    )
+    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+
+
 def assemble_convection_term(
     scalar_field: np.ndarray,
     advective_face_flux: np.ndarray,
@@ -486,6 +596,8 @@ def assemble_convection_term(
     *,
     include_total_flux: bool = True,
     component: int | None = None,
+    interior_fluxes: dict[str, np.ndarray] | None = None,
+    coefficients: bool = True,
 ) -> dict[str, object]:
     """
     Assemble complete convection term.
@@ -505,6 +617,13 @@ def assemble_convection_term(
             schemes; ignored by the others.
         component: Velocity component index (0, 1, or 2), required by the
             directional mixed velocity boundary to linearize its owner dependence.
+        interior_fluxes: ``flux_cf``, ``flux_ff`` and ``flux_vf`` of the interior
+            faces for this component, already assembled (for example by
+            :func:`assemble_convection_term_interior_vector`). ``None`` assembles
+            them here. Requires ``include_total_flux=False``. With
+            ``coefficients=False`` only ``flux_vf`` is read.
+        coefficients: ``False`` returns only ``flux_vf``, for a component whose
+            matrix is shared with another.
 
     Returns:
         dict: Complete flux data
@@ -513,6 +632,10 @@ def assemble_convection_term(
     n_faces = mesh_data["n_faces"]
     n_interior = mesh_data["n_interior_faces"]
 
+    if interior_fluxes is not None and include_total_flux:
+        raise ValueError("Supplied interior_fluxes carry no total flux")
+    if include_total_flux and not coefficients:
+        raise ValueError("The total flux needs the implicit coefficients")
     flux_cf = np.zeros(n_faces)
     flux_ff = np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)
@@ -520,7 +643,9 @@ def assemble_convection_term(
 
     # Interior faces
     s = str(scheme)
-    if s == "upwind":
+    if interior_fluxes is not None:
+        pass
+    elif s == "upwind":
         interior_fluxes = assemble_convection_term_upwind(
             scalar_field, advective_face_flux, mesh_data, include_total_flux=include_total_flux
         )
@@ -568,8 +693,9 @@ def assemble_convection_term(
     else:
         raise ValueError(f"Unknown scheme: {scheme}")
 
-    flux_cf[:n_interior] = interior_fluxes["flux_cf"]
-    flux_ff[:n_interior] = interior_fluxes["flux_ff"]
+    if coefficients:
+        flux_cf[:n_interior] = interior_fluxes["flux_cf"]
+        flux_ff[:n_interior] = interior_fluxes["flux_ff"]
     flux_vf[:n_interior] = interior_fluxes["flux_vf"]
     if flux_tf is not None:
         flux_tf[:n_interior] = interior_fluxes["flux_tf"]
@@ -603,7 +729,10 @@ def assemble_convection_term(
         if flux_tf is not None:
             flux_tf[indices] = b_fluxes["flux_tf"]
 
-    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    result = {"flux_vf": flux_vf}
+    if coefficients:
+        result["flux_cf"] = flux_cf
+        result["flux_ff"] = flux_ff
     if flux_tf is not None:
         result["flux_tf"] = flux_tf
     return result

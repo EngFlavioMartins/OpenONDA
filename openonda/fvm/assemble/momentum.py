@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from openonda.core._numba import cacheable_njit as njit
+
 from ..fields import gradients
 from ..fields.mixed_velocity_boundary import (
     update_mixed_velocity_boundary,
@@ -26,6 +28,45 @@ if TYPE_CHECKING:
     from ..core.parallel import ParallelContext
     from ..solve.petsc_partitioned import PartitionedLinearWorkspace
     from .matrix_assembly import MatrixAssemblyWorkspace
+
+
+@njit(cache=True)
+def _dev2_interior_source(
+    velocity_gradient: np.ndarray,
+    viscosity: np.ndarray,
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    weights: np.ndarray,
+    areas: np.ndarray,
+    n_interior: int,
+    source: np.ndarray,
+) -> None:
+    """Add the interior-face fluxes of :func:`compute_dev2_stress_source` to ``source``.
+
+    ``viscosity`` holds one value (constant viscosity) or one per cell.
+    """
+    gradient_face = np.empty((3, 3))
+    for face in range(n_interior):
+        owner, neighbour = owners[face], neighbours[face]
+        weight = weights[face]
+        for row in range(3):
+            for column in range(3):
+                gradient_face[row, column] = (
+                    weight * velocity_gradient[neighbour, row, column]
+                    + (1.0 - weight) * velocity_gradient[owner, row, column]
+                )
+        if len(viscosity) == 1:
+            viscosity_face = viscosity[0]
+        else:
+            viscosity_face = weight * viscosity[neighbour] + (1.0 - weight) * viscosity[owner]
+        trace = gradient_face[0, 0] + gradient_face[1, 1] + gradient_face[2, 2]
+        for row in range(3):
+            transposed = 0.0
+            for column in range(3):
+                transposed += gradient_face[row, column] * areas[face, column]
+            flux = viscosity_face * (transposed - (2.0 / 3.0) * trace * areas[face, row])
+            source[owner, row] += flux
+            source[neighbour, row] -= flux
 
 
 def compute_dev2_stress_source(
@@ -93,31 +134,19 @@ def compute_dev2_stress_source(
 
     source = np.zeros((n_cells, 3), dtype=np.float64)
 
-    # A full interpolated tensor costs 72 bytes per face before its flux and
-    # interpolation temporaries.  Bound the working set independently of mesh
-    # size; only the cell source persists.
-    chunk_size = 200_000
-    for start in range(0, n_interior, chunk_size):
-        stop = min(start + chunk_size, n_interior)
-        owners_i = owners[start:stop]
-        neighbours_i = neighbours[start:stop]
-        face_interpolation_weight = weights[start:stop]
-        w = face_interpolation_weight[:, np.newaxis, np.newaxis]
-        grad_face = w * velocity_gradient[neighbours_i] + (1.0 - w) * velocity_gradient[owners_i]
-        if kinematic_viscosity_cells is None:
-            kinematic_viscosity_face = np.full(
-                stop - start, kinematic_viscosity_scalar, dtype=np.float64
-            )
-        else:
-            kinematic_viscosity_face = (
-                face_interpolation_weight * kinematic_viscosity_cells[neighbours_i]
-                + (1.0 - face_interpolation_weight) * kinematic_viscosity_cells[owners_i]
-            )
-        flux = _face_flux(grad_face, kinematic_viscosity_face, face_area_vector[start:stop])
-        for axis in range(3):
-            source[:, axis] += np.bincount(owners_i, weights=flux[:, axis], minlength=n_cells)
-            source[:, axis] -= np.bincount(neighbours_i, weights=flux[:, axis], minlength=n_cells)
+    _dev2_interior_source(
+        velocity_gradient,
+        np.atleast_1d(kinematic_viscosity_array),
+        owners,
+        neighbours,
+        weights,
+        face_area_vector,
+        n_interior,
+        source,
+    )
 
+    # The boundary faces are few; they use bounded NumPy blocks.
+    chunk_size = 200_000
     if n_faces > n_interior:
         # The patch value of the gradient already carries the exact wall-normal
         # derivative (see gradients._correct_boundary_gradient), which is what
@@ -379,8 +408,31 @@ def assemble_momentum_equation(
         and previous_time_step_size is not None
     )
 
+    # The implicit coefficients, the face geometry and the upwind selection do
+    # not depend on the component, so the interior faces are assembled once for
+    # all three. Only the per-component explicit parts differ, and the shared
+    # matrix is built from the first component alone.
+    interior_diffusion = diffusion.assemble_diffusion_term_interior_vector(
+        velocity_gradient, kinematic_viscosity, mesh_data, geo_data
+    )
+    interior_convection = convection.assemble_convection_term_interior_vector(
+        velocity, volumetric_flux, mesh_data, geo_data, velocity_gradient, convection_scheme
+    )
+
+    def _interior_slice(fluxes: dict[str, np.ndarray] | None, i_comp: int):
+        if fluxes is None:
+            return None
+        return {
+            "flux_cf": fluxes["flux_cf"],
+            "flux_ff": fluxes["flux_ff"],
+            "flux_vf": fluxes["flux_vf"][:, i_comp],
+        }
+
     # Assemble for each component
     for i_comp, comp_name in enumerate(["x", "y", "z"]):
+        # Only the first component, or every component with a directional
+        # mixed boundary, builds a matrix and so needs cf and ff.
+        needs_coefficients = common_matrix is None or has_directional_mixed_bc
         velocity_component = velocity[:, i_comp]
 
         velocity_gradient_component = (
@@ -400,6 +452,8 @@ def assemble_momentum_equation(
             component=i_comp,
             include_total_flux=False,
             separate_slip_diagonal=True,
+            interior_fluxes=_interior_slice(interior_diffusion, i_comp),
+            coefficients=needs_coefficients,
         )
         # The total face flux is a diagnostic output of the generic assembly
         # API.  Momentum matrix/RHS assembly only consumes cf/ff/vf, so do not
@@ -419,12 +473,14 @@ def assemble_momentum_equation(
             scalar_field_gradient=velocity_gradient_component,
             include_total_flux=False,
             component=i_comp,
+            interior_fluxes=_interior_slice(interior_convection, i_comp),
+            coefficients=needs_coefficients,
         )
         conv_flux.pop("flux_tf", None)
 
         # 3. Combine in the diffusion buffers.  Allocating four additional
         # face arrays here added about 45 MiB per reference-mesh rank.
-        for key in ("flux_cf", "flux_ff", "flux_vf"):
+        for key in conv_flux:
             diff_flux[key] += conv_flux[key]
         combined_flux = diff_flux
         del conv_flux
@@ -511,6 +567,7 @@ def assemble_momentum_equation(
         # call on the right-hand side of its assignment.
         del combined_flux, diff_flux
 
+    del interior_diffusion, interior_convection
     return results
 
 

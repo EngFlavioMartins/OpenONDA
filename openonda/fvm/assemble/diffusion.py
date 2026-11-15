@@ -62,6 +62,104 @@ def _diffusion_interior_compiled(
             tf[face] = coefficient * field[owner] - coefficient * field[neighbour] + correction
 
 
+@njit(cache=True)
+def _diffusion_interior_vector_compiled(
+    gradient: np.ndarray,
+    diffusivity: np.ndarray,
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    areas: np.ndarray,
+    connections: np.ndarray,
+    weights: np.ndarray,
+    cf: np.ndarray,
+    ff: np.ndarray,
+    vf: np.ndarray,
+) -> None:
+    """Interior diffusion of every component of a vector field in one face pass.
+
+    The implicit coefficients and the non-orthogonal vector do not depend on
+    the component, so each face computes them once. ``gradient`` is
+    ``(n, 3, n_components)`` and ``vf`` is ``(n_interior, n_components)``.
+    """
+    n_components = gradient.shape[2]
+    nonorthogonal = np.empty(3)
+    for face in range(len(cf)):
+        owner, neighbour = owners[face], neighbours[face]
+        distance = np.sqrt(
+            connections[face, 0] ** 2 + connections[face, 1] ** 2 + connections[face, 2] ** 2
+        )
+        dot = 0.0
+        area_squared = 0.0
+        for axis in range(3):
+            dot += areas[face, axis] * connections[face, axis] / distance
+            area_squared += areas[face, axis] ** 2
+        if abs(dot) < 1e-30:
+            dot = 1e-30
+        orthogonal_area = area_squared / dot
+        weight = weights[face]
+        diffusion = (
+            diffusivity[0]
+            if len(diffusivity) == 1
+            else (weight * diffusivity[neighbour] + (1 - weight) * diffusivity[owner])
+        )
+        coefficient = diffusion * orthogonal_area / distance
+        for axis in range(3):
+            nonorthogonal[axis] = (
+                areas[face, axis] - orthogonal_area * connections[face, axis] / distance
+            )
+        for component in range(n_components):
+            correction = 0.0
+            for axis in range(3):
+                face_gradient = (
+                    weight * gradient[neighbour, axis, component]
+                    + (1 - weight) * gradient[owner, axis, component]
+                )
+                correction += face_gradient * nonorthogonal[axis]
+            vf[face, component] = correction * -diffusion
+        cf[face], ff[face] = coefficient, -coefficient
+
+
+def assemble_diffusion_term_interior_vector(
+    gradient: np.ndarray,
+    diffusivity: float | np.ndarray,
+    mesh_data: dict[str, object],
+    geo_data: dict[str, object],
+) -> dict[str, np.ndarray]:
+    """Assemble the interior-face diffusion of all components of a vector field.
+
+    Same discretization as :func:`assemble_diffusion_term_interior`, with the
+    face geometry evaluated once for all components.
+
+    Args:
+        gradient: Field gradient ``(n, 3, n_components)``, ``gradient[c, i, k]``
+            being ``d(field_k)/d(x_i)``
+        diffusivity: Diffusion coefficient, scalar or ``(n_cells,)``
+        mesh_data: Mesh connectivity
+        geo_data: Geometric data
+
+    Returns:
+        dict: ``flux_cf`` and ``flux_ff`` of shape ``(n_interior_faces,)``, shared
+        by every component, and ``flux_vf`` of shape ``(n_interior_faces, n_components)``.
+    """
+    n_interior_faces = mesh_data["n_interior_faces"]
+    flux_cf = np.empty(n_interior_faces, dtype=np.float64)
+    flux_ff = np.empty(n_interior_faces, dtype=np.float64)
+    flux_vf = np.empty((n_interior_faces, gradient.shape[2]), dtype=np.float64)
+    _diffusion_interior_vector_compiled(
+        gradient,
+        np.atleast_1d(diffusivity),
+        mesh_data["owners"],
+        mesh_data["neighbours"],
+        geo_data["face_area_vector"],
+        geo_data["cell_connection_vector"],
+        geo_data["face_interpolation_weight"],
+        flux_cf,
+        flux_ff,
+        flux_vf,
+    )
+    return {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+
+
 def assemble_diffusion_term_interior(
     scalar_field: np.ndarray,
     scalar_field_gradient: np.ndarray,
@@ -237,6 +335,8 @@ def assemble_diffusion_term(
     *,
     include_total_flux: bool = True,
     separate_slip_diagonal: bool = False,
+    interior_fluxes: dict[str, np.ndarray] | None = None,
+    coefficients: bool = True,
 ) -> dict[str, object]:
     """
     Assemble complete diffusion term for all faces.
@@ -258,6 +358,13 @@ def assemble_diffusion_term(
             coefficient as ``slip_diagonal`` (one value per cell) instead of
             adding it to ``flux_cf``, so that components without a wall-normal
             part can share one matrix.
+        interior_fluxes: ``flux_cf``, ``flux_ff`` and ``flux_vf`` of the interior
+            faces for this component, already assembled (for example by
+            :func:`assemble_diffusion_term_interior_vector`). ``None`` assembles
+            them here. Requires ``include_total_flux=False``. With
+            ``coefficients=False`` only ``flux_vf`` is read.
+        coefficients: ``False`` assembles and returns only ``flux_vf`` (and the
+            slip diagonal), for a component whose matrix is shared with another.
 
     Slip planes carry no diffusive flux of the tangential
     velocity. The ghost holds the tangential part of the owner velocity, so
@@ -271,6 +378,13 @@ def assemble_diffusion_term(
 
     n_faces = mesh_data["n_faces"]
 
+    if interior_fluxes is not None and include_total_flux:
+        raise ValueError("Supplied interior_fluxes carry no total flux")
+    if include_total_flux and not coefficients:
+        raise ValueError("The total flux needs the implicit coefficients")
+    # Untouched zero pages cost nothing, so a component without coefficients
+    # allocates the arrays that the patch branches write into but never fills
+    # or returns the interior part.
     flux_cf = np.zeros(n_faces)
     flux_ff = np.zeros(n_faces)
     flux_vf = np.zeros(n_faces)
@@ -278,18 +392,20 @@ def assemble_diffusion_term(
     slip_diagonal = np.zeros(mesh_data["n_cells"]) if separate_slip_diagonal else None
 
     # Assemble interior faces
-    interior_fluxes = assemble_diffusion_term_interior(
-        scalar_field,
-        scalar_field_gradient,
-        diffusivity,
-        mesh_data,
-        geo_data,
-        include_total_flux=include_total_flux,
-    )
+    if interior_fluxes is None:
+        interior_fluxes = assemble_diffusion_term_interior(
+            scalar_field,
+            scalar_field_gradient,
+            diffusivity,
+            mesh_data,
+            geo_data,
+            include_total_flux=include_total_flux,
+        )
 
     n_interior = mesh_data["n_interior_faces"]
-    flux_cf[:n_interior] = interior_fluxes["flux_cf"]
-    flux_ff[:n_interior] = interior_fluxes["flux_ff"]
+    if coefficients:
+        flux_cf[:n_interior] = interior_fluxes["flux_cf"]
+        flux_ff[:n_interior] = interior_fluxes["flux_ff"]
     flux_vf[:n_interior] = interior_fluxes["flux_vf"]
     if flux_tf is not None:
         flux_tf[:n_interior] = interior_fluxes["flux_tf"]
@@ -480,7 +596,10 @@ def assemble_diffusion_term(
         else:
             raise RuntimeError(f"Unhandled diffusion boundary strategy {strategy!r}")
 
-    result = {"flux_cf": flux_cf, "flux_ff": flux_ff, "flux_vf": flux_vf}
+    result = {"flux_vf": flux_vf}
+    if coefficients:
+        result["flux_cf"] = flux_cf
+        result["flux_ff"] = flux_ff
     if flux_tf is not None:
         result["flux_tf"] = flux_tf
     if slip_diagonal is not None:
