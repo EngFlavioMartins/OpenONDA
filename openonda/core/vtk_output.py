@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 import math
 from pathlib import Path
+import re
 from typing import Any
 from xml.sax.saxutils import quoteattr
 
@@ -168,6 +169,37 @@ def read_collection(path: str | Path) -> list[tuple[float, str]]:
     return entries
 
 
+_COLLECTION_HEAD = (
+    '<?xml version="1.0"?>\n'
+    '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n'
+    "  <Collection>\n"
+)
+_COLLECTION_TAIL = "  </Collection>\n</VTKFile>\n"
+
+
+def _collection_line(time: float, name: str) -> str:
+    return f"    <DataSet timestep={quoteattr(repr(time))} file={quoteattr(name)}/>\n"
+
+
+def _ordered_frames(entries: Iterable[tuple[float, str | Path]]) -> list[tuple[float, str]]:
+    """Return the ``(time, file)`` pairs of a collection in file order.
+
+    Frames are sorted by time and file name; a file listed more than once
+    keeps only its last entry.
+    """
+    frames: dict[str, float] = {}
+    for time, file in entries:
+        name = Path(file).as_posix()
+        if not str(file) or Path(file).is_absolute():
+            raise ValueError(f"Collection frame path {file!r} must be relative")
+        time = float(time)
+        if not math.isfinite(time):
+            raise ValueError(f"Collection frame {name} has a non-finite time")
+        frames.pop(name, None)
+        frames[name] = time
+    return sorted((time, name) for name, time in frames.items())
+
+
 def write_collection(path: str | Path, entries: Iterable[tuple[float, str | Path]]) -> Path:
     """Atomically write a ParaView collection of solution frames.
 
@@ -194,36 +226,21 @@ def write_collection(path: str | Path, entries: Iterable[tuple[float, str | Path
     ValueError
         If a time is not finite or a file path is empty or absolute.
     """
-    frames: dict[str, float] = {}
-    for time, file in entries:
-        name = Path(file).as_posix()
-        if not str(file) or Path(file).is_absolute():
-            raise ValueError(f"Collection frame path {file!r} must be relative")
-        time = float(time)
-        if not math.isfinite(time):
-            raise ValueError(f"Collection frame {name} has a non-finite time")
-        frames.pop(name, None)
-        frames[name] = time
-    ordered = sorted((time, name) for name, time in frames.items())
-    lines = [
-        '<?xml version="1.0"?>',
-        '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">',
-        "  <Collection>",
-        *(
-            f"    <DataSet timestep={quoteattr(repr(time))} file={quoteattr(name)}/>"
-            for time, name in ordered
-        ),
-        "  </Collection>",
-        "</VTKFile>",
-    ]
-    return write_text_atomic(path, "\n".join(lines) + "\n")
+    ordered = _ordered_frames(entries)
+    text = _COLLECTION_HEAD + "".join(_collection_line(*frame) for frame in ordered)
+    return write_text_atomic(path, text + _COLLECTION_TAIL)
 
 
 def add_frame(collection: str | Path, time: float, frame: str | Path) -> Path:
     """List one frame in a ParaView collection, replacing an earlier entry for the file.
 
-    The collection is read and written whole, so every writer of a series
-    sees the entries on disk and nothing is cached between frames.
+    The file is the same as :func:`write_collection` would write for the
+    listed frames plus this one, and it is replaced atomically. When the
+    collection is in the form :func:`write_collection` writes and the frame
+    sorts after the last one and is not yet listed, the new line is inserted
+    before the closing tags without parsing the frames, so the cost of a frame
+    hardly grows with the length of the series. Every other frame reads and
+    rewrites the collection whole.
 
     Parameters
     ----------
@@ -250,7 +267,43 @@ def add_frame(collection: str | Path, time: float, frame: str | Path) -> Path:
     relative = Path(frame)
     if relative.is_absolute():
         relative = relative.resolve().relative_to(source.parent.resolve())
-    return write_collection(source, [*read_collection(source), (time, relative)])
+    text = _appended_collection(source, time, relative.as_posix())
+    if text is None:
+        return write_collection(source, [*read_collection(source), (time, relative)])
+    return write_text_atomic(source, text)
+
+
+# One frame line exactly as _collection_line writes it, for a name and a time
+# that need no XML escaping.
+_COLLECTION_LINE = re.compile(r'    <DataSet timestep="([^"&<>]*)" file="([^"&<>]*)"/>\n')
+_COLLECTION_BODY = re.compile(rf"(?:{_COLLECTION_LINE.pattern})*")
+
+
+def _appended_collection(source: Path, time: float, name: str) -> str | None:
+    """Return the collection text with one frame appended, or ``None`` if it cannot be.
+
+    Appending needs a file in the form :func:`write_collection` writes, a
+    finite time, a name without XML escapes, a frame that sorts after the
+    last listed one and a file not listed yet. A file in that form is sorted
+    and lists each frame once, because only this module writes it.
+    """
+    time = float(time)
+    if not math.isfinite(time) or quoteattr(name) != f'"{name}"':
+        return None
+    try:
+        text = source.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    if not (text.startswith(_COLLECTION_HEAD) and text.endswith(_COLLECTION_TAIL)):
+        return None
+    body = text[len(_COLLECTION_HEAD) : len(text) - len(_COLLECTION_TAIL)]
+    if _COLLECTION_BODY.fullmatch(body) is None or f' file="{name}"/>\n' in body:
+        return None
+    if body:
+        last = _COLLECTION_LINE.fullmatch(body, body.rfind("\n", 0, len(body) - 1) + 1)
+        if (time, name) < (float(last.group(1)), last.group(2)):
+            return None
+    return _COLLECTION_HEAD + body + _collection_line(time, name) + _COLLECTION_TAIL
 
 
 def _frame_path(collection: Path, name: str) -> Path:
