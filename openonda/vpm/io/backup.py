@@ -179,7 +179,7 @@ class _BackupIO:
             state = solver_group.get("vlm")
             vlm = getattr(solver, "vlm_solver", None)
             if vlm is not None:
-                from ..boundary_elements.vlm.solver.restart import validate_vlm_restart
+                from ..vlm.restart import validate_vlm_restart
 
                 validate_vlm_restart(vlm, state)
                 vlm_time = float(state.attrs["time"])
@@ -388,7 +388,7 @@ class _BackupIO:
 
             vlm = getattr(solver, "vlm_solver", None)
             if vlm is not None:
-                from ..boundary_elements.vlm.solver.restart import write_vlm_restart
+                from ..vlm.restart import write_vlm_restart
 
                 write_vlm_restart(vlm, solver_group.create_group("vlm"))
 
@@ -504,7 +504,7 @@ class _BackupIO:
 
             vlm = getattr(solver, "vlm_solver", None)
             if vlm is not None:
-                from ..boundary_elements.vlm.solver.restart import restore_vlm_restart
+                from ..vlm.restart import restore_vlm_restart
 
                 restore_vlm_restart(vlm, solver_group["vlm"])
 

@@ -8,11 +8,11 @@ from numbers import Real
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from ..boundary_elements.vlm.config import VLMConfig
 from ..kernels.registry import kernel_definition, kernel_names
 from ..numerics.rk_tableaux import SSPRK3, RKTableau
 from ..physics.induction.base import InductionMethod
 from ..physics.induction.direct import DirectInduction
+from ..vlm.config import VLMConfig
 from .constants import MAX_N_PARTICLES
 from .logging_config import LoggingConfig
 from .output import Backup, Output, Samplers

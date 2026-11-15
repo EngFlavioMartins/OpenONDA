@@ -14,7 +14,7 @@ import re
 
 import numpy as np
 
-from .aircraft import Aircraft, Wing, WingSegment
+from .geometry import Aircraft, Wing, WingSegment
 
 
 @dataclass

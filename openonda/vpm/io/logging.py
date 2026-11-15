@@ -11,8 +11,8 @@ import taichi as ti
 from openonda.core import log_style
 
 if TYPE_CHECKING:
-    from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
     from ..core.solver import VPMSolver
+    from ..vlm.solver import VLMSolver
 
 
 def run_header(precision: str, backend: str) -> log_style.FormattedText:

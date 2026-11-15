@@ -15,7 +15,7 @@ from openonda.core.metadata import metadata_value
 if TYPE_CHECKING:
     import h5py
 
-    from .vlm_solver import VLMSolver
+    from .solver import VLMSolver
 
 _FIELDS = (
     "panel_corner_position",

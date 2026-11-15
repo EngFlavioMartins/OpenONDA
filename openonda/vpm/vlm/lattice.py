@@ -287,7 +287,7 @@ class VLMLattice:
 
     def save_vtk(self, filename: str, time: float = 0.0) -> Path:
         """Atomically write the accepted lattice and its properties as PolyData."""
-        from .vtk_export import CELL_FIELDS, write_lattice_vtk
+        from .output import CELL_FIELDS, write_lattice_vtk
 
         ti.sync()
         names = (

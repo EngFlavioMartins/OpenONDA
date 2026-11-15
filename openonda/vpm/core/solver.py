@@ -23,9 +23,6 @@ from openonda.core.profiling import Profiler, Stopwatch
 from openonda.core.restart import reset_run_outputs
 from openonda.core.status import RunStatus
 
-from ..boundary_elements.vlm.solver.diagnostics import VLMDiagnostics
-from ..boundary_elements.vlm.solver.forces import VLMForceEvaluator
-from ..boundary_elements.vlm.solver.loading_distribution import VLMLoadingDistribution
 from ..config.case import Numerics, VPMCase
 from ..config.stabilization import StabilizationConfig
 from ..config.state import set_flow_model
@@ -65,12 +62,14 @@ from ..stabilization.context import (
     StabilizationStepState,
 )
 from ..turbulence.les import ParticleLES
+from ..vlm.loads import VLMForceEvaluator
+from ..vlm.output import VLMDiagnostics, VLMLoadingDistribution
 from .evolution import EvolutionStepper
 
 if TYPE_CHECKING:
-    from ..boundary_elements.vlm.config import VLMConfig
     from ..config.viscous import ViscousConfig
     from ..particles.snapshot import ParticleSnapshot
+    from ..vlm.config import VLMConfig
 
 FloatArray: TypeAlias = NDArray[np.float32] | NDArray[np.float64]
 ParticleRecord: TypeAlias = dict[str, np.ndarray | np.generic]
@@ -500,7 +499,7 @@ class VPMSolver:
             self.vlm_solver = None
         else:
             self._require_consistent_molecular_viscosity(final_setup.viscous, final_setup.vlm)
-            from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
+            from ..vlm.solver import VLMSolver
 
             self.vlm_solver = VLMSolver(final_setup.vlm, self.logger)
 

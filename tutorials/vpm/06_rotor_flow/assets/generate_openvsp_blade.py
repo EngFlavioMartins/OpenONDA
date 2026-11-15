@@ -119,8 +119,8 @@ def export_openvsp_blade(output_dir: Path, design: RotorBladeDesign) -> tuple[Pa
 
 
 def import_openvsp_blade(csv_path: Path, json_path: Path):
-    from openonda.vpm.boundary_elements.vlm.geometry.openvsp_io import load_degengeom_csv
-    from openonda.vpm.boundary_elements.vlm.geometry.surface_io import save_surface
+    from openonda.vpm.vlm.geometry import save_surface
+    from openonda.vpm.vlm.openvsp import load_degengeom_csv
 
     aircraft = load_degengeom_csv(csv_path)
     save_surface(aircraft, str(json_path))

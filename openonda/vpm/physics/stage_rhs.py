@@ -19,9 +19,9 @@ from .induction.base import (
 from .induction.reuse import AcceptedStateInduction, InductionReuseStatistics
 
 if TYPE_CHECKING:
-    from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
     from ..numerics.rk_tableaux import RKTableau
     from ..particles.container import Particles
+    from ..vlm.solver import VLMSolver
     from .base import PhysicsBase
 
 

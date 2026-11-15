@@ -31,7 +31,6 @@ from ..wall_errors import WallCorrectionTooLargeError
 if TYPE_CHECKING:
     from openonda.core.profiling import Profiler
 
-    from ..boundary_elements.vlm.solver.vlm_solver import VLMSolver
     from ..config.case import Numerics
     from ..config.stabilization import StabilizationConfig
     from ..config.viscous import ViscousConfig
@@ -40,6 +39,7 @@ if TYPE_CHECKING:
     from ..physics.engine import PhysicsEngine
     from ..stabilization import StabilizationManager
     from ..turbulence.les import ParticleLES
+    from ..vlm.solver import VLMSolver
     from .solver import VPMSolver
 
 

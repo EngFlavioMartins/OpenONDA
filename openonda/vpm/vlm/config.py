@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal
 from openonda.core.kinematics import RigidMotion, RigidPose, finite_placement, placement_pose
 
 if TYPE_CHECKING:
-    from .geometry.aircraft import Aircraft
+    from .geometry import Aircraft
 
 
 @dataclass(frozen=True, slots=True)

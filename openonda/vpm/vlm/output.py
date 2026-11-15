@@ -1,33 +1,183 @@
 """
-VLM loading-distribution module — chord-wise and span-wise force extraction.
-
-Extracts structured chord- and span-wise loading distributions from the per-panel
-data already computed by the VLM solver.  No force recomputation is performed;
-this is a pure reduction of existing lattice fields.
-
-Output CSVs:
-  <samples_dir>/vlm_spanwise_<surface>.csv   — one row per spanwise station
-  <samples_dir>/vlm_chordwise_<surface>.csv  — one row per (station, chord cell)
-
-The exported section/panel force components are dimensional newtons and each
-row records ``force_density``. ``circulation_pressure_jump_proxy`` is the
-dimensionless circulation-based lifting-surface estimate, including the
-recorded unsteady contribution; it is not reconstructed pressure.
-
-Call pattern (mirrors VLMDiagnostics):
-  VLMLoadingDistribution.record_loading_distributions(
-      vlm_solver, time, samples_dir)
+VLM output: the force and loading tables (``vlm_forces.csv``, ``vlm_surface_forces.csv``,
+span- and chord-wise loading) and the lattice surface for VTK.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from openonda.core.vtk_output import write_vtk_dataset
+
 if TYPE_CHECKING:
-    from .vlm_solver import VLMSolver
+    from vtkmodules.vtkCommonDataModel import vtkFieldData
+
+    from ..particles.container import Particles
+    from .solver import VLMSolver
+
+
+class VLMDiagnostics:
+    """Static helpers for recording VLM diagnostics and writing CSV output."""
+
+    @staticmethod
+    def record_vlm_diagnostics(
+        vlm_solver: VLMSolver,
+        particles: Particles,
+        particle_vortex_strength: np.ndarray,
+        time: float,
+        samples_dir: Path,
+    ) -> None:
+        """Record VLM force and vector-strength scalars and flush one solver sample.
+
+        Parameters
+        ----------
+        vlm_solver:
+            Active ``VLMSolver`` instance.
+        particles:
+            Current ``Particles`` container (for particle count).
+        particle_vortex_strength:
+            Vortex-strength array (N, 3) for the current particles [m³/s].
+        time:
+            Current simulation time [s].
+        samples_dir:
+            Sample directory of the case; the table is ``vlm_forces.csv``.
+        """
+        if vlm_solver is None or vlm_solver._last_forces is None:
+            return
+        forces = vlm_solver._last_forces
+        # Use the same integrated three-leg field as the solver budget. A
+        # quarter-chord-only reconstruction is wrong for tapered/twisted wings.
+        bound_vortex_strength = vlm_solver.compute_total_bound_vortex_strength()
+        bound_vortex_strength_y = float(bound_vortex_strength[1])
+
+        n_p = particles.n_particles_total
+        wake_vortex_strength_y = float(particle_vortex_strength[:, 1].sum(dtype=np.float64))
+
+        # Coupled VLM is an owned VPM component.  The caller reaches this
+        # method only after an accepted VPM step, so every row belongs to the
+        # solver's accepted clock; no VLM-specific cadence may skip it.
+        VLMDiagnostics.export_forces_csv(
+            vlm_solver,
+            forces,
+            bound_vortex_strength_y,
+            wake_vortex_strength_y,
+            n_p,
+            time,
+            samples_dir,
+        )
+
+    # CSV export
+
+    @staticmethod
+    def export_forces_csv(
+        vlm_solver: VLMSolver,
+        forces: dict,
+        bound_vortex_strength: float,
+        wake_vortex_strength: float,
+        n_p: int,
+        time: float,
+        samples_dir: Path,
+    ) -> None:
+        """Append one row to ``<samples_dir>/vlm_forces.csv``.
+
+        Parameters
+        ----------
+        vlm_solver:
+            Active ``VLMSolver`` instance.
+        forces:
+            Force dict returned by ``vlm_solver.compute_forces()``.
+        bound_vortex_strength, wake_vortex_strength:
+            Pre-computed bound and wake y-components of vector strength [m³/s].
+        n_p:
+            Number of VPM particles at this step.
+        time:
+            Current simulation time [s].
+        samples_dir:
+            Sample directory of the case.
+        """
+        import pandas as pd
+
+        samples_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = samples_dir / "vlm_forces.csv"
+
+        force_density = float(vlm_solver._force_density)
+        reference_velocity = vlm_solver._last_reference_velocity
+        if reference_velocity is None:
+            reference_velocity = vlm_solver.freestream_velocity
+        reference_speed = (
+            float(np.linalg.norm(reference_velocity)) if reference_velocity is not None else 0.0
+        )
+
+        row = {
+            "time": time,
+            "lift_coefficient": forces.get("lift_coefficient", 0.0),
+            "drag_coefficient": forces.get("drag_coefficient", 0.0),
+            "side_force_coefficient": forces.get("side_force_coefficient", 0.0),
+            "force_x": forces.get("force_x", 0.0),
+            "force_y": forces.get("force_y", 0.0),
+            "force_z": forces.get("force_z", 0.0),
+            "unsteady_force_x": forces.get("unsteady_force_x", 0.0),
+            "unsteady_force_y": forces.get("unsteady_force_y", 0.0),
+            "unsteady_force_z": forces.get("unsteady_force_z", 0.0),
+            "moment_x": forces.get("moment_x", 0.0),
+            "moment_y": forces.get("moment_y", 0.0),
+            "moment_z": forces.get("moment_z", 0.0),
+            "lift": forces.get("lift", 0.0),
+            "drag": forces.get("drag", 0.0),
+            "dynamic_pressure": forces.get("dynamic_pressure", 0.0),
+            "reference_area": forces.get("reference_area", 0.0),
+            "rolling_moment_coefficient": forces.get("rolling_moment_coefficient", 0.0),
+            "pitching_moment_coefficient": forces.get("pitching_moment_coefficient", 0.0),
+            "yawing_moment_coefficient": forces.get("yawing_moment_coefficient", 0.0),
+            "rolling_moment_coefficient_quarter_chord": forces.get(
+                "rolling_moment_coefficient_quarter_chord", 0.0
+            ),
+            "pitching_moment_coefficient_quarter_chord": forces.get(
+                "pitching_moment_coefficient_quarter_chord", 0.0
+            ),
+            "yawing_moment_coefficient_quarter_chord": forces.get(
+                "yawing_moment_coefficient_quarter_chord", 0.0
+            ),
+            "bound_vortex_strength_y": bound_vortex_strength,
+            "wake_vortex_strength_y": wake_vortex_strength,
+            "n_particles_total": n_p,
+            "force_density": force_density,
+            "force_units": "N",
+            "moment_units": "N*m",
+            "reference_speed": reference_speed,
+            "reference_speed_units": "m/s",
+        }
+        reference_velocity = vlm_solver._last_reference_velocity
+        if reference_velocity is None:
+            reference_velocity = vlm_solver.freestream_velocity
+        surface_forces = vlm_solver.compute_per_surface_forces(
+            vlm_solver.density, reference_velocity
+        )
+        for key in ("power", "rotational_power", "translational_power"):
+            row[key] = sum(surface[key] for surface in surface_forces.values())
+        surfaces_path = csv_path.with_name("vlm_surface_forces.csv")
+        pd.DataFrame(
+            [
+                {
+                    "time": time,
+                    "surface": name,
+                    "force_density": force_density,
+                    "force_units": "N",
+                    "moment_units": "N*m",
+                    **values,
+                }
+                for name, values in surface_forces.items()
+            ]
+        ).to_csv(surfaces_path, mode="a", header=not surfaces_path.exists(), index=False)
+        df = pd.DataFrame([row])
+        if not csv_path.exists():
+            df.to_csv(csv_path, index=False)
+        else:
+            df.to_csv(csv_path, mode="a", header=False, index=False)
 
 
 class VLMLoadingDistribution:
@@ -510,3 +660,170 @@ class VLMLoadingDistribution:
                 df.to_csv(csv_path, index=False)
             else:
                 df.to_csv(csv_path, mode="a", header=False, index=False)
+
+
+# Optional fields are exported only when present in the recorded state.
+# In particular, absent unsteady loads must never be presented as measured zeros.
+CELL_FIELDS = (
+    "area",
+    "normal",
+    "is_trailing_edge",
+    "is_leading_edge",
+    "wing_id",
+    "segment_id",
+    "is_mirrored",
+    "circulation",
+    "cumulative_circulation",
+    "bound_vortex_velocity",
+    "bound_external_velocity",
+    "bound_relative_velocity",
+    "velocity",
+    "kinematic_velocity",
+    "relative_velocity",
+    "panel_force",
+    "unsteady_panel_force",
+    "panel_moment_correction",
+    "unsteady_pressure_jump_coefficient",
+)
+
+
+def write_lattice_vtk(
+    fields: Mapping[str, np.ndarray],
+    filename: Path | str,
+    *,
+    reference_speed: float,
+    time: float,
+    force_density: float | None = None,
+) -> Path:
+    """Write saved or live arrays without advancing motion or recomputing loads.
+
+    Panel corners retain their stored precision. ``velocity`` and
+    ``bound_vortex_velocity`` are inertial fluid velocities; the corresponding
+    ``relative_velocity`` fields subtract the prescribed body motion. Circulation
+    is in [m^2/s], and ``panel_force`` is the force in newtons at the solve
+    density when ``force_density`` is supplied. The dimensionless
+    ``circulation_pressure_jump_proxy`` combines the circulation-based
+    lifting-surface estimate and any recorded unsteady contribution. It is
+    distinct from ``panel_normal_load_coefficient``, which normalizes the
+    actual normal panel force. All fields are selectable in ParaView.
+    """
+    from vtk import vtkCellArray, vtkPoints, vtkPolyData
+    from vtkmodules.util.numpy_support import numpy_to_vtk, numpy_to_vtkIdTypeArray
+
+    corners = np.asarray(fields["panel_corner_position"])
+    if corners.ndim != 3 or corners.shape[1:] != (4, 3) or not np.isfinite(corners).all():
+        raise ValueError("VLM surface corners must be finite with shape (panels, 4, 3)")
+    if not np.isfinite(time) or not np.isfinite(reference_speed):
+        raise ValueError("VLM surface time and reference speed must be finite")
+    count = len(corners)
+    points = vtkPoints()
+    points.SetData(numpy_to_vtk(np.ascontiguousarray(corners.reshape(-1, 3)), deep=True))
+    cells = vtkCellArray()
+    cells.SetData(
+        numpy_to_vtkIdTypeArray(np.arange(count + 1, dtype=np.int64) * 4, deep=True),
+        numpy_to_vtkIdTypeArray(np.arange(count * 4, dtype=np.int64), deep=True),
+    )
+    surface = vtkPolyData()
+    surface.SetPoints(points)
+    surface.SetPolys(cells)
+
+    def add(data: vtkFieldData, name: str, values: np.ndarray) -> None:
+        """Attach a named deep-copy array to VTK cell or field data."""
+        array = numpy_to_vtk(np.ascontiguousarray(values), deep=True)
+        array.SetName(name)
+        data.AddArray(array)
+
+    computed_area = None
+    if "area" not in fields:
+        # Geometry determines area independently of the stored solution.
+        # Reuse this value when normalizing the recorded normal force.
+        computed_area = 0.5 * np.linalg.norm(
+            np.cross(
+                corners[:, 2] - corners[:, 0],
+                corners[:, 1] - corners[:, 3],
+            ),
+            axis=1,
+        )
+        if not np.isfinite(computed_area).all():
+            raise ValueError("Invalid geometry-derived VLM panel area")
+
+    cell_data = surface.GetCellData()
+    for name in CELL_FIELDS:
+        if name in fields:
+            values = np.asarray(fields[name])
+            if values.shape not in ((count,), (count, 3)) or not np.isfinite(values).all():
+                raise ValueError(f"Invalid saved VLM field {name}")
+            add(cell_data, name, values)
+    add(cell_data, "panel_id", np.arange(count, dtype=np.int32))
+    add(cell_data, "panel_centre", corners.mean(axis=1))
+    chord = np.linalg.norm(
+        0.5 * (corners[:, 3] + corners[:, 2] - corners[:, 0] - corners[:, 1]),
+        axis=1,
+    )
+    add(cell_data, "panel_chord", chord)
+    if computed_area is not None:
+        add(cell_data, "area", computed_area)
+    if "vortex_point_position" in fields:
+        vortex = np.asarray(fields["vortex_point_position"])
+        add(cell_data, "bound_vortex_leg", vortex[:, 2] - vortex[:, 1])
+    if "circulation" in fields:
+        denominator = reference_speed * chord
+        pressure = np.divide(
+            2.0 * fields["circulation"],
+            denominator,
+            out=np.zeros(count, dtype=corners.dtype),
+            where=denominator > 1e-15,
+        )
+        if "unsteady_pressure_jump_coefficient" in fields:
+            pressure += fields["unsteady_pressure_jump_coefficient"]
+        add(cell_data, "circulation_pressure_jump_proxy", pressure)
+        cell_data.SetActiveScalars("circulation")
+    if force_density is not None:
+        force_density = float(force_density)
+        if not np.isfinite(force_density) or force_density <= 0.0:
+            raise ValueError("VLM force density must be finite and positive")
+        area = np.asarray(fields["area"]) if "area" in fields else computed_area
+        if {"panel_force", "normal"} <= set(fields) and area is not None:
+            denominator = 0.5 * force_density * reference_speed**2 * area
+            normal_load = np.divide(
+                np.sum(np.asarray(fields["panel_force"]) * np.asarray(fields["normal"]), axis=1),
+                denominator,
+                out=np.zeros(count, dtype=corners.dtype),
+                where=denominator > 1e-15,
+            )
+            add(cell_data, "panel_normal_load_coefficient", normal_load)
+    # VTK requires the exact metadata key TimeValue to recover physical time
+    # from standalone VTP file series.  It is not a model field; the native
+    # API and scientific arrays keep their snake_case names.
+    for name in ("time", "TimeValue"):
+        add(surface.GetFieldData(), name, np.array([time], dtype=np.float64))
+    from vtk import vtkStringArray
+
+    metadata = {
+        "velocity_frame": "inertial fluid velocity at collocation points [m/s]",
+        "relative_velocity_definition": "relative_velocity = velocity - kinematic_velocity [m/s]",
+        "bound_velocity_frame": "inertial fluid velocity at bound-vortex midpoints [m/s]",
+        "bound_relative_velocity_definition": (
+            "bound_relative_velocity = bound_vortex_velocity - bound_kinematic_velocity [m/s]"
+        ),
+        "cell_association": "all VLM fields are cell-centred; panel_id is lattice order",
+        "circulation_pressure_jump_proxy_definition": (
+            "2*circulation/(reference_speed*panel_chord) + unsteady contribution when present"
+        ),
+    }
+    if force_density is not None:
+        add(surface.GetFieldData(), "force_density", np.array([force_density], dtype=np.float64))
+        metadata["panel_force_definition"] = "panel_force is dimensional force [N] at force_density"
+        metadata["panel_normal_load_coefficient_definition"] = (
+            "dot(panel_force, normal)/(0.5*force_density*reference_speed^2*area)"
+        )
+    else:
+        metadata["panel_force_definition"] = (
+            "panel_force units are preserved from input; force density unavailable"
+        )
+    for name, value in metadata.items():
+        array = vtkStringArray()
+        array.SetName(name)
+        array.InsertNextValue(value)
+        surface.GetFieldData().AddArray(array)
+    return write_vtk_dataset(surface, Path(filename))

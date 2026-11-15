@@ -8,7 +8,7 @@ functions (manoeuvre, composite) use the interval-midpoint rule.
 
 The motion objects are immutable. The pose they advance belongs to the solver
 that moves the body: :class:`~openonda.fvm.motion.rigid.RigidMeshMotion` for
-the finite-volume mesh and :class:`~openonda.vpm.boundary_elements.vlm.VLMSolver`
+the finite-volume mesh and :class:`~openonda.vpm.vlm.VLMSolver`
 for each lifting surface.
 """
 

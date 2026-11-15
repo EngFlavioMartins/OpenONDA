@@ -19,8 +19,8 @@ def _configuration(solver: VPMSolver) -> dict[str, Any]:
     configuration = metadata_value(solver.case)
     vlm = solver.vlm_solver
     if vlm is not None:
-        from ..boundary_elements.vlm.geometry.surface_io import surface_to_dict
-        from ..boundary_elements.vlm.solver.restart import restart_configuration_hash
+        from ..vlm.geometry import surface_to_dict
+        from ..vlm.restart import restart_configuration_hash
 
         record = configuration["numerics"]["vlm"]
         record["configuration_hash"] = restart_configuration_hash(vlm)

@@ -1,6 +1,12 @@
-"""Pressure-time loads on the physical panels of a horseshoe lattice."""
+"""VLM loads: pressure-time loads on the panels and the Kutta-Joukowski force evaluator."""
 
+from typing import TYPE_CHECKING
+
+import numpy as np
 import taichi as ti
+
+if TYPE_CHECKING:
+    from .solver import VLMSolver
 
 
 @ti.func
@@ -55,3 +61,33 @@ def add_unsteady_pressure_loads(
             pressure_jump_coefficient[i] = (
                 unsteady_forces[i].dot(area_vector) / area_squared * inverse_dynamic_pressure
             )
+
+
+class VLMForceEvaluator:
+    """Static helpers for aerodynamic force evaluation in VLM-VPM coupling.
+
+    All methods are static and receive their required data explicitly from
+    the solver (no solver reference is held here).
+    """
+
+    # Kutta-Joukowski forces
+
+    @staticmethod
+    def compute_kutta_joukowski(
+        vlm_solver: "VLMSolver | None",
+        freestream_velocity: np.ndarray,
+        density: float,
+        reference_speed: float | None,
+    ) -> "dict[str, np.ndarray | float | str]":
+        """Return bound-leg KJ loads plus the configured unsteady pressure term."""
+        if vlm_solver is None or not vlm_solver._solved:
+            raise RuntimeError("Force evaluation requires a solved VLM lattice")
+        reference = vlm_solver._resolve_reference_velocity(None, vlm_solver.lattice.n_panels)
+        if reference_speed is not None:
+            reference = reference / np.linalg.norm(reference) * reference_speed
+        forces = vlm_solver.compute_forces(density, reference_velocity=reference)
+        return {
+            "unsteady_pressure": vlm_solver.force.unsteady,
+            "force": np.array([forces["force_x"], forces["force_y"], forces["force_z"]]),
+            **forces,
+        }

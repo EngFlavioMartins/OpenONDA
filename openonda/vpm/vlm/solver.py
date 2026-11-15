@@ -7,9 +7,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import copy
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias
+import warnings
 
 import numpy as np
 from numpy.typing import ArrayLike
+import scipy.linalg
 import taichi as ti
 
 from openonda.core.kinematics import (
@@ -23,13 +25,10 @@ from openonda.core.log_style import StepLog
 from openonda.core.metadata import metadata_value
 from openonda.core.profiling import Stopwatch
 
-from ....config.constants import VLM_SMALL_VELOCITY
-from ....kernels import make_vortex_kernel
-from ..config import VLMConfig, VLMSurface
-from ..geometry.aircraft import Aircraft, Wing
-from ..geometry.surface_io import load_surface as _load_surface
-from .circulation_solver import CirculationSolver
-from .influence import (
+from ..config.constants import VLM_SMALL_VELOCITY
+from ..kernels import make_vortex_kernel
+from .config import VLMConfig, VLMSurface
+from .filament import (
     accumulate_bound_transport,
     add_induced_velocity_at_targets,
     add_stage_rates_with_bound_exchange,
@@ -40,19 +39,21 @@ from .influence import (
     compute_panel_force_coupled,
     initialize_bound_transport,
 )
-from .kernels import shed_wake_particles_kernel
+from .geometry import Aircraft, Wing
+from .geometry import load_surface as _load_surface
 from .lattice import VLMLattice
+from .loads import add_unsteady_pressure_loads
 from .mesh import (
     generate_vlm_mesh,
     update_trailing_directions_local,
     update_trailing_edge_directions,
 )
-from .unsteady import add_unsteady_pressure_loads
+from .wake import shed_wake_particles_kernel
 
 if TYPE_CHECKING:
-    from ....particles.container import Particles
-    from ....physics.base import PhysicsBase
-    from ....physics.induction.base import StageRates, StageState
+    from ..particles.container import Particles
+    from ..physics.base import PhysicsBase
+    from ..physics.induction.base import StageRates, StageState
 
 EPSILON = VLM_SMALL_VELOCITY
 
@@ -84,6 +85,60 @@ def _padded(values: np.ndarray, lattice: VLMLattice) -> np.ndarray:
     padded = np.zeros((lattice.max_n_panels, *values.shape[1:]), dtype=lattice.np_dtype)
     padded[: len(values)] = values
     return padded
+
+
+class CirculationSolver:
+    """Solve ``influence @ circulation = right_hand_side`` with SciPy LU factors.
+
+    Factorization costs O(N³); right-hand sides of an identical matrix reuse
+    the factors. A singular or non-finite system raises before either the
+    cache or the output circulation is changed.
+    """
+
+    def __init__(self) -> None:
+        """Start with an empty matrix and factor cache."""
+        self._matrix: np.ndarray | None = None
+        self._factorization: tuple[np.ndarray, np.ndarray] | None = None
+
+    def solve(
+        self, influence: ti.Field, right_hand_side: ti.Field, circulation: ti.Field, n_panels: int
+    ) -> None:
+        """Solve the active ``n_panels`` system in the precision of the fields.
+
+        Parameters
+        ----------
+        influence : Taichi field, shape (capacity, capacity)
+            Dense influence matrix; entries map panel circulation to the
+            collocation-point normal velocity.
+        right_hand_side : Taichi field, shape (capacity,)
+            Boundary-condition vector.
+        circulation : Taichi field, shape (capacity,)
+            Solution storage; the active prefix is overwritten and the rest
+            set to zero.
+        n_panels : int
+            Active system size.
+
+        Raises
+        ------
+        numpy.linalg.LinAlgError
+            If the influence matrix is singular or the solution is not finite.
+        """
+        matrix = influence.to_numpy()[:n_panels, :n_panels]
+        rhs = right_hand_side.to_numpy()[:n_panels]
+        if self._matrix is None or not np.array_equal(matrix, self._matrix):
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", scipy.linalg.LinAlgWarning)
+                    factorization = scipy.linalg.lu_factor(matrix)
+            except scipy.linalg.LinAlgWarning as error:
+                raise np.linalg.LinAlgError("VLM influence matrix is singular") from error
+            self._matrix, self._factorization = matrix, factorization
+        solution = scipy.linalg.lu_solve(self._factorization, rhs)
+        if not np.all(np.isfinite(solution)):
+            raise np.linalg.LinAlgError("VLM circulation solve produced non-finite values")
+        full = np.zeros(circulation.shape[0], dtype=matrix.dtype)
+        full[:n_panels] = solution
+        circulation.from_numpy(full)
 
 
 class VLMSolver:

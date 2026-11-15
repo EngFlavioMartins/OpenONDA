@@ -14,8 +14,7 @@ from openonda.core.kinematics import (
 )
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly
 
-from .boundary_elements import vlm
-from .boundary_elements.vlm.config import ForceConfig, VLMConfig, VLMMeshConfig, VLMSurface
+from . import vlm
 from .config import (
     Backup,
     DivergenceLimit,
@@ -57,6 +56,7 @@ from .stabilization import (
     FilamentRefinementError,
     StabilizationError,
 )
+from .vlm.config import ForceConfig, VLMConfig, VLMMeshConfig, VLMSurface
 
 __all__ = [
     "RK2",
