@@ -29,10 +29,8 @@ from openonda.core.kinematics import (
     TranslatingMotion,
 )
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly
-from openonda.core.status import RunStatus
-from openonda.core.version import __version__
 
-from . import io, mesher
+from . import mesher
 from .config import (
     Backup,
     BoundaryConfig,
@@ -43,11 +41,9 @@ from .config import (
     LinearSolverConfig,
     LoggingConfig,
     MaximumCourantTimeStep,
-    MeshQualityConfig,
     Numerics,
     Output,
     PimpleConfig,
-    RunAcceptanceLimits,
     RunPlan,
     Samplers,
     TransportConfig,
@@ -55,23 +51,17 @@ from .config import (
     VelocityBoundary,
 )
 from .core.solver import AcceptanceLimitError, FVMSolver
-from .core.state import FieldState
 from .diagnostics.fields import (
     compute_continuity_error,
 )
-from .diagnostics.step import StepDiagnostics
 from .grid_study import analyse_grid_study, update_grid_study
-from .io.analysis import AnalysisSnapshot, BoundarySnapshot
 from .motion import ElasticMount, MeshMotion
 from .sampling import ForceSampler, LineSampler, MotionSampler, SurfaceSampler, YPlusSampler
-from .solve.linear_interface import LinearSolveResult
 
 __all__ = [
     "AcceptanceLimitError",
-    "AnalysisSnapshot",
     "Backup",
     "BoundaryConfig",
-    "BoundarySnapshot",
     "CompositeMotion",
     "ComputeConfig",
     "DiscretizationConfig",
@@ -80,19 +70,16 @@ __all__ = [
     "EveryTime",
     "FVMCase",
     "FVMSolver",
-    "FieldState",
     "FinalOnly",
     "ForceSampler",
     "HeavingMotion",
     "InitialFields",
     "LineSampler",
-    "LinearSolveResult",
     "LinearSolverConfig",
     "LoggingConfig",
     "ManeuverMotion",
     "MaximumCourantTimeStep",
     "MeshMotion",
-    "MeshQualityConfig",
     "MotionSampler",
     "Numerics",
     "Output",
@@ -101,13 +88,10 @@ __all__ = [
     "RigidMotion",
     "RigidPose",
     "RotatingMotion",
-    "RunAcceptanceLimits",
     "RunPlan",
-    "RunStatus",
     "Samplers",
     "SmoothRampMotion",
     "StaticMotion",
-    "StepDiagnostics",
     "SurfaceSampler",
     "TranslatingMotion",
     "TransportConfig",
@@ -115,10 +99,8 @@ __all__ = [
     "VelocityBoundary",
     "VelocityRamp",
     "YPlusSampler",
-    "__version__",
     "analyse_grid_study",
     "compute_continuity_error",
-    "io",
     "mesher",
     "update_grid_study",
 ]

@@ -20,15 +20,12 @@ from .config import (
     DivergenceLimit,
     DivergenceRelaxationConfig,
     FilamentRefinementConfig,
-    FiniteStateCheck,
-    GrowthLimit,
     LagrangianCFLLimit,
     LoggingConfig,
     MisalignmentLimit,
     Numerics,
     Output,
     ParticleStateLimits,
-    ParticleStrengthLimit,
     RunPlan,
     Samplers,
     StabilizationConfig,
@@ -38,11 +35,7 @@ from .config import (
 )
 from .core.solver import VPMSolver
 from .diagnostics.particle_state import ParticleStateError
-from .initialization import (
-    InitialCondition,
-    ParticleDistribution,
-    VortexParticleSet,
-)
+from .initialization import ParticleDistribution, VortexParticleSet
 from .numerics.rk_tableaux import RK2, RK4, SSPRK3
 from .physics.induction.direct import DirectInduction
 from .physics.induction.fmm import FMMInduction
@@ -74,14 +67,11 @@ __all__ = [
     "FilamentRefinementConfig",
     "FilamentRefinementError",
     "FinalOnly",
-    "FiniteStateCheck",
     "FlowIntegralsSampler",
     "ForceConfig",
     "GaussianMeshParameters",
     "GaussianSlabSettings",
-    "GrowthLimit",
     "HeavingMotion",
-    "InitialCondition",
     "LagrangianCFLLimit",
     "LineSampler",
     "LoggingConfig",
@@ -92,7 +82,6 @@ __all__ = [
     "ParticleDistribution",
     "ParticleStateError",
     "ParticleStateLimits",
-    "ParticleStrengthLimit",
     "PitchingMotion",
     "RigidMotion",
     "RigidPose",

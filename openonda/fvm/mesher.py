@@ -2,11 +2,10 @@
 """Public mesher namespace for the finite-volume solver.
 
 This module is the single import surface for mesh construction. It keeps
-typed geometry, sizing, report, and mesh-import objects together while
+typed geometry, sizing, and mesh-import objects together while
 leaving :mod:`openonda.fvm` focused on solver configuration and runtime.
 """
 
-from .mesh import geometry
 from .mesh.cartesian import (
     BoxDomain,
     BoxPatches,
@@ -17,7 +16,6 @@ from .mesh.cartesian import (
     PatchRefinement,
     STLSurface,
 )
-from .mesh.cartesian.report import GenerationReport, SizeReport
 from .mesh.gmsh_importer import GmshImporter
 from .mesh.rectilinear import (
     box_mesh_3d,
@@ -33,14 +31,11 @@ __all__ = [
     "CartesianMesher",
     "ExtrudedCartesianMesher",
     "FeatureRefinement",
-    "GenerationReport",
     "GmshImporter",
     "PatchRefinement",
     "STLSurface",
-    "SizeReport",
     "box_mesh_3d",
     "coupling_box_mesh",
-    "geometry",
     "stretched",
     "wall_refined_axis",
 ]

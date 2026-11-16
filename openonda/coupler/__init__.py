@@ -13,7 +13,6 @@ outer wake::
 
 from openonda.core.forcing import VelocityRamp
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly
-from openonda.core.status import RunStatus
 
 from .config import Backup, CouplerConfig
 from .solver import CoupledSolver
@@ -25,6 +24,5 @@ __all__ = [
     "EverySteps",
     "EveryTime",
     "FinalOnly",
-    "RunStatus",
     "VelocityRamp",
 ]
