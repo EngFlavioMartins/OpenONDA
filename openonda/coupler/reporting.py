@@ -293,7 +293,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
     }
     vpm_solver = getattr(coupler, "vpm_solver", None)
     if vpm_solver is not None:
-        correction = getattr(vpm_solver.physics, "last_gbd_moment_correction", None)
+        correction = getattr(vpm_solver.physics.lattice, "last_gbd_moment_correction", None)
         if correction is not None:
             gbd_moment_correction = {
                 "applied": bool(correction["applied"]),
@@ -358,7 +358,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             ):
                 raise FloatingPointError("non-finite solid-projection budget")
             diagnostics["solid_projection"] = projection_record
-        wall_transfer = getattr(physics, "last_gbd_wall_transfer", None)
+        wall_transfer = getattr(physics.lattice, "last_gbd_wall_transfer", None)
         if wall_transfer is not None:
             wall_record = {
                 "wall_adjacent_particles": int(wall_transfer["wall_adjacent_particles"]),

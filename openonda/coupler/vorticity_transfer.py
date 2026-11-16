@@ -851,7 +851,7 @@ class VorticityTransfer:
             None
             if vpm is None
             else partial(
-                vpm.physics.compute_m4_wall_corrections,
+                vpm.physics.lattice.wall.compute_m4_wall_corrections,
                 wall_fallback_limit=viscous.gbd_wall_fallback_limit,
             )
         )

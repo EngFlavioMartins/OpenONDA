@@ -9,7 +9,7 @@ import taichi as ti
 from ..config.constants import MAX_N_PARTICLES
 from .base import _HOST_TRANSFER_CHUNK_SIZE, PhysicsBase
 from .diffusion.core_spreading import apply_core_spreading
-from .diffusion.grid import _GridDiffusionMixin
+from .diffusion.lattice import DiffusionLattice
 from .diffusion.random_walk import apply_random_walk
 from .induction.base import TaichiDataType
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @ti.data_oriented
-class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
+class PhysicsEngine(PhysicsBase):
     """Own reusable VPM fields and physical operators.
 
     Particle induction is supplied by an :class:`InductionMethod`; this class
@@ -52,10 +52,19 @@ class PhysicsEngine(PhysicsBase, _GridDiffusionMixin):
         does not move particles, advance time, or select a Runge--Kutta stage.
         """
         super().__init__(particle_kernel, max_n_particles, accumulator_dtype, max_evaluation_points)
-        self._init_grid_diffusion()
+        self.lattice = DiffusionLattice()
         # Reset by the coupler before each accepted VPM advance when a solid
         # numerical-exclusion guard is installed.
         self.last_solid_projection: dict[str, Any] | None = None
+
+    @property
+    def _slip_slab_bounds(self) -> tuple[float, float] | None:
+        """Slip-slab z bounds, set only by a bound slip-slab induction."""
+        return self.lattice.slip_slab_bounds
+
+    @_slip_slab_bounds.setter
+    def _slip_slab_bounds(self, bounds: tuple[float, float] | None) -> None:
+        self.lattice.slip_slab_bounds = bounds
 
     def report_rows(self) -> list:
         """Return the physics-model configuration as log detail rows."""

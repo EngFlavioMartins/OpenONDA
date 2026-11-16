@@ -27,6 +27,8 @@ import taichi as ti
 
 from ..io.logging import step_timing
 from ..particles.container import inside_box
+from ..physics.diffusion.dvh import dvh_diffusion
+from ..physics.diffusion.gbd import gbd_diffusion
 from ..physics.induction.base import StageRates, StageState
 from ..runtime.timing import remainder_section
 from ..wall_errors import WallCorrectionTooLargeError
@@ -477,7 +479,8 @@ class EvolutionStepper:
             effective_viscosity = (
                 self.particles.effective_viscosity_cpu()[:N].copy() if N > 0 else None
             )
-            return self.physics.dvh_diffusion(
+            return dvh_diffusion(
+                self.physics.lattice,
                 self.particles,
                 time_step_size=time_step_size,
                 particle_spacing=vc.dvh_grid_spacing,
@@ -495,7 +498,8 @@ class EvolutionStepper:
                 N = self.particles.n_particles_total
                 if N > 0:
                     effective_viscosity = self.particles.effective_viscosity_cpu()
-            return self.physics.gbd_diffusion(
+            return gbd_diffusion(
+                self.physics.lattice,
                 self.particles,
                 time_step_size=time_step_size,
                 particle_spacing=vc.gbd_grid_spacing,

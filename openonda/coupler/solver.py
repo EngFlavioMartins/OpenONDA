@@ -547,7 +547,7 @@ class CoupledSolver:
         elif boundary is not None:
             from .solid import WallProjection
 
-            vpm.physics.configure_body_classifier(
+            vpm.physics.lattice.wall.configure_body_classifier(
                 boundary.contains,
                 revision=boundary.revision,
                 query_bounds=boundary.bounds,
@@ -574,7 +574,9 @@ class CoupledSolver:
             )
         anchor = transfer._lattice_anchor
         if anchor is not None:
-            vpm.physics.configure_grid_lattice_anchor(anchor, self.vpm_diffusion_grid_spacing)
+            vpm.physics.lattice.configure_grid_lattice_anchor(
+                anchor, self.vpm_diffusion_grid_spacing
+            )
             anchor_text = ", ".join(f"{value:.6g}" for value in np.asarray(anchor))
             logger.info(
                 format_coupler_log(
@@ -592,7 +594,7 @@ class CoupledSolver:
         boundary = PlacedSolidBoundary(
             self.vorticity_transfer.solid_boundary, self.frame, pose, time
         )
-        vpm.physics.configure_body_classifier(
+        vpm.physics.lattice.wall.configure_body_classifier(
             boundary.contains,
             revision=boundary.revision,
             query_bounds=boundary.bounds,
@@ -1186,7 +1188,7 @@ class CoupledSolver:
                 vpm.synchronize()
                 if vpm.viscous_scheme == "gbd":
                     _validate_gbd_moment_correction(
-                        getattr(vpm.physics, "last_gbd_moment_correction", None),
+                        getattr(vpm.physics.lattice, "last_gbd_moment_correction", None),
                         self.config.max_moment_correction_fraction,
                     )
         return time.perf_counter() - started

@@ -194,4 +194,4 @@ Lattice fields: `transfer_region_bounds`, `remeshing_region_bounds`,
 is their complement). Strength thresholds: `strength_threshold = h³ τ_transfer` in
 the replacement region and `surface_strength_threshold`, the absolute GBD strength
 threshold, at the transfer surface.
-The VPM GBD diagnostic is `last_gbd_moment_correction`.
+The VPM GBD diagnostic is `last_gbd_moment_correction`, an attribute of `physics.lattice`.

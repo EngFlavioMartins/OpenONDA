@@ -355,7 +355,7 @@ class VPMSolver:
         from ..physics.induction.slip_slab import SlipSlabInduction
 
         viscous = final_setup.viscous
-        self.physics.core_radius_ratio = float(viscous.core_radius_ratio)
+        self.physics.lattice.core_radius_ratio = float(viscous.core_radius_ratio)
         # Grid diffusion on GPU uses a fixed workspace to avoid repeated allocation.
         vpm_bounds = final_setup.domain_bounds
         scheme = viscous.scheme
@@ -367,7 +367,7 @@ class VPMSolver:
         # CPU may still grow the workspace; only its lattice origin is fixed.
         slip_slab_grid = is_grid_diffusion and isinstance(self.induction, SlipSlabInduction)
         if fixed_grid_required:
-            self.physics.require_fixed_grid_allocation(True)
+            self.physics.lattice.require_fixed_grid_allocation(True)
         if fixed_grid_required or slip_slab_grid:
             if scheme == "dvh":
                 _grid_h = viscous.dvh_grid_spacing
@@ -387,7 +387,7 @@ class VPMSolver:
                     "fixed diffusion grid can be pre-allocated."
                 )
 
-            self.physics.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
+            self.physics.lattice.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
         self.particles.set_freestream_velocity(np.array(self.numerics.freestream_velocity))
 
     def _initialize_turbulence(self, final_setup: Numerics) -> None:
@@ -466,8 +466,8 @@ class VPMSolver:
         # Phase timing waits for the device around every phase, so it is
         # opt-in; the whole-step timer of a normal run adds no device wait.
         self.profiler = Profiler(enabled=self.case.logging.detailed_timing, synchronize=ti.sync)
-        self.physics.profiler = self.profiler
-        self.physics.logger = self.logger
+        self.physics.lattice.profiler = self.profiler
+        self.physics.lattice.logger = self.logger
         self.stage_rhs = StageRHS(
             self.induction,
             providers=tuple(self._stage_providers),
