@@ -4,8 +4,8 @@ Provides DNS, LES, and inviscid VPM models with Taichi acceleration,
 viscous diffusion, diagnostics, sampling, and restart support.
 """
 
-from collections.abc import Collection, Iterator, Mapping, Sequence
-from contextlib import contextmanager, suppress
+from collections.abc import Collection, Mapping, Sequence
+from contextlib import suppress
 import math
 from numbers import Real
 from pathlib import Path
@@ -182,9 +182,9 @@ class VPMSolver:
         self._run_clock: Stopwatch | None = None
         self._last_backup_state: tuple | None = None
         self._last_frame_state: tuple | None = None
-        self._preparing_output = False
-        self._prepared_backup_velocity: tuple | None = None
-        self._allow_backup_velocity_reuse = False
+        # Key of the accepted state whose transport velocity the particle velocity
+        # field holds, between the diagnostics of an output event and its backup.
+        self._velocity_valid_for: tuple | None = None
         self._particle_snapshot_buffers: dict = {}
         self._mesh_cleanup_failure: BaseException | None = None
         self._loading_numerical_state = False
@@ -814,10 +814,9 @@ class VPMSolver:
         self._ensure_evolution_usable()
         self._build_initial_conditions()
         self.logger.muted = False
-        with self._output_preparation():
-            self._refresh_diagnostics_for_output()
-            self.write_vtk()
-            self._sampler_manager.dispatch(OutputEvent.initial)
+        self._refresh_diagnostics_for_output()
+        self.write_vtk()
+        self._sampler_manager.dispatch(OutputEvent.initial)
 
     def write_final_output(self) -> None:
         """Write the final particle frame and the final-only samplers.
@@ -830,28 +829,23 @@ class VPMSolver:
         """
         if not self.case.run.final_output:
             return
-        with self._output_preparation():
-            self._refresh_diagnostics_for_output()
-            if self._last_frame_state != self._state_key():
-                self.write_vtk()
-            final_time = float(self.case.run.end_time)
-            tolerance = time_tolerance(final_time)
-            if self.time < final_time - tolerance:
-                self._sampler_manager.write_all(OutputEvent.final)
-            else:
-                self._sampler_manager.dispatch(OutputEvent.final)
+        self._refresh_diagnostics_for_output()
+        if self._last_frame_state != self._state_key():
+            self.write_vtk()
+        final_time = float(self.case.run.end_time)
+        tolerance = time_tolerance(final_time)
+        if self.time < final_time - tolerance:
+            self._sampler_manager.write_all(OutputEvent.final)
+        else:
+            self._sampler_manager.dispatch(OutputEvent.final)
 
     def _write_end_backup(self) -> None:
         """Write the end-of-run backup unless the accepted state already has one."""
         if not self.case.backup.write_at_end or self._last_backup_state == self._state_key():
             return
-        with self._output_preparation():
-            self._refresh_diagnostics_for_output()
-            self._allow_backup_velocity_reuse = True
-            try:
-                self.save_backup()
-            finally:
-                self._allow_backup_velocity_reuse = False
+        self._refresh_diagnostics_for_output()
+        self._velocity_valid_for = self._velocity_key()
+        self.save_backup()
 
     def _build_initial_conditions(self) -> None:
         """Build each declarative initial condition exactly once."""
@@ -955,24 +949,8 @@ class VPMSolver:
             raise primary_failure
         self._closed = True
 
-    @contextmanager
-    def _output_preparation(self) -> Iterator[None]:
-        """Allow one backup to reuse fields within a framework-owned event.
-
-        Nothing survives the event: manual saves, coupling steps, changed
-        callbacks and restart loads must evaluate their current transport field.
-        Consuming the token before writing also prevents sampler callbacks from
-        reusing it for a second save with externally changed boundary data.
-        """
-        self._preparing_output = True
-        self._prepared_backup_velocity = None
-        try:
-            yield
-        finally:
-            self._preparing_output = False
-            self._prepared_backup_velocity = None
-
-    def _backup_velocity_key(self) -> tuple:
+    def _velocity_key(self) -> tuple:
+        """Identify the accepted state and transport field of the particle velocity."""
         return (
             self.step,
             self.time,
@@ -989,8 +967,6 @@ class VPMSolver:
         if self.particles.n_particles_total:
             self.stepper._update_velocity_and_gradients()
             self.stepper._update_les_state()
-        if self._preparing_output:
-            self._prepared_backup_velocity = self._backup_velocity_key()
 
     def _check_accepted_particle_state(self) -> None:
         """Refresh and validate diagnostics for one accepted physical state."""
@@ -1010,6 +986,7 @@ class VPMSolver:
             previous=self._accepted_state_metrics,
         )
         self.stabilization.lagrangian_cfl = self._accepted_state_metrics.strain_increment_infinity
+        self._velocity_valid_for = self._velocity_key()
 
     def maximum_lagrangian_strain_rate(self) -> float:
         """Return the maximum infinity-norm strain rate of the current particle field, in 1/s."""
@@ -1038,26 +1015,23 @@ class VPMSolver:
         """
         self.logger.muted = False
         phase_clock = Stopwatch()
-        with self._output_preparation():
-            with remainder_section(self.profiler, "Particle state checks"):
-                self._check_accepted_particle_state()
-            state_check_seconds = phase_clock.lap()
-            with remainder_section(self.profiler, "Flow and VLM diagnostics"):
-                if self.vlm_solver is not None:
-                    self._record_vlm_diagnostics()
-                if self._sampler_manager.flow_integrals_due():
-                    self._update_all_flow_integrals()
-            diagnostics_seconds = phase_clock.lap()
-            with remainder_section(self.profiler, "Backups, frames and samplers"):
-                if self._is_due(self.case.backup.schedule):
-                    self._allow_backup_velocity_reuse = True
-                    try:
-                        self.save_backup()
-                    finally:
-                        self._allow_backup_velocity_reuse = False
-                if self._is_due(self.case.output.schedule):
-                    self.write_vtk()
-                self._sampler_manager.dispatch(OutputEvent.accepted_step)
+        with remainder_section(self.profiler, "Particle state checks"):
+            self._check_accepted_particle_state()
+        state_check_seconds = phase_clock.lap()
+        with remainder_section(self.profiler, "Flow and VLM diagnostics"):
+            if self.vlm_solver is not None:
+                self._record_vlm_diagnostics()
+            if self._sampler_manager.flow_integrals_due():
+                self._update_all_flow_integrals()
+        diagnostics_seconds = phase_clock.lap()
+        with remainder_section(self.profiler, "Backups, frames and samplers"):
+            if self._is_due(self.case.backup.schedule):
+                self.save_backup()
+            if self._is_due(self.case.output.schedule):
+                self.write_vtk()
+            # Only the backup of this event reuses the velocity of its diagnostics.
+            self._velocity_valid_for = None
+            self._sampler_manager.dispatch(OutputEvent.accepted_step)
         self.logger.section(
             "OUTPUT TIMING",
             ("Particle state checks", state_check_seconds, "s"),
@@ -1813,6 +1787,8 @@ class VPMSolver:
         pathlib.Path
             The particle frame.
         """
+        # A frame evaluates its own velocity; only a backup reuses the diagnostics'.
+        self._velocity_valid_for = None
         self._refresh_backup_particle_fields()
         frame = write_solution_frames(self)
         self._last_frame_state = self._state_key()
@@ -1821,20 +1797,18 @@ class VPMSolver:
     def _refresh_backup_particle_fields(self) -> None:
         """Evaluate the transport velocity and vorticity written to backups and frames.
 
-        A field prepared by the current output event is reused once;
-        otherwise the complete transport field (including a bound lattice
-        and external sources) is evaluated at the accepted time, without
-        publishing stretching or exchange rates.
+        The velocity that the diagnostics of the current output event
+        evaluated is reused once for the backup of that event; otherwise the
+        complete transport field (including a bound lattice and external
+        sources) is evaluated at the accepted time, without publishing
+        stretching or exchange rates.
         """
         n_particles = self.particles.n_particles_total
-        prepared = self._prepared_backup_velocity
-        self._prepared_backup_velocity = None
         reuse_velocity = (
-            self._preparing_output
-            and self._allow_backup_velocity_reuse
-            and prepared is not None
-            and prepared == self._backup_velocity_key()
+            self._velocity_valid_for is not None
+            and self._velocity_valid_for == self._velocity_key()
         )
+        self._velocity_valid_for = None
         if n_particles > 0 and not reuse_velocity:
             self.stage_rhs.evaluate(
                 StageState(
