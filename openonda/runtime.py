@@ -11,7 +11,6 @@ from typing import Literal
 
 _MPI_CHILD = "_OPENONDA_MPI_CHILD"
 _MPIEXEC_VARIABLE = "OPENONDA_MPIEXEC"
-_PMIX_RETAIN_LOOPBACK = "PMIX_MCA_pif_base_retain_loopback"
 _MPI_SIZE_VARIABLES = (
     "OMPI_COMM_WORLD_SIZE",
     "PMI_SIZE",
@@ -224,7 +223,6 @@ class RunConfig:
 
         environment = os.environ.copy()
         environment[_MPI_CHILD] = "1"
-        environment.setdefault(_PMIX_RETAIN_LOOPBACK, "1")
         main = sys.modules["__main__"]
         # A module runner preserves relative imports across MPI relaunches.
         if (
