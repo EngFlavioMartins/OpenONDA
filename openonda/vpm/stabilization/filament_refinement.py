@@ -34,7 +34,7 @@ class FilamentRefinementError(RuntimeError):
 
 @dataclass(frozen=True)
 class FilamentRefinementResult:
-    """Particle arrays and transfer diagnostics produced by one refinement."""
+    """Particle arrays and the stretch ratio produced by one refinement."""
 
     position: np.ndarray
     vortex_strength: np.ndarray
@@ -45,9 +45,6 @@ class FilamentRefinementResult:
     source_index: np.ndarray
     refined_particles: int
     max_stretch_ratio: float
-    vortex_strength_error: float
-    linear_impulse_error: float
-    angular_impulse_error: float
 
 
 def particle_moments(
@@ -180,8 +177,8 @@ def split_stretched_filaments(
     time step. Every eligible parent must fit within the hard particle capacity.
 
     Between ``slip_slab`` planes a child displaced across a plane is replaced
-    by its image inside the slab, which carries the same field. The reported
-    moment errors are those of the bisection itself, before that exact fold.
+    by its image inside the slab, which carries the same field. The moments of the
+    bisection are checked before that exact fold.
     """
 
     position = np.asarray(position, dtype=np.float64)
@@ -254,9 +251,6 @@ def split_stretched_filaments(
             source_index=source,
             refined_particles=0,
             max_stretch_ratio=(float(stretch_ratio.max()) if len(stretch_ratio) else 0.0),
-            vortex_strength_error=0.0,
-            linear_impulse_error=0.0,
-            angular_impulse_error=0.0,
         )
 
     retained_mask = np.ones(len(position), dtype=bool)
@@ -328,9 +322,6 @@ def split_stretched_filaments(
         source_index=source,
         refined_particles=refined_count,
         max_stretch_ratio=float(stretch_ratio.max()),
-        vortex_strength_error=float(np.linalg.norm(after[0] - before[0])),
-        linear_impulse_error=float(np.linalg.norm(after[2] - before[2])),
-        angular_impulse_error=float(np.linalg.norm(after[3] - before[3])),
     )
 
 

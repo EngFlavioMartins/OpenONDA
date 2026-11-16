@@ -463,59 +463,53 @@ class StabilizationManager:
             particles = self.ctx.particles
             reference_vortex_strength = original_strength.astype(np.float64)
             particle_volume = particles.particle_volume_cpu().astype(np.float64)
-        try:
-            statistics = self.operators.apply_pedrizzetti_relaxation(
-                self.ctx.particles,
-                cfg.pedrizzetti_relaxation_factor,
-                preserve_vortex_strength_magnitude=(
-                    cfg.pedrizzetti_relaxation_preserve_vortex_strength
-                ),
-            )
-            correction_relative = 0.0
-            if reference_vortex_strength is not None:
-                from .divergence_relaxation import restore_particle_moments
+        statistics = self.operators.apply_pedrizzetti_relaxation(
+            self.ctx.particles,
+            cfg.pedrizzetti_relaxation_factor,
+            preserve_vortex_strength_magnitude=(
+                cfg.pedrizzetti_relaxation_preserve_vortex_strength
+            ),
+        )
+        correction_relative = 0.0
+        if reference_vortex_strength is not None:
+            from .divergence_relaxation import restore_particle_moments
 
-                relaxed = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
-                corrected, correction_relative = restore_particle_moments(
-                    position,
-                    relaxed,
-                    core_radius,
-                    particle_volume,
-                    reference_vortex_strength,
-                    angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
-                    slip_slab=self.ctx.slip_slab is not None,
-                )
-                self.ctx.mutations.set_properties(
-                    vortex_strength=corrected.astype(self.ctx.np_dtype)
-                )
-            from .filament_refinement import particle_moments
-
-            # The operator holds positions/cores fixed, so moments of delta-Gamma
-            # are the exact transfers and avoid subtracting large impulse totals.
-            delta_strength = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(
-                np.float64
-            ) - original_strength.astype(np.float64)
-            transfer = particle_moments(
+            relaxed = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(np.float64)
+            corrected, correction_relative = restore_particle_moments(
                 position,
-                delta_strength,
+                relaxed,
                 core_radius,
+                particle_volume,
+                reference_vortex_strength,
                 angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
                 slip_slab=self.ctx.slip_slab is not None,
             )
-            self.accept(
-                "Pedrizzetti relaxation",
-                before,
-                conserves_vortex_strength=reference_vortex_strength is not None,
-                detail=(
-                    f"blend={cfg.pedrizzetti_relaxation_factor:.6g}, "
-                    f"misalignment={statistics['pedrizzetti_misalignment_deg']:.2f} deg, "
-                    f"moment correction={correction_relative:.2e}"
-                ),
-            )
-            self.pedrizzetti_moment_transfer += np.stack((transfer[0], transfer[2], transfer[3]))
-        except Exception:
-            self.ctx.mutations.set_properties(vortex_strength=original_strength)
-            raise
+            self.ctx.mutations.set_properties(vortex_strength=corrected.astype(self.ctx.np_dtype))
+        from .filament_refinement import particle_moments
+
+        # The operator holds positions/cores fixed, so moments of delta-Gamma
+        # are the exact transfers and avoid subtracting large impulse totals.
+        delta_strength = self.ctx.particles.vortex_strength_cpu(use_cache=False).astype(
+            np.float64
+        ) - original_strength.astype(np.float64)
+        transfer = particle_moments(
+            position,
+            delta_strength,
+            core_radius,
+            angular_core_coefficient=self.ctx.physics._angular_core_coefficient,
+            slip_slab=self.ctx.slip_slab is not None,
+        )
+        self.accept(
+            "Pedrizzetti relaxation",
+            before,
+            conserves_vortex_strength=reference_vortex_strength is not None,
+            detail=(
+                f"blend={cfg.pedrizzetti_relaxation_factor:.6g}, "
+                f"misalignment={statistics['pedrizzetti_misalignment_deg']:.2f} deg, "
+                f"moment correction={correction_relative:.2e}"
+            ),
+        )
+        self.pedrizzetti_moment_transfer += np.stack((transfer[0], transfer[2], transfer[3]))
 
     def apply_filament_refinement(self) -> None:
         """Bisect over-stretched Lagrangian elements at the configured cadence."""
@@ -523,7 +517,7 @@ class StabilizationManager:
         cfg = self.config.filament_refinement
         if (
             not cfg.enabled
-            or ctx.state.step % cfg.interval_steps != 0
+            or not self._due(cfg.interval_steps, 0)
             or ctx.particles.n_particles_total == 0
         ):
             return
@@ -562,52 +556,27 @@ class StabilizationManager:
             return
 
         source = result.source_index
-        names = (
-            "position",
-            "velocity",
-            "vortex_strength",
-            "core_radius",
-            "particle_volume",
-            "kinematic_viscosity",
-            "eddy_viscosity",
-            "group_id",
-            "zone_id",
-            "velocity_gradient",
-            "strain_rate",
+        ctx.mutations.replace(
+            position=result.position.astype(ctx.np_dtype),
+            velocity=particles.velocity_cpu()[source],
+            vortex_strength=result.vortex_strength.astype(ctx.np_dtype),
+            core_radius=result.core_radius.astype(ctx.np_dtype),
+            particle_volume=result.particle_volume.astype(ctx.np_dtype),
+            kinematic_viscosity=particles.kinematic_viscosity_cpu()[source],
+            eddy_viscosity=particles.eddy_viscosity_cpu()[source],
+            group_id=particles.group_id_cpu()[source],
+            zone_id=particles.zone_id_cpu()[source],
+            report_removal=False,
         )
-        old = {name: getattr(particles, name + "_cpu")().copy() for name in names}
-        old_effective_viscosity = particles.effective_viscosity_cpu().copy()
-        old_vorticity = particles.vorticity_cpu().copy()
-        old_references = (self.reference_vortex_strength.copy(), self.reference_lengths.copy())
-        try:
-            ctx.mutations.replace(
-                position=result.position.astype(ctx.np_dtype),
-                velocity=old["velocity"][source],
-                vortex_strength=result.vortex_strength.astype(ctx.np_dtype),
-                core_radius=result.core_radius.astype(ctx.np_dtype),
-                particle_volume=result.particle_volume.astype(ctx.np_dtype),
-                kinematic_viscosity=old["kinematic_viscosity"][source],
-                eddy_viscosity=old["eddy_viscosity"][source],
-                group_id=old["group_id"][source],
-                zone_id=old["zone_id"][source],
-                report_removal=False,
-            )
-            # The next stage recomputes gradients and model viscosity at the
-            # displaced children. Neither is a material inheritance property.
-            self.reference_vortex_strength = result.reference_vortex_strength
-            self.reference_lengths = result.reference_length
-            self.accept(
-                "filament refinement",
-                before,
-                detail=f"split={result.refined_particles}, stretch={result.max_stretch_ratio:.2f}",
-            )
-        except Exception:
-            ctx.mutations.replace(**old, report_removal=False)
-            ctx.mutations.set_properties(
-                effective_viscosity=old_effective_viscosity, vorticity=old_vorticity
-            )
-            self.reference_vortex_strength, self.reference_lengths = old_references
-            raise
+        # The next stage recomputes gradients and model viscosity at the
+        # displaced children. Neither is a material inheritance property.
+        self.reference_vortex_strength = result.reference_vortex_strength
+        self.reference_lengths = result.reference_length
+        self.accept(
+            "filament refinement",
+            before,
+            detail=f"split={result.refined_particles}, stretch={result.max_stretch_ratio:.2f}",
+        )
 
     def apply_divergence_relaxation(self) -> None:
         """Reassign vortex_strength onto the solenoidal subspace of the blob field."""

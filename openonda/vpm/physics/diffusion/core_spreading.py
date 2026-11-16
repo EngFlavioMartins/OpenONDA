@@ -1,8 +1,3 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ...particles.container import Particles
-    from ..base import PhysicsBase
 """Core Spreading Method (CSM) viscous diffusion.
 
 CSM models diffusion by expanding the particle core radius.  For the Gaussian
@@ -13,6 +8,12 @@ relies on periodic remeshing to prevent excessive core overlap.
 The concrete kernel call runs on the owning physics object, which supplies the
 ``update_radius_csm_kernel`` Taichi kernel and its temporary-field management.
 """
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...particles.container import Particles
+    from ..base import PhysicsBase
 
 
 def apply_core_spreading(

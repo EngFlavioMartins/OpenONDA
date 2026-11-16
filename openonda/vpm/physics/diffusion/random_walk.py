@@ -77,16 +77,12 @@ def apply_random_walk(
     # advance ``div(nu_eff * grad(omega))``.  RWM has no drift/viscosity
     # gradient correction, so refuse variable effective viscosity rather than
     # silently running a different PDE (LES is rejected at case validation).
-    effective_viscosity = np.asarray(particles.effective_viscosity_cpu()[:N], dtype=np.float64)
+    stored_viscosity = particles.effective_viscosity_cpu()[:N]
+    effective_viscosity = np.asarray(stored_viscosity, dtype=np.float64)
     if not np.all(np.isfinite(effective_viscosity)) or np.any(effective_viscosity < 0.0):
         raise ValueError("RWM requires finite, non-negative effective viscosity")
     reference = float(effective_viscosity[0])
-    storage_dtype = np.asarray(particles.effective_viscosity_cpu()).dtype
-    storage_epsilon = (
-        float(np.finfo(storage_dtype).eps)
-        if np.issubdtype(storage_dtype, np.floating)
-        else float(np.finfo(np.float32).eps)
-    )
+    storage_epsilon = float(np.finfo(stored_viscosity.dtype).eps)
     scale = max(float(np.max(np.abs(effective_viscosity))), abs(reference))
     tolerance = 8.0 * storage_epsilon * scale
     if np.any(np.abs(effective_viscosity - reference) > tolerance):

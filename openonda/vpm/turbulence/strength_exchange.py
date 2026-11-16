@@ -42,6 +42,7 @@ class StrengthExchange:
         self._upper = ti.Vector.field(3, dtype=dtype, shape=())
         self._extrema = ti.field(dtype=dtype, shape=3)  # max nu_t, max core, min core
         self._cell_capacity = 0
+        self._cell_tree = None
         self._cell_start = None
         self._cell_count = None
 
@@ -63,9 +64,7 @@ class StrengthExchange:
             shape = [max(1, math.ceil(e / cell_size) + 1) for e in extent]
         cells = shape[0] * shape[1] * shape[2]
         if cells > self._cell_capacity:
-            self._cell_capacity = int(1.25 * cells)
-            self._cell_start = ti.field(dtype=ti.i32, shape=self._cell_capacity + 1)
-            self._cell_count = ti.field(dtype=ti.i32, shape=self._cell_capacity)
+            self._allocate_cells(int(1.25 * cells))
         self._bin(
             particles.position,
             self._cell_start,
@@ -93,6 +92,20 @@ class StrengthExchange:
             )
             self._advance(particles.vortex_strength, substep, count)
         particles.touch_state()
+
+    def _allocate_cells(self, capacity: int) -> None:
+        """Replace the cell tables with ones of ``capacity`` cells, releasing the old storage."""
+        if self._cell_tree is not None:
+            ti.sync()
+            self._cell_tree.destroy()
+            self._cell_tree = None
+        self._cell_start = ti.field(dtype=ti.i32)
+        self._cell_count = ti.field(dtype=ti.i32)
+        builder = ti.FieldsBuilder()
+        builder.dense(ti.i, capacity + 1).place(self._cell_start)
+        builder.dense(ti.i, capacity).place(self._cell_count)
+        self._cell_tree = builder.finalize()
+        self._cell_capacity = capacity
 
     @ti.kernel
     def _bounds(

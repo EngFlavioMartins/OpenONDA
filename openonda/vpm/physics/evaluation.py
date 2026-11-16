@@ -11,6 +11,7 @@ import taichi as ti
 
 from ...core.clock import time_tolerance
 from ..config.constants import MAX_N_PARTICLES
+from ..kernels.registry import kernel_definition
 from .induction.base import TaichiDataType
 
 if TYPE_CHECKING:
@@ -22,8 +23,6 @@ _FOURIER_GRID_EXTRA_CELLS = 8
 _FOURIER_GRID_MIN_SLACK = 4
 # The helicity pair term divides by the cube of the separation (m); closer pairs add nothing.
 _MINIMUM_SEPARATION = 1e-12
-# The vortex centroid divides by the strength magnitude (m³/s); weaker particles are skipped.
-_MINIMUM_STRENGTH = 1e-12
 
 
 @ti.data_oriented
@@ -97,9 +96,6 @@ class ParticleFieldEvaluation:
         )
         self.total_quantities_results = FlowIntegralsStruct.field(shape=())
 
-        # Reuse a result field to avoid accumulating Taichi allocations.
-        self._vortex_centroid_result = ti.field(dtype=self.accumulator_dtype, shape=3)
-
     def _resize_fields(self, required_size: int) -> None:
         """Validate that diagnostics fit the startup particle allocation."""
         if required_size <= 0:
@@ -110,18 +106,6 @@ class ParticleFieldEvaluation:
                 f"{self.max_n_particles}. Increase Numerics.max_n_particles before "
                 "constructing the solver."
             )
-
-    def __str__(self) -> str:
-        """Return formatted string representation."""
-        lines = []
-        lines.append(f"  Kernel Type              : {self.particle_kernel}")
-        lines.append("  Domain Type              : Unbounded (diagnostic computations)")
-        lines.append(f"  Accumulator Precision    : {self.accumulator_dtype}")
-        lines.append(f"  Max Particles (allocated): {self.max_n_particles:,}")
-        lines.append(
-            f"  Time History Length      : {len(self._energy_history)} / {self._max_history_length}"
-        )
-        return "\n".join(lines)
 
     # Taichi kernels
 
@@ -139,7 +123,6 @@ class ParticleFieldEvaluation:
         }
 
         self._define_flow_integral_kernels(kernel_functions, kernel_dict)
-        self._define_vortex_centroid_kernels(kernel_functions)
 
     def _define_flow_integral_kernels(
         self, kernel_functions: dict[str, Callable], kernel_dict: dict[str, Callable]
@@ -385,8 +368,8 @@ class ParticleFieldEvaluation:
                         )
                     # Test-filtered enstrophy: the same quadratic form at a
                     # widened width sqrt(sigma_i^2 + sigma_j^2 + Delta_test^2).
-                    # Delta_test = 2 V^(1/3) matches the LES filter width in
-                    # smagorinsky.py and remains a useful resolution diagnostic.
+                    # Delta_test = 2 V^(1/3) is twice the LES filter width V^(1/3) of
+                    # smagorinsky.py.
                     d_test = (
                         2.0
                         * (particle_volume[i] ** (1.0 / 3.0) + particle_volume[j] ** (1.0 / 3.0))
@@ -489,47 +472,6 @@ class ParticleFieldEvaluation:
 
         self.compute_flow_integrals_kernel = compute_flow_integrals_kernel
 
-    def _define_global_vortex_centroid_kernel(self) -> None:
-        """Define and store the global-vortex_centroid kernel."""
-
-        @ti.kernel
-        def compute_global_vortex_centroid_kernel(
-            position: ti.template(),  # type: ignore[invalid-annotation]
-            vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
-            n_particles_total: ti.i32,
-            result: ti.template(),  # type: ignore[invalid-annotation]
-        ):
-            """
-            Compute vortex_centroid of vortex strength for the entire particle set.
-
-            Centroid = Σ(r * |Γ|) / Σ|Γ| over all particles
-            """
-            weighted_pos = ti.Vector([0.0, 0.0, 0.0])
-            total_strength_mag = 0.0
-
-            for i in range(n_particles_total):
-                str_mag = vortex_strength[i].norm()
-                if str_mag > _MINIMUM_STRENGTH:
-                    ti.atomic_add(weighted_pos[0], position[i][0] * str_mag)
-                    ti.atomic_add(weighted_pos[1], position[i][1] * str_mag)
-                    ti.atomic_add(weighted_pos[2], position[i][2] * str_mag)
-                    ti.atomic_add(total_strength_mag, str_mag)
-
-            if total_strength_mag > _MINIMUM_STRENGTH:
-                result[0] = weighted_pos[0] / total_strength_mag
-                result[1] = weighted_pos[1] / total_strength_mag
-                result[2] = weighted_pos[2] / total_strength_mag
-            else:
-                result[0] = 0.0
-                result[1] = 0.0
-                result[2] = 0.0
-
-        self.compute_global_vortex_centroid_kernel = compute_global_vortex_centroid_kernel
-
-    def _define_vortex_centroid_kernels(self, kernel_functions: dict[str, Callable]) -> None:
-        """Define kernels for vortex-strength-magnitude-weighted vortex_centroids."""
-        self._define_global_vortex_centroid_kernel()
-
     @staticmethod
     def record_vortex_centroid_history(
         diagnostics_history: dict,
@@ -557,32 +499,6 @@ class ParticleFieldEvaluation:
             else:
                 vortex_centroid = np.array([0.0, 0.0, 0.0])
         diagnostics_history["vortex_centroid"].append(tuple(vortex_centroid.tolist()))
-
-    def compute_vortex_centroid(self, particles: "Particles") -> np.ndarray:
-        """
-        Compute the vortex-strength-magnitude-weighted particle vortex_centroid.
-
-        Returns:
-            np.ndarray: Centroid position [x, y, z], or zeros if no particles.
-        """
-        N = len(particles)
-        if N == 0:
-            return np.array([0.0, 0.0, 0.0])
-
-        self._resize_fields(N)
-
-        # Reset the reusable result field.
-        self._vortex_centroid_result.fill(0)
-
-        self.compute_global_vortex_centroid_kernel(
-            particles.position,
-            particles.vortex_strength,
-            N,
-            self._vortex_centroid_result,
-        )
-
-        vortex_centroid = self._vortex_centroid_result.to_numpy()
-        return vortex_centroid
 
     def compute_flow_integrals(self, particles: "Particles", time: float) -> dict[str, object]:
         """Evaluate global unbounded-domain diagnostics for one particle state.
@@ -690,13 +606,13 @@ class ParticleFieldEvaluation:
             raise RuntimeError("Fourier flow diagnostics did not compute viscous dissipation")
 
         total_kinetic_energy = spectral.total_kinetic_energy
-        measurement = getattr(spectral, "energy_measurement", "unbounded_energy")
+        measurement = spectral.energy_measurement
         same_measurement = not self._energy_history or self._energy_history[-1][2] == measurement
         if continuity_preserved and same_measurement:
             self._update_energy_history(time, total_kinetic_energy, measurement)
             dE_dt = self._compute_energy_dissipation_rate()
             rate_source = "fourier_energy_backward_difference"
-            if getattr(spectral, "energy_measurement", None) == "unbounded_energy":
+            if measurement == "unbounded_energy":
                 rate_source = "free_space_fft_energy_backward_difference"
             elif measurement == "periodic_fourier_energy":
                 rate_source = "periodic_fourier_energy_backward_difference"
@@ -727,7 +643,9 @@ class ParticleFieldEvaluation:
         impulse = 0.5 * np.cross(position, vortex_strength).sum(axis=0, dtype=np.float64)
         angular = np.cross(position, np.cross(position, vortex_strength)).sum(
             axis=0, dtype=np.float64
-        ) / 3.0 - (1.0 / 3.0) * (core_radius[:, None] ** 2 * vortex_strength).sum(axis=0)
+        ) / 3.0 - kernel_definition(self.particle_kernel).angular_core_coefficient * (
+            core_radius[:, None] ** 2 * vortex_strength
+        ).sum(axis=0)
         return {
             "total_kinetic_energy": total_kinetic_energy,
             "total_helicity": spectral.total_helicity,
@@ -960,7 +878,7 @@ class ParticleFieldEvaluation:
         self,
         time: float,
         total_kinetic_energy: float,
-        measurement: str = "direct",
+        measurement: str,
     ) -> None:
         """
         Update the time history of kinetic energy.

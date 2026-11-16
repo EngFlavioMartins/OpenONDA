@@ -231,7 +231,7 @@ class PhysicsBase:
 
     # TARGET FIELD MANAGEMENT (for at-point evaluations)
 
-    def _initialize_target_fields(self, size: int = 50000) -> None:
+    def _initialize_target_fields(self, size: int) -> None:
         """Allocate the fixed-capacity fields used for at-point evaluation."""
         self.target_position = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))
         self.target_velocity = ti.Vector.field(3, dtype=self.accumulator_dtype, shape=(size,))

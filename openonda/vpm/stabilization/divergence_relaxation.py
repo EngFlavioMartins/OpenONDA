@@ -258,8 +258,9 @@ class GaussianParticleGridOperator:
             else float(np.sqrt(np.mean(core_radius * core_radius)))
         )
         self.spacing = float(spacing)
-        # Gaussian support radius divided by the reconstruction width.
-        self.support_radius_multiplier = 4.0
+        # SciPy ``truncate``: the Gaussian filter is cut at this many of its own standard
+        # deviations, sigma = smoothing_radius / sqrt(2), i.e. at 2.83 smoothing radii.
+        self.filter_truncate = 4.0
         padding = int(np.ceil(4.0 * self.smoothing_radius / spacing)) + 3
         lower = np.floor(position.min(axis=0) / spacing).astype(np.int64) - padding
         upper = np.ceil(position.max(axis=0) / spacing).astype(np.int64) + padding
@@ -348,7 +349,7 @@ class GaussianParticleGridOperator:
                     field[..., component],
                     self._filter_sigma,
                     mode=mode,
-                    truncate=self.support_radius_multiplier,
+                    truncate=self.filter_truncate,
                 )
                 / self.spacing**3
                 for component in range(3)

@@ -10,6 +10,11 @@ from ..physics.induction.base import StageRates, StageState
 from .rk_tableaux import SSPRK3, RKTableau
 
 
+def _padded(values: tuple[float, ...]) -> tuple[float, float, float, float]:
+    """Pad tableau rows to the four-slot device-kernel ABI."""
+    return tuple(values) + (0.0,) * (4 - len(values))
+
+
 def _make_construct_stage_kernel(scalar_dtype: object) -> Callable:
     """Create the stage-construction kernel at the particle precision."""
 
@@ -276,11 +281,6 @@ class RungeKutta:
             else nullcontext()
         )
         with context:
-
-            def padded(values: tuple[float, ...]) -> tuple[float, float, float, float]:
-                """Pad tableau rows to the four-slot device-kernel ABI."""
-                return tuple(values) + (0.0,) * (4 - len(values))
-
             for stage in range(self.tableau.stages):
                 coefficients = self.tableau.a[stage]
                 if stage == 0:
@@ -306,7 +306,7 @@ class RungeKutta:
                         self.stage_strength_rate[2],
                         self.stage_strength_rate[3],
                         float(time_step_size),
-                        *padded(coefficients),
+                        *_padded(coefficients),
                         count,
                     )
 
@@ -347,7 +347,7 @@ class RungeKutta:
                 self.stage_strength_rate[2],
                 self.stage_strength_rate[3],
                 float(time_step_size),
-                *padded(coefficients),
+                *_padded(coefficients),
                 count,
             )
             # The accepted wall projection belongs to the same state update as
