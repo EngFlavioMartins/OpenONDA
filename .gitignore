@@ -123,9 +123,6 @@ log.*
 !tutorials/vpm/03_vortex_interactions/assets/references/*.csv
 !tutorials/coupled_fvm_vpm/04_oscillating_cylinder/assets/references/*.csv
 
-# Small, inspectable qualification tables shipped with the surface-interaction tutorial
-!tutorials/vpm/08_surface_interaction/studies/*.csv
-
 # VPM JSON outputs
 vpm*.json
 
