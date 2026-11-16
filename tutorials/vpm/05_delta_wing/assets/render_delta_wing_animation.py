@@ -3,24 +3,28 @@
 Each frame shows the particles and wing surfaces written at one output time,
 coloured by the wing that shed them and brightened by their vorticity. The
 inset traces the lift coefficient of each wing up to that time. By default the
-animation plays at half the physical speed. ``assets/delta_wing.gif``, shown at
-the top of the README, is a copy of the result.
+animation plays at half the physical speed. The result is
+``assets/delta_wing.gif``, shown at the top of the main README.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from PIL import Image
 import pyvista as pv
+from scipy.signal import find_peaks
 
-from assets.postprocess import SOLUTION_DIR, force_history, lift_and_thrust, motion_period
-
-OUTPUT = Path(__file__).resolve().parents[1] / "figures" / "delta_wing.gif"
+CASE_DIR = Path(__file__).resolve().parents[1]
+SOLUTION_DIR = CASE_DIR / "solution" / "delta_wing"
+FORCES = CASE_DIR / "samples" / "delta_wing" / "vlm_surface_forces.csv"
+OUTPUT = CASE_DIR / "assets" / "delta_wing.gif"
 
 IMAGE_SIZE = (1280, 460)  # [px], the README banner
 RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
@@ -53,6 +57,26 @@ WING_COLORMAPS = tuple(  # by group id: the front wing sheds group 0, the rear w
     )
     for name, colour in WING_COLOURS.items()
 )
+
+
+def wing_loads() -> pd.DataFrame:
+    """Sampled forces of each wing, with its lift coefficient on its own reference area."""
+    data = pd.read_csv(FORCES).sort_values(["time", "surface"])
+    numerics = json.loads((SOLUTION_DIR / "vpm_metadata.json").read_text(encoding="utf-8"))[
+        "configuration"
+    ]["numerics"]
+    vlm = numerics["vlm"]
+    speed = np.linalg.norm(numerics["freestream_velocity"])
+    area = {surface["name"]: surface["geometry"]["refs"]["area"] for surface in vlm["surfaces"]}
+    reference = 0.5 * vlm["density"] * speed**2 * data.surface.map(area)
+    return data.assign(lift_coefficient=data.force_z / reference)
+
+
+def motion_period(data: pd.DataFrame) -> float:
+    """Heave period, measured from the sampled heave velocity of the front wing."""
+    front = data[data.surface == "front_wing"].sort_values("time")
+    peaks, _ = find_peaks(front.translation_velocity_z)
+    return float(np.median(np.diff(front.time.to_numpy()[peaks])))
 
 
 def read_series(collection: Path) -> list[tuple[float, pv.DataSet]]:
@@ -173,9 +197,8 @@ def main() -> None:
 
     particles = read_series(SOLUTION_DIR / "vpm.pvd")
     surfaces = read_series(SOLUTION_DIR / "vlm.pvd")
-    data = force_history()
-    loads = lift_and_thrust(data)
-    frequency = 1.0 / motion_period(data)
+    loads = wing_loads()
+    frequency = 1.0 / motion_period(loads)
 
     final = particles[-1][1]
     omega_max = float(f"{np.percentile(np.linalg.norm(final['vorticity'], axis=1), 99):.1g}")

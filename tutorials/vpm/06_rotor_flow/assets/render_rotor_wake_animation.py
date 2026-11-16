@@ -2,26 +2,30 @@
 
 Each frame shows the particles and blade surfaces written at every third
 output time, coloured by the vorticity magnitude. The inset traces the thrust
-and power coefficients up to that time. ``assets/rotor_flow.gif``, shown in the
-README gallery, is a copy of the result.
+and power coefficients up to that time. The result is ``assets/rotor_flow.gif``,
+shown in the README gallery.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from PIL import Image
 import pyvista as pv
 
-from assets._common import SOLUTION_DIR, performance, rotor_inputs
+from openonda.vpm.io.postprocess import accepted_history
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-OUTPUT = CASE_DIR / "figures" / "rotor_flow.gif"
+SOLUTION_DIR = CASE_DIR / "solution" / "rotor"
+FORCES = CASE_DIR / "samples" / "rotor" / "vlm_forces.csv"
+OUTPUT = CASE_DIR / "assets" / "rotor_flow.gif"
 
 FRAME_STRIDE = 3  # every third particle output, which keeps the GIF small
 IMAGE_SIZE = (800, 500)  # [px], as the other gallery animations
@@ -54,6 +58,27 @@ GALLERY_STYLE = {
 VORTICITY_COLORMAP = LinearSegmentedColormap.from_list(
     "gallery_vorticity", ["#031a3c", "#0d58b7", "#3791ed", "#73c0ff", "#c9e6fd"], N=16
 )
+
+
+def performance() -> tuple[pd.DataFrame, float]:
+    """Thrust and power coefficients on the rotor disk, and the rotation period."""
+    metadata = json.loads((SOLUTION_DIR / "vpm_metadata.json").read_text(encoding="utf-8"))
+    numerics = metadata["configuration"]["numerics"]
+    vlm = numerics["vlm"]
+    blade = vlm["surfaces"][0]
+    # Rotor radius: the outermost quarter-chord point of the first blade's panels
+    radius = 0.0
+    for wing in blade["geometry"]["wings"]:
+        for segment in wing["segments"]:
+            b, c = (np.array(segment["vertex_position"][key]) for key in "bc")
+            radius = max(radius, float(np.linalg.norm((0.75 * b + 0.25 * c)[1:])))
+    speed = float(np.linalg.norm(numerics["freestream_velocity"]))
+    period = 2 * np.pi / abs(float(blade["kinematics"]["angular_speed"]))
+    data = accepted_history(pd.read_csv(FORCES), metadata)
+    reference = 0.5 * vlm["density"] * speed**2 * np.pi * radius**2
+    data["CT"] = data.force_x / reference
+    data["CP"] = data.rotational_power / (reference * speed)
+    return data, period
 
 
 def frame_files(collection: Path) -> list[tuple[float, Path]]:
@@ -183,8 +208,7 @@ def main() -> None:
 
     particles = frame_files(SOLUTION_DIR / "vpm.pvd")[::FRAME_STRIDE]
     blades = frame_files(SOLUTION_DIR / "vlm.pvd")[::FRAME_STRIDE]
-    coefficients = performance()
-    period = rotor_inputs().rotation_period
+    coefficients, period = performance()
 
     # One view for every frame, set by the final wake
     view = camera(np.array(pv.read(particles[-1][1]).bounds))

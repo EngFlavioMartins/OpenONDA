@@ -3,8 +3,7 @@
 Each frame shows the particles and the plate surface written by the animated
 case (``ANIMATED_CASE`` in ``setup.py``) at one output time, coloured by the
 vorticity magnitude. The inset traces the lift and drag coefficients up to that
-time. ``assets/flat_plate_wake.gif``, shown in the README gallery, is a copy
-of the result.
+time. The result is ``assets/flat_plate_wake.gif``, shown in the README gallery.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ import pyvista as pv
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution" / "exp_moving_aoa12"
 FORCES = CASE_DIR / "samples" / "exp_moving_aoa12" / "vlm_forces.csv"
-OUTPUT = CASE_DIR / "figures" / "flat_plate_wake.gif"
+OUTPUT = CASE_DIR / "assets" / "flat_plate_wake.gif"
 
 CHORD = 1.0  # [m]
 FREESTREAM_SPEED = 10.0  # [m/s], plate speed after the ramp

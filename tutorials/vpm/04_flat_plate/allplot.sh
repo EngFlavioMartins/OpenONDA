@@ -3,9 +3,5 @@ set -e
 
 cd "$(dirname "$0")"
 
-python -m assets.plot_plate_polar
-python -m assets.plot_plate_staticvsmoving
-python -m assets.plot_plate_spanwise
-python -m assets.plot_plate_velocity
-python -m assets.render_flat_plate
+# Animation of the moving plate at 12 degrees, written to assets/flat_plate_wake.gif
 python -m assets.render_flat_plate_animation

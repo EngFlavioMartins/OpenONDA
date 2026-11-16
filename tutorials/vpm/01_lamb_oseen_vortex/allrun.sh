@@ -18,3 +18,4 @@ python -m assets.rwm_ensemble merging --number-of-realizations 10
 python setup.py merging dvh
 python setup.py merging gbd
 python -m assets.postprocess --aggregate-rwm
+python -m assets.postprocess --extract-fields

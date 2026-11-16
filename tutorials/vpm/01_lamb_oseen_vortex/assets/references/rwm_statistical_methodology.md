@@ -17,7 +17,7 @@ $$
 \widehat\omega_z^{(m)}(x,y,t)=\frac1L\int\omega_z^{(m)}(x,y,z,t)\,dz.
 $$
 
-Projection uses the Gaussian particle backups; the in-plane velocity follows from free-space two-dimensional Biot–Savart induction. Average signed vorticity and vector velocity over independent seeds before calculating speed, peaks or flow features. Thus the plotted speed is $|\overline{\boldsymbol u}|$, rather than the mean of individual speeds. No temporal smoothing is used.
+Projection uses the Gaussian particle backups; the in-plane velocity follows from free-space two-dimensional Biot–Savart induction. Average signed vorticity and vector velocity over independent seeds before calculating speed, peaks or flow features. Thus the sampled speed is $|\overline{\boldsymbol u}|$, rather than the mean of individual speeds. No temporal smoothing is used.
 
 ## Vortex features
 
@@ -32,7 +32,7 @@ Times use $\nu t/a_{c,0}^2$. The [experimental data](README.md) use $\tau=\nu t/
 
 ## Uncertainty
 
-Field and linear-integral intervals are two-sided 95% Student-$t$ intervals across independent seeds. Nonlinear centres, radii, separation and orientation use a delete-one-seed jackknife of the complete mean-field/feature extraction. Shading measures finite-ensemble uncertainty, not physical fluctuations or discretization error.
+Field and linear-integral intervals are two-sided 95% Student-$t$ intervals across independent seeds. Nonlinear centres, radii, separation and orientation use a delete-one-seed jackknife of the complete mean-field/feature extraction. The intervals measure finite-ensemble uncertainty, not physical fluctuations or discretization error.
 
 The tutorial uses ten independent seeds. Results compare the first half with the full ensemble and report the projected absolute-circulation capture fraction.
 

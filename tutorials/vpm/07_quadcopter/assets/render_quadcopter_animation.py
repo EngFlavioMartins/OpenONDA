@@ -3,27 +3,27 @@
 Each frame shows the particles and blade surfaces written at one output time,
 coloured by the rotor that shed them and brightened by their vorticity. The
 inset traces the thrust and power coefficients, averaged over the four rotors,
-up to that time.
-``assets/quadcopter_flow.gif``, shown in the README gallery, is a copy of the
-result.
+up to that time. The result is ``assets/quadcopter_flow.gif``, shown in the
+README gallery.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from PIL import Image
 import pyvista as pv
 
-from assets._quadcopter_plots import performance, rotor_inputs
-
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution" / "quadcopter"
-OUTPUT = CASE_DIR / "figures" / "quadcopter_flow.gif"
+FORCES = CASE_DIR / "samples" / "quadcopter" / "vlm_surface_forces.csv"
+OUTPUT = CASE_DIR / "assets" / "quadcopter_flow.gif"
 
 IMAGE_SIZE = (800, 500)  # [px], as the other gallery animations
 RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
@@ -57,6 +57,32 @@ ROTOR_COLORMAPS = tuple(
     )
     for index, colour in enumerate(ROTOR_COLOURS)
 )
+
+
+def performance() -> tuple[pd.DataFrame, float]:
+    """Thrust and input-power coefficients averaged over the rotors, and the rotation period."""
+    metadata = json.loads((SOLUTION_DIR / "vpm_metadata.json").read_text(encoding="utf-8"))
+    vlm = metadata["configuration"]["numerics"]["vlm"]
+    blade = vlm["surfaces"][0]
+    # Rotor radius: the outer quarter-chord point of the first blade
+    segment = blade["geometry"]["wings"][0]["segments"][0]
+    a, b, c, d = (np.asarray(segment["vertex_position"][key]) for key in "abcd")
+    radius = max(np.linalg.norm((0.75 * le + 0.25 * te)[:2]) for le, te in ((a, d), (b, c)))
+    omega = abs(blade["kinematics"]["angular_speed"])
+
+    # Thrust and fluid power of each rotor, summed over its blades
+    data = pd.read_csv(FORCES)
+    data["rotor"] = data.surface.str.rsplit("_blade_", n=1).str[0]
+    rotors = (
+        data.groupby(["rotor", "time"], sort=True)
+        .agg(thrust=("force_z", "sum"), fluid_power=("rotational_power", "sum"))
+        .reset_index()
+    )
+    reference = vlm["density"] * np.pi * radius**2 * (omega * radius) ** 2
+    rotors["CT"] = rotors.thrust / reference
+    # Shaft input is the negative of the fluid-on-blade power
+    rotors["CP"] = -rotors.fluid_power / (reference * omega * radius)
+    return rotors.groupby("time")[["CT", "CP"]].mean(), 2 * np.pi / omega
 
 
 def read_series(collection: Path) -> list[tuple[float, pv.DataSet]]:
@@ -190,8 +216,7 @@ def main() -> None:
 
     particles = read_series(SOLUTION_DIR / "vpm.pvd")
     blades = read_series(SOLUTION_DIR / "vlm.pvd")
-    rotor = rotor_inputs()
-    coefficients = performance(rotor.samples_dir, rotor).groupby("time")[["CT", "CP"]].mean()
+    coefficients, period = performance()
 
     # One brightness scale for every frame, the median of their vorticity peaks, and one view
     peaks = [
@@ -209,7 +234,7 @@ def main() -> None:
     frames = []
     for (time, cloud), (_, surface) in zip(particles, blades, strict=True):
         image = render_scene(plotter, cloud, surface, view, omega_max)
-        frames.append(compose(image, time, coefficients, rotor.period))
+        frames.append(compose(image, time, coefficients, period))
     plotter.close()
 
     # One palette for every frame, from four frames across the animation, keeps the GIF small

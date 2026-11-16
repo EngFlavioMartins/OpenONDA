@@ -1,8 +1,7 @@
 """Post-processing for the Lamb--Oseen VPM tutorial.
 
 Reads the sampled fields, defines the physical features, rebuilds the RWM
-ensemble and its uncertainty, transforms the theory and references, and
-prepares the data the plot scripts draw.
+ensemble and its uncertainty, and transforms the theory and references.
 
   * vortex centres   — geometric centres of the connected areas enclosed by
     the 80%-of-peak vorticity contours, following Cerretelli--Williamson;
@@ -28,7 +27,6 @@ import pandas as pd
 from scipy import ndimage, signal, stats
 from scipy.special import expi
 
-from openonda import plotting as theme
 from setup import (
     BETA_RMAX,
     CIRCULATION_REYNOLDS_NUMBER,
@@ -56,7 +54,6 @@ from openonda.vpm.io.ensemble import (
     table_ensemble,
 )
 from openonda.vpm.io.postprocess import (
-    common_frame_time,
     particle_state,
     saved_frame,
 )
@@ -64,22 +61,12 @@ from openonda.core.vtk_output import write_vtk_dataset
 
 ASSETS_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = ASSETS_DIR.parent
-CASE_DIR = SCRIPT_DIR
 FIGURES_DIR = SCRIPT_DIR / "figures"
 SAMPLES_DIR = SCRIPT_DIR / "samples"
 SOLUTION_DIR = SCRIPT_DIR / "solution"
 REF_DIR = ASSETS_DIR / "references"
 SCHEMES = ("cs", "rwm", "dvh", "gbd")
-SCHEME_DRAW_ORDER = tuple((scheme for scheme in SCHEMES if scheme != "cs")) + ("cs",)
-_SCHEME_ZORDER = {
-    scheme: 200 if scheme == "cs" else 10 + index for index, scheme in enumerate(SCHEME_DRAW_ORDER)
-}
 CASES = ("vortex", "dipole", "merging")
-ENERGY_CASES = (
-    ("vortex", "Single vortex", 1),
-    ("dipole", "Vortex dipole", 2),
-    ("merging", "Co-rotating", 2),
-)
 REFERENCE_CIRCULATION = 1.0
 REYNOLDS_NUMBER = CIRCULATION_REYNOLDS_NUMBER
 VTS_STEP_RE = re.compile("_(\\d+)\\.vts$")
@@ -719,68 +706,6 @@ def extract_field_diagnostics(samples_dir: Path, case: str | None = None) -> Non
         print(f"  [field] {case_name}: wrote field_diagnostics.csv ({len(rows)} samples)")
 
 
-def _theme():
-    return theme
-
-
-def load_theme() -> tuple[dict[str, str], object | None]:
-    """Load the OpenONDA matplotlib theme and return (COLORS dict, theme module)."""
-    theme = _theme()
-    theme.set_thesis_style()
-    return (dict(theme.COLORS), theme)
-
-
-def build_style_map(colors: dict[str, str]) -> dict[str, dict]:
-    """Map scheme names to plot style dicts (color, marker, label)."""
-    return {
-        "cs": {"label": "CS", "color": colors["hybrid"], "marker": "o"},
-        "rwm": {"label": "RWM", "color": colors["dark"], "marker": "^"},
-        "dvh": {"label": "DVH", "color": colors["teal"], "marker": "v"},
-        "gbd": {"label": "GBD", "color": colors["vpm"], "marker": "D"},
-    }
-
-
-def scheme_zorder(scheme: str, offset: int = 0) -> int:
-    """Layer one scheme consistently, with CS above every comparison curve."""
-    return _SCHEME_ZORDER[scheme] + offset
-
-
-def figure_size(name: str = "single") -> tuple[float, float]:
-    """Return a named figure size in inches from the shared theme."""
-    return _theme().figure_size(name)
-
-
-def centered_subplots_adjust(fig, *, outer: float, **kwargs) -> None:
-    """Apply the shared horizontally-centred thesis layout."""
-    _theme().centered_subplots_adjust(fig, outer=outer, **kwargs)
-
-
-def save_fig(fig, path: Path, dpi: int) -> None:
-    """Export the authored canvas, including both formats for a .both request."""
-    _theme().export_figure(fig, path, dpi=dpi)
-
-
-def build_arg_parser(description: str):
-    """Base argument parser shared by all plot scripts."""
-    import argparse as _argparse
-
-    p = _argparse.ArgumentParser(description=description)
-    p.add_argument("--dpi", type=int, default=_theme().DEFAULT_DPI, help="Raster resolution.")
-    p.add_argument(
-        "--format", choices=("png", "pdf", "both"), default="png", help="Output figure format."
-    )
-    kinematic_viscosity = REFERENCE_CIRCULATION / REYNOLDS_NUMBER
-    p.set_defaults(
-        samples_dir=SAMPLES_DIR,
-        figures_dir=FIGURES_DIR,
-        circulation=REFERENCE_CIRCULATION,
-        kinematic_viscosity=kinematic_viscosity,
-        b0=SEPARATION,
-        a0_over_b0=CORE_RADIUS / SEPARATION,
-    )
-    return p
-
-
 MERGING_NORMALIZED_END_TIME = 3.0
 THETA_REFERENCE = REF_DIR / "theta_vs_tau.csv"
 CORE_REFERENCE = REF_DIR / "a2_over_b02.csv"
@@ -854,101 +779,6 @@ def load_profile(
         gradient_se,
         float(field["confidence_multiplier"]),
     )
-
-
-def latest_common_time(samples_dir: Path, prefix: str = "vortex") -> float:
-    """Latest saved physical time shared by every method for ``prefix``."""
-    clocks = [
-        sorted(pvd_time_map(samples_dir, prefix, scheme).values()) for scheme in SCHEME_DRAW_ORDER
-    ]
-    return common_frame_time(*clocks)
-
-
-def load_dipole_feature_frame(samples_dir: Path, scheme: str) -> pd.DataFrame:
-    """Return one scheme's field diagnostics on the dominant sample cadence."""
-    path = samples_dir / f"dipole_{scheme}" / "field_diagnostics.csv"
-    data = pd.DataFrame(read_history_table(path))
-    data = data[uniform_cadence_mask(data["step"].to_numpy(int))].copy()
-    data["step"] = data["step"].astype(int)
-    return data.set_index("step", drop=False)
-
-
-def connected_core_aspect(field: dict, fraction: float = 0.5) -> float:
-    """Return the mean aspect ratio of both connected high-vorticity cores.
-
-    For each sign, the support is the connected region above ``fraction`` of
-    that sign's peak.  The reported value is
-    ``sqrt(lambda_max / lambda_min)`` of its vorticity-weighted covariance,
-    averaged over the two signs.  A circular core therefore has value one.
-    """
-    x = np.asarray(field["x"], dtype=float)
-    y = np.asarray(field["y"], dtype=float)
-    vorticity = np.asarray(field["vorticity_z"], dtype=float)
-    aspects: list[float] = []
-    for sign in (1.0, -1.0):
-        signed = sign * vorticity
-        candidates = _peak_candidates(signed)
-        if not candidates:
-            aspects.append(float("nan"))
-            continue
-        peak = candidates[0]
-        support = np.isfinite(signed) & (signed >= fraction * float(signed[peak]))
-        labels, _ = ndimage.label(support, structure=np.ones((3, 3), dtype=np.int8))
-        region = labels == int(labels[peak])
-        weights = np.where(region, signed, 0.0)
-        total = float(np.sum(weights))
-        if total <= np.finfo(float).tiny:
-            aspects.append(float("nan"))
-            continue
-        centre_x = float(np.sum(weights * x) / total)
-        centre_y = float(np.sum(weights * y) / total)
-        dx = x - centre_x
-        dy = y - centre_y
-        covariance = (
-            np.array(
-                [
-                    [np.sum(weights * dx * dx), np.sum(weights * dx * dy)],
-                    [np.sum(weights * dx * dy), np.sum(weights * dy * dy)],
-                ],
-                dtype=float,
-            )
-            / total
-        )
-        eigenvalues = np.linalg.eigvalsh(covariance)
-        aspects.append(
-            float(np.sqrt(eigenvalues[1] / eigenvalues[0]))
-            if eigenvalues[0] > 0.0
-            else float("nan")
-        )
-    return float(np.nanmean(aspects))
-
-
-def diffusion_only_dipole_features(
-    template: dict,
-    times: np.ndarray,
-    circulation: float,
-    gaussian_radius0: float,
-    kinematic_viscosity: float,
-    separation0: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Apply the plotted feature definitions to two fixed diffusing Gaussians."""
-    x = np.asarray(template["x"], dtype=float)
-    y = np.asarray(template["y"], dtype=float)
-    separation: list[float] = []
-    aspect: list[float] = []
-    for time in np.asarray(times, dtype=float):
-        sigma2 = gaussian_radius0**2 + 4.0 * kinematic_viscosity * time
-        positive = np.exp(-(x * x + (y - 0.5 * separation0) ** 2) / sigma2)
-        negative = np.exp(-(x * x + (y + 0.5 * separation0) ** 2) / sigma2)
-        field = {
-            "x": x,
-            "y": y,
-            "vorticity_z": circulation * (positive - negative) / (np.pi * sigma2),
-        }
-        centres, _ = _vorticity_peak_centres(field, "dipole")
-        separation.append(float(np.linalg.norm(centres[0] - centres[1])))
-        aspect.append(connected_core_aspect(field))
-    return (np.asarray(separation), np.asarray(aspect))
 
 
 def viscous_filament_velocity(
@@ -1113,108 +943,6 @@ def _reportable_energy_rate_mask(data_frame: pd.DataFrame) -> np.ndarray:
         documented = np.asarray([not value.startswith("undefined_") for value in source])
         return finite & documented
     return finite
-
-
-def read_flow_integrals(csv_path: Path) -> dict:
-    """Load a validated, non-initialized flow-integral history."""
-    data_frame = pd.DataFrame(read_history_table(csv_path))
-    kinetic_energy_rate = data_frame["kinetic_energy_rate"].to_numpy(float)
-    reportable_energy_rate = _reportable_energy_rate_mask(data_frame)
-    kinetic_energy_rate = np.where(reportable_energy_rate, kinetic_energy_rate, np.nan)
-    data = {
-        "time": data_frame["time"].to_numpy(float),
-        "kinetic_energy_rate": kinetic_energy_rate,
-        "viscous_kinetic_energy_rate": data_frame["viscous_kinetic_energy_rate"].to_numpy(float),
-    }
-    if "total_kinetic_energy" in data_frame:
-        data["total_kinetic_energy"] = data_frame["total_kinetic_energy"].to_numpy(float)
-    for measure in ("total_kinetic_energy", "kinetic_energy_rate", "viscous_kinetic_energy_rate"):
-        for bound in ("lower", "upper"):
-            column = f"{measure}_ci_{bound}"
-            if column in data_frame:
-                data[column] = data_frame[column].to_numpy(float)
-    return data
-
-
-def _quadrant_split(x: np.ndarray, y: np.ndarray) -> tuple[int, int]:
-    return (int(np.searchsorted(y[:, 0], 0.0)), int(np.searchsorted(x[0], 0.0)))
-
-
-def _boundary_edges(field: np.ndarray, row: int, column: int, tx: float, ty: float):
-    boundary_column = field[:, column - 1] * (1.0 - tx) + field[:, column] * tx
-    boundary_row = field[row - 1, :] * (1.0 - ty) + field[row, :] * ty
-    corner = boundary_row[column - 1] * (1.0 - tx) + boundary_row[column] * tx
-    return (boundary_column, boundary_row, corner)
-
-
-def _tile_coordinates(
-    x: np.ndarray, y: np.ndarray, quadrant: str, column: int, row: int
-) -> tuple[np.ndarray, np.ndarray]:
-    if quadrant == "TL":
-        return (np.append(x[:column], 0.0), np.insert(y[row:], 0, 0.0))
-    if quadrant == "TR":
-        return (np.insert(x[column:], 0, 0.0), np.insert(y[row:], 0, 0.0))
-    if quadrant == "BL":
-        return (np.append(x[:column], 0.0), np.append(y[:row], 0.0))
-    if quadrant == "BR":
-        return (np.insert(x[column:], 0, 0.0), np.append(y[:row], 0.0))
-
-
-def _tile_field(field, quadrant, column, row, boundary_column, boundary_row, corner):
-    if quadrant == "TL":
-        tile = np.column_stack([field[row:, :column], boundary_column[row:, None]])
-        return np.vstack([np.append(boundary_row[:column], corner)[None, :], tile])
-    if quadrant == "TR":
-        tile = np.column_stack([boundary_column[row:, None], field[row:, column:]])
-        return np.vstack([np.insert(boundary_row[column:], 0, corner)[None, :], tile])
-    if quadrant == "BL":
-        tile = np.column_stack([field[:row, :column], boundary_column[:row, None]])
-        return np.vstack([tile, np.append(boundary_row[:column], corner)[None, :]])
-    if quadrant == "BR":
-        tile = np.column_stack([boundary_column[:row, None], field[:row, column:]])
-        return np.vstack([tile, np.insert(boundary_row[column:], 0, corner)[None, :]])
-
-
-def surface_plot_tiles(
-    samples_dir: Path,
-    layout: list[tuple],
-    core_radius: float,
-    velocity_scale: float,
-    vorticity_scale: float,
-    kinematic_viscosity: float,
-) -> tuple[list[dict], float | None]:
-    """Return normalized, seam-free quadrant tiles at one common physical time."""
-    comparison_time = latest_common_time(samples_dir, "vortex")
-    tiles = []
-    selected_times = []
-    for scheme, quadrant, *_rest in layout:
-        timeline = pvd_time_map(samples_dir, "vortex", scheme)
-        _, step = saved_frame([(time, step) for step, time in timeline.items()], comparison_time)
-        path = samples_dir / f"vortex_{scheme}" / f"vortex_{scheme}_zq_{step:06d}.vts"
-        field = read_surface_field(path)
-        x = field["x"].T / core_radius
-        y = field["y"].T / core_radius
-        velocity = np.hypot(field["velocity_x"], field["velocity_y"]).T / velocity_scale
-        vorticity = np.clip(field["vorticity_z"].T, 0.0, None) / vorticity_scale
-        row, column = _quadrant_split(x, y)
-        x_axis, y_axis = (x[0], y[:, 0])
-        tx = -x_axis[column - 1] / (x_axis[column] - x_axis[column - 1])
-        ty = -y_axis[row - 1] / (y_axis[row] - y_axis[row - 1])
-        grid_x, grid_y = np.meshgrid(*_tile_coordinates(x_axis, y_axis, quadrant, column, row))
-        tiled = {}
-        for name, values in (("velocity", velocity), ("vorticity", vorticity)):
-            tiled[name] = _tile_field(
-                values, quadrant, column, row, *_boundary_edges(values, row, column, tx, ty)
-            )
-        selected_time = timeline[int(path.stem[-6:])]
-        selected_times.append(selected_time)
-        tiles.append({"scheme": scheme, "quadrant": quadrant, "x": grid_x, "y": grid_y, **tiled})
-    if selected_times:
-        time_scale = kinematic_viscosity / core_radius**2
-        print(
-            f"  [surface] plotting {len(tiles)}/{len(SCHEMES)} methods at common nu*t/a_c0^2={comparison_time * time_scale:.2g} (selected samples {min(selected_times) * time_scale:.2g}-{max(selected_times) * time_scale:.2g})"
-        )
-    return (tiles, comparison_time)
 
 
 STEP_RE = re.compile("_(\\d{6,})\\.h5$")

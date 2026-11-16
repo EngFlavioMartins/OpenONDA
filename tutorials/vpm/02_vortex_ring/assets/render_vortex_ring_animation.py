@@ -4,8 +4,7 @@ Each frame shows the particles at one output time as spheres sized and
 coloured by their strength relative to the largest initial strength. The camera
 follows the ring; a ruler along its path marks the distance travelled in ring
 radii. The animation holds the final ring, then fades back to the first frame.
-``assets/vortex_ring.gif``, shown in the README gallery, is a copy of the
-result.
+The result is ``assets/vortex_ring.gif``, shown in the README gallery.
 """
 
 from __future__ import annotations
@@ -14,18 +13,17 @@ import argparse
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-from matplotlib import colormaps
-from matplotlib.colors import Normalize
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import pyvista as pv
 
-import openonda.plotting  # noqa: F401  registers the thesis_blue scale
+plt.switch_backend("Agg")
 
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution" / "dns_transposed"
-OUTPUT = CASE_DIR / "figures" / "vortex_ring.gif"
+OUTPUT = CASE_DIR / "assets" / "vortex_ring.gif"
 
 RING_RADIUS = 1.0  # [m], R0
 STRENGTH_RANGE = (0.04, 0.8)  # |alpha_p| / max |alpha_q,0|, the colour scale
@@ -53,7 +51,10 @@ GALLERY_STYLE = {
     "ytick.major.width": 1.5,
 }
 RULER_COLOUR = "#b4b4b4"
-STRENGTH_COLORMAP = colormaps["thesis_blue"]
+# Sequential blue scale, dark for weak particles
+STRENGTH_COLORMAP = LinearSegmentedColormap.from_list(
+    "strength_blue", ["#0D3D45", "#156074", "#41A6C4", "#C8EDF5"], N=256
+)
 
 
 def frame_files(collection: Path) -> list[tuple[float, Path]]:

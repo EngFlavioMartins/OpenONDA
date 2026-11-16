@@ -11,7 +11,7 @@ From this directory:
 ./allplot.sh
 ```
 
-`allrun.sh` removes previous generated output and starts a fresh run. `./allcontinue.sh` resumes saved native checkpoints.
+`allrun.sh` removes previous generated output and starts a fresh run. `./allcontinue.sh` resumes saved native checkpoints. `./allplot.sh` renders the animation `assets/delta_wing.gif`.
 
 ## Physical inputs
 
@@ -34,8 +34,8 @@ Loads include the unsteady Kutta–Joukowski term. The Gaussian wake uses direct
 
 Force/loading/motion tables are in `samples/delta_wing/`, with wake planes every 0.025 s and flow integrals every 0.25 s. Particle frames are written every 0.05 s and backups every second; open `solution/delta_wing/vlm.pvd` or `solution/delta_wing/vpm.pvd` in ParaView.
 
-Figures show the lift and thrust coefficients, on each wing's planform area of 0.3 m², and the power each wing's motion puts into the flow; their phase averages over the final four heave cycles, with the cycle-to-cycle range shaded; the particle strength; and three downstream wake planes. The impulsive start loads lie off the history axes. Over heave cycles 9–12, which repeat to within the line width, the mean thrust coefficient is 0.27 on the front wing and 0.38 on the rear wing, which flies through the front wing's wake; the mean lift coefficients are 0.53 and 0.37 (printed by `plot_delta_wing_force_cycles`). The strength sum is $\sum_p|\boldsymbol{\Gamma}_p|$ in m³/s, not conserved scalar circulation. Wake fields average one full measured heave cycle.
+The forces, motion and power of each wing are in `vlm_surface_forces.csv`; the lift and thrust coefficients follow from them on each wing's planform area of 0.3 m². The particle strength is in `flow_integrals.csv`, and the three downstream wake planes are `wake_1span.pvd`, `wake_5span.pvd` and `wake_10span.pvd`. Over heave cycles 9–12, which repeat closely, the mean thrust coefficient is 0.27 on the front wing and 0.38 on the rear wing, which flies through the front wing's wake; the mean lift coefficients are 0.53 and 0.37. The strength sum is $\sum_p|\boldsymbol{\Gamma}_p|$ in m³/s, not conserved scalar circulation.
 
-Compare successive heave cycles and refine the time step, wing panels and wake cores before interpreting interaction loads. `figures/delta_wing.gif` animates the particle wakes at half speed, coloured by the wing that shed them, with the lift coefficient of each wing; `assets/delta_wing.gif`, at the top of the main README, is a copy.
+Compare successive heave cycles and refine the time step, wing panels and wake cores before interpreting interaction loads. `assets/delta_wing.gif`, at the top of the main README, animates the particle wakes at half speed, coloured by the wing that shed them, with the lift coefficient of each wing.
 
 This attached-flow VLM does not model separated leading-edge vortices, stall or viscous particle–wall interaction. Incidences up to about 21° are a prescribed demonstration, not validation of separated delta-wing aerodynamics.

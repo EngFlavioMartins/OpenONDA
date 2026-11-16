@@ -11,9 +11,9 @@ python setup.py --mode static --angle 5
 python setup.py --mode moving --angle 5
 ```
 
-The cases run on the CPU (`compute_device="cpu"` in `setup.py`). The scene figures of `allplot.sh` also use ParaView's `pvpython` and `pdflatex`, both in the OpenONDA environment.
+The cases run on the CPU (`compute_device="cpu"` in `setup.py`).
 
-`./allrun.sh` removes previous output and runs ten angles in each frame, from −10° to 15°. `./allcontinue.sh` resumes the saved backups. `./allplot.sh` writes the figures as PNG.
+`./allrun.sh` removes previous output and runs ten angles in each frame, from −10° to 15°. `./allcontinue.sh` resumes the saved backups. `./allplot.sh` renders the animation `assets/flat_plate_wake.gif`.
 
 ## Geometry, flow and resolution
 
@@ -27,6 +27,6 @@ The wake uses Gaussian particles, direct induction, transposed stretching, core 
 
 Force, spanwise/chordwise loading and flow-integral CSVs are in `samples/exp_<mode>_aoa<angle>/`. For geometry and wakes, open `solution/<case>/vlm.pvd` and `vpm.pvd` in ParaView; VLM+VPM backups are written every 0.5 s.
 
-Figures show settled lift, induced drag and pitching moment, spanwise loading and induced velocity, moving/static load histories, and the saved particle wake. The steady polar averages the final five chord lengths. The reference is rectangular-wing lifting-line theory, an attached-flow, small-incidence, high-aspect-ratio approximation. The wake uses a higher perspective view with the projected motion horizontal, the saved plate surface shaded in neutral grey, blue particle glyphs and one light-grey motion arrow. Editable geometry and its ParaView state are saved under `figures/auxiliary/flat_plate_wake/`. `figures/flat_plate_wake.gif` animates the wake of the moving plate at 12° from rest, with its lift and drag coefficients; that case writes a particle frame every quarter chord of travel.
+The lift, induced drag and pitching moment histories of each frame are in `vlm_forces.csv`, the spanwise loading in `vlm_spanwise_flat_plate.csv` and the panel circulation and velocities in `vlm_chordwise_flat_plate.csv`. Average the final five chord lengths for the steady polar. The reference is rectangular-wing lifting-line theory, an attached-flow, small-incidence, high-aspect-ratio approximation. `assets/flat_plate_wake.gif` animates the wake of the moving plate at 12° from rest, with its lift and drag coefficients; that case writes a particle frame every quarter chord of travel.
 
 Refine the panels, the time step and the particle cores together before treating the polar as converged. VLM does not resolve skin friction, boundary layers, stall or separation; the 15° case does not validate those effects.

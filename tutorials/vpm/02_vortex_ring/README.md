@@ -11,9 +11,9 @@ From this directory:
 ./allplot.sh
 ```
 
-The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`, which never falls back to the CPU; without a GPU the run stops with a message. The scene figures of `allplot.sh` also use ParaView's `pvpython` and `pdflatex`, both in the OpenONDA environment.
+The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`, which never falls back to the CPU; without a GPU the run stops with a message.
 
-`allrun.sh` removes previous generated output and runs all four variants. `./allcontinue.sh` resumes the saved backups. To run one variant, use `python setup.py --variant dns_transposed`; alternatives are `dns_direct`, `dns_mixed` and `les_transposed`.
+`allrun.sh` removes previous generated output and runs all four variants. `./allcontinue.sh` resumes the saved backups. `./allplot.sh` renders the animation `assets/vortex_ring.gif` from the `dns_transposed` checkpoints. To run one variant, use `python setup.py --variant dns_transposed`; alternatives are `dns_direct`, `dns_mixed` and `les_transposed`.
 
 ## Inputs and interpretation
 
@@ -30,6 +30,6 @@ Edit [setup.py](setup.py):
 
 Toroidal support is truncated at 5% of the represented Gaussian tail. Core compensation accounts for particle smoothing. All variants use direct induction for the 8.8k particles, SSPRK3 and core spreading. `les_transposed` adds $C_s=0.20$ Smagorinsky viscosity; the three DNS variants change only the discrete stretching choice.
 
-Samples every 0.1 s track ring position, radius, circulation, mode amplitudes, energy and particle resolution and state. Checkpoints every 0.5 s are in `solution/<variant>/`; diagnostics are in `samples/<variant>/`. Figures compare translation, energy, circulation, stretching stability and ring shape. `figures/vortex_ring.gif` follows the `dns_transposed` ring along a ruler in ring radii.
+Samples every 0.1 s track ring position, radius, circulation, mode amplitudes, energy and particle resolution and state. Checkpoints every 0.5 s are in `solution/<variant>/`; diagnostics are in `samples/<variant>/`. Translation, radius, circulation and particle resolution are in `ring_diagnostics.csv`, the mode amplitudes in `ring_modes.csv` and the energy in `flow_integrals.csv`. `assets/vortex_ring.gif` follows the `dns_transposed` ring along a ruler in ring radii.
 
 The calculation stops if configured strain, divergence or misalignment limits are exceeded. A stopped curve is a partial trajectory. Compare instability onset only while the physical core and particle overlap remain resolved; numerical growth is not sufficient evidence of a physical Widnall instability.

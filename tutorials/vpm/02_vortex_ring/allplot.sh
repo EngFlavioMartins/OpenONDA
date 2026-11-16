@@ -3,8 +3,5 @@ set -e
 
 cd "$(dirname "$0")"
 
-python -m assets.plot_vortex_ring_motion
-python -m assets.plot_vortex_ring_energy
-python -m assets.plot_vortex_ring_circulation
-python -m assets.plot_vortex_ring_scenes
+# Animation of the dns_transposed ring, written to assets/vortex_ring.gif
 python -m assets.render_vortex_ring_animation
