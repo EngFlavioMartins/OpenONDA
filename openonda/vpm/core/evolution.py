@@ -477,7 +477,7 @@ class EvolutionStepper:
             effective_viscosity = (
                 self.particles.effective_viscosity_cpu()[:N].copy() if N > 0 else None
             )
-            return self.physics.grid_based_diffusion(
+            return self.physics.dvh_diffusion(
                 self.particles,
                 time_step_size=time_step_size,
                 particle_spacing=vc.dvh_grid_spacing,

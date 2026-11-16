@@ -10,7 +10,7 @@ One module per scheme:
 
 :class:`~openonda.vpm.physics.engine.PhysicsEngine` composes them.
 
-DVH and GBD are driven from ``grid.py`` (``grid_based_diffusion`` /
+DVH and GBD are driven from ``grid.py`` (``dvh_diffusion`` /
 ``gbd_diffusion``) because they share one stateful grid; their dispatch from
 the time-step algorithm lives in ``core/evolution.py``.
 """

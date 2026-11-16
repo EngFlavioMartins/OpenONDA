@@ -5,7 +5,7 @@ kernels that both the DVH and GBD viscous-diffusion schemes share: grid
 allocation and bounds, body masking, M4' scattering, Laplacian stepping,
 particle regeneration, and the transfer buffers between the Taichi grid and
 host arrays.  The two schemes both drive this mixin through their own
-``grid_based_diffusion`` / ``gbd_diffusion`` entry points, which are kept here
+``dvh_diffusion`` / ``gbd_diffusion`` entry points, which are kept here
 with the machinery because they share its grid state.
 """
 
@@ -2543,7 +2543,7 @@ class _GridDiffusionMixin:
 
         return n_diffusion_substeps, max_diffusion_number
 
-    def _gbd_diffusion_impl(
+    def gbd_diffusion(
         self,
         particles: "Particles",
         time_step_size: float,
@@ -2554,8 +2554,17 @@ class _GridDiffusionMixin:
         regen_threshold_mode: str = "budget",
         effective_viscosity: np.ndarray | None = None,
         remeshing_kernel: str = "m4_prime",
+        wall_fallback_limit: float = 0.0,
     ) -> dict[str, np.ndarray] | None:
         """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
+
+        Moment-preserving scatter → explicit 7-point Laplacian → weak-strength
+        removal → spawn. Per-particle ``effective_viscosity`` (ν+ν_t) enables the
+        conservative componentwise operator ``div(nu_eff grad(omega))``; otherwise
+        the scalar molecular Laplacian is used. Regenerated particles inherit the
+        pre-regeneration ν_t. ``wall_fallback_limit`` is the fraction of the total
+        strength that may sit on wall-adjacent particles without bounded moment
+        support (see :meth:`compute_m4_wall_corrections`).
 
         Algorithm
         ---------
@@ -2577,6 +2586,7 @@ class _GridDiffusionMixin:
         If the macro-step exceeds the 3-D explicit limit, only the Laplacian is
         substepped. Scatter, thresholding, and regeneration still occur once.
         """
+        self._gbd_wall_fallback_limit = float(wall_fallback_limit)
         # One is also the correct reach for a skipped/zero-diffusivity GBD
         # operation. A completed Laplacian below replaces this with the exact
         # runtime stage count used by the current regeneration.
@@ -3032,41 +3042,6 @@ class _GridDiffusionMixin:
         self._ping = True
         return result
 
-    def gbd_diffusion(
-        self,
-        particles: "Particles",
-        time_step_size: float,
-        particle_spacing: float,
-        kinematic_viscosity: float,
-        domain_padding: float = 3.0,
-        regen_threshold: float = 0.01,
-        regen_threshold_mode: str = "budget",
-        effective_viscosity: np.ndarray | None = None,
-        remeshing_kernel: str = "m4_prime",
-        wall_fallback_limit: float = 0.0,
-    ) -> dict[str, np.ndarray] | None:
-        """GBD (Cottet & Koumoutsakos 2000) diffusion step with particle regeneration.
-
-        Moment-preserving scatter → explicit 7-point Laplacian → weak-strength removal → spawn.
-
-        Per-particle ``effective_viscosity`` (ν+ν_t) enables the conservative
-        componentwise operator ``div(nu_eff grad(omega))``. This is not the
-        complete variable-viscosity stress/curl operator. Otherwise the scalar
-        molecular Laplacian is used. Regenerated particles inherit pre-regen ν_t.
-        """
-        self._gbd_wall_fallback_limit = float(wall_fallback_limit)
-        return self._gbd_diffusion_impl(
-            particles,
-            time_step_size,
-            particle_spacing,
-            kinematic_viscosity,
-            domain_padding,
-            regen_threshold,
-            regen_threshold_mode,
-            effective_viscosity=effective_viscosity,
-            remeshing_kernel=remeshing_kernel,
-        )
-
     def _dvh_scatter_vortex_strength(
         self,
         pos_np: np.ndarray,
@@ -3206,7 +3181,7 @@ class _GridDiffusionMixin:
         # grid-diffusion sequence).
         self._upload_active_vec_grid(self._current_grid, grid_out, nx, ny, nz)
 
-    def _grid_based_diffusion_impl(
+    def dvh_diffusion(
         self,
         particles: "Particles",
         time_step_size: float,
@@ -3219,6 +3194,18 @@ class _GridDiffusionMixin:
         effective_viscosity: np.ndarray | None = None,
     ) -> dict[str, np.ndarray] | None:
         """DVH diffusion + particle regeneration (Durante et al. 2024).
+
+        Spreads each particle's vortex strength to nearby grid nodes via the
+        Gaussian heat-kernel Green's function, then replaces all particles with
+        surviving grid nodes. No finite-difference solve is used.
+
+        The operator is narrower than a general variable-coefficient diffusion
+        operator: the effective viscosity must be spatially uniform, the
+        accepted interval must be resolved by the configured lattice, and the
+        incoming core radius must be finite, positive, and uniform. Smaller
+        accepted intervals are accumulated by the solver before this remap is
+        called. The incoming core radius is preserved on regenerated particles
+        so remapping is not mistaken for physical diffusion.
 
         Algorithm
         ---------
@@ -3454,45 +3441,6 @@ class _GridDiffusionMixin:
             eddy_viscosity_grid=eddy_viscosity_grid,
             regenerated_core_radius=regenerated_core_radius,
             slab_endpoint_volume=slab_bounds is not None,
-        )
-
-    def grid_based_diffusion(
-        self,
-        particles: "Particles",
-        time_step_size: float,
-        particle_spacing: float,
-        kinematic_viscosity: float,
-        domain_padding: float = 3.0,
-        regen_threshold: float = 0.01,
-        regen_threshold_mode: str = "budget",
-        rd_ratio: float = 4.0,
-        effective_viscosity: np.ndarray | None = None,
-    ) -> dict[str, np.ndarray] | None:
-        """DVH (Durante 2024) diffusion step with particle regeneration.
-
-        Spreads each particle's vortex strength to nearby grid nodes via the
-        Gaussian heat-kernel Green's function, then replaces all particles with
-        surviving grid nodes. No finite-difference solve is used.
-
-        The operator is narrower than a general
-        variable-coefficient diffusion operator: the effective viscosity must
-        be spatially uniform, the accepted interval must be resolved by the
-        configured lattice, and the incoming core radius must be finite,
-        positive, and uniform. Smaller accepted intervals are accumulated by
-        the solver before this remap is called. The incoming core radius is
-        preserved on regenerated particles so remapping is not mistaken for
-        physical diffusion.
-        """
-        return self._grid_based_diffusion_impl(
-            particles,
-            time_step_size,
-            particle_spacing,
-            kinematic_viscosity,
-            domain_padding,
-            regen_threshold,
-            regen_threshold_mode,
-            rd_ratio=rd_ratio,
-            effective_viscosity=effective_viscosity,
         )
 
     # Taichi Kernels
