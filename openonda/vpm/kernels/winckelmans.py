@@ -10,10 +10,12 @@ import taichi as ti
 
 from openonda.core._numba import cacheable_njit as njit
 
-from ..config.constants import ONE_OVER_FOUR_PI
 from .definition import AlgebraicDefectEnvelope, KernelDefinition, SlabImageSplit
 from .gaussian import GAUSSIAN_Q_SERIES_COEFFICIENTS
 from .gaussian import radial_factors_host as gaussian_radial_factors_host
+
+# Biot-Savart constant 1/(4 pi)
+ONE_OVER_FOUR_PI = 1.0 / (4.0 * np.pi)
 
 # Second moment m2 = 3/2, as for the Gaussian; this makes the kernel second order.
 SECOND_MOMENT = 1.5

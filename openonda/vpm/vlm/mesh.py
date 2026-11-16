@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import taichi as ti
 
-from ..config.constants import VLM_SMALL_VELOCITY
-from .geometry import Aircraft, WingSegment
+from .geometry import VLM_SMALL_VELOCITY, Aircraft, WingSegment
 
 if TYPE_CHECKING:
     from .lattice import VLMLattice

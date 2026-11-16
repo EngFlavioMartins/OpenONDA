@@ -31,7 +31,7 @@ from openonda.core.slip_slab_images import (
     slab_image_lattice,
 )
 
-from ...config.constants import _DVH_BETA, MAX_N_PARTICLES
+from ...config.constants import DVH_BETA, MAX_N_PARTICLES
 from ..induction.base import TaichiField
 from .body_geometry import BodyGeometryKey, BodyGridGeometryCache, ImmutableBodyGeometryQueries
 
@@ -3137,7 +3137,7 @@ class _GridDiffusionMixin:
                     "DVH requires spatially uniform effective viscosity; "
                     "use GBD for variable-viscosity diffusion"
                 )
-            resolved_width = _DVH_BETA * (float(rd_ratio) * float(particle_spacing)) ** 2
+            resolved_width = DVH_BETA * (float(rd_ratio) * float(particle_spacing)) ** 2
             positive_viscosity = viscosity_per_particle > 0.0
             resolution_tolerance = (
                 64.0

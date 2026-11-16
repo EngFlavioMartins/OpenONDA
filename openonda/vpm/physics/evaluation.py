@@ -10,7 +10,7 @@ import numpy as np
 import taichi as ti
 
 from ...core.clock import time_tolerance
-from ..config.constants import EPSILON, MAX_N_PARTICLES
+from ..config.constants import MAX_N_PARTICLES
 from .induction.base import TaichiDataType
 
 if TYPE_CHECKING:
@@ -20,6 +20,10 @@ if TYPE_CHECKING:
 _DIRECT_INTEGRAL_PARTICLE_LIMIT = 10_000
 _FOURIER_GRID_EXTRA_CELLS = 8
 _FOURIER_GRID_MIN_SLACK = 4
+# The helicity pair term divides by the cube of the separation (m); closer pairs add nothing.
+_MINIMUM_SEPARATION = 1e-12
+# The vortex centroid divides by the strength magnitude (m³/s); weaker particles are skipped.
+_MINIMUM_STRENGTH = 1e-12
 
 
 @ti.data_oriented
@@ -374,7 +378,7 @@ class ParticleFieldEvaluation:
                         # regularized potential diagnostic instead of
                         # the Gaussian identity.
                         local_energy += ti.cast(g_val * str_j.dot(str_i) * 0.5, _acc)
-                    if r_mag > EPSILON:
+                    if r_mag > _MINIMUM_SEPARATION:
                         local_helicity += ti.cast(
                             q_val * r_ij.dot(str_i.cross(str_j)) / r_mag**3,
                             _acc,
@@ -505,13 +509,13 @@ class ParticleFieldEvaluation:
 
             for i in range(n_particles_total):
                 str_mag = vortex_strength[i].norm()
-                if str_mag > EPSILON:
+                if str_mag > _MINIMUM_STRENGTH:
                     ti.atomic_add(weighted_pos[0], position[i][0] * str_mag)
                     ti.atomic_add(weighted_pos[1], position[i][1] * str_mag)
                     ti.atomic_add(weighted_pos[2], position[i][2] * str_mag)
                     ti.atomic_add(total_strength_mag, str_mag)
 
-            if total_strength_mag > EPSILON:
+            if total_strength_mag > _MINIMUM_STRENGTH:
                 result[0] = weighted_pos[0] / total_strength_mag
                 result[1] = weighted_pos[1] / total_strength_mag
                 result[2] = weighted_pos[2] / total_strength_mag

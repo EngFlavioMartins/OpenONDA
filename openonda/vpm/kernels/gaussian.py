@@ -11,11 +11,15 @@ import taichi as ti
 
 from openonda.core._numba import cacheable_njit as njit
 
-from ..config.constants import GAUSSIAN_Q_SERIES_CROSSOVER
 from .definition import KernelDefinition, SlabImageSplit
 
 # Second moment m2 = int |x|^2 zeta d^3x of exp(-|x|^2)/pi^1.5.
 SECOND_MOMENT = 1.5
+
+# Gaussian q uses its integrated series below this radius to avoid
+# small-radius cancellation. Host, direct/FMM and LBVH share the coefficients
+# below; the number of terms depends on precision.
+GAUSSIAN_Q_SERIES_CROSSOVER = 1.0
 
 # Integrating q'(rho) = rho**2 exp(-rho**2) / pi**1.5 gives these
 # coefficients. See DLMF 7.6.1, https://dlmf.nist.gov/7.6.E1.

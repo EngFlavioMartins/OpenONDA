@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import math
 from typing import Literal
 
+from .constants import DVH_BETA
+
 _THRESHOLD_MODES = {
     "budget",
     "relative_max",
@@ -191,15 +193,13 @@ class ViscousConfig:
         ``R_d = dvh_support_radius_ratio * dvh_grid_spacing``. Raises
         :class:`ValueError` when spacing or positive viscosity is unavailable.
         """
-        from .constants import _DVH_BETA
-
         if self.dvh_grid_spacing is None:
             raise ValueError("dvh_grid_spacing must be set to a positive value")
         if self.kinematic_viscosity is None or self.kinematic_viscosity <= 0.0:
             raise ValueError("kinematic_viscosity must be positive for DVH")
 
         support_radius = self.dvh_support_radius_ratio * self.dvh_grid_spacing
-        return _DVH_BETA * support_radius * support_radius / (4.0 * self.kinematic_viscosity)
+        return DVH_BETA * support_radius * support_radius / (4.0 * self.kinematic_viscosity)
 
     def gbd_max_time_step_size(self) -> float:
         """Return the explicit GBD stability bound ``h²/(6*nu)`` in s.

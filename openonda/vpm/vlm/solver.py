@@ -23,7 +23,6 @@ from openonda.core.log_style import StepLog
 from openonda.core.metadata import metadata_value
 from openonda.core.profiling import Stopwatch
 
-from ..config.constants import VLM_SMALL_VELOCITY
 from ..kernels import make_vortex_kernel
 from ..runtime.backend import active_precision
 from .config import VLMConfig, VLMSurface
@@ -36,7 +35,7 @@ from .filament import (
     compute_coupled_right_hand_side,
     initialize_bound_transport,
 )
-from .geometry import Aircraft, Wing
+from .geometry import VLM_SMALL_VELOCITY, Aircraft, Wing
 from .geometry import load_surface as _load_surface
 from .lattice import VLMLattice
 from .loads import (
@@ -59,8 +58,6 @@ if TYPE_CHECKING:
     from ..particles.container import Particles
     from ..physics.base import PhysicsBase
     from ..physics.induction.base import StageRates, StageState
-
-EPSILON = VLM_SMALL_VELOCITY
 
 # Lattice fields that move rigidly with their surface.
 _GEOMETRY_FIELDS = (
@@ -491,7 +488,7 @@ class VLMSolver:
                     segment.vertex_position["c"] - segment.vertex_position["b"]
                 )
                 min_panel_chord = min(root_chord, tip_chord) / segment.n_chordwise_panels
-                if min_panel_chord > EPSILON:
+                if min_panel_chord > VLM_SMALL_VELOCITY:
                     panel_chords.append(float(min_panel_chord))
         if not panel_chords:
             raise ValueError("VLM geometry has no positive panel chord length")
@@ -542,7 +539,7 @@ class VLMSolver:
         courant = characteristic_speed * time_step_size / min_panel_chord
         max_time_step_size = (
             min_panel_chord / characteristic_speed
-            if characteristic_speed > EPSILON
+            if characteristic_speed > VLM_SMALL_VELOCITY
             else float("inf")
         )
         stable = courant <= 1.0

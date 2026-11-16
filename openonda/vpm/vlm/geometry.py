@@ -7,6 +7,9 @@ from typing import Any, TypedDict
 
 import numpy as np
 
+# Small velocity or length below which a VLM direction is undefined
+VLM_SMALL_VELOCITY = 1e-10
+
 
 class ReferenceValues(TypedDict, total=False):
     """Reference values for force and moment coefficients."""

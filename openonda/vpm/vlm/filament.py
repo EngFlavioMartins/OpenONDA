@@ -9,8 +9,8 @@ import numpy as np
 import scipy.linalg
 import taichi as ti
 
-from ..config.constants import VLM_SMALL_VELOCITY
 from ..physics.induction.stretching import stretching_rate
+from .geometry import VLM_SMALL_VELOCITY
 
 
 @ti.func
