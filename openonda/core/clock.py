@@ -1,5 +1,7 @@
 """Roundoff tolerance of the solver clocks."""
 
+from __future__ import annotations
+
 
 def time_tolerance(time: float) -> float:
     """Return the tolerance in s within which two physical times are the same time.

@@ -43,7 +43,7 @@ _COMPRESSOR = {
 DEFAULT_COMPRESSION = "zlib"
 
 
-def configure_writer(writer, compression: str = DEFAULT_COMPRESSION) -> None:
+def configure_writer(writer: vtk.vtkXMLWriter, compression: str = DEFAULT_COMPRESSION) -> None:
     """Put one VTK XML writer into appended-raw mode with the given compressor."""
     if compression not in _COMPRESSOR:
         raise ValueError(f"compression must be one of {', '.join(sorted(_COMPRESSOR))}")
@@ -53,7 +53,7 @@ def configure_writer(writer, compression: str = DEFAULT_COMPRESSION) -> None:
 
 
 def write_vtk_dataset(
-    dataset,
+    dataset: vtk.vtkDataSet,
     filename: str | Path,
     *,
     compression: str = DEFAULT_COMPRESSION,

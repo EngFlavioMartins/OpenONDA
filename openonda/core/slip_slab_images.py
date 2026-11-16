@@ -8,6 +8,8 @@ the vorticity transfer both need the field of every image, for slabs of any widt
 down to a single lattice layer.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 

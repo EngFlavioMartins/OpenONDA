@@ -15,8 +15,9 @@ class VelocityRamp:
     Velocities use m/s and transition endpoints use seconds. The quintic
     transition has zero first and second derivatives at both endpoints. It
     serves boundary velocity, where the acceleration should also leave and
-    reach its end values smoothly; body motion uses the sin² ramp of
-    :class:`~openonda.core.kinematics.SmoothRampMotion`.
+    reach its end values smoothly. Body motion uses the sin² ramp of
+    :class:`~openonda.core.kinematics.SmoothRampMotion`, which keeps velocity
+    and acceleration continuous and has a closed-form displacement.
     """
 
     initial: tuple[float, float, float]
@@ -41,7 +42,7 @@ class VelocityRamp:
         The initial velocity holds before ``start_time`` and the final velocity
         after ``end_time``.
         """
-        fraction = np.clip((time - self.start_time) / (self.end_time - self.start_time), 0.0, 1.0)
+        fraction = min(max((time - self.start_time) / (self.end_time - self.start_time), 0.0), 1.0)
         blend = fraction**3 * (10.0 + fraction * (-15.0 + 6.0 * fraction))
         first = np.asarray(self.initial)
         return first + blend * (np.asarray(self.final) - first)

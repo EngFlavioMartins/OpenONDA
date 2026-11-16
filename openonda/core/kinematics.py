@@ -537,8 +537,10 @@ class SmoothRampMotion(_ExactTranslation):
 
     ``V(t) = V_final sin²(pi (t - t0) / (2 T))`` for ``0 <= t - t0 < T`` and
     ``V_final`` afterwards, so velocity and acceleration are continuous at
-    both ends of the ramp. This is the body-motion law; the boundary velocity
-    of :class:`~openonda.core.forcing.VelocityRamp` uses a quintic whose second
+    both ends of the ramp. This is the body-motion law: a rigid body needs
+    continuous velocity and acceleration, and the displacement has a closed
+    form. The boundary velocity of
+    :class:`~openonda.core.forcing.VelocityRamp` uses a quintic whose second
     derivative also vanishes at the ends.
 
     Parameters

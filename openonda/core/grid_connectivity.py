@@ -1,12 +1,16 @@
 """Compact connected components of Cartesian grid links masked at the wall."""
 
+from __future__ import annotations
+
 import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
 
 @njit(cache=True)
-def connected_grid_components(magnitude, groups, links):
+def connected_grid_components(
+    magnitude: np.ndarray, groups: np.ndarray, links: np.ndarray
+) -> np.ndarray:
     """Label active fluid support without constructing a sparse edge graph.
 
     Union-find visits the three preceding lattice neighbours once. Scratch

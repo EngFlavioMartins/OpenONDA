@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Literal
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 WritePrecision = Literal["f16", "f32", "f64"]
 
@@ -46,7 +47,7 @@ def storage_dtype(precision: str) -> np.dtype:
     return _STORAGE_DTYPE[precision]
 
 
-def cast_for_write(values, precision: str) -> np.ndarray:
+def cast_for_write(values: ArrayLike, precision: str) -> np.ndarray:
     """Return *values* as a contiguous array at the requested write precision.
 
     Non-floating arrays pass through unchanged. A value beyond the range of
