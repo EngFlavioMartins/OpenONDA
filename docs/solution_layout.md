@@ -8,7 +8,7 @@ A case writes its results below its `directory`, next to `setup.py` in the tutor
 | `solution/vpm.pvd` | Particle positions, strengths, vorticity and core radii |
 | `solution/vlm.pvd` | Lifting-surface geometry, circulation and loads, when present |
 | `solution/fvm/`, `solution/vpm/`, `solution/vlm/` | The individual frames referenced by the `.pvd` files, and the numbered backups `fvm_{step:06d}.npz` and `vpm_{step:06d}.h5` |
-| `solution/*_metadata.json` | The configuration that ran and its timing |
+| `solution/*_metadata.json` | The configuration that ran, the run status, and the step and time of the saved state |
 | `solution/*.log` | Solver logs (`fvm.log`, `vpm.log`, `coupler.log`) |
 | `solution/coupler_diagnostics.jsonl` | Coupled cases: per coupling step the coupling-iteration residuals, vorticity-transfer conservation, particle counts and timings |
 | `samples/` | Sampler output: CSV histories of forces, line probes and global invariants, VTK frames of plane probes |

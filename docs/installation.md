@@ -21,7 +21,7 @@ ParaView and LaTeX for the tutorial figures. OpenONDA is installed in editable
 mode, so edits to the code take effect immediately. The installer finishes by
 meshing, solving and restarting a tiny case with every solver. In a new
 terminal, run `conda activate OpenONDA`; re-run `source install.sh` to update
-the environment, and add `--dev` for the test, lint and packaging tools.
+the environment, and add `--dev` for the lint and packaging tools.
 
 ## Into your own Python environment
 
@@ -108,6 +108,8 @@ function, for example `openonda api openonda.vpm.ViscousConfig`.
   `PATH`; run `conda activate OpenONDA`.
 - "mpiexec did not create the requested MPI communicator": mpi4py was built for another MPI
   than this `mpiexec`; re-run `source install.sh` to rebuild the environment.
+- "Parallel execution requires mpiexec": no launcher was found in the active environment;
+  activate it, or set `OPENONDA_MPIEXEC` to the name or path of the MPI launcher.
 - A slip-slab case stops with "Gaussian mesh requires …" while the particles run on CUDA:
   install the CUDA extension above, or evaluate the images on the CPU with
   `GaussianSlabSettings(backend="cpu")`.

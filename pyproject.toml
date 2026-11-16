@@ -120,7 +120,7 @@ src = ["."]
 exclude = [
     ".git",
     "__pycache__",
-    "docs/",
+    "docs/*.md",
     "build/",
     "dist/",
     ".eggs/",
