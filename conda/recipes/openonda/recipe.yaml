@@ -53,13 +53,14 @@ requirements:
     - psutil >=5.9
     - pandas >=2.1
     - defusedxml >=0.7.1
-    - taichi >=1.7.1,<1.8
+    - if: osx and x86_64
+      then: taichi ==1.7.1
+      else: taichi >=1.7.4,<1.8
     - pyamg >=5
     - pyvista >=0.43
     - vtk-base >=9.3
     - mpi4py >=4
     - petsc4py >=3.21
-    - numpy-stl >=3.2
   run_constraints:
     # VTK serves file output and plotting; its CUDA build adds gigabytes
     - viskores * cpu_*

@@ -13,11 +13,11 @@ from collections.abc import Iterable, Mapping, Sequence
 import math
 from pathlib import Path
 import re
-from typing import Any
 from xml.sax.saxutils import quoteattr
 
 from defusedxml import ElementTree
 import numpy as np
+import vtk
 
 from .clock import time_tolerance
 from .file_output import atomic_path, write_text_atomic
@@ -32,13 +32,6 @@ __all__ = [
     "write_surface_frame",
     "write_vtk_dataset",
 ]
-
-try:
-    import vtk as _vtk_module
-except ImportError:  # Optional visualization dependency.
-    _vtk_module = None
-
-vtk: Any = _vtk_module
 
 _COMPRESSOR = {
     "lz4": "SetCompressorTypeToLZ4",
@@ -70,9 +63,6 @@ def write_vtk_dataset(
 
     ``uint64_header`` selects 64-bit block headers, which arrays above 4 GiB need.
     """
-    if vtk is None:
-        raise ImportError("VTK output requires the optional visualization dependencies")
-
     target = Path(filename)
     with atomic_path(target) as temporary:
         writer = vtk.vtkXMLDataSetWriter()
