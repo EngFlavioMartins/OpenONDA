@@ -222,7 +222,8 @@ class EvolutionStepper:
 
     def _commit_accepted_step(self) -> None:
         """Publish a fully accepted numerical step to the standard clock."""
-        assert self._staged_step is not None and self._staged_time is not None
+        if self._staged_step is None or self._staged_time is None:
+            raise RuntimeError("An accepted step was committed without a staged clock")
         self.solver.step = self._staged_step
         self.solver.time = self._staged_time
         self._staged_step = None

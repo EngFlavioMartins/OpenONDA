@@ -409,11 +409,16 @@ class TaichiTreecode:
 
         The hierarchy is rebuilt on every call.
 
-        Args:
-            position:  Taichi vec3 field *or* NumPy array [N,3] of position.
-            vortex_strength: Taichi vec3 field or NumPy array [N, 3] [m³/s].
-            core_radius: Taichi scalar field or NumPy array [N] [m].
-            N:  Number of active particles (required for field API).
+        Parameters
+        ----------
+        position
+            Taichi vec3 field *or* NumPy array [N,3] of position.
+        vortex_strength
+            Taichi vec3 field or NumPy array [N, 3] [m³/s].
+        core_radius
+            Taichi scalar field or NumPy array [N] [m].
+        N
+            Number of active particles (required for field API).
         """
         # The tree is rebuilt on every call.
 

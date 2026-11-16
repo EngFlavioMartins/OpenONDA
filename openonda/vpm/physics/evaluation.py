@@ -49,10 +49,14 @@ class ParticleFieldEvaluation:
         """
         Initialize particle field physics diagnostics.
 
-        Args:
-            particle_kernel: Kernel type ("gaussian", "winckelmans", "super_gaussian")
-            max_n_particles: Maximum number of particles for field allocation
-            accumulator_dtype: Taichi dtype for accumulation (ti.f32 or ti.f64)
+        Parameters
+        ----------
+        particle_kernel
+            Kernel type ("gaussian", "winckelmans", "super_gaussian")
+        max_n_particles
+            Maximum number of particles for field allocation
+        accumulator_dtype
+            Taichi dtype for accumulation (ti.f32 or ti.f64)
         """
         self.max_n_particles = max_n_particles
         self.particle_kernel = particle_kernel.lower()
@@ -480,10 +484,14 @@ class ParticleFieldEvaluation:
     ) -> None:
         """Append the vortex-strength-magnitude-weighted particle vortex_centroid.
 
-        Args:
-            diagnostics_history: Solver's ``_diagnostics_history`` dict (mutated in-place).
-            position: Particle position array of shape (N, 3).
-            vortex_strength: Particle vortex-strength array of shape (N, 3) [m³/s].
+        Parameters
+        ----------
+        diagnostics_history
+            Solver's ``_diagnostics_history`` dict (mutated in-place).
+        position
+            Particle position array of shape (N, 3).
+        vortex_strength
+            Particle vortex-strength array of shape (N, 3) [m³/s].
         """
         if "vortex_centroid" not in diagnostics_history:
             return
@@ -883,10 +891,14 @@ class ParticleFieldEvaluation:
         """
         Update the time history of kinetic energy.
 
-        Args:
-            time: Current simulation time [s]
-            total_kinetic_energy: Current total kinetic energy [J]
-            measurement: Energy definition shared by comparable samples.
+        Parameters
+        ----------
+        time
+            Current simulation time [s]
+        total_kinetic_energy
+            Current total kinetic energy [J]
+        measurement
+            Energy definition shared by comparable samples.
         """
         # Replace the latest entry when callers request diagnostics multiple
         # times at the same physical time. This keeps dE/dt finite differences

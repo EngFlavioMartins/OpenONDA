@@ -77,10 +77,8 @@ def _dvh_scatter_numba(
     ``/w_sum``) conserves each particle's total vortex strength exactly; the node
     contributions accumulate in ``grid_out`` (shape ``(nx, ny, nz, 3)``, f64).
 
-    This is the exact f64 algorithm of the former NumPy ``for j in range(N)``
-    loop — same formulas, same accumulation order — compiled with Numba so the
-    49k-particle scatter that cost ≈5 min in pure Python runs in a fraction of
-    a second.  ``grid_out`` must be zeroed by the caller.
+    The loop is compiled with Numba, so a 49k-particle scatter runs in a fraction of a
+    second.  ``grid_out`` must be zeroed by the caller.
     """
     N = pos.shape[0]
     for p in range(N):
@@ -235,11 +233,7 @@ def dvh_scatter_vortex_strength(
     R_d = max(base_radius, max_heat_radius)
     R_d_sq = R_d * R_d
 
-    # Numba-compiled heat-kernel scatter.  This is the exact f64 algorithm
-    # of the former ``for j in range(N)`` Python loop (same formulas, same
-    # accumulation order → bit-identical conservation), but JIT-compiled.
-    # That serial Python loop dominated DVH cost (≈5 min at 49k particles););
-    # the compiled loop runs in a fraction of a second.
+    # Numba-compiled heat-kernel scatter in f64.
     grid_out = np.zeros((nx, ny, nz, 3), dtype=np.float64)
     _dvh_scatter_numba(
         np.ascontiguousarray(pos_np, dtype=np.float64),

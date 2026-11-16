@@ -24,12 +24,16 @@ SECOND_MOMENT = 1.5
 def create_winckelmans_kernels(dtype: object = ti.f32) -> dict[str, Callable]:
     """Create Winckelmans kernel functions with specified precision.
 
-    Args:
-        dtype: Taichi data type (ti.f32 or ti.f64)
+    Parameters
+    ----------
+    dtype
+        Taichi data type (ti.f32 or ti.f64)
 
-    Returns:
-        Dictionary with q, density, energy and diffusion functions, plus
-        finite ``radial_factors_`` for velocity and its Jacobian.
+    Returns
+    -------
+    dict[str, Callable]
+        Dictionary with q, density, energy and diffusion functions, plus finite ``radial_factors_``
+        for velocity and its Jacobian.
     """
 
     # Half-integer powers of (ρ²+1) are written as muls + one sqrt instead of the

@@ -562,11 +562,15 @@ class VPMSolver:
             transfer vorticity to the particles.
         time : float or None, default=None
             Accepted time in s imposed by a driver that owns the clock, such
-            as the FVM--VPM coupler. It must equal ``time + time_step_size``
+            as the FVM--VPM coupler. It needs a solver built with
+            ``external_clock=True`` and must equal ``time + time_step_size``
             to round-off. ``None`` advances by the configured time-step size.
 
         Raises
         ------
+        ValueError
+            If ``time`` is given to a solver built without ``external_clock``,
+            or does not follow the current time by one time step.
         RuntimeError
             If an earlier step failed and no backup was loaded since.
         Exception
@@ -577,6 +581,8 @@ class VPMSolver:
         if not self._initial_conditions_built:
             self._build_initial_conditions()
         self.logger.muted = False
+        if time is not None and not self._external_clock:
+            raise ValueError("An imposed time requires VPMSolver(case, external_clock=True)")
         if time is not None and not math.isclose(
             time,
             self.time + self.time_step_size,
@@ -587,9 +593,6 @@ class VPMSolver:
                 f"Imposed VPM time {time!r} s does not follow {self.time!r} s "
                 f"by one time step of {self.time_step_size!r} s"
             )
-        if time is not None:
-            # An external clock may select a different step on every advance.
-            self._external_clock = True
         if not self._run_started:
             self.run_status = RunStatus.running
         step_clock = Stopwatch()
@@ -835,7 +838,14 @@ class VPMSolver:
             self._sampler_manager.write_all(OutputEvent.final)
 
     def _reached_end_time(self) -> bool:
-        """Return whether the accepted time is ``RunPlan.end_time`` to the time tolerance."""
+        """Return whether the accepted state is the end of the run.
+
+        A fixed-step solver is at its end after the whole number of steps that
+        :meth:`RunPlan.n_steps` accepts for ``end_time``; an externally clocked one
+        when its time reaches ``end_time`` to the time tolerance.
+        """
+        if not self._external_clock:
+            return self.step >= self._run_final_step
         final_time = float(self.case.run.end_time)
         return self.time >= final_time - time_tolerance(final_time)
 

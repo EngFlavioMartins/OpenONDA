@@ -92,11 +92,11 @@ def _is_likely_integrated_gpu() -> bool:
 # Target pool size (bytes) on integrated GPUs.  A production treecode run owns
 # considerably more than the particle container itself: the LBVH nodes, two
 # traversal stacks, RK scratch fields, target fields, and a fixed GBD/DVH grid
-# coexist.  The former 768 MiB pool could therefore be exhausted silently by a
-# nominal 500k-particle coupled run even when the Vulkan heap still had several
-# GiB available. Keep a fixed (rather than heap-fraction) allocation for unified
-# memory, but reserve enough for the complete solver.  The runtime still caps
-# this at 50% of the driver's current budget below.
+# coexist, so a nominal 500k-particle coupled run needs more than 768 MiB even
+# when the Vulkan heap has several GiB available. Keep a fixed (rather than
+# heap-fraction) allocation for unified memory, but reserve enough for the
+# complete solver.  The runtime still caps this at 50% of the driver's current
+# budget below.
 _INTEGRATED_GPU_POOL_BYTES: int = 1536 * (1 << 20)  # 1.5 GiB
 
 

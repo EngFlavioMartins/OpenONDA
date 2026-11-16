@@ -104,21 +104,29 @@ def particle_resolution_metrics(
 ) -> dict[str, float]:
     """Return the resolution/consistency metrics for one particle field.
 
-    Args:
-        position: (N, 3) particle position.
-        vortex_strength: (N, 3) particle vortex strength [m³/s].
-        core_radius: (N,) particle core radius [m].
-        vorticity: optional (N, 3) w(x_p) already evaluated by the solver.
-            When omitted, the same compact Gaussian-neighbour sum used for the
-            divergence diagnostic supplies vorticity at the probe particles.
-        sample_all: evaluate every distinct blob location instead of a bounded
-            spatial sample. Use this to confirm a sampled particle-state limit crossing;
-            moving particles can change the sampled subset between steps.
-        slip_slab: free-slip planes ``(z_min, z_max)``; the particle images
-            within the Gaussian support then join the neighbours and the
-            reconstructed field.
+    Parameters
+    ----------
+    position
+        (N, 3) particle position.
+    vortex_strength
+        (N, 3) particle vortex strength [m³/s].
+    core_radius
+        (N,) particle core radius [m].
+    vorticity
+        optional (N, 3) w(x_p) already evaluated by the solver. When omitted, the same compact
+        Gaussian-neighbour sum used for the divergence diagnostic supplies vorticity at the probe
+        particles.
+    sample_all
+        evaluate every distinct blob location instead of a bounded spatial sample. Use this to
+        confirm a sampled particle-state limit crossing; moving particles can change the sampled
+        subset between steps.
+    slip_slab
+        free-slip planes ``(z_min, z_max)``; the particle images within the Gaussian support then
+        join the neighbours and the reconstructed field.
 
-    Returns:
+    Returns
+    -------
+    dict[str, float]
         dict of scalar metrics; every value is NaN when it cannot be formed.
 
     Coincident equal-core contributions are summed for diagnostics only. Group

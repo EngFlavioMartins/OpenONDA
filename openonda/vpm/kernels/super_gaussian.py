@@ -25,12 +25,16 @@ WIDTH_RATIO = math.sqrt(2.0)
 def create_super_gaussian_kernels(dtype: object = ti.f32) -> dict[str, Callable]:
     """Create Super-Gaussian kernel functions with specified precision.
 
-    Args:
-        dtype: Taichi data type (ti.f32 or ti.f64)
+    Parameters
+    ----------
+    dtype
+        Taichi data type (ti.f32 or ti.f64)
 
-    Returns:
-        Dictionary with the selected q, density, energy and diffusion functions,
-        plus finite ``radial_factors_`` for velocity and its Jacobian.
+    Returns
+    -------
+    dict[str, Callable]
+        Dictionary with the selected q, density, energy and diffusion functions, plus finite
+        ``radial_factors_`` for velocity and its Jacobian.
     """
 
     corrected = create_high_order_gaussian_kernels(dtype)

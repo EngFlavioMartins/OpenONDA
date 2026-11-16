@@ -497,21 +497,27 @@ class Particles:
         Classifies the downloaded positions on the host and compacts retained
         fields together, preserving particle order without GPU write races.
 
-        Args:
-            bounds: [xmin, xmax, ymin, ymax, zmin, zmax] defining the reference box.
-                   Use -inf/inf for unbounded dimensions.
-            invert_selection: If False (default), remove particles INSIDE the box.
-                        If True, remove particles OUTSIDE the box (keep those inside).
+        Parameters
+        ----------
+        bounds
+            [xmin, xmax, ymin, ymax, zmin, zmax] defining the reference box. Use -inf/inf for
+            unbounded dimensions.
+        invert_selection
+            If False (default), remove particles INSIDE the box. If True, remove particles OUTSIDE
+            the box (keep those inside).
 
-        Returns:
+        Returns
+        -------
+        int
             Number of particles removed.
 
-        Examples:
-            >>> # Remove particles in far wake (x > 10)
-            >>> particles.remove_particles_by_bounds([10, np.inf, -np.inf, np.inf, -np.inf, np.inf])
+        Examples
+        --------
+        >>> # Remove particles in far wake (x > 10)
+        >>> particles.remove_particles_by_bounds([10, np.inf, -np.inf, np.inf, -np.inf, np.inf])
 
-            >>> # Keep only particles inside domain (remove those outside)
-            >>> particles.remove_particles_by_bounds([-5, 10, -5, 5, -5, 5], invert_selection=True)
+        >>> # Keep only particles inside domain (remove those outside)
+        >>> particles.remove_particles_by_bounds([-5, 10, -5, 5, -5, 5], invert_selection=True)
         """
         n = self.n_particles_total
         # Reuse the positions required by host compaction. This avoids a separate

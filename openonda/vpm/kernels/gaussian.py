@@ -62,12 +62,16 @@ def create_gaussian_kernels(dtype: object = ti.f32) -> dict[str, Callable]:
     Convention: exp(-r^2 / sigma^2)
     Normalization: 1 / (pi^1.5 * sigma^3)
 
-    Args:
-        dtype: Taichi data type (ti.f32 or ti.f64)
+    Parameters
+    ----------
+    dtype
+        Taichi data type (ti.f32 or ti.f64)
 
-    Returns:
-        Dictionary containing q, density, energy and diffusion functions,
-        plus ``radial_factors_`` for finite velocity/Jacobian coefficients.
+    Returns
+    -------
+    dict[str, Callable]
+        Dictionary containing q, density, energy and diffusion functions, plus ``radial_factors_``
+        for finite velocity/Jacobian coefficients.
     """
 
     ONE_OVER_PI_15 = math.pi**-1.5

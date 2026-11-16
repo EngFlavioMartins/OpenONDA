@@ -109,8 +109,8 @@ def _sample_fields(
 
 def _csv_rows(data: dict[str, np.ndarray], columns: tuple[str, ...], time: float) -> list[list]:
     """Return one CSV row per sample point with the time in the first column."""
-    values = [np.asarray(data[name]) for name in columns[1:]]
-    return [[time, *(float(column[index]) for column in values)] for index in range(len(values[0]))]
+    values = [np.asarray(data[name], dtype=np.float64) for name in columns[1:]]
+    return [[time, *row] for row in np.column_stack(values).tolist()]
 
 
 class SurfaceSampler(Sampler):

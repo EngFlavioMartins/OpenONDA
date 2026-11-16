@@ -128,12 +128,17 @@ class PhysicsBase:
         """
         Initialize physics base with kernel type and field allocation.
 
-        Args:
-            particle_kernel: Kernel type for particle interactions
-                            Options: 'gaussian', 'super_gaussian', 'winckelmans'
-            max_n_particles: Maximum number of particles for field allocation
-            accumulator_dtype: Data type for accumulation (ti.f32 or ti.f64)
-            max_evaluation_points: Fixed capacity for at-point field evaluations
+        Parameters
+        ----------
+        particle_kernel
+            Kernel type for particle interactions Options: 'gaussian', 'super_gaussian',
+            'winckelmans'
+        max_n_particles
+            Maximum number of particles for field allocation
+        accumulator_dtype
+            Data type for accumulation (ti.f32 or ti.f64)
+        max_evaluation_points
+            Fixed capacity for at-point field evaluations
         """
         self.particle_kernel = particle_kernel.lower()
         self.max_n_particles = max_n_particles
@@ -432,8 +437,10 @@ class PhysicsBase:
         """
         Validate filtered particle capacity for zone-aware field evaluation.
 
-        Args:
-            N: Required number of filtered particles
+        Parameters
+        ----------
+        N
+            Required number of filtered particles
         """
         if self._filtered_field_size >= N:
             return
@@ -452,12 +459,17 @@ class PhysicsBase:
         The source ceiling remains a hard limit. Scratch grows geometrically
         and releases its previous Taichi allocation before replacement.
 
-        Args:
-            required_size: Required max_n_particles capacity
-            theta: Opening angle for MAC (updates cached tree's theta)
+        Parameters
+        ----------
+        required_size
+            Required max_n_particles capacity
+        theta
+            Opening angle for MAC (updates cached tree's theta)
 
-        Returns:
-            TaichiTreecode: Cached or newly created treecode instance
+        Returns
+        -------
+        TaichiTreecode
+            Cached or newly created treecode instance
         """
         from .induction.treecode.lbvh import TaichiTreecode
 
@@ -549,9 +561,12 @@ class PhysicsBase:
     ) -> None:
         """Set how the self-induced velocity is evaluated (single source of truth).
 
-        Args:
-            method: "direct" (O(N²) GPU summation) or "treecode" (Barnes-Hut O(N log N)).
-            theta:  Barnes-Hut opening angle (treecode only; smaller = more accurate).
+        Parameters
+        ----------
+        method
+            "direct" (O(N²) GPU summation) or "treecode" (Barnes-Hut O(N log N)).
+        theta
+            Barnes-Hut opening angle (treecode only; smaller = more accurate).
         """
         self.velocity_method = method.lower()
         self.velocity_theta = theta
@@ -653,15 +668,23 @@ class PhysicsBase:
         """
         Compute velocity at arbitrary target position.
 
-        Args:
-            particles: Particle container
-            target_position: Array of shape (M, 3) with target coordinates, or Taichi field
-            target_velocity: Optional Taichi field to write results to directly
-            include_freestream: If True, add background velocity
-            zone_mask: Optional boolean mask to filter contributing particles
+        Parameters
+        ----------
+        particles
+            Particle container
+        target_position
+            Array of shape (M, 3) with target coordinates, or Taichi field
+        target_velocity
+            Optional Taichi field to write results to directly
+        include_freestream
+            If True, add background velocity
+        zone_mask
+            Optional boolean mask to filter contributing particles
 
-        Returns:
-            np.ndarray: Velocities at target position, shape (M, 3) if target_velocity is None
+        Returns
+        -------
+        np.ndarray
+            Velocities at target position, shape (M, 3) if target_velocity is None
         """
         N = len(particles)
 
@@ -879,13 +902,20 @@ class PhysicsBase:
         particles before velocity computation. Only particles where zone_mask[i]=True
         contribute to the induced velocity.
 
-        Args:
-            particles: Full particle set
-            target_position: np.ndarray (M, 3) evaluation points
-            zone_mask: Boolean mask (N,) - only True particles contribute
-            include_freestream: If True, adds background velocity
+        Parameters
+        ----------
+        particles
+            Full particle set
+        target_position
+            np.ndarray (M, 3) evaluation points
+        zone_mask
+            Boolean mask (N,) - only True particles contribute
+        include_freestream
+            If True, adds background velocity
 
-        Returns:
+        Returns
+        -------
+        np.ndarray
             Velocities at target position (M, 3)
         """
         if not isinstance(target_position, np.ndarray):
@@ -968,8 +998,10 @@ class PhysicsBase:
         Uses kernel superposition:
             ω(x) = Σ_j ζ(x - x_j, σ_j) * Γ_j / V_j
 
-        Args:
-            particles: Particle container
+        Parameters
+        ----------
+        particles
+            Particle container
         """
         N = len(particles)
         if N == 0:
@@ -1088,12 +1120,17 @@ class PhysicsBase:
         """
         Compute velocity gradient tensors at arbitrary target position.
 
-        Args:
-            particles: Particle container
-            target_position: Array of shape (M, 3) with target coordinates
+        Parameters
+        ----------
+        particles
+            Particle container
+        target_position
+            Array of shape (M, 3) with target coordinates
 
-        Returns:
-            np.ndarray: Velocity gradients at targets, shape (M, 9) [flattened 3x3]
+        Returns
+        -------
+        np.ndarray
+            Velocity gradients at targets, shape (M, 9) [flattened 3x3]
         """
         N = len(particles)
         M = len(target_position)
@@ -1160,14 +1197,21 @@ class PhysicsBase:
         """
         Compute velocity at targets using Barnes-Hut treecode.
 
-        Args:
-            particles: Particle container
-            target_position: Target coordinates [M, 3]
-            theta: Opening angle parameter (smaller = more accurate)
-            include_freestream: Include background velocity (default True)
+        Parameters
+        ----------
+        particles
+            Particle container
+        target_position
+            Target coordinates [M, 3]
+        theta
+            Opening angle parameter (smaller = more accurate)
+        include_freestream
+            Include background velocity (default True)
 
-        Returns:
-            np.ndarray: Velocities at target position [M, 3]
+        Returns
+        -------
+        np.ndarray
+            Velocities at target position [M, 3]
         """
         N = len(particles)
         M = len(target_position)
@@ -1195,13 +1239,19 @@ class PhysicsBase:
         """
         Compute velocity gradients at targets using Barnes-Hut treecode.
 
-        Args:
-            particles: Particle container
-            target_position: Target coordinates [M, 3]
-            theta: Opening angle parameter (smaller = more accurate)
+        Parameters
+        ----------
+        particles
+            Particle container
+        target_position
+            Target coordinates [M, 3]
+        theta
+            Opening angle parameter (smaller = more accurate)
 
-        Returns:
-            np.ndarray: Velocity gradients at targets [M, 9] (flattened 3x3)
+        Returns
+        -------
+        np.ndarray
+            Velocity gradients at targets [M, 9] (flattened 3x3)
         """
         N = len(particles)
         M = len(target_position)
