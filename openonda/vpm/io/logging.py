@@ -14,6 +14,13 @@ if TYPE_CHECKING:
     from ..core.solver import VPMSolver
     from ..vlm.solver import VLMSolver
 
+FLOW_MODEL_DESCRIPTIONS = {
+    "dns": "DNS ::: (ω·∇)u + ν∇²ω",
+    "les": "LES ::: (ω·∇)u + (ν+νt)∇²ω",
+    "inviscid": "INV ::: (ω·∇)u",
+}
+"""Vorticity equation of each flow model, as the run section of the log shows it."""
+
 
 def run_header(precision: str, backend: str) -> log_style.FormattedText:
     """Return the report that opens a VPM run."""
@@ -87,7 +94,7 @@ def _solver_rows(system: "VPMSolver") -> list[log_style.Row]:
     """Return the rows of the run section."""
     induction = system.induction
     rows: list[log_style.Row] = [
-        ("flow model", system.flow_model_description),
+        ("flow model", FLOW_MODEL_DESCRIPTIONS[system.flow_model]),
         ("integrator", system.integrator.name),
         ("induction", type(induction).__name__.removesuffix("Induction")),
     ]

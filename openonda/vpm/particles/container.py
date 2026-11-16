@@ -1,6 +1,8 @@
 """Particle storage for the VPM solver."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from functools import wraps
+from typing import Any, TypeVar
 
 import numpy as np
 import taichi as ti
@@ -8,7 +10,6 @@ import taichi as ti
 from openonda.core import log_style
 
 from ..config.constants import MAX_N_PARTICLES
-from ..config.state import cached_particle_property
 from ..runtime.host_staging import HostStagingBuffers
 
 FIELD_TRAILING_SHAPES: dict[str, tuple[int, ...]] = {
@@ -30,6 +31,36 @@ FIELD_TRAILING_SHAPES: dict[str, tuple[int, ...]] = {
 the leading dimension is the active particle count."""
 
 _INTEGER_FIELDS = ("group_id", "zone_id")
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def cached_particle_property(func: F) -> F:
+    """Cache the host copy of a Biot-Savart source field for one particle-state revision.
+
+    Particle fields can be changed several times while the solver clock stays
+    fixed (for example by a stabilization worker or a coupled wake update).
+    A step number is therefore not a cache key.  ``Particles.touch_state``
+    publishes a new monotone revision whenever a source field changes. Derived
+    fields (velocity, gradients, vorticity, viscosities) change without a new
+    revision and must not use this cache.
+    """
+    cache_name = f"_{func.__name__}_cache"
+    cache_revision_name = f"_{func.__name__}_cache_revision"
+
+    @wraps(func)
+    def wrapper(self: Any, use_cache: bool = True) -> Any:
+        cache_valid = (
+            use_cache
+            and getattr(self, cache_revision_name, None) == self.state_revision
+            and hasattr(self, cache_name)
+        )
+        if not cache_valid:
+            setattr(self, cache_name, func(self))
+            setattr(self, cache_revision_name, self.state_revision)
+        return getattr(self, cache_name)
+
+    return wrapper  # type: ignore[return-value]
 
 
 def inside_box(position: np.ndarray, bounds: Sequence[float]) -> np.ndarray:

@@ -20,12 +20,20 @@ argument, as for ``numpy.max`` and ``numpy.argmax``; ties report the lowest
 particle index.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import taichi as ti
 
-from ..config.state_limits import MeasuredParticleState, ParticleStateMetrics
+from ..config.state_limits import ParticleStateLimits
 
-__all__ = ["measure_particle_state"]
+__all__ = [
+    "MeasuredParticleState",
+    "ParticleStateError",
+    "ParticleStateMetrics",
+    "check_accepted_particle_state",
+    "measure_particle_state",
+]
 
 # Bit order of the invalid-field mask returned by the reduction.
 _CHECKED_FIELDS = (
@@ -50,6 +58,160 @@ _TINY_VOLUME = float(np.finfo(np.float64).tiny)
 
 # Result layout: masks, four maxima, two particle indices, limiting position.
 _RESULT_SIZE = 11
+
+
+@dataclass(frozen=True, slots=True)
+class ParticleStateMetrics:
+    """Measured accepted-step field values used by :class:`ParticleStateLimits`."""
+
+    strain_increment_infinity: float
+    strain_increment_spectral: float
+    maximum_particle_strength: float
+    maximum_vorticity: float
+    strain_increment_infinity_particle: int = -1
+    strain_increment_spectral_particle: int = -1
+
+
+@dataclass(frozen=True, slots=True)
+class MeasuredParticleState:
+    """Device-reduced accepted particle state used to enforce the limits.
+
+    Parameters
+    ----------
+    invalid_fields : tuple of str
+        Particle fields holding non-finite values, or non-positive core radii
+        and volumes.
+    metrics : ParticleStateMetrics
+        Accepted-step extrema and the particles attaining the strain extrema.
+    strain_limiting_position : tuple of float
+        Position in m of the particle with the largest infinity-norm strain
+        increment.
+    """
+
+    invalid_fields: tuple[str, ...]
+    metrics: ParticleStateMetrics
+    strain_limiting_position: tuple[float, float, float]
+
+
+class ParticleStateError(RuntimeError):
+    """An accepted VPM particle state violates its declared particle state limits."""
+
+    def __init__(self, message: str, *, restartable: bool = True) -> None:
+        """Report an accepted particle field outside its configured limits.
+
+        Parameters
+        ----------
+        message : str
+            Human-readable description of the violated particle state check. It is
+            passed unchanged to :class:`RuntimeError`.
+        restartable : bool, default=True
+            Whether the caller may safely write or resume from the state that
+            triggered the error. Non-finite accepted states should pass
+            ``False``.
+
+        Notes
+        -----
+        The exception carries the advisory :attr:`restartable` attribute; it
+        does not roll back or mutate particle state.
+        """
+        super().__init__(message)
+        self.restartable = bool(restartable)
+
+
+def check_accepted_particle_state(
+    *,
+    limits: ParticleStateLimits,
+    step: int,
+    time_step_size: float,
+    state: MeasuredParticleState,
+    resolution: dict[str, float],
+    previous: ParticleStateMetrics | None,
+) -> ParticleStateMetrics:
+    """Enforce ``limits`` on one fully refreshed and measured accepted state."""
+    if limits.finite_state.enabled and state.invalid_fields:
+        raise ParticleStateError(
+            f"VPM accepted state at step {step} is invalid: "
+            + ", ".join(sorted(set(state.invalid_fields))),
+            restartable=False,
+        )
+
+    snapshot = state.metrics
+    strain_increment_infinity = snapshot.strain_increment_infinity
+    infinity_particle = snapshot.strain_increment_infinity_particle
+    maximum_strength = snapshot.maximum_particle_strength
+
+    if (
+        limits.lagrangian_cfl.maximum is not None
+        and strain_increment_infinity > limits.lagrangian_cfl.maximum
+    ):
+        maximum = limits.lagrangian_cfl.maximum
+        strain_rate = strain_increment_infinity / float(time_step_size)
+        position_text = ", ".join(
+            f"{coordinate:.9g}" for coordinate in state.strain_limiting_position
+        )
+        raise ParticleStateError(
+            f"VPM accepted state at step {step}: Lagrangian CFL number "
+            f"{strain_increment_infinity:.9g} (strain increment infinity norm) exceeds "
+            f"maximum={maximum:.9g}; particle={infinity_particle}, "
+            f"position=({position_text}) m, strain_rate={strain_rate:.9g} 1/s, "
+            f"time_step_size={time_step_size:.9g} s. "
+            f"The frozen-state time-step ceiling is {maximum / strain_rate:.9g} s. "
+            "Reduce time_step_size with a safety margin; if strain keeps growing, "
+            "check spatial resolution and vorticity divergence/alignment as well."
+        )
+    if (
+        limits.maximum_particle_strength.maximum is not None
+        and maximum_strength > limits.maximum_particle_strength.maximum
+    ):
+        raise ParticleStateError(
+            f"VPM accepted state at step {step}: maximum particle strength {maximum_strength:.3e} "
+            f"exceeds maximum={limits.maximum_particle_strength.maximum:.3e}."
+        )
+
+    checks = (
+        (
+            "vorticity_divergence_error",
+            limits.divergence.maximum,
+            "vorticity divergence error",
+        ),
+        (
+            "vortex_strength_misalignment_degrees",
+            limits.misalignment.maximum_degrees,
+            "vortex-strength misalignment (degrees)",
+        ),
+    )
+    for key, maximum, label in checks:
+        if maximum is None:
+            continue
+        value = float(resolution.get(key, float("nan")))
+        if not np.isfinite(value) or value > maximum:
+            raise ParticleStateError(
+                f"VPM accepted state at step {step}: {label} {value:.3e} exceeds "
+                f"maximum={maximum:.3e}."
+            )
+
+    if previous is not None:
+        growth_checks = (
+            (
+                "particle-strength growth",
+                (snapshot.maximum_particle_strength - previous.maximum_particle_strength)
+                / max(previous.maximum_particle_strength, np.finfo(float).tiny),
+                limits.growth.maximum_particle_strength_growth,
+            ),
+            (
+                "peak-vorticity growth",
+                (snapshot.maximum_vorticity - previous.maximum_vorticity)
+                / max(previous.maximum_vorticity, np.finfo(float).tiny),
+                limits.growth.maximum_vorticity_growth,
+            ),
+        )
+        for label, value, maximum in growth_checks:
+            if maximum is not None and (not np.isfinite(value) or value > maximum):
+                raise ParticleStateError(
+                    f"VPM accepted state at step {step}: {label} {value:.3e} exceeds "
+                    f"maximum={maximum:.3e}."
+                )
+    return snapshot
 
 
 @ti.func

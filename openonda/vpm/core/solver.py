@@ -25,13 +25,12 @@ from openonda.core.status import RunStatus
 
 from ..config.case import Numerics, VPMCase
 from ..config.stabilization import StabilizationConfig
-from ..config.state import set_flow_model
-from ..config.state_limits import (
+from ..diagnostics.particle_state import (
     ParticleStateError,
     ParticleStateMetrics,
     check_accepted_particle_state,
+    measure_particle_state,
 )
-from ..diagnostics.particle_state import measure_particle_state
 from ..diagnostics.resolution import particle_resolution_metrics
 from ..io.backup import _BackupIO, rewind_vpm_frames, select_vpm_backup
 from ..io.frames import write_solution_frames
@@ -317,7 +316,6 @@ class VPMSolver:
         # the run. Their routine records stay out of the log until the first
         # step output; the first requested diagnostics describe the state.
         self.logger.muted = True
-        set_flow_model(self, flow_model=self.flow_model)
         self.compute_dtype = ti.f64 if self.precision == "f64" else ti.f32
         self.accumulator_dtype = self.compute_dtype
         self.np_dtype = np.float64 if self.precision == "f64" else np.float32

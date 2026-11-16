@@ -27,7 +27,6 @@ from .config import (
     MisalignmentLimit,
     Numerics,
     Output,
-    ParticleStateError,
     ParticleStateLimits,
     ParticleStrengthLimit,
     RunPlan,
@@ -38,6 +37,7 @@ from .config import (
     VPMCase,
 )
 from .core.solver import VPMSolver
+from .diagnostics.particle_state import ParticleStateError
 from .initialization import (
     InitialCondition,
     ParticleDistribution,

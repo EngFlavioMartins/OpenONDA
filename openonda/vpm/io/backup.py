@@ -20,7 +20,7 @@ from ...core.solution_layout import vpm_backup_files
 from ...core.vtk_output import rewind_collection
 from ..config.configuration_values import numerical_configuration
 from ..config.restart_changes import validate_configuration_changes
-from ..config.state_limits import ParticleStateMetrics
+from ..diagnostics.particle_state import ParticleStateMetrics
 
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver

@@ -16,7 +16,6 @@ from .state_limits import (
     GrowthLimit,
     LagrangianCFLLimit,
     MisalignmentLimit,
-    ParticleStateError,
     ParticleStateLimits,
     ParticleStrengthLimit,
 )
@@ -35,7 +34,6 @@ __all__ = [
     "MisalignmentLimit",
     "Numerics",
     "Output",
-    "ParticleStateError",
     "ParticleStateLimits",
     "ParticleStrengthLimit",
     "RunPlan",
