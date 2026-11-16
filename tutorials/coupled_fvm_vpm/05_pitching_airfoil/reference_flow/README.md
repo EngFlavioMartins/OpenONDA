@@ -4,7 +4,6 @@ The FVM alone solves the [coupled pitching airfoil](../README.md) on a body-fitt
 
 ```bash
 ./allrun.sh
-./allplot.sh
 ```
 
-`./allcontinue.sh` resumes the latest FVM backup; `python setup.py --end-time 0.5` runs a short check. `figures/forces` shows the drag, lift and quarter-chord moment.
+`./allcontinue.sh` resumes the latest FVM backup; `python setup.py --end-time 0.5` runs a short check. A run writes `samples/forces_history.csv`, the drag, lift and quarter-chord moment coefficients every 0.025 s, and `samples/transverse_x2.csv` and `samples/transverse_x4.csv`, the wake profiles on the transverse lines $x=2$ and 4 m every 0.2 s.

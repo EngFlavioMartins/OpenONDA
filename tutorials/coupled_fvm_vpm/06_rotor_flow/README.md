@@ -29,7 +29,6 @@ Run commands from this directory.
 
 ```bash
 ./allrun.sh
-./allplot.sh
 ```
 
 `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. `python setup.py --end-time 0.03 --compute-device cpu` runs a short check on the CPU; the particle solver otherwise takes the GPU. The mesh of about half a million cells takes some minutes and a few GB of memory to generate and is cached in `assets/`.
@@ -40,9 +39,6 @@ Run commands from this directory.
 | --- | --- |
 | `samples/blade_forces.csv` | Pressure, viscous and total force, moment about the rotor centre and `rotational_power`, `translational_power`, `power` of each blade patch every 0.006 s, as the VLM `vlm_surface_forces.csv` |
 | `samples/flow_integrals.csv`, `samples/wake_*D.pvd`, `samples/streamwise_r*.csv` | Particle invariants, wake planes at 0, 1 and 2 diameters and streamwise lines at $r/R=0.25$ and 0.65, as the VLM case |
-| `figures/rotor_performance` | $C_T$ and $C_P$ on the disk area against nominal revolutions, with the VLM rotor when its run exists; `allplot.sh` prints the means of the last five revolutions and writes `figures/auxiliary/rotor_performance.csv` |
-| `figures/blade_forces` | Thrust, torque and power of each blade, meshed against VLM |
-| `figures/rotor_wake_t*` | Blades, FVM vorticity on the plane through the axis and the particle wake at the last saved time |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | Turning FVM fields and particle states |
 
 The coefficients use $C_T=T/(\tfrac12\rho U_\infty^2\pi R^2)$ and $C_P=P/(\tfrac12\rho U_\infty^3\pi R^2)$ with $P=\mathbf{M}\cdot\boldsymbol{\Omega}$ the shaft power the fluid delivers, the definitions of the VLM case.

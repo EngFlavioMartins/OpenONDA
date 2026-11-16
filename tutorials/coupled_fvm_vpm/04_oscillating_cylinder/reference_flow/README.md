@@ -18,7 +18,6 @@ Run commands from this directory.
 
 ```bash
 ./allrun.sh
-./allplot.sh
 ```
 
-`./allcontinue.sh` resumes the latest accepted backup of each run. `figures/histories_re_*` show the displacements and force coefficients; `../allplot.sh` overlays the amplitudes on the coupled results and the paper.
+`./allcontinue.sh` resumes the latest accepted backup of each run. Each run writes `samples/re_<Re>_vstar_<V*>/forces_history.csv` and `motion_history.csv` beside it, the force coefficients and the displacement of the cylinder every 0.04 s, as the coupled case.

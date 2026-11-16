@@ -26,7 +26,6 @@ Run commands from this directory. Each line of `allrun.sh` runs one point, `pyth
 ```bash
 (cd reference_flow && ./allrun.sh)
 ./allrun.sh
-./allplot.sh
 ```
 
 `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup of each run. `python setup.py --reynolds-number 8300 --reduced-velocity 9.96 --end-time 2 --compute-device cpu` runs one short check on the CPU; the particle solver otherwise takes the GPU.
@@ -35,10 +34,6 @@ Run commands from this directory. Each line of `allrun.sh` runs one point, `pyth
 
 | File | Content |
 | --- | --- |
-| `figures/response` | $A_y^*$, $A_x^*$ and $f_y/f_{n,w}$ against $V^*$; `allplot.sh` prints them with the statistics window and writes `figures/auxiliary/response.csv` |
-| `figures/histories_re_*` | Displacements, lift coefficient and the $x$–$y$ trajectory of each run |
-| `figures/vorticity_re_*` | FVM and particle vorticity at the last upper turning point and the following downward crossing of each run |
-| `figures/coupling_cost_re_*` | Wall time by solver part and particle count |
 | `solution/re_*/fvm.pvd`, `solution/re_*/vpm.pvd` | Moving FVM fields and particle states, the particles relative to the box |
 
-The reduced amplitude $A^*$ is the mean of the highest 20 % of the oscillation peaks in the window, the paper's definition. The paper's response in `figures/response` is the two values of its table 5 (points B1 and B2), from `assets/references/martins_avila_2019_medium_re_zeta_0p5.csv`, plotted at $V^*=3\,\mathrm{Re}/2500$.
+Each run writes `samples/re_*/forces_history.csv`, the force, the drag and lift coefficients and the power of the fluid on the cylinder, and `samples/re_*/motion_history.csv`, the position, displacement and velocity of the cylinder axis, both every 0.04 s. The reduced amplitude $A^*$ is the mean of the highest 20 % of the oscillation peaks in the statistics window, the paper's definition.

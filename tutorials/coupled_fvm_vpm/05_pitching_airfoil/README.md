@@ -25,7 +25,6 @@ Run commands from this directory.
 ```bash
 (cd reference_flow && ./allrun.sh)
 ./allrun.sh
-./allplot.sh
 ```
 
 `./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. `python setup.py --end-time 0.5 --compute-device cpu` runs a short check on the CPU; the particle solver otherwise takes the GPU.
@@ -34,5 +33,6 @@ Run commands from this directory.
 
 | File | Content |
 | --- | --- |
-| `figures/forces` | Drag, lift and quarter-chord moment against the FVM only; `allplot.sh` prints the mean drag and the first-harmonic lift and moment amplitudes and phases |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | Turning FVM fields and particle states |
+
+A run writes `samples/forces_history.csv`, the drag, lift and quarter-chord moment coefficients every 0.025 s, and `samples/vpm_transverse_x2.csv` and `samples/vpm_transverse_x4.csv`, the particle velocity and vorticity on the transverse lines $x=2$ and 4 m every 0.2 s.
