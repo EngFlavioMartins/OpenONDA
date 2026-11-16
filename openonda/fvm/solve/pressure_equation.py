@@ -163,9 +163,8 @@ def _compute_pressure_face_conductance(
     """Return the geometric Rhie--Chow conductance for every face.
 
     The pressure matrix and the post-solve flux correction must use exactly
-    the same conductance.  Keeping this calculation in one function prevents
-    the non-orthogonal inconsistency that previously used ``Sf·e`` during
-    assembly but ``|Sf|`` during correction.
+    the same conductance.  Keeping this calculation in one function keeps
+    the assembly and the correction on the same non-orthogonal geometry.
 
     ``pressure_velocity_coefficient`` is the cell-centred diagonal pressure-to-velocity coefficient.  It
     is linearly interpolated on interior faces and taken from the owner on
@@ -1048,12 +1047,10 @@ def assemble_pressure_correction_equation_rhie_chow(
     else:
         assert flux_cf is not None and flux_ff is not None
         flux_data.update({"flux_cf": flux_cf, "flux_ff": flux_ff})
-        pressure_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
+        pressure_matrix = matrix_assembly.assemble_matrix(
             flux_data, mesh_data, workspace=matrix_workspace
         )
-    pressure_right_hand_side = matrix_assembly.assemble_rhs_from_fluxes_vectorized(
-        flux_data, mesh_data
-    )
+    pressure_right_hand_side = matrix_assembly.assemble_rhs(flux_data, mesh_data)
 
     # 5. Fix Pressure Reference only for an all-Neumann pressure problem.
     if pressure_requires_constraint:

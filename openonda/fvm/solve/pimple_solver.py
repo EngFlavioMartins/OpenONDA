@@ -445,7 +445,7 @@ class PIMPLESolver:
                     momentum_relative_tolerance=momentum_relative_tolerance,
                     maxiter=self.params["momentum_max_iterations"],
                     linear_backend=self.params["_linear_backend"],
-                    parallel_context=self.params.get("_parallel_context"),
+                    parallel_context=parallel,
                     # The default shared settings bounds full-mesh RAM.  The
                     # explicit separate settings retains equation-specific PETSc
                     # objects so pressure agglomeration can be cached.
@@ -573,7 +573,7 @@ class PIMPLESolver:
                                 rel_tol=pressure_relative_tolerance,
                                 maxiter=pressure_max_iterations,
                                 backend=self.params["_linear_backend"],
-                                parallel_context=self.params.get("_parallel_context"),
+                                parallel_context=parallel,
                                 log_sink=logger,
                                 nullspace=(
                                     "constant"
@@ -592,7 +592,6 @@ class PIMPLESolver:
                             kinematic_pressure_result.initial_residual
                         )
                         final_kinematic_pressure_residual = kinematic_pressure_result.final_residual
-                        parallel = self.params.get("_parallel_context")
                         del pressure_matrix, pressure_right_hand_side
 
                     if non_ortho < n_non_ortho:
@@ -666,7 +665,6 @@ class PIMPLESolver:
             )
             # Preserve updated ghost values for the next gradient assembly.
             velocity[:] = velocity_iter[:]
-            parallel = self.params.get("_parallel_context")
             if parallel is not None and parallel.is_partitioned:
                 parallel.exchange_halo(velocity[:n_elem])
 
@@ -678,10 +676,6 @@ class PIMPLESolver:
                 volumetric_face_flux, self.mesh_data
             )
             volumes = self.geo_data["cell_volume"]
-            parallel = self.params.get("_parallel_context")
-            n_owned = (
-                parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
-            )
             local_continuity = float(np.max(np.abs(continuity[:n_owned]) / volumes[:n_owned]))
             continuity_outer = (
                 float(parallel.global_max(local_continuity))
@@ -711,8 +705,6 @@ class PIMPLESolver:
             comp: values["final_residual"] for comp, values in momentum_diagnostics.items()
         }
         velocity_residual = max(final_velocity_component_residuals.values(), default=0.0)
-        parallel = self.params.get("_parallel_context")
-        n_owned = parallel.n_owned if parallel is not None and parallel.is_partitioned else n_elem
         increment_squared = float(np.sum((velocity[:n_owned] - velocity_old[:n_owned]) ** 2))
         velocity_squared = float(np.sum(velocity[:n_owned] ** 2))
         if parallel is not None and parallel.is_partitioned:

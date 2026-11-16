@@ -345,13 +345,12 @@ def _fill_matrix_values(
     return target
 
 
-def assemble_matrix_from_fluxes_vectorized(
+def assemble_matrix(
     flux_data: dict[str, object],
     mesh_data: dict[str, object],
     workspace: "MatrixAssemblyWorkspace | None" = None,
 ) -> sparse.csr_matrix:
-    """
-    Vectorized version of matrix assembly for better performance.
+    """Assemble the sparse matrix of the face coefficients.
 
     The CSR sparsity pattern depends only on mesh topology; a reusable
     ``workspace`` keeps it between calls.
@@ -409,20 +408,16 @@ def _assemble_rhs_numba(
     return result
 
 
-def assemble_rhs_from_fluxes_vectorized(
-    flux_data: dict[str, object], mesh_data: dict[str, object]
-) -> np.ndarray:
-    """
-    Vectorized RHS assembly.
-    """
+def assemble_rhs(flux_data: dict[str, object], mesh_data: dict[str, object]) -> np.ndarray:
+    """Assemble the right-hand side from the explicit face fluxes ``flux_vf``."""
 
     n_cells = mesh_data["n_cells"]
     n_interior_faces = mesh_data["n_interior_faces"]
 
     return _assemble_rhs_numba(
         np.asarray(flux_data["flux_vf"], dtype=np.float64),
-        np.asarray(mesh_data["owners"], dtype=np.int64),
-        np.asarray(mesh_data["neighbours"], dtype=np.int64),
+        np.asarray(mesh_data["owners"], dtype=np.int32),
+        np.asarray(mesh_data["neighbours"], dtype=np.int32),
         n_cells,
         n_interior_faces,
     )

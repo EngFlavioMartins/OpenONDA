@@ -12,7 +12,7 @@ from openonda.core.write_precision import (
     validate_write_precision,
 )
 
-from ._validation import check_schedule, lowercase_choice
+from ._validation import check_schedule, choice
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +49,7 @@ class Output:
     def __post_init__(self) -> None:
         check_schedule("Output.schedule", self.schedule, optional=True)
         validate_write_precision(self.precision, field_name="Output.precision")
-        lowercase_choice("Output.compression", self.compression, {"lz4", "none", "zlib"})
+        choice("Output.compression", self.compression, {"lz4", "none", "zlib"})
         if not isinstance(self.asynchronous, bool):
             raise TypeError("Output.asynchronous must be a boolean")
         if isinstance(self.ghost_layers, bool) or self.ghost_layers not in {0, 1}:
@@ -127,7 +127,7 @@ class LoggingConfig:
     detailed_timing: bool = False
 
     def __post_init__(self) -> None:
-        lowercase_choice("LoggingConfig.mode", self.mode, {"simple", "debug"})
+        choice("LoggingConfig.mode", self.mode, {"simple", "debug"})
         check_schedule("LoggingConfig.schedule", self.schedule)
         for name in ("console", "detailed_timing"):
             if not isinstance(getattr(self, name), bool):

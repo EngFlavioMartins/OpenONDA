@@ -227,11 +227,11 @@ class ForceSampler(Sampler):
         """
         rows = []
         for pname, fdata in forces.items():
-            pressure_force = fdata.get("pressure_force", [0, 0, 0])
-            viscous_force = fdata.get("viscous_force", [0, 0, 0])
-            total_force = fdata.get("total_force", [0, 0, 0])
-            moment = fdata.get("moment", [0, 0, 0])
-            C = fdata.get("coeffs", {})
+            pressure_force = fdata["pressure_force"]
+            viscous_force = fdata["viscous_force"]
+            total_force = fdata["total_force"]
+            moment = fdata["moment"]
+            C = fdata["coeffs"]
             rotational_power, translational_power = motion_power(context, total_force, moment)
             rows.append(
                 [

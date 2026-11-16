@@ -67,8 +67,7 @@ def check_schedule(name: str, schedule: object, *, optional: bool = False) -> No
         raise TypeError(f"{name} must be {allowed}")
 
 
-def lowercase_choice(name: str, value: Any, choices: set[str] | frozenset[str]) -> str:
-    """Return a string option after checking it is one of ``choices``."""
+def choice(name: str, value: Any, choices: set[str] | frozenset[str]) -> None:
+    """Reject a value that is not one of ``choices``."""
     if value not in choices:
         raise ValueError(f"{name} must be one of {sorted(choices)}; got {value!r}")
-    return str(value)

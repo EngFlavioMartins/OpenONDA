@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from ._validation import finite_real, lowercase_choice, strict_int
+from ._validation import choice, finite_real, strict_int
 from .turbulence import TurbulenceConfig
 
 CONVECTION_SCHEMES = frozenset(
@@ -74,15 +74,9 @@ class DiscretizationConfig:
     time_scheme: Literal["euler_implicit", "backward"] = "backward"
 
     def __post_init__(self) -> None:
-        lowercase_choice(
-            "DiscretizationConfig.convection_scheme", self.convection_scheme, CONVECTION_SCHEMES
-        )
-        lowercase_choice(
-            "DiscretizationConfig.gradient_scheme", self.gradient_scheme, {"gauss", "lsq"}
-        )
-        lowercase_choice(
-            "DiscretizationConfig.time_scheme", self.time_scheme, {"euler_implicit", "backward"}
-        )
+        choice("DiscretizationConfig.convection_scheme", self.convection_scheme, CONVECTION_SCHEMES)
+        choice("DiscretizationConfig.gradient_scheme", self.gradient_scheme, {"gauss", "lsq"})
+        choice("DiscretizationConfig.time_scheme", self.time_scheme, {"euler_implicit", "backward"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,7 +254,7 @@ class ComputeConfig:
             "parallel_mode": {"serial", "petsc_replicated", "petsc_partitioned"},
         }
         for name, valid in choices.items():
-            lowercase_choice(f"ComputeConfig.{name}", getattr(self, name), valid)
+            choice(f"ComputeConfig.{name}", getattr(self, name), valid)
         if self.parallel_mode == "serial" and self.linear_backend != "scipy":
             raise ValueError("ComputeConfig serial mode requires linear_backend='scipy'")
         if self.parallel_mode != "serial" and self.linear_backend != "petsc":

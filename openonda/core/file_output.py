@@ -77,8 +77,8 @@ class InsufficientStorageError(OSError):
 def require_free_space(
     path: str | Path,
     archive_bytes: int,
-) -> int:
-    """Verify an atomic temporary archive can fit and return current free bytes."""
+) -> None:
+    """Raise :class:`InsufficientStorageError` unless an atomic temporary archive fits."""
     destination = Path(path).resolve()
     probe = destination if destination.exists() else destination.parent
     while not probe.exists() and probe != probe.parent:
@@ -87,7 +87,6 @@ def require_free_space(
     required = max(0, int(archive_bytes)) + _DEFAULT_RESERVE_BYTES
     if free < required:
         raise InsufficientStorageError(destination, required, free)
-    return free
 
 
 @contextmanager

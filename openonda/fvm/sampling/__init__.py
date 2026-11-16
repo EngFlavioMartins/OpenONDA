@@ -3,7 +3,7 @@
 Samplers write below ``samples/`` of the case.
 """
 
-from .fields import LINE_SAMPLE_COLUMNS, LineSampler, SurfaceSampler, interpolate_cell_field
+from .fields import LINE_SAMPLE_COLUMNS, LineSampler, SurfaceSampler
 from .forces import FORCE_SAMPLE_COLUMNS, Y_PLUS_SAMPLE_COLUMNS, ForceSampler, YPlusSampler
 from .motion import MOTION_SAMPLE_COLUMNS, MotionSampler
 
@@ -17,5 +17,4 @@ __all__ = [
     "MotionSampler",
     "SurfaceSampler",
     "YPlusSampler",
-    "interpolate_cell_field",
 ]

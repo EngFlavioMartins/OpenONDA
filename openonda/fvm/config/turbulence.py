@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from ._validation import finite_real, lowercase_choice
+from ._validation import choice, finite_real
 
 TURBULENCE_MODELS = frozenset({"dns", "equilibrium_smagorinsky", "smagorinsky"})
 
@@ -37,7 +37,7 @@ class TurbulenceConfig:
     subgrid_dissipation_coefficient: float = 1.048
 
     def __post_init__(self) -> None:
-        lowercase_choice("TurbulenceConfig.model", self.model, TURBULENCE_MODELS)
+        choice("TurbulenceConfig.model", self.model, TURBULENCE_MODELS)
         for name, strict in (
             ("smagorinsky_coefficient", False),
             ("subgrid_kinetic_energy_coefficient", False),

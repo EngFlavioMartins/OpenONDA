@@ -57,7 +57,7 @@ class StepDiagnostics:
     Attributes
     ----------
     step : int
-        Zero-based time-step index.
+        Number of the step just completed, counted from one.
     time : float
         Physical time at the end of the step.
     time_step_size : float

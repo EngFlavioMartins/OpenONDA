@@ -376,7 +376,7 @@ def assemble_momentum_equation(
         # mixed BC contributes D*n_i**2 at the boundary and therefore needs a
         # distinct scalar matrix for each Cartesian component.
         if common_matrix is None or has_directional_mixed_bc:
-            assembled_matrix = matrix_assembly.assemble_matrix_from_fluxes_vectorized(
+            assembled_matrix = matrix_assembly.assemble_matrix(
                 combined_flux,
                 mesh_data,
                 workspace=matrix_workspace,
@@ -415,7 +415,7 @@ def assemble_momentum_equation(
                 A = common_matrix.copy()
             A.setdiag(A.diagonal() + slip_diagonal)
             equation_diagonal = A.diagonal()
-        b = matrix_assembly.assemble_rhs_from_fluxes_vectorized(combined_flux, mesh_data)
+        b = matrix_assembly.assemble_rhs(combined_flux, mesh_data)
 
         # 5. Add pressure gradient to RHS: -∇kinematic_pressure * V
         grad_p_comp = kinematic_pressure_gradient[:n_cells, i_comp]

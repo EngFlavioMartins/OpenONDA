@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
+import csv
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -129,9 +130,6 @@ def write_csv(
     append: bool = False,
 ) -> None:
     """Publish an application table once, relative to the solution directory."""
-    import csv
-    from pathlib import Path
-
     with collective_phase(solver.parallel.comm, "application CSV output"):
         if solver.parallel.is_root:
             path = Path(filename)

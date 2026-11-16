@@ -9,7 +9,7 @@ import numpy as np
 
 from openonda.core.forcing import VelocityRamp
 
-from ._validation import finite_real, vector_or_field
+from ._validation import choice, finite_real, vector_or_field
 
 VELOCITY_BOUNDARY_TYPES = frozenset(
     {
@@ -68,16 +68,8 @@ class BoundaryConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("BoundaryConfig.name must be a non-empty string")
-        if self.velocity_type not in VELOCITY_BOUNDARY_TYPES:
-            raise ValueError(
-                f"BoundaryConfig.velocity_type must be one of {sorted(VELOCITY_BOUNDARY_TYPES)}; "
-                f"got {self.velocity_type!r}"
-            )
-        if self.pressure_type not in PRESSURE_BOUNDARY_TYPES:
-            raise ValueError(
-                f"BoundaryConfig.pressure_type must be one of {sorted(PRESSURE_BOUNDARY_TYPES)}; "
-                f"got {self.pressure_type!r}"
-            )
+        choice("BoundaryConfig.velocity_type", self.velocity_type, VELOCITY_BOUNDARY_TYPES)
+        choice("BoundaryConfig.pressure_type", self.pressure_type, PRESSURE_BOUNDARY_TYPES)
         object.__setattr__(
             self,
             "velocity_value",
