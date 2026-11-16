@@ -30,8 +30,8 @@ def _configuration(solver: VPMSolver) -> dict[str, Any]:
     return configuration
 
 
-def write_vpm_metadata(solver: VPMSolver, path: Path, *, status: RunStatus) -> Path:
-    """Write the configuration, run status and accepted state of a VPM run.
+def write_vpm_metadata(solver: VPMSolver, *, status: RunStatus) -> Path:
+    """Write ``vpm_metadata.json``: the configuration, run status and accepted state of a VPM run.
 
     Sections after the shared keys: ``state`` (initial and current step and
     time, target time, nominal target step when fixed-stepped, particle counts),
@@ -61,7 +61,7 @@ def write_vpm_metadata(solver: VPMSolver, path: Path, *, status: RunStatus) -> P
     if solver._restart_details is not None:
         sections["restart"] = solver._restart_details
     return write_run_metadata(
-        path,
+        solver.solution_dir / "vpm_metadata.json",
         solver="vpm",
         case_name=solver.case.name,
         status=status,

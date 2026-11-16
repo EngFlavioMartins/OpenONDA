@@ -39,7 +39,7 @@ def flow_integral_row(solver: VPMSolver) -> dict[str, Any]:
     angular_impulse = integrals.get("angular_impulse", np.zeros(3))
     net_vortex_strength = integrals.get("net_vortex_strength", np.zeros(3))
     strength = solver.particle_vortex_strength
-    core_radius = solver.particle_core_radius
+    core_radius = solver.particles.core_radius_cpu()
     eddy_viscosity = solver.particles.eddy_viscosity_cpu()
     effective_viscosity = solver.particles.effective_viscosity_cpu()
 

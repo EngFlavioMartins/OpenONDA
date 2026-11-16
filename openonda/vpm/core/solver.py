@@ -39,7 +39,7 @@ from ..io.logging import run_finished, run_header, startup
 from ..io.metadata import write_vpm_metadata
 from ..kernels.base import make_vortex_kernel
 from ..numerics.runge_kutta import RungeKutta
-from ..particles.container import Particles
+from ..particles.container import FIELD_TRAILING_SHAPES, Particles, inside_box
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
 from ..physics.induction.base import StageRates, StageState
@@ -61,7 +61,6 @@ from ..stabilization.context import (
     StabilizationStepState,
 )
 from ..turbulence.les import ParticleLES
-from ..vlm.loads import kutta_joukowski_forces
 from ..vlm.output import VLMDiagnostics, VLMLoadingDistribution
 from .evolution import EvolutionStepper
 
@@ -208,7 +207,7 @@ class VPMSolver:
             self._initialize_solvers(case.numerics)
             self._sampler_manager = SamplerManager(self)
             startup(self)
-            self.write_run_metadata(status=RunStatus.created)
+            write_vpm_metadata(self, status=RunStatus.created)
         except BaseException:
             self._cleanup_failed_construction()
             raise
@@ -723,7 +722,7 @@ class VPMSolver:
             self.run_status = RunStatus.completed
             try:
                 run_finished(self, self.run_status)
-                self.write_run_metadata(status=self.run_status)
+                write_vpm_metadata(self, status=self.run_status)
             finally:
                 self.close()
             return
@@ -735,7 +734,7 @@ class VPMSolver:
             if start_from is not None and not self._restart_loaded:
                 self.save_backup()
             self.run_status = RunStatus.running
-            self.write_run_metadata(status=self.run_status)
+            write_vpm_metadata(self, status=self.run_status)
             self.logger.muted = False
             state_limit_failure = None
             invalid_state_failure = None
@@ -786,7 +785,7 @@ class VPMSolver:
             self.run_failure = failure
             for finalizer in (
                 lambda: run_finished(self, self.run_status, self.run_failure),
-                lambda: self.write_run_metadata(status=self.run_status),
+                lambda: write_vpm_metadata(self, status=self.run_status),
                 self.close,
             ):
                 try:
@@ -832,12 +831,15 @@ class VPMSolver:
         self._refresh_diagnostics_for_output()
         if self._last_frame_state != self._state_key():
             self.write_vtk()
-        final_time = float(self.case.run.end_time)
-        tolerance = time_tolerance(final_time)
-        if self.time < final_time - tolerance:
-            self._sampler_manager.write_all(OutputEvent.final)
-        else:
+        if self._reached_end_time():
             self._sampler_manager.dispatch(OutputEvent.final)
+        else:
+            self._sampler_manager.write_all(OutputEvent.final)
+
+    def _reached_end_time(self) -> bool:
+        """Return whether the accepted time is ``RunPlan.end_time`` to the time tolerance."""
+        final_time = float(self.case.run.end_time)
+        return self.time >= final_time - time_tolerance(final_time)
 
     def _write_end_backup(self) -> None:
         """Write the end-of-run backup unless the accepted state already has one."""
@@ -865,18 +867,6 @@ class VPMSolver:
             )
         self._n_initial_particles = int(self.particles.n_particles_total)
         self._initial_conditions_built = True
-
-    def write_run_metadata(self, *, status: RunStatus | str) -> Path:
-        """Write ``vpm_metadata.json`` with the run status ``status``.
-
-        Returns
-        -------
-        pathlib.Path
-            The metadata file in the solution directory.
-        """
-        return write_vpm_metadata(
-            self, self.solution_dir / "vpm_metadata.json", status=RunStatus(status)
-        )
 
     def flush_output(self) -> None:
         """Finish pending file output; VPM output is written synchronously."""
@@ -921,16 +911,12 @@ class VPMSolver:
                     primary_failure = error
         self._particle_snapshot_buffers = {}
         if not self._run_started and self._initial_conditions_built:
-            final_time = float(self.case.run.end_time)
-            tolerance = time_tolerance(final_time)
-            status = (
-                RunStatus.completed if self.time >= final_time - tolerance else RunStatus.partial
-            )
+            status = RunStatus.completed if self._reached_end_time() else RunStatus.partial
             if self._evolution_failure is not None or mesh_failure is not None:
                 status = RunStatus.failed
             self.run_status = status
             try:
-                self.write_run_metadata(status=status)
+                write_vpm_metadata(self, status=status)
             except BaseException as error:
                 if primary_failure is None:
                     primary_failure = error
@@ -1020,14 +1006,29 @@ class VPMSolver:
         state_check_seconds = phase_clock.lap()
         with remainder_section(self.profiler, "Flow and VLM diagnostics"):
             if self.vlm_solver is not None:
-                self._record_vlm_diagnostics()
+                VLMDiagnostics.record_vlm_diagnostics(
+                    self.vlm_solver,
+                    self.particles,
+                    self.particle_vortex_strength,
+                    self.time,
+                    self.samples_dir,
+                )
+                VLMLoadingDistribution.record_loading_distributions(
+                    self.vlm_solver, self.time, self.samples_dir
+                )
             if self._sampler_manager.flow_integrals_due():
                 self._update_all_flow_integrals()
         diagnostics_seconds = phase_clock.lap()
         with remainder_section(self.profiler, "Backups, frames and samplers"):
-            if self._is_due(self.case.backup.schedule):
+            backup_schedule = self.case.backup.schedule
+            if backup_schedule is not None and backup_schedule.is_due(
+                self.step, self.time, self.time_step_size
+            ):
                 self.save_backup()
-            if self._is_due(self.case.output.schedule):
+            frame_schedule = self.case.output.schedule
+            if frame_schedule is not None and frame_schedule.is_due(
+                self.step, self.time, self.time_step_size
+            ):
                 self.write_vtk()
             # Only the backup of this event reuses the velocity of its diagnostics.
             self._velocity_valid_for = None
@@ -1071,10 +1072,6 @@ class VPMSolver:
         """
         return self.profiler.step_sections
 
-    def _is_due(self, schedule: object | None) -> bool:
-        """Return whether ``schedule`` selects the accepted state."""
-        return schedule is not None and schedule.is_due(self.step, self.time, self.time_step_size)
-
     def _state_key(self) -> tuple[int, float, int]:
         """Identify the accepted state for once-only output."""
         return (self.step, self.time, self.particles.state_revision)
@@ -1109,44 +1106,15 @@ class VPMSolver:
         return self.wall_time if self._run_clock is None else self._run_clock.seconds
 
     # Particle properties
-    def _get_particle_field(self, method_name: str) -> np.ndarray:
-        """Generic helper to get particle field data via cpu() methods."""
-        return getattr(self.particles, f"{method_name}_cpu")()
-
     @property
     def particle_position(self) -> np.ndarray:
         """Return a copy of active particle positions, shape ``(N, 3)`` in m."""
-        return self._get_particle_field("position")
-
-    @property
-    def particle_velocity(self) -> np.ndarray:
-        """Return a copy of active particle velocities, shape ``(N, 3)`` in m/s."""
-        return self._get_particle_field("velocity")
-
-    @property
-    def particle_core_radius(self) -> np.ndarray:
-        """Return a copy of active core radii, shape ``(N,)`` in m."""
-        return self._get_particle_field("core_radius")
-
-    @property
-    def particle_volume(self) -> np.ndarray:
-        """Return a copy of quadrature volumes, shape ``(N,)`` in m³."""
-        return self._get_particle_field("particle_volume")
+        return self.particles.position_cpu()
 
     @property
     def particle_group_id(self) -> np.ndarray:
         """Return int32 particle-group labels, shape ``(N,)``."""
-        return self._get_particle_field("group_id")
-
-    @property
-    def particle_zone_id(self) -> np.ndarray:
-        """Return int32 spatial-zone labels, shape ``(N,)``."""
-        return self._get_particle_field("zone_id")
-
-    @property
-    def particle_velocity_gradient(self) -> np.ndarray:
-        """Return ``J[i,j] = d u_i/d x_j``, shape ``(N, 3, 3)`` in 1/s."""
-        return self._get_particle_field("velocity_gradient")
+        return self.particles.group_id_cpu()
 
     @property
     def freestream_velocity(self) -> np.ndarray:
@@ -1154,14 +1122,9 @@ class VPMSolver:
         return self.particles.velocity_background_cpu()
 
     @property
-    def particle_vorticity(self) -> np.ndarray:
-        """Return particle vorticity diagnostics, shape ``(N, 3)`` in 1/s."""
-        return self._get_particle_field("vorticity")
-
-    @property
     def particle_vortex_strength(self) -> np.ndarray:
         """Return particle vortex strengths ``Gamma = omega * V``, shape ``(N, 3)`` in m³/s."""
-        return self._get_particle_field("vortex_strength")
+        return self.particles.vortex_strength_cpu()
 
     # Flow diagnostics
     def _update_all_flow_integrals(self) -> None:
@@ -1191,7 +1154,7 @@ class VPMSolver:
         vorticity = self.particles.velocity_curl_cpu()
         position = self.particle_position
         strength = self.particle_vortex_strength
-        core_radius = self.particle_core_radius
+        core_radius = self.particles.core_radius_cpu()
         metrics = particle_resolution_metrics(
             position,
             strength,
@@ -1233,21 +1196,6 @@ class VPMSolver:
         times = self._diagnostics_history["time"]
         if not times or times[-1] != self.time:
             times.append(self.time)
-
-    def _record_vlm_diagnostics(self) -> None:
-        """Record the lattice loads and loading distributions of the accepted state."""
-        VLMDiagnostics.record_vlm_diagnostics(
-            self.vlm_solver,
-            self.particles,
-            self.particle_vortex_strength,
-            self.time,
-            self.samples_dir,
-        )
-        VLMLoadingDistribution.record_loading_distributions(
-            self.vlm_solver,
-            self.time,
-            self.samples_dir,
-        )
 
     @property
     def total_kinetic_energy(self) -> float:
@@ -1298,37 +1246,17 @@ class VPMSolver:
             self.particle_vortex_strength.astype(np.float64),
         ).sum(axis=0, dtype=np.float64)
 
-    def compute_forces(
-        self, density: float | None = None, reference_speed: float | None = None
-    ) -> dict[str, np.ndarray | float]:
-        """Compute the Kutta--Joukowski force of the attached VLM.
-
-        Parameters
-        ----------
-        density : float or None, default=None
-            Fluid density in kg/m³; defaults to the attached VLM case density.
-        reference_speed : float or None, default=None
-            Speed used for nondimensional force coefficients in m/s. When
-            omitted, the configured VLM relative reference velocity is used.
-
-        Returns
-        -------
-        dict[str, numpy.ndarray or float]
-            Force components and coefficients as defined by the VLM force
-            evaluator.
-
-        Raises
-        ------
-        RuntimeError
-            If this VPM solver has no attached VLM setup.
-        """
-        if self.vlm_solver is None:
-            raise RuntimeError("Force evaluation requires a VLM setup")
-        if density is None:
-            density = self.vlm_solver.density
-        return kutta_joukowski_forces(self.vlm_solver, density, reference_speed)
-
     # Particle management
+    def _configured_kinematic_viscosity(self, count: int) -> np.ndarray:
+        """Broadcast the configured scalar kinematic viscosity to ``count`` particles."""
+        kinematic_viscosity = getattr(self._viscous_config, "kinematic_viscosity", None)
+        if kinematic_viscosity is not None and kinematic_viscosity > 0:
+            return np.full(count, kinematic_viscosity, dtype=self.np_dtype)
+        raise ValueError(
+            "kinematic_viscosity is required. Either configure "
+            "ViscousConfig.kinematic_viscosity or pass an explicit array."
+        )
+
     def remove_all_particles(self) -> None:
         """Remove the complete active cloud and record removed-strength diagnostics.
 
@@ -1390,15 +1318,7 @@ class VPMSolver:
         refinement reference/reference totals.
         """
         if kinematic_viscosity is None:
-            kinematic_viscosity = getattr(self._viscous_config, "kinematic_viscosity", None)
-            if kinematic_viscosity is not None and kinematic_viscosity > 0:
-                N = len(position)
-                kinematic_viscosity = np.full(N, kinematic_viscosity, dtype=self.np_dtype)
-            else:
-                raise ValueError(
-                    "kinematic_viscosity is required. Either configure "
-                    "ViscousConfig.kinematic_viscosity or pass an explicit array."
-                )
+            kinematic_viscosity = self._configured_kinematic_viscosity(len(position))
 
         start = self.particles.n_particles_total
         self.particles.add_vortex_particles(
@@ -1480,16 +1400,7 @@ class VPMSolver:
             self._vortex_strength_removed_this_step = vortex_strength_removed
 
         if kinematic_viscosity is None:
-            kinematic_viscosity = getattr(self._viscous_config, "kinematic_viscosity", None)
-            if kinematic_viscosity is not None and kinematic_viscosity > 0:
-                kinematic_viscosity = np.full(
-                    len(position), kinematic_viscosity, dtype=self.np_dtype
-                )
-            else:
-                raise ValueError(
-                    "viscosity parameter is required.  Either set "
-                    "ViscousConfig.kinematic_viscosity or pass an explicit array."
-                )
+            kinematic_viscosity = self._configured_kinematic_viscosity(len(position))
 
         self.particles.replace_from_numpy(
             position=position,
@@ -1580,17 +1491,7 @@ class VPMSolver:
         if not isinstance(prop_value, np.ndarray):
             prop_value = np.asarray(prop_value)
 
-        if prop_name in {
-            "position",
-            "velocity",
-            "vortex_strength",
-            "vorticity",
-        }:
-            expected_shape = (n_particles_total, 3)
-        elif prop_name in {"velocity_gradient", "strain_rate"}:
-            expected_shape = (n_particles_total, 3, 3)
-        else:
-            expected_shape = (n_particles_total,)
+        expected_shape = (n_particles_total, *FIELD_TRAILING_SHAPES[prop_name])
 
         if prop_value.shape != expected_shape:
             raise ValueError(
@@ -1631,26 +1532,11 @@ class VPMSolver:
         if not properties:
             return
 
-        valid_properties = {
-            "position",
-            "velocity",
-            "vortex_strength",
-            "vorticity",
-            "core_radius",
-            "particle_volume",
-            "kinematic_viscosity",
-            "eddy_viscosity",
-            "effective_viscosity",
-            "group_id",
-            "zone_id",
-            "velocity_gradient",
-            "strain_rate",
-        }
-        invalid = [name for name in properties if name not in valid_properties]
+        invalid = [name for name in properties if name not in FIELD_TRAILING_SHAPES]
         if invalid:
             raise ValueError(
                 f"Invalid property name {invalid[0]!r}. "
-                f"Valid properties: {sorted(valid_properties)}"
+                f"Valid properties: {sorted(FIELD_TRAILING_SHAPES)}"
             )
 
         n_particles_total = self.particles.n_particles_total
@@ -1772,7 +1658,7 @@ class VPMSolver:
         if default:
             self._last_backup_state = self._state_key()
             status = RunStatus.running if self._run_started else RunStatus.partial
-            self.write_run_metadata(status=status)
+            write_vpm_metadata(self, status=status)
         return written
 
     def write_vtk(self) -> Path:
@@ -1787,7 +1673,7 @@ class VPMSolver:
         pathlib.Path
             The particle frame.
         """
-        # A frame evaluates its own velocity; only a backup reuses the diagnostics'.
+        # A frame evaluates its own velocity; only a backup reuses the one of the diagnostics.
         self._velocity_valid_for = None
         self._refresh_backup_particle_fields()
         frame = write_solution_frames(self)
@@ -1832,8 +1718,7 @@ class VPMSolver:
 
     def set_freestream_velocity(self, velocity: list[float] | np.ndarray) -> None:
         """Set framework-owned uniform background velocity state [m/s]."""
-        dtype = np.float64 if self.precision == "f64" else np.float32
-        velocity_arr = np.array(velocity, dtype=dtype)
+        velocity_arr = np.array(velocity, dtype=self.np_dtype)
 
         if velocity_arr.shape != (3,):
             if velocity_arr.size == 3:
@@ -1883,15 +1768,7 @@ class VPMSolver:
 
         keep_mask = None
         if self.stabilization.reference_vortex_strength is not None:
-            position = self.particles.position_cpu()
-            inside = (
-                (xmin <= position[:, 0])
-                & (position[:, 0] <= xmax)
-                & (ymin <= position[:, 1])
-                & (position[:, 1] <= ymax)
-                & (zmin <= position[:, 2])
-                & (position[:, 2] <= zmax)
-            )
+            inside = inside_box(self.particles.position_cpu(), bounds)
             keep_mask = inside if invert_selection else ~inside
 
         n_removed = self.particles.remove_particles_by_bounds(

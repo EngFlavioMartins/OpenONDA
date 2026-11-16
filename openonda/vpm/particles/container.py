@@ -11,6 +11,53 @@ from ..config.constants import MAX_N_PARTICLES
 from ..config.state import cached_particle_property
 from ..runtime.host_staging import HostStagingBuffers
 
+FIELD_TRAILING_SHAPES: dict[str, tuple[int, ...]] = {
+    "core_radius": (),
+    "particle_volume": (),
+    "kinematic_viscosity": (),
+    "eddy_viscosity": (),
+    "effective_viscosity": (),
+    "group_id": (),
+    "zone_id": (),
+    "position": (3,),
+    "velocity": (3,),
+    "vortex_strength": (3,),
+    "vorticity": (3,),
+    "velocity_gradient": (3, 3),
+    "strain_rate": (3, 3),
+}
+"""Trailing shape of every particle field that :meth:`Particles.set_field` accepts;
+the leading dimension is the active particle count."""
+
+_INTEGER_FIELDS = ("group_id", "zone_id")
+
+
+def inside_box(position: np.ndarray, bounds: Sequence[float]) -> np.ndarray:
+    """Return the mask of the positions inside a closed axis-aligned box.
+
+    Parameters
+    ----------
+    position : numpy.ndarray
+        Coordinates, shape ``(N, 3)``, in m.
+    bounds : sequence of float
+        ``[xmin, xmax, ymin, ymax, zmin, zmax]`` in m; an infinite bound
+        leaves its side open.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean mask, shape ``(N,)``; a point on a face is inside.
+    """
+    xmin, xmax, ymin, ymax, zmin, zmax = (float(value) for value in bounds)
+    return (
+        (xmin <= position[:, 0])
+        & (position[:, 0] <= xmax)
+        & (ymin <= position[:, 1])
+        & (position[:, 1] <= ymax)
+        & (zmin <= position[:, 2])
+        & (position[:, 2] <= zmax)
+    )
+
 
 def _validate_finite_array(arr: np.ndarray, name: str) -> None:
     """Check that an array contains only finite (non-NaN, non-Inf) values.
@@ -435,19 +482,10 @@ class Particles:
         if n == 0:
             return 0
 
-        xmin, xmax, ymin, ymax, zmin, zmax = bounds
-
         # Reuse the positions required by host compaction. This avoids a separate
         # device tag dispatch and keeps classification consistent with copied fields.
         position = self._extract_vector(self.position, n)
-        inside = (
-            (float(xmin) <= position[:, 0])
-            & (position[:, 0] <= float(xmax))
-            & (float(ymin) <= position[:, 1])
-            & (position[:, 1] <= float(ymax))
-            & (float(zmin) <= position[:, 2])
-            & (position[:, 2] <= float(zmax))
-        )
+        inside = inside_box(position, bounds)
         keep_mask = inside if invert_selection else ~inside
 
         n_remove = n - keep_mask.sum()
@@ -1165,33 +1203,18 @@ class Particles:
                 f"Values for field '{field_name}' must have the same number of particles ({count})."
             )
 
-        # Determine field type and expected shape
-        # Scalar fields
-        scalar_fields = [
-            "core_radius",
-            "particle_volume",
-            "kinematic_viscosity",
-            "eddy_viscosity",
-            "effective_viscosity",
-        ]
-        int_fields = ["group_id", "zone_id"]
-        vector_fields = ["position", "velocity", "vortex_strength", "vorticity"]
-        matrix_fields = ["velocity_gradient", "strain_rate"]
-
-        if field_name in scalar_fields:
-            values = self._validate_numpy_input(values, (), field_name)
-            self._copy_scalars_chunked(values, field, 0, count)
-        elif field_name in int_fields:
-            values = self._validate_numpy_input(values, (), field_name)
-            self._copy_ints_chunked(values, field, 0, count)
-        elif field_name in vector_fields:
-            values = self._validate_numpy_input(values, (3,), field_name)
-            self._copy_vectors_chunked(values, field, 0, count)
-        elif field_name in matrix_fields:
-            values = self._validate_numpy_input(values, (3, 3), field_name)
-            self._copy_matrices_chunked(values, field, 0, count)
-        else:
+        trailing_shape = FIELD_TRAILING_SHAPES.get(field_name)
+        if trailing_shape is None:
             raise ValueError(f"Field '{field_name}' type not recognized for set_field.")
+        values = self._validate_numpy_input(values, trailing_shape, field_name)
+        if trailing_shape == (3, 3):
+            self._copy_matrices_chunked(values, field, 0, count)
+        elif trailing_shape == (3,):
+            self._copy_vectors_chunked(values, field, 0, count)
+        elif field_name in _INTEGER_FIELDS:
+            self._copy_ints_chunked(values, field, 0, count)
+        else:
+            self._copy_scalars_chunked(values, field, 0, count)
         self.touch_state()
 
     @ti.kernel

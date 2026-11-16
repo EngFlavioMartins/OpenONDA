@@ -13,8 +13,8 @@ step size, the run state and the diffusion counter. The subsystems it drives
 are plain attributes set when the solver builds the stepper. No physics is
 implemented here: every numerical update is performed on the subsystems the
 stepper calls. Diffusing and advecting kernels live in ``physics``; the
-stabilization workers live in
-``stabilization`` and are dispatched here only at their scheduled phases.
+stabilization workers live in ``stabilization`` and are dispatched here only
+at their scheduled phases.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import numpy as np
 import taichi as ti
 
 from ..io.logging import step_timing
+from ..particles.container import inside_box
 from ..physics.induction.base import StageRates, StageState
 from ..runtime.timing import remainder_section
 from ..wall_errors import WallCorrectionTooLargeError
@@ -368,13 +369,13 @@ class EvolutionStepper:
         """Advance position and strength together, with symmetric core spreading."""
         if self.viscous_scheme == "cs":
             with remainder_section(self.profiler, "Viscous diffusion"):
-                self._apply_core_spreading_diffusion(0.5 * time_step_size)
+                self.physics.core_spreading_diffusion(self.particles, 0.5 * time_step_size)
 
         with remainder_section(self.profiler, "Runge-Kutta update"):
             self._advance_particles(time_step_size)
         if self.viscous_scheme == "cs":
             with remainder_section(self.profiler, "Viscous diffusion"):
-                self._apply_core_spreading_diffusion(0.5 * time_step_size)
+                self.physics.core_spreading_diffusion(self.particles, 0.5 * time_step_size)
 
         if self.viscous_scheme in {"rwm", "dvh", "gbd"}:
             with remainder_section(self.profiler, "Viscous diffusion"):
@@ -384,19 +385,13 @@ class EvolutionStepper:
             with self.profiler.section("LES strength exchange"):
                 self.turbulence_model.apply_strength_exchange(self.particles, time_step_size)
 
-    def _apply_core_spreading_diffusion(self, time_step_size: float) -> None:
-        """Advance the split Gaussian core-spreading operator."""
-        if time_step_size <= 0.0 or len(self.particles) == 0:
-            return
-        self.physics.core_spreading_diffusion(self.particles, time_step_size)
-
     def _apply_viscous_diffusion(self, time_step_size: float) -> None:
         """Dispatch viscous diffusion by configured scheme."""
         if self.viscous_scheme == "none":
             return
 
         if self.viscous_scheme == "cs":
-            self._apply_core_spreading_diffusion(time_step_size)
+            self.physics.core_spreading_diffusion(self.particles, time_step_size)
         elif self.viscous_scheme == "rwm":
             self.physics.random_walk_method_diffusion(
                 self.particles,
@@ -425,15 +420,7 @@ class EvolutionStepper:
                 retention_bounds = self.stabilization_config.remove_particles_by_bounds
                 if retention_bounds is not None and M > 0:
                     position = np.asarray(new_p["position"])
-                    xmin, xmax, ymin, ymax, zmin, zmax = retention_bounds
-                    inside = (
-                        (xmin <= position[:, 0])
-                        & (position[:, 0] <= xmax)
-                        & (ymin <= position[:, 1])
-                        & (position[:, 1] <= ymax)
-                        & (zmin <= position[:, 2])
-                        & (position[:, 2] <= zmax)
-                    )
+                    inside = inside_box(position, retention_bounds)
                     if not np.any(inside):
                         lo = position.min(axis=0)
                         hi = position.max(axis=0)
