@@ -22,6 +22,8 @@ from openonda.core.schedules import EverySteps, Schedule
 from openonda.core.vtk_output import write_surface_frame
 from openonda.core.write_precision import cast_for_write
 
+from ..physics.target_fields import compute_velocity_and_gradient_at_points
+
 if TYPE_CHECKING:
     from ..core.solver import VPMSolver
     from .manager import SamplingContext
@@ -60,8 +62,13 @@ def _sample_fields(
     solver: VPMSolver, points: np.ndarray, spacing: float, include_derivatives: bool
 ) -> dict[str, np.ndarray]:
     """Evaluate velocity, vorticity and velocity gradient at ``points``."""
-    velocity, gradient = solver.compute_velocity_and_gradient_at_points(
-        points, particle_spacing=spacing
+    velocity, gradient = compute_velocity_and_gradient_at_points(
+        solver.physics,
+        solver.particles,
+        solver.vlm_solver,
+        solver.time,
+        points,
+        particle_spacing=spacing,
     )
     velocity = np.asarray(velocity).reshape(-1, 3)
     gradient = np.asarray(gradient).reshape(-1, 3, 3)

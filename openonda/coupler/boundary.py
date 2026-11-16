@@ -9,6 +9,7 @@ import numpy as np
 
 from openonda.core.clock import time_tolerance
 from openonda.core.parallel import collective_phase
+from openonda.vpm.physics import target_fields
 
 from .reporting import boundary_induction_summary, format_coupler_log
 
@@ -232,7 +233,11 @@ def evaluate_vpm_velocity(
     normal = np.asarray(face_normal, dtype=np.float64).reshape(-1, 3)
     areas = np.asarray(face_area, dtype=np.float64).reshape(-1)
     if evaluated_velocity is None:
-        evaluated_velocity = vpm.compute_velocity_at_points(
+        evaluated_velocity = target_fields.compute_velocity_at_points(
+            vpm.physics,
+            vpm.particles,
+            vpm.vlm_solver,
+            vpm.time,
             face_centre,
             include_freestream=True,
             zone_mask=None,
@@ -313,9 +318,16 @@ def evaluate_vpm_boundary(
         if coupler._is_root:
             assert coupler.vpm_solver is not None
             query_started = time.perf_counter()
+            vpm = coupler.vpm_solver
             vpm_boundary_condition_velocity, normal_gradient = (
-                coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
-                    face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
+                target_fields.compute_velocity_and_tangential_normal_gradient_at_points(
+                    vpm.physics,
+                    vpm.particles,
+                    vpm.vlm_solver,
+                    vpm.time,
+                    face_centre,
+                    face_normal,
+                    particle_spacing=coupler.vpm_particle_spacing,
                 )
             )
             _record_boundary_induction(
@@ -525,9 +537,16 @@ def update_boundary_history_after_replacement(
         assert coupler.vpm_solver is not None
         normal_gradient: np.ndarray | None = None
         query_started = time.perf_counter()
+        vpm = coupler.vpm_solver
         corrected_boundary, normal_gradient = (
-            coupler.vpm_solver.compute_velocity_and_tangential_normal_gradient_at_points(
-                face_centre, face_normal, particle_spacing=coupler.vpm_particle_spacing
+            target_fields.compute_velocity_and_tangential_normal_gradient_at_points(
+                vpm.physics,
+                vpm.particles,
+                vpm.vlm_solver,
+                vpm.time,
+                face_centre,
+                face_normal,
+                particle_spacing=coupler.vpm_particle_spacing,
             )
         )
         _record_boundary_induction(
