@@ -82,11 +82,7 @@ def _restart_controls(vlm: "VLMSolver") -> dict[str, object]:
 def restart_configuration_hash(vlm: "VLMSolver") -> str:
     """Hash the declared controls, motion callbacks and generated initial geometry."""
     controls = _restart_controls(vlm)
-    controls["geometry_references"] = getattr(
-        vlm,
-        "_restart_geometry_references",
-        metadata_value(vlm.aircraft.refs),
-    )
+    controls["geometry_references"] = vlm._restart_geometry_references
     # Generic motion callbacks can depend on closed-over phase and case globals.
     # Record their code and captured construction values without executing them.
     callbacks = []

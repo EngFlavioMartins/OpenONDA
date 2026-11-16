@@ -497,7 +497,8 @@ class CompositeMotion(RigidMotion):
     Velocities and angular velocities of the components are summed; each
     component's own rotation centre is replaced by ``rotation_centre``, so a
     heave-plus-pitch motion pivots about one point. The pose advances with
-    the interval-midpoint rule.
+    the interval-midpoint rule, which is second order in the step size; it
+    does not reproduce the closed form of the components.
 
     Parameters
     ----------

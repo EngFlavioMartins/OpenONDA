@@ -52,6 +52,7 @@ from .mesh import (
     update_trailing_directions_local,
     update_trailing_edge_directions,
 )
+from .restart import restart_configuration_hash
 from .wake import augment_near_wake_particles, prepare_near_wake, shed_wake_particles
 
 if TYPE_CHECKING:
@@ -238,8 +239,6 @@ class VLMSolver:
         group_id = self.get_panel_group_ids()
 
         self.lattice.group_id.from_numpy(group_id)
-
-        from .restart import restart_configuration_hash
 
         self._restart_geometry_references = metadata_value(self.aircraft.refs)
         self._restart_configuration_hash = restart_configuration_hash(self)
