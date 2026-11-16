@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from functools import partial
 import logging
 from typing import TYPE_CHECKING
 
@@ -847,7 +848,12 @@ class VorticityTransfer:
         # Fluid-side M4' remeshing of off-lattice particles, from the VPM GBD grid.
         vpm = getattr(coupler, "vpm_solver", None)
         self._wall_scatter_correction = (
-            None if vpm is None else vpm.physics.compute_m4_wall_corrections
+            None
+            if vpm is None
+            else partial(
+                vpm.physics.compute_m4_wall_corrections,
+                wall_fallback_limit=viscous.gbd_wall_fallback_limit,
+            )
         )
         if not np.isfinite(coupler.vpm_core_radius_ratio):
             raise RuntimeError("VorticityTransfer requires the resolved VPM core-radius ratio")

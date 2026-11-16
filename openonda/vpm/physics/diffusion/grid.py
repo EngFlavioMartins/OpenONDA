@@ -1164,12 +1164,17 @@ class _GridDiffusionMixin:
         origin: np.ndarray,
         spacing: float,
         shape: tuple[int, int, int],
+        wall_fallback_limit: float = 0.0,
     ) -> tuple[np.ndarray, np.ndarray, dict[str, float | int]]:
         """Restore each wall-adjacent M4 deposit on local fluid support.
 
         Signed M4 weights are retained. A minimum-norm correction on fluid
         nodes enforces each source's zeroth and three first spatial moments.
-        Failed/under-resolved support is rejected, never globally compensated.
+        Failed/under-resolved support is rejected, never globally compensated,
+        unless ``wall_fallback_limit`` is positive: a particle without bounded
+        support then moves its whole strength to fluid-connected nodes, and the
+        step fails only when those particles carry more than that fraction of
+        the total strength.
         """
         points = np.asarray(positions, dtype=np.float64)
         gamma = np.asarray(strengths, dtype=np.float64)
@@ -1193,7 +1198,7 @@ class _GridDiffusionMixin:
         expanded_support = 0
         fallback_particles = 0
         fallback_l1 = 0.0
-        fallback_limit = float(getattr(self, "_gbd_wall_fallback_limit", 0.0))
+        fallback_limit = float(wall_fallback_limit)
         grid_min = np.asarray(origin, dtype=np.float64)
         dimensions = np.asarray(shape)
         cached_mask = self._body_mask_host
@@ -2586,7 +2591,6 @@ class _GridDiffusionMixin:
         If the macro-step exceeds the 3-D explicit limit, only the Laplacian is
         substepped. Scatter, thresholding, and regeneration still occur once.
         """
-        self._gbd_wall_fallback_limit = float(wall_fallback_limit)
         # One is also the correct reach for a skipped/zero-diffusivity GBD
         # operation. A completed Laplacian below replaces this with the exact
         # runtime stage count used by the current regeneration.
@@ -2726,6 +2730,7 @@ class _GridDiffusionMixin:
                     grid_min_np,
                     particle_spacing,
                     (nx, ny, nz),
+                    wall_fallback_limit,
                 )
                 self._last_gbd_wall_transfer = wall_budget
                 if len(correction_nodes):
