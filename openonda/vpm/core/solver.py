@@ -31,7 +31,6 @@ from ..config.state_limits import (
     ParticleStateMetrics,
     check_accepted_particle_state,
 )
-from ..coupling import CouplingStepper
 from ..diagnostics.particle_state import measure_particle_state
 from ..diagnostics.resolution import particle_resolution_metrics
 from ..io.backup import _BackupIO, rewind_vpm_frames, select_vpm_backup
@@ -481,7 +480,6 @@ class VPMSolver:
         )
         self.wall_time = 0.0
         self.stepper = EvolutionStepper(self)
-        self.coupling = CouplingStepper(self)
 
     def _initialize_vlm_coupling(self) -> None:
         """Configure VLM solver coupling: mesh generation, force config, stability check."""

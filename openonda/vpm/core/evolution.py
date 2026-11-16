@@ -7,11 +7,13 @@ happen inside a step.  :class:`~openonda.vpm.core.solver.VPMSolver` is the
 facade that composes subsystems; it delegates its step to the stepper and
 keeps the diagnostics, backups, and I/O bookkeeping around the step.
 
-The stepper holds a back-reference to the solver (``self.solver``), but exposes
-only the explicit capabilities it consumes.  The solver stores all mutable state, including the accepted step clock.  No physics is
+The stepper holds a back-reference to the solver (``self.solver``) for the
+state the solver changes between and during steps: the accepted clock, the
+step size, the run state and the diffusion counter. The subsystems it drives
+are plain attributes set when the solver builds the stepper. No physics is
 implemented here: every numerical update is performed on the subsystems the
-stepper calls.  Diffusing and
-advecting kernels live in ``physics``; the stabilization workers live in
+stepper calls. Diffusing and advecting kernels live in ``physics``; the
+stabilization workers live in
 ``stabilization`` and are dispatched here only at their scheduled phases.
 """
 
@@ -29,14 +31,16 @@ from ..runtime.timing import remainder_section
 from ..wall_errors import WallCorrectionTooLargeError
 
 if TYPE_CHECKING:
+    from openonda.core.log_style import StepLog
     from openonda.core.profiling import Profiler
 
     from ..config.case import Numerics
     from ..config.stabilization import StabilizationConfig
     from ..config.viscous import ViscousConfig
-    from ..coupling import CouplingStepper
+    from ..numerics.runge_kutta import RungeKutta
     from ..particles.container import Particles
     from ..physics.engine import PhysicsEngine
+    from ..physics.stage_rhs import StageRHS
     from ..stabilization import StabilizationManager
     from ..turbulence.les import ParticleLES
     from ..vlm.solver import VLMSolver
@@ -55,9 +59,12 @@ class EvolutionStepper:
         Parameters
         ----------
         solver : VPMSolver
-            Solver whose particle container, physics evaluator, clock, and
-            optional VLM/stabilization subsystems are driven. The
-            stepper stores a back-reference; it does not copy solver state.
+            Solver whose subsystems are driven. The stepper keeps the solver
+            for its clock, time-step size, run state and diffusion counter,
+            and binds the subsystems the solver builds once and never
+            replaces: particles, physics, Runge--Kutta integrator, stage
+            right-hand side, turbulence model, VLM solver, profiler and
+            stabilization.
 
         Notes
         -----
@@ -66,11 +73,24 @@ class EvolutionStepper:
         ``VPMSolver`` rather than instantiating it as an independent solver.
         """
         self.solver = solver
+        self.particles: Particles = solver.particles
+        self.physics: PhysicsEngine = solver.physics
+        self.integrator: RungeKutta = solver.integrator
+        self.stage_rhs: StageRHS = solver.stage_rhs
+        self.turbulence_model: ParticleLES | None = solver.turbulence_model
+        self.vlm_solver: VLMSolver | None = solver.vlm_solver
+        self.profiler: Profiler = solver.profiler
+        self.stabilization: StabilizationManager = solver.stabilization
+        self.logger: StepLog = solver.logger
+        self.numerics: Numerics = solver.numerics
+        self.np_dtype: type[np.floating] = solver.np_dtype
+        self.flow_model: str = solver.flow_model
+        self.viscous_scheme: str = solver.viscous_scheme
+        self._viscous_config: ViscousConfig = solver._viscous_config
+        self.stabilization_config: StabilizationConfig = solver.stabilization_config
         self._staged_step: int | None = None
         self._staged_time: float | None = None
 
-    # Explicit: this execution boundary must not become a
-    # second, forwarding view of VPMSolver's entire mutable surface.
     @property
     def step(self) -> int:
         """Return the accepted or currently staged integer step index."""
@@ -82,111 +102,12 @@ class EvolutionStepper:
         return self.solver.time if self._staged_time is None else self._staged_time
 
     @property
-    def particles(self) -> Particles:
-        """Return the solver-owned mutable particle container."""
-        return self.solver.particles
-
-    @property
-    def physics(self) -> PhysicsEngine:
-        """Return the solver-owned VPM physics workspace."""
-        return self.solver.physics
-
-    @property
-    def numerics(self) -> Numerics:
-        """Return the immutable VPM numerical configuration."""
-        return self.solver.numerics
-
-    @property
-    def profiler(self) -> Profiler:
-        """Return the step profiler used by the owning solver."""
-        return self.solver.profiler
-
-    @property
-    def stabilization(self) -> StabilizationManager:
-        """Return the stabilization manager for scheduled step phases."""
-        return self.solver.stabilization
-
-    @property
-    def coupling(self) -> CouplingStepper:
-        """Return the optional boundary/coupling manager."""
-        return self.solver.coupling
-
-    @property
-    def vlm_solver(self) -> VLMSolver | None:
-        """Return the optional VLM solver, or ``None`` when disabled."""
-        return self.solver.vlm_solver
-
-    @property
     def time_step_size(self) -> float:
-        """Return the active physical step size in seconds."""
-        return self.solver.time_step_size
+        """Return the active physical step size in seconds.
 
-    @property
-    def np_dtype(self) -> type[np.floating]:
-        """Return the NumPy dtype corresponding to solver precision."""
-        return self.solver.np_dtype
-
-    @property
-    def flow_model(self) -> str:
-        """Return the configured flow model, such as ``DNS`` or ``LES``."""
-        return self.solver.flow_model
-
-    @property
-    def stabilization_config(self) -> StabilizationConfig:
-        """Return immutable stabilization controls."""
-        return self.solver.stabilization_config
-
-    @property
-    def viscous_scheme(self) -> str:
-        """Return the active diffusion scheme name."""
-        return self.solver.viscous_scheme
-
-    @property
-    def _viscous_config(self) -> ViscousConfig:
-        """Return the internal diffusion configuration used by split updates."""
-        return self.solver._viscous_config
-
-    @property
-    def _n_steps_per_dvh_diffusion(self) -> int:
-        """Return accepted steps between DVH regenerations."""
-        return self.solver._n_steps_per_dvh_diffusion
-
-    @property
-    def turbulence_model(self) -> ParticleLES | None:
-        """Return the active LES model, or ``None`` for non-LES flow."""
-        return self.solver.turbulence_model
-
-    @property
-    def particle_position(self) -> np.ndarray:
-        """Return the device position field with logical shape ``(N, 3)`` in m."""
-        return self.solver.particle_position
-
-    @property
-    def particle_velocity_gradient(self) -> np.ndarray:
-        """Return the particle velocity Jacobian field with shape ``(N, 3, 3)`` in 1/s."""
-        return self.solver.particle_velocity_gradient
-
-    @property
-    def particle_group_id(self) -> np.ndarray:
-        """Return integer particle group labels with logical shape ``(N,)``."""
-        return self.solver.particle_group_id
-
-    @property
-    def particle_zone_id(self) -> np.ndarray:
-        """Return integer spatial-zone labels with logical shape ``(N,)``."""
-        return self.solver.particle_zone_id
-
-    def replace_vortex_particles(self, **properties: np.ndarray | None) -> None:
-        """Replace the active particle set through the owning solver.
-
-        Parameters
-        ----------
-        **properties : array-like
-            Particle fields accepted by :meth:`VPMSolver.replace_vortex_particles`.
-            Positions are in m, velocity in m/s, strengths in m³/s, radii in m,
-            and volumes in m³.
+        The solver owns it: a restart with a changed step size sets it again.
         """
-        self.solver.replace_vortex_particles(**properties)
+        return self.solver.time_step_size
 
     def advance(self, *, defer_output: bool = False, time: float | None = None) -> None:
         """Advance the VPM solution by one time step.
@@ -201,7 +122,7 @@ class EvolutionStepper:
 
         target_step = self.solver.step + 1
         target_time = self.solver._clock_time(target_step) if time is None else float(time)
-        self.solver.logger.begin_step(target_step, target_time, self.time_step_size)
+        self.logger.begin_step(target_step, target_time, self.time_step_size)
         self.profiler.begin_step(self.solver.step, self.solver.time, self.time_step_size)
 
         self.stabilization.begin_step(
@@ -249,7 +170,7 @@ class EvolutionStepper:
             # step of advection or stretching during their birth interval.
             self.particles.touch_state()
             with remainder_section(self.profiler, "VLM coupling"):
-                self.coupling.advance_vlm(self.time_step_size)
+                self._advance_vlm()
 
         # The evolution kernels mutate particle source fields directly on the
         # device.  Publish one new source revision after the complete physical
@@ -265,7 +186,7 @@ class EvolutionStepper:
         )
         self.solver.wall_time = self.profiler.total_seconds
         total_steps = None if self.solver._external_clock else self.solver._run_final_step
-        log = self.solver.logger
+        log = self.logger
         if log.is_due(self.solver.step, self.solver.time, self.time_step_size, total_steps):
             log.publish(
                 self.solver.step,
@@ -277,6 +198,25 @@ class EvolutionStepper:
                 ),
             )
 
+    def _advance_vlm(self) -> None:
+        """Advance the VLM coupling by one step and append the wake particles it sheds."""
+        particles_before = self.particles.n_particles_total
+        self.vlm_solver.advance_coupled(
+            particles=self.particles,
+            physics=self.physics,
+            freestream_velocity=self.numerics.freestream_velocity,
+            time_step_size=self.time_step_size,
+            time=self.time,
+        )
+
+        particles_added = self.particles.n_particles_total - particles_before
+        if particles_added > 0 and self.stabilization.reference_vortex_strength is not None:
+            # VLM inserts on the device; read only its shed batch for refinement reference.
+            lattice = self.vlm_solver.lattice
+            strength = lattice.wake_vortex_strength.to_numpy()[:particles_added]
+            volume = lattice.wake_volume.to_numpy()[:particles_added]
+            self.stabilization.on_add(np.linalg.norm(strength, axis=1), volume, particles_before)
+
     def _commit_accepted_step(self) -> None:
         """Publish a fully accepted numerical step to the standard clock."""
         assert self._staged_step is not None and self._staged_time is not None
@@ -285,13 +225,12 @@ class EvolutionStepper:
         self._staged_step = None
         self._staged_time = None
 
-    def _update_velocity_and_gradients(self, announce: bool = False) -> None:
+    def _update_velocity_and_gradients(self) -> None:
         """Refresh derived particle velocity and gradient through the stage interface."""
-        del announce
         count = len(self.particles)
         if count == 0:
             return
-        self.solver.stage_rhs.evaluate(
+        self.stage_rhs.evaluate(
             StageState(
                 position=self.particles.position,
                 vortex_strength=self.particles.vortex_strength,
@@ -326,7 +265,7 @@ class EvolutionStepper:
 
     def _advance_particles(self, time_step_size: float) -> None:
         """Advance position and vortex strength at common Runge--Kutta stages."""
-        accepted_projector = getattr(self.solver.stage_rhs, "accepted_position_projector", None)
+        accepted_projector = self.stage_rhs.accepted_position_projector
         guard = getattr(accepted_projector, "__self__", None)
         can_retry_wall = bool(
             guard is not None and hasattr(guard, "begin_trial") and hasattr(guard, "end_trial")
@@ -341,7 +280,7 @@ class EvolutionStepper:
                 return (
                     self.physics.download_vector_field(self.particles.position, count),
                     self.physics.download_vector_field(self.particles.vortex_strength, count),
-                    deepcopy(getattr(self.physics, "last_solid_projection", None)),
+                    deepcopy(self.physics.last_solid_projection),
                 )
 
         def project_accepted(position: object, vortex_strength: object, n: int) -> None:
@@ -368,14 +307,14 @@ class EvolutionStepper:
                 guard.begin_trial()
             try:
                 try:
-                    self.solver.integrator.advance(
+                    self.integrator.advance(
                         position=self.particles.position,
                         vortex_strength=self.particles.vortex_strength,
                         core_radius=self.particles.core_radius,
                         count=count,
                         time=start_time,
                         time_step_size=dt,
-                        right_hand_side=self.solver.stage_rhs,
+                        right_hand_side=self.stage_rhs,
                         accepted_position_projector=(
                             None if accepted_projector is None else project_accepted
                         ),
@@ -510,7 +449,7 @@ class EvolutionStepper:
                     # domain.  The post-step O(N) retention scan would be a no-op.
                     self.stabilization.ctx.state.domain_bounds_enforced = bool(np.all(inside))
                 with self.profiler.section("Particle replacement"):
-                    self.replace_vortex_particles(
+                    self.solver.replace_vortex_particles(
                         position=new_p["position"],
                         velocity=new_p.get("velocity", np.zeros((M, 3), dtype=self.np_dtype)),
                         vortex_strength=new_p["vortex_strength"],

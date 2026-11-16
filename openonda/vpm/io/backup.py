@@ -566,7 +566,7 @@ class _BackupIO:
                 solver._loading_numerical_state = False
 
             solver.particles.set_field("vorticity", vorticity)
-            solver.stepper._update_velocity_and_gradients(announce=False)
+            solver.stepper._update_velocity_and_gradients()
             if auxiliary["effective_viscosity"] is not None:
                 solver.particles.set_field(
                     "effective_viscosity",
