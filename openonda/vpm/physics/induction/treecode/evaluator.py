@@ -1,6 +1,6 @@
 """Barnes--Hut induction evaluator behind the common VPM stage interface."""
 
-from typing import TYPE_CHECKING, Self, TypedDict
+from typing import TYPE_CHECKING, Any, Self, TypedDict
 
 import numpy as np
 import taichi as ti
@@ -190,6 +190,19 @@ class TreecodeInduction:
         instance.sort_particle_targets = bool(sort_particle_targets)
         instance.traversal_block_dim = int(traversal_block_dim)
         return instance
+
+    def configuration(self) -> dict[str, Any]:
+        """Return the restart record of this backend."""
+        return {
+            "type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "method": str(self.method),
+            "theta": self.theta,
+            "multipole_order": self.multipole_order,
+            "stretching_scheme": self.stretching_scheme,
+            "sort_particle_targets": self.sort_particle_targets,
+            "traversal_block_dim": self.traversal_block_dim,
+            "kernel": str(self.kernel.name),
+        }
 
     def build(self) -> Self:
         """Return a fresh unbound evaluator preserving tree settings."""

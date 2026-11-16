@@ -6,12 +6,11 @@ precision, field and clock checks always apply.
 """
 
 from collections.abc import Collection, Mapping
+from copy import deepcopy
 from enum import Enum
 import json
 import re
 from typing import Any
-
-from .restart import _configuration_mismatches, restart_configuration_values
 
 
 class _MissingConfigurationValue(Enum):
@@ -50,6 +49,44 @@ def _evidence(value: object) -> dict[str, Any]:
     if value is MISSING_CONFIGURATION_VALUE:
         return {"present": False}
     return {"present": True, "value": json.loads(_configuration_json(value))}
+
+
+def restart_configuration_values(configuration: dict[str, Any]) -> dict[str, Any]:
+    """Return the physical configuration, leaving validated input untouched."""
+    result = deepcopy(configuration)
+    result.pop("compute_device", None)
+    induction = result.get("induction")
+    if isinstance(induction, dict):
+        settings = induction.get("gaussian_mesh_settings")
+        if (
+            isinstance(settings, dict)
+            and settings.get("tail_error_method") == "gaussian_interval_remainder_v1"
+            and settings.get("backend") in {"auto", "cpu", "cupy_cuda"}
+        ):
+            # The same finite Gaussian/cardinal operator can execute with
+            # CUDA FFTs or bounded host FFT blocks. Validate the saved
+            # mapping first; only execution placement is portable on restart.
+            # Mesh, cores, images, tail checks and precision remain exact.
+            settings.pop("backend")
+    return result
+
+
+def _exact_mismatches(current: object, stored: object, path: str = "") -> set[str]:
+    if isinstance(current, dict) and isinstance(stored, dict):
+        result = set()
+        for key in sorted(set(current) | set(stored)):
+            child = f"{path}.{key}" if path else key
+            if key not in current or key not in stored:
+                result.add(child)
+            else:
+                result.update(_exact_mismatches(current[key], stored[key], child))
+        return result
+    if isinstance(current, list) and isinstance(stored, list) and len(current) == len(stored):
+        result = set()
+        for index, (new, old) in enumerate(zip(current, stored, strict=True)):
+            result.update(_exact_mismatches(new, old, f"{path}[{index}]"))
+        return result
+    return set() if _configuration_json(current) == _configuration_json(stored) else {path}
 
 
 def _validate_changes(
@@ -135,11 +172,18 @@ def validate_configuration_changes(
     path must be an actual incompatible path; parent paths, wildcard paths,
     unused permissions and expectations without permission are rejected.
     ``time_step_size`` is reserved for the separate explicit step-size API.
-    Execution placement and hard storage capacity are operational.
+    Execution placement and a larger storage capacity are operational.
     """
     current = restart_configuration_values(expected)
     stored = restart_configuration_values(found)
-    mismatches = set(_configuration_mismatches(current, stored))
+    mismatches = _exact_mismatches(current, stored)
+    old_capacity, new_capacity = stored.get("max_n_particles"), current.get("max_n_particles")
+    if type(old_capacity) is int and type(new_capacity) is int and new_capacity > old_capacity:
+        # The particle count is bounded strictly by capacity: no active
+        # operator truncates a field or changes algorithms when a proposal
+        # exceeds it. A larger allocation can resume the same configuration
+        # after an exhausted one.
+        mismatches.discard("max_n_particles")
     if allow_time_step_size_mismatch:
         mismatches.discard("time_step_size")
     return _validate_changes(
@@ -150,24 +194,6 @@ def validate_configuration_changes(
         expected_config_differences=expected_config_differences,
         protected_paths={"time_step_size"},
     )
-
-
-def _exact_mismatches(current: object, stored: object, path: str = "") -> set[str]:
-    if isinstance(current, dict) and isinstance(stored, dict):
-        result = set()
-        for key in sorted(set(current) | set(stored)):
-            child = f"{path}.{key}" if path else key
-            if key not in current or key not in stored:
-                result.add(child)
-            else:
-                result.update(_exact_mismatches(current[key], stored[key], child))
-        return result
-    if isinstance(current, list) and isinstance(stored, list) and len(current) == len(stored):
-        result = set()
-        for index, (new, old) in enumerate(zip(current, stored, strict=True)):
-            result.update(_exact_mismatches(new, old, f"{path}[{index}]"))
-        return result
-    return set() if _configuration_json(current) == _configuration_json(stored) else {path}
 
 
 def validate_exact_configuration_changes(

@@ -97,6 +97,8 @@ class Numerics:
             raise TypeError("induction must implement evaluate_stage")
         if not callable(getattr(self.induction, "build", None)):
             raise TypeError("induction must implement build() for solver-local runtime state")
+        if not callable(getattr(self.induction, "configuration", None)):
+            raise TypeError("induction must implement configuration() for the restart record")
         if isinstance(self.time_step_size, bool) or not isinstance(self.time_step_size, Real):
             raise TypeError("time_step_size must be a real number")
         if not math.isfinite(float(self.time_step_size)) or self.time_step_size <= 0.0:

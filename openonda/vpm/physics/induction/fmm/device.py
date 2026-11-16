@@ -14,7 +14,7 @@ gradient. Expansion and traversal settings are not part of the public API.
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 import math
-from typing import TYPE_CHECKING, NamedTuple, Self
+from typing import TYPE_CHECKING, Any, NamedTuple, Self
 import warnings
 
 import numpy as np
@@ -1337,6 +1337,15 @@ class FMMInduction:
         if self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before evaluation")
         return self.workspace
+
+    def configuration(self) -> dict[str, Any]:
+        """Return the restart record of this backend."""
+        return {
+            "type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "method": str(self.method),
+            "stretching_scheme": self.stretching_scheme,
+            "kernel": str(self.kernel.name),
+        }
 
     def build(self) -> Self:
         """Return a fresh unbound FMM evaluator preserving the scheme."""

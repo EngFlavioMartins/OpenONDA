@@ -16,6 +16,7 @@ import taichi as ti
 from taichi.lang.field import ScalarField
 from taichi.lang.matrix import MatrixField
 
+from ...config.configuration_values import configuration_value
 from ...kernels.base import RadialVortexKernel, make_vortex_kernel
 from ...kernels.registry import kernel_definition
 from .base import _STRETCHING_MODES, BindableInductionMethod, TaichiField
@@ -326,6 +327,23 @@ class SlipSlabInduction:
         if self.physics is None:
             raise RuntimeError("slab induction is unbound; bind the induction backend")
         return self.physics
+
+    def configuration(self) -> dict[str, Any]:
+        """Return the restart record of this backend, with that of its base."""
+        return {
+            "type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "method": str(self.method),
+            "z_min": self.z_min,
+            "z_max": self.z_max,
+            "tail_tolerance": self.tail_tolerance,
+            "max_shells": self.max_shells,
+            "velocity_scale": self.velocity_scale,
+            "gradient_scale": self.gradient_scale,
+            "stretching_scheme": self.stretching_scheme,
+            "base": self.base.configuration(),
+            "kernel": str(self.kernel.name),
+            "gaussian_mesh_settings": configuration_value(self.gaussian_mesh_settings),
+        }
 
     def build(self) -> "SlipSlabInduction":
         """Return an unbound copy with a freshly built base induction."""

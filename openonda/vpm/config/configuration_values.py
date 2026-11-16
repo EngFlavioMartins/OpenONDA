@@ -18,47 +18,16 @@ if TYPE_CHECKING:
     from .case import Numerics
 
 
-def _configuration_value(value: Any) -> Any:
-    """Convert numerical value objects to JSON-compatible deterministic values."""
-    if hasattr(value, "evaluate_stage"):
-        result = {"type": f"{type(value).__module__}.{type(value).__qualname__}"}
-        if hasattr(value, "method"):
-            result["method"] = str(value.method)
-        for name in (
-            "z_min",
-            "z_max",
-            "tail_tolerance",
-            "max_shells",
-            "velocity_scale",
-            "gradient_scale",
-            "theta",
-            "tolerance",
-            "multipole_order",
-            "stretching_scheme",
-            "sort_particle_targets",
-            "traversal_block_dim",
-        ):
-            if hasattr(value, name):
-                result[name] = _configuration_value(getattr(value, name))
-        kernel = getattr(value, "kernel", None)
-        if hasattr(value, "base"):
-            result["base"] = _configuration_value(value.base)
-        if kernel is not None and hasattr(kernel, "name"):
-            result["kernel"] = str(kernel.name)
-        settings = getattr(value, "gaussian_mesh_settings", None)
-        if settings is not None:
-            result["gaussian_mesh_settings"] = _configuration_value(settings)
-        return result
+def configuration_value(value: Any) -> Any:
+    """Convert a numerical setting to a JSON-compatible deterministic value."""
     if is_dataclass(value):
-        return {
-            item.name: _configuration_value(getattr(value, item.name)) for item in fields(value)
-        }
+        return {item.name: configuration_value(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, dict):
-        return {str(key): _configuration_value(item) for key, item in value.items()}
+        return {str(key): configuration_value(item) for key, item in value.items()}
     if isinstance(value, tuple | list):
-        return [_configuration_value(item) for item in value]
+        return [configuration_value(item) for item in value]
     if isinstance(value, np.generic):
-        return _configuration_value(value.item())
+        return configuration_value(value.item())
     if isinstance(value, float) and math.isinf(value):
         # Infinite bounds are valid numerical controls, but not JSON numbers.
         return "Infinity" if value > 0 else "-Infinity"
@@ -74,16 +43,16 @@ def numerical_configuration(setup: Numerics) -> dict[str, Any]:
     the JSON strings ``Infinity`` and ``-Infinity``.
     """
     return {
-        "domain_bounds": _configuration_value(setup.domain_bounds),
-        "state_limits": _configuration_value(setup.state_limits),
+        "domain_bounds": configuration_value(setup.domain_bounds),
+        "state_limits": configuration_value(setup.state_limits),
         "max_n_particles": setup.max_n_particles,
         "particle_kernel": setup.particle_kernel,
         "precision": setup.precision,
         "random_seed": setup.random_seed,
-        "stabilization": _configuration_value(setup.stabilization),
-        "integrator": _configuration_value(setup.integrator),
-        "induction": _configuration_value(setup.induction),
+        "stabilization": configuration_value(setup.stabilization),
+        "integrator": configuration_value(setup.integrator),
+        "induction": setup.induction.configuration(),
         "time_step_size": setup.time_step_size,
-        "turbulence": _configuration_value(setup.turbulence),
-        "viscous": _configuration_value(setup.viscous),
+        "turbulence": configuration_value(setup.turbulence),
+        "viscous": configuration_value(setup.viscous),
     }

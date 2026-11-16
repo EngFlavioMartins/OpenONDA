@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 import taichi as ti
 
@@ -62,6 +62,15 @@ class DirectInduction:
         self.physics: PhysicsBase | None = None
         self.max_n_particles = 1
         self._strain_rate = None
+
+    def configuration(self) -> dict[str, Any]:
+        """Return the restart record of this backend."""
+        return {
+            "type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "method": str(self.method),
+            "stretching_scheme": self.stretching_scheme,
+            "kernel": str(self.kernel.name),
+        }
 
     def build(self) -> Self:
         """Return a fresh unbound evaluator with the same formulation.

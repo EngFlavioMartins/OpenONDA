@@ -141,6 +141,14 @@ class InductionMethod(Protocol):
     device_resident: ClassVar[bool]
     stretching_scheme: StretchingScheme
 
+    def configuration(self) -> dict[str, Any]:
+        """Return the settings that determine the computed velocity.
+
+        The mapping holds JSON values. It is part of the restart record: a
+        backup is refused when the current backend differs in any entry, so
+        every setting that changes the result belongs here.
+        """
+
     def build(self) -> InductionMethod:
         """Return an evaluator bound to a solver's device/runtime state.
 
