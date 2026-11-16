@@ -24,6 +24,8 @@ from .viscous import ViscousConfig
 if TYPE_CHECKING:
     from ..initialization import InitialCondition
 
+_COMPUTE_DEVICES = {"auto", "cpu", "vulkan", "cuda", "metal"}
+
 
 @dataclass(frozen=True, slots=True)
 class Numerics:
@@ -105,10 +107,9 @@ class Numerics:
             raise ValueError(f"time_step_size must be positive (got {self.time_step_size})")
         if self.max_n_particles < 1:
             raise ValueError(f"max_n_particles must be at least one (got {self.max_n_particles})")
-        valid_devices = {"auto", "cpu", "vulkan", "cuda", "metal"}
-        if self.compute_device not in valid_devices:
+        if self.compute_device not in _COMPUTE_DEVICES:
             raise ValueError(
-                f"compute_device must be one of {sorted(valid_devices)} "
+                f"compute_device must be one of {sorted(_COMPUTE_DEVICES)} "
                 f"(got {self.compute_device!r})"
             )
         if self.precision not in {"f32", "f64"}:
@@ -288,12 +289,11 @@ class RunPlan:
                 raise TypeError(f"RunPlan.{name} must be a bool")
         if self.state_limit_action not in {"raise", "stop"}:
             raise ValueError("RunPlan.state_limit_action must be 'raise' or 'stop'")
-        valid_devices = {"auto", "cpu", "vulkan", "cuda", "metal"}
         if self.runtime_compute_device is not None and (
-            self.runtime_compute_device not in valid_devices
+            self.runtime_compute_device not in _COMPUTE_DEVICES
         ):
             raise ValueError(
-                f"RunPlan.runtime_compute_device must be one of {sorted(valid_devices)} or None"
+                f"RunPlan.runtime_compute_device must be one of {sorted(_COMPUTE_DEVICES)} or None"
             )
 
     def n_steps(self, time_step_size: float) -> int:

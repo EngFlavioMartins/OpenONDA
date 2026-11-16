@@ -78,7 +78,14 @@ def inside_box(position: np.ndarray, bounds: Sequence[float]) -> np.ndarray:
     -------
     numpy.ndarray
         Boolean mask, shape ``(N,)``; a point on a face is inside.
+
+    Raises
+    ------
+    ValueError
+        If ``bounds`` does not contain six values.
     """
+    if len(bounds) != 6:
+        raise ValueError("bounds must be [xmin, xmax, ymin, ymax, zmin, zmax]")
     xmin, xmax, ymin, ymax, zmin, zmax = (float(value) for value in bounds)
     return (
         (xmin <= position[:, 0])
@@ -506,13 +513,7 @@ class Particles:
             >>> # Keep only particles inside domain (remove those outside)
             >>> particles.remove_particles_by_bounds([-5, 10, -5, 5, -5, 5], invert_selection=True)
         """
-        if len(bounds) != 6:
-            raise ValueError("bounds must be [xmin, xmax, ymin, ymax, zmin, zmax]")
-
         n = self.n_particles_total
-        if n == 0:
-            return 0
-
         # Reuse the positions required by host compaction. This avoids a separate
         # device tag dispatch and keeps classification consistent with copied fields.
         position = self._extract_vector(self.position, n)

@@ -381,7 +381,7 @@ class VPMSolver:
                     "Fixed-lattice DVH/GBD requires domain_bounds so the diffusion "
                     "grid can be allocated once."
                 )
-            if _grid_h is None or _grid_h <= 0:
+            if _grid_h is None:
                 raise ValueError(
                     "Fixed-lattice DVH/GBD requires a positive grid spacing so the "
                     "fixed diffusion grid can be pre-allocated."
@@ -515,11 +515,11 @@ class VPMSolver:
         viscous_cfg: "ViscousConfig", vlm_setup: "VLMConfig"
     ) -> None:
         """Require one molecular kinematic viscosity in an attached VPM/VLM system."""
-        scheme = getattr(viscous_cfg, "scheme", "none")
+        scheme = viscous_cfg.scheme
         if scheme == "none":
             vpm_kinematic_viscosity = 0.0
         else:
-            configured_kinematic_viscosity = getattr(viscous_cfg, "kinematic_viscosity", None)
+            configured_kinematic_viscosity = viscous_cfg.kinematic_viscosity
             if configured_kinematic_viscosity is None:
                 raise ValueError(
                     f"VPM viscous scheme {scheme!r} requires kinematic_viscosity "
@@ -1755,15 +1755,6 @@ class VPMSolver:
         ValueError
             If ``bounds`` does not contain six values.
         """
-        if len(bounds) != 6:
-            raise ValueError("bounds must be [xmin, xmax, ymin, ymax, zmin, zmax]")
-
-        n_particles_total = self.particles.n_particles_total
-        if n_particles_total == 0:
-            return 0
-
-        xmin, xmax, ymin, ymax, zmin, zmax = bounds
-
         keep_mask = None
         if self.stabilization.reference_vortex_strength is not None:
             inside = inside_box(self.particles.position_cpu(), bounds)
@@ -1775,6 +1766,7 @@ class VPMSolver:
 
         if n_removed > 0:
             self.stabilization.on_removal(keep_mask=keep_mask)
+            xmin, xmax, ymin, ymax, zmin, zmax = bounds
             action = "outside" if invert_selection else "inside"
             self.logger.section(
                 "particles removed",
