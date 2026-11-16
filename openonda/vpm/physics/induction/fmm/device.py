@@ -22,7 +22,7 @@ import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ....kernels.registry import kernel_names, treecode_kernel_names
-from ..base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
+from ..base import STRETCHING_MODES, TaichiField, validate_stretching_scheme
 from ..stretching import stretching_rate
 from ..treecode.evaluator import _TREECODE_MULTIPOLE_ORDER, _TREECODE_THETA
 from ..treecode.lbvh import _TRAVERSAL_BATCH_SIZE, TaichiTreecode, _DeviceFields
@@ -535,7 +535,7 @@ class FMMDeviceWorkspace:
             self.rate[particle] = ti.Vector([0.0, 0.0, 0.0])
 
     @ti.kernel
-    def _p2m_pass(self, count: ti.i32):
+    def _p2m_pass(self):
         for leaf_slot in range(self._active_leaf_count[None]):
             node = self._active_leaf_nodes[leaf_slot]
             first = self.tree.node_particle_start[node]
@@ -559,42 +559,39 @@ class FMMDeviceWorkspace:
                 self.multipole[self._expansion_slot[node] * _MOMENT_COUNT + coefficient] = moment
 
     @ti.kernel
-    def _m2m_level(self, count: ti.i32, level: ti.i32):
+    def _m2m_level(self, level: ti.i32):
         for internal_slot in range(self._level_node_count[level]):
             node = self._active_internal_nodes[self._level_node_start[level] + internal_slot]
-            if self.tree.node_depth[node] == level:
-                node_base = self._expansion_slot[node] * _MOMENT_COUNT
-                for alpha_index in range(_MOMENT_COUNT):
-                    alpha_a = self._coefficient_a[alpha_index]
-                    alpha_b = self._coefficient_b[alpha_index]
-                    alpha_c = self._coefficient_c[alpha_index]
-                    translated = ti.Vector([0.0, 0.0, 0.0])
-                    for child_slot in ti.static(range(2)):
-                        child = (
-                            self.tree.node_left[node]
-                            if child_slot == 0
-                            else self.tree.node_right[node]
-                        )
-                        child_base = self._expansion_slot[child] * _MOMENT_COUNT
-                        offset = self.tree.node_centre[child] - self.tree.node_centre[node]
-                        for beta_index in range(_MOMENT_COUNT):
-                            beta_a = self._coefficient_a[beta_index]
-                            beta_b = self._coefficient_b[beta_index]
-                            beta_c = self._coefficient_c[beta_index]
-                            if beta_a <= alpha_a and beta_b <= alpha_b and beta_c <= alpha_c:
-                                da = alpha_a - beta_a
-                                db = alpha_b - beta_b
-                                dc = alpha_c - beta_c
-                                scale = (
-                                    self._small_power(offset[0], da)
-                                    * self._small_power(offset[1], db)
-                                    * self._small_power(offset[2], dc)
-                                    / self._factorial(da)
-                                    / self._factorial(db)
-                                    / self._factorial(dc)
-                                )
-                                translated += self.multipole[child_base + beta_index] * scale
-                    self.multipole[node_base + alpha_index] = translated
+            node_base = self._expansion_slot[node] * _MOMENT_COUNT
+            for alpha_index in range(_MOMENT_COUNT):
+                alpha_a = self._coefficient_a[alpha_index]
+                alpha_b = self._coefficient_b[alpha_index]
+                alpha_c = self._coefficient_c[alpha_index]
+                translated = ti.Vector([0.0, 0.0, 0.0])
+                for child_slot in ti.static(range(2)):
+                    child = (
+                        self.tree.node_left[node] if child_slot == 0 else self.tree.node_right[node]
+                    )
+                    child_base = self._expansion_slot[child] * _MOMENT_COUNT
+                    offset = self.tree.node_centre[child] - self.tree.node_centre[node]
+                    for beta_index in range(_MOMENT_COUNT):
+                        beta_a = self._coefficient_a[beta_index]
+                        beta_b = self._coefficient_b[beta_index]
+                        beta_c = self._coefficient_c[beta_index]
+                        if beta_a <= alpha_a and beta_b <= alpha_b and beta_c <= alpha_c:
+                            da = alpha_a - beta_a
+                            db = alpha_b - beta_b
+                            dc = alpha_c - beta_c
+                            scale = (
+                                self._small_power(offset[0], da)
+                                * self._small_power(offset[1], db)
+                                * self._small_power(offset[2], dc)
+                                / self._factorial(da)
+                                / self._factorial(db)
+                                / self._factorial(dc)
+                            )
+                            translated += self.multipole[child_base + beta_index] * scale
+                self.multipole[node_base + alpha_index] = translated
 
     @ti.kernel
     def _initialize_interaction_lists(self):
@@ -807,50 +804,47 @@ class FMMDeviceWorkspace:
                     )
 
     @ti.kernel
-    def _l2l_level(self, count: ti.i32, level: ti.i32):
+    def _l2l_level(self, level: ti.i32):
         for internal_slot in range(self._level_node_count[level]):
             node = self._active_internal_nodes[self._level_node_start[level] + internal_slot]
-            if self.tree.node_depth[node] == level:
-                for child_slot in ti.static(range(2)):
-                    child = (
-                        self.tree.node_left[node] if child_slot == 0 else self.tree.node_right[node]
-                    )
-                    offset = self.tree.node_centre[child] - self.tree.node_centre[node]
-                    parent_base = self._expansion_slot[node] * _LOCAL_COUNT
-                    child_base = self._expansion_slot[child] * _LOCAL_COUNT
-                    translation_norm_sq = 0.0
-                    for beta_index in range(_LOCAL_COUNT):
-                        beta_a = self._coefficient_a[beta_index]
-                        beta_b = self._coefficient_b[beta_index]
-                        beta_c = self._coefficient_c[beta_index]
-                        translated = ti.Vector([0.0, 0.0, 0.0])
-                        for gamma_index in range(_LOCAL_COUNT):
-                            gamma_a = self._coefficient_a[gamma_index]
-                            gamma_b = self._coefficient_b[gamma_index]
-                            gamma_c = self._coefficient_c[gamma_index]
-                            if gamma_a >= beta_a and gamma_b >= beta_b and gamma_c >= beta_c:
-                                da = gamma_a - beta_a
-                                db = gamma_b - beta_b
-                                dc = gamma_c - beta_c
-                                scale = (
-                                    self._factorial(gamma_a)
-                                    / self._factorial(beta_a)
-                                    / self._factorial(da)
-                                    * self._factorial(gamma_b)
-                                    / self._factorial(beta_b)
-                                    / self._factorial(db)
-                                    * self._factorial(gamma_c)
-                                    / self._factorial(beta_c)
-                                    / self._factorial(dc)
-                                    * self._small_power(offset[0], da)
-                                    * self._small_power(offset[1], db)
-                                    * self._small_power(offset[2], dc)
-                                )
-                                translated += self.local[parent_base + gamma_index] * scale
-                        self.local[child_base + beta_index] += translated
-                        translation_norm_sq += translated.dot(translated)
-                    if translation_norm_sq > 0.0:
-                        ti.atomic_add(self._nonzero_l2l_count[None], 1)
+            for child_slot in ti.static(range(2)):
+                child = self.tree.node_left[node] if child_slot == 0 else self.tree.node_right[node]
+                offset = self.tree.node_centre[child] - self.tree.node_centre[node]
+                parent_base = self._expansion_slot[node] * _LOCAL_COUNT
+                child_base = self._expansion_slot[child] * _LOCAL_COUNT
+                translation_norm_sq = 0.0
+                for beta_index in range(_LOCAL_COUNT):
+                    beta_a = self._coefficient_a[beta_index]
+                    beta_b = self._coefficient_b[beta_index]
+                    beta_c = self._coefficient_c[beta_index]
+                    translated = ti.Vector([0.0, 0.0, 0.0])
+                    for gamma_index in range(_LOCAL_COUNT):
+                        gamma_a = self._coefficient_a[gamma_index]
+                        gamma_b = self._coefficient_b[gamma_index]
+                        gamma_c = self._coefficient_c[gamma_index]
+                        if gamma_a >= beta_a and gamma_b >= beta_b and gamma_c >= beta_c:
+                            da = gamma_a - beta_a
+                            db = gamma_b - beta_b
+                            dc = gamma_c - beta_c
+                            scale = (
+                                self._factorial(gamma_a)
+                                / self._factorial(beta_a)
+                                / self._factorial(da)
+                                * self._factorial(gamma_b)
+                                / self._factorial(beta_b)
+                                / self._factorial(db)
+                                * self._factorial(gamma_c)
+                                / self._factorial(beta_c)
+                                / self._factorial(dc)
+                                * self._small_power(offset[0], da)
+                                * self._small_power(offset[1], db)
+                                * self._small_power(offset[2], dc)
+                            )
+                            translated += self.local[parent_base + gamma_index] * scale
+                    self.local[child_base + beta_index] += translated
+                    translation_norm_sq += translated.dot(translated)
+                if translation_norm_sq > 0.0:
+                    ti.atomic_add(self._nonzero_l2l_count[None], 1)
 
     @ti.kernel
     def _l2p_pass(self, count: ti.i32):
@@ -1145,7 +1139,7 @@ class FMMDeviceWorkspace:
             self._m2l_derivative_pass(pair_start, batch_count)
             self._m2l_accumulate_pass(pair_start, batch_count)
         for level in range(level_count):
-            self._l2l_level(count, level)
+            self._l2l_level(level)
         self._l2p_pass(count)
         self._near_field_pass(node_count, count, int(self._near_count[None]))
         self._reset_rate_diagnostics()
@@ -1181,9 +1175,9 @@ class FMMDeviceWorkspace:
         if active_cells > self.max_active_cells:
             raise _ExpansionCapacityError(self.max_active_cells, active_cells)
         self._zero_pass(node_count, count)
-        self._p2m_pass(count)
+        self._p2m_pass()
         for level in range(level_count - 1, -1, -1):
-            self._m2m_level(count, level)
+            self._m2m_level(level)
         return level_count
 
     def evaluate_targets(
@@ -1320,8 +1314,8 @@ class FMMInduction:
         ValueError
             If ``stretching_scheme`` is unsupported.
         """
-        self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
-        self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
+        self.stretching_scheme = validate_stretching_scheme(stretching_scheme)
+        self._stretching_mode = STRETCHING_MODES[self.stretching_scheme]
         self.method = "fmm"
         self.physics: PhysicsBase | None = None
         self.kernel: RadialVortexKernel = make_vortex_kernel("gaussian")
@@ -1613,7 +1607,6 @@ class FMMInduction:
         vortex_strength_rate_out: TaichiField,
         velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
-        stage_time: float = 0.0,
     ) -> None:
         """Evaluate velocity, gradient, and strength rate for one RK stage.
 
@@ -1636,9 +1629,6 @@ class FMMInduction:
         strength_rate_enabled : bool, default=True
             Copy the FMM stretching rate when true; otherwise explicitly zero
             the output rate.
-        stage_time : float, default=0.0
-            Stage time in seconds, accepted for the common interface and unused
-            by this autonomous backend.
 
         Raises
         ------
@@ -1655,7 +1645,6 @@ class FMMInduction:
         even when only a strength rate is requested because it defines that
         discrete rate.
         """
-        del stage_time
         if self.physics is None or self.workspace is None:
             raise RuntimeError("FMMInduction must be bound before evaluation")
         if getattr(self, "_fixed_source_key", None) is not None:

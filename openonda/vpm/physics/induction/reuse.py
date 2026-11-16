@@ -140,7 +140,6 @@ class AcceptedStateInduction:
         velocity_out: TaichiField,
         gradient: bool,
         strength_rate: bool,
-        stage_time: float,
     ) -> None:
         """Evaluate the requested outputs of one accepted state and store them."""
         self.invalidate()
@@ -154,7 +153,6 @@ class AcceptedStateInduction:
             vortex_strength_rate_out=storage.strength_rate,
             velocity_gradient_out=storage.gradient if gradient else None,
             strength_rate_enabled=strength_rate,
-            stage_time=stage_time,
         )
         self._backend = backend
         self._revision = revision

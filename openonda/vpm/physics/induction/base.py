@@ -19,30 +19,30 @@ TaichiField = Any
 TaichiDataType = Any
 
 StretchingScheme = Literal["direct", "transposed", "mixed"]
-_STRETCHING_MODES = {"direct": 0, "transposed": 1, "mixed": 2}
+STRETCHING_MODES = {"direct": 0, "transposed": 1, "mixed": 2}
 
 
-def normalize_stretching_scheme(scheme: str) -> StretchingScheme:
-    """Normalize and validate the vortex-strength stretching formulation.
+def validate_stretching_scheme(scheme: str) -> StretchingScheme:
+    """Check the vortex-strength stretching formulation and return it.
 
     Parameters
     ----------
     scheme : str
-        Case-insensitive spelling of ``"direct"``, ``"transposed"``, or
-        ``"mixed"``. The value selects the discrete representation of
-        ``dGamma/dt``; it does not select a velocity-induction backend.
+        ``"direct"``, ``"transposed"``, or ``"mixed"``, in lower case. The value
+        selects the discrete representation of ``dGamma/dt``; it does not select a
+        velocity-induction backend.
 
     Returns
     -------
     StretchingScheme
-        The lowercase literal used by backend constructors.
+        ``scheme``, typed as the literal used by backend constructors.
 
     Raises
     ------
     ValueError
         If ``scheme`` is not one of the three supported formulations.
     """
-    if scheme not in _STRETCHING_MODES:
+    if scheme not in STRETCHING_MODES:
         raise ValueError(
             f"stretching_scheme must be 'direct', 'transposed', or 'mixed'; got {scheme!r}"
         )
@@ -171,7 +171,6 @@ class InductionMethod(Protocol):
         vortex_strength_rate_out: TaichiField,
         velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
-        stage_time: float = 0.0,
     ) -> None:
         """Evaluate particle velocity and stretching rates for one stage.
 
@@ -199,8 +198,6 @@ class InductionMethod(Protocol):
         strength_rate_enabled : bool, default=True
             If false, write a zero strength-rate field while still computing
             velocity and any requested gradient.
-        stage_time : float, default=0.0
-            Physical stage time in seconds.
 
         Notes
         -----

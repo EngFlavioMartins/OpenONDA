@@ -5,11 +5,14 @@ kernel sigma^2(t) = sigma^2(0) + 4*kinematic_viscosity*t, which is equivalent to
 with a Gaussian diffusion kernel.  O(N), analytic, unconditionally stable; it
 relies on periodic remeshing to prevent excessive core overlap.
 
-The concrete kernel call runs on the owning physics object, which supplies the
-``update_radius_csm_kernel`` Taichi kernel and its temporary-field management.
+``make_core_spreading_kernel`` builds the ``update_radius_csm_kernel`` Taichi kernel, which the
+owning physics object binds and calls.
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
+
+import taichi as ti
 
 if TYPE_CHECKING:
     from ...particles.container import Particles
@@ -30,3 +33,25 @@ def apply_core_spreading(
     # The kernel mutates a particle field directly; invalidate host snapshots
     # so subsequent diagnostics and public reads observe the grown cores.
     particles.touch_state()
+
+
+def make_core_spreading_kernel(diffusivity_constant_: Callable) -> Callable:
+    """Create the core-spreading kernel for the particle kernel's ``diffusivity_constant_``."""
+
+    @ti.kernel
+    def update_radius_csm_kernel(
+        core_radius: ti.template(),
+        viscosities_eff: ti.template(),
+        time_step_size: ti.template(),
+        n_particles_total: ti.i32,
+    ):
+        N = n_particles_total
+        for i in range(N):
+            effective_viscosity = viscosities_eff[i]
+            current_radius = core_radius[i]
+            diffusion_term = diffusivity_constant_() * effective_viscosity * time_step_size
+            new_rad_sq = current_radius * current_radius + diffusion_term
+
+            core_radius[i] = ti.sqrt(new_rad_sq)
+
+    return update_radius_csm_kernel

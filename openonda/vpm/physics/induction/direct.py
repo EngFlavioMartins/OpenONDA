@@ -8,7 +8,7 @@ import taichi as ti
 
 from ...kernels.base import RadialVortexKernel, make_vortex_kernel
 from ...kernels.registry import kernel_names
-from .base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
+from .base import STRETCHING_MODES, TaichiField, validate_stretching_scheme
 
 if TYPE_CHECKING:
     from ..base import PhysicsBase
@@ -55,8 +55,8 @@ class DirectInduction:
         ValueError
             If ``stretching_scheme`` is unsupported.
         """
-        self.stretching_scheme = normalize_stretching_scheme(stretching_scheme)
-        self._stretching_mode = _STRETCHING_MODES[self.stretching_scheme]
+        self.stretching_scheme = validate_stretching_scheme(stretching_scheme)
+        self._stretching_mode = STRETCHING_MODES[self.stretching_scheme]
         self.method = "direct"
         self.kernel = make_vortex_kernel("gaussian")
         self.physics: PhysicsBase | None = None
@@ -136,7 +136,6 @@ class DirectInduction:
         vortex_strength_rate_out: TaichiField,
         velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
-        stage_time: float = 0.0,
     ) -> None:
         """Evaluate velocity, stretching, and optional gradient for one stage.
 
@@ -161,9 +160,6 @@ class DirectInduction:
         strength_rate_enabled : bool, default=True
             If false, the rate field is explicitly zeroed while velocity and a
             requested gradient are still evaluated.
-        stage_time : float, default=0.0
-            Stage time in seconds. The direct kernel is autonomous; the value
-            is accepted for backend compatibility and is not otherwise used.
 
         Raises
         ------
@@ -177,7 +173,6 @@ class DirectInduction:
         Only the supplied output fields and the backend's temporary strain
         workspace are mutated. The source stage fields are read-only here.
         """
-        del stage_time
         if self.physics is None:
             raise RuntimeError("DirectInduction must be bound to a PhysicsEngine before evaluation")
         count = int(count)

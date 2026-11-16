@@ -10,11 +10,11 @@ import taichi as ti
 from openonda.core.profiling import Profiler
 
 from .induction.base import (
-    _STRETCHING_MODES,
+    STRETCHING_MODES,
     InductionMethod,
     StageRates,
     StageState,
-    normalize_stretching_scheme,
+    validate_stretching_scheme,
 )
 from .induction.reuse import AcceptedStateInduction, InductionReuseStatistics
 
@@ -63,8 +63,8 @@ class VLMStageContribution:
         if physics.induction is None:
             raise RuntimeError("VLM stage coupling requires a bound induction backend")
         self.vlm_solver = vlm_solver
-        self._stretching_mode = _STRETCHING_MODES[
-            normalize_stretching_scheme(physics.induction.stretching_scheme)
+        self._stretching_mode = STRETCHING_MODES[
+            validate_stretching_scheme(physics.induction.stretching_scheme)
         ]
         self._stage_weights: tuple[float, ...] | None = None
         self._consumed_stage_indices: set[int] = set()
@@ -229,9 +229,7 @@ class StageRHS:
         self._reuse_statistics.reuses += 1
         return True
 
-    def evaluate_induction(
-        self, stage_state: "StageState", stage_time: float, stage_rates: "StageRates"
-    ) -> None:
+    def evaluate_induction(self, stage_state: "StageState", stage_rates: "StageRates") -> None:
         """Evaluate the self-induced field of one stage with the induction backend.
 
         Every backend evaluation passes through this method and is timed as
@@ -244,11 +242,9 @@ class StageRHS:
             raise RuntimeError("StageRHS is closed")
         self._reuse_statistics.evaluations += 1
         with self.profiler.section("Induction"):
-            self._evaluate_induction(stage_state, stage_time, stage_rates)
+            self._evaluate_induction(stage_state, stage_rates)
 
-    def _evaluate_induction(
-        self, stage_state: "StageState", stage_time: float, stage_rates: "StageRates"
-    ) -> None:
+    def _evaluate_induction(self, stage_state: "StageState", stage_rates: "StageRates") -> None:
         count = int(stage_state.count)
         revision = stage_state.accepted_revision
         if not self.reuse_induction or revision is None or count == 0:
@@ -261,7 +257,6 @@ class StageRHS:
                 vortex_strength_rate_out=stage_rates.vortex_strength_rate,
                 velocity_gradient_out=stage_rates.velocity_gradient,
                 strength_rate_enabled=stage_rates.strength_rate_enabled,
-                stage_time=stage_time,
             )
             return
         strength_rate = bool(stage_rates.strength_rate_enabled)
@@ -275,7 +270,6 @@ class StageRHS:
             velocity_out=stage_rates.velocity,
             gradient=stage_rates.velocity_gradient is not None,
             strength_rate=strength_rate or self.retain_strength_rate,
-            stage_time=stage_time,
         )
         self._accepted_state.publish(
             velocity_out=stage_rates.velocity,
@@ -340,7 +334,7 @@ class StageRHS:
                 self._accepted_state.invalidate()
                 stage_state = replace(stage_state, accepted_revision=None)
         if not self._reuse_accepted_state(stage_state, stage_rates):
-            self.evaluate_induction(stage_state, stage_time, stage_rates)
+            self.evaluate_induction(stage_state, stage_rates)
         if self.providers:
             with self.profiler.section("External stage rates"):
                 for provider in self.providers:

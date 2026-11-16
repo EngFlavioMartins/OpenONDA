@@ -1,6 +1,6 @@
 """
-Factories for shared Taichi compute kernels: induced velocity, vorticity,
-kinetic energy, enstrophy, time integration, and target-point evaluation.
+Factories for shared Taichi compute kernels: induced velocity, vorticity, velocity
+gradient, the stretching rate, and target-point evaluation.
 """
 
 from collections.abc import Callable
@@ -147,91 +147,6 @@ def _make_target_vorticity_kernel(zeta_: Callable) -> Callable:
             target_vorticity[i] = vort
 
     return compute_target_vorticity_kernel
-
-
-def _make_csm_kernel(diffusivity_constant_: Callable) -> Callable:
-    """Mini-factory: creates update_radius_csm_kernel capturing diffusivity_constant_."""
-
-    @ti.kernel
-    def update_radius_csm_kernel(
-        core_radius: ti.template(),
-        viscosities_eff: ti.template(),
-        time_step_size: ti.template(),
-        n_particles_total: ti.i32,
-    ):
-        N = n_particles_total
-        for i in range(N):
-            effective_viscosity = viscosities_eff[i]
-            current_radius = core_radius[i]
-            diffusion_term = diffusivity_constant_() * effective_viscosity * time_step_size
-            new_rad_sq = current_radius * current_radius + diffusion_term
-
-            # Guard against invalid radius
-            core_radius[i] = ti.sqrt(new_rad_sq)
-
-    return update_radius_csm_kernel
-
-
-def _make_rwm_kernel() -> Callable:
-    """Create the counter-based Random Walk Method kernel.
-
-    The random variates are a pure function of the declared seed, accepted
-    step, particle index, and draw index.  They therefore do not depend on an
-    opaque backend RNG cursor and survive fresh processes and restarts exactly.
-    """
-
-    @ti.func
-    def hash_u32(value: ti.u32) -> ti.u32:
-        value ^= value >> 16
-        value *= ti.u32(0x7FEB352D)
-        value ^= value >> 15
-        value *= ti.u32(0x846CA68B)
-        value ^= value >> 16
-        return value
-
-    @ti.func
-    def uniform_01(random_seed: ti.i32, accepted_step: ti.i32, particle: ti.i32, draw: ti.i32):
-        key = ti.cast(random_seed, ti.u32)
-        key ^= ti.cast(accepted_step, ti.u32) * ti.u32(0x9E3779B9)
-        key ^= ti.cast(particle + 1, ti.u32) * ti.u32(0x85EBCA6B)
-        key ^= ti.cast(draw + 1, ti.u32) * ti.u32(0xC2B2AE35)
-        # Midpoint conversion avoids exact zero and one, which keeps the
-        # Box--Muller logarithm finite on every backend.
-        return (ti.cast(hash_u32(key), ti.f32) + 0.5) * ti.f32(1.0 / 4294967296.0)
-
-    @ti.kernel
-    def update_position_rwm_kernel(
-        position: ti.template(),
-        viscosities_eff: ti.template(),
-        time_step_size: ti.template(),
-        n_particles_total: ti.i32,
-        random_seed: ti.i32,
-        accepted_step: ti.i32,
-    ):
-        """Apply the Random Walk Method (RWM) with Brownian displacements.
-
-        Uses a stateless integer hash plus a manual Box--Muller transform.  The
-        result is reproducible across repeated calls, fresh processes, and
-        save/restart continuation for a fixed backend and precision.
-        """
-        two_pi: ti.f32 = 6.28318530717959
-        N = n_particles_total
-        for i in range(N):
-            effective_viscosity = viscosities_eff[i]
-            displacement_factor = ti.sqrt(2.0 * effective_viscosity * time_step_size)
-            # Box-Muller transform: two uniform samples -> two standard normals
-            u1 = uniform_01(random_seed, accepted_step, i, 0)
-            u2 = uniform_01(random_seed, accepted_step, i, 1)
-            u3 = uniform_01(random_seed, accepted_step, i, 2)
-            u4 = uniform_01(random_seed, accepted_step, i, 3)
-            mag1 = ti.sqrt(-2.0 * ti.log(u1))
-            mag2 = ti.sqrt(-2.0 * ti.log(u3))
-            dx = displacement_factor * mag1 * ti.cos(two_pi * u2)
-            dy = displacement_factor * mag1 * ti.sin(two_pi * u2)
-            dz = displacement_factor * mag2 * ti.cos(two_pi * u4)
-            position[i] += ti.Vector([dx, dy, dz])
-
-    return update_position_rwm_kernel
 
 
 @ti.func
@@ -404,16 +319,6 @@ def _create_target_eval_kernels(kernel_functions: dict[str, Callable]) -> dict[s
     }
 
 
-def _create_diffusion_kernels(kernel_functions: dict[str, Callable]) -> dict[str, Callable]:
-    """Create kernels for viscous diffusion (CSM, RWM)."""
-    diffusivity_constant_ = kernel_functions["diffusivity_constant_"]
-
-    return {
-        "update_radius_csm_kernel": _make_csm_kernel(diffusivity_constant_),
-        "update_position_rwm_kernel": _make_rwm_kernel(),
-    }
-
-
 def _create_stretching_kernels(kernel_functions: dict[str, Callable]) -> dict[str, Callable]:
     """Create kernels for vortex stretching computations."""
     radial_factors_ = kernel_functions["radial_factors_"]
@@ -435,6 +340,5 @@ def create_kernels(kernel_functions: dict[str, Callable]) -> dict[str, Callable]
     kernels.update(_create_basic_kernels(kernel_functions))
     kernels.update(_create_gradient_kernels(kernel_functions))
     kernels.update(_create_target_eval_kernels(kernel_functions))
-    kernels.update(_create_diffusion_kernels(kernel_functions))
     kernels.update(_create_stretching_kernels(kernel_functions))
     return kernels

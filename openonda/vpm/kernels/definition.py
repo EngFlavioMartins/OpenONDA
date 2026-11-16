@@ -134,7 +134,7 @@ class KernelDefinition:
 
     def __post_init__(self) -> None:
         if self.name != self.name.lower() or not self.name:
-            raise ValueError("kernel names are nonempty upper-case identifiers")
+            raise ValueError("kernel names are nonempty lower-case identifiers")
         if not math.isfinite(self.second_moment):
             raise ValueError("kernel second moment must be finite")
 

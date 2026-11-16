@@ -79,10 +79,8 @@ def create_winckelmans_kernels(dtype: object = ti.f32) -> dict[str, Callable]:
         m2 = 3/2 exactly -- the same as the Gaussian, which is the property that makes
         it a second-order match -- hence C = 4, identical to the Gaussian.
 
-        Was 256/45 = 5.689 (hand-calibrated, no derivation).  Note that core spreading
-        is an exact self-similar solution of the heat equation only for the Gaussian;
-        for an algebraic kernel it is a model, so a calibrated value is legitimate --
-        but it must be labelled as one.  See ``openonda/vpm/REFERENCES.md``.
+        Core spreading is an exact self-similar solution of the heat equation only for the
+        Gaussian; for an algebraic kernel it is a model.  See ``openonda/vpm/REFERENCES.md``.
         """
         return ti.cast(4.0, dtype)
 

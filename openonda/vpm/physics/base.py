@@ -513,6 +513,8 @@ class PhysicsBase:
         # Import the shared numerical and radial-kernel factories.
         from ..kernels.base import make_device_vortex_kernels
         from ..numerics.kernels_common import create_kernels
+        from .diffusion.core_spreading import make_core_spreading_kernel
+        from .diffusion.random_walk import make_random_walk_kernel
 
         kernel_functions = make_device_vortex_kernels(
             self.particle_kernel,
@@ -526,6 +528,10 @@ class PhysicsBase:
         self._kernel_functions = kernel_functions
 
         self.kernels = create_kernels(kernel_functions)
+        self.kernels["update_radius_csm_kernel"] = make_core_spreading_kernel(
+            kernel_functions["diffusivity_constant_"]
+        )
+        self.kernels["update_position_rwm_kernel"] = make_random_walk_kernel()
 
         # Bind kernels as instance methods for easy access
         for name, fn in self.kernels.items():

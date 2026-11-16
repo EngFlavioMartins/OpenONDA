@@ -7,7 +7,7 @@ import taichi as ti
 
 from ....kernels.base import RadialVortexKernel, make_vortex_kernel
 from ....kernels.registry import treecode_kernel_names
-from ..base import _STRETCHING_MODES, TaichiField, normalize_stretching_scheme
+from ..base import STRETCHING_MODES, TaichiField, validate_stretching_scheme
 from ..stretching import stretching_rate
 
 if TYPE_CHECKING:
@@ -110,7 +110,7 @@ class TreecodeInduction:
         ValueError
             If the stretching formulation or tree approximation is unsupported.
         """
-        stretching_scheme = normalize_stretching_scheme(stretching_scheme)
+        stretching_scheme = validate_stretching_scheme(stretching_scheme)
         if not 0.0 < float(theta) < 2.0:
             raise ValueError("treecode theta must be in (0, 2)")
         if multipole_order not in (1, 2, 3):
@@ -125,7 +125,7 @@ class TreecodeInduction:
             raise ValueError("treecode traversal_block_dim must be a non-negative integer")
         self.method = "treecode"
         self.stretching_scheme = stretching_scheme
-        self._stretching_mode = _STRETCHING_MODES[stretching_scheme]
+        self._stretching_mode = STRETCHING_MODES[stretching_scheme]
         self.kernel = make_vortex_kernel("gaussian")
         self.physics: PhysicsBase | None = None
         self.theta = float(theta)
@@ -259,7 +259,6 @@ class TreecodeInduction:
         vortex_strength_rate_out: TaichiField,
         velocity_gradient_out: TaichiField | None = None,
         strength_rate_enabled: bool = True,
-        stage_time: float = 0.0,
     ) -> None:
         """Evaluate one complete particle stage with a rebuilt LBVH tree.
 
@@ -284,9 +283,6 @@ class TreecodeInduction:
         strength_rate_enabled : bool, default=True
             If true, contract the same hierarchical gradient used by the
             backend. If false, explicitly zero the rate field.
-        stage_time : float, default=0.0
-            Stage time in seconds; accepted for the common interface and not
-            used by the autonomous treecode.
 
         Raises
         ------
@@ -301,7 +297,6 @@ class TreecodeInduction:
         strengths, and core radii cannot reuse stale moments. The source fields
         are not mutated; output fields and backend diagnostics are.
         """
-        del stage_time
         if self.physics is None:
             raise RuntimeError("TreecodeInduction must be bound before evaluation")
         count = int(count)

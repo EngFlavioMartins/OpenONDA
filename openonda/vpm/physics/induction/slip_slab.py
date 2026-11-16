@@ -19,7 +19,7 @@ from taichi.lang.matrix import MatrixField
 from ...config.configuration_values import configuration_value
 from ...kernels.base import RadialVortexKernel, make_vortex_kernel
 from ...kernels.registry import kernel_definition
-from .base import _STRETCHING_MODES, BindableInductionMethod, TaichiField
+from .base import STRETCHING_MODES, BindableInductionMethod, TaichiField
 from .gaussian_mesh.session import GaussianSlabSettings
 from .stretching import stretching_rate
 
@@ -617,7 +617,6 @@ class SlipSlabInduction:
         vortex_strength_rate_out: TaichiField,
         velocity_gradient_out: TaichiField = None,
         strength_rate_enabled: bool = True,
-        stage_time: float = 0.0,
     ) -> None:
         """Velocity, gradient and strength rate of the particles and all their images.
 
@@ -671,7 +670,6 @@ class SlipSlabInduction:
                 vortex_strength_rate_out=vortex_strength_rate_out,
                 velocity_gradient_out=velocity_gradient_out,
                 strength_rate_enabled=strength_rate_enabled,
-                stage_time=stage_time,
             )
         _publish_mesh_results(
             self._bound_physics,
@@ -683,7 +681,7 @@ class SlipSlabInduction:
             vortex_strength_rate_out,
             self._bound_physics._zero_velocity,
             count,
-            _STRETCHING_MODES[self.stretching_scheme],
+            STRETCHING_MODES[self.stretching_scheme],
             int(strength_rate_enabled),
             True,
             True,

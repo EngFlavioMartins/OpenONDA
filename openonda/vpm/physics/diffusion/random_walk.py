@@ -5,9 +5,8 @@ Dx = eta * sqrt(2*kinematic_viscosity*dt).  O(N), works for any particle distrib
 stochastic method that converges to the exact solution in the many-particle,
 small-step limit.
 
-The concrete kernel call runs on the owning physics object, which supplies the
-``update_position_rwm_kernel`` Taichi kernel and its temporary-field
-management.
+``make_random_walk_kernel`` builds the ``update_position_rwm_kernel`` Taichi kernel, which the
+owning physics object binds and calls.
 
 Between free-slip planes a walk that crosses a plane continues as the walk of
 the particle's image: the particle is folded back into the slab and an odd
@@ -107,3 +106,65 @@ def apply_random_walk(
         )
     # The Taichi kernels mutate the particle fields in place.
     particles.touch_state()
+
+
+def make_random_walk_kernel() -> Callable:
+    """Create the counter-based Random Walk Method kernel.
+
+    The random variates are a pure function of the declared seed, accepted
+    step, particle index, and draw index.  They therefore do not depend on an
+    opaque backend RNG cursor and survive fresh processes and restarts exactly.
+    """
+
+    @ti.func
+    def hash_u32(value: ti.u32) -> ti.u32:
+        value ^= value >> 16
+        value *= ti.u32(0x7FEB352D)
+        value ^= value >> 15
+        value *= ti.u32(0x846CA68B)
+        value ^= value >> 16
+        return value
+
+    @ti.func
+    def uniform_01(random_seed: ti.i32, accepted_step: ti.i32, particle: ti.i32, draw: ti.i32):
+        key = ti.cast(random_seed, ti.u32)
+        key ^= ti.cast(accepted_step, ti.u32) * ti.u32(0x9E3779B9)
+        key ^= ti.cast(particle + 1, ti.u32) * ti.u32(0x85EBCA6B)
+        key ^= ti.cast(draw + 1, ti.u32) * ti.u32(0xC2B2AE35)
+        # Midpoint conversion avoids exact zero and one, which keeps the
+        # Box--Muller logarithm finite on every backend.
+        return (ti.cast(hash_u32(key), ti.f32) + 0.5) * ti.f32(1.0 / 4294967296.0)
+
+    @ti.kernel
+    def update_position_rwm_kernel(
+        position: ti.template(),
+        viscosities_eff: ti.template(),
+        time_step_size: ti.template(),
+        n_particles_total: ti.i32,
+        random_seed: ti.i32,
+        accepted_step: ti.i32,
+    ):
+        """Apply the Random Walk Method (RWM) with Brownian displacements.
+
+        Uses a stateless integer hash plus a manual Box--Muller transform.  The
+        result is reproducible across repeated calls, fresh processes, and
+        save/restart continuation for a fixed backend and precision.
+        """
+        two_pi: ti.f32 = 6.28318530717959
+        N = n_particles_total
+        for i in range(N):
+            effective_viscosity = viscosities_eff[i]
+            displacement_factor = ti.sqrt(2.0 * effective_viscosity * time_step_size)
+            # Box-Muller transform: two uniform samples -> two standard normals
+            u1 = uniform_01(random_seed, accepted_step, i, 0)
+            u2 = uniform_01(random_seed, accepted_step, i, 1)
+            u3 = uniform_01(random_seed, accepted_step, i, 2)
+            u4 = uniform_01(random_seed, accepted_step, i, 3)
+            mag1 = ti.sqrt(-2.0 * ti.log(u1))
+            mag2 = ti.sqrt(-2.0 * ti.log(u3))
+            dx = displacement_factor * mag1 * ti.cos(two_pi * u2)
+            dy = displacement_factor * mag1 * ti.sin(two_pi * u2)
+            dz = displacement_factor * mag2 * ti.cos(two_pi * u4)
+            position[i] += ti.Vector([dx, dy, dz])
+
+    return update_position_rwm_kernel
