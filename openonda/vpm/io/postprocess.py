@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 import warnings
 
+from defusedxml import ElementTree
 import h5py
 import numpy as np
 
 from openonda.core.solution_layout import vpm_backup_files
+from openonda.saved_times import match_saved_times
+from openonda.validation import time_mean
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -251,8 +255,6 @@ def coupled_frames(solution_dir: Path) -> list[tuple[float, Path]]:
     records = backup_frames(solution_dir)
     metadata_path = Path(solution_dir) / "vpm_metadata.json"
     if metadata_path.is_file():
-        import json
-
         state = json.loads(metadata_path.read_text())["state"]
         records = [
             (time, path)
@@ -268,7 +270,6 @@ def coupled_frames(solution_dir: Path) -> list[tuple[float, Path]]:
 
 def surface_series(path: str | Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Read a native surface history with one finite, ordered clock and grid."""
-    from defusedxml import ElementTree
     import pyvista as pv
 
     path = Path(path)
@@ -376,8 +377,6 @@ def profile_mean(
     fields: Sequence[str],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Mean one fixed native point table over a fully bracketed time window."""
-    from openonda.validation import time_mean
-
     required = {"time", *coordinates, *fields}
     missing = required - set(data.columns)
     if missing:
@@ -402,8 +401,6 @@ def surface_mean(
     """Mean native surface frames on their unchanged grid and bracketed clock."""
     import pyvista as pv
 
-    from openonda.validation import time_mean
-
     times = np.asarray([time for time, _ in frames], dtype=float)
     grids = [pv.read(path) for _, path in frames]
     if not grids:
@@ -419,8 +416,6 @@ def surface_mean(
 
 def common_frame_time(*series) -> float | None:
     """Select the latest physical clock represented by every native series."""
-    from openonda.saved_times import match_saved_times
-
     matched = match_saved_times(*series)
     if not matched.times:
         raise ValueError("Native series have no common saved physical state")
@@ -429,8 +424,6 @@ def common_frame_time(*series) -> float | None:
 
 def saved_frame(frames: list[tuple[float, str]], time: float = None) -> tuple[float, str] | None:
     """Select an existing native state at the supplied physical clock."""
-    from openonda.saved_times import match_saved_times
-
     frames = sorted(frames, key=lambda frame: frame[0])
     clocks = [time for time, _ in frames]
     requested = [time] if time is not None else clocks[-1:]

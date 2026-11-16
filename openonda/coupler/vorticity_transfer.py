@@ -12,6 +12,7 @@ import numpy as np
 from scipy.spatial import cKDTree  # type: ignore[missing-module-attribute]
 
 from openonda.core import log_style
+from openonda.core.parallel import collective_phase
 from openonda.coupler.frame import MeshFrame
 from openonda.coupler.geometry import SolidBoundary, TriangulatedWall
 from openonda.coupler.interpolation import FVMVelocityInterpolator
@@ -1088,8 +1089,6 @@ class VorticityTransfer:
         wall_triangles = fvm.gather_wall_surface_triangles()
         if wall_triangles is not None:
             wall_triangles = frame.to_body(frame.to_frame(wall_triangles))
-
-        from openonda.core.parallel import collective_phase
 
         comm = fvm.parallel.comm
         with collective_phase(comm, "transfer geometry"):

@@ -22,6 +22,8 @@ from scipy.spatial import cKDTree  # type: ignore
 from openonda.core.file_output import append_csv_rows
 from openonda.core.sampling import FIELD_SAMPLE_COLUMNS, Sampler, line_points, surface_points
 from openonda.core.schedules import EverySteps, Schedule
+from openonda.core.vtk_output import write_surface_frame
+from openonda.core.write_precision import cast_for_write
 
 if TYPE_CHECKING:
     from ..core.solver import FVMSolver
@@ -375,9 +377,6 @@ class SurfaceSampler(_PointProbe):
         Collective in a partitioned run; rank 0 writes and returns ``True``.
         The values use the precision and compression of the case output.
         """
-        from openonda.core.vtk_output import write_surface_frame
-        from openonda.core.write_precision import cast_for_write
-
         data = self.sample(context)
         if data is None:
             return False
