@@ -498,16 +498,17 @@ class FVMSolver(CouplerInterfaceMixin):
         ):
             if is_root:
                 with mesh_stage("mesh construction") as construction:
-                    mesh_data = _solver_owned_mesh(
-                        build_or_load_mesh(source, cache_path=self.case.mesh_path)
-                    )
+                    mesh_data, stored = build_or_load_mesh(source, cache_path=self.case.mesh_path)
+                    mesh_data = _solver_owned_mesh(mesh_data)
                     construction.details(
                         cells=mesh_data.get("n_cells"),
                         faces=mesh_data.get("n_faces"),
                         points=mesh_data.get("n_points"),
                     )
-                # Stored before validation, so a rejected mesh can be inspected.
-                save_mesh(mesh_data, self.case.mesh_path, self._configuration.output)
+                # A new mesh is stored before validation, so a rejected one can be inspected.
+                # A mesh loaded from its stored file is written again only if its view is missing.
+                if not stored or not self.case.mesh_path.with_suffix(".vtu").is_file():
+                    save_mesh(mesh_data, self.case.mesh_path, self._configuration.output)
         if comm is not None and (
             self._configuration.numerics.execution.parallel_mode == "petsc_replicated"
         ):

@@ -18,8 +18,8 @@ def load_mesh_file(path: str | Path) -> dict[str, Any]:
     raise ValueError(f"Unsupported mesh file {path.name!r}; expected a native '.npz' file")
 
 
-def build_or_load_mesh(source: object, *, cache_path: Path) -> dict[str, Any]:
-    """Return the native mesh mapping of a case mesh source.
+def build_or_load_mesh(source: object, *, cache_path: Path) -> tuple[dict[str, Any], bool]:
+    """Return the native mesh mapping of a case mesh source and whether it is already stored.
 
     Parameters
     ----------
@@ -28,16 +28,23 @@ def build_or_load_mesh(source: object, *, cache_path: Path) -> dict[str, Any]:
         callable returning the mapping or ``(mapping, report)``.
     cache_path : pathlib.Path
         Stored native mesh reused by a Cartesian mesher with identical input.
+
+    Returns
+    -------
+    tuple[dict, bool]
+        The mesh and whether it was loaded from ``cache_path``, so that it needs no
+        storing again.
     """
     if isinstance(source, str | Path):
         mesh_event("mesh source", kind="file", path=Path(source).resolve())
-        return load_mesh_file(source)
+        return load_mesh_file(source), False
 
     mesh_event("mesh source", kind=type(source).__name__)
     from .cache import build_or_load_cached_mesh, can_reuse_mesh
 
+    stored = False
     if can_reuse_mesh(source):
-        generated = build_or_load_cached_mesh(source, cache_path)
+        generated, stored = build_or_load_cached_mesh(source, cache_path)
     elif callable(source):
         generated = source()
     elif callable(getattr(source, "build", None)):
@@ -52,7 +59,7 @@ def build_or_load_mesh(source: object, *, cache_path: Path) -> dict[str, Any]:
         raise TypeError(
             "FVMCase.mesh must be a path, mesh mapping, mesher or callable returning one"
         )
-    return generated
+    return generated, stored
 
 
 def save_mesh(mesh_data: dict[str, Any], path: Path, output: Any) -> None:
@@ -67,8 +74,8 @@ def save_mesh(mesh_data: dict[str, Any], path: Path, output: Any) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     view = path.with_suffix(".vtu")
-    exporter = VTKExporter(mesh_data, output)
     with mesh_stage("mesh export") as stage:
+        exporter = VTKExporter(mesh_data, output)
         save_native_mesh(mesh_data, path)
         exporter.export(str(view), mesh_cell_fields(mesh_data))
         stage.details(native=path, visualisation=view)

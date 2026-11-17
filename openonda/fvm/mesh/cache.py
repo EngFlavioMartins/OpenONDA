@@ -125,8 +125,11 @@ def meshing_input_hash(mesher: CartesianMesher | ExtrudedCartesianMesher) -> str
 
 def build_or_load_cached_mesh(
     mesher: CartesianMesher | ExtrudedCartesianMesher, path: Path
-) -> MeshData:
-    """Reuse matching native input; let the factory save generated meshes."""
+) -> tuple[MeshData, bool]:
+    """Reuse matching native input; let the factory save generated meshes.
+
+    Returns the mesh and whether it was loaded from ``path``, where it is already stored.
+    """
     input_hash = meshing_input_hash(mesher)
     if path.is_file():
         try:
@@ -135,7 +138,7 @@ def build_or_load_cached_mesh(
             mesh = None
         if mesh is not None and mesh.get("meshing_input_hash") == input_hash:
             mesh_event("mesh cache hit", path=path.resolve(), cells=mesh["n_cells"])
-            return mesh
+            return mesh, True
     mesh = mesher.build()
     mesh["meshing_input_hash"] = input_hash
-    return mesh
+    return mesh, False
