@@ -21,7 +21,7 @@ import numpy as np
 
 from openonda.core._numba import cacheable_njit as njit
 
-from ..data import BoundaryPatchData, MeshData
+from ..data import HEXAHEDRON_CODE, BoundaryPatchData, MeshData
 from ..progress import mesh_stage
 from ..surface_classification import (
     SurfaceIndex,
@@ -796,7 +796,7 @@ def _extract_mesh(
         "cell_levels": levels,
         "cell_sizes": np.asarray(root_size / np.power(2.0, levels), dtype=np.float32),
         "cell_vertex_indices": cell_vertex_indices,
-        "cell_type_code": np.full(len(leaves), 5, dtype=np.int32),
+        "cell_type_code": np.full(len(leaves), HEXAHEDRON_CODE, dtype=np.int32),
         "_cfmesh_cell_face_order": cfmesh_cell_face_order,
         "mesh_generation": {
             "method": "cfmesh_template_octree",

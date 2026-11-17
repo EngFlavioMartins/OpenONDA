@@ -1,9 +1,10 @@
 """Typed layouts of the native FVM mesh, boundary patch and geometry dictionaries.
 
-The mesher and importers build these dictionaries; the solver, assembly and
-output layers consume them.  Index arrays keep the integer width chosen by the
-producer (``int32`` for topology, ``int64`` for global identifiers), so they are
-typed as plain ``np.ndarray``.  Geometric quantities are always ``float64``.
+The mesh builders create these dictionaries; the solver, assembly and output
+layers consume them.  Topology indices (owners, neighbours, cell-face CSR and the
+cyclic pairing) are ``int32``; global identifiers keep the width of their
+producer and are typed as plain ``np.ndarray``.  Geometric quantities are always
+``float64``.
 """
 
 from __future__ import annotations
@@ -21,6 +22,12 @@ if TYPE_CHECKING:
     from .partition import CellPartition
 
 FloatArray: TypeAlias = npt.NDArray[np.float64]
+
+# Cell, face and point indices of a mesh are stored as 32-bit integers.
+IndexArray: TypeAlias = npt.NDArray[np.int32]
+
+# ``cell_type_code`` of an 8-node hexahedron (the Gmsh element number)
+HEXAHEDRON_CODE = 5
 
 # Face-to-vertex connectivity: a rectangular array for fixed-width faces or one
 # index array per face for polyhedral meshes.
@@ -72,22 +79,26 @@ class MeshData(TypedDict):
     """Native face-based FVM mesh.
 
     Interior faces occupy ``[0, n_interior_faces)``; boundary faces follow,
-    grouped by patch.  Vertex coordinates are in mesh length units.
+    grouped by patch.  Vertex coordinates are in mesh length units. Index arrays
+    hold ``int32``.
     """
 
     vertex_position: FloatArray
     faces: FaceVertices
-    owners: np.ndarray
-    neighbours: np.ndarray
+    owners: IndexArray
+    neighbours: IndexArray
     boundary: list[BoundaryPatchData]
     n_cells: int
     n_faces: int
     n_interior_faces: int
     n_points: NotRequired[int]
 
+    # Paired cell of every face (cyclic faces only), ``-1`` where a face has none.
+    boundary_neighbour_cell: IndexArray
+
     # Cell-to-face CSR connectivity and cell descriptions.
-    cell_face_indices: NotRequired[np.ndarray]
-    cell_face_offset: NotRequired[np.ndarray]
+    cell_face_indices: NotRequired[IndexArray]
+    cell_face_offset: NotRequired[IndexArray]
     cell_face_reversed: NotRequired[npt.NDArray[np.bool_]]
     cell_vertex_indices: NotRequired[np.ndarray]
     cell_type_code: NotRequired[np.ndarray]
@@ -103,8 +114,7 @@ class MeshData(TypedDict):
     source_cell_id: NotRequired[np.ndarray]
 
     # Coupled (cyclic) boundary pairing.
-    boundary_neighbour_cell: NotRequired[np.ndarray]
-    boundary_pair_face: NotRequired[np.ndarray]
+    boundary_pair_face: NotRequired[IndexArray]
 
     # Mesh generation record and cache keys (JSON-like metadata).
     mesh_generation: NotRequired[dict[str, Any]]

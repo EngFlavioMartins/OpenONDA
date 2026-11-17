@@ -11,6 +11,7 @@ from openonda.core.vtk_output import write_vtk_dataset
 from openonda.core.write_precision import cast_for_write
 
 from ..config.output import Output
+from ..mesh.data import HEXAHEDRON_CODE
 from .mesh_storage import packed_faces
 
 # Suppress non-fatal VTK-m warnings (e.g., unsupported cell types in Viskores)
@@ -227,7 +228,7 @@ class VTKExporter:
             cell_vertex_indices is not None
             and cell_types is not None
             and np.asarray(cell_vertex_indices).shape == (self.mesh_data["n_cells"], 8)
-            and np.all(np.asarray(cell_types) == 5)  # Gmsh's 8-node hex code
+            and np.all(np.asarray(cell_types) == HEXAHEDRON_CODE)
         ):
             vertices = np.asarray(cell_vertex_indices, dtype=np.int64)
             cells = np.empty((len(vertices), 9), dtype=np.int64)

@@ -48,7 +48,7 @@ def _boundary_stencil(
         int(mesh_data["n_faces"]),
         id(mesh_data["owners"]),
         id(mesh_data["neighbours"]),
-        id(mesh_data.get("boundary_neighbour_cell")),
+        id(mesh_data["boundary_neighbour_cell"]),
         id(geo_data["cell_centre"]),
         id(geo_data["face_centre"]),
         id(geo_data["cell_connection_vector"]),
@@ -104,9 +104,7 @@ def _boundary_stencil(
                 geo_data["cell_centre"][neighbour[selected]]
                 - geo_data["cell_centre"][own[selected]]
             )
-        paired = np.asarray(
-            mesh_data.get("boundary_neighbour_cell", np.full(mesh_data["n_faces"], -1))
-        )
+        paired = mesh_data["boundary_neighbour_cell"]
         for patch in mesh_data["boundary"]:
             if _is_empty_boundary(patch, allow_source_type=True):
                 continue

@@ -125,7 +125,7 @@ def compute_ddt_flux_correction(
         )
         correction[start:stop] = coupling * phi_corr / float(time_step_size)
 
-    boundary_neighbour_cell = mesh_data.get("boundary_neighbour_cell")
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
     for boundary, strategy in zip(boundaries, strategies, strict=True):
         if strategy is not BoundaryStrategy.CYCLIC:
             continue

@@ -12,6 +12,7 @@ from ..data import BoundaryPatchData, MeshData
 from ..geometry import compute_mesh_geometry
 from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
+from ..topology import unpaired_boundary_cells
 from ..validation import (
     validate_cell_area_closure,
     validate_geometry,
@@ -105,6 +106,18 @@ def _section_boundary_name(
     return names[box_side] if box_distances[box_side] <= surface_distance else surface_name
 
 
+def _validated_levels(levels: Sequence[float] | np.ndarray, domain: BoxDomain) -> np.ndarray:
+    """Return the extrusion levels as an array after checking that they span ``domain``."""
+    values = np.asarray(levels, dtype=float)
+    if values.ndim != 1 or len(values) < 2 or not np.all(np.isfinite(values)):
+        raise ValueError("Extrusion levels must be a finite increasing sequence")
+    if np.any(np.diff(values) <= 0):
+        raise ValueError("Extrusion levels must be strictly increasing")
+    if not np.allclose(values[[0, -1]], domain.bounds[4:6], rtol=0, atol=1e-12):
+        raise ValueError("Extrusion levels must span the requested domain")
+    return values
+
+
 def extrude_mesh_section(
     mesh: MeshData,
     *,
@@ -121,13 +134,7 @@ def extrude_mesh_section(
     """
     from ...io.vtk_exporter import VTKExporter
 
-    levels = np.asarray(levels, dtype=float)
-    if levels.ndim != 1 or len(levels) < 2 or not np.all(np.isfinite(levels)):
-        raise ValueError("Extrusion levels must be a finite increasing sequence")
-    if np.any(np.diff(levels) <= 0):
-        raise ValueError("Extrusion levels must be strictly increasing")
-    if not np.allclose(levels[[0, -1]], domain.bounds[4:6], rtol=0, atol=1e-12):
-        raise ValueError("Extrusion levels must span the requested domain")
+    levels = _validated_levels(levels, domain)
     if not mesh["vertex_position"][:, 2].min() < coordinate < mesh["vertex_position"][:, 2].max():
         raise ValueError("Section coordinate must lie inside the source mesh")
     grid = VTKExporter(mesh)._grid
@@ -257,6 +264,7 @@ def extrude_mesh_section(
         "n_faces": len(faces),
         "n_interior_faces": len(interior),
         "n_points": len(vertices),
+        "boundary_neighbour_cell": unpaired_boundary_cells(len(faces)),
     }
     if "cell_sizes" in mesh:
         result["cell_sizes"] = np.tile(np.asarray(mesh["cell_sizes"])[source_cells], nz)
@@ -304,7 +312,10 @@ class ExtrudedCartesianMesher:
     -----
     Construction stores references only. :meth:`build` performs source mesh
     generation, sectioning, extrusion, validation, and optional callback
-    invocation; it returns newly allocated native mesh data.
+    invocation; it returns newly allocated native mesh data. The section plane
+    lies at half the finest ``PatchRefinement`` size of ``source`` above the
+    ``z = 0`` plane, so ``source`` needs a patch refinement and its slab must
+    hold that plane inside its finest region.
     """
 
     source: CartesianMesher
@@ -338,6 +349,12 @@ class ExtrudedCartesianMesher:
         This method performs the expensive source build and invokes
         ``on_generated`` after validation. It does not create solver fields.
         """
+        if not self.source.patch_refinements:
+            raise ValueError(
+                "The source mesher of an extrusion needs a PatchRefinement: the section "
+                "plane lies half the finest patch cell size inside the slab"
+            )
+        _validated_levels(self.levels, self.domain)
         # Select a planar interior before the unrelated end-rim correction.
         with mesh_stage("source mesh generation"):
             raw = self.source.build(stop_after="meshOptimisation")

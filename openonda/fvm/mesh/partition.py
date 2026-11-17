@@ -8,7 +8,8 @@ from typing import Any
 
 import numpy as np
 
-from .data import BoundaryPatchData, FaceVertices, GeometryData, MeshData
+from .data import HEXAHEDRON_CODE, BoundaryPatchData, FaceVertices, GeometryData, MeshData
+from .topology import unpaired_boundary_cells
 
 
 def _visualization_mesh(mesh_data: MeshData, cell_ids: np.ndarray) -> MeshData:
@@ -31,7 +32,7 @@ def _visualization_mesh(mesh_data: MeshData, cell_ids: np.ndarray) -> MeshData:
         global_cell_vertex_indices is not None
         and np.asarray(global_cell_vertex_indices).ndim == 2
         and np.asarray(global_cell_vertex_indices).shape[1] == 8
-        and np.all(global_cell_types[cell_ids] == 5)
+        and np.all(global_cell_types[cell_ids] == HEXAHEDRON_CODE)
     ):
         selected_vertices = np.asarray(global_cell_vertex_indices)[cell_ids]
         used_points, compact_vertices = np.unique(
@@ -496,7 +497,7 @@ def localize_mesh_and_geometry(
         "n_faces": len(face_ids),
         "n_interior_faces": interior_count,
         "boundary": boundaries,
-        "boundary_neighbour_cell": np.full(len(face_ids), -1, dtype=np.int32),
+        "boundary_neighbour_cell": unpaired_boundary_cells(len(face_ids)),
         "global_cell_id": np.ascontiguousarray(local_cell_ids),
         "global_face_id": np.ascontiguousarray(face_ids),
         "source_cell_id": np.ascontiguousarray(

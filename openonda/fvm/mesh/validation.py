@@ -584,11 +584,8 @@ def validate_vtk_cell_intersections(
     ``maximum_intersections`` is used only for validated no-regression
     comparisons; production validation retains the default of zero.
     """
-    try:
-        import vtk
-        from vtk.util.numpy_support import vtk_to_numpy  # pyrefly: ignore[missing-import]
-    except ImportError as exc:  # pragma: no cover - FVM dependencies include VTK.
-        raise MeshValidationError("VTK is required for cell-intersection validation") from exc
+    import vtk
+    from vtk.util.numpy_support import vtk_to_numpy  # pyrefly: ignore[missing-import]
 
     validator = vtk.vtkCellValidator()
     validator.SetInputData(dataset)

@@ -37,6 +37,11 @@ def _fill_cell_face_indices(
     return result
 
 
+def unpaired_boundary_cells(n_faces: int) -> np.ndarray:
+    """Return ``boundary_neighbour_cell`` of a mesh without cyclic pairing: ``-1`` on every face."""
+    return np.full(n_faces, -1, dtype=np.int32)
+
+
 def build_cell_face_csr(
     owners: np.ndarray, neighbours: np.ndarray, n_cells: int, n_faces: int
 ) -> tuple[np.ndarray, np.ndarray]:

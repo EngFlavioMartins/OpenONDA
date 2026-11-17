@@ -44,7 +44,7 @@ def configure_cyclic_boundaries(mesh_data: MeshData, geo_data: GeometryData) -> 
                 f"Cyclic patch {name!r} uses unsupported transform {transform!r}; "
                 "only translational coupling is implemented"
             )
-        neighbour_name = patch.get("neighbour_patch") or patch.get("neighbour_patch")
+        neighbour_name = patch.get("neighbour_patch")
         if not neighbour_name:
             raise MeshValidationError(f"Cyclic patch {name!r} is missing neighbourPatch")
         neighbour = patches.get(str(neighbour_name))
@@ -56,7 +56,7 @@ def configure_cyclic_boundaries(mesh_data: MeshData, geo_data: GeometryData) -> 
             raise MeshValidationError(
                 f"Cyclic neighbour {neighbour_name!r} must use cyclic for velocity and pressure"
             )
-        reciprocal = neighbour.get("neighbour_patch") or neighbour.get("neighbour_patch")
+        reciprocal = neighbour.get("neighbour_patch")
         if reciprocal != name:
             raise MeshValidationError(
                 f"Cyclic patches {name!r} and {neighbour_name!r} are not reciprocal"

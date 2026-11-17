@@ -146,9 +146,7 @@ def compute_dev2_stress_source(
         # fvc::interpolate reads on a boundary patch.  A cyclic face
         # interpolates between its owner and the paired cell, as an interior
         # face does.
-        boundary_neighbour_cell = np.asarray(
-            mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-        )
+        boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
         for start in range(n_interior, n_faces, chunk_size):
             stop = min(start + chunk_size, n_faces)
             faces_b = np.arange(start, stop)

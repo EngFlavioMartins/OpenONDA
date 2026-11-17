@@ -13,6 +13,7 @@ from ..data import FaceVertices, GeometryData, MeshData
 from ..geometry import compute_mesh_geometry
 from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
+from ..topology import unpaired_boundary_cells
 from ..validation import (
     MeshQualityReport,
     MeshValidationError,
@@ -1654,6 +1655,7 @@ class CartesianMesher:
                 # the exact coupling sides; earlier diagnostic checkpoints keep
                 # the enlarged workflow domain.
                 mesh_data = self._apply_exact_sides(mesh_data)
+            mesh_data["boundary_neighbour_cell"] = unpaired_boundary_cells(mesh_data["n_faces"])
             if on_generated is not None:
                 on_generated(mesh_data)
             return mesh_data
@@ -1671,6 +1673,7 @@ class CartesianMesher:
                 faces=finalized.get("n_faces"),
                 points=finalized.get("n_points"),
             )
+        finalized["boundary_neighbour_cell"] = unpaired_boundary_cells(finalized["n_faces"])
         return finalized
 
 

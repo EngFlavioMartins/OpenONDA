@@ -251,11 +251,7 @@ def _csr_pattern(mesh_data: dict[str, object], include_boundaries: bool) -> _CSR
     n_faces = int(mesh_data["n_faces"])
     owners = np.asarray(mesh_data["owners"], dtype=np.int32)
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
-    boundary_neighbour_cell = mesh_data.get("boundary_neighbour_cell")
-    if boundary_neighbour_cell is None:
-        boundary_neighbour_cell = np.full(n_faces, -1, dtype=np.int32)
-    else:
-        boundary_neighbour_cell = np.asarray(boundary_neighbour_cell, dtype=np.int32)
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
     indices, indptr, diagonal_slots, offdiagonal_slots = _build_csr_pattern_numba(
         owners,
         neighbours,
@@ -322,12 +318,6 @@ def _fill_matrix_values(
     include_boundaries: bool,
 ) -> np.ndarray:
     """Refill CSR numeric values without a face-sized concatenation buffer."""
-    n_faces = int(mesh_data["n_faces"])
-    boundary_neighbour_cell = mesh_data.get("boundary_neighbour_cell")
-    if boundary_neighbour_cell is None:
-        boundary_neighbour_cell = np.full(n_faces, -1, dtype=np.int32)
-    else:
-        boundary_neighbour_cell = np.asarray(boundary_neighbour_cell, dtype=np.int32)
     cursor = _fill_matrix_values_numba(
         target,
         pattern.diagonal_slots,
@@ -336,7 +326,7 @@ def _fill_matrix_values(
         np.asarray(flux_data["flux_ff"], dtype=np.float64),
         np.asarray(mesh_data["owners"], dtype=np.int32),
         np.asarray(mesh_data["neighbours"], dtype=np.int32),
-        boundary_neighbour_cell,
+        mesh_data["boundary_neighbour_cell"],
         int(mesh_data["n_interior_faces"]),
         include_boundaries,
     )

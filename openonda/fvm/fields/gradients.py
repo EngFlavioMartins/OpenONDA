@@ -66,9 +66,7 @@ def _correct_boundary_gradient(
     cell_connection_vector = geo_data.get("cell_connection_vector")
     face_centre = geo_data.get("face_centre")
     cell_centre = geo_data.get("cell_centre")
-    boundary_neighbour_cell = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-    )
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
 
     for boundary in mesh_data["boundary"]:
         if _is_empty_boundary(boundary, allow_source_type=True):
@@ -178,9 +176,7 @@ def _compute_gauss_gradient_compiled(
     _accumulate_gauss_interior(
         field_values, owners, mesh_data["neighbours"], weights, areas, n_interior, result
     )
-    neighbours = mesh_data.get("boundary_neighbour_cell")
-    if neighbours is None:
-        neighbours = np.full(mesh_data["n_faces"], -1, dtype=np.int32)
+    neighbours = mesh_data["boundary_neighbour_cell"]
     for boundary in mesh_data["boundary"]:
         if not _is_empty_boundary(boundary):
             start = boundary["start_face"]
@@ -334,12 +330,7 @@ def _correct_gauss_skewness(
     n_cells = mesh_data["n_cells"]
     n_interior = mesh_data["n_interior_faces"]
     n_faces = mesh_data["n_faces"]
-    paired = mesh_data.get("boundary_neighbour_cell")
-    paired_boundary = (
-        np.full(n_faces - n_interior, -1, dtype=np.int32)
-        if paired is None
-        else np.asarray(paired)[n_interior:n_faces]
-    )
+    paired_boundary = mesh_data["boundary_neighbour_cell"][n_interior:n_faces]
     parallel = mesh_data.get("_parallel_context")
     uncorrected = field_gradient[:n_cells].copy()
     for _ in range(GAUSS_SKEW_CORRECTIONS):
@@ -390,9 +381,7 @@ def _finish_gauss_gradient(
     # ensuring continuity for extrapolation/interpolation (e.g. in Rhie-Chow)
     # We apply this to ALL boundary faces, including 'empty' ones.
     i_boundary_elements = np.arange(n_cells, n_cells + n_boundary_faces)
-    boundary_neighbour_cell = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-    )[n_interior_faces:n_faces]
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"][n_interior_faces:n_faces]
     gradient_owners = np.where(
         boundary_neighbour_cell >= 0, boundary_neighbour_cell, owners[n_interior_faces:n_faces]
     )
@@ -436,10 +425,7 @@ def compute_lsq_geometry(mesh_data: MeshData, geo_data: GeometryData) -> LeastSq
     owner_parts = [owners_i, neighbours_i]
     neighbour_parts = [neighbours_i, owners_i]
     displacement_parts = [dr_i, -dr_i]
-    boundary_neighbour_cell = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(mesh_data["n_faces"], -1)),
-        dtype=np.int32,
-    )
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
 
     for patch in boundary:
         if _is_empty_boundary(patch, allow_source_type=True):
@@ -587,9 +573,7 @@ def compute_lsq_gradient(
     # Boundary ghost cells: copy owner gradient (same convention as Gauss)
     owners_b = mesh_data["owners"][n_interior:n_faces]
     i_boundary = np.arange(n_cells, n_cells + n_boundary)
-    boundary_neighbour_cell = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-    )[n_interior:n_faces]
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"][n_interior:n_faces]
     gradient_owners = np.where(boundary_neighbour_cell >= 0, boundary_neighbour_cell, owners_b)
     grad[i_boundary, :, :] = grad[gradient_owners, :, :]
     _correct_boundary_gradient(grad, field_values, mesh_data, geo_data)

@@ -33,7 +33,7 @@ from typing import Any
 
 import numpy as np
 
-from ...mesh.data import MeshData
+from ..data import MeshData
 from ..topology import build_cell_face_csr
 
 MARGIN_CELLS = 3

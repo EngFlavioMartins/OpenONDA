@@ -1,4 +1,15 @@
-"""Specification-based reuse at the native FVM mesh construction boundary."""
+"""Specification-based reuse at the native FVM mesh construction boundary.
+
+A stored mesh is reused when its key matches: the digest of the mesher's
+specification (sizes, domain, refinements and the hash of every surface file),
+of the source files that build the mesh, and of the versions of the libraries
+whose arithmetic enters it. The source files are the Cartesian mesher
+(``mesh/cartesian``), the geometry, topology, validation and surface modules it
+calls, the VTK exporter that builds the grid its section and intersection checks
+read, and the Numba wrapper. Files that only store, partition or log a mesh
+(``partition.py``, ``coupled.py``, ``progress.py``, ``rectilinear.py``) are not
+part of the key.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +17,13 @@ from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TypeGuard
 from zipfile import BadZipFile
+
+import numba
+import numpy as np
+import scipy
+import vtk
 
 from ..io.mesh_storage import load_native_mesh
 from .cartesian.config import (
@@ -22,11 +38,27 @@ from .cartesian.mesher import CartesianMesher
 from .data import MeshData
 from .progress import mesh_event
 
-if TYPE_CHECKING:
-    from typing_extensions import TypeIs
+_OPENONDA_ROOT = Path(__file__).resolve().parents[2]
+_MESH_SOURCES = (
+    "fvm/mesh/data.py",
+    "fvm/mesh/geometry.py",
+    "fvm/mesh/surface_classification.py",
+    "fvm/mesh/topology.py",
+    "fvm/mesh/triangulated_surface.py",
+    "fvm/mesh/validation.py",
+    "fvm/io/mesh_storage.py",
+    "fvm/io/vtk_exporter.py",
+    "core/_numba.py",
+)
 
 
-def can_reuse_mesh(mesher: object) -> TypeIs[CartesianMesher | ExtrudedCartesianMesher]:
+def meshing_source_files() -> tuple[Path, ...]:
+    """Return the source files whose bytes enter the mesh key, in hashing order."""
+    cartesian = sorted((_OPENONDA_ROOT / "fvm/mesh/cartesian").glob("*.py"))
+    return (*cartesian, *(_OPENONDA_ROOT / name for name in _MESH_SOURCES))
+
+
+def can_reuse_mesh(mesher: object) -> TypeGuard[CartesianMesher | ExtrudedCartesianMesher]:
     """Reuse only native implementations whose complete inputs are known."""
     if type(mesher) is ExtrudedCartesianMesher:
         return (
@@ -83,11 +115,11 @@ def meshing_input_hash(mesher: CartesianMesher | ExtrudedCartesianMesher) -> str
     digest = hashlib.sha256(
         json.dumps(_specification(mesher), sort_keys=True, allow_nan=False).encode()
     )
-    source = Path(__file__).parent
-    for path in sorted(source.rglob("*.py")):
-        if path != Path(__file__):
-            digest.update(path.relative_to(source).as_posix().encode())
-            digest.update(path.read_bytes())
+    for path in meshing_source_files():
+        digest.update(path.relative_to(_OPENONDA_ROOT).as_posix().encode())
+        digest.update(path.read_bytes())
+    for library in (np, numba, scipy, vtk):
+        digest.update(f"{library.__name__}=={library.__version__}".encode())
     return digest.hexdigest()
 
 

@@ -516,8 +516,7 @@ def update_scalar_boundaries(
         b_elem_start = n_cells + (start - n_interior)
         b_elem_indices = np.arange(b_elem_start, b_elem_start + n_bfaces)
         owners_b = owners[start : start + n_bfaces]
-        paired = mesh_data.get("boundary_neighbour_cell")
-        paired_owners = None if paired is None else paired[start : start + n_bfaces]
+        paired_owners = mesh_data["boundary_neighbour_cell"][start : start + n_bfaces]
         patch_flux = (
             None
             if volumetric_face_flux is None

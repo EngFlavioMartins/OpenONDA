@@ -185,9 +185,7 @@ def _compute_pressure_face_conductance(
     sf = geo_data["face_area_vector"]
     cf_vec = geo_data["cell_connection_vector"]
     weights = geo_data["face_interpolation_weight"]
-    boundary_neighbour_cell = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-    )
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
     conductance = np.empty(n_faces, dtype=np.float64)
     chunk_size = 250_000
     for start in range(0, n_faces, chunk_size):
@@ -528,9 +526,7 @@ def adjust_boundary_flux_for_continuity(
         BoundaryStrategy.ZERO_GRADIENT,
         BoundaryStrategy.INLET_OUTLET,
     )
-    boundary_neighbour_cell = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-    )
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
 
     net_local = 0.0
     outflow_local = 0.0
@@ -963,9 +959,7 @@ def assemble_pressure_correction_equation_rhie_chow(
             flux_ff[bnd_face_idx] = ff_b
         flux_vf[bnd_face_idx] = vf_b
 
-        boundary_neighbour_cell = np.asarray(
-            mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-        )
+        boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
         cyclic_faces = np.flatnonzero(boundary_neighbour_cell >= 0)
         if cyclic_faces.size:
             own_b = owners[cyclic_faces]

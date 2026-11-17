@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .data import BoundaryPatchData, MeshData
+from .data import HEXAHEDRON_CODE, BoundaryPatchData, MeshData
+from .topology import unpaired_boundary_cells
 
 OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
 
@@ -327,11 +328,11 @@ def box_mesh_3d(
         "n_faces": stacked_quads.shape[0],
         "n_interior_faces": n_interior,
         "n_points": points.shape[0],
-        # Gmsh element type 5 = 8-node hexahedron.  The explicit vertices let
-        # VTK write compact native hex cells instead of reconstructing every
-        # cell as a general polyhedron.
+        "boundary_neighbour_cell": unpaired_boundary_cells(stacked_quads.shape[0]),
+        # The explicit vertices let VTK write compact native hex cells instead
+        # of reconstructing every cell as a general polyhedron.
         "cell_vertex_indices": np.ascontiguousarray(cell_vertex_indices),
-        "cell_type_code": np.full(int(keep.sum()), 5, dtype=np.int32),
+        "cell_type_code": np.full(int(keep.sum()), HEXAHEDRON_CODE, dtype=np.int32),
     }
 
 

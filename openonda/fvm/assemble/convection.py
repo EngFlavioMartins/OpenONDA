@@ -786,9 +786,7 @@ def compute_volumetric_face_flux(
     u_face_b = velocity[b_elem_indices]
     volumetric_face_flux[n_interior:] = np.sum(u_face_b * face_area_vector[n_interior:], axis=1)
 
-    boundary_neighbour_cell = np.asarray(
-        mesh_data.get("boundary_neighbour_cell", np.full(n_faces, -1, dtype=np.int32))
-    )
+    boundary_neighbour_cell = mesh_data["boundary_neighbour_cell"]
     coupled = np.flatnonzero(boundary_neighbour_cell >= 0)
     if coupled.size:
         weights_b = face_interpolation_weight[coupled, np.newaxis]
