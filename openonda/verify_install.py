@@ -66,7 +66,7 @@ def _verify_taichi() -> tuple[str, str]:
 
 
 def _verify_gaussian_mesh() -> dict[str, object]:
-    """Check optional installed FENV, NVRTC and CUDA memory/cuFFT buffers.
+    """Check optional installed NVRTC and CUDA memory/cuFFT buffers.
 
     Explicit opt-in only: normal installation verification stays CPU-only.
     No global allocator/FFT cache is cleared, and no process-global device or
@@ -534,7 +534,7 @@ def main() -> int:
     parser.add_argument(
         "--with-gaussian-mesh",
         action="store_true",
-        help="also verify optional installed FENV, CUDA 12 NVRTC and CUDA memory and cuFFT execution",
+        help="also verify optional installed CUDA 12 NVRTC and CUDA memory and cuFFT execution",
     )
     parser.add_argument(
         "--with-environment",

@@ -32,9 +32,6 @@ build:
       - openonda-verify-install = openonda.verify_install:main
 
 requirements:
-  build:
-    # The floating-point environment helper for the Gaussian image sums
-    - ${{ compiler('c') }}
   host:
     - python 3.11.*
     - pip
@@ -72,7 +69,6 @@ tests:
         - openonda.fvm
         - openonda.vpm
         - openonda.coupler
-        - openonda.vpm.numerics._fenv
       pip_check: true
   - script:
       - python -c "import os, openonda; assert openonda.__version__ == os.environ['PKG_VERSION']"
