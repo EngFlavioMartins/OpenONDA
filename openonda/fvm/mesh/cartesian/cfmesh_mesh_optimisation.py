@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from numba import prange
 from numba.extending import register_jitable
@@ -231,7 +232,12 @@ def _cfmesh_cell_centres(
     )
     if packed is not None:
         return _cell_centres_kernel(
-            face_centres, face_areas, owners, packed.cell_face_ids, packed.cell_offsets
+            face_centres,
+            face_areas,
+            owners,
+            packed.cell_face_ids,
+            packed.cell_offsets,
+            np.arange(len(packed.cell_offsets) - 1),
         )
     if cell_faces is None:
         cell_faces, _point_cells = _mesh_addressing(
@@ -243,7 +249,9 @@ def _cfmesh_cell_centres(
             cell_face_order=cell_face_order,
         )
     ids, offsets = _pack_ragged(cell_faces)
-    return _cell_centres_kernel(face_centres, face_areas, owners, ids, offsets)
+    return _cell_centres_kernel(
+        face_centres, face_areas, owners, ids, offsets, np.arange(len(offsets) - 1)
+    )
 
 
 @njit(cache=True, fastmath=False)
@@ -253,12 +261,17 @@ def _cell_centres_kernel(
     owners: np.ndarray,
     ids: np.ndarray,
     offsets: np.ndarray,
+    cell_numbers: np.ndarray,
 ) -> np.ndarray:
-    """Stored-order native pyramid accumulation, without Python cell loops."""
+    """Stored-order native pyramid accumulation of the cells ``cell_numbers``.
+
+    ``ids`` and ``offsets`` hold the faces of those cells in that order.
+    """
     n_cells = len(offsets) - 1
     centres = np.zeros((n_cells, 3), dtype=np.float64)
-    for cell_id in range(n_cells):
-        face_ids = ids[offsets[cell_id] : offsets[cell_id + 1]]
+    for position in range(n_cells):
+        cell_id = cell_numbers[position]
+        face_ids = ids[offsets[position] : offsets[position + 1]]
         estimate = np.zeros(3, dtype=np.float64)
         for face_id in face_ids:
             estimate += face_centres[face_id]
@@ -274,8 +287,83 @@ def _cell_centres_kernel(
             volume3 = max(volume3, _VSMALL)
             weighted_sum += volume3 * (0.75 * face_centres[face_id] + 0.25 * estimate)
             volume_sum += volume3
-        centres[cell_id] = weighted_sum / volume_sum
+        centres[position] = weighted_sum / volume_sum
     return centres
+
+
+def _gather_rows(
+    values: np.ndarray, offsets: np.ndarray, rows: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Entries and offsets of the selected rows of a packed ragged array."""
+    lengths = offsets[rows + 1] - offsets[rows]
+    selected_offsets = np.zeros(len(rows) + 1, dtype=np.int64)
+    np.cumsum(lengths, out=selected_offsets[1:])
+    index = np.repeat(offsets[rows] - selected_offsets[:-1], lengths) + np.arange(
+        selected_offsets[-1]
+    )
+    return values[index], selected_offsets
+
+
+class _Geometry(NamedTuple):
+    """Face centres, face area vectors and cell centres of one point state."""
+
+    face_centres: np.ndarray
+    face_areas: np.ndarray
+    cell_centres: np.ndarray
+
+
+def _mesh_geometry(
+    points: np.ndarray,
+    faces: list[np.ndarray],
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    n_cells: int,
+    *,
+    cell_face_order: Sequence[Sequence[int]] | None = None,
+    cell_faces: Sequence[Sequence[int]] | None = None,
+    packed: _PackedTopology | None = None,
+) -> _Geometry:
+    """Geometry of the whole mesh, computed once for the scans and the part mesh of a pass."""
+    face_centres, face_areas = _face_geometry(points, faces, packed=packed)
+    cell_centres = _cfmesh_cell_centres(
+        points,
+        faces,
+        owners,
+        neighbours,
+        n_cells,
+        cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
+        face_geometry=(face_centres, face_areas),
+        packed=packed,
+    )
+    return _Geometry(face_centres, face_areas, cell_centres)
+
+
+def _refresh_geometry(
+    geometry: _Geometry,
+    points: np.ndarray,
+    owners: np.ndarray,
+    neighbours: np.ndarray,
+    changed_faces: np.ndarray,
+    packed: _PackedTopology,
+) -> None:
+    """Recompute the geometry of the changed faces and of the cells that hold them.
+
+    ``changed_faces`` marks every face of every cell with a moved point, so each
+    face and cell whose geometry changed is recomputed with the arithmetic of
+    :func:`_mesh_geometry` and the others keep their values.
+    """
+    faces = np.flatnonzero(changed_faces)
+    vertices, offsets = _gather_rows(packed.face_vertices, packed.face_offsets, faces)
+    centres, areas = _face_geometry_kernel(points, vertices, offsets)
+    geometry.face_centres[faces] = centres
+    geometry.face_areas[faces] = areas
+    internal = faces[faces < len(neighbours)]
+    cells = np.unique(np.concatenate((owners[faces], neighbours[internal])))
+    cell_faces, cell_offsets = _gather_rows(packed.cell_face_ids, packed.cell_offsets, cells)
+    geometry.cell_centres[cells] = _cell_centres_kernel(
+        geometry.face_centres, geometry.face_areas, owners, cell_faces, cell_offsets, cells
+    )
 
 
 def _cfmesh_bad_faces(
@@ -289,6 +377,7 @@ def _cfmesh_bad_faces(
     cell_face_order: Sequence[Sequence[int]] | None = None,
     cell_faces: Sequence[Sequence[int]] | None = None,
     packed: _PackedTopology | None = None,
+    geometry: _Geometry | None = None,
 ) -> set[int]:
     """Return cfMesh's default invalid-face set.
 
@@ -297,17 +386,19 @@ def _cfmesh_bad_faces(
     The practical failures in the Cartesian workflow are the signed
     part-tetrahedron checks, but all four defaults are retained here.
     """
-    face_centres, face_areas = _face_geometry(points, faces, packed=packed)
-    cell_centres = _cfmesh_cell_centres(
-        points,
-        faces,
-        owners,
-        neighbours,
-        n_cells,
-        cell_face_order=cell_face_order,
-        cell_faces=cell_faces,
-        face_geometry=(face_centres, face_areas),
-        packed=packed,
+    face_centres, face_areas, cell_centres = (
+        _mesh_geometry(
+            points,
+            faces,
+            owners,
+            neighbours,
+            n_cells,
+            cell_face_order=cell_face_order,
+            cell_faces=cell_faces,
+            packed=packed,
+        )
+        if geometry is None
+        else geometry
     )
     selected = (
         np.arange(len(faces), dtype=np.int32)
@@ -404,19 +495,22 @@ def _cfmesh_low_quality_faces(
     cell_face_order: Sequence[Sequence[int]] | None = None,
     cell_faces: Sequence[Sequence[int]] | None = None,
     packed: _PackedTopology | None = None,
+    geometry: _Geometry | None = None,
 ) -> set[int]:
     """Return faces exceeding cfMesh's 65-degree or 2.0 skew checks."""
-    face_centres, face_areas = _face_geometry(points, faces, packed=packed)
-    cell_centres = _cfmesh_cell_centres(
-        points,
-        faces,
-        owners,
-        neighbours,
-        n_cells,
-        cell_face_order=cell_face_order,
-        cell_faces=cell_faces,
-        face_geometry=(face_centres, face_areas),
-        packed=packed,
+    face_centres, face_areas, cell_centres = (
+        _mesh_geometry(
+            points,
+            faces,
+            owners,
+            neighbours,
+            n_cells,
+            cell_face_order=cell_face_order,
+            cell_faces=cell_faces,
+            packed=packed,
+        )
+        if geometry is None
+        else geometry
     )
     selected = (
         np.arange(len(faces), dtype=np.int32)
@@ -549,6 +643,7 @@ def _build_part_tet_mesh(
     cell_faces: list[list[int]] | None = None,
     point_cells: list[set[int]] | None = None,
     packed: _PackedTopology | None = None,
+    geometry: _Geometry | None = None,
 ) -> _PartTetMesh:
     if cell_faces is None or point_cells is None:
         cell_faces, point_cells = _mesh_addressing(
@@ -570,17 +665,19 @@ def _build_part_tet_mesh(
     face_centre_nodes: dict[int, int] = {}
     cell_centre_nodes: dict[int, int] = {}
     node_types: list[int] = []
-    face_centres, _face_areas = _face_geometry(points, faces, packed=packed)
-    cell_centres = _cfmesh_cell_centres(
-        points,
-        faces,
-        owners,
-        neighbours,
-        n_cells,
-        cell_face_order=cell_face_order,
-        cell_faces=cell_faces,
-        face_geometry=(face_centres, _face_areas),
-        packed=packed,
+    face_centres, _face_areas, cell_centres = (
+        _mesh_geometry(
+            points,
+            faces,
+            owners,
+            neighbours,
+            n_cells,
+            cell_face_order=cell_face_order,
+            cell_faces=cell_faces,
+            packed=packed,
+        )
+        if geometry is None
+        else geometry
     )
     boundary_start = len(neighbours)
 
@@ -1223,6 +1320,16 @@ def _run_cfmesh_untangle(
 ) -> tuple[list[int], list[int]]:
     """Port ``meshOptimizer::untangleMeshFV`` and return count traces."""
     changed_faces = np.ones(len(faces), dtype=np.bool_)
+    geometry = _mesh_geometry(
+        points,
+        faces,
+        owners,
+        neighbours,
+        n_cells,
+        cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
+        packed=packed,
+    )
     internal_trace: list[int] = []
     boundary_trace: list[int] = []
     global_iteration = 0
@@ -1243,6 +1350,7 @@ def _run_cfmesh_untangle(
                 cell_face_order=cell_face_order,
                 cell_faces=cell_faces,
                 packed=packed,
+                geometry=geometry,
             )
             n_bad_faces = len(bad_faces)
             internal_trace.append(n_bad_faces)
@@ -1264,11 +1372,13 @@ def _run_cfmesh_untangle(
                 cell_faces=cell_faces,
                 point_cells=point_cells,
                 packed=packed,
+                geometry=geometry,
             )
             _optimise_part_knupp(part)
             _optimise_part_untangler(part)
             _optimise_part_volume(part)
             changed_faces = _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
+            _refresh_geometry(geometry, points, owners, neighbours, changed_faces, packed)
 
             if not (iteration < minimum_iteration + 5 and iteration + 1 < 50):
                 break
@@ -1291,6 +1401,7 @@ def _run_cfmesh_untangle(
                 cell_face_order=cell_face_order,
                 cell_faces=cell_faces,
                 packed=packed,
+                geometry=geometry,
             )
             n_bad_faces = len(bad_faces)
             boundary_trace.append(n_bad_faces)
@@ -1308,6 +1419,7 @@ def _run_cfmesh_untangle(
                 cell_faces=cell_faces,
                 point_cells=point_cells,
                 packed=packed,
+                geometry=geometry,
             )
             if global_iteration < 2:
                 _optimise_part_boundary_volume(part, iterations=1)
@@ -1316,6 +1428,7 @@ def _run_cfmesh_untangle(
             else:
                 _optimise_part_boundary_volume(part, iterations=0)
             changed_faces = _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
+            _refresh_geometry(geometry, points, owners, neighbours, changed_faces, packed)
 
         if n_bad_faces == 0:
             break
@@ -1338,6 +1451,16 @@ def _run_cfmesh_low_quality(
     """Port ``meshOptimizer::optimizeLowQualityFaces``."""
     trace: list[int] = []
     changed_faces = np.ones(len(faces), dtype=np.bool_)
+    geometry = _mesh_geometry(
+        points,
+        faces,
+        owners,
+        neighbours,
+        n_cells,
+        cell_face_order=cell_face_order,
+        cell_faces=cell_faces,
+        packed=packed,
+    )
     for _iteration in range(10):
         low_quality_faces = _cfmesh_low_quality_faces(
             points,
@@ -1349,6 +1472,7 @@ def _run_cfmesh_low_quality(
             cell_face_order=cell_face_order,
             cell_faces=cell_faces,
             packed=packed,
+            geometry=geometry,
         )
         trace.append(len(low_quality_faces))
         if not low_quality_faces:
@@ -1365,9 +1489,11 @@ def _run_cfmesh_low_quality(
             cell_faces=cell_faces,
             point_cells=point_cells,
             packed=packed,
+            geometry=geometry,
         )
         _optimise_part_volume(part)
         changed_faces = _update_mesh_from_part(points, part, faces, point_cells, cell_faces)
+        _refresh_geometry(geometry, points, owners, neighbours, changed_faces, packed)
     return trace
 
 
@@ -1443,6 +1569,7 @@ def optimise_cfmesh_mesh(
             n_cells,
             cell_face_order=cell_face_order,
             cell_faces=cell_faces,
+            packed=packed,
         )
         updates = _interior_laplacian_updates(cell_centres, smooth_cells, smooth_offsets)
         points[smooth_points] = updates

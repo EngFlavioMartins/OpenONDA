@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Literal, TypedDict, overload
 from numba import types
 from numba.typed import Dict
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 from openonda.core._numba import cacheable_njit as njit
 
@@ -551,18 +553,14 @@ def validate_single_fluid_component(mesh_data: MeshData) -> dict[str, int]:
     n_internal = int(mesh_data["n_interior_faces"])
     owners = np.asarray(mesh_data["owners"], dtype=np.int64)[:n_internal]
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int64)
-    adjacency: list[list[int]] = [[] for _ in range(n_cells)]
-    for owner, neighbour in zip(owners, neighbours, strict=True):
-        adjacency[int(owner)].append(int(neighbour))
-        adjacency[int(neighbour)].append(int(owner))
-    visited = np.zeros(n_cells, dtype=bool)
-    stack = [0] if n_cells else []
-    while stack:
-        cell = stack.pop()
-        if visited[cell]:
-            continue
-        visited[cell] = True
-        stack.extend(neighbour for neighbour in adjacency[cell] if not visited[neighbour])
+    if n_cells:
+        graph = coo_matrix(
+            (np.ones(len(owners), dtype=np.int8), (owners, neighbours)), shape=(n_cells, n_cells)
+        )
+        _count, labels = connected_components(graph, directed=False)
+        visited = labels == labels[0]
+    else:
+        visited = np.zeros(0, dtype=bool)
     missing = np.flatnonzero(~visited)
     _require(
         not len(missing),

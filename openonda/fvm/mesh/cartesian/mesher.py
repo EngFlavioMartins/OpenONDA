@@ -13,7 +13,7 @@ from ..data import FaceVertices, GeometryData, MeshData
 from ..geometry import compute_mesh_geometry
 from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
-from ..topology import unpaired_boundary_cells
+from ..topology import pack_face_nodes, unpaired_boundary_cells
 from ..validation import (
     MeshQualityReport,
     MeshValidationError,
@@ -475,32 +475,44 @@ def _verify_cfmesh_surface_topology(mesh_data: MeshData) -> dict[str, Any]:
     """
     faces = mesh_data["faces"]
     boundary_start = int(mesh_data["n_interior_faces"])
-    edge_faces: dict[tuple[int, int], list[int]] = {}
-    degenerate_faces: list[int] = []
-    internal_connection_issues = 0
-    for face_id in range(boundary_start, len(faces)):
-        face = tuple(int(point) for point in faces[face_id])
-        if len(face) < 3 or len(set(face)) != len(face):
-            degenerate_faces.append(face_id)
-        for first, second in zip(face, face[1:] + face[:1], strict=True):
-            edge = (min(first, second), max(first, second))
-            edge_faces.setdefault(edge, []).append(face_id)
-    for face_id in range(boundary_start):
-        face = tuple(int(point) for point in faces[face_id])
-        if len(face) < 3 or len(set(face)) != len(face):
-            internal_connection_issues += 1
-    irregular_edges = {edge: owners for edge, owners in edge_faces.items() if len(owners) > 2}
-    edge_owner_sets = [set(owners) for owners in edge_faces.values() if len(owners) == 2]
+    nodes, offsets = pack_face_nodes(faces)
+    lengths = np.diff(offsets)
+    face_ids = np.repeat(np.arange(len(faces), dtype=np.int64), lengths)
+    stride = int(nodes.max(initial=-1)) + 1
+    # A face is degenerate when it has fewer than three nodes or repeats one.
+    ordered = np.sort(face_ids * stride + nodes)
+    repeats = np.zeros(len(faces), dtype=bool)
+    repeats[ordered[1:][np.diff(ordered) == 0] // stride] = True
+    degenerate = (lengths < 3) | repeats
+    degenerate_faces = int(np.count_nonzero(degenerate[boundary_start:]))
+    internal_connection_issues = int(np.count_nonzero(degenerate[:boundary_start]))
+
+    # Boundary edges as (smaller node, larger node), with the face that holds each.
+    edge_start = offsets[boundary_start]
+    first = nodes[edge_start:]
+    following = np.roll(first, -1)
+    last_of_face = offsets[boundary_start + 1 :] - edge_start - 1
+    following[last_of_face[lengths[boundary_start:] > 0]] = first[
+        (offsets[boundary_start:-1] - edge_start)[lengths[boundary_start:] > 0]
+    ]
+    edge_keys = np.minimum(first, following) * stride + np.maximum(first, following)
+    edge_face = face_ids[edge_start:]
+    order = np.argsort(edge_keys, kind="stable")
+    sorted_keys = edge_keys[order]
+    group_starts = np.flatnonzero(np.concatenate(([True], np.diff(sorted_keys) != 0)))
+    group_sizes = np.diff(np.append(group_starts, len(sorted_keys)))
+    irregular_edges = int(np.count_nonzero(group_sizes > 2))
+    pair_starts = group_starts[group_sizes == 2]
     sharing_two_edges = 0
-    if edge_owner_sets:
-        by_face_pair: dict[tuple[int, int], int] = {}
-        for owners in edge_owner_sets:
-            pair = (min(owners), max(owners))
-            by_face_pair[pair] = by_face_pair.get(pair, 0) + 1
-        sharing_two_edges = sum(count >= 2 for count in by_face_pair.values())
+    if len(pair_starts):
+        owner_a = edge_face[order[pair_starts]]
+        owner_b = edge_face[order[pair_starts + 1]]
+        pair_keys = np.minimum(owner_a, owner_b) * (len(faces) + 1) + np.maximum(owner_a, owner_b)
+        _pairs, pair_counts = np.unique(pair_keys, return_counts=True)
+        sharing_two_edges = int(np.count_nonzero(pair_counts >= 2))
     passes = {
-        "checkIrregularSurfaceConnections": len(irregular_edges),
-        "checkNonMappableCellConnections": len(degenerate_faces),
+        "checkIrregularSurfaceConnections": irregular_edges,
+        "checkNonMappableCellConnections": degenerate_faces,
         "checkCellConnectionsOverFaces": internal_connection_issues,
         "checkBoundaryFacesSharingTwoEdges": sharing_two_edges,
     }

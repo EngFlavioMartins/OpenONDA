@@ -61,6 +61,7 @@ def _merge_projected_points(
             merged_points.append(point)
         remap[index] = target
 
+    merged_array = np.asarray(merged_points, dtype=float)
     retained_polygons = []
     retained_sources = []
     for ids, source_cell in zip(polygons, source_cells, strict=True):
@@ -72,7 +73,7 @@ def _merge_projected_points(
         if len(compact) < 3:
             continue
         compact_array = np.asarray(compact, dtype=np.int32)
-        xy = np.asarray(merged_points)[compact_array, :2]
+        xy = merged_array[compact_array, :2]
         signed_area = np.sum(xy[:, 0] * np.roll(xy[:, 1], -1) - xy[:, 1] * np.roll(xy[:, 0], -1))
         if abs(signed_area) <= 1.0e-14:
             continue
@@ -81,29 +82,41 @@ def _merge_projected_points(
     if not retained_polygons:
         raise ValueError("Surface projection collapsed the complete mesh section")
     return (
-        np.asarray(merged_points, dtype=float),
+        merged_array,
         retained_polygons,
         np.asarray(retained_sources, dtype=int),
     )
 
 
-def _section_boundary_name(
-    xy: np.ndarray,
+def _section_boundary_names(
+    points: np.ndarray,
+    keys: list[tuple[int, int]],
     names: tuple[str, str, str, str, str, str],
     bounds: tuple[float, float, float, float, float, float],
     indices: dict[str, SurfaceIndex],
-) -> str:
-    """Classify a section edge by proximity to a box side or immersed surface."""
-    box_distances = [np.max(np.abs(xy[:, side // 2] - bounds[side])) for side in range(4)]
-    box_side = int(np.argmin(box_distances))
-    if not indices:
-        return names[box_side]
-    centre = xy.mean(axis=0)
-    surface_name, surface_distance = min(
-        ((name, float(index.nearest_point(centre)[1])) for name, index in indices.items()),
-        key=lambda item: item[1],
+) -> list[str]:
+    """Classify section edges by proximity to a box side or an immersed surface."""
+    if not keys:
+        return []
+    ends = points[np.asarray(keys, dtype=np.intp)]
+    box_distances = np.stack(
+        [np.max(np.abs(ends[:, :, side // 2] - bounds[side]), axis=1) for side in range(4)], axis=1
     )
-    return names[box_side] if box_distances[box_side] <= surface_distance else surface_name
+    box_side = np.argmin(box_distances, axis=1)
+    if not indices:
+        return [names[side] for side in box_side]
+    centres = ends.mean(axis=1)
+    surface_names = list(indices)
+    surface_distances = np.stack(
+        [indices[name].indexed_nearest_points(centres)[1] for name in surface_names], axis=1
+    )
+    nearest_surface = np.argmin(surface_distances, axis=1)
+    rows = np.arange(len(keys))
+    near_box = box_distances[rows, box_side] <= surface_distances[rows, nearest_surface]
+    return [
+        names[side] if box else surface_names[surface]
+        for side, surface, box in zip(box_side, nearest_surface, near_box, strict=True)
+    ]
 
 
 def _validated_levels(levels: Sequence[float] | np.ndarray, domain: BoxDomain) -> np.ndarray:
@@ -174,14 +187,16 @@ def extrude_mesh_section(
     edges = _section_edges(polygons)
     names = domain.patches.as_tuple()
     indices = {surface.patch: SurfaceIndex.build(surface.triangles) for surface in surfaces}
-    edge_patches = {}
+    boundary_keys = [key for key, adjacent in edges.items() if len(adjacent) != 2]
+    edge_patches = dict(
+        zip(
+            boundary_keys,
+            _section_boundary_names(points, boundary_keys, names, domain.bounds, indices),
+            strict=True,
+        )
+    )
     patch_points: dict[str, set[int]] = {}
-    for key, adjacent in edges.items():
-        if len(adjacent) == 2:
-            continue
-        xy = points[list(key)]
-        name = _section_boundary_name(xy, names, domain.bounds, indices)
-        edge_patches[key] = name
+    for key, name in edge_patches.items():
         patch_points.setdefault(name, set()).update(key)
 
     for name, ids_set in patch_points.items():
@@ -203,12 +218,14 @@ def extrude_mesh_section(
 
     points, polygons, source_cells = _merge_projected_points(points, polygons, source_cells)
     edges = _section_edges(polygons)
-    edge_patches = {}
-    for key, adjacent in edges.items():
-        if len(adjacent) == 2:
-            continue
-        xy = points[list(key)]
-        edge_patches[key] = _section_boundary_name(xy, names, domain.bounds, indices)
+    boundary_keys = [key for key, adjacent in edges.items() if len(adjacent) != 2]
+    edge_patches = dict(
+        zip(
+            boundary_keys,
+            _section_boundary_names(points, boundary_keys, names, domain.bounds, indices),
+            strict=True,
+        )
+    )
 
     np2, nc2, nz = len(points), len(polygons), len(levels) - 1
     vertices = np.vstack([np.column_stack((points[:, :2], np.full(np2, z))) for z in levels])

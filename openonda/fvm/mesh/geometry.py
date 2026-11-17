@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .data import GeometryData, MeshData
+from .topology import pack_face_nodes
 
 
 def _readonly(values: np.ndarray) -> np.ndarray:
@@ -169,13 +170,15 @@ def compute_geometry(
         max_nodes = padded_faces.shape[1]
         counts = np.full(n_faces, max_nodes, dtype=np.int32)
     else:
-        max_nodes = max(len(f) for f in faces)
+        nodes, face_offsets = pack_face_nodes(faces)
+        face_lengths = np.diff(face_offsets)
+        max_nodes = int(face_lengths.max())
         padded_faces = np.full((n_faces, max_nodes), -1, dtype=np.int32)
         counts = np.zeros(n_faces, dtype=np.int32)
-        for i, f in enumerate(faces):
-            n_f = len(f)
-            padded_faces[i, :n_f] = f
-            counts[i] = n_f
+        counts[: len(faces)] = face_lengths
+        rows = np.repeat(np.arange(len(faces)), face_lengths)
+        columns = np.arange(len(nodes)) - np.repeat(face_offsets[:-1], face_lengths)
+        padded_faces[rows, columns] = nodes
 
     # Vectorizing every face at once creates several ``(n_faces, n_nodes, 3)``
     # temporaries.  At reference-mesh scale their simultaneous peak is larger

@@ -925,22 +925,23 @@ class SurfaceIndex:
     def is_inside(self, points: np.ndarray) -> np.ndarray:
         """Point-in-closed-manifold test by ray-parity, with degenerate retry."""
         points = np.ascontiguousarray(np.atleast_2d(points), dtype=np.float64)
-        if len(points) == 1:
-            # Template extraction asks about one cell centre at a time.  The
-            # default +x ray only needs triangles whose y/z AABBs contain the
-            # point and whose x extent is ahead of it.  Degenerate hits fall
-            # through to the general retry over every triangle.
-            parity = int(self.single_ray_parity(points)[0])
-            if parity >= 0:
-                return np.asarray([parity == 1])
-        directions, *terms = self.ray_terms()
-        result, resolved = _ray_parity_kernel(points, directions, self.triangles, *terms)
-        if not np.all(resolved):
-            unresolved = int(np.count_nonzero(~resolved))
-            raise RuntimeError(
-                f"{unresolved} point(s) hit a degenerate ray/triangle intersection on every "
-                "trial direction; the surface tessellation may be malformed near those points"
+        # One +x ray per point against the triangles it can reach decides most
+        # points; only the undecided ones take the multi-direction retry.
+        parity = self.single_ray_parity(points)
+        result = parity == 1
+        undecided = np.flatnonzero(parity < 0)
+        if len(undecided):
+            directions, *terms = self.ray_terms()
+            retry, resolved = _ray_parity_kernel(
+                np.ascontiguousarray(points[undecided]), directions, self.triangles, *terms
             )
+            if not np.all(resolved):
+                unresolved = int(np.count_nonzero(~resolved))
+                raise RuntimeError(
+                    f"{unresolved} point(s) hit a degenerate ray/triangle intersection on every "
+                    "trial direction; the surface tessellation may be malformed near those points"
+                )
+            result[undecided] = retry
         return result
 
     def nearest_point(self, point: np.ndarray) -> tuple[np.ndarray, float]:
