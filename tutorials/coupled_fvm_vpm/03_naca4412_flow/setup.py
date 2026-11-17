@@ -60,7 +60,7 @@ OUTFLOW_FRINGE = 12.0  # m, smooth vorticity removal near the downstream boundar
 VORTICITY_FLOOR = 0.01  # 1/s, remove weak diffused particles (cylinder study: 1e-3 moved the forces, 1e-2 did not)
 CORE_RADIUS_RATIO = 1.05
 WALL_FALLBACK_LIMIT = 0.01  # largest strength fraction per step deposited without first moments
-PARTICLE_LIMIT = 2_000_000
+PARTICLE_LIMIT = 3_000_000
 
 # Time window
 STATISTICS_START = 12.0  # s
