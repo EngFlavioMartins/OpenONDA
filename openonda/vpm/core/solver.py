@@ -215,7 +215,7 @@ class VPMSolver:
         """Return the solver; :meth:`close` runs when the block exits."""
         return self
 
-    def __exit__(self, exc_type: object, exc: BaseException | None, traceback: object) -> None:
+    def __exit__(self, _exc_type: object, exc: BaseException | None, _traceback: object) -> None:
         """Close the solver, attaching cleanup errors to a pending exception."""
         self.close(failure=exc)
 
