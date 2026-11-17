@@ -64,7 +64,7 @@ PARTICLE_LIMIT = 2_000_000
 
 # Time window
 STATISTICS_START = 12.0  # s
-END_TIME = 24.0  # s
+END_TIME = 60.0  # s
 
 # Output
 FORCE_INTERVAL = 0.08  # s, the interval ceiling; with the 0.2 s profiles and slices, kept on the

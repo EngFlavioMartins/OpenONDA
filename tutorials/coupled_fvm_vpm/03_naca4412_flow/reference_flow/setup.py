@@ -52,7 +52,7 @@ BACKGROUND = 16  # background cells in units of CELL_SIZE
 FVM_INITIAL_TIME_STEP = 0.008  # s
 FVM_MAX_TIME_STEP = 0.04  # s
 STATISTICS_START = 12.0  # s
-END_TIME = 24.0  # s
+END_TIME = 60.0  # s
 CORES = 4
 
 # Output at the times of the coupled case, on which the adaptive step lands
