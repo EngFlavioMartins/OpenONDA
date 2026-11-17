@@ -943,134 +943,82 @@ def build_cfmesh_template(
     with mesh_stage("octree seed refinement") as progress:
         visit(0, 0, 0, lattice_width, 0)
         progress.details(leaves=len(octree_leaves), maximum_level=max_level)
-    if box_refinements or patch_refinements or needs_automatic:
 
-        def classify(children: np.ndarray) -> np.ndarray:
-            return _classify_leaves(
-                children,
-                root_lower=root_lower,
-                finest_size=finest_size,
-                domain_lower=domain_lower,
-                domain_upper=domain_upper,
-                surface_indices=surface_indices,
-            )
+    def classify(children: np.ndarray) -> np.ndarray:
+        return _classify_leaves(
+            children,
+            root_lower=root_lower,
+            finest_size=finest_size,
+            domain_lower=domain_lower,
+            domain_upper=domain_upper,
+            surface_indices=surface_indices,
+        )
 
-        with mesh_stage("octree balancing") as progress:
-            records = balance_leaves(octree_leaves, max_level, classify)
-            progress.details(leaves=len(records))
-        automatic_diagnostics: dict[str, list[int]] = {}
-        if needs_automatic:
-            groups: dict[str, list[np.ndarray]] = defaultdict(list)
-            triangles = _box_triangles(domain)
-            names = tuple(domain_patch_names) or tuple(f"domain_{i}" for i in range(6))
-            for side, name in enumerate(names):
-                groups[name].extend(triangles[2 * side : 2 * side + 2])
-            names = tuple(surface_patch_names) or tuple(
-                f"surface_{i}" for i in range(len(surfaces))
-            )
-            for surface, name in zip(surfaces, names, strict=True):
-                groups[name].extend(surface.triangles)
-            automatic_surface = AutomaticSurface(
-                {name: np.asarray(triangles) for name, triangles in groups.items()},
-                _cfmesh_nearest_points_on_triangles,
-            )
-            with mesh_stage("automatic surface refinement") as progress:
-                records, automatic_diagnostics = automatic_refinement(
-                    records,
-                    automatic_surface,
-                    root_lower=root_lower,
-                    root_size=root_size,
-                    max_level=max_level,
-                    automatic_level=automatic_level,
-                    classify=classify,
-                )
-                progress.details(leaves=len(records))
-        with mesh_stage("object refinement") as progress:
-            records = refine_objects(
+    with mesh_stage("octree balancing") as progress:
+        records = balance_leaves(octree_leaves, max_level, classify)
+        progress.details(leaves=len(records))
+    automatic_diagnostics: dict[str, list[int]] = {}
+    if needs_automatic:
+        groups: dict[str, list[np.ndarray]] = defaultdict(list)
+        triangles = _box_triangles(domain)
+        names = tuple(domain_patch_names) or tuple(f"domain_{i}" for i in range(6))
+        for side, name in enumerate(names):
+            groups[name].extend(triangles[2 * side : 2 * side + 2])
+        names = tuple(surface_patch_names) or tuple(f"surface_{i}" for i in range(len(surfaces)))
+        for surface, name in zip(surfaces, names, strict=True):
+            groups[name].extend(surface.triangles)
+        automatic_surface = AutomaticSurface(
+            {name: np.asarray(triangles) for name, triangles in groups.items()},
+            _cfmesh_nearest_points_on_triangles,
+        )
+        with mesh_stage("automatic surface refinement") as progress:
+            records, automatic_diagnostics = automatic_refinement(
                 records,
-                box_refinements,
+                automatic_surface,
                 root_lower=root_lower,
                 root_size=root_size,
-                max_cell_size=max_cell_size,
-                global_level=global_level,
                 max_level=max_level,
-                exact_cell_sizes=exact_cell_sizes,
+                automatic_level=automatic_level,
                 classify=classify,
             )
             progress.details(leaves=len(records))
-        with mesh_stage("near-surface refinement") as progress:
-            records, near_data_refined = refine_near_data(records, max_level, classify)
-            progress.details(leaves=len(records), refined=near_data_refined)
-        leaves = records[records[:, 5] == mesh_cell, :5]
-        if not len(leaves):
-            raise ValueError("cfMesh template classification removed every fluid leaf")
-        with mesh_stage("template topology extraction") as progress:
-            mesh_data = _extract_mesh(
-                root_bounds,
-                root_size,
-                np.ascontiguousarray(leaves, dtype=np.int32),
-                np.ascontiguousarray(records, dtype=np.int32),
-                max_level,
-                global_level,
-                boundary_level,
-            )
-            progress.details(
-                cells=mesh_data.get("n_cells"),
-                faces=mesh_data.get("n_faces"),
-                points=mesh_data.get("n_points"),
-            )
-        mesh_data["_cfmesh_octree_leaves"] = np.ascontiguousarray(records, dtype=np.int32)
-        mesh_data["mesh_generation"]["near_data_coarse_leaves_refined"] = near_data_refined
-        mesh_data["mesh_generation"]["automatic_refinement"] = automatic_diagnostics
-        mesh_data["mesh_generation"]["surface_patch_refinement_levels"] = dict(patch_levels)
-        return mesh_data
-    # ``refineBoxesNearDataBoxes(1)`` refines every non-outside coarse leaf
-    # touching a surface-data leaf through a face, edge, or vertex. This final
-    # regularity shell is material for oblique geometry: refining only boxes
-    # intersected by triangles leaves too many coarse transition cells.
-    data_boxes = np.asarray(
-        [record[:4] for record in octree_leaves if record[5] == surface_data_cell],
-        dtype=np.int32,
-    ).reshape(-1, 4)
-    regularised: list[tuple[int, int, int, int, int, int]] = []
-    near_data_refined = 0
-    for record in octree_leaves:
-        x0, y0, z0, width, level, kind = record
-        touches_data = False
-        if kind == mesh_cell and level < max_level and len(data_boxes):
-            lower = np.asarray((x0, y0, z0), dtype=np.int32)
-            upper = lower + width
-            data_lower = data_boxes[:, :3]
-            data_upper = data_lower + data_boxes[:, 3, None]
-            touches = np.all((data_lower <= upper) & (data_upper >= lower), axis=1)
-            touches_data = bool(np.any(touches))
-        if not touches_data:
-            regularised.append(record)
-            continue
-        child = width // 2
-        if child < 1:
-            raise RuntimeError("cfMesh near-data refinement exceeded the finest lattice")
-        near_data_refined += 1
-        for dz in (0, child):
-            for dy in (0, child):
-                for dx in (0, child):
-                    regularised.append((x0 + dx, y0 + dy, z0 + dz, child, level + 1, mesh_cell))
-    octree_leaves = regularised
-    leaves = [record[:5] for record in octree_leaves if record[5] == mesh_cell]
-    if not leaves:
+    with mesh_stage("object refinement") as progress:
+        records = refine_objects(
+            records,
+            box_refinements,
+            root_lower=root_lower,
+            root_size=root_size,
+            max_cell_size=max_cell_size,
+            global_level=global_level,
+            max_level=max_level,
+            exact_cell_sizes=exact_cell_sizes,
+            classify=classify,
+        )
+        progress.details(leaves=len(records))
+    with mesh_stage("near-surface refinement") as progress:
+        records, near_data_refined = refine_near_data(records, max_level, classify)
+        progress.details(leaves=len(records), refined=near_data_refined)
+    leaves = records[records[:, 5] == mesh_cell, :5]
+    if not len(leaves):
         raise ValueError("cfMesh template classification removed every fluid leaf")
-    leaf_array = np.ascontiguousarray(leaves, dtype=np.int32)
-    mesh_data = _extract_mesh(
-        root_bounds,
-        root_size,
-        leaf_array,
-        np.ascontiguousarray(octree_leaves, dtype=np.int32),
-        max_level,
-        global_level,
-        boundary_level,
-    )
-    mesh_data["_cfmesh_octree_leaves"] = np.ascontiguousarray(octree_leaves, dtype=np.int32)
+    with mesh_stage("template topology extraction") as progress:
+        mesh_data = _extract_mesh(
+            root_bounds,
+            root_size,
+            np.ascontiguousarray(leaves, dtype=np.int32),
+            np.ascontiguousarray(records, dtype=np.int32),
+            max_level,
+            global_level,
+            boundary_level,
+        )
+        progress.details(
+            cells=mesh_data.get("n_cells"),
+            faces=mesh_data.get("n_faces"),
+            points=mesh_data.get("n_points"),
+        )
+    mesh_data["_cfmesh_octree_leaves"] = np.ascontiguousarray(records, dtype=np.int32)
     mesh_data["mesh_generation"]["near_data_coarse_leaves_refined"] = near_data_refined
+    mesh_data["mesh_generation"]["automatic_refinement"] = automatic_diagnostics
     mesh_data["mesh_generation"]["surface_patch_refinement_levels"] = dict(patch_levels)
     return mesh_data
 
@@ -2592,16 +2540,8 @@ def assign_cfmesh_patches(
         [_foam_face_centre(points[source_faces[face_id]]) for face_id in boundary_face_ids],
         dtype=np.float64,
     )
-    if len(boundary_face_ids) > 10_000:
-        _nearest, _distance, triangle_ids = global_index.nearest_points(face_centres)
-        face_patch_ids = np.asarray(triangle_patch_ids[triangle_ids], dtype=np.int32)
-    else:
-        face_patch_ids = np.empty(len(boundary_face_ids), dtype=np.int32)
-        for local_face_id, centre in enumerate(face_centres):
-            _nearest_point, _nearest_distance, triangle_id = global_locator.nearest_triangle(
-                centre, max_search_iterations=100
-            )
-            face_patch_ids[local_face_id] = int(triangle_patch_ids[triangle_id])
+    _nearest, _distance, triangle_ids = global_index.nearest_points(face_centres)
+    face_patch_ids = np.asarray(triangle_patch_ids[triangle_ids], dtype=np.int32)
 
     initial_patch_counts = {
         patch_name: int(np.count_nonzero(face_patch_ids == patch_id))

@@ -16,6 +16,7 @@ from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
 from ..validation import (
     MeshQualityReport,
+    MeshValidationError,
     cells_incident_to_points,
     extract_cell_subset_mesh,
     validate_cell_area_closure,
@@ -1458,7 +1459,7 @@ class CartesianMesher:
 
         try:
             column_translation_relaxation: float | None = None
-            column_validation_error: Exception | None = None
+            column_validation_error: MeshValidationError | None = None
             accepted_base: tuple[GeometryData, MeshQualityReport] | None = None
             for translation_relaxation in (1.0, 0.75, 0.5, 0.25, 0.125, 0.0):
                 trial = outer_candidate.copy()
@@ -1469,7 +1470,7 @@ class CartesianMesher:
                     validate_topology(mesh_data)
                     trial_base_geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
                     trial_base_quality = validate_geometry(mesh_data, trial_base_geometry)
-                except Exception as exc:
+                except MeshValidationError as exc:
                     column_validation_error = exc
                     continue
                 column_translation_relaxation = translation_relaxation
@@ -1477,8 +1478,7 @@ class CartesianMesher:
                 candidate = trial
                 break
             if accepted_base is None:
-                assert column_validation_error is not None
-                raise column_validation_error
+                raise column_validation_error  # every relaxation was rejected
             base_geometry, base_quality = accepted_base
 
             # Restore the wrapper's original wall-normal intent.  Native
@@ -1536,7 +1536,7 @@ class CartesianMesher:
                 and len(target_patches[inner_id]) == 1
             }
             accepted_relaxation: float | None = None
-            validation_error: Exception | None = None
+            validation_error: MeshValidationError | None = None
             from ...io.vtk_exporter import VTKExporter
 
             # Only target points move during straightening. Every other cell
@@ -1573,7 +1573,9 @@ class CartesianMesher:
                     geometry = compute_mesh_geometry(mesh_data, compute_lsq=False)
                     trial_quality = validate_geometry(mesh_data, geometry)
                     if trial_quality["max_skewness"] > max(1.0, base_quality["max_skewness"]):
-                        raise ValueError("Wrapper straightening worsens unacceptable skewness")
+                        raise MeshValidationError(
+                            "Wrapper straightening worsens unacceptable skewness"
+                        )
                     # Positive face-pyramid volumes do not detect every
                     # self-intersecting polyhedron created at multi-patch
                     # wrapper corners. Check every cell whose vertices moved.
@@ -1588,27 +1590,30 @@ class CartesianMesher:
                             validation_grid,
                             maximum_intersections=baseline_intersections,
                         )
-                except Exception as exc:
+                except MeshValidationError as exc:
                     validation_error = exc
                     continue
                 accepted_relaxation = relaxation
                 candidate = trial
                 break
             if accepted_relaxation is None:
-                assert validation_error is not None
-                raise validation_error
+                raise validation_error  # every relaxation was rejected
             for surface in self.surfaces:
                 validate_wall_vertex_conformance(mesh_data, surface.triangles, surface.patch)
             for point_id, axis_bounds in box_wall_constraints.items():
                 for axis, bound in axis_bounds.items():
                     if candidate[point_id, axis] != bound:
-                        raise ValueError("Box wall edge/corner plane constraint was not preserved")
+                        raise MeshValidationError(
+                            "Box wall edge/corner plane constraint was not preserved"
+                        )
             for point_id, planes in planar_wall_constraints.items():
                 for normal, offset, index in planes:
                     if abs(float(np.dot(candidate[point_id], normal) - offset)) > 1.0e-8:
-                        raise ValueError("STL planar feature constraint was not preserved")
+                        raise MeshValidationError("STL planar feature constraint was not preserved")
                     if index.nearest_point(candidate[point_id])[1] > 1.0e-8:
-                        raise ValueError("STL finite planar feature constraint was not preserved")
+                        raise MeshValidationError(
+                            "STL finite planar feature constraint was not preserved"
+                        )
             for axis, bound, point_ids, _column_map in domain_points:
                 if not np.allclose(
                     candidate[point_ids, axis],
@@ -1616,12 +1621,14 @@ class CartesianMesher:
                     rtol=0.0,
                     atol=max(abs(bound), 1.0) * 1.0e-12,
                 ):
-                    raise ValueError("cfMesh outer-domain plane constraint was not preserved")
-        except Exception as exc:
+                    raise MeshValidationError(
+                        "cfMesh outer-domain plane constraint was not preserved"
+                    )
+        except MeshValidationError as exc:
             mesh_data["vertex_position"] = original
             mesh_data.pop("cell_face_indices", None)
             mesh_data.pop("cell_face_offset", None)
-            raise ValueError(
+            raise MeshValidationError(
                 f"Surface-constrained cfMesh wall projection failed validation: {exc}"
             ) from exc
         if validation_mesh is None:

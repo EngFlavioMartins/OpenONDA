@@ -975,21 +975,14 @@ class SurfaceIndex:
     def nearest_points(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Closest surface points, distances, and triangle ids for a batch.
 
-        VTK's static cell locator performs the same triangle projection in
-        compiled code and is orders of magnitude faster for the thousands of
-        wall vertices in a production mesh.  Keep the scalar indexed routine
-        as a fallback for minimal installations.
+        VTK's static cell locator performs the triangle projection in compiled
+        code and is orders of magnitude faster than the scalar indexed routine
+        for the thousands of wall vertices in a production mesh.
         """
         values = np.atleast_2d(np.asarray(points, dtype=np.float64))
         if values.shape[1] != 3 or not np.all(np.isfinite(values)):
             raise ValueError("points must have shape (n, 3) and contain finite coordinates")
-        try:
-            import pyvista as pv
-        except ImportError:  # pragma: no cover - VTK is part of the FVM extra.
-            projected = [self.nearest_point(point) for point in values]
-            nearest = np.asarray([item[0] for item in projected], dtype=np.float64)
-            distances = np.asarray([item[1] for item in projected], dtype=np.float64)
-            return nearest, distances, np.full(len(values), -1, dtype=np.int64)
+        import pyvista as pv
 
         locator_mesh = self._locator_mesh
         if locator_mesh is None:
