@@ -12,16 +12,12 @@ from .mesh.cartesian import (
     BoxRefinement,
     CartesianMesher,
     ExtrudedCartesianMesher,
-    FeatureRefinement,
     PatchRefinement,
     STLSurface,
 )
-from .mesh.gmsh_importer import GmshImporter
 from .mesh.rectilinear import (
     box_mesh_3d,
     coupling_box_mesh,
-    stretched,
-    wall_refined_axis,
 )
 
 __all__ = [
@@ -30,12 +26,8 @@ __all__ = [
     "BoxRefinement",
     "CartesianMesher",
     "ExtrudedCartesianMesher",
-    "FeatureRefinement",
-    "GmshImporter",
     "PatchRefinement",
     "STLSurface",
     "box_mesh_3d",
     "coupling_box_mesh",
-    "stretched",
-    "wall_refined_axis",
 ]

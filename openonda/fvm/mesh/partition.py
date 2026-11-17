@@ -574,24 +574,6 @@ def localize_mesh_and_geometry(
         local_geo["_operator_backend"] = geo_data["_operator_backend"]
     if "boundary_translation" in geo_data:
         local_geo["boundary_translation"] = localize(geo_data["boundary_translation"])
-    if "least_squares_neighbour_field_index" in geo_data:
-        local_geo["least_squares_neighbour_field_index"] = localize(
-            geo_data["least_squares_neighbour_field_index"]
-        )
-    if "least_squares_owner_cell" in geo_data:
-        local_geo["least_squares_owner_cell"] = localize(geo_data["least_squares_owner_cell"])
-    if "least_squares_neighbour_weighted_displacement" in geo_data:
-        local_geo["least_squares_neighbour_weighted_displacement"] = localize(
-            geo_data["least_squares_neighbour_weighted_displacement"]
-        )
-    if "least_squares_normal_matrix_inverse" in geo_data:
-        local_geo["least_squares_normal_matrix_inverse"] = localize(
-            geo_data["least_squares_normal_matrix_inverse"]
-        )
-    if "least_squares_gradient_operator" in geo_data:
-        local_geo["least_squares_gradient_operator"] = deepcopy(
-            geo_data["least_squares_gradient_operator"]
-        )
     if gradient_scheme == "lsq":
         # Recompute stencils in the compact local indexing.  Every owned cell
         # contains all of its adjacent faces; ghost-cell gradients are filled

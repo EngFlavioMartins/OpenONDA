@@ -184,10 +184,8 @@ def validate_topology(mesh_data: MeshData) -> dict[str, int]:
     edge_report = validate_cell_edge_incidence(mesh_data)
 
     metadata_shapes = {
-        "source_point_ids": n_points,
         "source_cell_id": n_cells,
         "cell_type_code": n_cells,
-        "cell_families": n_cells,
         "cell_order": n_cells,
         "boundary_layer_index": n_cells,
         "global_cell_id": n_cells,
@@ -298,10 +296,9 @@ def validate_geometry(mesh_data: MeshData, geo_data: GeometryData) -> MeshQualit
     cell_centre = np.asarray(geo_data["cell_centre"])
     face_centre = np.asarray(geo_data["face_centre"])
     # Boundary faces and core/layer interfaces are part of the solver's
-    # finite-volume geometry.  They must use the same orientation and
-    # owner-pyramid checks as internal faces; excluding them hides exactly the
+    # finite-volume geometry.  They use the same orientation and owner-pyramid
+    # checks as internal faces; excluding them would hide exactly the
     # wall-distance failures that can make boundary diffusion singular.
-    quality_face_mask = np.ones(n_faces, dtype=bool)
 
     # Accumulate quality extrema and sums in blocks to bound temporary
     # storage alongside rank zero's global geometry.
@@ -347,34 +344,31 @@ def validate_geometry(mesh_data: MeshData, geo_data: GeometryData) -> MeshQualit
         magnitude = np.linalg.norm(cf_block, axis=1)
         _require(np.all(magnitude > 0.0), "Mesh contains zero cell-to-cell/face distances")
         orientation = np.einsum("ij,ij->i", sf_block, cf_block)
-        quality_faces = quality_face_mask[face_slice]
         _require(
-            np.all(orientation[quality_faces] > 0.0),
+            np.all(orientation > 0.0),
             "Face orientation is inconsistent with owner-neighbour/boundary direction",
         )
         cosine = np.clip(orientation / (areas_block * magnitude), -1.0, 1.0)
         non_orthogonality = np.degrees(np.arccos(cosine))
-        quality_non_orthogonality = non_orthogonality[quality_faces]
         max_non_orthogonality = max(
             max_non_orthogonality,
-            float(np.max(quality_non_orthogonality, initial=0.0)),
+            float(np.max(non_orthogonality, initial=0.0)),
         )
-        sum_non_orthogonality += float(np.sum(quality_non_orthogonality))
-        quality_face_count += int(quality_non_orthogonality.size)
-        if quality_non_orthogonality.size:
-            non_orthogonality_values.append(quality_non_orthogonality)
+        sum_non_orthogonality += float(np.sum(non_orthogonality))
+        quality_face_count += int(non_orthogonality.size)
+        if non_orthogonality.size:
+            non_orthogonality_values.append(non_orthogonality)
 
         owner_block = owners[face_slice]
         owner_vectors = face_centres_block - cell_centre[owner_block]
         owner_distance = np.linalg.norm(owner_vectors, axis=1)
         owner_pyramids = np.einsum("ij,ij->i", sf_block, owner_vectors)
-        bad_owner = np.flatnonzero((owner_pyramids <= 0.0) & quality_faces)
+        bad_owner = np.flatnonzero(owner_pyramids <= 0.0)
         inverted_owner_pyramids += int(len(bad_owner))
         owner_cosines = owner_pyramids / np.maximum(
             areas_block * owner_distance,
             np.finfo(np.float64).tiny,
         )
-        owner_cosines = owner_cosines[quality_faces]
         min_owner_pyramid_cosine = min(
             min_owner_pyramid_cosine,
             float(np.min(owner_cosines, initial=1.0)),
@@ -396,14 +390,12 @@ def validate_geometry(mesh_data: MeshData, geo_data: GeometryData) -> MeshQualit
                 sf_block[local],
                 neighbour_vectors,
             )
-            quality_internal = quality_faces[:count]
-            bad_neighbour = np.flatnonzero((neighbour_pyramids <= 0.0) & quality_internal)
+            bad_neighbour = np.flatnonzero(neighbour_pyramids <= 0.0)
             inverted_neighbour_pyramids += int(len(bad_neighbour))
             neighbour_cosines = neighbour_pyramids / np.maximum(
                 areas_block[local] * neighbour_distance,
                 np.finfo(np.float64).tiny,
             )
-            neighbour_cosines = neighbour_cosines[quality_internal]
             min_neighbour_pyramid_cosine = min(
                 min_neighbour_pyramid_cosine,
                 float(np.min(neighbour_cosines, initial=1.0)),
@@ -420,7 +412,6 @@ def validate_geometry(mesh_data: MeshData, geo_data: GeometryData) -> MeshQualit
             skewness = np.linalg.norm(face_centres_block[local] - interpolation, axis=1) / (
                 centre_distance + 1e-30
             )
-            skewness = skewness[quality_internal]
             local_maximum = float(np.max(skewness, initial=0.0))
             if skewness.size:
                 skewness_values.append(skewness)

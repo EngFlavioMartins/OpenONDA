@@ -67,13 +67,6 @@ gaussian-mesh-cuda12 = [
     "cupy-cuda12x[ctk]>=14.2,<15; platform_system=='Linux'",
 ]
 
-# External Gmsh input and generation. The native meshers and the built-in STL
-# reader work without this package.
-meshing = [
-    "gmsh>=4.11.0; platform_system!='Darwin' or platform_machine!='x86_64'",
-    "gmsh>=4.11.0,<4.13; platform_system=='Darwin' and platform_machine=='x86_64'",
-]
-
 # Collective FVM sparse solves. The Conda environment is the recommended way
 # to obtain mpi4py, PETSc, and petsc4py against one MPI implementation.
 parallel = [

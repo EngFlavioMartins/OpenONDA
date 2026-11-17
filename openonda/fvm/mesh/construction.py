@@ -9,24 +9,13 @@ from .progress import mesh_event, mesh_stage
 
 
 def load_mesh_file(path: str | Path) -> dict[str, Any]:
-    """Load a native ``.npz`` or Gmsh ``.msh`` mesh file."""
+    """Load a native ``.npz`` mesh file."""
     path = Path(path)
-    if path.suffix.lower() == ".msh":
-        from .gmsh_importer import GmshImporter
-
-        importer = GmshImporter()
-        try:
-            importer.load_mesh(str(path))
-            return importer.get_mesh_data()
-        finally:
-            importer.finalize()
     if path.suffix.lower() == ".npz":
         from ..io.mesh_storage import load_native_mesh
 
         return load_native_mesh(path)
-    raise ValueError(
-        f"Unsupported mesh file {path.name!r}; expected a native '.npz' or Gmsh '.msh' file"
-    )
+    raise ValueError(f"Unsupported mesh file {path.name!r}; expected a native '.npz' file")
 
 
 def build_or_load_mesh(source: object, *, cache_path: Path) -> dict[str, Any]:

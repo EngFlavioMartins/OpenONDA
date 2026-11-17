@@ -132,14 +132,11 @@ class BoundaryPatch:
         Index of the first face belonging to this patch.
     n_faces : int
         Number of faces in the patch.
-    physical_tag : int or None
-        GMSH physical group tag, if the mesh came from GMSH.
     """
 
     name: str
     start_face: int
     n_faces: int
-    physical_tag: int | None = None
 
 
 @dataclass(frozen=True)
@@ -230,7 +227,6 @@ class MeshTopology:
                 name=str(patch["name"]),
                 start_face=int(patch["start_face"]),
                 n_faces=int(patch["n_faces"]),
-                physical_tag=patch.get("physical_tag"),
             )
             for patch in mesh_data["boundary"]
         )

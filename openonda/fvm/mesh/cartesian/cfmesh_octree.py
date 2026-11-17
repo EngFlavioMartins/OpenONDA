@@ -9,7 +9,6 @@ coarser face, edge and corner neighbours before splitting any selected leaf.
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
-from itertools import product
 
 import numpy as np
 
@@ -21,7 +20,6 @@ from .config import BoxRefinement
 Leaf = tuple[int, int, int, int, int, int]
 # Classifies new leaves: rows (x, y, z, width, level) to rows with their kind
 LeafClassifier = Callable[[np.ndarray], np.ndarray]
-_NEIGHBOURS = tuple(offset for offset in product((-1, 0, 1), repeat=3) if any(offset))
 # Child corner offsets in cfMesh's z, y, x nesting order, x fastest
 _CHILD_CORNERS = (np.arange(8)[:, None] >> np.arange(3)) & 1
 
@@ -83,16 +81,6 @@ class LeafLookup:
             if found is not None:
                 return found
         return -1
-
-    def neighbours(self, leaf: Leaf) -> set[int]:
-        """Same-level or coarser neighbours in the 26 regularity positions."""
-        x, y, z, width, level, _kind = leaf
-        return {
-            found
-            for dx, dy, dz in _NEIGHBOURS
-            if (found := self.find(x + dx * width, y + dy * width, z + dz * width, level=level))
-            >= 0
-        }
 
     def in_box(self, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
         """Morton-ordered leaves intersecting an inclusive integer query box."""

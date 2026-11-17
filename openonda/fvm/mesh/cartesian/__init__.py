@@ -5,7 +5,6 @@ from .config import (
     BoxDomain,
     BoxPatches,
     BoxRefinement,
-    FeatureRefinement,
     PatchRefinement,
     STLSurface,
 )
@@ -19,7 +18,6 @@ __all__ = [
     "BoxRefinement",
     "CartesianMesher",
     "ExtrudedCartesianMesher",
-    "FeatureRefinement",
     "GenerationReport",
     "PatchRefinement",
     "STLSurface",

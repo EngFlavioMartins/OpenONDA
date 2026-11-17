@@ -107,7 +107,7 @@ def compute_geometry(
     n_cells: int,
     n_faces: int,
     n_interior_faces: int,
-    cell_face_indices: tuple[np.ndarray, np.ndarray] | list[np.ndarray],
+    cell_face_csr: tuple[np.ndarray, np.ndarray],
 ) -> GeometryData:
     """Compute centres, oriented areas, volumes, and interpolation geometry.
 
@@ -126,9 +126,8 @@ def compute_geometry(
     n_cells, n_faces, n_interior_faces : int
         Native mesh counts. Boundary faces occupy
         ``[n_interior_faces, n_faces)``.
-    cell_face_indices : sequence or tuple[numpy.ndarray, numpy.ndarray]
-        Cell-to-face incidence, either one face-index sequence per cell or a
-        CSR ``(indices, offsets)`` pair.
+    cell_face_csr : tuple[numpy.ndarray, numpy.ndarray]
+        Cell-to-face incidence as a CSR ``(indices, offsets)`` pair.
 
     Returns
     -------
@@ -222,42 +221,25 @@ def compute_geometry(
         face_area[start:stop] = area_sum
 
     # --- Process Element Geometry ---
-    # ``compute_mesh_geometry`` normally passes CSR connectivity.  Only the
-    # counts persist globally; padded connectivity and all gathered face
-    # tensors are bounded to one block.
-    csr_cell_face_indices: np.ndarray | None = None
-    cell_face_offset: np.ndarray | None = None
-    cell_face_lists: list[np.ndarray] = []
-    if isinstance(cell_face_indices, tuple):
-        csr_cell_face_indices, raw_cell_face_offset = cell_face_indices
-        cell_face_offset = np.asarray(raw_cell_face_offset)
-        cell_counts = np.diff(cell_face_offset).astype(np.int32, copy=False)
-        max_faces = int(np.max(cell_counts, initial=0))
-    else:
-        cell_face_lists = cell_face_indices
-        max_faces = max(len(f) for f in cell_face_lists)
-        cell_counts = np.fromiter((len(f) for f in cell_face_lists), dtype=np.int32)
+    # Only the counts persist globally; padded connectivity and all gathered
+    # face tensors are bounded to one block.
+    csr_cell_face_indices, raw_cell_face_offset = cell_face_csr
+    cell_face_offset = np.asarray(raw_cell_face_offset)
+    cell_counts = np.diff(cell_face_offset).astype(np.int32, copy=False)
+    max_faces = int(np.max(cell_counts, initial=0))
 
     cell_chunk = 50_000
     for start in range(0, n_cells, cell_chunk):
         stop = min(start + cell_chunk, n_cells)
         count_block = cell_counts[start:stop]
         padded = np.full((stop - start, max_faces), -1, dtype=np.int32)
-        if csr_cell_face_indices is not None:
-            if cell_face_offset is None:
-                raise RuntimeError("CSR cell-face offsets are missing")
-            first_entry = int(cell_face_offset[start])
-            last_entry = int(cell_face_offset[stop])
-            if last_entry > first_entry:
-                rows = np.repeat(np.arange(stop - start, dtype=np.int32), count_block)
-                relative_offsets = cell_face_offset[start:stop] - first_entry
-                columns = np.arange(last_entry - first_entry) - np.repeat(
-                    relative_offsets, count_block
-                )
-                padded[rows, columns] = csr_cell_face_indices[first_entry:last_entry]
-        else:
-            for local, faces_for_cell in enumerate(cell_face_lists[start:stop]):
-                padded[local, : len(faces_for_cell)] = faces_for_cell
+        first_entry = int(cell_face_offset[start])
+        last_entry = int(cell_face_offset[stop])
+        if last_entry > first_entry:
+            rows = np.repeat(np.arange(stop - start, dtype=np.int32), count_block)
+            relative_offsets = cell_face_offset[start:stop] - first_entry
+            columns = np.arange(last_entry - first_entry) - np.repeat(relative_offsets, count_block)
+            padded[rows, columns] = csr_cell_face_indices[first_entry:last_entry]
 
         safe_faces = padded.copy()
         safe_faces[safe_faces < 0] = 0

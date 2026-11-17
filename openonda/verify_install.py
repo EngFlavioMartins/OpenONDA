@@ -35,21 +35,6 @@ def _verify_package_location(require_site_packages: bool) -> Path:
     return package_path
 
 
-def _verify_gmsh() -> str:
-    import gmsh
-
-    gmsh.initialize()
-    try:
-        gmsh.model.add("openonda_install_verification")
-        gmsh.model.occ.addBox(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
-        gmsh.model.occ.synchronize()
-        if len(gmsh.model.getEntities(3)) != 1:
-            raise RuntimeError("Gmsh failed to construct the verification volume")
-        return str(gmsh.__version__)
-    finally:
-        gmsh.finalize()
-
-
 def _verify_taichi() -> tuple[str, str]:
     ti.reset()
     try:
@@ -519,17 +504,13 @@ def main() -> int:
     Notes
     -----
     The ``--require-site-packages`` option rejects editable/source-checkout
-    imports.  The ``--with-meshing`` option additionally initializes Gmsh and
-    checks a one-unit cube.
+    imports.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--require-site-packages",
         action="store_true",
         help="fail if OpenONDA resolves to an editable/source checkout",
-    )
-    parser.add_argument(
-        "--with-meshing", action="store_true", help="also exercise optional Gmsh geometry"
     )
     parser.add_argument(
         "--with-gaussian-mesh",
@@ -551,8 +532,6 @@ def main() -> int:
         "distribution": _verify_distribution_resources(),
         "cartesian_mesher": _verify_cartesian_mesher(),
     }
-    if args.with_meshing:
-        report["gmsh_version"] = _verify_gmsh()
     if args.with_gaussian_mesh:
         report["gaussian_mesh"] = _verify_gaussian_mesh()
     if args.with_environment:

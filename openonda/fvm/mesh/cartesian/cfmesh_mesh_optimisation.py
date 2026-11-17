@@ -17,11 +17,14 @@ from .cfmesh_surface_optimisation import (
     _mag_squared,
     optimise_cfmesh_surface,
 )
-from .cfmesh_volume_optimisation import _knupp_point, _optimise_triangles
+from .cfmesh_volume_optimisation import _knupp_triangles, _optimise_triangles
 
 _SMALL = 1.0e-15
 _VSMALL = 1.0e-300
 _ROOT_VSMALL = 1.0e-150
+
+# cfMesh's fixed number of point-to-cell-centre Laplacian smoothing passes
+LAPLACIAN_ITERATIONS = 5
 
 
 @register_jitable
@@ -826,9 +829,8 @@ def _optimise_part_knupp(part: _PartTetMesh) -> None:
         return
     negative_nodes = set(map(int, part.tets[inverted].ravel()))
     updates = {
-        int(node_value): _knupp_point(
-            part.points,
-            _simplex_triangles(part, int(node_value)),
+        int(node_value): _knupp_triangles(
+            part.points[_simplex_triangles(part, int(node_value))],
             part.points[int(node_value)],
         )
         for node_value in part.smooth_nodes
@@ -1387,10 +1389,8 @@ def _interior_laplacian_updates(
 def optimise_cfmesh_mesh(
     mesh_data: MeshData,
     *,
-    iterations: int = 5,
-    surface_iterations: int | None = None,
-    map_edge_points: Callable[[Sequence[int]], None] | None = None,
-    untangle_surface: Callable[[], list[int]] | None = None,
+    map_edge_points: Callable[[Sequence[int]], None],
+    untangle_surface: Callable[[], list[int]],
 ) -> None:
     """Reproduce cfMesh's active final finite-volume optimization path.
 
@@ -1402,7 +1402,6 @@ def optimise_cfmesh_mesh(
     """
     optimise_cfmesh_surface(
         mesh_data,
-        iterations=iterations if surface_iterations is None else surface_iterations,
         map_edge_points=map_edge_points,
         untangle_surface=untangle_surface,
     )
@@ -1430,14 +1429,12 @@ def optimise_cfmesh_mesh(
     if any(not point_cells[int(point_id)] for point_id in smooth_points):
         raise ValueError("cfMesh mesh optimization found an inside point without incident cells")
 
-    from .cfmesh_surface_optimisation import _pack_rows
-
-    smooth_cells, smooth_offsets = _pack_rows(
+    smooth_cells, smooth_offsets = _pack_ragged(
         [sorted(point_cells[int(point)]) for point in smooth_points]
     )
     packed = _PackedTopology.build(faces, cell_faces)
 
-    for _iteration in range(iterations):
+    for _iteration in range(LAPLACIAN_ITERATIONS):
         cell_centres = _cfmesh_cell_centres(
             points,
             faces,
@@ -1540,7 +1537,7 @@ def optimise_cfmesh_mesh(
     mesh_data.pop("cell_face_offset", None)
     mesh_data["mesh_generation"]["workflow_checkpoint"] = "meshOptimisation"
     mesh_data["mesh_generation"]["cfmesh_mesh_optimisation"] = {
-        "laplacian_pc_iterations": iterations,
+        "laplacian_pc_iterations": LAPLACIAN_ITERATIONS,
         "smooth_inside_points": len(smooth_points),
         "bad_faces_after_laplacian": len(bad_after_laplacian),
         "bad_face_ids_after_laplacian": sorted(bad_after_laplacian),

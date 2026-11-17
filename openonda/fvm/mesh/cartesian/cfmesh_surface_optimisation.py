@@ -20,6 +20,9 @@ _SMALL = 1.0e-15
 _VSMALL = 1.0e-300
 _ROOT_VSMALL = 1.0e-150
 
+# cfMesh's fixed number of feature-edge and boundary-surface smoothing passes
+SURFACE_SMOOTHING_ITERATIONS = 5
+
 
 @register_jitable
 def _mag_squared(value: np.ndarray | tuple[float, float, float]) -> float:
@@ -139,7 +142,7 @@ def _stabilisation(points: np.ndarray, triangles: np.ndarray) -> float:
 
 
 @register_jitable
-def _objective(points: np.ndarray, triangles: np.ndarray, stabilisation: float) -> float:
+def _surface_objective(points: np.ndarray, triangles: np.ndarray, stabilisation: float) -> float:
     value = 0.0
     for triangle in triangles:
         p0 = points[triangle[0]]
@@ -154,7 +157,7 @@ def _objective(points: np.ndarray, triangles: np.ndarray, stabilisation: float) 
 
 
 @register_jitable
-def _gradients(
+def _surface_gradients(
     points: np.ndarray, triangles: np.ndarray, stabilisation: float
 ) -> tuple[np.ndarray, np.ndarray]:
     gradient = np.zeros(2, dtype=np.float64)
@@ -239,7 +242,7 @@ def _optimise_point(
     dx = 0.5 * float(upper[0] - lower[0])
     dy = 0.5 * float(upper[1] - lower[1])
     stabilisation = _stabilisation(values, triangles)
-    before = _objective(values, triangles, stabilisation)
+    before = _surface_objective(values, triangles, stabilisation)
     directions = ((-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0))
     divide_value = before
     for _iteration in range(100):
@@ -249,7 +252,7 @@ def _optimise_point(
             values[target, 0] = current[0] + 0.5 * x_direction * dx
             values[target, 1] = current[1] + 0.5 * y_direction * dy
             stabilisation = _stabilisation(values, triangles)
-            value = _objective(values, triangles, stabilisation)
+            value = _surface_objective(values, triangles, stabilisation)
             if value < best_value:
                 best = values[target].copy()
                 best_value = value
@@ -265,10 +268,10 @@ def _optimise_point(
 
     average_edge = float(np.sqrt(_mag_squared(upper - lower)))
     stabilisation = _stabilisation(values, triangles)
-    before = _objective(values, triangles, stabilisation)
+    before = _surface_objective(values, triangles, stabilisation)
     steepest_value = before
     for _iteration in range(100):
-        gradient, hessian = _gradients(values, triangles, stabilisation)
+        gradient, hessian = _surface_gradients(values, triangles, stabilisation)
         determinant = float(hessian[0, 0] * hessian[1, 1] - hessian[0, 1] * hessian[1, 0])
         if abs(determinant) < _VSMALL:
             displacement = np.zeros(2, dtype=np.float64)
@@ -285,23 +288,13 @@ def _optimise_point(
                 displacement = (displacement / magnitude) * 0.2 * average_edge
         values[target, :2] -= displacement
         stabilisation = _stabilisation(values, triangles)
-        steepest_value = _objective(values, triangles, stabilisation)
+        steepest_value = _surface_objective(values, triangles, stabilisation)
         if abs(steepest_value - before) / before < tolerance:
             break
         before = steepest_value
     if steepest_value > divide_value:
         values[target] = divide_point
     return values[target] * scale
-
-
-@njit(cache=True, fastmath=False)
-def _optimise_point_kernel(points: np.ndarray, triangles: np.ndarray) -> np.ndarray:
-    """Compile the reference arithmetic, including its branch-sensitive order.
-
-    Keeping one implementation avoids changes to normalization, stabilization,
-    and symmetric-simplex tie breaking in a separately transcribed fast path.
-    """
-    return _optimise_point(points, triangles)
 
 
 def _pack_rows(
@@ -435,7 +428,7 @@ def _surface_optimisation_updates(
             offset = coordinates[i] - point
             planar[i, 0] = _dot(offset, vector_x)
             planar[i, 1] = _dot(offset, vector_y)
-        new_planar = _optimise_point_kernel(planar, local_triangles)
+        new_planar = _optimise_point(planar, local_triangles)
         updates[local] = point + vector_x * new_planar[0] + vector_y * new_planar[1]
     return updates
 
@@ -448,7 +441,7 @@ _surface_optimisation_updates = njit(cache=True, fastmath=False, parallel=True)(
 )
 
 
-def _smooth_partition_points(
+def smooth_cfmesh_partition_points(
     mesh_data: MeshData,
     partition_points: Sequence[int],
     *,
@@ -456,8 +449,6 @@ def _smooth_partition_points(
     auxiliary_state: dict[str, np.ndarray] | None = None,
 ) -> None:
     """Run all surface passes using reusable stencils and compiled arithmetic."""
-    if iterations <= 0:
-        return
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     boundary_start = int(mesh_data["n_interior_faces"])
     faces = mesh_data["faces"][boundary_start:]
@@ -555,12 +546,12 @@ def _smooth_partition_points(
             auxiliary_state["centres"] = auxiliary_centres
 
 
-def _inverted_boundary_points(
+def inverted_cfmesh_boundary_points(
     mesh_data: MeshData,
     face_patch_ids: Sequence[int] | np.ndarray | None = None,
     active_points: set[int] | None = None,
 ) -> set[int]:
-    """Return the serial partition-point subset rejected by cfMesh's check."""
+    """Return cfMesh's patch-aware set of boundary points that fail the inversion check."""
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     faces = mesh_data["faces"]
     boundary_start = int(mesh_data["n_interior_faces"])
@@ -752,36 +743,14 @@ def _inverted_boundary_points_vectorized(
     return set(map(int, np.unique(flat_faces[invalid])))
 
 
-def inverted_cfmesh_boundary_points(
-    mesh_data: MeshData,
-    face_patch_ids: Sequence[int] | np.ndarray,
-    *,
-    active_points: set[int] | None = None,
-) -> set[int]:
-    """Expose cfMesh's patch-aware inverted-point predicate for edge extraction."""
-    return _inverted_boundary_points(mesh_data, face_patch_ids, active_points)
-
-
-def smooth_cfmesh_partition_points(
-    mesh_data: MeshData,
-    point_ids: Sequence[int],
-    *,
-    auxiliary_state: dict[str, np.ndarray] | None = None,
-) -> None:
-    """Run one cfMesh partition-point smoothing iteration for selected ids."""
-    _smooth_partition_points(mesh_data, point_ids, iterations=1, auxiliary_state=auxiliary_state)
-
-
 def untangle_cfmesh_surface(
     mesh_data: MeshData,
     *,
-    map_to_surface: Callable[[np.ndarray], np.ndarray],
-    map_points_to_surface: Callable[[np.ndarray], np.ndarray] | None = None,
+    map_points_to_surface: Callable[[np.ndarray], np.ndarray],
 ) -> dict[str, Any]:
     """Apply cfMesh's serial post-projection untangling loop in place.
 
-    ``map_points_to_surface``, if given, maps many points at once as
-    ``map_to_surface`` maps each.
+    ``map_points_to_surface`` maps an array of points onto the surface.
     """
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     boundary_start = int(mesh_data["n_interior_faces"])
@@ -797,7 +766,7 @@ def untangle_cfmesh_surface(
     iterations = 0
     moved_union: set[int] = set()
     for _iteration in range(20):
-        inverted = _inverted_boundary_points(mesh_data)
+        inverted = inverted_cfmesh_boundary_points(mesh_data)
         if _iteration == 0:
             initial_inverted = len(inverted)
         if not inverted:
@@ -811,23 +780,16 @@ def untangle_cfmesh_surface(
             )
         selected_points = tuple(sorted(selected))
         moved_union.update(selected_points)
-        _smooth_partition_points(mesh_data, selected_points, iterations=1)
-        mapped = (
-            np.asarray(
-                [map_to_surface(points[point_id]) for point_id in selected_points],
-                dtype=np.float64,
-            )
-            if map_points_to_surface is None
-            else map_points_to_surface(points[np.asarray(selected_points, dtype=np.int64)])
-        )
-        points[np.asarray(selected_points, dtype=np.int64)] = mapped
+        smooth_cfmesh_partition_points(mesh_data, selected_points, iterations=1)
+        selected_ids = np.asarray(selected_points, dtype=np.int64)
+        points[selected_ids] = map_points_to_surface(points[selected_ids])
         iterations += 1
 
     return {
         "initial_inverted_points": initial_inverted,
         "iterations": iterations,
         "moved_points": len(moved_union),
-        "remaining_inverted_points": len(_inverted_boundary_points(mesh_data)),
+        "remaining_inverted_points": len(inverted_cfmesh_boundary_points(mesh_data)),
         "additional_layers": 2,
     }
 
@@ -835,11 +797,15 @@ def untangle_cfmesh_surface(
 def optimise_cfmesh_surface(
     mesh_data: MeshData,
     *,
-    iterations: int = 5,
-    map_edge_points: Callable[[Sequence[int]], None] | None = None,
-    untangle_surface: Callable[[], list[int]] | None = None,
+    map_edge_points: Callable[[Sequence[int]], None],
+    untangle_surface: Callable[[], list[int]],
 ) -> None:
-    """Apply cfMesh's feature-edge and boundary-surface smoothing in place."""
+    """Apply cfMesh's feature-edge and boundary-surface smoothing in place.
+
+    ``map_edge_points`` maps the feature-edge points back onto the surface
+    after each pass, and ``untangle_surface`` untangles the surface after the
+    last pass and returns the iteration counts of its passes.
+    """
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     faces = mesh_data["faces"]
     point_faces: dict[int, list[int]] = defaultdict(list)
@@ -879,7 +845,7 @@ def optimise_cfmesh_surface(
         sorted(point_id for point_id in point_faces if point_id not in constrained_points)
     )
 
-    for _iteration in range(iterations):
+    for _iteration in range(SURFACE_SMOOTHING_ITERATIONS):
         updates = {
             point_id: points[np.asarray(feature_neighbours[point_id], dtype=np.int64)].mean(axis=0)
             for point_id in edge_points
@@ -887,31 +853,17 @@ def optimise_cfmesh_surface(
         }
         for point_id, value in updates.items():
             points[point_id] = value
-        if map_edge_points is not None:
-            map_edge_points(edge_points)
+        map_edge_points(edge_points)
 
-    if iterations <= 0:
-        # Large production meshes already have their boundary points mapped by
-        # ``remap_cfmesh_patch_points``.  Keep feature-edge remapping, but do
-        # not enter the scalar per-partition-point Newton loop; the subsequent
-        # volume optimizer and the final all-face validation remain mandatory.
-        mesh_data["mesh_generation"]["workflow_checkpoint"] = "edgeExtraction"
-        mesh_data["mesh_generation"]["surface_optimisation"] = {
-            "iterations": 0,
-            "corner_points": len(corner_points),
-            "edge_points": len(edge_points),
-            "partition_points": len(partition_points),
-            "untangling_iteration_counts": [],
-        }
-        return
+    smooth_cfmesh_partition_points(
+        mesh_data, partition_points, iterations=SURFACE_SMOOTHING_ITERATIONS
+    )
 
-    _smooth_partition_points(mesh_data, partition_points, iterations=iterations)
-
-    untangling_history = untangle_surface() if untangle_surface is not None else []
+    untangling_history = untangle_surface()
 
     mesh_data["mesh_generation"]["workflow_checkpoint"] = "edgeExtraction"
     mesh_data["mesh_generation"]["surface_optimisation"] = {
-        "iterations": iterations,
+        "iterations": SURFACE_SMOOTHING_ITERATIONS,
         "corner_points": len(corner_points),
         "edge_points": len(edge_points),
         "partition_points": len(partition_points),

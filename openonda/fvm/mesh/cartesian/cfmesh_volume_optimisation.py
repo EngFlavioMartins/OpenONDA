@@ -45,7 +45,7 @@ def _properties(values: np.ndarray, point: np.ndarray) -> tuple[np.ndarray, np.n
 
 
 @njit(cache=True)
-def _objective(values: np.ndarray, point: np.ndarray) -> float:
+def _volume_objective(values: np.ndarray, point: np.ndarray) -> float:
     volumes, lengths, factor = _properties(values, point)
     result = 0.0
     for i in range(len(values)):
@@ -58,7 +58,7 @@ def _objective(values: np.ndarray, point: np.ndarray) -> float:
 
 
 @njit(cache=True)
-def _gradients(values: np.ndarray, point: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _volume_gradients(values: np.ndarray, point: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     volumes, lengths, factor = _properties(values, point)
     gradient = np.zeros(3)
     hessian = np.zeros((3, 3))
@@ -162,7 +162,7 @@ def _optimise_triangles(values: np.ndarray, point: np.ndarray, tolerance: float)
     upper = upper * scale
     candidate = 0.5 * (upper + lower)
     half_range = 0.5 * (upper - lower)
-    after = _objective(values, candidate)
+    after = _volume_objective(values, candidate)
     for _iteration in range(100):
         before = after
         after = 1.0e300
@@ -172,7 +172,7 @@ def _optimise_triangles(values: np.ndarray, point: np.ndarray, tolerance: float)
             for axis in range(3):
                 sign = 1.0 if direction & (1 << axis) else -1.0
                 trial[axis] += 0.5 * sign * half_range[axis]
-            value = _objective(values, trial)
+            value = _volume_objective(values, trial)
             if value < after:
                 after = value
                 best = trial
@@ -182,23 +182,23 @@ def _optimise_triangles(values: np.ndarray, point: np.ndarray, tolerance: float)
             break
     divide_point = candidate.copy()
     divide_value = after
-    after = _objective(values, candidate)
+    after = _volume_objective(values, candidate)
     for _iteration in range(100):
         original = candidate.copy()
         before = after
-        gradient, hessian = _gradients(values, candidate)
+        gradient, hessian = _volume_gradients(values, candidate)
         determinant = _tensor_determinant(hessian)
         finished = False
         if determinant > 1.0e-15:
             displacement = _tensor_solve(hessian, determinant, gradient)
             candidate -= displacement
-            after = _objective(values, candidate)
+            after = _volume_objective(values, candidate)
             relaxation = 0.8
             loops = 0
             while after > before:
                 candidate = original - relaxation * displacement
                 relaxation *= 0.5
-                after = _objective(values, candidate)
+                after = _volume_objective(values, candidate)
                 if after < before:
                     continue
                 loops += 1
@@ -219,7 +219,7 @@ def _optimise_triangles(values: np.ndarray, point: np.ndarray, tolerance: float)
                     if length > 1.0e-300:
                         displacement += 0.01 * (normal / length)
             candidate += displacement
-            after = _objective(values, candidate)
+            after = _volume_objective(values, candidate)
         if finished:
             break
     if after > divide_value:
@@ -312,7 +312,3 @@ def _knupp_triangles(values: np.ndarray, point: np.ndarray) -> np.ndarray:
             break
         beta /= 2.0
     return candidate
-
-
-def _knupp_point(points: np.ndarray, triangles: np.ndarray, point: np.ndarray) -> np.ndarray:
-    return _knupp_triangles(points[triangles], point)

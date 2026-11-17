@@ -14,7 +14,6 @@ from ..triangulated_surface import SurfaceBounds, TriangulatedSurface
 from .surface import load_surface
 
 Bounds: TypeAlias = SurfaceBounds
-Point: TypeAlias = tuple[float, float, float]
 
 
 def _finite_positive(value: float, name: str) -> float:
@@ -139,9 +138,6 @@ class STLSurface:
         STL path. It is expanded/resolved and loaded during construction.
     patch : str
         Boundary patch name supplied to the generated mesh.
-    allow_open : bool, default=False
-        Allow an open/non-watertight surface when the downstream workflow can
-        still classify it. Closed surfaces are required for solid carving.
 
     Notes
     -----
@@ -152,18 +148,13 @@ class STLSurface:
 
     path: Path | str
     patch: str
-    allow_open: bool = False
     _surface: TriangulatedSurface = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         resolved_path = Path(self.path).expanduser().resolve()
         object.__setattr__(self, "path", resolved_path)
         object.__setattr__(self, "patch", _nonempty(self.patch, "patch"))
-        if not isinstance(self.allow_open, bool):
-            raise TypeError("allow_open must be a bool")
-        object.__setattr__(
-            self, "_surface", load_surface(resolved_path, allow_open=self.allow_open)
-        )
+        object.__setattr__(self, "_surface", load_surface(resolved_path))
 
     @property
     def triangles(self) -> np.ndarray:
@@ -252,38 +243,11 @@ class BoxRefinement:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class FeatureRefinement:
-    """Requested sizing around surface edges above an included angle.
-
-    ``angle`` is in degrees and ``cell_size`` is in metres. Only detected
-    surface features above the angle threshold receive the refinement.
-
-    Parameters
-    ----------
-    angle : float
-        Included-angle threshold strictly between 0 and 180 degrees.
-    cell_size : float
-        Positive requested maximum size near qualifying edges, in m.
-    """
-
-    angle: float
-    cell_size: float
-
-    def __post_init__(self) -> None:
-        angle = float(self.angle)
-        if not math.isfinite(angle) or not 0.0 < angle < 180.0:
-            raise ValueError("angle must be finite and strictly between 0 and 180 degrees")
-        object.__setattr__(self, "angle", angle)
-        object.__setattr__(self, "cell_size", _finite_positive(self.cell_size, "cell_size"))
-
-
 __all__ = [
     "Bounds",
     "BoxDomain",
     "BoxPatches",
     "BoxRefinement",
-    "FeatureRefinement",
     "PatchRefinement",
     "STLSurface",
 ]

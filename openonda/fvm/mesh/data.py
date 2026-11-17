@@ -38,8 +38,6 @@ class BoundaryPatchData(TypedDict, total=False):
     start_face: int
     n_faces: int
     type: str
-    physical_tag: int | None
-    source_dimension: int | None
     neighbour_patch: str
     transform: str
 
@@ -94,7 +92,6 @@ class MeshData(TypedDict):
     cell_vertex_indices: NotRequired[np.ndarray]
     cell_type_code: NotRequired[np.ndarray]
     cell_order: NotRequired[np.ndarray]
-    cell_families: NotRequired[np.ndarray]
     cell_levels: NotRequired[np.ndarray]
     cell_sizes: NotRequired[np.ndarray]
     boundary_layer_index: NotRequired[np.ndarray]
@@ -104,7 +101,6 @@ class MeshData(TypedDict):
     global_face_id: NotRequired[np.ndarray]
     global_point_ids: NotRequired[np.ndarray]
     source_cell_id: NotRequired[np.ndarray]
-    source_point_ids: NotRequired[np.ndarray]
 
     # Coupled (cyclic) boundary pairing.
     boundary_neighbour_cell: NotRequired[np.ndarray]

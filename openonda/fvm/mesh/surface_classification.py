@@ -1004,22 +1004,6 @@ class SurfaceIndex:
         distances = np.linalg.norm(nearest - values, axis=1)
         return nearest, distances, np.asarray(cell_ids, dtype=np.int64)
 
-    def classify(self, points: np.ndarray, *, tolerance: float | None = None) -> np.ndarray:
-        """Classify points as outside ``0``, inside ``1``, or on surface ``-1``."""
-        values = np.atleast_2d(np.asarray(points, dtype=np.float64))
-        if values.shape[1] != 3 or not np.all(np.isfinite(values)):
-            raise ValueError("points must have shape (n, 3) and contain finite coordinates")
-        scale = max(float(np.ptp(self.triangles, axis=(0, 1)).max()), 1.0)
-        surface_tolerance = tolerance if tolerance is not None else 1.0e-10 * scale
-        if not np.isfinite(surface_tolerance) or surface_tolerance <= 0.0:
-            raise ValueError("tolerance must be finite and positive")
-        result = np.where(self.is_inside(values), 1, 0).astype(np.int8)
-        for index, point in enumerate(values):
-            _nearest, distance = self.nearest_point(point)
-            if distance <= surface_tolerance:
-                result[index] = -1
-        return result
-
 
 __all__ = [
     "SurfaceIndex",

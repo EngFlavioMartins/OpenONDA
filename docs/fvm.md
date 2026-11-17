@@ -83,13 +83,11 @@ with fvm.FVMSolver(case) as solver:
 | Tool | Use |
 | --- | --- |
 | `box_mesh_3d(xs, ys, zs, hole_box=...)` | Rectilinear mesh from node coordinates, optionally with a box-shaped wall hole. `empty_spanwise=True` with one spanwise cell gives a 2-D model. |
-| `stretched(...)`, `wall_refined_axis(...)` | Node sequences that grow geometrically away from a wall, for `box_mesh_3d`. |
 | `coupling_box_mesh(...)` | Uniform box whose six sides form one coupling patch (FVM–VPM). |
 | `CartesianMesher` | Octree mesh of a `BoxDomain` around closed `STLSurface` bodies, projected onto the surfaces. |
 | `ExtrudedCartesianMesher` | Planar section of a `CartesianMesher` mesh, extruded through given span `levels`: body-fitted 2-D meshes. |
-| `GmshImporter` | Converts a Gmsh mesh. |
 
-`CartesianMesher` refines with `BoxRefinement` regions, `PatchRefinement` on a named surface and `FeatureRefinement` along sharp edges, and adds one automatic wrapper layer at walls. Cell sizes are $H/2^\ell$ with $H$ the background `max_cell_size`: a patch target selects the first size at or below the request, a box target a size strictly below it. `CartesianMesher.effective_cell_size(target)` previews the result. The [STL body](../tutorials/fvm/cartesian_mesher/README.md) shows a complete mesher; the [cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) shows an extruded body-fitted 2-D mesh.
+`CartesianMesher` refines with `BoxRefinement` regions and `PatchRefinement` on a named surface, and adds one automatic wrapper layer at walls. Cell sizes are $H/2^\ell$ with $H$ the background `max_cell_size`: a patch target selects the first size at or below the request, a box target a size strictly below it. `CartesianMesher.effective_cell_size(target)` previews the result. The [STL body](../tutorials/fvm/cartesian_mesher/README.md) shows a complete mesher; the [cylinder](../tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md) shows an extruded body-fitted 2-D mesh.
 
 Known limitation: `CartesianMesher` captures sharp edges only where two surface patches meet, and a body part thinner than about one wall cell can keep fluid-cell centres inside the surface; the mesher then stops with "fluid-cell centres are inside the input surface". Rounding the edge does not avoid it, nor do finer wall cells alone. A straight NACA 0018 section of 0.35 m chord and 0.2 m span, one STL patch with flat end caps, pitched 17° and tilted 7° against the grid, reproduces it. With a flat base at 95 % of the chord (7.4 mm) it fails at 0.025, 0.0125 and 0.00625 m wall cells. With a half-circle base and caps revolved about the chord line it leaves 8 centres inside at 0.025 m and 5 at 0.0125 m. Cut at 80 % of the chord (a rounded 27 mm base), it still leaves one at 0.025 m. An axis-aligned 0.0125 m `BoxRefinement` around that trailing edge (anchor 0.0125 m) leaves one centre inside with the 80 % cut and two with the 90 % cut.
 

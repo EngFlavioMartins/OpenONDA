@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 import math
-from pathlib import Path
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -42,7 +41,6 @@ from .cfmesh_template import (
 from .config import (
     BoxDomain,
     BoxRefinement,
-    FeatureRefinement,
     PatchRefinement,
     STLSurface,
 )
@@ -56,7 +54,6 @@ from .coupling_box import (
     validate_exact_sides,
     workflow_bounds,
 )
-from .features import classify_features
 from .report import (
     GenerationReport,
     OptimisationDiagnostics,
@@ -603,8 +600,6 @@ class CartesianMesher:
         Boxes whose requested upper sizes are applied.
     patch_refinements : tuple[PatchRefinement, ...]
         Exact named-patch sizing requests in metres.
-    features : FeatureRefinement or None
-        Optional included-angle surface-feature sizing.
     surface_may_cross_domain_boundary : bool, default=False
         Permit a surface intersecting the outer domain; otherwise surfaces must
         lie strictly inside it.
@@ -645,7 +640,6 @@ class CartesianMesher:
         min_cell_size: float | None = None,
         refinements: tuple[BoxRefinement, ...] = (),
         patch_refinements: tuple[PatchRefinement, ...] = (),
-        features: FeatureRefinement | None = None,
         surface_may_cross_domain_boundary: bool = False,
         cell_size_anchor: float | None = None,
     ) -> None:
@@ -704,8 +698,6 @@ class CartesianMesher:
         refinements = tuple(refinements)
         if any(not isinstance(refinement, BoxRefinement) for refinement in refinements):
             raise TypeError("refinements must contain only BoxRefinement instances")
-        if features is not None and not isinstance(features, FeatureRefinement):
-            raise TypeError("features must be a FeatureRefinement instance or None")
         known_patches = set(patches)
         patch_refinements = tuple(patch_refinements)
         if any(not isinstance(item, PatchRefinement) for item in patch_refinements):
@@ -736,8 +728,6 @@ class CartesianMesher:
             ]
             if not boundary_size_is_default:
                 exact_controls.append(resolved_boundary_cell_size)
-            if features is not None:
-                exact_controls.append(features.cell_size)
             for requested in exact_controls:
                 if requested > background_cell_size * (1.0 + 1e-12):
                     raise ValueError(
@@ -838,33 +828,21 @@ class CartesianMesher:
         self.min_cell_size = min_cell_size
         self.refinements = refinements
         self.patch_refinements = patch_refinements
-        self.features = features
         self.surface_may_cross_domain_boundary = surface_may_cross_domain_boundary
         self._report: GenerationReport | None = None
-        self._feature_sets = (
-            tuple(
-                classify_features(surface.triangles, features.angle).edges for surface in surfaces
-            )
-            if features is not None
-            else ()
-        )
 
     @property
     def report(self) -> GenerationReport | None:
         """Return the latest immutable generation report, or ``None`` before build."""
         return self._report
 
-    def effective_cell_size(self, requested: float, *, strict: bool = False) -> float:
+    def effective_cell_size(self, requested: float) -> float:
         """Return the nominal octree size selected for one request.
 
         Parameters
         ----------
         requested : float
             Positive requested upper size in metres.
-        strict : bool, default=False
-            Without ``cell_size_anchor``, use the strict cfMesh object-refinement
-            rule for a ``BoxRefinement``. Exact anchored lattices always use the
-            inclusive level that preserves a compatible requested size.
 
         Returns
         -------
@@ -882,14 +860,22 @@ class CartesianMesher:
         """
         if not math.isfinite(requested) or requested <= 0.0:
             raise ValueError("requested cell sizes must be finite and positive")
+        return self.background_cell_size / (2 ** self._size_level(requested, strict=False))
+
+    def _size_level(self, requested: float, *, strict: bool) -> int:
+        """Return the octree level below the background that serves one request.
+
+        Without ``cell_size_anchor``, a ``BoxRefinement`` (``strict``) uses the
+        cfMesh object-refinement rule, which selects a size strictly below the
+        request. Exact anchored lattices and every other request use the
+        inclusive level that preserves a compatible requested size.
+        """
         conversion = (
-            _additional_level
-            if self.cell_size_anchor is not None
-            else object_additional_level
-            if strict
+            object_additional_level
+            if strict and self.cell_size_anchor is None
             else _additional_level
         )
-        return self.background_cell_size / (2 ** conversion(self.background_cell_size, requested))
+        return conversion(self.background_cell_size, requested)
 
     def _cfmesh_size_reports(self) -> tuple[SizeReport, ...]:
         """Report the same control levels used by the production octree."""
@@ -908,18 +894,9 @@ class CartesianMesher:
         controls.extend(
             (f"patch:{item.patch}", item.cell_size, False) for item in self.patch_refinements
         )
-        if self.features is not None:
-            controls.append(("features", self.features.cell_size, False))
         sizes = []
         for name, requested, strict in controls:
-            conversion = (
-                _additional_level
-                if self.cell_size_anchor is not None
-                else object_additional_level
-                if strict
-                else _additional_level
-            )
-            level = conversion(self.background_cell_size, requested)
+            level = self._size_level(requested, strict=strict)
             sizes.append(SizeReport(name, requested, self.background_cell_size / (2**level), level))
         if self.min_cell_size is not None:
             level = _additional_level(
@@ -944,7 +921,6 @@ class CartesianMesher:
         "edgeExtraction",
         "boundaryLayerGeneration",
         "meshOptimisation",
-        "boundaryLayerRefinement",
     )
 
     def _run_cfmesh_workflow(self, stop_after: str) -> MeshData:
@@ -991,7 +967,8 @@ class CartesianMesher:
         generation["cell_size_anchor"] = self.cell_size_anchor
         generation["resolved_background_cell_size"] = self.background_cell_size
         generation["resolved_box_sizes"] = {
-            request.name: self.effective_cell_size(request.cell_size, strict=True)
+            request.name: self.background_cell_size
+            / (2 ** self._size_level(request.cell_size, strict=True))
             for request in self.refinements
         }
         root_box = generation["root_box"]
@@ -1013,7 +990,6 @@ class CartesianMesher:
             "edgeExtraction",
             "boundaryLayerGeneration",
             "meshOptimisation",
-            "boundaryLayerRefinement",
         ):
             edge_mapper = None
             surface_untangler = None
@@ -1031,7 +1007,6 @@ class CartesianMesher:
                 "edgeExtraction",
                 "boundaryLayerGeneration",
                 "meshOptimisation",
-                "boundaryLayerRefinement",
             ):
                 with mesh_stage("patch assignment"):
                     assign_cfmesh_patches(
@@ -1045,7 +1020,6 @@ class CartesianMesher:
                 "edgeExtraction",
                 "boundaryLayerGeneration",
                 "meshOptimisation",
-                "boundaryLayerRefinement",
             ):
                 with mesh_stage("edge extraction"):
                     extract_cfmesh_edges(stage_mesh)
@@ -1060,41 +1034,21 @@ class CartesianMesher:
                 with mesh_stage("surface optimisation"):
                     optimise_cfmesh_surface(
                         stage_mesh,
-                        # The native optimizer has one fixed parameter set.  Do
-                        # not silently skip its surface passes for large meshes;
-                        # performance work belongs inside the typed kernels.
-                        iterations=5,
                         map_edge_points=edge_mapper,
                         untangle_surface=surface_untangler,
                     )
-            if stop_after in (
-                "boundaryLayerGeneration",
-                "meshOptimisation",
-                "boundaryLayerRefinement",
-            ):
+            if stop_after in ("boundaryLayerGeneration", "meshOptimisation"):
                 with mesh_stage("wrapper layer generation"):
                     add_cfmesh_wrapper_layer(stage_mesh)
-            if stop_after in ("meshOptimisation", "boundaryLayerRefinement"):
+            if stop_after == "meshOptimisation":
                 assert edge_mapper is not None
                 assert surface_untangler is not None
                 with mesh_stage("mesh optimisation"):
                     optimise_cfmesh_mesh(
                         stage_mesh,
-                        # Keep the native five-pass FV sequence at every size.
-                        iterations=5,
-                        surface_iterations=5,
                         map_edge_points=edge_mapper,
                         untangle_surface=surface_untangler,
                     )
-            if stop_after == "boundaryLayerRefinement":
-                # The public default has no configurable boundaryLayers
-                # dictionary; retain an explicit diagnostic record instead of
-                # pretending that an optional layer product was generated.
-                stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
-                stage_mesh["mesh_generation"]["boundary_layer_refinement"] = {
-                    "applied": False,
-                    "reason": "no_boundary_layers_dictionary",
-                }
         return stage_mesh
 
     def _apply_exact_sides(self, mesh_data: MeshData) -> MeshData:
@@ -1211,9 +1165,6 @@ class CartesianMesher:
             "surface_patches": tuple(surface.patch for surface in self.surfaces),
             "surface_may_cross_domain_boundary": self.surface_may_cross_domain_boundary,
             "refinement_count": len(self.refinements),
-            "feature_control": self.features is not None,
-            "feature_edge_counts": tuple(len(edges) for edges in self._feature_sets),
-            "layer_control": False,
             "cell_types": _cell_type_counts(mesh_data),
         }
         self._report = GenerationReport(
@@ -1698,7 +1649,7 @@ class CartesianMesher:
         """
         if stop_after is not None:
             mesh_data = self._run_cfmesh_workflow(stop_after)
-            if self.exact_sides and stop_after in ("meshOptimisation", "boundaryLayerRefinement"):
+            if self.exact_sides and stop_after == "meshOptimisation":
                 # Completed workflow prefixes (used by the extruded mesher) carry
                 # the exact coupling sides; earlier diagnostic checkpoints keep
                 # the enlarged workflow domain.
@@ -1721,27 +1672,6 @@ class CartesianMesher:
                 points=finalized.get("n_points"),
             )
         return finalized
-
-    def __call__(self) -> MeshData:
-        """Build the mesh using the default full workflow."""
-        return self.build()
-
-    def save_native_mesh(self, path: str | Path) -> Path:
-        """Build and save the lossless OpenONDA native ``.npz`` representation.
-
-        Parameters
-        ----------
-        path : str or pathlib.Path
-            Destination file.
-
-        Returns
-        -------
-        pathlib.Path
-            Written destination.
-        """
-        from ...io.mesh_storage import save_native_mesh
-
-        return save_native_mesh(self.build(), path)
 
 
 __all__ = ["CartesianMesher"]

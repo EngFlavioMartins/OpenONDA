@@ -311,15 +311,6 @@ class ExtrudedCartesianMesher:
     domain: BoxDomain
     levels: tuple[float, ...]
 
-    @property
-    def max_cell_size(self) -> float:
-        """Background maximum cell size inherited from ``source``, in m."""
-        return self.source.max_cell_size
-
-    def effective_cell_size(self, requested: float) -> float:
-        """Return the source octree's realizable dyadic size for a request in m."""
-        return self.source.effective_cell_size(requested)
-
     def build(self, *, on_generated: Callable[[MeshData], object] | None = None) -> MeshData:
         """Generate, section, extrude, validate, and return a native FVM mesh.
 
@@ -376,9 +367,12 @@ class ExtrudedCartesianMesher:
             name: root_size / 2**level
             for name, level in native["surface_patch_refinement_levels"].items()
         }
-        if not np.isclose(background, self.max_cell_size, rtol=1e-12, atol=0):
+        if not np.isclose(background, self.source.max_cell_size, rtol=1e-12, atol=0):
             raise ValueError("Source mesh changed the requested background spacing")
-        sizes = [("background", self.max_cell_size), ("boundary", self.source.boundary_cell_size)]
+        sizes = [
+            ("background", self.source.max_cell_size),
+            ("boundary", self.source.boundary_cell_size),
+        ]
         sizes += [(item.name, item.cell_size) for item in self.source.refinements]
         sizes += [("patch:" + item.patch, item.cell_size) for item in self.source.patch_refinements]
         generation.update(
@@ -386,7 +380,11 @@ class ExtrudedCartesianMesher:
             resolved_boundary_cell_size=boundary,
             resolved_surface_patch_sizes=patch_sizes,
             requested_sizes=[
-                {"name": name, "requested": size, "effective": self.effective_cell_size(size)}
+                {
+                    "name": name,
+                    "requested": size,
+                    "effective": self.source.effective_cell_size(size),
+                }
                 for name, size in sizes
             ],
             source_domain=list(self.source.domain.bounds),
@@ -395,5 +393,3 @@ class ExtrudedCartesianMesher:
         if on_generated is not None:
             on_generated(result)
         return result
-
-    __call__ = build

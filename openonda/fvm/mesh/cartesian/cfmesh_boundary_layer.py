@@ -58,10 +58,6 @@ def _core_cell_references(
     return references, counts
 
 
-def _area_vector(coordinates: np.ndarray) -> np.ndarray:
-    return _face_area_vector(coordinates)
-
-
 def _distance_to_line(point: np.ndarray, first: np.ndarray, second: np.ndarray) -> float:
     """cfMesh's non-clamped distanceOfPointFromTheEdge helper."""
     edge = second - first
@@ -288,7 +284,7 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
     }
 
     face_normals: dict[int, np.ndarray] = {
-        face_id: _area_vector(source_points[source_faces[face_id]])
+        face_id: _face_area_vector(source_points[source_faces[face_id]])
         for face_id in range(n_internal, len(source_faces))
     }
     penetration: dict[tuple[int, int], np.ndarray] = {}
@@ -575,7 +571,7 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
             if neighbour is not None
             else centre - cell_references[owner]
         )
-        if float(np.dot(_area_vector(points[face]), direction)) < 0.0:
+        if float(np.dot(_face_area_vector(points[face]), direction)) < 0.0:
             return face[::-1].copy()
         return face.copy()
 

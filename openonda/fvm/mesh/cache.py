@@ -14,7 +14,6 @@ from .cartesian.config import (
     BoxDomain,
     BoxPatches,
     BoxRefinement,
-    FeatureRefinement,
     PatchRefinement,
     STLSurface,
 )
@@ -45,7 +44,6 @@ def can_reuse_mesh(mesher: object) -> TypeIs[CartesianMesher | ExtrudedCartesian
         and all(type(surface) is STLSurface for surface in mesher.surfaces)
         and all(type(value) is BoxRefinement for value in mesher.refinements)
         and all(type(value) is PatchRefinement for value in mesher.patch_refinements)
-        and (mesher.features is None or type(mesher.features) is FeatureRefinement)
     )
 
 
@@ -71,12 +69,10 @@ def _specification(mesher: CartesianMesher | ExtrudedCartesianMesher) -> dict[st
     data["domain"] = asdict(mesher.domain)
     data["requested_domain"] = asdict(mesher.requested_domain)
     data["surfaces"] = [
-        {"sha256": surface.sha256, "patch": surface.patch, "allow_open": surface.allow_open}
-        for surface in mesher.surfaces
+        {"sha256": surface.sha256, "patch": surface.patch} for surface in mesher.surfaces
     ]
     for name in ("refinements", "patch_refinements"):
         data[name] = [asdict(value) for value in getattr(mesher, name)]
-    data["features"] = None if mesher.features is None else asdict(mesher.features)
     return data
 
 

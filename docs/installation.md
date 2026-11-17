@@ -32,9 +32,9 @@ pip install -e .
 ```
 
 Optional extras add features: `[parallel]` for MPI runs (mpi4py and petsc4py;
-pip builds PETSc from source, so Conda is the easier route), `[meshing]` for
-Gmsh import, `[gaussian-mesh-cuda12]` for the CUDA image sums below and `[dev]`
-for the development tools, for example `pip install -e ".[parallel,meshing]"`.
+pip builds PETSc from source, so Conda is the easier route),
+`[gaussian-mesh-cuda12]` for the CUDA image sums below and `[dev]` for the
+development tools, for example `pip install -e ".[parallel,dev]"`.
 
 ## Released packages
 

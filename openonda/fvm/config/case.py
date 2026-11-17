@@ -130,7 +130,7 @@ class FVMCase:
     logging : LoggingConfig
         Log records.
     mesh : MeshSource
-        Native mesh mapping, a ``.npz`` or Gmsh ``.msh`` file relative to
+        Native mesh mapping, a ``.npz`` file relative to
         ``directory``, or a mesher (an object with ``build()`` or a callable)
         returning the mesh mapping. Coordinates are in m.
     mesh_quality : MeshQualityConfig

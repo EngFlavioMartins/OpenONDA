@@ -28,7 +28,6 @@ from ..surface_classification import (
     _closest_point_on_triangle,
     _triangle_box_overlap_mask_kernel,
     closest_point_on_triangles,
-    triangle_box_overlap,
 )
 from ..topology import face_vertex_keys, last_key_matches, renumbered_rows
 from ..triangulated_surface import SurfaceBounds, TriangulatedSurface
@@ -1304,7 +1303,7 @@ def _morton_leaves_in_box(
 def _segment_meets_box(
     start: np.ndarray, end: np.ndarray, lower: np.ndarray, upper: np.ndarray, tol: float
 ) -> bool:
-    """:meth:`_SurfaceFeatureLocator._intersects_leaf` for one segment and expanded box."""
+    """Whether a segment meets a box that was expanded by a tolerance."""
     direction = end - start
     for axis in range(3):
         if abs(direction[axis]) <= tol:
@@ -1366,7 +1365,7 @@ def _nearest_feature_edges_kernel(
     cache_values: np.ndarray,
     cache_used: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """:meth:`_SurfaceFeatureLocator.nearest_edge` for each point and patch set.
+    """:meth:`_SurfaceFeatureLocator.nearest_edges` for each point and patch set.
 
     A leaf's feature edges are those of its patch triangles, patch by patch
     and in each triangle's cyclic order, that cross the leaf; each leaf's
@@ -1560,7 +1559,7 @@ def _cached_leaf_triangles(
     cache_values: np.ndarray,
     cache_used: int,
 ) -> tuple[np.ndarray, int]:
-    """Cache the triangles meeting a tolerance-expanded leaf, as :meth:`_triangles_in_leaf`.
+    """Cache the triangles meeting a tolerance-expanded leaf.
 
     The leaf's sorted triangle ids are appended to ``cache_values``; returns
     that array, grown when full, and its used length.
@@ -1813,7 +1812,6 @@ class _OctreeSurfaceLocator:
         lattice_width = int(round((root_bounds[1] - root_bounds[0]) / finest_cell_size))
         self.leaf_lookup = LeafLookup(leaves, lattice_width.bit_length() - 1)
         self.tolerance = 1.0e-15 * float(root_bounds[1] - root_bounds[0])
-        self._leaf_triangles: dict[int, np.ndarray] = {}
         self._nearest_cache: dict[tuple[int, bytes], tuple[np.ndarray, float, int]] = {}
         # Leaf origins per level as sorted lattice codes, for compiled lookups
         limit = self.leaf_lookup.limit
@@ -1832,47 +1830,6 @@ class _OctreeSurfaceLocator:
             np.empty(1024, dtype=np.int64),
             0,
         )
-
-    def leaves_in_box(self, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
-        """Return octree leaves with positive-volume overlap with a box."""
-        lattice_limit = self.leaf_lookup.limit
-        first = np.floor((lower - self.root_lower) / self.finest_cell_size).astype(np.int64)
-        last = np.ceil((upper - self.root_lower) / self.finest_cell_size).astype(np.int64) - 1
-        first = np.clip(first, 0, lattice_limit - 1)
-        last = np.clip(last, 0, lattice_limit - 1)
-        max_level = self.leaf_lookup.max_level
-        found = np.empty(len(self.widths), dtype=np.int64)
-        count = _morton_leaves_in_box(
-            first,
-            last,
-            max_level,
-            self._level_codes,
-            self._level_ids,
-            self._level_starts,
-            np.empty((8 * (max_level + 1) + 8, 5), dtype=np.int64),
-            found,
-        )
-        return found[:count]
-
-    def _triangles_in_leaf(self, leaf_id: int) -> np.ndarray:
-        cached = self._leaf_triangles.get(leaf_id)
-        if cached is not None:
-            return cached
-        lower = self.leaf_lower[leaf_id] - self.tolerance
-        upper = self.leaf_upper[leaf_id] + self.tolerance
-        broad = self.index.candidate_triangles(lower, upper)
-        if len(broad):
-            triangles = self.index.triangles[broad]
-            overlap = triangle_box_overlap(
-                0.5 * (lower + upper),
-                0.5 * (upper - lower),
-                triangles[:, 0],
-                triangles[:, 1],
-                triangles[:, 2],
-            )
-            broad = broad[overlap]
-        self._leaf_triangles[leaf_id] = broad
-        return broad
 
     def nearest_triangle(
         self,
@@ -1981,64 +1938,15 @@ class _SurfaceFeatureLocator:
             point_id for point_id in range(len(vertices)) if feature_degree[point_id] >= 3
         )
         self.patch_locators = patch_locators
-        self._leaf_edges: dict[int, list[tuple[int, int]]] = {}
         self._packed_arrays: tuple[np.ndarray, ...] | None = None
         self._edge_cache: tuple[np.ndarray, np.ndarray, np.ndarray, int] | None = None
-
-    def _intersects_leaf(self, edge: tuple[int, int], leaf_id: int) -> bool:
-        locator = self.locator
-        tol = locator.tolerance
-        lower = locator.leaf_lower[leaf_id] - tol
-        upper = locator.leaf_upper[leaf_id] + tol
-        start, end = self.points[list(edge)]
-        direction = end - start
-        for axis in range(3):
-            if abs(direction[axis]) <= tol:
-                continue
-            other = [i for i in range(3) if i != axis]
-            for plane in (lower[axis], upper[axis]):
-                fraction = (plane - start[axis]) / direction[axis]
-                intersection = start + fraction * direction
-                if (
-                    -tol < fraction < 1.0 + tol
-                    and np.all(intersection[other] - lower[other] > -tol)
-                    and np.all(intersection[other] - upper[other] < tol)
-                ):
-                    return True
-        return bool(np.all(start >= lower) and np.all(start <= upper))
-
-    def _edges_in_leaf(self, leaf_id: int) -> list[tuple[int, int]]:
-        if leaf_id not in self._leaf_edges:
-            result: list[tuple[int, int]] = []
-            seen: set[tuple[int, int]] = set()
-            offset = 0
-            # Native contained edges follow the contained-triangle and cyclic
-            # facet-edge order, not a global nearest-edge sort.
-            for locator in self.patch_locators:
-                for local_id in locator._triangles_in_leaf(leaf_id):
-                    triangle = self.triangles[offset + int(local_id)]
-                    for i in range(3):
-                        edge = tuple(sorted((triangle[i], triangle[(i + 1) % 3])))
-                        if edge in seen or edge not in self.feature_patches:
-                            continue
-                        if self._intersects_leaf(edge, leaf_id):
-                            seen.add(edge)
-                            result.append(edge)
-                offset += len(locator.index.triangles)
-            self._leaf_edges[leaf_id] = result
-        return self._leaf_edges[leaf_id]
-
-    def nearest_edge(self, point: np.ndarray, patches: Sequence[int]) -> tuple[np.ndarray, float]:
-        """Nearest point on a feature edge of exactly these patches, and its squared distance."""
-        nearest, distances = self.nearest_edges(np.asarray(point)[None, :], [patches])
-        return nearest[0], float(distances[0])
 
     def nearest_edges(
         self, points: np.ndarray, patch_sets: Sequence[Sequence[int]]
     ) -> tuple[np.ndarray, np.ndarray]:
-        """:meth:`nearest_edge` of each point with its patch set.
+        """Nearest feature-edge point and squared distance for each point and its patch set.
 
-        The search covers the leaves within 0.75 leaf widths of the point,
+        A feature edge qualifies when it joins exactly the patches of that set. The search covers the leaves within 0.75 leaf widths of the point,
         doubling that reach up to twice until a feature edge of only those
         patches crosses one of them.
         """
@@ -2332,7 +2240,9 @@ def _untangle_assigned_patch_surface(
                 selected_points=set(edge_points),
                 feature_locator=feature_locator,
             )
-        smooth_cfmesh_partition_points(mesh_data, partition_points, auxiliary_state=auxiliary_state)
+        smooth_cfmesh_partition_points(
+            mesh_data, partition_points, iterations=1, auxiliary_state=auxiliary_state
+        )
         if remap and partition_points:
             point_indices = np.asarray(partition_points, dtype=np.int64)
             points[point_indices] = np.asarray(
@@ -2455,7 +2365,6 @@ def project_cfmesh_template(
     points[boundary_point_ids] = mapped_points
     untangling = untangle_cfmesh_surface(
         mesh_data,
-        map_to_surface=lambda point: global_index.nearest_point(point)[0],
         map_points_to_surface=lambda values: global_index.indexed_nearest_points(values)[0],
     )
     mesh_data["mesh_generation"]["surface_projection"] = {

@@ -1,7 +1,6 @@
 # OpenONDA with its complete CPU stack: FVM, VPM, coupling, Cartesian meshing
 # and MPI/PETSc parallel runs. Taichi comes from OpenONDA's channel, everything
-# else from conda-forge. Gmsh import is optional (conda install python-gmsh):
-# its OpenCascade dependency roughly doubles the environment. Build from the repository root with
+# else from conda-forge. Build from the repository root with
 #   OPENONDA_VERSION=<version> rattler-build build --recipe conda/recipes/openonda \
 #       -c conda-forge -c <channel holding taichi>
 context:

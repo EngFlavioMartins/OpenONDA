@@ -3,7 +3,6 @@
 Single home for the tensor-grid mesh generation shared by the FVM solver
 and the FVM–VPM coupler:
 
-* graded 1-D node distributions — :func:`stretched`, :func:`wall_refined_axis`;
 * the 3-D generator :func:`box_mesh_3d` with six named outer patches; and
 * :func:`coupling_box_mesh`, the coupler-facing variant whose outer sides form
   one merged coupling patch (optionally leaving the spanwise pair ``empty``).
@@ -21,139 +20,6 @@ import numpy as np
 from .data import BoundaryPatchData, MeshData
 
 OUTER_PATCH_NAMES = ("inlet", "outlet", "ymin", "ymax", "zmin", "zmax")
-
-
-def stretched(
-    start: float,
-    end: float,
-    h0: float,
-    ratio: float,
-    h_max: float | None = None,
-) -> np.ndarray:
-    """Generate one monotone geometrically stretched node sequence.
-
-    Parameters
-    ----------
-    start, end : float
-        Coordinate interval endpoints in m. ``end < start`` reverses the
-        returned direction.
-    h0 : float
-        Initial cell-size scale in m before the first ratio multiplication.
-    ratio : float
-        Geometric growth factor.
-    h_max : float or None, default=None
-        Optional maximum cell size in m.
-
-    Returns
-    -------
-    numpy.ndarray
-        Interior/far-end node coordinates excluding ``start`` and including
-        ``end``, ordered in the direction of travel and in m.
-    """
-    direction = 1.0 if end >= start else -1.0
-    span = abs(end - start)
-    sizes = []
-    size = h0
-    pos = 0.0
-    while span - pos > 1e-12:
-        size *= ratio
-        if h_max is not None:
-            size = min(size, h_max)
-        remaining = span - pos
-        if remaining < 1.35 * size:  # absorb the sliver into one final cell
-            size = remaining
-        sizes.append(size)
-        pos += size
-    return start + direction * np.cumsum(np.asarray(sizes, dtype=np.float64))
-
-
-def _grade_segment(
-    a: float, b: float, h_wall: float, h_far: float, ratio: float, wall: str
-) -> np.ndarray:
-    """Interior node coordinates of one graded segment (a, b), EXCLUDING both
-    endpoints.  The cell adjacent to the ``wall`` end ('lo'→a, 'hi'→b) is
-    ``h_wall``; sizes grow geometrically by ``ratio`` toward the other end,
-    capped at ``h_far``.  The final sliver is merged so the endpoints are hit
-    exactly (same scheme as ``stretched``)."""
-    length = float(b) - float(a)
-    sizes = []
-    size = float(h_wall)
-    pos = 0.0
-    while length - pos > 1e-12:
-        remaining = length - pos
-        if remaining < 1.5 * size:  # absorb the sliver into the last cell
-            sizes.append(remaining)
-            break
-        sizes.append(size)
-        pos += size
-        size = min(size * ratio, h_far)
-    cell_sizes = np.asarray(sizes, dtype=np.float64)  # small→large, from the wall end
-    # 'lo': fine cell adjacent to a; 'hi': fine cell adjacent to b (sizes run large→small from a)
-    nodes = a + np.cumsum(cell_sizes if wall == "lo" else cell_sizes[::-1])
-    return nodes[:-1]  # drop the far endpoint (interior nodes only)
-
-
-def wall_refined_axis(
-    lo: float,
-    hi: float,
-    wall_lo: float,
-    wall_hi: float,
-    h_wall: float,
-    h_far: float,
-    ratio: float = 1.25,
-) -> np.ndarray:
-    """Generate a 1-D grid refined about two wall breakpoints.
-
-    The node array on ``[lo, hi]`` has cells of size approximately
-    ``h_wall`` adjacent to the body faces ``wall_lo``/``wall_hi`` and coarsens
-    geometrically toward the outer ends and through the carved body interior.
-
-    Breakpoints land exactly on the supplied coordinates so a box carve and its
-    wall faces are mesh planes.
-
-    Parameters
-    ----------
-    lo, hi, wall_lo, wall_hi : float
-        Ordered coordinates in m.
-    h_wall, h_far : float
-        Near-wall and far-field target cell sizes in m.
-    ratio : float, default=1.25
-        Geometric growth factor.
-
-    Returns
-    -------
-    numpy.ndarray
-        Monotone node coordinates including both outer endpoints, in m.
-
-    Raises
-    ------
-    ValueError
-        If the construction creates a degenerate cell.
-    """
-    left = _grade_segment(lo, wall_lo, h_wall, h_far, ratio, wall="hi")
-    # Body interior: grade OUTWARD from each wall to the body midpoint (two
-    # clean half-segments).  Never union two overlapping node sets — the
-    # interleaved nodes create near-zero-width slabs that, on a tensor grid,
-    # cut through the entire domain (measured min cell 4e-4 at h_wall=0.025,
-    # collapsing the CFL time step and blowing up both solvers).
-    mid = 0.5 * (wall_lo + wall_hi)
-    body = np.concatenate(
-        [
-            _grade_segment(wall_lo, mid, h_wall, h_far, ratio, wall="lo"),
-            [mid],
-            _grade_segment(mid, wall_hi, h_wall, h_far, ratio, wall="hi"),
-        ]
-    )
-    right = _grade_segment(wall_hi, hi, h_wall, h_far, ratio, wall="lo")
-    nodes = np.concatenate([[lo], left, [wall_lo], body, [wall_hi], right, [hi]])
-    nodes = np.unique(np.round(nodes, 12))
-    d = np.diff(nodes)
-    if d.min() < 0.4 * h_wall:
-        raise ValueError(
-            f"wall_refined_axis produced a degenerate cell ({d.min():.3e} < "
-            f"0.4*h_wall={0.4 * h_wall:.3e}) — refusing to build a broken mesh."
-        )
-    return nodes
 
 
 def _cells_along(lo: float, hi: float, spacing: float, axis: str) -> int:
@@ -481,9 +347,8 @@ def coupling_box_mesh(
 ) -> MeshData:
     """Return a hex mesh whose six sides form one coupling patch.
 
-    ``nodes=(xs, ys, zs)`` supplies explicit per-axis grid lines (e.g. graded,
-    wall-refined via :func:`wall_refined_axis`); otherwise a uniform grid at
-    ``spacing`` is built. With ``empty_spanwise``, the zmin/zmax faces remain
+    ``nodes=(xs, ys, zs)`` supplies explicit per-axis grid lines (for example
+    graded towards a wall); otherwise a uniform grid at ``spacing`` is built. With ``empty_spanwise``, the zmin/zmax faces remain
     separate ``empty`` patches while the four in-plane faces form the coupling
     patch. With ``hole_box``, the cells inside it are removed
     (body-fitted): the exposed faces become a
