@@ -50,6 +50,10 @@ from .cfmesh_surface_optimisation import (
 )
 from .config import BoxRefinement, PatchRefinement
 
+# The lattice position of a leaf is packed into one int64 as ``x + n * (y + n * z)`` with
+# ``n`` at most ``2**level + 1``; three such factors fit in 63 bits up to level 20.
+MAX_OCTREE_LEVEL = 20
+
 
 def _additional_level(max_cell_size: float, requested: float) -> int:
     """Return cfMesh's first dyadic level whose size does not exceed a request."""
@@ -863,6 +867,12 @@ def build_cfmesh_template(
         # Automatic refinement adds a full neighbour layer, including finer
         # leaves, and can therefore exceed its selected-leaf level by one.
         max_level = max(max_level, automatic_level) + 1
+    if max_level > MAX_OCTREE_LEVEL:
+        raise ValueError(
+            f"The requested sizes need {max_level} octree levels below the root cube; the "
+            f"integer lattice codes of the template hold at most {MAX_OCTREE_LEVEL}. Raise "
+            "the finest cell size or lower the background size"
+        )
     root_lower = np.asarray(root_bounds[::2], dtype=np.float64)
     root_upper = np.asarray(root_bounds[1::2], dtype=np.float64)
     root_size = float(root_upper[0] - root_lower[0])

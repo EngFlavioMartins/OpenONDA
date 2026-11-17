@@ -23,7 +23,27 @@ if TYPE_CHECKING:
 
 
 class MeshQualityReport(TypedDict):
-    """Mesh-quality extrema from :func:`validate_geometry`; angles in degrees."""
+    """Mesh-quality extrema from :func:`validate_geometry`; angles in degrees.
+
+    Definitions, with ``d`` the vector from the owner centre to the neighbour centre
+    (to the face centre on a boundary face) and ``S`` the face area vector:
+
+    - Non-orthogonality is the angle between ``S`` and ``d``, for every face.
+    - Skewness is ``|x_f - (x_P + w (x_N - x_P))| / |x_N - x_P|`` for an interior face,
+      with ``x_f`` the face centre, ``x_P`` and ``x_N`` the owner and neighbour centres
+      and ``w`` the interpolation weight. It is not OpenFOAM's skewness, which measures
+      the distance to the point where the line of centres meets the face plane, so
+      limits are not interchangeable. Boundary faces have no skewness, and
+      ``max_skewness_face`` is an interior face.
+    - The aspect ratio of a cell is the largest over the smallest distance from its
+      centre to its face centres.
+    - The face-pyramid cosine is the cosine of the angle between ``S`` and the vector
+      from the cell centre to the face centre; it is positive for a star-shaped cell.
+    - The adjacent volume scale ratio is the larger over the smaller cube root of the
+      volume of the two cells of an interior face.
+    - The adjacent cell size ratio uses the nominal ``cell_sizes`` of the two cells and
+      is ``None`` without them.
+    """
 
     min_volume: float
     max_volume: float

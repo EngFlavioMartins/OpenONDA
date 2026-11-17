@@ -995,67 +995,43 @@ class CartesianMesher:
             progress.details(changes=topology_trace["changes"])
         stage_mesh["mesh_generation"]["surface_topology"] = topology_trace
         stage_mesh["mesh_generation"]["workflow_checkpoint"] = stop_after
-        if stop_after == "surfaceTopology":
-            stage_mesh["mesh_generation"]["surface_topology_changes"] = topology_trace["changes"]
-        elif stop_after in (
-            "surfaceProjection",
-            "patchAssignment",
-            "edgeExtraction",
-            "boundaryLayerGeneration",
-            "meshOptimisation",
-        ):
-            edge_mapper = None
-            surface_untangler = None
-            stage_mesh["mesh_generation"]["surface_topology_changes"] = topology_trace["changes"]
+
+        def reached(stage: str) -> bool:
+            stages = self.supported_workflow_stages
+            return stages.index(stop_after) >= stages.index(stage)
+
+        if not reached("surfaceTopology"):
+            return stage_mesh
+        stage_mesh["mesh_generation"]["surface_topology_changes"] = topology_trace["changes"]
+        surface_arguments = {
+            "domain": self._workflow_domain.bounds,
+            "domain_patch_names": self.domain.patches.as_tuple(),
+            "surfaces": tuple(surface.surface_data for surface in self.surfaces),
+            "surface_patch_names": tuple(surface.patch for surface in self.surfaces),
+        }
+        if reached("surfaceProjection"):
             with mesh_stage("surface projection"):
-                project_cfmesh_template(
-                    stage_mesh,
-                    domain=self._workflow_domain.bounds,
-                    domain_patch_names=self.domain.patches.as_tuple(),
-                    surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                    surface_patch_names=tuple(surface.patch for surface in self.surfaces),
+                project_cfmesh_template(stage_mesh, **surface_arguments)
+        if reached("patchAssignment"):
+            with mesh_stage("patch assignment"):
+                assign_cfmesh_patches(stage_mesh, **surface_arguments)
+        if reached("edgeExtraction"):
+            with mesh_stage("edge extraction"):
+                extract_cfmesh_edges(stage_mesh)
+            with mesh_stage("patch point remapping"):
+                edge_mapper, surface_untangler = remap_cfmesh_patch_points(
+                    stage_mesh, **surface_arguments
                 )
-            if stop_after in (
-                "patchAssignment",
-                "edgeExtraction",
-                "boundaryLayerGeneration",
-                "meshOptimisation",
-            ):
-                with mesh_stage("patch assignment"):
-                    assign_cfmesh_patches(
-                        stage_mesh,
-                        domain=self._workflow_domain.bounds,
-                        domain_patch_names=self.domain.patches.as_tuple(),
-                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
-                    )
-            if stop_after in (
-                "edgeExtraction",
-                "boundaryLayerGeneration",
-                "meshOptimisation",
-            ):
-                with mesh_stage("edge extraction"):
-                    extract_cfmesh_edges(stage_mesh)
-                with mesh_stage("patch point remapping"):
-                    edge_mapper, surface_untangler = remap_cfmesh_patch_points(
-                        stage_mesh,
-                        domain=self._workflow_domain.bounds,
-                        domain_patch_names=self.domain.patches.as_tuple(),
-                        surfaces=tuple(surface.surface_data for surface in self.surfaces),
-                        surface_patch_names=tuple(surface.patch for surface in self.surfaces),
-                    )
-                with mesh_stage("surface optimisation"):
-                    optimise_cfmesh_surface(
-                        stage_mesh,
-                        map_edge_points=edge_mapper,
-                        untangle_surface=surface_untangler,
-                    )
-            if stop_after in ("boundaryLayerGeneration", "meshOptimisation"):
+            with mesh_stage("surface optimisation"):
+                optimise_cfmesh_surface(
+                    stage_mesh,
+                    map_edge_points=edge_mapper,
+                    untangle_surface=surface_untangler,
+                )
+            if reached("boundaryLayerGeneration"):
                 with mesh_stage("wrapper layer generation"):
                     add_cfmesh_wrapper_layer(stage_mesh)
-            if stop_after == "meshOptimisation":
-                assert edge_mapper is not None
-                assert surface_untangler is not None
+            if reached("meshOptimisation"):
                 with mesh_stage("mesh optimisation"):
                     optimise_cfmesh_mesh(
                         stage_mesh,
