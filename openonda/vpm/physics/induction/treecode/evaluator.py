@@ -98,9 +98,11 @@ class TreecodeInduction:
         Notes
         -----
         The defaults use ``theta=0.4``, third-order multipoles, and a fixed
-        f32 workspace. On a vortex-ring cloud of 8.8k--81k particles they keep
-        the relative L2 error against direct summation below 3e-4 for the
-        velocity and 7e-4 for its gradient. This backend supports Gaussian
+        f32 workspace. On a Gaussian vortex ring of 14,052 particles (radius
+        1 m, core 0.1 m, lattice spacing 0.03 m) the relative L2 error against
+        an f64 direct sum is 3.4e-4 for the velocity and 8.7e-4 for its
+        gradient; it falls as the ring is resolved by more particles (5.5e-4
+        and 1.3e-3 at 6,248, 2.0e-4 and 5.7e-4 at 61,200). This backend supports Gaussian
         and Winckelmans kernels and rejects f64 configurations during case
         validation.
         Call :meth:`build` and then :meth:`bind` before evaluation.
