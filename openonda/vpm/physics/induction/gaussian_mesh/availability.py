@@ -1,8 +1,7 @@
 """Lazy installation validation for the explicitly selected CUDA mesh backend.
 
 No solver fields, allocation pools, FFT plans, device selection or stream
-selection are changed here. The restoring FENV scope leaves all caller math
-controls and flags as they were. Kernel/FFT execution is an explicit separate
+selection are changed here. Kernel/FFT execution is an explicit separate
 installation check, not an import-time probe or a numerical fallback.
 """
 
@@ -58,36 +57,12 @@ def use_system_cuda_toolkit() -> None:
             os.environ["CUDA_PATH"] = prefix
 
 
-def require_gaussian_host_runtime() -> dict[str, str]:
-    """Validate portable IEEE error_bounds without importing a CUDA dependency."""
-    from ....numerics.ieee import _bridge, ieee_arithmetic, require_round_to_nearest
-    from ..gaussian_tail._interval import _platform
-
-    try:
-        bridge = _bridge()
-        if bridge is None:
-            raise RuntimeError("floating-point guard extension is unavailable")
-        require_round_to_nearest()
-        with ieee_arithmetic():
-            _platform()
-    except (ImportError, AttributeError, RuntimeError) as error:
-        raise GaussianMeshUnavailableError(
-            "Gaussian mesh requires OpenONDA's installed _fenv C extension and "
-            "restoring IEEE arithmetic support. Reinstall OpenONDA with a C compiler "
-            "available (python -m pip install --force-reinstall --no-deps .), then run "
-            "python -m openonda.verify_install --with-gaussian-mesh. "
-            "Plain FMM backends do not require this extension."
-        ) from error
-    return {"execution_backend": "cpu", "fenv_extension": str(bridge.__file__)}
-
-
 def require_gaussian_mesh_runtime() -> dict[str, object]:
     """Validate optional CUDA libraries without selecting a device.
 
     Explicit CUDA selection raises an actionable dependency error. Portable
     selection may execute the identical finite field operator on the host.
     """
-    host = require_gaussian_host_runtime()
     try:
         cp = import_module("cupy")
     except (ImportError, OSError) as error:
@@ -147,5 +122,4 @@ def require_gaussian_mesh_runtime() -> dict[str, object]:
         "nvrtc_version": nvrtc_version,
         "cuda_devices": devices,
         "cuda_header_directory": header_directory,
-        "fenv_extension": host["fenv_extension"],
     }

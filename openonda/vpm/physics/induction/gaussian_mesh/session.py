@@ -25,11 +25,10 @@ from openonda.core.errors import NonFiniteSolutionError
 from openonda.core.profiling import Stopwatch
 
 from ....kernels.registry import kernel_definition
-from ....numerics.ieee import ieee_arithmetic, require_round_to_nearest
 from ..gaussian_tail import prepare_tail_source, query_tail_bound, validate_source_values
-from ..gaussian_tail._interval import add, mul, point
 from ..gaussian_tail.error_bounds import ImageTailSeparationError
-from .error_bounds import finite_image_correction_bound
+from ..gaussian_tail.float_bounds import upper_bound
+from .error_bounds import finite_image_correction_bound, omitted_distance_lower
 
 # A kernel with an algebraic core defect may need a wider local correction
 # than the Gaussian one; it grows by this factor up to this limit.
@@ -43,7 +42,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ..gaussian_tail.error_bounds import PreparedTailSource
-    from .correction_distance import CorrectionClassificationBound
     from .execution import PortableGaussianImageFields
     from .fields import GaussianImageFields
     from .host_fields import GaussianHostImageFields
@@ -67,7 +65,7 @@ def _positive_int(value: int, name: str, maximum: int | None = None) -> int:
 class GaussianSlabSettings:
     """Explicit, case-independent operator and resource controls.
 
-    The enclosed whole-tail remainder test and mesh resolution belong in the
+    The whole-tail remainder test and mesh resolution belong in the
     numerical identity. Resource caps select bounded storage and never permit
     coarsening the field or loosening the truncation tolerance.
 
@@ -218,21 +216,6 @@ def _new_field(
     return field
 
 
-def _classification(
-    snapshot: "PreparedTailSource",
-    lower: np.ndarray,
-    upper: np.ndarray,
-    *,
-    cutoff: float,
-    images: tuple[tuple[int, bool], ...],
-) -> "CorrectionClassificationBound":
-    # The classifier proof is separate from the mathematical
-    # correction envelope. No unproven assumption r >= configured cutoff.
-    from .correction_distance import correction_classification_bound
-
-    return correction_classification_bound(snapshot, lower, upper, cutoff=cutoff, images=images)
-
-
 class GaussianSlabFieldSession:
     """Serial, exact-content field reuse with explicit mathematical validation.
 
@@ -360,15 +343,14 @@ class GaussianSlabFieldSession:
                 return self._snapshot, True
         self._close_field()
         self._snapshot = None
-        with ieee_arithmetic():
-            snapshot = prepare_tail_source(
-                position,
-                strength,
-                radius,
-                z_min=self.z_min,
-                z_max=self.z_max,
-                max_sources=self.settings.max_sources,
-            )
+        snapshot = prepare_tail_source(
+            position,
+            strength,
+            radius,
+            z_min=self.z_min,
+            z_max=self.z_max,
+            max_sources=self.settings.max_sources,
+        )
         self._snapshot = snapshot
         return snapshot, False
 
@@ -391,10 +373,6 @@ class GaussianSlabFieldSession:
         self._check_thread()
         if self.closed:
             raise RuntimeError("Gaussian slab field session is closed")
-        # Descriptor construction outside the tail-bound scope must use the
-        # same rounding rule as the enclosed world-shift arithmetic. Taichi's
-        # RN+FTZ mode is supported; arbitrary directed rounding is not.
-        require_round_to_nearest()
         if self._configuration_key() != self._configuration:
             self._close_field()
             raise RuntimeError("Gaussian slab controls changed; construct a new session")
@@ -433,49 +411,40 @@ class GaussianSlabFieldSession:
                 if source_only or (k, odd) != (0, False)
             )
             try:
-                with ieee_arithmetic():
-                    # The broadening covers the actual cores, not the partners.
-                    resolved = self.settings.mesh.resolve(
-                        source[2] if ratio == 1.0 else source[2] / ratio
-                    )
-                    cutoff = resolved.correction_cutoff * cutoff_growth
-                    # The completed tail stays smooth over the cardinal stencils
-                    # only when it lies a few broadened cores beyond their reach.
-                    separation = 3.0 * resolved.tau + resolved.order * resolved.spacing
-                    tail = query_tail_bound(
-                        snapshot,
-                        lower,
-                        upper,
-                        shells=shells,
-                        minimum_separation=separation,
-                        kernel_defect=envelope,
-                    )
-                    classification = _classification(
-                        snapshot, lower, upper, cutoff=cutoff, images=images
-                    )
-                    omitted_radius = classification.omitted_distance_lower
-                    correction = finite_image_correction_bound(
-                        snapshot,
-                        lower,
-                        upper,
-                        images=images,
-                        tau=resolved.tau,
-                        omitted_distance_lower=omitted_radius,
-                        max_images=len(images),
-                        kernel_defect=envelope,
-                    )
-                    velocity_error = float(
-                        add(point(tail.velocity_upper), point(correction.velocity_upper)).upper
-                    )
-                    gradient_error = float(
-                        add(point(tail.gradient_upper), point(correction.gradient_upper)).upper
-                    )
-                    velocity_limit = float(
-                        mul(point(self.tolerance), point(self.velocity_scale)).lower
-                    )
-                    gradient_limit = float(
-                        mul(point(self.tolerance), point(self.gradient_scale)).lower
-                    )
+                # The broadening covers the actual cores, not the partners.
+                resolved = self.settings.mesh.resolve(
+                    source[2] if ratio == 1.0 else source[2] / ratio
+                )
+                cutoff = resolved.correction_cutoff * cutoff_growth
+                # The completed tail stays smooth over the cardinal stencils
+                # only when it lies a few broadened cores beyond their reach.
+                separation = 3.0 * resolved.tau + resolved.order * resolved.spacing
+                tail = query_tail_bound(
+                    snapshot,
+                    lower,
+                    upper,
+                    shells=shells,
+                    minimum_separation=separation,
+                    kernel_defect=envelope,
+                )
+                omitted_radius = omitted_distance_lower(
+                    snapshot, lower, upper, cutoff=cutoff, images=images
+                )
+                correction = finite_image_correction_bound(
+                    snapshot,
+                    lower,
+                    upper,
+                    images=images,
+                    tau=resolved.tau,
+                    omitted_distance_lower=omitted_radius,
+                    max_images=len(images),
+                    kernel_defect=envelope,
+                )
+                velocity_error = float(upper_bound(tail.velocity_upper + correction.velocity_upper))
+                gradient_error = float(upper_bound(tail.gradient_upper + correction.gradient_upper))
+                # One ulp down: the product of two floats is rounded.
+                velocity_limit = math.nextafter(self.tolerance * self.velocity_scale, 0.0)
+                gradient_limit = math.nextafter(self.tolerance * self.gradient_scale, 0.0)
                 if velocity_error <= velocity_limit and gradient_error <= gradient_limit:
                     break
                 # A wider correction removes the near part of an algebraic
@@ -580,15 +549,9 @@ class GaussianSlabFieldSession:
                 # The field's retained stencil domain decides reuse; these
                 # initial query bounds are descriptive only.
                 self._role, self._bounds = source_only, (lower.copy(), upper.copy())
-            # FTZ/DAZ may change subnormal host shifts even under RN. Match
-            # the actual immutable list used by correction, not a hash or an
-            # algebraically equivalent expression. No query is published on
-            # a mismatch, including on an otherwise valid exact-source hit.
             field = self._field
             if field is None:
                 raise RuntimeError("Gaussian slab field was not built")
-            if field._prepared_world_images != classification.world_images:
-                raise RuntimeError("runtime image descriptors differ from validated world images")
             velocity, gradient, finite = field.evaluate_prepared(query)
             # Explicit transfers; no undocumented Taichi/CuPy pointer interop.
             velocity = field.cp.asnumpy(velocity)

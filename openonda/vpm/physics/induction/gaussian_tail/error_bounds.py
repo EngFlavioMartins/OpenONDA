@@ -8,8 +8,8 @@ bounds what that completion leaves over a continuous target AABB in constant
 work.
 
 This module does not select a solver stopping settings or publish induction
-fields. It does not modify rounding or denormal controls. Callers must supply
-the checked IEEE environment and validate an explicit source epoch before
+fields. Its bounds are float64 evaluations with the safety factor of
+``float_bounds``. Callers must validate an explicit source epoch before
 reusing a snapshot; which sources produced it is never inferred from object identity.
 Finite-image interpolation, FFT and GPU accuracy remain separate obligations.
 """
@@ -19,58 +19,80 @@ import hashlib
 import math
 from numbers import Integral
 import struct
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 import numpy as np
 
-from ._interval import (
-    CoreDefectBound,
-    Interval,
-    _platform,
-    add,
-    div_positive,
-    gaussian_defect_upper,
-    mul,
-    pairwise_sum,
-    pi_interval,
-    point,
-    sub,
-)
+from .float_bounds import COORDINATE_SLACK, positive_sum, upper_bound
 from .kernel_defect import row_defect_upper
 
 if TYPE_CHECKING:
     from ....kernels.definition import AlgebraicDefectEnvelope, GaussianDefectEnvelope
 
 
+class CoreDefectBound(TypedDict):
+    """Velocity and Jacobian bounds of one source family's core defect."""
+
+    velocity_upper: float
+    gradient_frobenius_upper: float
+    exponential_upper: NotRequired[float]
+    order: NotRequired[int]
+    q_lower: NotRequired[float]
+    scope: NotRequired[str]
+
+
 @dataclass(frozen=True)
-class FrozenBounds:
-    """Immutable lower and upper bounds of a scalar or vector interval."""
+class SourceBox:
+    """Immutable lower and upper corner of an axis-aligned box."""
 
-    lower: float | tuple
-    upper: float | tuple
-
-
-def _freeze(value: "Interval") -> "FrozenBounds":
-    if value.lower.ndim == 0:
-        return FrozenBounds(float(value.lower), float(value.upper))
-    if value.lower.shape != (3,):
-        raise ValueError("only scalar or vec3 immutable moments supported")
-    return FrozenBounds(tuple(value.lower.tolist()), tuple(value.upper.tolist()))
+    lower: tuple
+    upper: tuple
 
 
-def _thaw(value: "FrozenBounds") -> "Interval":
-    return Interval(np.asarray(value.lower), np.asarray(value.upper))
+def gaussian_defect_upper(
+    *, gap_lower: float, sigma_upper: float, period_lower: float, absolute_strength_upper: float
+) -> CoreDefectBound:
+    """One source-family +/- infinite-tail defect of Gaussian cores.
 
-
-def _axis_sum(value: "Interval") -> "Interval":
-    return pairwise_sum(Interval(np.moveaxis(value.lower, -1, 0), np.moveaxis(value.upper, -1, 0)))
+    Inputs must themselves be valid one-sided bounds. A safe source strength
+    is sum_j ||Gamma_j||_1, rather than assuming a rounded L2 norm is an upper
+    bound. The caller separately sums the original and reflected families.
+    """
+    values = (gap_lower, sigma_upper, period_lower, absolute_strength_upper)
+    if not all(math.isfinite(v) and v > 0 for v in values):
+        raise ValueError("positive finite scalar one-sided inputs required")
+    gap, sigma, period, strength = values
+    q = (gap / sigma) ** 2
+    if q < 1.5:
+        raise ValueError("uniform-core Gaussian density monotonicity not checked")
+    # exp(-q) <= order!/q^order for every order; the largest useful one is taken.
+    order = min(96, math.floor(q))
+    exponential = 1.0
+    for k in range(1, order + 1):
+        exponential *= k / q
+    exponential_bound = min(1.0, exponential)
+    gap2, sigma2 = gap * gap, sigma * sigma
+    gap3, sigma3 = gap2 * gap, sigma2 * sigma
+    gap4 = gap2 * gap2
+    # pi**1.5>5 and sqrt(5)<3 give loose rational constants.
+    cu = (sigma / gap3 + 2.0 / (sigma * gap)) / 20.0
+    cj = 3.0 * (sigma / gap4 + 2.0 / (sigma * gap2)) / 20.0 + 1.0 / (5.0 * sigma3)
+    common = strength * (sigma2 * exponential_bound) / (period * gap)
+    return {
+        "velocity_upper": float(upper_bound(common * cu)),
+        "gradient_frobenius_upper": float(upper_bound(common * cj)),
+        "exponential_upper": float(upper_bound(exponential_bound)),
+        "order": order,
+        "q_lower": q,
+        "scope": "one source family, complete +/- omitted shells",
+    }
 
 
 @dataclass(frozen=True)
 class SourceFamily:
     """Bounding box of one image family of the sources, about z_min."""
 
-    source_box: FrozenBounds
+    source_box: SourceBox
 
 
 @dataclass(frozen=True)
@@ -158,14 +180,19 @@ def validate_source_values(
 
 @dataclass(frozen=True)
 class PreparedTailSource:
-    """Immutable source snapshot with its strength, boxes and largest core."""
+    """Immutable source snapshot with its strength, boxes and largest core.
+
+    ``period`` is 2 (z_max - z_min) and ``absolute_strength`` the sum of the
+    absolute strength components, both float64 evaluations whose rounding the
+    bounds of ``float_bounds`` absorb. The boxes are relative to ``origin``.
+    """
 
     source_count: int
     source_sha256: str
     source_data: GaussianSourceData = field(repr=False)
     origin: tuple
-    period: FrozenBounds
-    absolute_strength: FrozenBounds
+    period: float
+    absolute_strength: float
     families: tuple[SourceFamily, SourceFamily]
     core_max: float
     identically_zero: bool
@@ -186,7 +213,6 @@ def prepare_tail_source(
     bytes are intentional: later validation compares values exactly, not hashes.
     No caller arrays, views or device fields are retained.
     """
-    _platform()
     if (
         isinstance(max_sources, bool)
         or not isinstance(max_sources, Integral)
@@ -208,39 +234,35 @@ def prepare_tail_source(
     ):
         raise ValueError("finite sources inside physical slab and positive cores required")
     digest = _source_data_hash(source_data)
-    period = mul(point(2.0), sub(point(z_max), point(z_min)))
-    if period.lower <= 0:
+    period = 2.0 * (z_max - z_min)
+    if not period > 0:
         raise ValueError("positive enclosed period required")
     if not len(x):
-        family = SourceFamily(_freeze(point(np.zeros(3))))
+        zero = SourceBox((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+        family = SourceFamily(zero)
         return PreparedTailSource(
-            0,
-            digest,
-            source_data,
-            (0.0, 0.0, z_min),
-            _freeze(period),
-            _freeze(point(0.0)),
-            (family, family),
-            0.0,
-            True,
+            0, digest, source_data, (0.0, 0.0, z_min), period, 0.0, (family, family), 0.0, True
         )
     origin = 0.5 * x.min(axis=0) + 0.5 * x.max(axis=0)
     origin[2] = z_min
-    local = sub(point(x), point(origin))
-    weight = _axis_sum(point(np.abs(gamma)))
-    weight = Interval(np.maximum(weight.lower, 0.0), weight.upper)
-    box = Interval(local.lower.min(axis=0), local.upper.max(axis=0))
+    local = x - origin
+    box_lower, box_upper = local.min(axis=0), local.max(axis=0)
     # Odd images reflect about z_min, the origin of the local z axis.
-    reflected_box = Interval(box.lower.copy(), box.upper.copy())
-    reflected_box.lower[2], reflected_box.upper[2] = -box.upper[2], -box.lower[2]
+    reflected_lower, reflected_upper = box_lower.copy(), box_upper.copy()
+    reflected_lower[2], reflected_upper[2] = -box_upper[2], -box_lower[2]
     return PreparedTailSource(
         len(x),
         digest,
         source_data,
         tuple(origin.tolist()),
-        _freeze(period),
-        _freeze(pairwise_sum(weight)),
-        (SourceFamily(_freeze(box)), SourceFamily(_freeze(reflected_box))),
+        period,
+        positive_sum(np.abs(gamma)),
+        (
+            SourceFamily(SourceBox(tuple(box_lower.tolist()), tuple(box_upper.tolist()))),
+            SourceFamily(
+                SourceBox(tuple(reflected_lower.tolist()), tuple(reflected_upper.tolist()))
+            ),
+        ),
         float(sigma.max()),
         not np.any(gamma),
     )
@@ -290,7 +312,6 @@ def query_tail_bound(
     snapshot's partner widths. The completion is smooth on the auxiliary mesh
     only when Z exceeds ``minimum_separation``.
     """
-    _platform()
     if type(snapshot) is not PreparedTailSource:
         raise TypeError("prepared immutable source snapshot required")
     lower, upper = (
@@ -322,62 +343,59 @@ def query_tail_bound(
     }
     if snapshot.identically_zero:
         return QueryTailBound(0.0, 0.0, diagnostics)
-    target = sub(Interval(lower, upper), point(snapshot.origin))
-    target_z = Interval(target.lower[2], target.upper[2])
-    period, strength = _thaw(snapshot.period), _thaw(snapshot.absolute_strength)
-    retained = mul(period, point(shells + 0.5))
+    origin = np.asarray(snapshot.origin)
+    target_z_lower, target_z_upper = float(lower[2] - origin[2]), float(upper[2] - origin[2])
+    period, strength = snapshot.period, snapshot.absolute_strength
+    retained = period * (shells + 0.5)
     # Both sides of one family; 99/70 exceeds sqrt(2).
-    velocity_coefficient = div_positive(
-        mul(point(2.0), mul(strength, mul(period, mul(period, period)))),
-        mul(point(64.0), pi_interval()),
-    )
-    gradient_coefficient = mul(div_positive(point(495.0), point(70.0)), velocity_coefficient)
+    velocity_coefficient = 2.0 * (strength * (period * period * period)) / (64.0 * math.pi)
+    gradient_coefficient = (495.0 / 70.0) * velocity_coefficient
     ru = rj = gu = gj = 0.0
     for family in snapshot.families:
-        box = _thaw(family.source_box)
-        source_z = Interval(box.lower[2], box.upper[2])
-        reach = max(float(sub(source_z, target_z).upper), float(sub(target_z, source_z).upper))
-        boundary = float(sub(retained, point(reach)).lower)
+        source_z_lower, source_z_upper = family.source_box.lower[2], family.source_box.upper[2]
+        reach = max(source_z_upper - target_z_lower, target_z_upper - source_z_lower)
+        z_scale = max(
+            abs(source_z_lower), abs(source_z_upper), abs(target_z_lower), abs(target_z_upper)
+        )
+        lost = COORDINATE_SLACK * (retained + z_scale)
+        boundary = retained - reach - lost
         if boundary <= 0 or boundary <= minimum_separation:
             raise ImageTailSeparationError(
                 "retained shells must separate the omitted image rows from the query box"
             )
         # The nearest omitted image lies one period beyond this Gaussian gap.
-        gap = float(sub(point(boundary), div_positive(period, point(2.0))).lower)
-        ratio = div_positive(point(max(gap, 0.0)), point(snapshot.core_max))
+        gap = retained - reach - 0.5 * period - lost
+        ratio = max(gap, 0.0) / snapshot.core_max
         if kernel_defect is None:
-            if gap <= 0 or mul(ratio, ratio).lower < 1.5:
+            if gap <= 0 or ratio * ratio < 1.5:
                 raise ImageTailSeparationError("omitted images must lie beyond the Gaussian cores")
-        elif gap <= 0 or ratio.lower < kernel_defect.minimum_ratio:
+        elif gap <= 0 or ratio < kernel_defect.minimum_ratio:
             raise ImageTailSeparationError("omitted images must lie beyond the kernel cores")
-        distance = point(boundary)
-        fifth = mul(mul(mul(distance, distance), mul(distance, distance)), distance)
-        ur = div_positive(velocity_coefficient, fifth)
-        jr = div_positive(gradient_coefficient, mul(fifth, distance))
+        fifth = (boundary * boundary) * (boundary * boundary) * boundary
+        ur = velocity_coefficient / fifth
+        jr = gradient_coefficient / (fifth * boundary)
         core: CoreDefectBound
         if kernel_defect is None:
             core = gaussian_defect_upper(
                 gap_lower=gap,
                 sigma_upper=snapshot.core_max,
-                period_lower=float(period.lower),
-                absolute_strength_upper=float(strength.upper),
+                period_lower=period,
+                absolute_strength_upper=strength,
             )
         else:
             velocity, gradient = row_defect_upper(
                 kernel_defect,
                 gap_lower=gap,
                 core_upper=snapshot.core_max,
-                period_lower=float(period.lower),
-                strength_upper=float(strength.upper),
+                period_lower=period,
+                strength_upper=strength,
             )
             core = {"velocity_upper": velocity, "gradient_frobenius_upper": gradient}
-        ru = float(add(point(ru), point(float(ur.upper))).upper)
-        rj = float(add(point(rj), point(float(jr.upper))).upper)
-        gu = float(add(point(gu), point(core["velocity_upper"])).upper)
-        gj = float(add(point(gj), point(core["gradient_frobenius_upper"])).upper)
+        ru, rj = ru + ur, rj + jr
+        gu, gj = gu + core["velocity_upper"], gj + core["gradient_frobenius_upper"]
         diagnostics["families"].append(
             {"completion_distance": boundary, "minimum_gap": gap, "core_defect": core}
         )
-    total_u = float(add(point(ru), point(gu)).upper)
-    total_j = float(add(point(rj), point(gj)).upper)
+    total_u = float(upper_bound(ru + gu))
+    total_j = float(upper_bound(rj + gj))
     return QueryTailBound(total_u, total_j, diagnostics)

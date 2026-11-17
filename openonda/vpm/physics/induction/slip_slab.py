@@ -74,12 +74,6 @@ def _check_cuda_mesh_installation() -> dict[str, object]:
     return require_gaussian_mesh_runtime()
 
 
-def _check_cpu_mesh_installation() -> dict[str, str]:
-    from .gaussian_mesh.availability import require_gaussian_host_runtime
-
-    return require_gaussian_host_runtime()
-
-
 def _mesh_execution_backend(backend: str) -> str:
     """Return where the slab image fields run for the ``GaussianSlabSettings.backend``.
 
@@ -88,7 +82,6 @@ def _mesh_execution_backend(backend: str) -> str:
     ``backend="cpu"`` asks for it.
     """
     if backend == "cpu" or not _mesh_runtime_is_cuda():
-        _check_cpu_mesh_installation()
         return "cpu"
     from .gaussian_mesh.availability import GaussianMeshUnavailableError
 
@@ -558,8 +551,8 @@ class SlipSlabInduction:
         return np.ascontiguousarray(u), np.ascontiguousarray(j), diagnostics
 
     def _record_mesh_tail(self, diagnostics: Mapping[str, Any]) -> None:
-        # Display only; actual validation used outward interval sums and limits
-        # inside the session before any field was published.
+        # Display only; the session compared these float64 bounds with the
+        # tolerance before it published any field.
         u = diagnostics.get("velocity_tail_bound", 0.0) + diagnostics.get(
             "velocity_correction_bound", 0.0
         )

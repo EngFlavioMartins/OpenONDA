@@ -1,8 +1,7 @@
 """Gaussian infinite-image tail error_bounds; no solver-settings integration.
 
-Callers must provide a round-to-nearest, gradual-underflow environment for
-preparation and queries. These functions never switch FENV controls; a caller
-such as a Taichi host may require a separately owned save/restore scope.
+The bounds are float64 evaluations with one safety factor (``float_bounds``),
+valid under round-to-nearest with or without flush-to-zero.
 Snapshots retain original immutable source bytes for explicit exact validation.
 Their error_bounds do not validate finite-image interpolation or GPU fields.
 """
