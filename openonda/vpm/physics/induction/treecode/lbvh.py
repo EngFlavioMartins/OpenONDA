@@ -461,8 +461,8 @@ class TaichiTreecode:
     @ti.kernel
     def _copy_ndarray_to_vec3_field(
         self,
-        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
-        dst: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.types.ndarray(),
+        dst: ti.template(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -473,8 +473,8 @@ class TaichiTreecode:
     @ti.kernel
     def _copy_ndarray_to_scalar_field(
         self,
-        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
-        dst: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.types.ndarray(),
+        dst: ti.template(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -484,8 +484,8 @@ class TaichiTreecode:
     @ti.kernel
     def _extract_vec3_field_prefix(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.types.ndarray(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -496,8 +496,8 @@ class TaichiTreecode:
     @ti.kernel
     def _extract_mat3_field_prefix(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.types.ndarray(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -572,9 +572,9 @@ class TaichiTreecode:
     @ti.kernel
     def _copy_particle_fields(
         self,
-        pos: ti.template(),  # type: ignore[invalid-annotation]
-        strg: ti.template(),  # type: ignore[invalid-annotation]
-        rad: ti.template(),  # type: ignore[invalid-annotation]
+        pos: ti.template(),
+        strg: ti.template(),
+        rad: ti.template(),
         N: ti.i32,
     ):
         """Copy particle data from source Taichi fields to treecode fields."""
@@ -869,8 +869,8 @@ class TaichiTreecode:
     def _compute_morton_codes_kernel(
         self,
         N: ti.i32,
-        aabb_min: ti.template(),  # type: ignore[invalid-annotation]
-        aabb_max: ti.template(),  # type: ignore[invalid-annotation]
+        aabb_min: ti.template(),
+        aabb_max: ti.template(),
     ):
         """Quantize f32 position to 30-bit Morton codes (10 bits/axis)."""
         inv_range = ti.Vector([0.0, 0.0, 0.0])
@@ -1166,7 +1166,7 @@ class TaichiTreecode:
         return result
 
     @ti.func
-    def skew(self, v: ti.template()) -> ti.Matrix:  # type: ignore[invalid-annotation]
+    def skew(self, v: ti.template()) -> ti.Matrix:
         """Return the 3-by-3 cross-product matrix for a three-vector.
 
         Parameters
@@ -1183,7 +1183,7 @@ class TaichiTreecode:
         return ti.Matrix([[0.0, -v[2], v[1]], [v[2], 0.0, -v[0]], [-v[1], v[0], 0.0]])
 
     @ti.func
-    def _dipole_vortex_strength_dot_r(self, node: ti.i32, r_vec: ti.template()) -> ti.math.vec3:  # type: ignore[invalid-annotation]
+    def _dipole_vortex_strength_dot_r(self, node: ti.i32, r_vec: ti.template()) -> ti.math.vec3:
         """Return sum vortex_strength_j * dot(r_vec, x_j - node_com)."""
         moment = self.node_vortex_strength_dipole[node]
         out = ti.Vector([0.0, 0.0, 0.0])
@@ -1205,7 +1205,7 @@ class TaichiTreecode:
         )
 
     @ti.func
-    def _dipole_cross_columns(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:  # type: ignore[invalid-annotation]
+    def _dipole_cross_columns(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:
         """Matrix whose column b is r_vec x sum_j d_{j,b} vortex_strength_j."""
         moment = self.node_vortex_strength_dipole[node]
         out = ti.Matrix.zero(ti.f32, 3, 3)
@@ -1217,7 +1217,7 @@ class TaichiTreecode:
         return out
 
     @ti.func
-    def _quad_P_matrix(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:  # type: ignore[invalid-annotation]
+    def _quad_P_matrix(self, node: ti.i32, r_vec: ti.template()) -> ti.Matrix:
         """P[k, j] = (Q_k r)_j = sum_p vortex_strength_{p,k} (r . d_p) d_{p,j}."""
         out = ti.Matrix.zero(ti.f32, 3, 3)
         for k in ti.static(range(3)):
@@ -1229,7 +1229,7 @@ class TaichiTreecode:
         return out
 
     @ti.func
-    def _quad_B_vector(self, node: ti.i32, P: ti.template(), r_vec: ti.template()) -> ti.math.vec3:  # type: ignore[invalid-annotation]
+    def _quad_B_vector(self, node: ti.i32, P: ti.template(), r_vec: ti.template()) -> ti.math.vec3:
         """B_k = r^T Q_k r = sum_p vortex_strength_{p,k} (r . d_p)^2  (= P_k . r)."""
         out = ti.Vector([0.0, 0.0, 0.0])
         for k in ti.static(range(3)):
@@ -1249,7 +1249,7 @@ class TaichiTreecode:
         return out
 
     @ti.func
-    def _quad_A_vector(self, P: ti.template()) -> ti.math.vec3:  # type: ignore[invalid-annotation]
+    def _quad_A_vector(self, P: ti.template()) -> ti.math.vec3:
         """A_i = eps_ijk P[k, j] = sum_p (r . d_p) (d_p x alpha_p)_i."""
         return ti.Vector([P[2, 1] - P[1, 2], P[0, 2] - P[2, 0], P[1, 0] - P[0, 1]])
 
@@ -1257,7 +1257,7 @@ class TaichiTreecode:
     def _far_velocity_node(
         self,
         node: ti.i32,
-        r_vec: ti.template(),  # type: ignore[invalid-annotation]
+        r_vec: ti.template(),
         r_mag: ti.f32,
         sigma: ti.f32,
     ) -> ti.math.vec3:
@@ -1294,7 +1294,7 @@ class TaichiTreecode:
     def _far_gradient_node(
         self,
         node: ti.i32,
-        r_vec: ti.template(),  # type: ignore[invalid-annotation]
+        r_vec: ti.template(),
         r_mag: ti.f32,
         sigma: ti.f32,
     ) -> ti.Matrix:
@@ -1385,7 +1385,7 @@ class TaichiTreecode:
         self,
         r_mag: ti.f32,
         sigma: ti.f32,
-        with_gradient: ti.template(),  # type: ignore[invalid-annotation]
+        with_gradient: ti.template(),
     ) -> ti.math.vec2:
         """Evaluate selected blob factors for a leaf pair in m⁻³ and m⁻⁵.
 
@@ -1403,7 +1403,7 @@ class TaichiTreecode:
     def _leaf_velocity_sum(
         self,
         node: int,
-        target_pos: ti.template(),  # type: ignore[invalid-annotation]
+        target_pos: ti.template(),
         target_rad: ti.f32,
         self_idx: int,
     ) -> ti.math.vec3:
@@ -1421,7 +1421,7 @@ class TaichiTreecode:
         return vel
 
     @ti.func
-    def _target_leaf_velocity_sum(self, node: int, target_pos: ti.template()) -> ti.math.vec3:  # type: ignore[invalid-annotation]
+    def _target_leaf_velocity_sum(self, node: int, target_pos: ti.template()) -> ti.math.vec3:
         vel = ti.Vector([0.0, 0.0, 0.0])
         start = self.node_particle_start[node]
         count = self.node_particle_count[node]
@@ -1438,7 +1438,7 @@ class TaichiTreecode:
     def _leaf_gradient_sum(
         self,
         node: int,
-        target_pos: ti.template(),  # type: ignore[invalid-annotation]
+        target_pos: ti.template(),
         target_rad: ti.f32,
     ) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
@@ -1483,7 +1483,7 @@ class TaichiTreecode:
         )
 
     @ti.func
-    def _target_leaf_gradient_sum(self, node: int, target_pos: ti.template()) -> ti.Matrix:  # type: ignore[invalid-annotation]
+    def _target_leaf_gradient_sum(self, node: int, target_pos: ti.template()) -> ti.Matrix:
         gradu = ti.Matrix.zero(ti.f32, 3, 3)
         start = self.node_particle_start[node]
         count = self.node_particle_count[node]
@@ -1750,7 +1750,7 @@ class TaichiTreecode:
             self.velocity_gradient[i] = gradu
 
     @ti.kernel
-    def _copy_freestream_from_field(self, src: ti.template()):  # type: ignore[invalid-annotation]
+    def _copy_freestream_from_field(self, src: ti.template()):
         """Device-to-device copy of a 0-d vec3, avoiding a host round-trip."""
         self.freestream_velocity[None] = src[None]
 
@@ -1997,15 +1997,15 @@ class TaichiTreecode:
     @ti.kernel
     def compute_external_target_fields_kernel(
         self,
-        target_position: ti.template(),  # type: ignore[invalid-annotation]
-        target_velocity: ti.template(),  # type: ignore[invalid-annotation]
-        target_gradient: ti.template(),  # type: ignore[invalid-annotation]
-        freestream_velocity: ti.template(),  # type: ignore[invalid-annotation]
+        target_position: ti.template(),
+        target_velocity: ti.template(),
+        target_gradient: ti.template(),
+        freestream_velocity: ti.template(),
         theta_sq: ti.f32,
         target_start: ti.i32,
         count: ti.i32,
-        write_velocity: ti.template(),  # type: ignore[invalid-annotation]
-        write_gradient: ti.template(),  # type: ignore[invalid-annotation]
+        write_velocity: ti.template(),
+        write_gradient: ti.template(),
     ):
         """Traverse the built LBVH at external target fields on the device.
 
@@ -2110,7 +2110,7 @@ class TaichiTreecode:
         self._external_target_traversal_error[None] = 0
 
     @ti.kernel
-    def _gaussian_particle_vorticity(self, output: ti.template(), start: ti.i32, count: ti.i32):  # type: ignore[invalid-annotation]
+    def _gaussian_particle_vorticity(self, output: ti.template(), start: ti.i32, count: ti.i32):
         for local in range(count):
             target = start + local
             position = self.position[target]

@@ -344,7 +344,7 @@ class StageRHS:
 
 
 @ti.kernel
-def _zero_stage_field(field: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
+def _zero_stage_field(field: ti.template(), count: ti.i32):
     for i in range(count):
         field[i] = ti.Vector([0.0, 0.0, 0.0])
 
@@ -362,7 +362,7 @@ class ParticleExternalStageContribution:
         self.particles = particles
 
     @ti.kernel
-    def _add_background(self, velocity: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
+    def _add_background(self, velocity: ti.template(), count: ti.i32):
         for i in range(count):
             velocity[i] += self.particles.velocity_background[None]
 

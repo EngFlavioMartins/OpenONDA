@@ -96,13 +96,13 @@ def horseshoe_velocity(target, v1, v2, v3, v4, circulation: float, epsilon: floa
 
 @ti.kernel
 def compute_aerodynamic_influence_coefficient_matrix(
-    collocation_point: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
-    panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
-    normal: ti.template(),  # type: ignore[invalid-annotation]
-    is_trailing_edge: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
-    aerodynamic_influence_coefficient: ti.template(),  # type: ignore[invalid-annotation]
+    collocation_point: ti.template(),
+    vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    normal: ti.template(),
+    is_trailing_edge: ti.template(),
+    trailing_edge_index: ti.template(),
+    aerodynamic_influence_coefficient: ti.template(),
     n_panels: ti.i32,
     epsilon: float,
     coupled_mode: ti.i32,
@@ -177,11 +177,11 @@ def compute_aerodynamic_influence_coefficient_matrix(
 
 @ti.kernel
 def compute_coupled_right_hand_side(
-    collocation_point: ti.template(),  # type: ignore[invalid-annotation]
-    normal: ti.template(),  # type: ignore[invalid-annotation]
-    external_velocity: ti.template(),  # type: ignore[invalid-annotation]
-    V_kinematic: ti.template(),  # type: ignore[invalid-annotation]
-    right_hand_side: ti.template(),  # type: ignore[invalid-annotation]
+    collocation_point: ti.template(),
+    normal: ti.template(),
+    external_velocity: ti.template(),
+    V_kinematic: ti.template(),
+    right_hand_side: ti.template(),
     n_panels: ti.i32,
 ):
     """
@@ -258,13 +258,13 @@ def panel_velocity_and_gradient(
 @ti.kernel
 def compute_induced_velocities(
     n_panels: ti.i32,
-    collocation_point: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
-    panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
-    circulation: ti.template(),  # type: ignore[invalid-annotation]
-    velocity: ti.template(),  # type: ignore[invalid-annotation]
-    external_velocity: ti.template(),  # type: ignore[invalid-annotation]
+    collocation_point: ti.template(),
+    vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    trailing_edge_index: ti.template(),
+    circulation: ti.template(),
+    velocity: ti.template(),
+    external_velocity: ti.template(),
     coupled_mode: ti.i32,
     core_radius: float,
 ):
@@ -288,12 +288,12 @@ def compute_induced_velocities(
 
 @ti.kernel
 def add_induced_velocity_at_targets(
-    target_position: ti.template(),  # type: ignore[invalid-annotation]
-    target_velocity: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
-    panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
-    circulation: ti.template(),  # type: ignore[invalid-annotation]
+    target_position: ti.template(),
+    target_velocity: ti.template(),
+    vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    trailing_edge_index: ti.template(),
+    circulation: ti.template(),
     n_targets: ti.i32,
     n_panels: ti.i32,
     coupled_mode: ti.i32,
@@ -319,24 +319,24 @@ def add_induced_velocity_at_targets(
 
 @ti.kernel
 def add_stage_rates_with_bound_exchange(
-    position: ti.template(),  # type: ignore[invalid-annotation]
-    strength: ti.template(),  # type: ignore[invalid-annotation]
-    radius: ti.template(),  # type: ignore[invalid-annotation]
-    velocity: ti.template(),  # type: ignore[invalid-annotation]
-    rate: ti.template(),  # type: ignore[invalid-annotation]
-    gradient_out: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_points: ti.template(),  # type: ignore[invalid-annotation]
-    corners: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
-    is_trailing_edge: ti.template(),  # type: ignore[invalid-annotation]
-    circulation: ti.template(),  # type: ignore[invalid-annotation]
-    stage_exchange: ti.template(),  # type: ignore[invalid-annotation]
+    position: ti.template(),
+    strength: ti.template(),
+    radius: ti.template(),
+    velocity: ti.template(),
+    rate: ti.template(),
+    gradient_out: ti.template(),
+    vortex_points: ti.template(),
+    corners: ti.template(),
+    trailing_edge_index: ti.template(),
+    is_trailing_edge: ti.template(),
+    circulation: ti.template(),
+    stage_exchange: ti.template(),
     count: ti.i32,
     n_panels: ti.i32,
     coupled_mode: ti.i32,
     mode: ti.i32,
     weighted_dt: float,
-    has_gradient: ti.template(),  # type: ignore[invalid-annotation]
+    has_gradient: ti.template(),
     core_radius: float,
 ):
     """Evaluate bound induction and retain its opposite strip strength exchange.
@@ -379,8 +379,8 @@ def add_stage_rates_with_bound_exchange(
 
 @ti.kernel
 def accumulate_bound_transport(
-    transported_bound: ti.template(),  # type: ignore[invalid-annotation]
-    stage_exchange: ti.template(),  # type: ignore[invalid-annotation]
+    transported_bound: ti.template(),
+    stage_exchange: ti.template(),
     weighted_dt: float,
     count: ti.i32,
 ):
@@ -391,10 +391,10 @@ def accumulate_bound_transport(
 
 @ti.kernel
 def initialize_bound_transport(
-    corners: ti.template(),  # type: ignore[invalid-annotation]
-    circulation: ti.template(),  # type: ignore[invalid-annotation]
-    is_trailing_edge: ti.template(),  # type: ignore[invalid-annotation]
-    transported_bound: ti.template(),  # type: ignore[invalid-annotation]
+    corners: ti.template(),
+    circulation: ti.template(),
+    is_trailing_edge: ti.template(),
+    transported_bound: ti.template(),
     count: ti.i32,
 ):
     """Start each strip's transport from its accepted closing-line vector."""
@@ -408,10 +408,10 @@ def initialize_bound_transport(
 def _bound_panel_pair_velocity(
     i: int,
     j: int,
-    target: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
-    panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
+    target: ti.template(),
+    vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    trailing_edge_index: ti.template(),
     g: float,
     coupled_mode: ti.i32,
     core_radius: float,
@@ -459,13 +459,13 @@ def _bound_panel_pair_velocity(
 @ti.kernel
 def compute_induced_velocities_at_bound(
     n_panels: ti.i32,
-    bound_vortex_midpoint: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
-    panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_index: ti.template(),  # type: ignore[invalid-annotation]
-    circulation: ti.template(),  # type: ignore[invalid-annotation]
-    velocity: ti.template(),  # type: ignore[invalid-annotation]
-    external_velocity: ti.template(),  # type: ignore[invalid-annotation]
+    bound_vortex_midpoint: ti.template(),
+    vortex_point_position: ti.template(),
+    panel_corner_position: ti.template(),
+    trailing_edge_index: ti.template(),
+    circulation: ti.template(),
+    velocity: ti.template(),
+    external_velocity: ti.template(),
     coupled_mode: ti.i32,
     core_radius: float,
 ):
@@ -512,11 +512,11 @@ def compute_induced_velocities_at_bound(
 
 @ti.kernel
 def compute_panel_force_coupled(
-    velocity: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_point_position: ti.template(),  # type: ignore[invalid-annotation]
-    circulation: ti.template(),  # type: ignore[invalid-annotation]
-    V_kinematic: ti.template(),  # type: ignore[invalid-annotation]
-    forces: ti.template(),  # type: ignore[invalid-annotation]
+    velocity: ti.template(),
+    vortex_point_position: ti.template(),
+    circulation: ti.template(),
+    V_kinematic: ti.template(),
+    forces: ti.template(),
     n_panels: ti.i32,
     density: float,
 ):

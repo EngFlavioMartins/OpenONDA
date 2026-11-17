@@ -31,13 +31,13 @@ class InductionReuseStatistics:
 
 
 @ti.kernel
-def _copy_field(source: ti.template(), target: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
+def _copy_field(source: ti.template(), target: ti.template(), count: ti.i32):
     for i in range(count):
         target[i] = source[i]
 
 
 @ti.kernel
-def _zero_vector(target: ti.template(), count: ti.i32):  # type: ignore[invalid-annotation]
+def _zero_vector(target: ti.template(), count: ti.i32):
     for i in range(count):
         target[i] = ti.Vector([0.0, 0.0, 0.0])
 

@@ -32,9 +32,9 @@ _TREECODE_TRAVERSAL_BLOCK_DIM = 128
 
 @ti.kernel
 def _rate_from_gradient(
-    gradient: ti.template(),  # type: ignore[invalid-annotation]
-    strength: ti.template(),  # type: ignore[invalid-annotation]
-    output: ti.template(),  # type: ignore[invalid-annotation]
+    gradient: ti.template(),
+    strength: ti.template(),
+    output: ti.template(),
     stretching_mode: ti.i32,
     count: ti.i32,
 ):

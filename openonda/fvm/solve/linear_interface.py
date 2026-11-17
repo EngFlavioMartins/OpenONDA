@@ -388,16 +388,16 @@ def _solve_petsc(
             comm=PETSc.COMM_WORLD,
         )
         resources.callback(mat.destroy)
-        mat.setOption(  # type: ignore[bad-argument-type]
-            PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR,  # type: ignore[bad-argument-type]
+        mat.setOption(
+            PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR,
             False,
         )
         row_start, row_end = mat.getOwnershipRange()
         for row in range(row_start, row_end):
             start, end = A_csr.indptr[row], A_csr.indptr[row + 1]
             if end > start:
-                mat.setValues(  # type: ignore[bad-argument-type]
-                    row,  # type: ignore[bad-argument-type]
+                mat.setValues(
+                    row,
                     A_csr.indices[start:end],
                     A_csr.data[start:end],
                 )
@@ -417,9 +417,9 @@ def _solve_petsc(
         rhs_start, rhs_end = rhs.getOwnershipRange()
         if rhs_end > rhs_start:
             rows = np.arange(rhs_start, rhs_end, dtype=PETSc.IntType)
-            rhs.setValues(  # type: ignore[bad-argument-type]
-                rows,  # type: ignore[bad-argument-type]
-                b_array[rhs_start:rhs_end],  # type: ignore[bad-argument-type]
+            rhs.setValues(
+                rows,
+                b_array[rhs_start:rhs_end],
             )
         rhs.assemblyBegin()
         rhs.assemblyEnd()
@@ -434,9 +434,9 @@ def _solve_petsc(
         sol_start, sol_end = solution.getOwnershipRange()
         if sol_end > sol_start:
             rows = np.arange(sol_start, sol_end, dtype=PETSc.IntType)
-            solution.setValues(  # type: ignore[bad-argument-type]
-                rows,  # type: ignore[bad-argument-type]
-                initial[sol_start:sol_end],  # type: ignore[bad-argument-type]
+            solution.setValues(
+                rows,
+                initial[sol_start:sol_end],
             )
         solution.assemblyBegin()
         solution.assemblyEnd()
@@ -495,7 +495,7 @@ def _solve_petsc(
         solve_start = Stopwatch()
         ksp.solve(rhs, solution)
         solve_seconds = solve_start.seconds
-        reason_code = int(ksp.getConvergedReason())  # type: ignore[bad-argument-type]
+        reason_code = int(ksp.getConvergedReason())
         iterations = int(ksp.getIterationNumber())
 
         scatter, solution_all = PETSc.Scatter.toAll(solution)
@@ -504,14 +504,14 @@ def _solve_petsc(
         scatter.begin(
             solution,
             solution_all,
-            addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
-            mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
+            addv=PETSc.InsertMode.INSERT_VALUES,
+            mode=PETSc.ScatterMode.FORWARD,
         )
         scatter.end(
             solution,
             solution_all,
-            addv=PETSc.InsertMode.INSERT_VALUES,  # type: ignore[bad-argument-type]
-            mode=PETSc.ScatterMode.FORWARD,  # type: ignore[bad-argument-type]
+            addv=PETSc.InsertMode.INSERT_VALUES,
+            mode=PETSc.ScatterMode.FORWARD,
         )
         x = solution_all.getArray(readonly=True).copy()
         if nullspace == "constant":
@@ -742,7 +742,7 @@ def _build_dilu_preconditioner(A: sparse.spmatrix) -> LinearOperator:
         matvec=lambda residual: _apply_dilu(
             indptr, indices, data, reciprocal, np.asarray(residual, dtype=np.float64).ravel()
         ),
-        dtype=A.dtype,  # type: ignore[call-arg]
+        dtype=A.dtype,
     )
 
 

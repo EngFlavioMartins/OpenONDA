@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree  # type: ignore
+from scipy.spatial import cKDTree
 
 from openonda.core.file_output import append_csv_rows
 from openonda.core.sampling import FIELD_SAMPLE_COLUMNS, Sampler, line_points, surface_points

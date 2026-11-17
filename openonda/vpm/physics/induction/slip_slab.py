@@ -117,21 +117,21 @@ def _active_snapshots(
 
 @ti.kernel
 def _publish_mesh_chunk(
-    host_velocity: ti.types.ndarray(ndim=2),  # type: ignore[invalid-annotation]
-    host_gradient: ti.types.ndarray(ndim=3),  # type: ignore[invalid-annotation]
-    velocity: ti.template(),  # type: ignore[invalid-annotation]
-    gradient: ti.template(),  # type: ignore[invalid-annotation]
-    strength: ti.template(),  # type: ignore[invalid-annotation]
-    rate: ti.template(),  # type: ignore[invalid-annotation]
-    background: ti.template(),  # type: ignore[invalid-annotation]
+    host_velocity: ti.types.ndarray(ndim=2),
+    host_gradient: ti.types.ndarray(ndim=3),
+    velocity: ti.template(),
+    gradient: ti.template(),
+    strength: ti.template(),
+    rate: ti.template(),
+    background: ti.template(),
     start: ti.i32,
     count: ti.i32,
     mode: ti.i32,
     rate_enabled: ti.i32,
-    is_stage: ti.template(),  # type: ignore[invalid-annotation]
-    has_velocity: ti.template(),  # type: ignore[invalid-annotation]
-    has_gradient: ti.template(),  # type: ignore[invalid-annotation]
-    include_freestream: ti.template(),  # type: ignore[invalid-annotation]
+    is_stage: ti.template(),
+    has_velocity: ti.template(),
+    has_gradient: ti.template(),
+    include_freestream: ti.template(),
 ):
     """Publish one checked field chunk at its original active indices."""
     for i in range(count):
@@ -208,11 +208,11 @@ def _publish_mesh_results(
 
 @ti.kernel
 def _span_violation(
-    position: ti.template(),  # type: ignore[invalid-annotation]
-    violation: ti.template(),  # type: ignore[invalid-annotation]
+    position: ti.template(),
+    violation: ti.template(),
     count: ti.i32,
-    z_min: ti.template(),  # type: ignore[invalid-annotation]
-    z_max: ti.template(),  # type: ignore[invalid-annotation]
+    z_min: ti.template(),
+    z_max: ti.template(),
 ):
     for i in range(count):
         z = position[i][2]

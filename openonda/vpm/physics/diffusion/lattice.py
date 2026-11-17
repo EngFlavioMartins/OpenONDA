@@ -409,7 +409,7 @@ class DiffusionLattice:
         self._apply_body_mask_kernel(self.current_grid, self.body_mask_grid, nx, ny, nz)
 
     @ti.func
-    def _fluid_link_open(self, body_mask: ti.template(), i, j, k, ni, nj, nk):  # type: ignore[invalid-annotation]
+    def _fluid_link_open(self, body_mask: ti.template(), i, j, k, ni, nj, nk):
         fluid_link = body_mask[ni, nj, nk] == 0
         if ti.static(self._has_body_links):
             axis = 0
@@ -424,9 +424,9 @@ class DiffusionLattice:
     @ti.kernel
     def laplacian_step_gpu_kernel(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.template(),  # type: ignore[invalid-annotation]
-        body_mask: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.template(),
+        body_mask: ti.template(),
         alpha: ti.f32,
         nx: ti.i32,
         ny: ti.i32,
@@ -466,9 +466,9 @@ class DiffusionLattice:
     @ti.func
     def _variable_diffusion_face_flux(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        effective_viscosity_grid: ti.template(),  # type: ignore[invalid-annotation]
-        body_mask: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        effective_viscosity_grid: ti.template(),
+        body_mask: ti.template(),
         i: ti.i32,
         j: ti.i32,
         k: ti.i32,
@@ -490,10 +490,10 @@ class DiffusionLattice:
     @ti.kernel
     def laplacian_step_variable_gpu_kernel(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.template(),  # type: ignore[invalid-annotation]
-        effective_viscosity_grid: ti.template(),  # type: ignore[invalid-annotation]
-        body_mask: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.template(),
+        effective_viscosity_grid: ti.template(),
+        body_mask: ti.template(),
         time_step_size: ti.f32,
         particle_spacing: ti.f32,
         nx: ti.i32,
@@ -544,7 +544,7 @@ class DiffusionLattice:
     @ti.kernel
     def zero_grid_kernel(
         self,
-        field: ti.template(),  # type: ignore[invalid-annotation]
+        field: ti.template(),
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,
@@ -556,8 +556,8 @@ class DiffusionLattice:
     @ti.kernel
     def _download_vec_chunk_kernel(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.types.ndarray(),
         offset: ti.i32,
         count: ti.i32,
         ny: ti.i32,
@@ -578,8 +578,8 @@ class DiffusionLattice:
     @ti.kernel
     def _upload_vec_chunk_kernel(
         self,
-        dst: ti.template(),  # type: ignore[invalid-annotation]
-        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),
+        src: ti.types.ndarray(),
         offset: ti.i32,
         count: ti.i32,
         ny: ti.i32,
@@ -597,8 +597,8 @@ class DiffusionLattice:
     @ti.kernel
     def upload_scalar_chunk_kernel(
         self,
-        dst: ti.template(),  # type: ignore[invalid-annotation]
-        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),
+        src: ti.types.ndarray(),
         offset: ti.i32,
         count: ti.i32,
         ny: ti.i32,
@@ -659,8 +659,8 @@ class DiffusionLattice:
     @ti.kernel
     def _apply_body_mask_kernel(
         self,
-        grid: ti.template(),  # type: ignore[invalid-annotation]
-        body_mask: ti.template(),  # type: ignore[invalid-annotation]
+        grid: ti.template(),
+        body_mask: ti.template(),
         nx: ti.i32,
         ny: ti.i32,
         nz: ti.i32,

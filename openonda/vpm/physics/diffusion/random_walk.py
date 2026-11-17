@@ -37,8 +37,8 @@ def _fold_into_slab_kernel(dtype: TaichiDataType) -> Callable:
 
     @ti.kernel
     def fold(
-        position: ti.template(),  # type: ignore[invalid-annotation]
-        vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
+        position: ti.template(),
+        vortex_strength: ti.template(),
         count: ti.i32,
         z_min: dtype,
         z_max: dtype,

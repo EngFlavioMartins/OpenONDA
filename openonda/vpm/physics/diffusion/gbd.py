@@ -598,9 +598,9 @@ def _lagrange6_weights_ti(fraction: ti.f32):
 
 @ti.kernel
 def lagrange6_scatter_gpu_kernel(
-    position: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
-    grid: ti.template(),  # type: ignore[invalid-annotation]
+    position: ti.template(),
+    vortex_strength: ti.template(),
+    grid: ti.template(),
     gmin_x: ti.f32,
     gmin_y: ti.f32,
     gmin_z: ti.f32,
@@ -630,8 +630,8 @@ def lagrange6_scatter_gpu_kernel(
 
 @ti.kernel
 def add_slab_images_kernel(
-    deposit: ti.template(),  # type: ignore[invalid-annotation]
-    images: ti.template(),  # type: ignore[invalid-annotation]
+    deposit: ti.template(),
+    images: ti.template(),
     nx: ti.i32,
     ny: ti.i32,
     nz: ti.i32,
@@ -658,9 +658,9 @@ def add_slab_images_kernel(
 
 @ti.kernel
 def m4_scatter_gpu_kernel(
-    position: ti.template(),  # type: ignore[invalid-annotation]
-    vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
-    grid: ti.template(),  # type: ignore[invalid-annotation]
+    position: ti.template(),
+    vortex_strength: ti.template(),
+    grid: ti.template(),
     gmin_x: ti.f32,
     gmin_y: ti.f32,
     gmin_z: ti.f32,
@@ -717,9 +717,9 @@ def m4_scatter_gpu_kernel(
 
 @ti.kernel
 def add_sparse_wall_corrections_kernel(
-    grid: ti.template(),  # type: ignore[invalid-annotation]
-    indices: ti.types.ndarray(),  # type: ignore[invalid-annotation]
-    corrections: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+    grid: ti.template(),
+    indices: ti.types.ndarray(),
+    corrections: ti.types.ndarray(),
     count: ti.i32,
 ):
     """Add host-reduced corrections; input nodes are unique."""

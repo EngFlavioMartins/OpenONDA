@@ -263,8 +263,8 @@ class PhysicsBase:
     @ti.kernel
     def _copy_ndarray_to_vec3_field(
         self,
-        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
-        dst: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.types.ndarray(),
+        dst: ti.template(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -276,8 +276,8 @@ class PhysicsBase:
     @ti.kernel
     def _copy_ndarray_to_scalar_field(
         self,
-        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
-        dst: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.types.ndarray(),
+        dst: ti.template(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -288,8 +288,8 @@ class PhysicsBase:
     @ti.kernel
     def _copy_ndarray_to_mat3_field(
         self,
-        src: ti.types.ndarray(),  # type: ignore[invalid-annotation]
-        dst: ti.template(),  # type: ignore[invalid-annotation]
+        src: ti.types.ndarray(),
+        dst: ti.template(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -302,8 +302,8 @@ class PhysicsBase:
     @ti.kernel
     def _extract_vec3_field_prefix(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.types.ndarray(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -315,8 +315,8 @@ class PhysicsBase:
     @ti.kernel
     def _extract_mat3_field_prefix(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.types.ndarray(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -329,8 +329,8 @@ class PhysicsBase:
     @ti.kernel
     def _extract_scalar_field_prefix(
         self,
-        src: ti.template(),  # type: ignore[invalid-annotation]
-        dst: ti.types.ndarray(),  # type: ignore[invalid-annotation]
+        src: ti.template(),
+        dst: ti.types.ndarray(),
         start_idx: ti.i32,
         n: ti.i32,
     ):
@@ -581,13 +581,13 @@ class PhysicsBase:
         self.treecode_traversal_block_dim = int(traversal_block_dim)
 
     @ti.kernel
-    def _copy_vec3(self, src: ti.template(), dst: ti.template(), N: ti.i32):  # type: ignore[invalid-annotation]
+    def _copy_vec3(self, src: ti.template(), dst: ti.template(), N: ti.i32):
         """Copy the first N entries of one vec3 field into another."""
         for i in range(N):
             dst[i] = src[i]
 
     @ti.kernel
-    def _copy_vec3_offset(self, src: ti.template(), dst: ti.template(), start: ti.i32, N: ti.i32):  # type: ignore[invalid-annotation]
+    def _copy_vec3_offset(self, src: ti.template(), dst: ti.template(), start: ti.i32, N: ti.i32):
         """Copy one bounded target batch into its field destination."""
         for i in range(N):
             dst[start + i] = src[i]
@@ -595,8 +595,8 @@ class PhysicsBase:
     @ti.kernel
     def _fill_vec3_from_background(
         self,
-        dst: ti.template(),  # type: ignore[invalid-annotation]
-        background: ti.template(),  # type: ignore[invalid-annotation]
+        dst: ti.template(),
+        background: ti.template(),
         start: ti.i32,
         N: ti.i32,
     ):
@@ -605,13 +605,13 @@ class PhysicsBase:
             dst[start + i] = background[None]
 
     @ti.kernel
-    def _zero_vec3_field(self, field: ti.template(), N: ti.i32):  # type: ignore[invalid-annotation]
+    def _zero_vec3_field(self, field: ti.template(), N: ti.i32):
         """Zero the first N entries of a vector field."""
         for i in range(N):
             field[i] = ti.Vector([0.0, 0.0, 0.0])
 
     @ti.kernel
-    def _copy_mat3(self, src: ti.template(), dst: ti.template(), N: ti.i32):  # type: ignore[invalid-annotation]
+    def _copy_mat3(self, src: ti.template(), dst: ti.template(), N: ti.i32):
         """Copy the first N entries of one 3×3 matrix field into another."""
         for i in range(N):
             dst[i] = src[i]

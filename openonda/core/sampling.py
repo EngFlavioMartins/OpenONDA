@@ -111,7 +111,7 @@ class Sampler:
         return type(self) is type(other) and self.config_dict() == other.config_dict()
 
     # Samplers may cache interpolation stencils, so they are not hashable.
-    __hash__ = None  # type: ignore[assignment]
+    __hash__ = None
 
 
 def line_points(

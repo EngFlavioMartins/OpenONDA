@@ -143,12 +143,12 @@ class ParticleFieldEvaluation:
 
         @ti.kernel
         def compute_flow_integrals_kernel(
-            position: ti.template(),  # type: ignore[invalid-annotation]
-            vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
-            core_radius: ti.template(),  # type: ignore[invalid-annotation]
-            particle_volume: ti.template(),  # type: ignore[invalid-annotation]
-            viscosities_eff: ti.template(),  # type: ignore[invalid-annotation]
-            results: ti.template(),  # type: ignore[invalid-annotation]
+            position: ti.template(),
+            vortex_strength: ti.template(),
+            core_radius: ti.template(),
+            particle_volume: ti.template(),
+            viscosities_eff: ti.template(),
+            results: ti.template(),
             n_particles_total: ti.i32,
         ):
             """

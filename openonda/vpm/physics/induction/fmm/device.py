@@ -427,7 +427,7 @@ class FMMDeviceWorkspace:
     @ti.func
     def _inverse_r_derivative(
         self,
-        displacement: ti.template(),  # type: ignore[invalid-annotation]
+        displacement: ti.template(),
         derivative_index: ti.i32,
     ) -> ti.f32:
         inverse_radius = ti.rsqrt(displacement.dot(displacement))
@@ -628,9 +628,9 @@ class FMMDeviceWorkspace:
         self,
         target: ti.i32,
         source: ti.i32,
-        target_queue: ti.template(),  # type: ignore[invalid-annotation]
-        source_queue: ti.template(),  # type: ignore[invalid-annotation]
-        queue_count: ti.template(),  # type: ignore[invalid-annotation]
+        target_queue: ti.template(),
+        source_queue: ti.template(),
+        queue_count: ti.template(),
     ):
         slot = ti.atomic_add(queue_count[None], 1)
         if slot < self.max_queue_pairs:
@@ -644,9 +644,9 @@ class FMMDeviceWorkspace:
         self,
         target: ti.i32,
         source: ti.i32,
-        target_queue: ti.template(),  # type: ignore[invalid-annotation]
-        source_queue: ti.template(),  # type: ignore[invalid-annotation]
-        queue_count: ti.template(),  # type: ignore[invalid-annotation]
+        target_queue: ti.template(),
+        source_queue: ti.template(),
+        queue_count: ti.template(),
     ):
         target_is_leaf = self._is_fmm_leaf(target)
         source_is_leaf = self._is_fmm_leaf(source)
@@ -953,8 +953,8 @@ class FMMDeviceWorkspace:
     @ti.kernel
     def _scan_near_counts(
         self,
-        source: ti.template(),  # type: ignore[invalid-annotation]
-        destination: ti.template(),  # type: ignore[invalid-annotation]
+        source: ti.template(),
+        destination: ti.template(),
         node_count: ti.i32,
         stride: ti.i32,
     ):
@@ -968,15 +968,15 @@ class FMMDeviceWorkspace:
     @ti.kernel
     def _initialize_near_cursor(
         self,
-        inclusive_count: ti.template(),  # type: ignore[invalid-annotation]
-        cursor: ti.template(),  # type: ignore[invalid-annotation]
+        inclusive_count: ti.template(),
+        cursor: ti.template(),
         node_count: ti.i32,
     ):
         for node in range(node_count):
             cursor[node] = inclusive_count[node] - self._near_target_count[node]
 
     @ti.kernel
-    def _order_near_sources(self, cursor: ti.template(), pair_count: ti.i32):  # type: ignore[invalid-annotation]
+    def _order_near_sources(self, cursor: ti.template(), pair_count: ti.i32):
         """Group source cells by target cell in the reusable M2L source array."""
         for pair in range(pair_count):
             target = self.near_target[pair]
@@ -984,7 +984,7 @@ class FMMDeviceWorkspace:
             self.m2l_source[destination] = self.near_source[pair]
 
     @ti.kernel
-    def _near_field_target_pass(self, inclusive_count: ti.template(), particle_count: ti.i32):  # type: ignore[invalid-annotation]
+    def _near_field_target_pass(self, inclusive_count: ti.template(), particle_count: ti.i32):
         """Accumulate exact near interactions once per target particle."""
         for target_slot in range(particle_count):
             target = self.tree.sorted_indices[target_slot]
@@ -1046,12 +1046,12 @@ class FMMDeviceWorkspace:
     @ti.kernel
     def _empty_target_pass(
         self,
-        target_velocity: ti.template(),  # type: ignore[invalid-annotation]
-        target_gradient: ti.template(),  # type: ignore[invalid-annotation]
-        background_velocity: ti.template(),  # type: ignore[invalid-annotation]
+        target_velocity: ti.template(),
+        target_gradient: ti.template(),
+        background_velocity: ti.template(),
         target_count: ti.i32,
-        write_velocity: ti.template(),  # type: ignore[invalid-annotation]
-        write_gradient: ti.template(),  # type: ignore[invalid-annotation]
+        write_velocity: ti.template(),
+        write_gradient: ti.template(),
     ):
         """Write freestream velocity and zero gradient for an empty source cloud."""
         for target in range(target_count):

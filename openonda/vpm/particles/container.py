@@ -60,7 +60,7 @@ def cached_particle_property(func: F) -> F:
             setattr(self, cache_revision_name, self.state_revision)
         return getattr(self, cache_name)
 
-    return wrapper  # type: ignore[return-value]
+    return wrapper
 
 
 def inside_box(position: np.ndarray, bounds: Sequence[float]) -> np.ndarray:

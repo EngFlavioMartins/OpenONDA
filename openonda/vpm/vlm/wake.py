@@ -23,13 +23,13 @@ def _append_wake_particle(
     radius,
     volume,
     group,
-    wake_position: ti.template(),  # type: ignore[invalid-annotation]
-    wake_velocity: ti.template(),  # type: ignore[invalid-annotation]
-    wake_vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
-    wake_core_radius: ti.template(),  # type: ignore[invalid-annotation]
-    wake_volume: ti.template(),  # type: ignore[invalid-annotation]
-    wake_group_id: ti.template(),  # type: ignore[invalid-annotation]
-    n_wake: ti.template(),  # type: ignore[invalid-annotation]
+    wake_position: ti.template(),
+    wake_velocity: ti.template(),
+    wake_vortex_strength: ti.template(),
+    wake_core_radius: ti.template(),
+    wake_volume: ti.template(),
+    wake_group_id: ti.template(),
+    n_wake: ti.template(),
 ):
     """Reserve one wake slot atomically; retain the count on capacity overflow.
 
@@ -51,22 +51,22 @@ def shed_wake_particles_kernel(
     n_panels: ti.i32,
     core_overlap: float,
     relative_cancellation_tolerance: float,
-    cumulative_circulation: ti.template(),  # type: ignore[invalid-annotation]
-    panel_corner_position: ti.template(),  # type: ignore[invalid-annotation]
-    neighbor_indices: ti.template(),  # type: ignore[invalid-annotation]
-    is_trailing_edge: ti.template(),  # type: ignore[invalid-annotation]
-    is_mirrored: ti.template(),  # type: ignore[invalid-annotation]
-    group_id: ti.template(),  # type: ignore[invalid-annotation]
-    wake_offset: ti.template(),  # type: ignore[invalid-annotation]
-    trailing_edge_velocity: ti.template(),  # type: ignore[invalid-annotation]
-    wake_position: ti.template(),  # type: ignore[invalid-annotation]
-    wake_velocity: ti.template(),  # type: ignore[invalid-annotation]
-    wake_vortex_strength: ti.template(),  # type: ignore[invalid-annotation]
-    wake_core_radius: ti.template(),  # type: ignore[invalid-annotation]
-    wake_volume: ti.template(),  # type: ignore[invalid-annotation]
-    wake_group_id: ti.template(),  # type: ignore[invalid-annotation]
-    n_wake: ti.template(),  # type: ignore[invalid-annotation]
-    transported_bound: ti.template(),  # type: ignore[invalid-annotation]
+    cumulative_circulation: ti.template(),
+    panel_corner_position: ti.template(),
+    neighbor_indices: ti.template(),
+    is_trailing_edge: ti.template(),
+    is_mirrored: ti.template(),
+    group_id: ti.template(),
+    wake_offset: ti.template(),
+    trailing_edge_velocity: ti.template(),
+    wake_position: ti.template(),
+    wake_velocity: ti.template(),
+    wake_vortex_strength: ti.template(),
+    wake_core_radius: ti.template(),
+    wake_volume: ti.template(),
+    wake_group_id: ti.template(),
+    n_wake: ti.template(),
+    transported_bound: ti.template(),
 ):
     """Deposit the completed row as trailing midpoints and a transverse far-edge element.
 
