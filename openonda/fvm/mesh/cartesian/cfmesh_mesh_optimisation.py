@@ -884,40 +884,72 @@ def _refresh_part_centres(part: _PartTetMesh, changed_nodes: Iterable[int]) -> N
     # updateVerticesSMP traverses its point array in label order.  In a
     # partTetMesh face-centre labels precede cell-centre labels, so the latter
     # observe the newly refreshed face centres.
-    for node_id in sorted(update_faces):
-        tet_ids = np.asarray(part.point_tets[node_id], dtype=np.int32)
-        values = part.points[part.tets[tet_ids]]
-        # updateVerticesSMP intentionally uses tet[0:3], which includes the
-        # old face-centre at tet[2].  This is one relaxation step, not a fresh
-        # polygon-centroid evaluation.
-        centroids = (values[:, 0] + values[:, 1] + values[:, 2]) / 3.0
-        normals = 0.5 * np.cross(values[:, 2] - values[:, 0], values[:, 1] - values[:, 0])
-        areas = (
-            np.sqrt(
-                normals[:, 0] * normals[:, 0]
-                + normals[:, 1] * normals[:, 1]
-                + normals[:, 2] * normals[:, 2]
-            )
-            + _VSMALL
+    for node_ids, cells in ((sorted(update_faces), False), (sorted(update_cells), True)):
+        if not node_ids:
+            continue
+        tet_lists = [np.asarray(part.point_tets[node_id], dtype=np.int32) for node_id in node_ids]
+        offsets = np.zeros(len(node_ids) + 1, dtype=np.int64)
+        np.cumsum([len(tet_ids) for tet_ids in tet_lists], out=offsets[1:])
+        _refresh_centres_kernel(
+            part.points,
+            part.tets,
+            np.asarray(node_ids, dtype=np.int32),
+            np.concatenate(tet_lists),
+            offsets,
+            cells,
         )
-        weighted_sum = np.zeros(3, dtype=np.float64)
-        area_sum = 0.0
-        for centre, area in zip(centroids, areas, strict=True):
-            weighted_sum += centre * area
-            area_sum += area
-        part.points[node_id] = weighted_sum / area_sum
-    for node_id in sorted(update_cells):
-        tet_ids = np.asarray(part.point_tets[node_id], dtype=np.int32)
-        tets = part.tets[tet_ids]
-        values = part.points[tets]
-        centroids = 0.25 * (values[:, 0] + values[:, 1] + values[:, 2] + values[:, 3])
-        volumes = np.abs(_signed_tet_volumes(part.points, tets)) + _VSMALL
-        weighted_sum = np.zeros(3, dtype=np.float64)
-        volume_sum = 0.0
-        for centre, volume in zip(centroids, volumes, strict=True):
-            weighted_sum += centre * volume
-            volume_sum += volume
-        part.points[node_id] = weighted_sum / volume_sum
+
+
+@njit(cache=True, fastmath=False)
+def _refresh_centres_kernel(
+    points: np.ndarray,
+    tets: np.ndarray,
+    node_ids: np.ndarray,
+    tet_ids: np.ndarray,
+    offsets: np.ndarray,
+    cells: bool,
+) -> None:
+    """Move each node, in order, to the weighted mean of the centres of its tetrahedra.
+
+    A face-centre node uses the area-weighted centroid of the triangles ``tet[0:3]``
+    (which include its old position at ``tet[2]``): one relaxation step, not a fresh
+    polygon centroid. A cell-centre node uses the volume-weighted centroid of its
+    tetrahedra. Each node sees the positions its predecessors in ``node_ids`` wrote.
+    """
+    for position in range(len(node_ids)):
+        weighted = np.zeros(3, dtype=np.float64)
+        total = 0.0
+        for entry in range(offsets[position], offsets[position + 1]):
+            tet = tets[tet_ids[entry]]
+            p0 = points[tet[0]]
+            p1 = points[tet[1]]
+            p2 = points[tet[2]]
+            if cells:
+                p3 = points[tet[3]]
+                centre = 0.25 * (p0 + p1 + p2 + p3)
+                a = p1 - p0
+                b = p2 - p0
+                normal0 = a[1] * b[2] - a[2] * b[1]
+                normal1 = a[2] * b[0] - a[0] * b[2]
+                normal2 = a[0] * b[1] - a[1] * b[0]
+                offset = p3 - p0
+                volume = (1.0 / 6.0) * (
+                    normal0 * offset[0] + normal1 * offset[1] + normal2 * offset[2]
+                )
+                weight = abs(volume) + _VSMALL
+            else:
+                centre = (p0 + p1 + p2) / 3.0
+                a = p2 - p0
+                b = p1 - p0
+                normal0 = 0.5 * (a[1] * b[2] - a[2] * b[1])
+                normal1 = 0.5 * (a[2] * b[0] - a[0] * b[2])
+                normal2 = 0.5 * (a[0] * b[1] - a[1] * b[0])
+                weight = (
+                    np.sqrt(normal0 * normal0 + normal1 * normal1 + normal2 * normal2) + _VSMALL
+                )
+            weighted += centre * weight
+            total += weight
+        points[node_ids[position]] = weighted / total
 
 
 def _optimise_part_knupp(part: _PartTetMesh) -> None:
