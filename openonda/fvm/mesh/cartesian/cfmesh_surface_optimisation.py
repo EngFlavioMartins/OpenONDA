@@ -387,7 +387,7 @@ def _surface_optimisation_updates(
 ) -> np.ndarray:
     """Independent Jacobi updates; Newton arithmetic stays in stored order."""
     updates = points[selected].copy()
-    for local in prange(len(selected)):  # type: ignore[attr-defined]  # numba stub: prange is range-like
+    for local in prange(len(selected)):
         normal = np.zeros(3, dtype=np.float64)
         for entry in range(face_offsets[local], face_offsets[local + 1]):
             normal += face_normals[face_ids[entry]]

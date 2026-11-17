@@ -116,7 +116,7 @@ class MeshStage:
 
     def __exit__(
         self,
-        error_type: type[BaseException] | None,
+        _error_type: type[BaseException] | None,
         error: BaseException | None,
         _traceback: TracebackType | None,
     ) -> None:

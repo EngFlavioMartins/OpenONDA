@@ -38,7 +38,7 @@ def _bounds(value: Bounds, name: str) -> Bounds:
         raise ValueError(f"{name} must contain only finite coordinates")
     if not all(result[2 * axis] < result[2 * axis + 1] for axis in range(3)):
         raise ValueError(f"{name} must have positive extent along every axis")
-    return result  # type: ignore[return-value]
+    return result
 
 
 @dataclass(frozen=True, slots=True)

@@ -717,7 +717,7 @@ def _optimise_part_nodes_kernel(
     # Every target is evaluated against the same immutable point snapshot and
     # committed only after this kernel returns.  This is the native OpenMP
     # point loop expressed with Numba's deterministic independent iterations.
-    for local_node in prange(len(node_ids)):  # type: ignore[attr-defined]  # numba stub: prange is range-like
+    for local_node in prange(len(node_ids)):
         node_id = int(node_ids[local_node])
         first = int(tet_offsets[local_node])
         stop = int(tet_offsets[local_node + 1])

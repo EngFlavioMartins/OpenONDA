@@ -97,7 +97,7 @@ def _root_cube(
     bounds = tuple(
         float(value) for axis in range(3) for value in (root_lower[axis], root_upper[axis])
     )
-    return bounds, global_level  # type: ignore[return-value]
+    return bounds, global_level
 
 
 def _box_surface_intersects_arrays(
@@ -2426,14 +2426,14 @@ def assign_cfmesh_patches(
     finest_cell_size = float(mesh_data["mesh_generation"]["finest_cell_size"])
     global_locator = _OctreeSurfaceLocator(
         global_index,
-        root_bounds=root_bounds,  # type: ignore[arg-type]
+        root_bounds=root_bounds,
         finest_cell_size=finest_cell_size,
         leaves=octree_leaves,
     )
     patch_locators = tuple(
         _OctreeSurfaceLocator(
             SurfaceIndex.build(group),
-            root_bounds=root_bounds,  # type: ignore[arg-type]
+            root_bounds=root_bounds,
             finest_cell_size=finest_cell_size,
             leaves=octree_leaves,
         )
@@ -2751,7 +2751,7 @@ def remap_cfmesh_patch_points(
     patch_locators = tuple(
         _OctreeSurfaceLocator(
             SurfaceIndex.build(np.ascontiguousarray(groups[name])),
-            root_bounds=root_bounds,  # type: ignore[arg-type]
+            root_bounds=root_bounds,
             finest_cell_size=finest_cell_size,
             leaves=leaves,
         )
@@ -2763,7 +2763,7 @@ def remap_cfmesh_patch_points(
                 np.concatenate(tuple(np.ascontiguousarray(groups[name]) for name in patch_names))
             )
         ),
-        root_bounds=root_bounds,  # type: ignore[arg-type]
+        root_bounds=root_bounds,
         finest_cell_size=finest_cell_size,
         leaves=leaves,
     )
