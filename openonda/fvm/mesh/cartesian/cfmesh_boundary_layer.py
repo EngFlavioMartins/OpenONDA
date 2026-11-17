@@ -648,8 +648,8 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
 
     widths = {len(face) for face in combined_faces}
     n_new_cells = len(new_cells)
-    old_levels = np.asarray(mesh_data.get("cell_levels", np.zeros(n_core_cells)), dtype=np.int8)
-    old_sizes = np.asarray(mesh_data.get("cell_sizes", np.ones(n_core_cells)), dtype=np.float32)
+    old_levels = mesh_data["cell_levels"]
+    old_sizes = mesh_data["cell_sizes"]
     source_ids = np.asarray(source_cell_for_new, dtype=np.int32)
     # Faces are found by vertex set, the last combined face of a set winning
     new_cell_faces: list[np.ndarray] = []
@@ -712,7 +712,6 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
             "n_points": len(points),
             "cell_levels": np.concatenate((old_levels, old_levels[source_ids])),
             "cell_sizes": np.concatenate((old_sizes, old_sizes[source_ids])),
-            "cell_type_code": np.full(n_core_cells + n_new_cells, 5, dtype=np.int32),
             "boundary_layer_index": np.concatenate(
                 (
                     np.full(n_core_cells, -1, dtype=np.int16),
@@ -726,7 +725,9 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
             },
         }
     )
+    # The cells are no longer all hexahedra, and the vertex table is gone
     mesh_data.pop("cell_vertex_indices", None)
+    mesh_data.pop("cell_type_code", None)
     mesh_data.pop("cell_face_indices", None)
     mesh_data.pop("cell_face_offset", None)
     mesh_data.pop("global_cell_id", None)

@@ -472,8 +472,8 @@ def _rebuild_from_cells(
         for start, stop in zip(order_offsets[:-1], order_offsets[1:], strict=True)
     ]
 
-    old_levels = np.asarray(mesh_data.get("cell_levels", np.zeros(n_source_cells)), dtype=np.int8)
-    old_sizes = np.asarray(mesh_data.get("cell_sizes", np.ones(n_source_cells)), dtype=np.float32)
+    old_levels = mesh_data["cell_levels"]
+    old_sizes = mesh_data["cell_sizes"]
     source_ids = np.concatenate(source_cell_ids).astype(np.int32)
     vertex_position = np.ascontiguousarray(np.concatenate(point_values), dtype=np.float64)
     mesh_data.update(
@@ -489,11 +489,12 @@ def _rebuild_from_cells(
             "n_points": len(vertex_position),
             "cell_levels": old_levels[source_ids],
             "cell_sizes": old_sizes[source_ids],
-            "cell_type_code": np.full(n_output_cells, 5, dtype=np.int32),
             "_cfmesh_cell_face_order": cfmesh_cell_face_order,
         }
     )
+    # The cells are no longer all hexahedra, and the vertex table is gone
     mesh_data.pop("cell_vertex_indices", None)
+    mesh_data.pop("cell_type_code", None)
     mesh_data.pop("cell_face_indices", None)
     mesh_data.pop("cell_face_offset", None)
     mesh_data.pop("global_cell_id", None)

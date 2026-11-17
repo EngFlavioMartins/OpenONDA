@@ -794,7 +794,7 @@ def _extract_mesh(
         "n_interior_faces": len(neighbours),
         "n_points": len(points),
         "cell_levels": levels,
-        "cell_sizes": np.asarray(root_size / np.power(2.0, levels), dtype=np.float32),
+        "cell_sizes": np.asarray(root_size / np.power(2.0, levels), dtype=np.float64),
         "cell_vertex_indices": cell_vertex_indices,
         "cell_type_code": np.full(len(leaves), HEXAHEDRON_CODE, dtype=np.int32),
         "_cfmesh_cell_face_order": cfmesh_cell_face_order,

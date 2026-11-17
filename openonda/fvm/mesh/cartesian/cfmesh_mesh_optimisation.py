@@ -1540,7 +1540,6 @@ def optimise_cfmesh_mesh(
         "laplacian_pc_iterations": LAPLACIAN_ITERATIONS,
         "smooth_inside_points": len(smooth_points),
         "bad_faces_after_laplacian": len(bad_after_laplacian),
-        "bad_face_ids_after_laplacian": sorted(bad_after_laplacian),
         "optimize_fv_internal_bad_face_trace": first_internal_trace,
         "optimize_fv_boundary_bad_face_trace": first_boundary_trace,
         "bad_faces_after_optimize_fv": len(bad_after_optimize_fv),
@@ -1549,10 +1548,7 @@ def optimise_cfmesh_mesh(
         "final_internal_bad_face_trace": final_internal_trace,
         "final_boundary_bad_face_trace": final_boundary_trace,
         "final_bad_faces": len(final_bad_faces),
-        "final_bad_face_ids": sorted(final_bad_faces),
         "final_low_quality_faces": len(final_low_quality_faces),
-        "final_low_quality_face_ids": sorted(final_low_quality_faces),
-        "boundary_layer_optimisation": "skipped_no_boundary_layers_dictionary",
     }
 
 

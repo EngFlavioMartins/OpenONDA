@@ -790,7 +790,6 @@ def untangle_cfmesh_surface(
         "iterations": iterations,
         "moved_points": len(moved_union),
         "remaining_inverted_points": len(inverted_cfmesh_boundary_points(mesh_data)),
-        "additional_layers": 2,
     }
 
 
