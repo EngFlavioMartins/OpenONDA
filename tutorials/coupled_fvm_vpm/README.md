@@ -128,4 +128,5 @@ scripts of the two repositories; see `figure_data/README.md`.
 | [ ] | Cube configuration (paper Figure 14) | from the stopped cube run; to be replaced |
 | [ ] | Cube comparison | waits for the cube final |
 | [ ] | Paper `force_histories`, `force_spectra` (three cases together) | cylinder and cube final (cube window 30–98, redrawn 19 Nov 14:30); wing interim over 12–24, redrawn with `--extract` when the wing reaches t = 48 |
+| [ ] | Paper Figure 7 in 3D (`figures/flow_fields/render/`) | samples `render_t<T>/` (FVM volume, particles, `render.json`) written 19 Nov by `export_render_samples.py`: cylinder t = 100, cube t = 98, wing t = 24; re-export the wing with `wing 48` when it reaches t = 48, then redraw with `pvpython render_flow_fields.py wing` |
 | [ ] | Wing configuration (paper Figure 16) | `particles.csv` is a frame of 13 Nov, early in the final run; a frame near t = 24 s is still to be extracted |
