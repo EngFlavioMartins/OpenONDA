@@ -15,7 +15,7 @@ The FVM resolves separation from a no-slip unit cube and its near wake; vortex p
 | Cell and particle spacing | 0.045 m |
 | FVM step; coupling interval | Courant number 0.9, at most 0.02 s; 0.1 s (5 FVM steps), shorter only where the particle CFL number would pass 0.9; every output interval is a multiple of 0.1 s |
 | Coupling iterations | Up to 6 per interval, ended by the transfer tolerances |
-| Statistics window | $30\le t\le130$ s |
+| Statistics window | $30\le t\le100$ s |
 
 ## Physics and numerical model
 
@@ -48,7 +48,7 @@ The slip walls of the reference domain speed up the stream at the cube; the coup
 | `figures/interface_measures` | Per coupling interval: rms velocity mismatch per FVM box side and its maximum, FVM budget error, near-wall circulation ratio with the 0.97–1.03 band |
 | `figures/velocity_profiles` | Time-mean streamwise velocity and transverse-velocity fluctuation |
 | `figures/velocity_fields`, `figures/vorticity_fields` | Mid-plane reference, coupled and difference fields |
-| `figures/mean_velocity_field`, `figures/mean_vorticity_field` | The same, averaged over $30\le t\le130$ s |
+| `figures/mean_velocity_field`, `figures/mean_vorticity_field` | The same, averaged over $30\le t\le100$ s |
 | `figures/coupling_cost` | Wall time by solver part and particle count |
 | `figures/comparison_summary.csv` | Statistics, errors, interface measures and wall time per flow time of the run and the reference |
 | `assets/cube_flow.gif` | Mid-plane and particle vorticity with drag history, from the finished run |
