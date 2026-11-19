@@ -12,7 +12,7 @@ From this directory with OpenONDA installed:
 
 The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`, which never falls back to the CPU; without a GPU the run stops with a message.
 
-`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes the saved backups. For one case, use `python setup.py vortex cs`; physical choices are `vortex`, `dipole`, `merging`, and methods are `cs`, `rwm`, `dvh`, `gbd`. A single RWM run is one realization; use `python -m assets.rwm_ensemble vortex --number-of-realizations 10` for the ensemble comparison.
+`allrun.sh` removes previous generated results. `./allcontinue.sh` resumes the saved backups. For one case, use `python setup.py vortex cs`; physical choices are `vortex`, `dipole`, `merging`, and methods are `cs`, `rwm`, `dvh`, `gbd`. A single RWM run is one realization; use `python -m assets.rwm_ensemble vortex --number-of-realizations 16` for the ensemble comparison.
 
 ## Physical and numerical inputs
 
@@ -39,6 +39,6 @@ $$
 
 The dipole tests mutual translation; the co-rotating pair tests separation, orientation and merger against [Cerretelli–Williamson data](assets/references/README.md). The reference times are converted to $\nu t/a_{c,0}^2$; this radius differs from the Gaussian radius above.
 
-RWM uses ten independent seeds. Features are extracted from the ensemble-mean field; its intervals describe Monte Carlo uncertainty. See the short [RWM methodology](assets/references/rwm_statistical_methodology.md).
+RWM uses 16 (`vortex`), 28 (`dipole`) and 14 (`merging`) independent realizations. Features are extracted from the ensemble-mean field; its intervals describe Monte Carlo uncertainty. See the short [RWM methodology](assets/references/rwm_statistical_methodology.md).
 
 Fields and integrals are in `samples/<case>/`; checkpoints are in `solution/<case>/`. The velocity and vorticity profiles are in the `<case>_zq.pvd` plane fields, the kinetic-energy decay in `flow_integrals.csv`, and the vortex centres, separation, orientation and core radii of the dipole and the merger in `field_diagnostics.csv`; `rwm_convergence.csv` holds the ensemble convergence of the RWM mean. Diffusion domains include the physical spread; if you change duration or viscosity, enlarge them accordingly.
