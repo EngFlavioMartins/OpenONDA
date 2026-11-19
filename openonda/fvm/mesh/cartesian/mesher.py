@@ -13,7 +13,7 @@ from ..data import FaceVertices, GeometryData, MeshData
 from ..geometry import compute_mesh_geometry
 from ..progress import mesh_stage
 from ..surface_classification import SurfaceIndex
-from ..topology import pack_face_nodes, unpaired_boundary_cells
+from ..topology import pack_face_nodes, renumbered_rows, unpaired_boundary_cells
 from ..validation import (
     MeshQualityReport,
     MeshValidationError,
@@ -61,6 +61,7 @@ from .report import (
     RecoveryDiagnostics,
     SizeReport,
 )
+from .surface import feature_regions
 
 
 def _box_patch_point_constraints(
@@ -412,6 +413,54 @@ def _project_to_feature_planes(
     ):
         return None
     return projected
+
+
+def _merge_feature_regions(mesh_data: MeshData, region_surfaces: dict[str, str]) -> None:
+    """Return the boundary faces of every feature region to its surface's patch.
+
+    ``region_surfaces`` maps each region patch to the patch of its surface.
+    The faces keep their order within a region and the patches their order by
+    name, as if the surface had been one patch throughout.
+    """
+    boundary = mesh_data["boundary"]
+    regions = {name for name, surface_patch in region_surfaces.items() if name != surface_patch}
+    if not any(str(patch["name"]) in regions for patch in boundary):
+        return
+    n_internal = int(mesh_data["n_interior_faces"])
+    patch_faces: dict[str, list[np.ndarray]] = {}
+    for patch in boundary:
+        name = str(patch["name"])
+        start = int(patch["start_face"])
+        patch_faces.setdefault(region_surfaces.get(name, name), []).append(
+            np.arange(start, start + int(patch["n_faces"]))
+        )
+    names = sorted(patch_faces)
+    order = np.concatenate(
+        (np.arange(n_internal), *(np.concatenate(patch_faces[name]) for name in names))
+    )
+    faces = mesh_data["faces"]
+    mesh_data["faces"] = (
+        faces[order] if isinstance(faces, np.ndarray) else [faces[face_id] for face_id in order]
+    )
+    mesh_data["owners"] = np.ascontiguousarray(np.asarray(mesh_data["owners"])[order])
+    if "_cfmesh_cell_face_order" in mesh_data:
+        new_ids = np.empty_like(order)
+        new_ids[order] = np.arange(len(order))
+        mesh_data["_cfmesh_cell_face_order"] = renumbered_rows(
+            mesh_data["_cfmesh_cell_face_order"], new_ids
+        )
+    # The cell-face connectivity of the old face order
+    mesh_data.pop("cell_face_indices", None)
+    mesh_data.pop("cell_face_offset", None)
+    merged = []
+    start = n_internal
+    for name in names:
+        patch = dict(next(item for item in boundary if item["name"] == name))
+        patch["start_face"] = start
+        patch["n_faces"] = sum(len(ids) for ids in patch_faces[name])
+        merged.append(patch)
+        start += patch["n_faces"]
+    mesh_data["boundary"] = merged
 
 
 def _quality_snapshot(mesh_data: MeshData) -> tuple[dict[str, Any], GeometryData]:
@@ -833,6 +882,44 @@ class CartesianMesher:
             self.exact_sides, self.crossed_sides = (), ()
             self._workflow_domain = domain
         self._template_points: np.ndarray | None = None
+        # cfMesh captures the edges between patches. Each feature region of a
+        # surface, bounded by its sharp edges, therefore takes a patch of its
+        # own through the surface stages, and the wall constraint returns the
+        # regions to the surface's patch. A box surface keeps its exact planes;
+        # a region outside the meshed domain, such as the end cap of a body
+        # crossing it, carries no wall and stays with the surface's first region.
+        self._region_surfaces: dict[str, str] = {}
+        self._region_triangles: list[np.ndarray] = []
+        lower = np.asarray(self._workflow_domain.bounds[::2])
+        upper = np.asarray(self._workflow_domain.bounds[1::2])
+        for surface in surfaces:
+            labels = (
+                np.zeros(len(surface.triangles), dtype=np.int64)
+                if surface.kind == "box"
+                else feature_regions(surface.surface_data, _SHARP_RIM_COSINE)
+            )
+            reached = [
+                label
+                for label in range(int(labels.max()) + 1)
+                if np.all(surface.triangles[labels == label].max(axis=(0, 1)) > lower)
+                and np.all(surface.triangles[labels == label].min(axis=(0, 1)) < upper)
+            ] or [0]
+            labels = np.searchsorted(
+                reached, np.where(np.isin(labels, reached), labels, reached[0])
+            )
+            for label in range(int(labels.max()) + 1):
+                name = surface.patch if label == 0 else f"{surface.patch} region {label}"
+                if label and name in set(patches) | set(domain.patches.as_tuple()):
+                    raise ValueError(f"patch name {name!r} is reserved for a surface region")
+                self._region_surfaces[name] = surface.patch
+                self._region_triangles.append(
+                    surface.triangles if not labels.any() else surface.triangles[labels == label]
+                )
+        # The regions of a surface form one wall for the edge extraction and the wrapper layer
+        self._region_groups = tuple(
+            tuple(name for name, patch in self._region_surfaces.items() if patch == surface.patch)
+            for surface in surfaces
+        )
         self.surfaces = surfaces
         self.max_cell_size = max_cell_size
         self.background_cell_size = background_cell_size
@@ -1006,8 +1093,8 @@ class CartesianMesher:
         surface_arguments = {
             "domain": self._workflow_domain.bounds,
             "domain_patch_names": self.domain.patches.as_tuple(),
-            "surfaces": tuple(surface.surface_data for surface in self.surfaces),
-            "surface_patch_names": tuple(surface.patch for surface in self.surfaces),
+            "surface_triangles": tuple(self._region_triangles),
+            "surface_patch_names": tuple(self._region_surfaces),
         }
         if reached("surfaceProjection"):
             with mesh_stage("surface projection"):
@@ -1017,7 +1104,7 @@ class CartesianMesher:
                 assign_cfmesh_patches(stage_mesh, **surface_arguments)
         if reached("edgeExtraction"):
             with mesh_stage("edge extraction"):
-                extract_cfmesh_edges(stage_mesh)
+                extract_cfmesh_edges(stage_mesh, patch_groups=self._region_groups)
             with mesh_stage("patch point remapping"):
                 edge_mapper, surface_untangler = remap_cfmesh_patch_points(
                     stage_mesh, **surface_arguments
@@ -1030,7 +1117,7 @@ class CartesianMesher:
                 )
             if reached("boundaryLayerGeneration"):
                 with mesh_stage("wrapper layer generation"):
-                    add_cfmesh_wrapper_layer(stage_mesh)
+                    add_cfmesh_wrapper_layer(stage_mesh, patch_groups=self._region_groups)
             if reached("meshOptimisation"):
                 with mesh_stage("mesh optimisation"):
                     optimise_cfmesh_mesh(
@@ -1209,7 +1296,7 @@ class CartesianMesher:
         max_inner_displacement = 0.0
         assigned_points: dict[int, str] = {}
         inner_displacements: dict[int, list[np.ndarray]] = {}
-        boundary_columns: list[tuple[int, int, np.ndarray, dict[int, int]]] = []
+        boundary_columns: list[tuple[int, int, str, dict[int, int]]] = []
         constrained_outer_ids: set[int] = set()
         box_wall_constraints: dict[int, dict[int, float]] = {}
         planar_wall_constraints: FeaturePlaneConstraints = {}
@@ -1245,7 +1332,7 @@ class CartesianMesher:
                     [np.asarray(mesh_data["faces"][face]) for face in range(start, stop)]
                 )
             )
-            boundary_columns.append((start, stop, point_ids, column_map))
+            boundary_columns.append((start, stop, patch_name, column_map))
             constrained_outer_ids.update(map(int, point_ids))
             if not constrain_domain_planes:
                 continue
@@ -1287,37 +1374,47 @@ class CartesianMesher:
                     inner_displacements.setdefault(int(inner_id), []).append(displacement)
 
         for surface in self.surfaces:
-            patch = next(
-                (item for item in mesh_data["boundary"] if item["name"] == surface.patch),
-                None,
-            )
-            if patch is None:
+            # The feature regions of the surface still carry patches of their own, each with
+            # its wrapper column map
+            regions = [
+                item
+                for item in mesh_data["boundary"]
+                if self._region_surfaces.get(str(item["name"])) == surface.patch
+            ]
+            if not any(item["name"] == surface.patch for item in regions):
                 raise ValueError(f"cfMesh workflow did not produce wall patch {surface.patch!r}")
-            start = int(patch["start_face"])
-            stop = start + int(patch["n_faces"])
+            surface_faces = []
+            region_columns = []
+            for region in regions:
+                start = int(region["start_face"])
+                stop = start + int(region["n_faces"])
+                column_map = column_maps.get(str(region["name"]))
+                if column_map is None:
+                    raise ValueError(
+                        f"cfMesh wrapper has no boundary-column mapping for {region['name']!r}"
+                    )
+                surface_faces.extend(mesh_data["faces"][start:stop])
+                region_columns.append((start, stop, column_map))
             point_ids = np.unique(
-                np.concatenate(
-                    [np.asarray(face, dtype=np.int64) for face in mesh_data["faces"][start:stop]]
-                )
+                np.concatenate([np.asarray(face, dtype=np.int64) for face in surface_faces])
             )
             index = SurfaceIndex.build(surface.triangles)
-            column_map = column_maps.get(surface.patch)
-            if column_map is None:
-                raise ValueError(
-                    f"cfMesh wrapper has no boundary-column mapping for {surface.patch!r}"
-                )
-            boundary_columns.append((start, stop, point_ids, column_map))
+            # The columns of all regions belong to the surface's patch
+            boundary_columns.extend(
+                (start, stop, surface.patch, column_map)
+                for start, stop, column_map in region_columns
+            )
             constrained_outer_ids.update(map(int, point_ids))
             feature_constraints = _planar_feature_constraints(
                 candidate,
-                mesh_data["faces"][start:stop],
+                surface_faces,
                 surface.triangles,
                 box_wall=surface.kind == "box",
             )
             surface_constraints = (
                 _box_patch_point_constraints(
                     candidate,
-                    mesh_data["faces"][start:stop],
+                    surface_faces,
                     surface.bounds,
                     feature_constraints,
                 )
@@ -1358,13 +1455,18 @@ class CartesianMesher:
                 max_before = max(max_before, float(distance))
                 displacement = mapped - candidate[point_id]
                 candidate[point_id] = mapped
-                inner_id = column_map.get(point_id)
-                if inner_id is None:
+                inner_ids = {
+                    column_map[point_id]
+                    for _start, _stop, column_map in region_columns
+                    if point_id in column_map
+                }
+                if not inner_ids:
                     raise ValueError(
                         "cfMesh wrapper has no inner column point for wall vertex "
                         f"{point_id} on patch {surface.patch!r}"
                     )
-                inner_displacements.setdefault(int(inner_id), []).append(displacement)
+                for inner_id in inner_ids:
+                    inner_displacements.setdefault(int(inner_id), []).append(displacement)
                 mapped_points.append(mapped)
             if mapped_points:
                 for distance in index.indexed_nearest_points(np.asarray(mapped_points))[1]:
@@ -1428,7 +1530,7 @@ class CartesianMesher:
             # constrained wall normals, accepting the largest validated
             # relaxation that preserves all positive-volume/face checks.
             target_requests: dict[int, list[np.ndarray]] = {}
-            target_patches: dict[int, set[int]] = {}
+            target_patches: dict[int, set[str]] = {}
             # Edge extraction inserts small non-hex transition cells. Moving
             # their shared vertices to suit a neighbouring wrapper column can
             # flatten those cells while retaining positive total volumes.
@@ -1441,7 +1543,7 @@ class CartesianMesher:
                 for face in face_indices[offsets[cell] : offsets[cell + 1]]:
                     protected_points.update(map(int, mesh_data["faces"][face]))
             face_area_vectors = np.asarray(base_geometry["face_area_vector"])
-            for start, stop, _point_ids, column_map in boundary_columns:
+            for start, stop, patch_name, column_map in boundary_columns:
                 for face_id in range(start, stop):
                     normal = face_area_vectors[face_id]
                     magnitude = float(np.linalg.norm(normal))
@@ -1463,7 +1565,7 @@ class CartesianMesher:
                     if thickness <= np.finfo(np.float64).tiny:
                         continue
                     for outer_id, inner_id in zip(outer_ids, inner_ids, strict=True):
-                        target_patches.setdefault(inner_id, set()).add(start)
+                        target_patches.setdefault(inner_id, set()).add(patch_name)
                         target_requests.setdefault(inner_id, []).append(
                             candidate[outer_id] + thickness * direction
                         )
@@ -1538,6 +1640,7 @@ class CartesianMesher:
                 break
             if accepted_relaxation is None:
                 raise validation_error  # every relaxation was rejected
+            _merge_feature_regions(mesh_data, self._region_surfaces)
             for surface in self.surfaces:
                 validate_wall_vertex_conformance(mesh_data, surface.triangles, surface.patch)
             for point_id, axis_bounds in box_wall_constraints.items():
@@ -1638,6 +1741,7 @@ class CartesianMesher:
         """
         if stop_after is not None:
             mesh_data = self._run_cfmesh_workflow(stop_after)
+            _merge_feature_regions(mesh_data, self._region_surfaces)
             if self.exact_sides and stop_after == "meshOptimisation":
                 # Completed workflow prefixes (used by the extruded mesher) carry
                 # the exact coupling sides; earlier diagnostic checkpoints keep

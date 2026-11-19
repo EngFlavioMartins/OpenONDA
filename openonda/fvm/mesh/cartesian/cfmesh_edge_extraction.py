@@ -10,6 +10,7 @@ topological apart from the inserted face and cell centres.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from itertools import chain
 
 import numpy as np
@@ -30,12 +31,18 @@ def _reverse_face(face: np.ndarray) -> np.ndarray:
 
 
 def _boundary_addressing(
-    mesh_data: MeshData, faces: list[np.ndarray]
+    mesh_data: MeshData, faces: list[np.ndarray], patch_groups: Sequence[Sequence[str]] = ()
 ) -> tuple[dict[int, int], dict[tuple[int, int], list[int]], list[int]]:
     face_patch: dict[int, int] = {}
     edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
     face_patch_ids: list[int] = []
-    for patch_id, patch in enumerate(mesh_data["boundary"]):
+    # The patches of a group carry the id of the group's first patch
+    patch_ids = {
+        str(patch["name"]): patch_id for patch_id, patch in enumerate(mesh_data["boundary"])
+    }
+    group_ids = {name: patch_ids[group[0]] for group in patch_groups for name in group}
+    for patch in mesh_data["boundary"]:
+        patch_id = group_ids.get(str(patch["name"]), patch_ids[str(patch["name"])])
         start = int(patch["start_face"])
         stop = start + int(patch["n_faces"])
         for face_id in range(start, stop):
@@ -73,13 +80,15 @@ def _faces_touching(
     return np.bincount(face_ids, weights=mask[nodes], minlength=len(faces)) > 0
 
 
-def _topology_plan(mesh_data: MeshData) -> tuple[set[int], dict[int, int], set[int]]:
+def _topology_plan(
+    mesh_data: MeshData, patch_groups: Sequence[Sequence[str]]
+) -> tuple[set[int], dict[int, int], set[int]]:
     points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     faces = mesh_data["faces"]
     owners = np.asarray(mesh_data["owners"], dtype=np.int32)
     neighbours = np.asarray(mesh_data["neighbours"], dtype=np.int32)
     n_internal = int(mesh_data["n_interior_faces"])
-    face_patch, edge_faces, face_patch_ids = _boundary_addressing(mesh_data, faces)
+    face_patch, edge_faces, face_patch_ids = _boundary_addressing(mesh_data, faces, patch_groups)
 
     problematic = inverted_cfmesh_boundary_points(mesh_data, face_patch_ids)
     edge_patch: dict[tuple[int, int], int] = {}
@@ -502,9 +511,15 @@ def _rebuild_from_cells(
     mesh_data.pop("boundary_layer_index", None)
 
 
-def extract_cfmesh_edges(mesh_data: MeshData) -> None:
-    """Apply cfMesh's concave-edge correction and pyramid decomposition."""
-    split_internal, split_boundary, marked_cells = _topology_plan(mesh_data)
+def extract_cfmesh_edges(
+    mesh_data: MeshData, *, patch_groups: Sequence[Sequence[str]] = ()
+) -> None:
+    """Apply cfMesh's concave-edge correction and pyramid decomposition.
+
+    The patches named together in each of ``patch_groups`` form one wall, so
+    the edges between them are no patch junctions here.
+    """
+    split_internal, split_boundary, marked_cells = _topology_plan(mesh_data, patch_groups)
     points, faces, owners, neighbours, boundary_patches, face_replacements = _split_faces(
         mesh_data, split_internal, split_boundary
     )

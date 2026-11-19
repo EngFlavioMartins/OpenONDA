@@ -93,4 +93,36 @@ def load_surface(path: str | Path) -> TriangulatedSurface:
     return surface
 
 
-__all__ = ["load_surface", "validate_surface_orientation"]
+def feature_regions(surface: TriangulatedSurface, sharp_cosine: float) -> np.ndarray:
+    """Label every triangle with the smooth surface region it belongs to.
+
+    Two triangles sharing an edge lie in one region unless the cosine between
+    their normals is below ``sharp_cosine``: sharp edges, such as the rim of a
+    flat cap or the edges of a blunt trailing edge, bound the regions. Labels
+    count from 0 in the order of each region's first triangle.
+    """
+    triangles = surface.triangles
+    vectors = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+    normals = vectors / np.linalg.norm(vectors, axis=1)[:, None]
+    smooth: dict[int, set[int]] = defaultdict(set)
+    for (first, *_), (second, *_) in _edge_records(_quantized_triangles(surface)).values():
+        if float(np.dot(normals[first], normals[second])) >= sharp_cosine:
+            smooth[first].add(second)
+            smooth[second].add(first)
+    labels = np.full(len(triangles), -1, dtype=np.int64)
+    count = 0
+    for root in range(len(triangles)):
+        if labels[root] >= 0:
+            continue
+        labels[root] = count
+        queue = deque((root,))
+        while queue:
+            for neighbour in smooth[queue.popleft()]:
+                if labels[neighbour] < 0:
+                    labels[neighbour] = count
+                    queue.append(neighbour)
+        count += 1
+    return labels
+
+
+__all__ = ["feature_regions", "load_surface", "validate_surface_orientation"]

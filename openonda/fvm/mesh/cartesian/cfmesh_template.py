@@ -2339,20 +2339,20 @@ def project_cfmesh_template(
     *,
     domain: SurfaceBounds,
     domain_patch_names: Sequence[str],
-    surfaces: Sequence[TriangulatedSurface],
+    surface_triangles: Sequence[np.ndarray],
     surface_patch_names: Sequence[str],
 ) -> None:
     """Apply cfMesh's ``surfaceProjection`` stage to a template mesh in place."""
     if len(domain_patch_names) != 6:
         raise ValueError("domain_patch_names must follow xmin, xmax, ymin, ymax, zmin, zmax")
-    if len(surface_patch_names) != len(surfaces):
-        raise ValueError("surface_patch_names must correspond one-to-one with surfaces")
+    if len(surface_patch_names) != len(surface_triangles):
+        raise ValueError("surface_patch_names must correspond one-to-one with surface_triangles")
     groups: dict[str, list[np.ndarray]] = {}
     domain_triangles = _box_triangles(domain)
     for side, patch_name in enumerate(domain_patch_names):
         groups.setdefault(patch_name, []).extend(domain_triangles[2 * side : 2 * side + 2])
-    for patch_name, surface in zip(surface_patch_names, surfaces, strict=True):
-        groups.setdefault(patch_name, []).extend(surface.triangles)
+    for patch_name, patch_triangles in zip(surface_patch_names, surface_triangles, strict=True):
+        groups.setdefault(patch_name, []).extend(patch_triangles)
     patch_names = tuple(sorted(groups))
     triangles = np.ascontiguousarray(np.concatenate(tuple(groups[name] for name in patch_names)))
     global_index = SurfaceIndex.build(triangles)
@@ -2408,20 +2408,20 @@ def assign_cfmesh_patches(
     *,
     domain: SurfaceBounds,
     domain_patch_names: Sequence[str],
-    surfaces: Sequence[TriangulatedSurface],
+    surface_triangles: Sequence[np.ndarray],
     surface_patch_names: Sequence[str],
 ) -> None:
     """Assign projected boundary faces to cfMesh input-surface regions."""
     if len(domain_patch_names) != 6:
         raise ValueError("domain_patch_names must follow xmin, xmax, ymin, ymax, zmin, zmax")
-    if len(surface_patch_names) != len(surfaces):
-        raise ValueError("surface_patch_names must correspond one-to-one with surfaces")
+    if len(surface_patch_names) != len(surface_triangles):
+        raise ValueError("surface_patch_names must correspond one-to-one with surface_triangles")
     groups: dict[str, list[np.ndarray]] = {}
     domain_triangles = _box_triangles(domain)
     for side, patch_name in enumerate(domain_patch_names):
         groups.setdefault(patch_name, []).extend(domain_triangles[2 * side : 2 * side + 2])
-    for patch_name, surface in zip(surface_patch_names, surfaces, strict=True):
-        groups.setdefault(patch_name, []).extend(surface.triangles)
+    for patch_name, patch_triangles in zip(surface_patch_names, surface_triangles, strict=True):
+        groups.setdefault(patch_name, []).extend(patch_triangles)
     patch_names = tuple(sorted(groups))
     triangle_groups = tuple(np.ascontiguousarray(groups[name]) for name in patch_names)
     global_index = SurfaceIndex.build(np.ascontiguousarray(np.concatenate(triangle_groups)))
@@ -2737,20 +2737,20 @@ def remap_cfmesh_patch_points(
     *,
     domain: SurfaceBounds,
     domain_patch_names: Sequence[str],
-    surfaces: Sequence[TriangulatedSurface],
+    surface_triangles: Sequence[np.ndarray],
     surface_patch_names: Sequence[str],
 ) -> tuple[Callable[[Sequence[int]], None], Callable[[], list[int]]]:
     """Map all boundary points and return edge-map and untangle callbacks."""
     if len(domain_patch_names) != 6:
         raise ValueError("domain_patch_names must follow xmin, xmax, ymin, ymax, zmin, zmax")
-    if len(surface_patch_names) != len(surfaces):
-        raise ValueError("surface_patch_names must correspond one-to-one with surfaces")
+    if len(surface_patch_names) != len(surface_triangles):
+        raise ValueError("surface_patch_names must correspond one-to-one with surface_triangles")
     groups: dict[str, list[np.ndarray]] = {}
     domain_triangles = _box_triangles(domain)
     for side, patch_name in enumerate(domain_patch_names):
         groups.setdefault(patch_name, []).extend(domain_triangles[2 * side : 2 * side + 2])
-    for patch_name, surface in zip(surface_patch_names, surfaces, strict=True):
-        groups.setdefault(patch_name, []).extend(surface.triangles)
+    for patch_name, patch_triangles in zip(surface_patch_names, surface_triangles, strict=True):
+        groups.setdefault(patch_name, []).extend(patch_triangles)
     patch_names = tuple(sorted(groups))
     mesh_patch_names = tuple(str(patch["name"]) for patch in mesh_data["boundary"])
     if mesh_patch_names != patch_names:

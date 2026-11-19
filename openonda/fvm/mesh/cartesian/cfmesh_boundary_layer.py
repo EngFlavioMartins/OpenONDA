@@ -13,7 +13,7 @@ patch-wise construction; it does not substitute vertex smoothing for cells.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from itertools import combinations
 
 import numpy as np
@@ -147,8 +147,9 @@ def _cfmesh_patch_keys(
     face_patch: dict[int, int],
     point_patches: dict[int, set[int]],
     edge_faces: dict[tuple[int, int], list[int]],
+    patch_groups: Sequence[Sequence[str]] = (),
 ) -> tuple[dict[int, int], list[tuple[int, int]]]:
-    """Build cfMesh's transitive patch groups for concave junctions."""
+    """Build cfMesh's transitive patch groups for concave junctions and ``patch_groups``."""
     patch_count = len(mesh_data["boundary"])
     parent = list(range(patch_count))
 
@@ -164,6 +165,13 @@ def _cfmesh_patch_keys(
         if first_root == second_root:
             return
         parent[max(first_root, second_root)] = min(first_root, second_root)
+
+    patch_ids = {
+        str(patch["name"]): patch_id for patch_id, patch in enumerate(mesh_data["boundary"])
+    }
+    for group in patch_groups:
+        for name in group[1:]:
+            union(patch_ids[group[0]], patch_ids[name])
 
     # A corner carrying more than three raw patches is handled as one group.
     for raw_patches in point_patches.values():
@@ -228,11 +236,14 @@ def _ordered_point_patch_ids(
     return tuple(patch_ids)
 
 
-def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
+def add_cfmesh_wrapper_layer(
+    mesh_data: MeshData, *, patch_groups: Sequence[Sequence[str]] = ()
+) -> None:
     """Add cfMesh's default patch-wise boundary wrapper in place.
 
     Patch keys merge transitively at concave multi-patch junctions, matching
-    ``boundaryLayers::findPatchesToBeTreatedTogether``.
+    ``boundaryLayers::findPatchesToBeTreatedTogether``, and within each of
+    ``patch_groups``, patches that form one wall.
     """
     source_points = np.asarray(mesh_data["vertex_position"], dtype=np.float64)
     source_faces = [np.asarray(face, dtype=np.int32) for face in mesh_data["faces"]]
@@ -277,6 +288,7 @@ def add_cfmesh_wrapper_layer(mesh_data: MeshData) -> None:
         face_patch,
         point_patches,
         edge_faces,
+        patch_groups,
     )
     point_keys = {
         point_id: {patch_key[patch_id] for patch_id in raw_patches}
