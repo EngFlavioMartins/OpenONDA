@@ -28,7 +28,7 @@ Edit [setup.py](setup.py):
 | Perturbation | 24 broadband Widnall modes, dimensionless amplitude 0.005 relative to $R_0$, seed 42. |
 | Step; requested duration | 0.02 s; 60 s (3000 steps). |
 
-Toroidal support is truncated at 5% of the represented Gaussian tail. Core compensation accounts for particle smoothing. All variants use direct induction for the 8.8k particles, SSPRK3 and core spreading. `les_transposed` adds $C_s=0.20$ Smagorinsky viscosity; the three DNS variants change only the discrete stretching choice.
+Toroidal support is truncated at 5% of the represented Gaussian tail. Core compensation accounts for particle smoothing. All variants use SSPRK3 and core spreading. `setup.py` uses direct induction for the 8.8k particles; the results in `samples/` come from the treecode ($\theta=0.1$, first-order multipoles). `les_transposed` adds $C_s=0.20$ Smagorinsky viscosity; the three DNS variants change only the discrete stretching choice.
 
 Samples every 0.1 s track ring position, radius, circulation, mode amplitudes, energy and particle resolution and state. Checkpoints every 0.5 s are in `solution/<variant>/`; diagnostics are in `samples/<variant>/`. Translation, radius, circulation and particle resolution are in `ring_diagnostics.csv`, the mode amplitudes in `ring_modes.csv` and the energy in `flow_integrals.csv`. `assets/vortex_ring.gif` follows the `dns_transposed` ring along a ruler in ring radii.
 
