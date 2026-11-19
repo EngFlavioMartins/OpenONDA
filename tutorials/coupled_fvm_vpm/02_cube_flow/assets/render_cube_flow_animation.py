@@ -180,7 +180,7 @@ def compose(image, time, forces):
         )
         inset.set_xlim(travel[0], travel[-1])
         inset.set_ylim(0.5, 2.5)
-        inset.set_xticks((0, 20, 40))
+        inset.locator_params(axis="x", nbins=4)
         inset.set_yticks((0.5, 1.5, 2.5))
         inset.set_xlabel(r"$t\,U_\infty/D$")
         inset.spines[["top", "right"]].set_visible(False)

@@ -220,7 +220,9 @@ def run_settings(directory):
         "fvm_step": round(float(coupling["fvm_time_step_size"]), 6),
         "interval": round(float(coupling["vpm_time_step_size"]), 6),
         "margin": round(-float(coupling["fvm_domain_bounds"]["xmin"]), 6),
-        "inset": float(configuration["transfer_inset_spacings"]),
+        # Read from the transfer region: the metadata transfer_inset_spacings keeps the coupler default.
+        "inset": round((float(configuration["transfer_region_bounds"][0])
+                        - float(coupling["fvm_domain_bounds"]["xmin"])) / float(cell), 4),
         "particle_spacing": round(float(coupling["particle_spacing"]), 6),
         "max_iterations": int(configuration["max_coupling_iterations"]),
         "tolerance": float(configuration["normal_velocity_tolerance"]),
@@ -231,13 +233,15 @@ def run_settings(directory):
 
 def differences(settings):
     """Settings in which a run differs from the baseline. The box margin is snapped to the cells of
-    the run's mesh, so it counts as unchanged within one cell."""
+    the run's mesh, so it and the transfer inset count as unchanged within one cell."""
     changed = set()
     for key, value in BASELINE.items():
         if isinstance(value, str):
             same = settings[key] == value
         elif key == "margin":
             same = abs(settings[key] - value) <= settings["cell"] + 1e-9
+        elif key == "inset":  # in cells; the snapped box can move the region by up to one cell
+            same = abs(settings[key] - value) <= 1.0 + 1e-9
         else:
             same = np.isclose(settings[key], value)
         if not same:
@@ -296,9 +300,11 @@ def reference_name(settings):
     """FVM-only reference on the run's cells and step: h<cell>_dt<step>, or h<cell>_dt<step>_fb<margin>
     when a reference with the run's fine box (box margins beyond the default fine box) exists."""
     name = f"h{settings['cell']:.2f}_dt{settings['fvm_step']:.3f}"
-    fine_box = f"{name}_fb{settings['margin']:g}"
-    path = REFERENCE_DIR / fine_box
-    return fine_box if path.exists() or path.is_symlink() else name
+    for margin in (f"{settings['margin']:.1f}", f"{settings['margin']:g}"):  # fb4.0 and fb3.2
+        path = REFERENCE_DIR / f"{name}_fb{margin}"
+        if path.exists() or path.is_symlink():
+            return path.name
+    return name
 
 
 def reference_cost(name):
@@ -703,6 +709,7 @@ def figure_interval(runs, uncertainty, figure_dir):
     step = BASELINE["fvm_step"]
     top = axis.secondary_xaxis("top", functions=(lambda t: t / step, lambda n: n * step))
     top.set_xticks([r["settings"]["N"] for r in series], [f"{r['settings']['N']}" for r in series])
+    top.xaxis.set_minor_formatter(NullFormatter())
     top.set_xlabel(r"$N$ at $\Delta t=0.008$ s")
     axis.tick_params(axis="x", which="both", top=False)
     statistic_legend(figure)
@@ -805,7 +812,9 @@ def figure_interface(runs, figure_dir):
         axes[0].plot(x, [1e3 * r[f"mismatch_rms_{side}"] for r in runs], linestyle="none", marker=markers[side],
                      markersize=3.5, color=colors[side], label=SIDE_NAMES[side])
     axes[0].set_yscale("log")
-    axes[0].yaxis.set_major_locator(LogLocator(subs=(1.0, 2.0, 5.0)))
+    mismatch = [r[f"mismatch_rms_{side}"] for r in runs for side in SIDES]
+    wide = np.nanmax(mismatch) / np.nanmin(mismatch) > 30  # over 1.5 decades, label decades only
+    axes[0].yaxis.set_major_locator(LogLocator(subs=(1.0,) if wide else (1.0, 2.0, 5.0)))
     axes[0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     axes[0].yaxis.set_minor_formatter(NullFormatter())
     axes[0].set_ylabel(r"rms $|\Delta u|/U_\infty$ $\times10^3$")

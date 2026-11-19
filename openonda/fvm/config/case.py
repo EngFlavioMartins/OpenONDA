@@ -168,9 +168,10 @@ class FVMCase:
         if self.variant is not None and (
             not isinstance(self.variant, str)
             or not self.variant.strip()
-            or Path(self.variant).name != self.variant
+            or Path(self.variant).is_absolute()
+            or any(part in {"", ".", ".."} for part in Path(self.variant).parts)
         ):
-            raise ValueError("FVMCase.variant must be None or one directory name")
+            raise ValueError("FVMCase.variant must be None or a relative sub-directory name")
         if self.mesh is None:
             raise TypeError("FVMCase.mesh is required")
         expected = {

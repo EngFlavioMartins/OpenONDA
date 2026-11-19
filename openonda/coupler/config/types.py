@@ -7,7 +7,7 @@ import numpy as np
 from openonda.core.forcing import VelocityRamp
 from openonda.core.schedules import EverySteps, EveryTime, FinalOnly, Schedule
 
-__all__ = ["Backup", "CouplerConfig"]
+__all__ = ["DOMAIN_SETTINGS", "Backup", "CouplerConfig", "differing_shared_settings"]
 
 # Interface depths in particle spacings, from the interface sensitivity study of
 # tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow: the inset of the transfer surface from
@@ -16,6 +16,28 @@ __all__ = ["Backup", "CouplerConfig"]
 TRANSFER_INSET_SPACINGS = 8.75
 BLEND_START_SPACINGS = 2.0
 BLEND_END_SPACINGS = 6.0
+
+
+DOMAIN_SETTINGS = frozenset(
+    (
+        "transfer_region_bounds",
+        "transfer_inset_spacings",
+        "blend_start_depth",
+        "blend_end_depth",
+        "band_blending_weight",
+        "band_inset_spacings",
+        "transfer_removal_threshold",
+        "circulation_budget_limit",
+        "wall_circulation_ratio_bounds",
+        "outer_boundary_patch",
+        "boundary_mismatch_rms_warning",
+        "boundary_mismatch_rms_limit",
+        "boundary_mismatch_warning",
+        "boundary_mismatch_limit",
+    )
+)
+"""CouplerConfig settings of one FVM domain: its transfer region, blending, outer boundary and
+the checks of its boundary data. The others belong to the shared particle set and clock."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -369,3 +391,14 @@ class CouplerConfig:
                 )
             )
         return {"coupler": values}
+
+
+def differing_shared_settings(configs) -> list[str]:
+    """Return the shared settings (outside DOMAIN_SETTINGS) that differ between ``configs``."""
+    first, *others = configs
+    return [
+        item.name
+        for item in fields(CouplerConfig)
+        if item.name not in DOMAIN_SETTINGS
+        and any(getattr(other, item.name) != getattr(first, item.name) for other in others)
+    ]

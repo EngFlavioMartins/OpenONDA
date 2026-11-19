@@ -1,0 +1,17 @@
+quantity,value
+coupled_end_s,nan
+reference_end_s,nan
+mismatch_rms_x-,0.000461568
+mismatch_rms_x+,5.899e-06
+mismatch_rms_y-,0.000558203
+mismatch_rms_y+,0.000557244
+mismatch_rms_z-,0.000546832
+mismatch_rms_z+,0.000546355
+mismatch_maximum,0.00274801
+budget_error_max,4.58309e-07
+wall_ratio_median,0.952405
+wall_ratio_min,0.935218
+wall_ratio_max,0.971216
+iterations_mean,2.5
+cost_coupled,7804.66
+cost_reference,1646.45

@@ -223,35 +223,39 @@ def _transfer_record(result) -> dict[str, object]:
     return record
 
 
-def compute_diagnostics(coupler, transfer_result=None) -> dict:
-    """Flatten the latest coupling state into JSON-safe diagnostic values.
+def domain_records(coupler, records: Mapping[str, object]) -> dict:
+    """Place the records of the domains: at the top level for one domain, else below ``domains``.
+
+    ``records`` maps the domain names, in the order of the domains, to their records.
+    """
+    if len(coupler.domains) == 1:
+        return dict(next(iter(records.values())))
+    return {"domains": dict(records)}
+
+
+def domain_diagnostics(domain, transfer_result=None) -> dict:
+    """Flatten the latest coupling state of one FVM domain into JSON-safe diagnostic values.
 
     Parameters
     ----------
-    coupler : CoupledSolver
-        Coupled solver with the latest boundary data, transfer and solver state.
+    domain : CoupledDomain
+        FVM domain with the latest boundary data and transfer.
     transfer_result : TransferResult or None, optional
-        Result for the current replacement. ``None`` uses the coupler cache;
-        before the first transfer, zero/``None`` placeholders are returned.
+        Result for the current replacement. ``None`` uses the domain cache;
+        before the first transfer, zero placeholders are returned.
 
     Returns
     -------
     dict[str, object]
-        Nested boundary-data, transfer, transfer-surface and moment-correction records. Vector
+        Boundary-data, transfer and transfer-surface records. Vector
         quantities are split into scalar components for JSONL serialization;
         strengths use m³/s, velocities m/s, and normalized errors are
         dimensionless.
-
-    Notes
-    -----
-    The function is read-only. :func:`record_step` appends its result to the
-    in-memory history and ``coupler_diagnostics.jsonl``.
     """
-    result = transfer_result if transfer_result is not None else coupler._last_transfer_result
+    result = transfer_result if transfer_result is not None else domain._last_transfer_result
     transfer = _transfer_record(result)
-    particle_count = transfer["n_particles_after"]
     boundary_flux = {
-        name: float(coupler._last_vpm_boundary_condition_flux_diagnostics[name])
+        name: float(domain._last_vpm_boundary_condition_flux_diagnostics[name])
         for name in (
             "raw_mismatch",
             "raw_relative",
@@ -264,22 +268,102 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
         raise FloatingPointError("non-finite VPM boundary-flux diagnostic")
     boundary_data = {
         str(name): float(value)
-        for name, value in getattr(coupler, "_last_fvm_boundary_data_diagnostics", {}).items()
+        for name, value in getattr(domain, "_last_fvm_boundary_data_diagnostics", {}).items()
     }
     if not all(np.isfinite(value) for value in boundary_data.values()):
         raise FloatingPointError("non-finite FVM boundary-data diagnostic")
+    transfer_object = domain.vorticity_transfer
+    diagnostics = {
+        "vpm_boundary_condition_flux": boundary_flux,
+        "fvm_boundary_data": boundary_data,
+        "transfer": transfer,
+        "transfer_surface_normal_velocity": {
+            str(name): float(value)
+            for name, value in transfer_object.last_transfer_surface_flow.items()
+        },
+        "transfer_surface_normal_vorticity": {
+            str(name): float(value)
+            for name, value in transfer_object.last_transfer_surface_vorticity.items()
+        },
+        "n_transfer_particles": int(transfer["n_particles_after"]),
+        # VPM positions are relative to the particle frame; add this to obtain
+        # inertial-frame positions. Zero with several domains.
+        "mesh_translation": domain.frame.translation().tolist(),
+        # Displacement of the rotation centre of the mesh since the start.
+        "mesh_offset": domain.frame.offset().tolist(),
+        "domain_timing_seconds": {
+            name: float(value) for name, value in getattr(domain, "_interval_seconds", {}).items()
+        },
+    }
+    boundary_induction = getattr(domain, "_last_boundary_induction_diagnostics", None)
+    if boundary_induction is not None:
+        diagnostics["boundary_induction"] = _diagnostic_json_value(
+            boundary_induction, "boundary induction diagnostic"
+        )
+    return diagnostics
 
-    surface_flow = {}
-    surface_vorticity = {}
-    if coupler.vorticity_transfer is not None:
-        surface_flow = {
-            str(name): float(value)
-            for name, value in coupler.vorticity_transfer.last_transfer_surface_flow.items()
+
+def _particle_set_record(result) -> dict[str, object]:
+    """The whole particle set after the transfers of all domains, from the last transfer."""
+    record = {
+        "particle_count": 0,
+        "vortex_strength_l1": 0.0,
+        "net_strength_fraction": 0.0,
+    }
+    if result is None:
+        return record
+    record.update(
+        {
+            "particle_count": int(result.n_particles_after),
+            "vortex_strength_l1": float(result.particle_set_vortex_strength_l1),
+            "net_strength_fraction": float(result.particle_set_net_strength_fraction),
         }
-        surface_vorticity = {
-            str(name): float(value)
-            for name, value in coupler.vorticity_transfer.last_transfer_surface_vorticity.items()
-        }
+    )
+    for name, value in (
+        ("vortex_strength_net", result.particle_set_vortex_strength_net),
+        ("fringe_removed_vortex_strength", result.fringe_removed_vortex_strength),
+    ):
+        for axis, component in zip("xyz", np.asarray(value, dtype=np.float64), strict=True):
+            record[f"{name}_{axis}"] = float(component)
+    return record
+
+
+def compute_diagnostics(coupler, transfer_results=None) -> dict:
+    """Flatten the latest coupling state into JSON-safe diagnostic values.
+
+    Parameters
+    ----------
+    coupler : CoupledSolver
+        Coupled solver with the latest boundary data, transfers and solver state.
+    transfer_results : sequence of TransferResult or None, optional
+        Results of the current replacement, one per domain. ``None`` uses the
+        domain caches; before the first transfer, zero placeholders are returned.
+
+    Returns
+    -------
+    dict[str, object]
+        The records of the domains (:func:`domain_diagnostics`, placed by
+        :func:`domain_records`), the particle set after all transfers and the
+        particle-solver records.
+
+    Notes
+    -----
+    The function is read-only. :func:`record_step` appends its result to the
+    in-memory history and ``coupler_diagnostics.jsonl``.
+    """
+    results = (
+        list(transfer_results)
+        if transfer_results is not None
+        else [domain._last_transfer_result for domain in coupler.domains]
+    )
+    diagnostics = domain_records(
+        coupler,
+        {
+            domain.name: domain_diagnostics(domain, result)
+            for domain, result in zip(coupler.domains, results, strict=True)
+        },
+    )
+    diagnostics["particle_set"] = _particle_set_record(results[-1])
     gbd_moment_correction = {
         "applied": False,
         "nonzero_node_count": 0,
@@ -319,18 +403,7 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
             ]
             if not all(np.isfinite(value) for value in numeric_correction):
                 raise FloatingPointError("non-finite GBD moment-correction diagnostic")
-    diagnostics = {
-        "vpm_boundary_condition_flux": boundary_flux,
-        "fvm_boundary_data": boundary_data,
-        "transfer": transfer,
-        "transfer_surface_normal_velocity": surface_flow,
-        "transfer_surface_normal_vorticity": surface_vorticity,
-        "gbd_moment_correction": gbd_moment_correction,
-        "n_transfer_particles": int(particle_count),
-        # VPM positions are relative to the frame of the mesh rotation
-        # centre; add this to obtain inertial-frame positions.
-        "mesh_translation": coupler.frame.translation().tolist(),
-    }
+    diagnostics["gbd_moment_correction"] = gbd_moment_correction
     if vpm_solver is not None:
         physics = vpm_solver.physics
         projection = getattr(physics, "last_solid_projection", None)
@@ -386,11 +459,6 @@ def compute_diagnostics(coupler, transfer_result=None) -> dict:
                 "evaluations": int(reuse.evaluations),
                 "reuses": int(reuse.reuses),
             }
-        boundary_induction = getattr(coupler, "_last_boundary_induction_diagnostics", None)
-        if boundary_induction is not None:
-            diagnostics["boundary_induction"] = _diagnostic_json_value(
-                boundary_induction, "boundary induction diagnostic"
-            )
     return diagnostics
 
 
@@ -399,7 +467,7 @@ def record_step(
     step: int,
     time_end: float,
     timing: tuple[float, float, float, float],
-    transfer_result,
+    transfer_results,
     *,
     logger: logging.Logger,
     interval_started: float,
@@ -409,8 +477,8 @@ def record_step(
     """Report one accepted coupling step, write its due backup and its diagnostics record.
 
     Boundary time includes the predictor boundary data and every evaluation after a
-    vorticity transfer. Transfer time includes the vorticity transfers and the state
-    capture and restoration of the coupling iterations. The four
+    vorticity transfer, of all domains. Transfer time includes the vorticity transfers
+    and the state capture and restoration of the coupling iterations. The four
     evolution timers exclude output and backup; the total includes them,
     reporting, logging and collective waits. A failed backup does not undo the
     accepted coupling step: its diagnostics record is written and the backup error
@@ -421,7 +489,7 @@ def record_step(
     reporting_started = time.perf_counter()
     with collective_phase(comm, "coupled step reporting"):
         t_vpm, t_vpm_boundary_condition, t_fvm, t_transfer = timing
-        diagnostics = compute_diagnostics(coupler, transfer_result)
+        diagnostics = compute_diagnostics(coupler, transfer_results)
         coupling_iteration = getattr(coupler, "_last_coupling_iteration_diagnostics", None)
         if coupling_iteration is not None:
             diagnostics["coupling_iteration"] = coupling_iteration
@@ -438,30 +506,33 @@ def record_step(
             timing_data["vpm_phases"] = {
                 str(name): float(seconds) for name, seconds in vpm_phase_seconds.items()
             }
-        stats = coupler._step_transfer_stats or {}
-        timing_data["last_transfer_fvm_gather"] = float(stats.get("fvm_gather_seconds", 0.0))
+        stats = [domain._step_transfer_stats or {} for domain in coupler.domains]
+        timing_data["last_transfer_fvm_gather"] = float(
+            sum(item.get("fvm_gather_seconds", 0.0) for item in stats)
+        )
         if coupler._is_root:
-            logger.info(
-                format_coupler_log(
-                    "FVM",
-                    ("accepted FVM step", coupler.fvm_solver.step),
-                    ("physical time", coupler.fvm_solver.time, "s"),
-                    ("Courant, max", coupler.fvm_solver.max_courant_number),
+            for domain in coupler.domains:
+                logger.info(
+                    format_coupler_log(
+                        "FVM" if len(coupler.domains) == 1 else f"FVM, {domain.name}",
+                        ("accepted FVM step", domain.fvm_solver.step),
+                        ("physical time", domain.fvm_solver.time, "s"),
+                        ("Courant, max", domain.fvm_solver.max_courant_number),
+                    )
                 )
-            )
             logger.info(
                 format_coupler_log(
                     "VPM",
-                    ("particles, before", log_style.count(stats.get("n_before", 0))),
-                    ("particles, after", log_style.count(stats.get("n_after", 0))),
+                    ("particles, before", log_style.count(stats[0].get("n_before", 0))),
+                    ("particles, after", log_style.count(stats[-1].get("n_after", 0))),
                     (
                         "vortex strength, before",
-                        f"{float(stats.get('sum_before', 0.0)):.4e}",
+                        f"{float(stats[0].get('sum_before', 0.0)):.4e}",
                         "m^3/s",
                     ),
                     (
                         "vortex strength, after",
-                        f"{float(stats.get('sum_after', 0.0)):.4e}",
+                        f"{float(stats[-1].get('sum_after', 0.0)):.4e}",
                         "m^3/s",
                     ),
                 )
@@ -555,6 +626,8 @@ __all__ = [
     "close_coupler_logging",
     "compute_diagnostics",
     "configure_coupler_logging",
+    "domain_diagnostics",
+    "domain_records",
     "finish_coupling_step",
     "flush_log",
     "format_coupler_log",

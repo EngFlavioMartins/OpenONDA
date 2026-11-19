@@ -28,6 +28,7 @@ import taichi as ti
 from ..config.state_limits import ParticleStateLimits
 
 __all__ = [
+    "MAX_STRAIN_EXCLUDED_BOXES",
     "MeasuredParticleState",
     "ParticleStateError",
     "ParticleStateMetrics",
@@ -58,6 +59,9 @@ _TINY_VOLUME = float(np.finfo(np.float64).tiny)
 
 # Result layout: masks, four maxima, two particle indices, limiting position.
 _RESULT_SIZE = 11
+
+MAX_STRAIN_EXCLUDED_BOXES = 8
+"""Most boxes whose particles the strain extrema exclude, one per coupled FVM domain."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,15 +294,19 @@ def _attains_maximum(value, maximum, nan_mask, bit: ti.template()):
 
 
 @ti.func
-def _strain_counted(position, excluded, use_exclusion):
+def _strain_counted(position, lower, upper, box_count):
+    # Unrolled over every box slot: the SPIR-V backends cannot index a matrix
+    # argument with a loop variable.
     counted = True
-    if use_exclusion != 0:
-        inside = True
-        for axis in ti.static(range(3)):
-            coordinate = ti.cast(position[axis], ti.f64)
-            if coordinate < excluded[2 * axis] or coordinate > excluded[2 * axis + 1]:
-                inside = False
-        counted = not inside
+    for box in ti.static(range(MAX_STRAIN_EXCLUDED_BOXES)):
+        if box < box_count:
+            inside = True
+            for axis in ti.static(range(3)):
+                coordinate = ti.cast(position[axis], ti.f64)
+                if coordinate < lower[box, axis] or coordinate > upper[box, axis]:
+                    inside = False
+            if inside:
+                counted = False
     return counted
 
 
@@ -307,8 +315,9 @@ def _reduce_particle_state(
     particles: ti.template(),
     count: ti.i32,
     time_step_size: ti.f64,
-    excluded: ti.types.vector(6, ti.f64),
-    use_exclusion: ti.i32,
+    excluded_lower: ti.types.matrix(MAX_STRAIN_EXCLUDED_BOXES, 3, ti.f64),
+    excluded_upper: ti.types.matrix(MAX_STRAIN_EXCLUDED_BOXES, 3, ti.f64),
+    box_count: ti.i32,
 ) -> ti.types.vector(_RESULT_SIZE, ti.f64):
     invalid_mask = 0
     nan_mask = 0
@@ -334,7 +343,7 @@ def _reduce_particle_state(
             if ti.math.isnan(value) or ti.math.isinf(value) or value <= 0.0:
                 ti.atomic_or(invalid_mask, 1 << bit)
 
-        if _strain_counted(particles.position[i], excluded, use_exclusion):
+        if _strain_counted(particles.position[i], excluded_lower, excluded_upper, box_count):
             infinity, spectral = _strain_increments(particles.velocity_gradient[i], time_step_size)
             _accumulate_maximum(infinity, infinity_maximum, nan_mask, 1)
             _accumulate_maximum(spectral, spectral_maximum, nan_mask, 2)
@@ -347,7 +356,7 @@ def _reduce_particle_state(
     infinity_particle = count
     spectral_particle = count
     for i in range(count):
-        if _strain_counted(particles.position[i], excluded, use_exclusion):
+        if _strain_counted(particles.position[i], excluded_lower, excluded_upper, box_count):
             infinity, spectral = _strain_increments(particles.velocity_gradient[i], time_step_size)
             if _attains_maximum(infinity, infinity_maximum, nan_mask, 1):
                 ti.atomic_min(infinity_particle, i)
@@ -387,10 +396,10 @@ def measure_particle_state(
         for the accepted state.
     time_step_size : float
         Accepted step size in s that scales the strain rate to an increment.
-    strain_excluded_bounds : tuple of float or None
-        ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m. Particles inside this
-        box do not enter the strain extrema; every other metric covers all
-        particles.
+    strain_excluded_bounds : sequence of tuple of float or None
+        Boxes ``(xmin, xmax, ymin, ymax, zmin, zmax)`` in m, at most
+        ``MAX_STRAIN_EXCLUDED_BOXES``. Particles inside a box do not enter the
+        strain extrema; every other metric covers all particles.
 
     Returns
     -------
@@ -402,12 +411,21 @@ def measure_particle_state(
     count = int(particles.n_particles_total)
     if count == 0:
         return MeasuredParticleState((), ParticleStateMetrics(0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
-    use_exclusion = strain_excluded_bounds is not None
-    excluded = np.asarray(
-        strain_excluded_bounds if use_exclusion else np.zeros(6), dtype=np.float64
-    ).reshape(6)
+    boxes = np.asarray(
+        () if strain_excluded_bounds is None else strain_excluded_bounds, dtype=np.float64
+    ).reshape(-1, 6)
+    if len(boxes) > MAX_STRAIN_EXCLUDED_BOXES:
+        raise ValueError(
+            f"at most {MAX_STRAIN_EXCLUDED_BOXES} strain-excluded boxes are supported "
+            f"(got {len(boxes)})"
+        )
+    # Lower and upper corners as two matrices of at most 32 entries each.
+    lower = np.zeros((MAX_STRAIN_EXCLUDED_BOXES, 3), dtype=np.float64)
+    upper = np.zeros((MAX_STRAIN_EXCLUDED_BOXES, 3), dtype=np.float64)
+    lower[: len(boxes)] = boxes[:, ::2]
+    upper[: len(boxes)] = boxes[:, 1::2]
     result = _reduce_particle_state(
-        particles, count, float(time_step_size), excluded, int(use_exclusion)
+        particles, count, float(time_step_size), lower, upper, len(boxes)
     ).to_numpy()
     invalid_mask = int(result[0])
     nan_mask = int(result[1])

@@ -1,17 +1,21 @@
-"""The frame of a moving FVM mesh in which the VPM is solved, and the body axes.
+"""The particle frame of the coupled VPM and the body axes of each FVM mesh.
 
 A uniform frame translation leaves the vorticity equation unchanged: particle
 strengths, induced velocities and diffusion are identical, and only the
-particle drift changes by the frame velocity. The coupled VPM therefore runs
-in the frame translating with the rotation centre of the FVM mesh, with the
-freestream ``U(t) - V(t)``. The frame does not rotate, so the particles keep
-the inertial axes and their absolute vorticity.
+particle drift changes by the frame velocity. With one FVM domain the coupled
+VPM therefore runs in the frame translating with the rotation centre of the
+FVM mesh, with the freestream ``U(t) - V(t)``. With several domains, which may
+move relative to each other, the VPM runs in the inertial frame. The frame
+never rotates, so the particles keep the inertial axes and their absolute
+vorticity.
 
-The coupling geometry built from the FVM mesh (transfer lattice, interpolation
-stencils, walls) is kept in body coordinates, the mesh coordinates at the start
-of the run. In the frame, body coordinates are a rotation ``R^T`` about the
-rotation centre; for a translating mesh the two coincide. Boundary data and
-transferred velocities are converted when they pass between the solvers.
+The coupling geometry built from an FVM mesh (transfer lattice, interpolation
+stencils, walls) is kept in its body coordinates, the mesh coordinates at the
+start of the run. In the particle frame, body coordinates are a rotation
+``R^T`` about the rotation centre and, in the inertial frame, a translation by
+the displacement of that centre; a translating mesh followed by the frame has
+body and frame coordinates that coincide. Boundary data and transferred
+velocities are converted when they pass between the solvers.
 """
 
 from __future__ import annotations
@@ -22,31 +26,37 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from openonda.core.kinematics import RigidPose, advance_pose
+from openonda.fvm.motion.elastic import MountedBody
 
 if TYPE_CHECKING:
     from openonda.fvm import FVMSolver
 
 
 class MeshFrame:
-    """Translation and rotation of the FVM mesh seen from the coupling.
+    """Translation and rotation of one FVM mesh seen from the particle frame.
 
     Parameters
     ----------
     fvm_solver : FVMSolver
-        Solver whose ``mesh_motion`` defines the frame; a static mesh gives
-        the inertial frame.
+        Solver whose ``mesh_motion`` moves the mesh; a static mesh gives
+        body coordinates equal to inertial coordinates.
+    follows_mesh : bool, default=True
+        Whether the particle frame translates with the rotation centre of
+        this mesh (one domain) or is the inertial frame (several domains).
 
     Notes
     -----
     Frame coordinates are inertial coordinates less the displacement of the
-    rotation centre since the start of the run. Body coordinates are the
-    placed mesh coordinates at the start of the run. Methods taking ``pose``
-    default to the current mesh pose.
+    frame since the start of the run. Body coordinates are the placed mesh
+    coordinates at the start of the run. Methods taking ``pose`` default to
+    the current mesh pose.
     """
 
-    def __init__(self, fvm_solver: FVMSolver) -> None:
+    def __init__(self, fvm_solver: FVMSolver, *, follows_mesh: bool = True) -> None:
         self._motion = fvm_solver.mesh_motion
+        self.follows_mesh = bool(follows_mesh)
         self.rotates = False
+        self.translates = False
         self._centre = (
             np.zeros(3)
             if self._motion is None
@@ -57,6 +67,16 @@ class MeshFrame:
     def moving(self) -> bool:
         """Whether the FVM mesh moves."""
         return self._motion is not None
+
+    @property
+    def moves(self) -> bool:
+        """Whether the body coordinates move in the particle frame."""
+        return self.rotates or self.translates
+
+    @property
+    def flow_driven(self) -> bool:
+        """Whether the fluid force drives the motion, so its poses are known only as it runs."""
+        return self._motion is not None and isinstance(self._motion.kinematics, MountedBody)
 
     def _pose(self, pose: RigidPose | None) -> RigidPose:
         if pose is not None:
@@ -69,18 +89,26 @@ class MeshFrame:
         return pose.rotation @ self._centre + pose.translation - self._centre
 
     def translation(self) -> np.ndarray:
-        """Current translation in m of the frame from its start position."""
+        """Current translation in m of the particle frame from its start position."""
+        if not self.follows_mesh:
+            return np.zeros(3)
         return np.array(self.offset(), dtype=np.float64)
 
     def rotation(self, pose: RigidPose | None = None) -> np.ndarray:
         """Rotation from body axes to the frame (inertial) axes."""
         return np.array(self._pose(pose).rotation, dtype=np.float64)
 
-    def velocity(self, time: float) -> np.ndarray:
-        """Frame velocity, the rotation-centre velocity, in m/s at ``time``."""
+    def mesh_velocity(self, time: float) -> np.ndarray:
+        """Velocity of the rotation centre in m/s at ``time``."""
         if self._motion is None:
             return np.zeros(3)
         return np.array(self._motion.kinematics.get_velocity(time), dtype=np.float64)
+
+    def velocity(self, time: float) -> np.ndarray:
+        """Particle-frame velocity in m/s at ``time``: the mesh velocity, or zero."""
+        if not self.follows_mesh:
+            return np.zeros(3)
+        return self.mesh_velocity(time)
 
     def angular_velocity(self, time: float) -> np.ndarray:
         """Mesh angular velocity in rad/s at ``time``."""
@@ -103,13 +131,13 @@ class MeshFrame:
             time = end
         return pose
 
-    def step_velocity(self, step_end_times: np.ndarray) -> np.ndarray:
-        """Mean frame velocity in m/s from the accepted time over the coming FVM steps.
+    def mesh_step_velocity(self, step_end_times: np.ndarray) -> np.ndarray:
+        """Mean velocity in m/s of the rotation centre from the accepted time over the coming FVM steps.
 
-        ``step_end_times`` are the end times of the coming FVM steps. The VPM
-        drifts with ``U - step_velocity`` over the shared time step, so
-        particles keep their exact position relative to the rotation centre
-        the FVM will reach.
+        ``step_end_times`` are the end times of the coming FVM steps. A frame
+        drifting with ``U - mesh_step_velocity`` over the shared time step
+        keeps particles at their exact position relative to the rotation
+        centre the FVM will reach.
         """
         if self._motion is None:
             return np.zeros(3)
@@ -119,6 +147,12 @@ class MeshFrame:
         )
         return displacement / (step_end_times[-1] - start)
 
+    def step_velocity(self, step_end_times: np.ndarray) -> np.ndarray:
+        """Mean particle-frame velocity in m/s over the coming FVM steps: the mesh's, or zero."""
+        if not self.follows_mesh:
+            return np.zeros(3)
+        return self.mesh_step_velocity(step_end_times)
+
     def to_frame(self, points: np.ndarray) -> np.ndarray:
         """Map current FVM coordinates to frame coordinates."""
         return np.asarray(points, dtype=np.float64) - self.translation()
@@ -126,6 +160,10 @@ class MeshFrame:
     def to_body(self, points: np.ndarray, pose: RigidPose | None = None) -> np.ndarray:
         """Map frame coordinates, shape ``(n, 3)``, to body coordinates."""
         points = np.asarray(points, dtype=np.float64)
+        if not self.moves:
+            return points
+        if self.translates:
+            points = points - self.offset(pose)
         if not self.rotates:
             return points
         return (points - self._centre) @ self.rotation(pose) + self._centre
@@ -133,9 +171,13 @@ class MeshFrame:
     def from_body(self, points: np.ndarray, pose: RigidPose | None = None) -> np.ndarray:
         """Map body coordinates, shape ``(n, 3)``, to frame coordinates."""
         points = np.asarray(points, dtype=np.float64)
-        if not self.rotates:
+        if not self.moves:
             return points
-        return (points - self._centre) @ self.rotation(pose).T + self._centre
+        if self.rotates:
+            points = (points - self._centre) @ self.rotation(pose).T + self._centre
+        if self.translates:
+            points = points + self.offset(pose)
+        return points
 
     def vectors_to_body(self, vectors: np.ndarray, pose: RigidPose | None = None) -> np.ndarray:
         """Express frame-axis vectors, shape ``(n, 3)``, in body axes."""
@@ -147,10 +189,16 @@ class MeshFrame:
         vectors = np.asarray(vectors, dtype=np.float64)
         return vectors @ self.rotation(pose).T if self.rotates else vectors
 
-    def _sample_poses(self, start_time: float, end_time: float, time_step_size: float):
-        """Times and poses over the coupled run, four samples per time step."""
+    def sample_poses(self, start_time: float, end_time: float, time_step_size: float):
+        """Times and poses over the coupled run, four samples per time step.
+
+        A static mesh has the start pose at every time. A flow-driven motion
+        gives its free response without fluid force.
+        """
         n_steps = max(1, round((end_time - start_time) / time_step_size))
         times = np.linspace(start_time, end_time, 4 * n_steps + 1)
+        if self._motion is None:
+            return times, [RigidPose()] * len(times)
         pose = self._motion.accepted_pose
         poses = [pose]
         for begin, end in zip(times[:-1], times[1:], strict=True):
@@ -161,18 +209,24 @@ class MeshFrame:
     def validate(
         self, start_time: float, end_time: float, time_step_size: float, *, planar: bool
     ) -> None:
-        """Record whether the mesh rotates and reject rotations a planar flow cannot take.
+        """Record how the body coordinates move and reject rotations a planar flow cannot take.
 
         ``planar`` marks particles in one layer between slip planes normal to
-        z; the mesh may then only rotate about z.
+        z; the mesh may then only rotate about z. In the inertial particle
+        frame a mesh translates unless its rotation centre stays at rest.
         """
         if self._motion is None:
             return
-        times, poses = self._sample_poses(start_time, end_time, time_step_size)
+        times, poses = self.sample_poses(start_time, end_time, time_step_size)
         identity = np.eye(3)
         self.rotates = any(
             not np.allclose(pose.rotation, identity, rtol=0.0, atol=1.0e-12) for pose in poses
         ) or any(np.any(self.angular_velocity(float(time)) != 0.0) for time in times)
+        self.translates = not self.follows_mesh and (
+            self.flow_driven
+            or any(np.any(self.offset(pose) != 0.0) for pose in poses)
+            or any(np.any(self.mesh_velocity(float(time)) != 0.0) for time in times)
+        )
         if not planar:
             return
         for time, pose in zip(times, poses, strict=True):
@@ -183,16 +237,21 @@ class MeshFrame:
                     f"normal to z; the FVM mesh may only rotate about z (t = {time:.6g} s)"
                 )
 
+    def box_corners(self, box: np.ndarray, pose: RigidPose | None = None) -> np.ndarray:
+        """Frame coordinates of the eight corners of a body-coordinate box at ``pose``."""
+        box = np.asarray(box, dtype=np.float64).reshape(6)
+        corners = np.array(np.meshgrid(*box.reshape(3, 2), indexing="ij")).reshape(3, -1).T
+        return self.from_body(corners, pose)
+
     def swept_bounds(
         self, box: np.ndarray, start_time: float, end_time: float, time_step_size: float
     ) -> np.ndarray:
         """Frame bounds of a body-coordinate box over all poses of the coupled run."""
         box = np.asarray(box, dtype=np.float64).reshape(6)
-        if not self.rotates:
+        if not self.moves:
             return box
-        corners = np.array(np.meshgrid(*box.reshape(3, 2), indexing="ij")).reshape(3, -1).T
-        _, poses = self._sample_poses(start_time, end_time, time_step_size)
-        points = np.concatenate([self.from_body(corners, pose) for pose in poses])
+        _, poses = self.sample_poses(start_time, end_time, time_step_size)
+        points = np.concatenate([self.box_corners(box, pose) for pose in poses])
         return np.ravel(np.column_stack((points.min(axis=0), points.max(axis=0))))
 
     def maximum_relative_speed(
@@ -215,7 +274,7 @@ class MeshFrame:
         times = np.linspace(start_time, end_time, 4 * n_steps + 1)
         return float(
             max(
-                np.linalg.norm(freestream(time) - self.velocity(float(time)))
+                np.linalg.norm(freestream(time) - self.mesh_velocity(float(time)))
                 + arm * np.linalg.norm(self.angular_velocity(float(time)))
                 for time in times
             )

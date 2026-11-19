@@ -424,9 +424,9 @@ class VPMSolver:
         self._flow_integrals: dict = {}
         self._particle_resolution_metrics: dict = {}
         self._accepted_state_metrics: ParticleStateMetrics | None = None
-        # (xmin, xmax, ymin, ymax, zmin, zmax) in m: particles inside do not set the
+        # Boxes (xmin, xmax, ymin, ymax, zmin, zmax) in m: particles inside do not set the
         # Lagrangian CFL number. The coupler excludes the particles the FVM replaces.
-        self.strain_excluded_bounds: tuple[float, ...] | None = None
+        self.strain_excluded_bounds: tuple[tuple[float, ...], ...] | None = None
         self._particles_removed_this_step = 0
         self._vortex_strength_removed_this_step = np.zeros(3, dtype=self.np_dtype)
 

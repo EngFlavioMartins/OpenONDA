@@ -28,7 +28,7 @@ from openonda.coupler.transfer_lattice import (
 )
 
 if TYPE_CHECKING:
-    from openonda.coupler.solver import CoupledSolver
+    from openonda.coupler.domain import CoupledDomain
     from openonda.fvm import FVMSolver
     from openonda.vpm import VPMSolver
 
@@ -791,7 +791,8 @@ def _transfer_log_rows(step: int, result: TransferResult) -> tuple[log_style.Row
 class VorticityTransfer:
     """Vorticity transfer from the accepted cell-centred FVM state to the particles.
 
-    :class:`CoupledSolver` constructs it once both discretizations are known.
+    :class:`CoupledSolver` constructs one for each FVM domain once both
+    discretizations are known.
     The FVM target strength of each lattice node is the Stokes integral of the
     reconstructed FVM velocity over the faces of its lattice cube, ``Γ^FVM_j``.
     Inside the transfer region the FVM vorticity replaces the particle vorticity
@@ -799,10 +800,10 @@ class VorticityTransfer:
 
     Parameters
     ----------
-    coupler : CoupledSolver
-        Initialized coupled solver providing the transfer settings, the FVM domain
-        bounds, the kinematic viscosity in m²/s, the particle spacing, the core
-        radius ratio and the coupling time step in s.
+    coupler : CoupledDomain
+        Initialized FVM domain of the coupled solver, providing the transfer
+        settings, the FVM domain bounds, the kinematic viscosity in m²/s, the
+        particle spacing, the core radius ratio and the coupling time step in s.
 
     Attributes
     ----------
@@ -832,13 +833,15 @@ class VorticityTransfer:
     Notes
     -----
     It is used through the coupled solver. Call :meth:`setup` once for an FVM
-    mesh, then :meth:`transfer` at accepted coupling times only. A transfer
+    mesh (or :meth:`read_mesh` and then :meth:`build`, when the lattice phase is
+    shared with other domains), then :meth:`transfer` at accepted coupling times
+    only. A transfer
     changes the VPM particles and their caches; :meth:`setup` only builds the
     transfer lattice, the interpolation stencils and the solid masks.
     """
 
-    def __init__(self, coupler: CoupledSolver) -> None:
-        """Read the transfer settings from an initialized coupled solver."""
+    def __init__(self, coupler: CoupledDomain) -> None:
+        """Read the transfer settings from an initialized FVM domain of the coupled solver."""
         cfg = coupler.config
         if coupler.kinematic_viscosity is None or coupler.fvm_domain_bounds is None:
             raise RuntimeError("VorticityTransfer requires initialized FVM and VPM state")
@@ -848,6 +851,8 @@ class VorticityTransfer:
         viscous = numerics.viscous
         # Fluid-side M4' remeshing of off-lattice particles, from the VPM GBD grid.
         vpm = getattr(coupler, "vpm_solver", None)
+        self._vpm_lattice = None if vpm is None else vpm.physics.lattice
+        self._wall_fallback_limit = None if vpm is None else viscous.gbd_wall_fallback_limit
         self._wall_scatter_correction = (
             None
             if vpm is None
@@ -880,13 +885,9 @@ class VorticityTransfer:
         self.diagnostic_interval = int(cfg.transfer_diagnostic_interval_steps)
         self.max_moment_correction_fraction = float(cfg.max_moment_correction_fraction)
         self.circulation_budget_limit = cfg.circulation_budget_limit
-        self._net_strength_baseline: np.ndarray | None = None
-        self._net_strength_above_warning = False
         # Set by the coupler before each transfer from the boundary data.
         self.reference_speed = float(np.linalg.norm(cfg.freestream_velocity_vector))
         self.wall_circulation_ratio_bounds = cfg.wall_circulation_ratio_bounds
-        self.particle_net_strength_warning = cfg.particle_net_strength_warning
-        self.particle_net_strength_limit = cfg.particle_net_strength_limit
         self._fvm_domain_bounds = np.asarray(coupler.fvm_domain_bounds, dtype=np.float64)
         self._transfer_region_bounds: np.ndarray | None = None
         self._cell_tree: cKDTree | None = None
@@ -1041,14 +1042,89 @@ class VorticityTransfer:
         }
 
     def setup(self, fvm: FVMSolver) -> None:
+        """Read the FVM mesh and build the transfer lattice at the mesh's own phase (collective)."""
+        self.read_mesh(fvm)
+        self.build(fvm, self.natural_lattice_anchor())
+
+    def natural_lattice_anchor(self) -> np.ndarray | None:
+        """The lattice anchor of this mesh alone: the smallest cell-centre coordinates, in m.
+
+        Between slip planes the z anchor keeps both planes halfway between
+        particle nodes. ``None`` on a rank without the gathered cells.
+        """
+        if self._cell_centre is None or len(self._cell_centre) == 0:
+            return None
+        # One mesh-derived lattice phase for every geometry, independent of cell
+        # ordering, wall patch names and inferred body dimensions.
+        anchor = self._cell_centre.min(axis=0)
+        if self._slip_z is not None:
+            # The FVM cell-centre z phase need not match the particle h.
+            anchor[2] = self._slip_z[0] + 0.5 * self.particle_spacing
+        return anchor
+
+    def _body_wall_scatter_correction(self):
+        """The fluid-side M4' wall correction against the walls in body coordinates.
+
+        The transfer of a mesh that moves in the particle frame works in body
+        coordinates, while the walls of the particle solver stand at the mesh
+        pose in frame coordinates; its wall correction therefore queries the
+        walls of this mesh where they are fixed, in body coordinates.
+        """
+        from openonda.vpm.physics.diffusion.wall import BodyWall
+
+        boundary = self.solid_boundary
+        wall = BodyWall(self._vpm_lattice)
+        wall.configure_body_classifier(
+            boundary.contains,
+            revision=boundary.revision,
+            query_bounds=boundary.bounds,
+            segments_cross_wall=boundary.segments_cross_wall,
+        )
+        return partial(
+            wall.compute_m4_wall_corrections, wall_fallback_limit=self._wall_fallback_limit
+        )
+
+    def read_mesh(self, fvm: FVMSolver) -> None:
+        """Read the FVM cells and walls in body coordinates (collective).
+
+        Partitioned FVM getters are collective, even though only rank zero
+        receives the assembled arrays; their call order is identical on every
+        rank.
+        """
+        self._target_stencils = None
+        # FVM cells and walls are kept in body coordinates, fixed in the mesh.
+        frame = MeshFrame(fvm) if self._frame is None else self._frame
+        self._transfer_region_bounds = self.config.transfer_region(
+            self._fvm_domain_bounds, self.particle_spacing, self._slip_slab
+        )
+        self._cell_centre = frame.to_body(
+            frame.to_frame(
+                np.asarray(fvm.gather_cell_centre_coordinates(), dtype=np.float64).reshape(-1, 3)
+            )
+        )
+        self._cell_volume = np.asarray(fvm.gather_cell_volume(), dtype=np.float64).reshape(-1)
+        self._wall_patches = [
+            boundary_condition.name
+            for boundary_condition in fvm.case.boundaries
+            if boundary_condition.mesh_type == "wall"
+        ]
+        wall_triangles = fvm.gather_wall_surface_triangles()
+        if wall_triangles is not None:
+            wall_triangles = frame.to_body(frame.to_frame(wall_triangles))
+        self._wall_triangles = wall_triangles
+
+    def build(self, fvm: FVMSolver, lattice_anchor: np.ndarray | None) -> None:
         """Build the transfer lattice, the interpolation stencils and the solid masks.
 
         Parameters
         ----------
         fvm : FVMSolver
-            Initialized solver providing global cell-centre coordinates
-            ``(M, 3)`` in m, cell volumes ``(M,)`` in m³, and boundary
-            geometry.
+            Solver whose cells and walls :meth:`read_mesh` read.
+        lattice_anchor : numpy.ndarray or None
+            A node of the transfer lattice in body coordinates, in m: the
+            :meth:`natural_lattice_anchor`, or one shifted by whole particle
+            spacings or less to the phase shared by several domains. ``None``
+            on a rank without the gathered cells.
 
         Raises
         ------
@@ -1064,32 +1140,8 @@ class VorticityTransfer:
         transfer metadata and interpolation caches; it does not modify FVM
         fields, VPM particles, or either accepted clock.
         """
-        self._target_stencils = None
-        self._net_strength_baseline = None
-        self._net_strength_above_warning = False
-        # FVM cells and walls are kept in body coordinates, fixed in the mesh.
-        frame = MeshFrame(fvm) if self._frame is None else self._frame
-        self._transfer_region_bounds = self.config.transfer_region(
-            self._fvm_domain_bounds, self.particle_spacing, self._slip_slab
-        )
-        self._cell_centre = frame.to_body(
-            frame.to_frame(
-                np.asarray(fvm.gather_cell_centre_coordinates(), dtype=np.float64).reshape(-1, 3)
-            )
-        )
-        self._cell_volume = np.asarray(fvm.gather_cell_volume(), dtype=np.float64).reshape(-1)
-
-        # These partitioned getters are collective, even though only rank zero
-        # receives the assembled arrays. Keep their call order identical.
-        wall_patches = [
-            boundary_condition.name
-            for boundary_condition in fvm.case.boundaries
-            if boundary_condition.mesh_type == "wall"
-        ]
-        wall_triangles = fvm.gather_wall_surface_triangles()
-        if wall_triangles is not None:
-            wall_triangles = frame.to_body(frame.to_frame(wall_triangles))
-
+        wall_patches = self._wall_patches
+        wall_triangles = self._wall_triangles
         comm = fvm.parallel.comm
         with collective_phase(comm, "transfer geometry"):
             if len(self._cell_centre) == 0:
@@ -1110,19 +1162,22 @@ class VorticityTransfer:
             elif wall_patches:
                 raise RuntimeError("Body-fitted transfer requires the FVM wall surface triangles")
             self.solid_boundary = SolidBoundary(self._solid_bodies) if self._solid_bodies else None
-            # One mesh-derived lattice phase for every geometry, independent of cell
-            # ordering, wall patch names and inferred body dimensions.
-            self._lattice_anchor = self._cell_centre.min(axis=0)
+            if (
+                self.solid_boundary is not None
+                and self._frame is not None
+                and self._frame.moves
+                and self._vpm_lattice is not None
+            ):
+                self._wall_scatter_correction = self._body_wall_scatter_correction()
+            if lattice_anchor is None:
+                raise RuntimeError("the transfer lattice of the gathered cells needs an anchor")
+            self._lattice_anchor = np.array(lattice_anchor, dtype=np.float64)
             self._velocity_interpolator = FVMVelocityInterpolator(
                 self._cell_centre,
                 self._cell_tree,
                 neighbour_count=4,
                 solid_boundary=self.solid_boundary,
             )
-            if self._slip_z is not None:
-                # Keep both physical slip planes halfway between VPM nodes.
-                # The FVM cell-centre z phase need not match the particle h.
-                self._lattice_anchor[2] = self._slip_z[0] + 0.5 * self.particle_spacing
 
             if self._cell_tree is None:
                 raise RuntimeError("the vorticity transfer requires an FVM cell search tree")
@@ -1395,7 +1450,7 @@ class VorticityTransfer:
             max_moment_correction_fraction=self.max_moment_correction_fraction,
             circulation_budget_limit=self.circulation_budget_limit,
             wall_circulation_ratio_bounds=self.wall_circulation_ratio_bounds,
-            frame=self._frame if self._frame is not None and self._frame.rotates else None,
+            frame=self._frame if self._frame is not None and self._frame.moves else None,
         )
 
     def interval_strength_threshold(self) -> float:
@@ -1480,8 +1535,6 @@ class VorticityTransfer:
         )
         if self.step % self.diagnostic_interval == 0:
             logger.info(_transfer_log_record(self.step, result))
-        result = self._with_net_strength_balance(result)
-        self._check_particle_net_strength(result)
         if result.moment_fallback_component_count:
             logger.warning(
                 format_coupler_log(
@@ -1500,54 +1553,69 @@ class VorticityTransfer:
             )
         return result
 
-    def _with_net_strength_balance(self, result: TransferResult) -> TransferResult:
-        """Add the change of the particle-set strength balance since the first transfer.
 
-        The balance is the net strength of the particles plus the strength the
-        outflow fringe has removed; its change, over the particle L1 norm, is
-        ``particle_set_net_strength_fraction``.
+class ParticleSetBalance:
+    """Change of the strength balance of the whole particle set since the first transfer.
+
+    The balance is the net strength of the particles plus the strength the
+    outflow fringe has removed. In three dimensions the strengths of a complete
+    vorticity field sum to zero, so the balance changes only through an
+    unresolved transfer or particle step. With several FVM domains it is
+    measured once all of them have transferred.
+
+    Parameters
+    ----------
+    config : CouplerConfig
+        Supplies ``particle_net_strength_warning`` and ``particle_net_strength_limit``.
+    diagnostic_interval : int
+        Coupling steps between two warnings while the balance stays above the warning.
+    """
+
+    def __init__(self, config, diagnostic_interval: int) -> None:
+        self.warning = config.particle_net_strength_warning
+        self.limit = config.particle_net_strength_limit
+        self.diagnostic_interval = int(diagnostic_interval)
+        self.baseline: np.ndarray | None = None
+        self._above_warning = False
+
+    def update(self, result: TransferResult, step: int) -> TransferResult:
+        """Return ``result`` with ``particle_set_net_strength_fraction``; warn or stop on its growth.
+
+        ``result`` is the last transfer of the interval, whose particle-set
+        fields describe the particles after every domain transferred. The check
+        follows the particle state just written, so a stop leaves the run at its
+        last backup.
         """
         balance = result.particle_set_vortex_strength_net + result.fringe_removed_vortex_strength
-        if self._net_strength_baseline is None:
-            self._net_strength_baseline = balance.copy()
+        if self.baseline is None:
+            self.baseline = balance.copy()
         fraction = float(
-            np.linalg.norm(balance - self._net_strength_baseline)
+            np.linalg.norm(balance - self.baseline)
             / (result.particle_set_vortex_strength_l1 + 1.0e-30)
         )
-        return replace(result, particle_set_net_strength_fraction=fraction)
-
-    def _check_particle_net_strength(self, result: TransferResult) -> None:
-        """Warn, or stop, when the net strength of the whole particle set grows.
-
-        In three dimensions the strengths of a complete vorticity field sum to zero,
-        so the balance changes only through an unresolved transfer or particle
-        step. The check follows the particle state just written, so a stop leaves
-        the run at its last backup.
-        """
-        fraction = result.particle_set_net_strength_fraction
-        limit = self.particle_net_strength_limit
-        if limit is not None and fraction > limit:
+        if self.limit is not None and fraction > self.limit:
             raise RuntimeError(
                 "the particle-set strength balance (net strength plus the strength removed "
                 f"by the outflow fringe) changed by {fraction:.3e} of the particle L1 norm "
-                f"since the first transfer, above the limit {limit:.3e}"
+                f"since the first transfer, above the limit {self.limit:.3e}"
             )
-        warning = self.particle_net_strength_warning
-        above = warning is not None and fraction > warning
-        crossed = above and not self._net_strength_above_warning
-        self._net_strength_above_warning = above
-        if above and (crossed or self.step % self.diagnostic_interval == 0):
+        above = self.warning is not None and fraction > self.warning
+        crossed = above and not self._above_warning
+        self._above_warning = above
+        if above and (crossed or step % self.diagnostic_interval == 0):
             logger.warning(
                 format_coupler_log(
                     "particle-set net strength",
-                    ("coupling step", self.step),
+                    ("coupling step", step),
                     ("balance change, of L1", f"{fraction:.3e}"),
-                    ("warning above", f"{warning:.3e}"),
+                    ("warning above", f"{self.warning:.3e}"),
                 )
             )
+        return replace(result, particle_set_net_strength_fraction=fraction)
 
 
 __all__ = [
+    "ParticleSetBalance",
     "TransferResult",
     "VorticityTransfer",
     "remeshing_extension_length",

@@ -1,6 +1,4 @@
 # state file generated using paraview version 6.2.0
-from pathlib import Path
-
 import paraview
 paraview.compatibility.major = 6
 paraview.compatibility.minor = 2
@@ -10,16 +8,6 @@ from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
-# Read the data relative to this case, so the state loads on any machine and from any directory
-try:
-    CASE_DIR = Path(__file__).resolve().parent.parent
-except NameError:  # pasted into the Python shell: run it from the case directory
-    CASE_DIR = Path.cwd()
-
-missing = [name for name in ("solution/fvm.pvd", "solution/vpm.pvd", "assets/cube.stl") if not (CASE_DIR / name).is_file()]
-if missing:
-    raise FileNotFoundError(f"Run ./allrun.sh first, {CASE_DIR} has no {', '.join(missing)}")
-
 # ----------------------------------------------------------------
 # setup views used in the visualization
 # ----------------------------------------------------------------
@@ -27,14 +15,14 @@ if missing:
 # Create a new 'Render View'
 renderView1 = CreateView('RenderView')
 renderView1.Set(
-    ViewSize=[1476, 945],
+    ViewSize=[1200, 500],
     OrientationAxesVisibility=0,
     CenterOfRotation=[5.231250152587891, 0.0, 0.0],
     UseToneMapping=1,
     UseAmbientOcclusion=1,
-    CameraPosition=[35.17181585995478, -28.61535302281981, 22.62267563339554],
-    CameraFocalPoint=[9.956924515612199, -0.8551330724730631, 0.5457414743554604],
-    CameraViewUp=[-0.3513224633183323, 0.36616274340196586, 0.8616828721242434],
+    CameraPosition=[19.122243915358546, -23.615590082480246, 10.4410486665077],
+    CameraFocalPoint=[16.84847834575762, -19.24027974772183, 8.375519085885207],
+    CameraViewUp=[-0.1109160877975892, 0.37655272469919454, 0.91973130151653],
     CameraViewAngle=13.971051406860353,
     UseColorPaletteForBackground=0,
     Background=[1.0, 1.0, 1.0],
@@ -71,7 +59,7 @@ SetActiveView(None)
 # create new layout object 'Layout #1'
 layout1 = CreateLayout(name='Layout #1')
 layout1.AssignView(0, renderView1)
-layout1.SetSize(1476, 945)
+layout1.SetSize(1200, 500)
 
 # ----------------------------------------------------------------
 # restore active view
@@ -95,18 +83,15 @@ appendSelections = CreateSelection(proxyname='AppendSelections', registrationnam
 # ----------------------------------------------------------------
 
 # create a new 'PVD Reader'
-fvmpvd = PVDReader(registrationName='fvm.pvd', FileName=str(CASE_DIR / "solution" / "fvm.pvd"))
+fvmpvd = PVDReader(registrationName='fvm.pvd', FileName='/home/flavio/Projects/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/fvm.pvd')
 fvmpvd.CellArrays = ['velocity', 'kinematic_pressure', 'courant_number', 'vorticity', 'cell_size', 'refinement_level', 'boundary_layer_index', 'cell_volume', 'cell_equivalent_size', 'global_cell_id']
 
-# create a new 'PVD Reader'
-vpmpvd = PVDReader(registrationName='vpm.pvd', FileName=str(CASE_DIR / "solution" / "vpm.pvd"))
-vpmpvd.PointArrays = ['velocity', 'vortex_strength', 'vorticity', 'core_radius', 'particle_volume', 'kinematic_viscosity', 'eddy_viscosity', 'effective_viscosity', 'group_id', 'zone_id']
-
 # create a new 'STL Reader'
-cubestl = STLReader(registrationName='cube.stl', FileNames=[str(CASE_DIR / "assets" / "cube.stl")])
+cubestl = STLReader(registrationName='cube.stl', FileNames=['/home/flavio/Projects/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube.stl'])
 
-# create a new 'Cell Data to Point Data'
-cellDatatoPointData1 = CellDatatoPointData(registrationName='CellDatatoPointData1', Input=fvmpvd)
+# create a new 'PVD Reader'
+vpmpvd = PVDReader(registrationName='vpm.pvd', FileName='/home/flavio/Projects/OpenONDA/tutorials/coupled_fvm_vpm/02_cube_flow/solution/vpm.pvd')
+vpmpvd.PointArrays = ['velocity', 'vortex_strength', 'vorticity', 'core_radius', 'particle_volume', 'kinematic_viscosity', 'eddy_viscosity', 'effective_viscosity', 'group_id', 'zone_id']
 
 # create a new 'Clip'
 clip1 = Clip(registrationName='Clip1', Input=vpmpvd)
@@ -123,6 +108,9 @@ clip1.ClipType.Set(
 
 # init the 'Plane' selected for 'HyperTreeGridClipper'
 clip1.HyperTreeGridClipper.Origin = [5.647500157356262, -5.960464477539063e-08, -5.960464477539063e-08]
+
+# create a new 'Cell Data to Point Data'
+cellDatatoPointData1 = CellDatatoPointData(registrationName='CellDatatoPointData1', Input=fvmpvd)
 
 # create a new 'Slice'
 slice1 = Slice(registrationName='Slice1', Input=cellDatatoPointData1)
@@ -522,7 +510,6 @@ cubestlDisplay.Set(
     ColorArrayName=['POINTS', ''],
     LookupTable=sTLSolidLabelingLUT,
     Interpolation='PBR',
-    Luminosity=27.0,
     Roughness=0.42,
     Metallic=0.04,
 )
@@ -568,7 +555,6 @@ clip1Display.Set(
     DisableLighting=1,
     BackfaceRepresentation='Points',
     Pickable=0,
-    OSPRayUseScaleArray='All Exact',
     GaussianRadius=0.02,
     ShaderPreset='Plain circle',
     OpacityByArray=1,
@@ -610,110 +596,24 @@ clip1Display.PolarAxes.Set(
     SecondaryRadialAxesTextFontSize=12,
 )
 
-# show data from vpmpvd
-vpmpvdDisplay = Show(vpmpvd, renderView1, 'UnstructuredGridRepresentation')
-
-# trace defaults for the display properties.
-vpmpvdDisplay.Set(
-    Representation='Point Gaussian',
-    ColorArrayName=['POINTS', ''],
-    GaussianRadius=0.1269000029563904,
-)
-
-# init the 'Piecewise Function' selected for 'ScaleTransferFunction'
-vpmpvdDisplay.ScaleTransferFunction.Points = [0.04724999889731407, 0.0, 0.5, 0.0, 0.04725762829184532, 1.0, 0.5, 0.0]
-
-# init the 'Piecewise Function' selected for 'OpacityTransferFunction'
-vpmpvdDisplay.OpacityTransferFunction.Points = [0.04724999889731407, 0.0, 0.5, 0.0, 0.04725762829184532, 1.0, 0.5, 0.0]
-
-# init the 'Grid Axes Representation' selected for 'DataAxesGrid'
-vpmpvdDisplay.DataAxesGrid.Set(
-    XTitleBold=0,
-    XTitleFontSize=12,
-    YTitleBold=0,
-    YTitleFontSize=12,
-    ZTitleBold=0,
-    ZTitleFontSize=12,
-    XLabelBold=0,
-    XLabelFontSize=12,
-    YLabelBold=0,
-    YLabelFontSize=12,
-    ZLabelBold=0,
-    ZLabelFontSize=12,
-)
-
-# init the 'Polar Axes Representation' selected for 'PolarAxes'
-vpmpvdDisplay.PolarAxes.Set(
-    PolarAxisTitleBold=0,
-    PolarAxisTitleFontSize=12,
-    PolarAxisLabelBold=0,
-    PolarAxisLabelFontSize=12,
-    LastRadialAxisTextBold=0,
-    LastRadialAxisTextFontSize=12,
-    SecondaryRadialAxesTextBold=0,
-    SecondaryRadialAxesTextFontSize=12,
-)
-
-# show data from glyph1
-glyph1Display = Show(glyph1, renderView1, 'GeometryRepresentation')
-
-# get color transfer function/color map for 'velocity'
-velocityLUT = GetColorTransferFunction('velocity')
-velocityLUT.Set(
-    RGBPoints=[
-        # scalar, red, green, blue
-        0.0016831935004858933, 0.0, 0.0, 0.0,
-        0.0800459967041357, 0.0, 0.062745, 0.0,
-        0.1584087999077855, 0.0, 0.12549, 0.0,
-        0.2367722275659991, 0.0, 0.188235, 0.0,
-        0.31513503076964894, 0.0, 0.25098, 0.0,
-        0.39349783397329874, 0.0, 0.313725, 0.0,
-        0.4718606371769486, 0.0, 0.376471, 0.0,
-        0.5502234403805984, 0.094118, 0.439216, 0.0,
-        0.6285865995233495, 0.196078, 0.501961, 0.0,
-        0.7069496712424619, 0.294118, 0.564706, 0.0,
-        0.7853124744461117, 0.396078, 0.627451, 0.0,
-        0.8636752776497615, 0.498039, 0.690196, 0.0,
-        0.9420380808534113, 0.6, 0.752941, 0.145098,
-        1.0204015085116247, 0.701961, 0.815686, 0.364706,
-        1.0987643117152746, 0.8, 0.878431, 0.580392,
-        1.1771271149189246, 0.901961, 0.941176, 0.796078,
-        1.2505923209791667, 1.0, 1.0, 1.0,
-    ],
-    NanColor=[1.0, 0.0, 0.0],
-    ScalarRangeInitialized=1.0,
-)
-
-# trace defaults for the display properties.
-glyph1Display.Set(
-    Representation='Surface',
-    ColorArrayName=['POINTS', 'velocity'],
-    LookupTable=velocityLUT,
-)
-
-# init the 'Piecewise Function' selected for 'ScaleTransferFunction'
-glyph1Display.ScaleTransferFunction.Points = [-1.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.0]
-
-# init the 'Piecewise Function' selected for 'OpacityTransferFunction'
-glyph1Display.OpacityTransferFunction.Points = [-1.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.0]
-
 # setup the color legend parameters for each legend in this view
 
 # get color legend/bar for vorticityLUT in view renderView1
 vorticityLUTColorBar = GetScalarBar(vorticityLUT, renderView1)
 vorticityLUTColorBar.Set(
     AutoOrient=0,
+    Orientation='Horizontal',
     WindowLocation='Any Location',
-    Position=[0.9074049978596246, 0.713639947706462],
+    Position=[0.7915716645262912, 0.851639947706462],
     Title='$\\| {\\omega}U_\\infty \\| / D$',
-    ComponentTitle='',
+    ComponentTitle='Magnitude',
     HorizontalTitle=1,
     TitleFontFamily='Times',
     TitleFontSize=41,
     LabelFontFamily='Times',
     LabelFontSize=41,
     ScalarBarThickness=25,
-    ScalarBarLength=0.19999999999999984,
+    ScalarBarLength=0.19999999999999973,
     DrawScalarBarOutline=1,
     ScalarBarOutlineColor=[0.0, 0.0, 0.0],
     ScalarBarOutlineThickness=2,
@@ -724,65 +624,28 @@ vorticityLUTColorBar.Set(
 # set color bar visibility
 vorticityLUTColorBar.Visibility = 1
 
-# get color legend/bar for velocityLUT in view renderView1
-velocityLUTColorBar = GetScalarBar(velocityLUT, renderView1)
-velocityLUTColorBar.Set(
-    AutoOrient=0,
-    WindowLocation='Any Location',
-    Position=[0.047211837361586295, 0.7238772627695146],
-    Title='velocity',
-    ComponentTitle='Magnitude',
-    HorizontalTitle=1,
-    TitleFontFamily='Times',
-    TitleFontSize=41,
-    LabelFontFamily='Times',
-    LabelFontSize=41,
-    ScalarBarThickness=25,
-    ScalarBarLength=0.19999999999999984,
-    DrawScalarBarOutline=1,
-    ScalarBarOutlineColor=[0.0, 0.0, 0.0],
-    ScalarBarOutlineThickness=2,
-    AddRangeLabels=0,
-)
-
-# set color bar visibility
-velocityLUTColorBar.Visibility = 0
-
 # show color legend
 slice1Display.SetScalarBarVisibility(renderView1, True)
 
 # show color legend
 clip1Display.SetScalarBarVisibility(renderView1, True)
 
-# hide data in view
-Hide(vpmpvd, renderView1)
-
-# hide data in view
-Hide(glyph1, renderView1)
-
 # ----------------------------------------------------------------
 # setup color maps and opacity maps used in the visualization
 # note: the Get..() functions create a new object, if needed
 # ----------------------------------------------------------------
 
-# get opacity transfer function/opacity map for 'vorticity'
-vorticityPWF = GetOpacityTransferFunction('vorticity')
-vorticityPWF.Set(
-    Points=[0.0, 0.0, 0.5, 0.0, 5.0, 1.0, 0.5, 0.0],
-    ScalarRangeInitialized=1,
-)
-
-# get opacity transfer function/opacity map for 'velocity'
-velocityPWF = GetOpacityTransferFunction('velocity')
-velocityPWF.Set(
-    Points=[0.0016831935004858933, 0.0, 0.5, 0.0, 1.2505923209791667, 1.0, 0.5, 0.0],
-    ScalarRangeInitialized=1,
-)
-
 # get opacity transfer function/opacity map for 'STLSolidLabeling'
 sTLSolidLabelingPWF = GetOpacityTransferFunction('STLSolidLabeling')
 sTLSolidLabelingPWF.Set(
     Points=[0.0, 0.0, 0.5, 0.0, 1.1757813367477812e-38, 1.0, 0.5, 0.0],
+    ScalarRangeInitialized=1,
+)
+
+# get opacity transfer function/opacity map for 'vorticity'
+vorticityPWF = GetOpacityTransferFunction('vorticity')
+vorticityPWF.Set(
+    Points=[0.0, 0.0, 0.5, 0.0, 5.0, 1.0, 0.5, 0.0],
     ScalarRangeInitialized=1,
 )
 
@@ -800,7 +663,7 @@ timeAnimationCue1 = GetTimeTrack()
 timeKeeper1 = GetTimeKeeper()
 
 # initialize the timekeeper
-timeKeeper1.SuppressedTimeSources = [cubestl, fvmpvd]
+timeKeeper1.SuppressedTimeSources = [fvmpvd, cubestl]
 
 # initialize the animation track
 
@@ -811,8 +674,8 @@ animationScene1 = GetAnimationScene()
 animationScene1.Set(
     ViewModules=renderView1,
     Cues=timeAnimationCue1,
-    AnimationTime=42.0,
-    EndTime=42.0,
+    AnimationTime=50.0,
+    EndTime=51.0,
     PlayMode='Snap To TimeSteps',
 )
 

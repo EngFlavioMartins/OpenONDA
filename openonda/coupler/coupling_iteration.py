@@ -11,7 +11,8 @@ import numpy as np
 from openonda.core.parallel import collective_phase
 from openonda.fvm.io.backup import capture_restart_state, restore_restart_state
 
-from .boundary import advance_fvm, reference_speed, update_boundary_history_after_replacement
+from .boundary import reference_speed
+from .reporting import domain_records
 from .vorticity_transfer import _particle_state_snapshot, _restore_particle_state
 
 logger = logging.getLogger("openonda.coupler")
@@ -25,14 +26,19 @@ BoundaryData: TypeAlias = tuple[np.ndarray, np.ndarray, np.ndarray]
 """Face velocity in m/s, normal velocity in m/s and normal gradient of the tangential velocity in 1/s."""
 
 
-class CouplingIterationRow(TypedDict):
-    """Area-weighted RMS change of the boundary data over one coupling iteration."""
+class CouplingIterationRow(TypedDict, total=False):
+    """Area-weighted RMS change of the boundary data over one coupling iteration.
+
+    A one-domain run has its residuals at the top level, several domains below
+    ``domains``; ``scaled_residual`` and ``converged`` cover all of them.
+    """
 
     iteration: int
     normal_velocity_residual: float
     normal_gradient_residual: float
     scaled_residual: float
     converged: bool
+    domains: dict[str, dict[str, float | bool]]
 
 
 def _read_boundary_data(coupler, *, old=False, velocity=None) -> BoundaryData:
@@ -99,37 +105,72 @@ def coupling_tolerances(coupler, face_velocity: np.ndarray) -> tuple[float, floa
     )
 
 
-def advance_coupling_iterations(coupler, geometry, next_velocity):
-    """Repeat the FVM interval and the vorticity transfer until the boundary data converge.
+def _residual_row(domain, updated: BoundaryData, estimate: BoundaryData, tolerance) -> dict:
+    """Area-weighted RMS change of one domain's boundary data over a coupling iteration."""
+    face_area = domain._face_geometry[2]
+    normal = float(np.sqrt(np.average((updated[1] - estimate[1]) ** 2, weights=face_area)))
+    gradient = float(
+        np.sqrt(np.average(np.sum((updated[2] - estimate[2]) ** 2, axis=1), weights=face_area))
+    )
+    return {
+        "normal_velocity_residual": normal,
+        "normal_gradient_residual": gradient,
+        "scaled_residual": max(normal / tolerance[0], gradient / tolerance[1]),
+        "converged": bool(normal <= tolerance[0] and gradient <= tolerance[1]),
+    }
+
+
+def advance_coupling_iterations(coupler, next_velocities):
+    """Repeat the FVM intervals and the vorticity transfers until the boundary data converge.
 
     The VPM advances once to the shared step's end-time predictor. Each coupling
-    iteration restarts the FVM and advected particles from the same state, solves
-    the FVM substeps with the end-time estimate ``b^(m)`` of the boundary
-    data, transfers the FVM vorticity and evaluates the boundary data of the
-    corrected particles. Those data are the next estimate. The first estimate is :func:`_first_estimate`. Only the accepted
-    iteration writes FVM output. MPI ranks share the root's residuals and
-    stopping decision.
+    iteration restarts every FVM domain and the advected particles from the same
+    state, solves the FVM substeps of every domain with its end-time estimate
+    ``b^(m)`` of the boundary data, transfers the FVM vorticity of every domain
+    and then evaluates the boundary data of every domain from the corrected
+    particles. Those data are the next estimates. The iteration converges when
+    the residuals of every domain meet their tolerances. The first estimate is
+    :func:`_first_estimate`. Only the accepted iteration writes FVM output. MPI
+    ranks share the root's residuals and stopping decision.
+
+    Parameters
+    ----------
+    coupler : CoupledSolver
+        The coupled solver; its domains hold the boundary data.
+    next_velocities : sequence of numpy.ndarray
+        Predictor face velocity of each domain, in m/s.
 
     Returns
     -------
     tuple
-        Accepted transfer result, FVM seconds including the accepted output, and
-        transfer seconds including state capture and restoration.
+        Accepted transfer results (one per domain), FVM seconds including the
+        accepted output, and transfer seconds including state capture and
+        restoration.
     """
-    fvm, vpm, transfer = coupler.fvm_solver, coupler.vpm_solver, coupler.vorticity_transfer
-    comm = getattr(fvm.parallel, "comm", None)
-    face_area = geometry[2]
+    domains = coupler.domains
+    vpm = coupler.vpm_solver
+    comm = coupler._comm
     started = perf_counter()
     with collective_phase(comm, "coupling-iteration state capture"):
-        fvm_start = capture_restart_state(fvm)
+        fvm_start = [capture_restart_state(domain.fvm_solver) for domain in domains]
         particles_start = (
             _particle_state_snapshot(vpm, slot="coupler-predictor") if coupler._is_root else None
         )
-        old = _read_boundary_data(coupler, old=True)
-        predictor = _read_boundary_data(coupler, velocity=next_velocity)
-        estimate = _first_estimate(coupler, predictor, geometry[1])
-    first_estimate = "vpm_predictor" if estimate is predictor else "previous_correction"
-    transfer_step = transfer.step
+        old = [_read_boundary_data(domain, old=True) for domain in domains]
+        predictor = [
+            _read_boundary_data(domain, velocity=next_velocity)
+            for domain, next_velocity in zip(domains, next_velocities, strict=True)
+        ]
+        estimate = [
+            _first_estimate(domain, values, domain._face_geometry[1])
+            for domain, values in zip(domains, predictor, strict=True)
+        ]
+    first_estimate = (
+        "vpm_predictor"
+        if all(e is p for e, p in zip(estimate, predictor, strict=True))
+        else "previous_correction"
+    )
+    transfer_steps = [domain.vorticity_transfer.step for domain in domains]
     phase_seconds = {
         "state_capture": perf_counter() - started,
         "state_restore": 0.0,
@@ -138,44 +179,52 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
     }
     fvm_seconds = transfer_seconds = 0.0
     rows: list[CouplingIterationRow] = []
-    tolerance = coupling_tolerances(coupler, predictor[0])
+    tolerances = [
+        coupling_tolerances(domain, values[0])
+        for domain, values in zip(domains, predictor, strict=True)
+    ]
+    results = []
+    imposed = estimate
     for iteration in range(1, coupler.config.max_coupling_iterations + 1):
         started = perf_counter()
         if iteration > 1:
-            restore_restart_state(fvm, fvm_start)
+            for domain, state in zip(domains, fvm_start, strict=True):
+                restore_restart_state(domain.fvm_solver, state)
             if coupler._is_root:
                 _restore_particle_state(vpm, particles_start)
-            transfer.step = transfer_step
-            _write_boundary_data(coupler, old, old=True)
-        _write_boundary_data(coupler, estimate)
+            for domain, step, values in zip(domains, transfer_steps, old, strict=True):
+                domain.vorticity_transfer.step = step
+                _write_boundary_data(domain, values, old=True)
+        for domain, values in zip(domains, estimate, strict=True):
+            _write_boundary_data(domain, values)
         phase_seconds["state_restore"] += perf_counter() - started
-        fvm_seconds += advance_fvm(coupler, *geometry, estimate[0])
+        for domain, values in zip(domains, estimate, strict=True):
+            fvm_seconds += domain.advance_fvm(values[0])
         started = perf_counter()
-        result, _ = coupler._transfer_vorticity_to_vpm(geometry[0])
+        results, _ = coupler.transfer_vorticity_to_vpm()
         transfer_seconds += perf_counter() - started
-        started = perf_counter()
-        update_boundary_history_after_replacement(coupler, *geometry)
-        phase_seconds["boundary_refresh"] += perf_counter() - started
+        phase_seconds["boundary_refresh"] += sum(
+            domain.refresh_boundary_data() for domain in domains
+        )
         row: CouplingIterationRow | None = None
         imposed = estimate
         if coupler._is_root:
-            updated = _read_boundary_data(coupler, old=True)
-            normal = float(np.sqrt(np.average((updated[1] - estimate[1]) ** 2, weights=face_area)))
-            gradient = float(
-                np.sqrt(
-                    np.average(np.sum((updated[2] - estimate[2]) ** 2, axis=1), weights=face_area)
+            updated = [_read_boundary_data(domain, old=True) for domain in domains]
+            domain_rows = {
+                domain.name: _residual_row(domain, new, guess, tolerance)
+                for domain, new, guess, tolerance in zip(
+                    domains, updated, estimate, tolerances, strict=True
                 )
-            )
+            }
             row = {
                 "iteration": iteration,
-                "normal_velocity_residual": normal,
-                "normal_gradient_residual": gradient,
-                "scaled_residual": max(normal / tolerance[0], gradient / tolerance[1]),
-                "converged": bool(normal <= tolerance[0] and gradient <= tolerance[1]),
+                "scaled_residual": max(item["scaled_residual"] for item in domain_rows.values()),
+                "converged": all(item["converged"] for item in domain_rows.values()),
+                **domain_records(coupler, domain_rows),
             }
             estimate = updated
-        if fvm.parallel.is_parallel:
-            row = fvm.parallel.comm.bcast(row, root=0)
+        if comm is not None and comm.Get_size() > 1:
+            row = comm.bcast(row, root=0)
         assert row is not None
         rows.append(row)
         if row["converged"]:
@@ -183,30 +232,25 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
     converged = rows[-1]["converged"]
     if not converged:
         if coupler.config.stop_on_unconverged_coupling:
-            raise RuntimeError(
-                f"the coupling iterations did not converge in {len(rows)} iterations at "
-                f"t = {fvm.time:.6g} s: normal-velocity residual "
-                f"{rows[-1]['normal_velocity_residual']:.3e} m/s (tolerance {tolerance[0]:.3e}), "
-                f"normal-gradient residual {rows[-1]['normal_gradient_residual']:.3e} 1/s "
-                f"(tolerance {tolerance[1]:.3e})"
-            )
+            raise RuntimeError(_unconverged_message(coupler, rows[-1], tolerances))
         if coupler._is_root:
             # The FVM ended the interval on the data it was given, so the next interval
             # starts from them rather than from the newer evaluation.
-            _write_boundary_data(coupler, imposed, old=True)
+            for domain, values in zip(domains, imposed, strict=True):
+                _write_boundary_data(domain, values, old=True)
     # The accepted end-of-interval data are those evaluated in the last iteration.
-    coupler.previous_boundary_data_correction = (
-        coupler.boundary_data_correction if converged else None
-    )
-    coupler.previous_boundary_data_correction_interval = coupler.boundary_data_correction_interval
-    coupler.boundary_data_correction_interval = float(coupler.vpm_time_step_size)
-    coupler.boundary_data_correction = (
-        tuple(accepted - first for accepted, first in zip(estimate, predictor, strict=True))
-        if converged
-        else None
-    )
+    for domain, accepted, first in zip(domains, estimate, predictor, strict=True):
+        domain.previous_boundary_data_correction = (
+            domain.boundary_data_correction if converged else None
+        )
+        domain.previous_boundary_data_correction_interval = domain.boundary_data_correction_interval
+        domain.boundary_data_correction_interval = float(coupler.vpm_time_step_size)
+        domain.boundary_data_correction = (
+            tuple(a - f for a, f in zip(accepted, first, strict=True)) if converged else None
+        )
     started = perf_counter()
-    fvm.write_step_output()
+    for domain in domains:
+        domain.fvm_solver.write_step_output()
     phase_seconds["accepted_output"] = perf_counter() - started
     fvm_seconds += phase_seconds["accepted_output"]
     transfer_seconds += phase_seconds["state_capture"] + phase_seconds["state_restore"]
@@ -218,13 +262,32 @@ def advance_coupling_iterations(coupler, geometry, next_velocity):
         "phase_seconds": phase_seconds,
     }
     if coupler._is_root:
-        logger.log(
-            logging.INFO if converged else logging.WARNING,
-            "coupler  coupling iterations | iterations=%d | converged=%s | "
-            "normal velocity=%.3e | normal gradient=%.3e",
-            len(rows),
-            converged,
-            rows[-1]["normal_velocity_residual"],
-            rows[-1]["normal_gradient_residual"],
-        )
-    return result, fvm_seconds, transfer_seconds
+        for domain in domains:
+            last = rows[-1] if len(domains) == 1 else rows[-1]["domains"][domain.name]
+            logger.log(
+                logging.INFO if converged else logging.WARNING,
+                "coupler  coupling iterations%s | iterations=%d | converged=%s | "
+                "normal velocity=%.3e | normal gradient=%.3e",
+                "" if len(domains) == 1 else f", {domain.name}",
+                len(rows),
+                converged,
+                last["normal_velocity_residual"],
+                last["normal_gradient_residual"],
+            )
+    return results, fvm_seconds, transfer_seconds
+
+
+def _unconverged_message(coupler, row, tolerances) -> str:
+    """The stop message of unconverged coupling iterations, for the domain furthest from its tolerance."""
+    domains = coupler.domains
+    records = [row] if len(domains) == 1 else [row["domains"][domain.name] for domain in domains]
+    index = max(range(len(domains)), key=lambda item: records[item]["scaled_residual"])
+    record, tolerance = records[index], tolerances[index]
+    where = "" if len(domains) == 1 else f" in the FVM domain {domains[index].name!r}"
+    return (
+        f"the coupling iterations did not converge in {row['iteration']} iterations at "
+        f"t = {coupler.coupling_time(coupler.step + 1):.6g} s{where}: normal-velocity residual "
+        f"{record['normal_velocity_residual']:.3e} m/s (tolerance {tolerance[0]:.3e}), "
+        f"normal-gradient residual {record['normal_gradient_residual']:.3e} 1/s "
+        f"(tolerance {tolerance[1]:.3e})"
+    )

@@ -57,6 +57,64 @@ class PlacedSolidBoundary:
         return result, changed, displacement, maximum
 
 
+class SolidBoundaryUnion:
+    """The walls of several FVM domains seen together from the particle frame.
+
+    The domains keep their remeshing regions apart (see
+    :func:`~openonda.coupler.domain.check_remeshing_regions_apart`), so a
+    particle is near the walls of at most one domain and the projections of
+    the domains never act on the same particle.
+
+    Parameters
+    ----------
+    boundaries : sequence
+        Solid boundaries in frame coordinates: a ``SolidBoundary`` of a domain
+        at rest in the frame, or a :class:`PlacedSolidBoundary`.
+    """
+
+    def __init__(self, boundaries):
+        self.boundaries = tuple(boundaries)
+        self.revision = tuple(boundary.revision for boundary in self.boundaries)
+        values = np.asarray([boundary.bounds for boundary in self.boundaries], dtype=np.float64)
+        self.bounds = np.ravel(
+            np.column_stack((values[:, ::2].min(axis=0), values[:, 1::2].max(axis=0)))
+        )
+
+    def contains(self, points, *, include_boundary=False):
+        result = np.zeros(len(np.asarray(points).reshape(-1, 3)), dtype=bool)
+        for boundary in self.boundaries:
+            result |= boundary.contains(points, include_boundary=include_boundary)
+        return result
+
+    def near_surface(self, points, margin):
+        result = np.zeros(len(np.asarray(points).reshape(-1, 3)), dtype=bool)
+        for boundary in self.boundaries:
+            result |= boundary.near_surface(points, margin)
+        return result
+
+    def segments_cross_wall(self, starts, ends):
+        result = np.zeros(len(np.asarray(starts).reshape(-1, 3)), dtype=bool)
+        for boundary in self.boundaries:
+            result |= boundary.segments_cross_wall(starts, ends)
+        return result
+
+    def constrain_motion(self, positions, spacing, *, starts=None, coordinate_scale=None):
+        """Project the wall crossings of each domain in turn; their particles are distinct."""
+        result = np.asarray(positions).copy()
+        changed = np.zeros(len(result), dtype=bool)
+        displacement = np.zeros((len(result), 3), dtype=np.float64)
+        maximum = 0.0
+        for boundary in self.boundaries:
+            corrected, moved, delta, largest = boundary.constrain_motion(
+                result, spacing, starts=starts, coordinate_scale=coordinate_scale
+            )
+            result[moved] = corrected[moved]
+            displacement[np.flatnonzero(moved)] += delta
+            changed |= moved
+            maximum = max(maximum, float(largest))
+        return result, changed, displacement[changed], maximum
+
+
 class WallProjection:
     """Project Runge--Kutta stage positions and accepted positions back into the fluid.
 

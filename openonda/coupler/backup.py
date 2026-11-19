@@ -1,8 +1,8 @@
 """Numbered restart backups of the coupled FVM--VPM state.
 
 A coupled backup ``solution/coupled/coupled_{step:06d}/`` holds the FVM
-backup, the VPM backup and the boundary data of one coupling step, described
-by ``checkpoint_info.json``. It is written to a hidden staging directory and
+backup and the boundary data of every FVM domain and the VPM backup of one
+coupling step, described by ``checkpoint_info.json``. It is written to a hidden staging directory and
 renamed into place once complete.
 """
 
@@ -26,7 +26,7 @@ from openonda.vpm.config.restart_changes import validate_exact_configuration_cha
 
 from .reporting import format_coupler_log
 
-BACKUP_FORMAT_VERSION = 19
+BACKUP_FORMAT_VERSION = 20
 BOUNDARY_SCHEMA_VERSION = 6
 _BOUNDARY_FIELDS = ("velocity", "normal_velocity", "normal_gradient")
 _CORRECTIONS = ("boundary_data_correction", "previous_boundary_data_correction")
@@ -51,14 +51,14 @@ _INFO_KEYS = frozenset(
         "configuration",
         "step",
         "time",
-        "fvm_time_step_size",
         "vpm_time_step_size",
-        "fvm_step",
         "vpm_step",
+        "domains",
         "files",
         "file_sha256",
     )
 )
+_DOMAIN_KEYS = frozenset(("fvm_time_step_size", "fvm_step", "fvm", "boundary_condition"))
 
 logger = logging.getLogger("openonda.coupler")
 
@@ -84,20 +84,46 @@ def file_digest(path: Path) -> str:
 def restart_configuration(coupler) -> dict:
     """Return the coupling settings a continued run must share with its backup.
 
+    The settings, walls and transfer-lattice anchor of every domain, by name.
     The FVM and VPM backups validate their own configurations.
     """
-    configuration = dict(coupler.config.to_dict())
-    transfer = coupler.vorticity_transfer
-    revisions = [body.revision for body in transfer._solid_bodies]
-    if any(revision is None for revision in revisions):
-        raise RuntimeError("Solid bodies need stable geometry revisions for coupled restart")
-    if revisions:
-        configuration["solid_geometry"] = {"wall_revisions": revisions}
-    if transfer._lattice_anchor is not None:
-        configuration["transfer_lattice"] = {
-            "anchor": np.asarray(transfer._lattice_anchor).tolist()
-        }
+    configuration: dict[str, object] = {"domains": {}}
+    for domain in coupler.domains:
+        settings = dict(domain.config.to_dict())
+        transfer = domain.vorticity_transfer
+        revisions = [body.revision for body in transfer._solid_bodies]
+        if any(revision is None for revision in revisions):
+            raise RuntimeError("Solid bodies need stable geometry revisions for coupled restart")
+        if revisions:
+            settings["solid_geometry"] = {"wall_revisions": revisions}
+        if transfer._lattice_anchor is not None:
+            settings["transfer_lattice"] = {"anchor": np.asarray(transfer._lattice_anchor).tolist()}
+        configuration["domains"][domain.name] = settings
     return configuration
+
+
+def _boundary_state(domain) -> dict:
+    """The boundary data of one domain and its two boundary-data corrections, for ``np.savez``."""
+    boundary_data = {
+        "velocity": (domain._velocity_boundary_condition_old, (0, 3)),
+        "normal_velocity": (domain._normal_velocity_boundary_condition_old, (0,)),
+        "normal_gradient": (domain._normal_gradient_boundary_condition_old, (0, 3)),
+    }
+    state = {"boundary_schema_version": np.asarray(BOUNDARY_SCHEMA_VERSION)}
+    for name, (values, empty_shape) in boundary_data.items():
+        state[f"has_{name}"] = np.asarray(values is not None)
+        state[name] = np.empty(empty_shape) if values is None else values
+    # The first estimate of the next interval extrapolates these corrections.
+    for correction in _CORRECTIONS:
+        values = getattr(domain, correction)
+        state[f"has_{correction}"] = np.asarray(values is not None)
+        state[f"{correction}_interval"] = np.asarray(
+            float(getattr(domain, f"{correction}_interval"))
+        )
+        for name, (_, empty_shape) in boundary_data.items():
+            stored = None if values is None else values[_BOUNDARY_FIELDS.index(name)]
+            state[f"{correction}_{name}"] = np.empty(empty_shape) if stored is None else stored
+    return state
 
 
 def save_coupled_backup(coupler, path: Path) -> Path:
@@ -106,68 +132,61 @@ def save_coupled_backup(coupler, path: Path) -> Path:
     Collective under MPI. Returns ``path`` on every rank.
     """
     comm = coupler._comm
-    fvm, vpm = coupler.fvm_solver, coupler.vpm_solver
+    vpm = coupler.vpm_solver
     step = coupler.step
     with collective_phase(comm, "coupled backup clock validation"):
-        if vpm is not None and (
-            vpm.step != step
-            or vpm.time != fvm.time
-            or not np.isclose(
-                vpm.time_step_size, coupler.vpm_time_step_size, rtol=0.0, atol=1.0e-14
-            )
-            or not np.isclose(
-                fvm._accepted_time_step_size, coupler.fvm_time_step_size, rtol=0.0, atol=1.0e-14
-            )
-        ):
-            raise ValueError(
-                "The FVM and VPM backup clocks differ: "
-                f"steps={fvm.step}/{vpm.step}/{step}, "
-                f"times={fvm.time!r}/{vpm.time!r}, "
-                f"time steps={fvm._accepted_time_step_size!r}/{vpm.time_step_size!r} "
-                f"(expected {coupler.fvm_time_step_size!r}/{coupler.vpm_time_step_size!r})"
-            )
-        if vpm is None and not np.isclose(coupler.time, fvm.time, rtol=0.0, atol=1.0e-12):
-            raise ValueError("The coupled clock differs from the FVM time")
+        for domain in coupler.domains:
+            fvm = domain.fvm_solver
+            if vpm is not None and (
+                vpm.step != step
+                or vpm.time != fvm.time
+                or not np.isclose(
+                    vpm.time_step_size, coupler.vpm_time_step_size, rtol=0.0, atol=1.0e-14
+                )
+                or not np.isclose(
+                    fvm._accepted_time_step_size,
+                    domain.fvm_time_step_size,
+                    rtol=0.0,
+                    atol=1.0e-14,
+                )
+            ):
+                raise ValueError(
+                    f"The FVM and VPM backup clocks of {domain.name!r} differ: "
+                    f"steps={fvm.step}/{vpm.step}/{step}, "
+                    f"times={fvm.time!r}/{vpm.time!r}, "
+                    f"time steps={fvm._accepted_time_step_size!r}/{vpm.time_step_size!r} "
+                    f"(expected {domain.fvm_time_step_size!r}/{coupler.vpm_time_step_size!r})"
+                )
+            if vpm is None and not np.isclose(coupler.time, fvm.time, rtol=0.0, atol=1.0e-12):
+                raise ValueError(f"The coupled clock differs from the FVM time of {domain.name!r}")
     staging = path.with_name(f".{path.name}.tmp")
     with collective_phase(comm, "coupled backup staging"):
         if coupler._is_root:
             shutil.rmtree(staging, ignore_errors=True)
             staging.mkdir(parents=True)
-    fvm_file = f"fvm_{step:06d}" if fvm.parallel.is_partitioned else f"fvm_{step:06d}.npz"
-    fvm.save_backup(staging / fvm_file)
+    fvm_files = {}
+    for domain in coupler.domains:
+        fvm = domain.fvm_solver
+        stem = f"fvm_{domain.name}_{step:06d}"
+        fvm_files[domain.name] = stem if fvm.parallel.is_partitioned else f"{stem}.npz"
+        fvm.save_backup(staging / fvm_files[domain.name])
     with collective_phase(comm, "coupled backup commit"):
         if coupler._is_root:
-            files = {
-                "fvm": fvm_file,
-                "vpm": vpm.save_backup(staging / f"vpm_{step:06d}.h5").name,
-                "boundary_condition": f"boundary_condition_{step:06d}.npz",
-            }
-            boundary_data = {
-                "velocity": (coupler._velocity_boundary_condition_old, (0, 3)),
-                "normal_velocity": (coupler._normal_velocity_boundary_condition_old, (0,)),
-                "normal_gradient": (
-                    coupler._normal_gradient_boundary_condition_old,
-                    (0, 3),
-                ),
-            }
-            state = {"boundary_schema_version": np.asarray(BOUNDARY_SCHEMA_VERSION)}
-            for name, (values, empty_shape) in boundary_data.items():
-                state[f"has_{name}"] = np.asarray(values is not None)
-                state[name] = np.empty(empty_shape) if values is None else values
-            # The first estimate of the next interval extrapolates these corrections.
-            for correction in _CORRECTIONS:
-                values = getattr(coupler, correction)
-                state[f"has_{correction}"] = np.asarray(values is not None)
-                state[f"{correction}_interval"] = np.asarray(
-                    float(getattr(coupler, f"{correction}_interval"))
-                )
-                for name, (_, empty_shape) in boundary_data.items():
-                    stored = None if values is None else values[_BOUNDARY_FIELDS.index(name)]
-                    state[f"{correction}_{name}"] = (
-                        np.empty(empty_shape) if stored is None else stored
-                    )
-            with (staging / files["boundary_condition"]).open("wb") as stream:
-                np.savez_compressed(stream, **encode_state(state))
+            files = {"vpm": vpm.save_backup(staging / f"vpm_{step:06d}.h5").name}
+            domains = {}
+            for domain in coupler.domains:
+                fvm = domain.fvm_solver
+                boundary_file = f"boundary_condition_{domain.name}_{step:06d}.npz"
+                with (staging / boundary_file).open("wb") as stream:
+                    np.savez_compressed(stream, **encode_state(_boundary_state(domain)))
+                files[f"fvm.{domain.name}"] = fvm_files[domain.name]
+                files[f"boundary_condition.{domain.name}"] = boundary_file
+                domains[domain.name] = {
+                    "fvm_time_step_size": float(fvm._accepted_time_step_size),
+                    "fvm_step": int(fvm.step),
+                    "fvm": f"fvm.{domain.name}",
+                    "boundary_condition": f"boundary_condition.{domain.name}",
+                }
             configuration = restart_configuration(coupler)
             write_json_atomic(
                 staging / "checkpoint_info.json",
@@ -178,11 +197,10 @@ def save_coupled_backup(coupler, path: Path) -> Path:
                     "configuration_sha256": configuration_digest(configuration),
                     "configuration": configuration,
                     "step": step,
-                    "time": float(fvm.time),
-                    "fvm_time_step_size": float(fvm._accepted_time_step_size),
+                    "time": float(coupler.time),
                     "vpm_time_step_size": float(vpm.time_step_size),
-                    "fvm_step": int(fvm.step),
                     "vpm_step": int(vpm.step),
+                    "domains": domains,
                     "files": files,
                     "file_sha256": {
                         name: file_digest(staging / file) for name, file in files.items()
@@ -196,7 +214,7 @@ def save_coupled_backup(coupler, path: Path) -> Path:
                 format_coupler_log(
                     "coupled backup",
                     ("coupling step", step),
-                    ("time", f"{fvm.time:.6g}", "s"),
+                    ("time", f"{coupler.time:.6g}", "s"),
                     ("directory", str(path)),
                 )
             )
@@ -215,7 +233,15 @@ def _read_checkpoint_info(path: Path) -> dict:
     if info["configuration_sha256"] != configuration_digest(info["configuration"]):
         raise ValueError(f"The configuration digest of {path} does not match")
     files = info["files"]
-    if set(files) != {"fvm", "vpm", "boundary_condition"} or set(info["file_sha256"]) != set(files):
+    domains = info["domains"]
+    if not isinstance(domains, dict) or not domains:
+        raise ValueError(f"Coupled backup {path} names no FVM domain")
+    expected_files = {"vpm"}
+    for name, entry in domains.items():
+        if not isinstance(entry, dict) or set(entry) != _DOMAIN_KEYS:
+            raise ValueError(f"Incomplete coupled backup entry of {name!r} in {path}")
+        expected_files.update((entry["fvm"], entry["boundary_condition"]))
+    if set(files) != expected_files or set(info["file_sha256"]) != set(files):
         raise ValueError(f"Incomplete coupled backup {path}")
     for name, file in files.items():
         relative = Path(file)
@@ -226,13 +252,19 @@ def _read_checkpoint_info(path: Path) -> dict:
             or file_digest(path / relative) != info["file_sha256"][name]
         ):
             raise ValueError(f"Coupled backup file {path / relative} is missing or changed")
-    for name in ("step", "fvm_step", "vpm_step"):
-        if type(info[name]) is not int or info[name] < 0:
+    clocks = [("step", info["step"]), ("vpm_step", info["vpm_step"])]
+    clocks.extend((f"{name}.fvm_step", entry["fvm_step"]) for name, entry in domains.items())
+    for name, value in clocks:
+        if type(value) is not int or value < 0:
             raise ValueError(f"Invalid coupled backup clock {name!r}")
     if info["vpm_step"] != info["step"]:
         raise ValueError("The coupled backup steps do not match")
-    for name in ("fvm_time_step_size", "vpm_time_step_size"):
-        value = info[name]
+    sizes = [("vpm_time_step_size", info["vpm_time_step_size"])]
+    sizes.extend(
+        (f"{name}.fvm_time_step_size", entry["fvm_time_step_size"])
+        for name, entry in domains.items()
+    )
+    for name, value in sizes:
         if (
             isinstance(value, bool)
             or not isinstance(value, int | float)
@@ -321,29 +353,42 @@ def load_coupled_backup(
                 )
     if comm is not None and comm.Get_size() > 1:
         info = comm.bcast(info, root=0)
-    coupler.fvm_solver.load_backup(path / info["files"]["fvm"])
+    names = [domain.name for domain in coupler.domains]
+    if sorted(info["domains"]) != sorted(names):
+        raise ValueError(
+            f"The coupled backup {path} holds the FVM domains {sorted(info['domains'])}, "
+            f"the run {sorted(names)}"
+        )
+    for domain in coupler.domains:
+        entry = info["domains"][domain.name]
+        domain.fvm_solver.load_backup(path / info["files"][entry["fvm"]])
     step = int(info["step"])
     coupling_time = float(info["time"])
     with collective_phase(comm, "coupled backup clock and boundary-data restore"):
-        if coupler.fvm_solver.step != info["fvm_step"]:
-            raise ValueError("The FVM backup step differs from the coupled backup")
         tolerance = max(1.0e-12, 4.0 * abs(coupling_time) * np.finfo(np.float64).eps)
-        if abs(coupler.fvm_solver.time - coupling_time) > tolerance:
-            raise ValueError(
-                f"Coupled backup time {coupling_time!r} s differs from the FVM time "
-                f"{coupler.fvm_solver.time!r} s"
-            )
+        for domain in coupler.domains:
+            entry = info["domains"][domain.name]
+            fvm = domain.fvm_solver
+            if fvm.step != entry["fvm_step"]:
+                raise ValueError(
+                    f"The FVM backup step of {domain.name!r} differs from the coupled backup"
+                )
+            if abs(fvm.time - coupling_time) > tolerance:
+                raise ValueError(
+                    f"Coupled backup time {coupling_time!r} s differs from the FVM time "
+                    f"{fvm.time!r} s of {domain.name!r}"
+                )
+            if not np.isclose(
+                fvm.time_step_size, float(entry["fvm_time_step_size"]), rtol=0.0, atol=1.0e-14
+            ):
+                raise ValueError(
+                    f"The FVM time-step size of {domain.name!r} differs from the coupled backup"
+                )
+            domain.fvm_time_step_size = fvm.time_step_size
         if coupler._is_root and not np.isclose(
             coupler.vpm_solver.time, coupling_time, rtol=0.0, atol=tolerance
         ):
             raise ValueError("The VPM time differs from the coupled backup time")
-        if not np.isclose(
-            coupler.fvm_solver.time_step_size,
-            float(info["fvm_time_step_size"]),
-            rtol=0.0,
-            atol=1.0e-14,
-        ):
-            raise ValueError("The FVM time-step size differs from the coupled backup")
         if coupler._is_root and not np.isclose(
             coupler.vpm_solver.time_step_size,
             float(info["vpm_time_step_size"]),
@@ -351,27 +396,32 @@ def load_coupled_backup(
             atol=1.0e-14,
         ):
             raise ValueError("The VPM time-step size differs from the coupled backup")
-        coupler.fvm_time_step_size = coupler.fvm_solver.time_step_size
         coupler._selected_interval_end = None
         coupler.vpm_time_step_size = float(info["vpm_time_step_size"])
         if coupler._is_root:
             coupler.vpm_solver.time_step_size = coupler.vpm_time_step_size
         coupler._coupling_step = step
+        coupler._accepted_time = coupling_time
         if coupler._is_root:
-            data, corrections = _load_boundary_data(path / info["files"]["boundary_condition"])
-            (
-                coupler._velocity_boundary_condition_old,
-                coupler._normal_velocity_boundary_condition_old,
-                coupler._normal_gradient_boundary_condition_old,
-            ) = data
-            for correction, (values, interval) in zip(_CORRECTIONS, corrections, strict=True):
-                setattr(coupler, correction, values)
-                setattr(coupler, f"{correction}_interval", interval)
-            coupler._normal_velocity_boundary_condition = None
-            coupler._normal_gradient_boundary_condition = None
+            for domain in coupler.domains:
+                entry = info["domains"][domain.name]
+                data, corrections = _load_boundary_data(
+                    path / info["files"][entry["boundary_condition"]]
+                )
+                (
+                    domain._velocity_boundary_condition_old,
+                    domain._normal_velocity_boundary_condition_old,
+                    domain._normal_gradient_boundary_condition_old,
+                ) = data
+                for correction, (values, interval) in zip(_CORRECTIONS, corrections, strict=True):
+                    setattr(domain, correction, values)
+                    setattr(domain, f"{correction}_interval", interval)
+                domain._normal_velocity_boundary_condition = None
+                domain._normal_gradient_boundary_condition = None
             rewind_jsonl(coupler.solution_dir / "coupler_diagnostics.jsonl", coupling_time)
-    # Both solvers retain the same accepted physical time after restoration.
-    coupler.fvm_solver.time = coupling_time
+    # All solvers retain the same accepted physical time after restoration.
+    for domain in coupler.domains:
+        domain.fvm_solver.time = coupling_time
     if coupler._is_root:
         coupler.vpm_solver.time = coupling_time
     return step

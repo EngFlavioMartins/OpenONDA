@@ -1,0 +1,46 @@
+{
+  "synthetic_signal": {
+    "window": {
+      "start_s": 5.0,
+      "end_s": 35.0,
+      "n_cycles": 6,
+      "mean_period_s": 5.0,
+      "period_standard_deviation_s": 0.0
+    },
+    "relative_errors": {
+      "mean": 6.629469889321957e-05,
+      "harmonic_1_amplitude": 8.416575689821719e-05,
+      "harmonic_2_amplitude": 0.0016831126005723007,
+      "harmonic_3_amplitude": 0.0005345160012163591
+    },
+    "recovered_within_0.5_percent": true,
+    "two_percent_change": {
+      "first": 0.3005049337801717,
+      "second": 0.3065049332366454,
+      "difference": 0.005999999456473726,
+      "combined_standard_error": 0.00033844613624335504,
+      "unit": "1"
+    },
+    "difference_over_combined_standard_error": 17.728077865127432,
+    "reported_as_difference": true,
+    "passed": true
+  },
+  "run_against_itself": {
+    "statistics": 7,
+    "all_differences_zero": true,
+    "passed": true
+  },
+  "force_equal_to_velocity": {
+    "phase_from_harmonics_deg": 90.0,
+    "phase_from_cross_spectrum_deg": 89.96875000308074,
+    "work_per_cycle_J": [
+      0.15791367041742976,
+      0.15791367041742974,
+      0.15791367041742976,
+      0.15791367041742974,
+      0.15791367041742974,
+      0.15791367041742976
+    ],
+    "passed": true
+  }
+}
