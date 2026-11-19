@@ -2403,6 +2403,186 @@ def _patch_alignment_weight(
     return float(np.sqrt(max_distance_squared) / distance * normal_alignment)
 
 
+def _elements_in_chain(selected: Sequence[bool]) -> bool:
+    """Whether the selected entries of a cyclic list are consecutive, ``help::areElementsInChain``."""
+    count = len(selected)
+    first = next((index for index, value in enumerate(selected) if value), None)
+    if first is None:
+        return True
+    in_chain = [False] * count
+    in_chain[first] = True
+    found = True
+    while found:
+        found = False
+        for index in range(count):
+            if (
+                selected[index]
+                and not in_chain[index]
+                and (in_chain[(index + 1) % count] or in_chain[(index - 1) % count])
+            ):
+                in_chain[index] = True
+                found = True
+    return all(in_chain[index] or not selected[index] for index in range(count))
+
+
+def _dominant_patch(neighbour_patches: Sequence[int], current_patch: int) -> tuple[int, int]:
+    """The patch across most edges of a face and its edge count; a tie keeps ``current_patch``."""
+    counts: dict[int, int] = {}
+    for patch_id in neighbour_patches:
+        counts[patch_id] = counts.get(patch_id, 0) + 1
+    best_patch, best_count = -1, 0
+    for patch_id in sorted(counts):
+        if counts[patch_id] > best_count:
+            best_patch, best_count = patch_id, counts[patch_id]
+        elif counts[patch_id] == best_count and patch_id == current_patch:
+            best_patch = patch_id
+    return best_patch, best_count
+
+
+def _best_patch_topological(neighbour_patches: Sequence[int], current_patch: int) -> int:
+    """``edgeExtractor::faceEvaluator::bestPatchTopological``."""
+    if set(neighbour_patches) == {current_patch}:
+        return current_patch
+    best_patch, best_count = _dominant_patch(neighbour_patches, current_patch)
+    # A face keeps its patch while more than one of its edges borders other patches
+    if best_count < len(neighbour_patches) - 1 or best_patch in (-1, current_patch):
+        return current_patch
+    if _elements_in_chain([patch_id == best_patch for patch_id in neighbour_patches]):
+        return best_patch
+    return current_patch
+
+
+def _region_topology_adjustment(
+    face_patch_ids: np.ndarray,
+    face_points: Sequence[np.ndarray],
+    edge_neighbours: Sequence[Sequence[int]],
+    point_patch: dict[int, int],
+    may_move: Callable[[int, int, int], bool],
+) -> tuple[np.ndarray, list[list[int]]]:
+    """Apply cfMesh's ``edgeExtractor::checkFacePatchesTopology`` between the regions of a wall.
+
+    A face bordering several patches moves to the patch across most of its
+    edges when those edges form one chain, which removes the notches and
+    single-face steps of a patch boundary before its vertices are mapped onto
+    the feature edge between the patches. ``edge_neighbours`` holds, for every
+    boundary face and each of its edges in face order, the face across that
+    edge (-1 for none or several); ``point_patch`` the patch nearest to each
+    projected boundary point. cfMesh treats every pair of patches; here a face
+    moves only where ``may_move(face, patch, new_patch)`` holds.
+    """
+    history: list[list[int]] = []
+    iteration = 0
+    while True:
+        patches = face_patch_ids
+        updated = patches.copy()
+        corrected = 0
+        candidates = [
+            local_face_id
+            for local_face_id, neighbours in enumerate(edge_neighbours)
+            if len({int(patches[face]) for face in neighbours if face >= 0}) > 1
+        ]
+        for local_face_id in candidates:
+            current_patch = int(patches[local_face_id])
+            neighbours = edge_neighbours[local_face_id]
+            # A face whose points all lie nearest to its own patch stays there
+            if any(face < 0 for face in neighbours) or all(
+                point_patch[int(point_id)] == current_patch
+                for point_id in face_points[local_face_id]
+            ):
+                continue
+            neighbour_patches = [int(patches[face]) for face in neighbours]
+            best_patch, _count = _dominant_patch(neighbour_patches, current_patch)
+            if best_patch in (-1, current_patch) or not may_move(
+                local_face_id, current_patch, best_patch
+            ):
+                continue
+            if _elements_in_chain([patch_id == best_patch for patch_id in neighbour_patches]):
+                updated[local_face_id] = best_patch
+                corrected += 1
+        changed_faces: list[int] = []
+        if corrected:
+            # faceEvaluator::bestPatchAfterModification, face by face: the faces
+            # after this one still count with their previous patch, which keeps
+            # two neighbours from swapping into each other's patch
+            for local_face_id in candidates:
+                new_patch = int(updated[local_face_id])
+                previous_patch = int(patches[local_face_id])
+                if new_patch == previous_patch:
+                    continue
+                neighbour_patches = [
+                    int(patches[face]) if face > local_face_id else int(updated[face])
+                    for face in edge_neighbours[local_face_id]
+                ]
+                best_patch = _best_patch_topological(neighbour_patches, new_patch)
+                if best_patch not in (previous_patch, new_patch) and not may_move(
+                    local_face_id, previous_patch, best_patch
+                ):
+                    best_patch = new_patch
+                updated[local_face_id] = best_patch
+            changed_faces = [int(face) for face in np.flatnonzero(updated != patches)]
+            face_patch_ids = updated
+        history.append(changed_faces)
+        if not corrected or iteration >= 3:
+            return face_patch_ids, history
+        iteration += 1
+
+
+def _region_feature_segments(
+    triangle_groups: Sequence[np.ndarray], patch_group: Sequence[int | None]
+) -> dict[tuple[int, int], np.ndarray]:
+    """The STL edges between two regions of one surface, shape ``(n, 2, 3)`` per patch pair."""
+    regions = [patch_id for patch_id, group in enumerate(patch_group) if group is not None]
+    if not regions:
+        return {}
+    triangles = np.concatenate([triangle_groups[patch_id] for patch_id in regions])
+    owners = np.concatenate(
+        [np.full(len(triangle_groups[patch_id]), patch_id) for patch_id in regions]
+    )
+    scale = max(float(np.ptp(triangles, axis=(0, 1)).max()), 1.0)
+    vertices, vertex_ids = np.unique(
+        np.rint(triangles.reshape(-1, 3) / (scale * 1.0e-9)).astype(np.int64),
+        axis=0,
+        return_inverse=True,
+    )
+    vertex_ids = vertex_ids.reshape(-1, 3)
+    edge_patches: dict[tuple[int, int], set[int]] = defaultdict(set)
+    for triangle_id, row in enumerate(vertex_ids):
+        for first, second in ((0, 1), (1, 2), (2, 0)):
+            edge = (min(int(row[first]), int(row[second])), max(int(row[first]), int(row[second])))
+            edge_patches[edge].add(int(owners[triangle_id]))
+    coordinates = vertices * (scale * 1.0e-9)
+    segments: dict[tuple[int, int], list[np.ndarray]] = defaultdict(list)
+    for edge, patches in edge_patches.items():
+        if len(patches) != 2:
+            continue
+        first_patch, second_patch = sorted(patches)
+        if patch_group[first_patch] == patch_group[second_patch]:
+            segments[(first_patch, second_patch)].append(coordinates[list(edge)])
+    return {pair: np.asarray(items) for pair, items in segments.items()}
+
+
+def _nearest_points_on_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarray:
+    """The nearest point of each of ``points`` on a set of segments, shape ``(n, 2, 3)``."""
+    start = segments[:, 0]
+    direction = segments[:, 1] - segments[:, 0]
+    length_squared = np.maximum(np.einsum("ij,ij->i", direction, direction), 1.0e-300)
+    fraction = np.clip(
+        np.einsum("kij,ij->ki", points[:, None, :] - start[None], direction) / length_squared,
+        0.0,
+        1.0,
+    )
+    candidates = start[None] + fraction[..., None] * direction[None]
+    nearest = np.argmin(np.linalg.norm(candidates - points[:, None, :], axis=2), axis=1)
+    return candidates[np.arange(len(points)), nearest]
+
+
+def _polygon_area(points: np.ndarray) -> float:
+    """Magnitude of the area vector of a polygon."""
+    relative = points - points.mean(axis=0)
+    area = 0.5 * np.cross(relative, np.roll(relative, -1, axis=0)).sum(axis=0)
+    return float(np.linalg.norm(area))
+
+
 def assign_cfmesh_patches(
     mesh_data: MeshData,
     *,
@@ -2410,8 +2590,15 @@ def assign_cfmesh_patches(
     domain_patch_names: Sequence[str],
     surface_triangles: Sequence[np.ndarray],
     surface_patch_names: Sequence[str],
+    patch_groups: Sequence[Sequence[str]] = (),
 ) -> None:
-    """Assign projected boundary faces to cfMesh input-surface regions."""
+    """Assign projected boundary faces to cfMesh input-surface regions.
+
+    The patches named together in each of ``patch_groups``, the feature regions
+    of one surface, take cfMesh's topological adjustment between them, for the
+    faces that the edge mapping would flatten onto the feature edge between two
+    regions.
+    """
     if len(domain_patch_names) != 6:
         raise ValueError("domain_patch_names must follow xmin, xmax, ymin, ymax, zmin, zmax")
     if len(surface_patch_names) != len(surface_triangles):
@@ -2550,6 +2737,64 @@ def assign_cfmesh_patches(
         patch_name: int(np.count_nonzero(face_patch_ids == patch_id))
         for patch_id, patch_name in enumerate(patch_names)
     }
+
+    # cfMesh's topological adjustment, between the feature regions of one surface only
+    group_of = {
+        name: index
+        for index, group in enumerate(patch_groups)
+        if sum(name in patch_names for name in group) > 1
+        for name in group
+    }
+    patch_group = [group_of.get(name) for name in patch_names]
+    region_topology_history: list[list[int]] | None = None
+    if any(group is not None for group in patch_group):
+        boundary_point_ids = np.unique(
+            np.concatenate([source_faces[face_id] for face_id in boundary_face_ids])
+        )
+        _mapped, _distances, point_triangles = global_index.nearest_points(
+            points[boundary_point_ids]
+        )
+        point_patch = dict(
+            zip(
+                map(int, boundary_point_ids),
+                map(int, triangle_patch_ids[point_triangles]),
+                strict=True,
+            )
+        )
+        edge_neighbours: list[list[int]] = []
+        for local_face_id, face_id in enumerate(boundary_face_ids):
+            face = source_faces[face_id]
+            neighbours = []
+            for first_value, second_value in zip(face, np.roll(face, -1), strict=True):
+                first_id, second_id = sorted((int(first_value), int(second_value)))
+                attached = edge_faces[(first_id, second_id)]
+                neighbours.append(
+                    next(other for other in attached if other != local_face_id)
+                    if len(attached) == 2
+                    else -1
+                )
+            edge_neighbours.append(neighbours)
+        feature_segments = _region_feature_segments(triangle_groups, patch_group)
+
+        def collapses_onto_feature_edge(local_face_id: int, patch: int, new_patch: int) -> bool:
+            # Only a face that the edge mapping would flatten onto the feature
+            # edge between two regions of one surface moves. A region narrower
+            # than one face, such as a thin flat base, borders the other region
+            # along two separate edges; its faces span it and keep their patch.
+            segments = feature_segments.get((min(patch, new_patch), max(patch, new_patch)))
+            if segments is None:
+                return False
+            face_points = points[source_faces[boundary_face_ids[local_face_id]]]
+            mapped = _nearest_points_on_segments(face_points, segments)
+            return _polygon_area(mapped) < 0.5 * _polygon_area(face_points)
+
+        face_patch_ids, region_topology_history = _region_topology_adjustment(
+            face_patch_ids,
+            [source_faces[face_id] for face_id in boundary_face_ids],
+            edge_neighbours,
+            point_patch,
+            collapses_onto_feature_edge,
+        )
 
     geometry_patch_changes = 0
     geometry_patch_history: list[list[int]] = []
@@ -2730,6 +2975,10 @@ def assign_cfmesh_patches(
         "inverted_point_counts": inverted_point_counts,
         "untangling_iteration_counts": untangling_iteration_counts,
     }
+    if region_topology_history is not None:
+        mesh_data["mesh_generation"]["patch_assignment"]["region_topology_history"] = (
+            region_topology_history
+        )
 
 
 def remap_cfmesh_patch_points(

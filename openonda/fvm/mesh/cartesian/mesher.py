@@ -137,6 +137,8 @@ def _planar_feature_constraints(
     triangles: np.ndarray,
     *,
     box_wall: bool = False,
+    face_regions: Sequence[int] | None = None,
+    triangle_regions: np.ndarray | None = None,
 ) -> FeaturePlaneConstraints:
     """Keep broad STL facets planar across a curved surface's sharp rim.
 
@@ -146,6 +148,11 @@ def _planar_feature_constraints(
     case-specific axis, and the face normal associates the mixed face with it.
     The finite coplanar STL component owns each constraint: projection onto
     its infinite supporting plane alone can leave the input surface.
+
+    ``face_regions`` and ``triangle_regions`` give the feature region of each
+    face and triangle. A face then takes only the facets of its own region: a
+    face of a blade side tilted towards the flat base beside it lies on the
+    side, and tying it to the base would pull its side vertices onto the base.
 
     An axis-aligned box wall keeps every incident facet plane at each vertex;
     its edge and corner faces then find their plane among them.
@@ -179,7 +186,7 @@ def _planar_feature_constraints(
         for edge in edges:
             edge_triangles.setdefault(edge, []).append(triangle_id)
 
-    planes: list[tuple[np.ndarray, float, float, SurfaceIndex]] = []
+    planes: list[tuple[np.ndarray, float, float, SurfaceIndex, int]] = []
     for ids in groups.values():
         remaining = set(ids)
         while remaining:
@@ -226,6 +233,8 @@ def _planar_feature_constraints(
                     float(offsets[first]),
                     width,
                     SurfaceIndex.build(triangles[component_ids]),
+                    # Coplanar neighbours never meet at a sharp edge: one region holds the component
+                    -1 if triangle_regions is None else int(triangle_regions[first]),
                 )
             )
     if not planes:
@@ -240,20 +249,21 @@ def _planar_feature_constraints(
     constraints: FeaturePlaneConstraints = {}
     local_face_size: dict[int, float] = {}
     shaped_faces = []
-    for face in faces:
+    for face_id, face in enumerate(faces):
         vertices = points[np.asarray(face, dtype=np.int64)]
         centre = vertices.mean(axis=0)
         relative = vertices - centre
         area = 0.5 * np.cross(relative, np.roll(relative, -1, axis=0)).sum(axis=0)
         area_norm = float(np.linalg.norm(area))
         if area_norm > 0.0:
-            shaped_faces.append((face, vertices, centre, area, area_norm))
+            region = -1 if face_regions is None else int(face_regions[face_id])
+            shaped_faces.append((face, vertices, centre, area, area_norm, region))
     # The wall under every face centre, in one locator query
     if shaped_faces and not box_wall:
         _wall_points, wall_distances, wall_triangles = surface_index.nearest_points(
-            np.asarray([centre for _face, _vertices, centre, _area, _norm in shaped_faces])
+            np.asarray([centre for _face, _vertices, centre, *_rest in shaped_faces])
         )
-    for position, (face, vertices, centre, area, area_norm) in enumerate(shaped_faces):
+    for position, (face, vertices, centre, area, area_norm, region) in enumerate(shaped_faces):
         face_size = float(np.linalg.norm(vertices[:, None, :] - vertices[None, :, :], axis=2).max())
         for point_id in face:
             local_face_size[int(point_id)] = min(
@@ -265,8 +275,8 @@ def _planar_feature_constraints(
             wall_distance = float(wall_distances[position])
             wall_normal = normals[int(wall_triangles[position])]
         candidates = []
-        for normal, offset, width, plane_index in planes:
-            if width < face_size:
+        for normal, offset, width, plane_index, plane_region in planes:
+            if width < face_size or plane_region != region:
                 continue
             alignment = abs(float(np.dot(area, normal))) / area_norm
             distance = abs(float(np.dot(centre, normal) - offset))
@@ -890,6 +900,8 @@ class CartesianMesher:
         # crossing it, carries no wall and stays with the surface's first region.
         self._region_surfaces: dict[str, str] = {}
         self._region_triangles: list[np.ndarray] = []
+        # The region of every triangle of each surface, by surface patch
+        self._triangle_regions: dict[str, np.ndarray] = {}
         lower = np.asarray(self._workflow_domain.bounds[::2])
         upper = np.asarray(self._workflow_domain.bounds[1::2])
         for surface in surfaces:
@@ -907,6 +919,7 @@ class CartesianMesher:
             labels = np.searchsorted(
                 reached, np.where(np.isin(labels, reached), labels, reached[0])
             )
+            self._triangle_regions[surface.patch] = labels
             for label in range(int(labels.max()) + 1):
                 name = surface.patch if label == 0 else f"{surface.patch} region {label}"
                 if label and name in set(patches) | set(domain.patches.as_tuple()):
@@ -1101,7 +1114,9 @@ class CartesianMesher:
                 project_cfmesh_template(stage_mesh, **surface_arguments)
         if reached("patchAssignment"):
             with mesh_stage("patch assignment"):
-                assign_cfmesh_patches(stage_mesh, **surface_arguments)
+                assign_cfmesh_patches(
+                    stage_mesh, **surface_arguments, patch_groups=self._region_groups
+                )
         if reached("edgeExtraction"):
             with mesh_stage("edge extraction"):
                 extract_cfmesh_edges(stage_mesh, patch_groups=self._region_groups)
@@ -1384,7 +1399,11 @@ class CartesianMesher:
             if not any(item["name"] == surface.patch for item in regions):
                 raise ValueError(f"cfMesh workflow did not produce wall patch {surface.patch!r}")
             surface_faces = []
+            face_regions: list[int] = []
             region_columns = []
+            region_names = [
+                name for name, patch in self._region_surfaces.items() if patch == surface.patch
+            ]
             for region in regions:
                 start = int(region["start_face"])
                 stop = start + int(region["n_faces"])
@@ -1394,6 +1413,7 @@ class CartesianMesher:
                         f"cfMesh wrapper has no boundary-column mapping for {region['name']!r}"
                     )
                 surface_faces.extend(mesh_data["faces"][start:stop])
+                face_regions.extend([region_names.index(str(region["name"]))] * (stop - start))
                 region_columns.append((start, stop, column_map))
             point_ids = np.unique(
                 np.concatenate([np.asarray(face, dtype=np.int64) for face in surface_faces])
@@ -1410,6 +1430,8 @@ class CartesianMesher:
                 surface_faces,
                 surface.triangles,
                 box_wall=surface.kind == "box",
+                face_regions=face_regions,
+                triangle_regions=self._triangle_regions[surface.patch],
             )
             surface_constraints = (
                 _box_patch_point_constraints(
