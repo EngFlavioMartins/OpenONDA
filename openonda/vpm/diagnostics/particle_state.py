@@ -280,10 +280,12 @@ def _particle_strength_and_vorticity(strength, volume):
 
 @ti.func
 def _accumulate_maximum(value, maximum: ti.template(), nan_mask: ti.template(), bit: ti.template()):
+    # ``maximum`` holds the bit pattern of a non-negative float64 as an int64, whose
+    # order is that of the values: Vulkan has no float64 atomic maximum.
     if ti.math.isnan(value):
         ti.atomic_or(nan_mask, bit)
     else:
-        ti.atomic_max(maximum, value)
+        ti.atomic_max(maximum, ti.bit_cast(value, ti.i64))
 
 
 @ti.func
@@ -321,10 +323,11 @@ def _reduce_particle_state(
 ) -> ti.types.vector(_RESULT_SIZE, ti.f64):
     invalid_mask = 0
     nan_mask = 0
-    infinity_maximum = ti.cast(0.0, ti.f64)
-    spectral_maximum = ti.cast(0.0, ti.f64)
-    strength_maximum = ti.cast(0.0, ti.f64)
-    vorticity_maximum = ti.cast(0.0, ti.f64)
+    # Bit patterns of the non-negative maxima; 0 is that of 0.0.
+    infinity_bits = ti.cast(0, ti.i64)
+    spectral_bits = ti.cast(0, ti.i64)
+    strength_bits = ti.cast(0, ti.i64)
+    vorticity_bits = ti.cast(0, ti.i64)
     for i in range(count):
         for bit, field in ti.static(
             enumerate(
@@ -345,14 +348,16 @@ def _reduce_particle_state(
 
         if _strain_counted(particles.position[i], excluded_lower, excluded_upper, box_count):
             infinity, spectral = _strain_increments(particles.velocity_gradient[i], time_step_size)
-            _accumulate_maximum(infinity, infinity_maximum, nan_mask, 1)
-            _accumulate_maximum(spectral, spectral_maximum, nan_mask, 2)
+            _accumulate_maximum(infinity, infinity_bits, nan_mask, 1)
+            _accumulate_maximum(spectral, spectral_bits, nan_mask, 2)
         strength, vorticity = _particle_strength_and_vorticity(
             particles.vortex_strength[i], particles.particle_volume[i]
         )
-        _accumulate_maximum(strength, strength_maximum, nan_mask, 4)
-        _accumulate_maximum(vorticity, vorticity_maximum, nan_mask, 8)
+        _accumulate_maximum(strength, strength_bits, nan_mask, 4)
+        _accumulate_maximum(vorticity, vorticity_bits, nan_mask, 8)
 
+    infinity_maximum = ti.bit_cast(infinity_bits, ti.f64)
+    spectral_maximum = ti.bit_cast(spectral_bits, ti.f64)
     infinity_particle = count
     spectral_particle = count
     for i in range(count):
@@ -370,8 +375,8 @@ def _reduce_particle_state(
             nan_mask,
             infinity_maximum,
             spectral_maximum,
-            strength_maximum,
-            vorticity_maximum,
+            ti.bit_cast(strength_bits, ti.f64),
+            ti.bit_cast(vorticity_bits, ti.f64),
             infinity_particle,
             spectral_particle,
             limiting_position[0],
