@@ -52,6 +52,7 @@ END_PERIODS = 25  # natural periods in water
 
 # Output
 FORCE_INTERVAL = 0.04  # s, forces and cylinder motion
+PROFILE_INTERVAL = 0.12  # s, transverse wake profiles 2 D and 4 D behind the cylinder axis
 FIELD_INTERVAL = 0.2  # s
 FIELD_PERIODS = 2  # natural periods of fields before the end
 BACKUP_INTERVAL = 1.0  # s
@@ -130,6 +131,19 @@ def build_case(reynolds_number, reduced_velocity, end_time=None) -> fvm.FVMCase:
         ),
         # Position and velocity of the cylinder axis.
         fvm.MotionSampler(schedule=fvm.EveryTime(FORCE_INTERVAL)),
+        # Transverse wake profiles at fixed inertial positions behind the rest position.
+        *(
+            fvm.LineSampler(
+                (distance * DIAMETER, -3.0 * DIAMETER, 0.0),
+                (distance * DIAMETER, 3.0 * DIAMETER, 0.0),
+                n_points=61,
+                n_neighbours=12,
+                reconstruction="affine",
+                file_name=f"transverse_x{distance:g}D",
+                schedule=fvm.EveryTime(PROFILE_INTERVAL),
+            )
+            for distance in (2.0, 4.0)
+        ),
     )
     numerics = fvm.Numerics(
         time_step_size=TIME_STEP,

@@ -48,13 +48,13 @@ BACKGROUND = 16  # background cells in units of CELL_SIZE
 
 # Time integration
 TIME_STEP = 0.005  # s
-END_TIME = 30.0  # s
+END_TIME = 50.0  # s, ten pitch periods
 
 # Output
 FORCE_INTERVAL = 0.025  # s
-PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
+PROFILE_INTERVAL = 0.1  # s, transverse wake profiles at x = 2 and 4 m, 50 per pitch period
 FIELD_INTERVAL = 0.2  # s
-FIELD_START = 15.0  # s, periodic wake
+FIELD_START = 40.0  # s, the last two pitch periods
 BACKUP_INTERVAL = 1.0  # s
 
 
@@ -98,6 +98,8 @@ def build_case(end_time: float = END_TIME) -> fvm.FVMCase:
             moment_centre=PITCH_AXIS,
             schedule=fvm.EveryTime(FORCE_INTERVAL),
         ),
+        # Pitch angle and rate
+        fvm.MotionSampler(schedule=fvm.EveryTime(FORCE_INTERVAL)),
         # Transverse wake profiles at fixed inertial positions.
         *(
             fvm.LineSampler(

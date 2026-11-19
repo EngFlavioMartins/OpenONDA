@@ -10,7 +10,7 @@ A no-slip NACA 0012 airfoil pitches about its quarter chord in a uniform stream,
 | FVM domain | $[-1.6,2.6]\times[-1.2,1.2]$ m, in the frame of the airfoil, mid-chord at the origin |
 | Cell and particle spacing | 0.025 m |
 | FVM step; coupling interval | 0.005 s; 0.025 s |
-| Statistics window | $15\le t<30$ s, three pitch periods |
+| Statistics window | $20\le t<50$ s, the last six of ten pitch periods |
 
 ## Physics and numerical model
 

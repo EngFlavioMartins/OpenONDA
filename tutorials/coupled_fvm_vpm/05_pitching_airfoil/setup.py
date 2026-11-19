@@ -51,13 +51,13 @@ PARTICLE_LIMIT = 2_000_000
 # FVM–VPM transfer
 TRANSFER_INSET = 8.75  # cells between the outer FVM boundary and the transfer surface
 FVM_SUBSTEPS = 5  # per particle step
-END_TIME = 30.0  # s, six pitch periods
+END_TIME = 50.0  # s, ten pitch periods
 
 # Output
 FORCE_INTERVAL = 0.025  # s
-PROFILE_INTERVAL = 0.2  # s, transverse wake profiles at x = 2 and 4 m
+PROFILE_INTERVAL = 0.1  # s, transverse wake profiles at x = 2 and 4 m, 50 per pitch period
 FIELD_INTERVAL = 0.2  # s, FVM and particle fields
-FIELD_START = 15.0  # s, periodic wake
+FIELD_START = 40.0  # s, the last two pitch periods
 BACKUP_INTERVAL = 1.0  # s
 TRANSFER_DIAGNOSTIC_INTERVAL = 2.5  # s
 
@@ -144,6 +144,8 @@ def build_case(end_time=END_TIME, compute_device="auto"):
                     moment_centre=PITCH_AXIS,
                     schedule=fvm.EveryTime(FORCE_INTERVAL),
                 ),
+                # Pitch angle and rate
+                fvm.MotionSampler(schedule=fvm.EveryTime(FORCE_INTERVAL)),
             )
         ),
         logging=fvm.LoggingConfig(console=False),
@@ -202,16 +204,20 @@ def build_case(end_time=END_TIME, compute_device="auto"):
         output=vpm.Output(schedule=vpm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
         # Transverse wake profiles at fixed inertial positions
         samplers=vpm.Samplers(
-            tuple(
-                vpm.LineSampler(
-                    (x, -2.0, 0.0),
-                    (x, 2.0, 0.0),
-                    spacing=0.1,
-                    include_derivatives=False,
-                    file_name=f"vpm_transverse_x{x:g}",
-                    schedule=vpm.EveryTime(PROFILE_INTERVAL),
-                )
-                for x in (2.0, 4.0)
+            (
+                *(
+                    vpm.LineSampler(
+                        (x, -2.0, 0.0),
+                        (x, 2.0, 0.0),
+                        spacing=0.1,
+                        include_derivatives=True,
+                        file_name=f"vpm_transverse_x{x:g}",
+                        schedule=vpm.EveryTime(PROFILE_INTERVAL),
+                    )
+                    for x in (2.0, 4.0)
+                ),
+                # Particle invariants after every coupling interval
+                vpm.FlowIntegralsSampler(),
             )
         ),
         logging=vpm.LoggingConfig(console=False),

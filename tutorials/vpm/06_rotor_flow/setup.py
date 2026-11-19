@@ -27,6 +27,8 @@ TIME_STEP_SIZE = 0.006  # [s]
 # This planning margin does not replace the measured stationarity checks.
 END_TIME = 15  # [s]
 FIELD_SAMPLE_INTERVAL_TIME = 0.06  # [s]
+WAKE_SAMPLE_INTERVAL_TIME = 0.018  # [s], wake planes and lines, 43 per revolution
+WAKE_SAMPLE_START_TIME = 7.5  # [s], the second half of the run
 BACKUP_INTERVAL_TIME = 0.024  # [s]
 STREAMWISE_STATIONS = (("025", 0.25), ("065", 0.65))
 # 1-a applies at the disk. 1D/2D test downstream development toward the
@@ -72,7 +74,7 @@ def build_case(
 
     plane_half_width = 0.65 * (2.0 * ROTOR_RADIUS)
     sample_spacing = ROTOR_RADIUS / 36
-    plane_schedule = vpm.EveryTime(FIELD_SAMPLE_INTERVAL_TIME)
+    plane_schedule = vpm.EveryTime(WAKE_SAMPLE_INTERVAL_TIME, start_time=WAKE_SAMPLE_START_TIME)
     plane_samplers = [
         vpm.SurfaceSampler(
             point=[2.0 * ROTOR_RADIUS * distance, 0.0, 0.0],
@@ -80,6 +82,7 @@ def build_case(
             bounds=[-plane_half_width, plane_half_width, -plane_half_width, plane_half_width],
             spacing=sample_spacing,
             file_name=f"wake_{distance}D",
+            include_derivatives=True,
             schedule=plane_schedule,
         )
         for distance in WAKE_PLANE_DIAMETERS
@@ -90,6 +93,7 @@ def build_case(
             end=[6.0 * ROTOR_RADIUS, radial_fraction * ROTOR_RADIUS, 0.0],
             spacing=sample_spacing,
             file_name=f"streamwise_r{label}",
+            include_derivatives=True,
             schedule=plane_schedule,
         )
         for label, radial_fraction in STREAMWISE_STATIONS
@@ -124,7 +128,7 @@ def build_case(
         output=vpm.Output(schedule=backup_schedule),
         samplers=vpm.Samplers(
             samples=(
-                vpm.FlowIntegralsSampler(schedule=vpm.EveryTime(FIELD_SAMPLE_INTERVAL_TIME)),
+                vpm.FlowIntegralsSampler(),
                 *plane_samplers,
                 *streamwise_samplers,
             ),

@@ -63,6 +63,7 @@ END_PERIODS = 25  # natural periods in water; the paper's 20 start from a develo
 
 # Output
 FORCE_INTERVAL = 0.04  # s, forces and cylinder motion
+PROFILE_INTERVAL = 0.12  # s, transverse wake profiles 2 D and 4 D behind the cylinder axis
 FIELD_INTERVAL = 0.2  # s, FVM and particle fields
 FIELD_PERIODS = 2  # natural periods of fields before the end
 BACKUP_INTERVAL = 1.0  # s
@@ -243,6 +244,24 @@ def build_case(reynolds_number, reduced_velocity, end_time=None, compute_device=
         ),
         run=vpm.RunPlan(end_time=end_time),
         output=vpm.Output(schedule=vpm.EveryTime(FIELD_INTERVAL, start_time=field_start)),
+        samplers=vpm.Samplers(
+            (
+                # Transverse wake profiles at fixed inertial positions behind the rest position
+                *(
+                    vpm.LineSampler(
+                        (distance * DIAMETER, -3.0 * DIAMETER, 0.0),
+                        (distance * DIAMETER, 3.0 * DIAMETER, 0.0),
+                        spacing=0.1 * DIAMETER,
+                        include_derivatives=True,
+                        file_name=f"vpm_transverse_x{distance:g}D",
+                        schedule=vpm.EveryTime(PROFILE_INTERVAL),
+                    )
+                    for distance in (2.0, 4.0)
+                ),
+                # Particle invariants after every coupling interval
+                vpm.FlowIntegralsSampler(),
+            )
+        ),
         logging=vpm.LoggingConfig(console=False),
     )
 
