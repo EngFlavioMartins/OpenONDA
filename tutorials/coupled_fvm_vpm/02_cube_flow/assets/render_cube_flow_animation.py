@@ -22,8 +22,9 @@ FVM_BOUNDS = (-1.8, 5.085, -1.8, 1.8, -1.8, 1.8)  # [m]
 VPM_CLIP_BOUNDS = (-1.0, 5.5, -2.5, -0.115, -0.05, 1.45)  # [m]
 IMAGE_SIZE = (800, 500)  # [px], matching the README gallery
 RENDER_SCALE = 2
-FRAMES_PER_SECOND = 20
+FRAMES_PER_SECOND = 12
 VORTICITY_MAX = 5.0  # [1/s]
+DRAG_RANGE = (0.5, 1.5)  # inset C_D axis; the impulsive start above it is cut
 
 # White DejaVu Serif text on black, with the README gallery's blue vorticity scale.
 GALLERY_STYLE = {
@@ -162,7 +163,7 @@ def compose(image, time, forces):
         inset.plot(travel[now], drag[now], color="#9bd75a", linewidth=2.5)
         inset.plot(
             travel[now][-1],
-            drag[now][-1],
+            np.clip(drag[now][-1], *DRAG_RANGE),
             "o",
             color="#9bd75a",
             markeredgecolor="white",
@@ -179,9 +180,9 @@ def compose(image, time, forces):
             color="#9bd75a",
         )
         inset.set_xlim(travel[0], travel[-1])
-        inset.set_ylim(0.5, 2.5)
+        inset.set_ylim(*DRAG_RANGE)
         inset.locator_params(axis="x", nbins=4)
-        inset.set_yticks((0.5, 1.5, 2.5))
+        inset.set_yticks((DRAG_RANGE[0], sum(DRAG_RANGE) / 2, DRAG_RANGE[1]))
         inset.set_xlabel(r"$t\,U_\infty/D$")
         inset.spines[["top", "right"]].set_visible(False)
 

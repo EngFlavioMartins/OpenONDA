@@ -156,6 +156,9 @@ with fvm.FVMSolver(case) as solver:
     <td width="50%"><a href="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/README.md"><img src="tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/assets/cylinder_shedding.gif" alt="Coupled FVM and VPM vorticity fields and force coefficients for cylinder flow at Re = 150"></a><br><sub><b>Cylinder shedding</b>: coupled FVM and VPM simulation of a flow past a circular cylinder.</sub></td>
     <td width="50%"><a href="tutorials/coupled_fvm_vpm/02_cube_flow/README.md"><img src="tutorials/coupled_fvm_vpm/02_cube_flow/assets/cube_flow.gif" alt="Coupled FVM and VPM vorticity fields around a cube, with drag coefficient history"></a><br><sub><b>Flow past a cube</b>: coupled FVM and VPM simulation of a flow past a cube.</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><a href="tutorials/coupled_fvm_vpm/03_naca4412_flow/README.md"><img src="tutorials/coupled_fvm_vpm/03_naca4412_flow/assets/wing_flow.gif" alt="Coupled FVM and VPM vorticity around a finite NACA 4412 wing seen from above, with lift and drag histories"></a><br><sub><b>Finite wing</b>: coupled FVM and VPM simulation of a flow past a NACA 4412 wing.</sub></td>
+  </tr>
 </table>
 
 ## Learn more

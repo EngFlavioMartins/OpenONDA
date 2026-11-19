@@ -2,6 +2,10 @@
 
 A finite NACA 4412 wing is pitched nose-up in a uniform stream. The FVM resolves the no-slip wing, tips and near wake; vortex particles carry the trailing vortices and outer wake. The [reference flow](reference_flow/README.md) is an FVM-only solution of the same problem.
 
+<p align="center">
+  <img src="assets/wing_flow.gif" alt="Coupled FVM and VPM vorticity around a finite NACA 4412 wing seen from above, with lift and drag histories" width="800">
+</p>
+
 | Quantity | Value |
 | --- | --- |
 | Chord; span | 1 m; 5 m |
@@ -32,7 +36,7 @@ Run commands from this directory.
 ./allplot.sh
 ```
 
-`./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. The FVM uses eight MPI processes and the particles use the GPU.
+`./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. The FVM uses eight MPI processes and the particles use the GPU. The animation `assets/wing_flow.gif` is redrawn by `./allplot.sh` only once the run reaches $t=48$ s.
 
 The forces are compared without a blockage correction. The reference domain is open in $y$, and its slip faces in $z$ lie 10.3 m beyond the tips: beyond the tips ($z=\pm4$ m, $x=2$ m) the mean streamwise velocity of the reference and of the coupled flow differ by under 0.01 %.
 
@@ -48,4 +52,5 @@ The forces are compared without a blockage correction. The reference domain is o
 | `figures/starting_vortex` | Passage of the starting vortex and the tip vortices through the planes $x=4$ and 8 m, at every saved state of both runs: $\omega_z$ and $\omega_x$ maps around the passage, coupled above reference, and the histories of the integrated $\omega_z$ and of the circulation of each tip vortex |
 | `figures/coupling_cost` | Wall time by solver part and particle count |
 | `figures/comparison_summary.csv` | Statistics, errors, interface measures and wall time per flow time of the run and the reference |
+| `assets/wing_flow.gif` | Wing seen from above: FVM vorticity on the mid-span plane, particle vorticity outside it, with the lift and drag histories |
 | `solution/fvm.pvd`, `solution/vpm.pvd` | FVM fields and particle states |
