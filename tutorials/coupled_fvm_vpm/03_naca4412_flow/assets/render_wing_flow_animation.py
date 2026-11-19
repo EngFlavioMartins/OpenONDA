@@ -85,11 +85,16 @@ def wake_particles(dataset: pv.DataSet) -> pv.PolyData:
 def camera() -> dict[str, np.ndarray]:
     """Set an oblique view from above the suction side, the span across the picture."""
     # The view of the cube animation turned so that y, the lift direction, points up: the wing lies
-    # flat, seen from above its suction side and downstream, the FVM box at the upper left.
+    # flat, seen from above its suction side and downstream, framed close on the FVM box and the
+    # wake, with the box about 25 px clear of the left and top edges.
+    focal_point = np.array([7.7, 0.6, 0.3])
+    toward_camera = np.array([25.2, 22.1, 27.8])
+    toward_camera /= np.linalg.norm(toward_camera)
+    view_up = np.array([0.0, 1.0, 0.0]) - toward_camera[1] * toward_camera
     return {
-        "focal_point": np.array([10.0, 0.3, 0.9]),
-        "position": np.array([37.7, 24.6, 31.5]),
-        "view_up": np.array([-0.35, 0.86, -0.37]),
+        "focal_point": focal_point,
+        "position": focal_point + 43.5 * toward_camera,
+        "view_up": view_up / np.linalg.norm(view_up),
         "view_angle": 15.0,
     }
 
