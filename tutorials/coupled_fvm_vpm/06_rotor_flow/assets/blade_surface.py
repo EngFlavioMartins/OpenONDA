@@ -66,6 +66,39 @@ def rotate_about_axis(points, angle_degrees):
     return points @ rotation.T
 
 
+def trailing_edge_boxes(blade_file, thickness, n_points, azimuth_degrees, cell_size, min_radius):
+    """Bounds of axis-aligned boxes that together cover the flat base of one blade.
+
+    The base strip between two stations whose outer station lies beyond
+    ``min_radius`` is cut into pieces no longer than eight cells; each box
+    bounds one piece and reaches two cells past it.
+    """
+    leading, trailing = blade_stations(blade_file)
+    rings = [
+        rotate_about_axis(section_ring(le, te, thickness, n_points), azimuth_degrees)
+        for le, te in zip(leading, trailing)
+    ]
+    n_chord = (len(rings[0]) + 1) // 2
+    # The two base points of each station, lower and upper surface
+    base = np.array([[ring[n_chord - 1], ring[n_chord]] for ring in rings])
+    margin = 2.0 * cell_size
+    boxes = []
+    for root, tip in zip(base[:-1], base[1:]):
+        if np.hypot(tip[0][1], tip[0][2]) < min_radius:
+            continue
+        n_pieces = max(1, int(np.ceil(np.linalg.norm(tip[0] - root[0]) / (8.0 * cell_size))))
+        for piece in range(n_pieces):
+            corners = np.vstack(
+                [
+                    root + (tip - root) * fraction
+                    for fraction in (piece / n_pieces, (piece + 1) / n_pieces)
+                ]
+            )
+            lower, upper = corners.min(axis=0) - margin, corners.max(axis=0) + margin
+            boxes.append(tuple(float(value) for pair in zip(lower, upper) for value in pair))
+    return tuple(boxes)
+
+
 def write_blade_stl(path, blade_file, thickness, n_points, azimuth_degrees):
     """Write one blade, lofted through its stations and closed at root and tip."""
     leading, trailing = blade_stations(blade_file)

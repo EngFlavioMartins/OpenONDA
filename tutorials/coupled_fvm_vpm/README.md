@@ -1,6 +1,6 @@
 # Coupled FVM–VPM cases: run status and data folders
 
-Status on Tue 17 Nov 2026, 19:00 CET. The supervising session updates the check boxes as runs end.
+Status on Thu 19 Nov 2026, 12:00 CET. The supervising session updates the check boxes as runs end.
 
 - `[x]` complete: the data may be plotted.
 - `[ ]` not complete: do not use for results. A running case has partial data that will change.
@@ -75,8 +75,8 @@ Folder `02_cube_flow/`.
 
 | Done | Run | Data | State |
 |---|---|---|---|
-| [ ] | Coupled final (particle domain to 18 m, 6 m fringe) | `02_cube_flow/samples/`, `02_cube_flow/solution/` | running, extended to t = 130 s (window 30–130); at t = 58.5 on 17 Nov 19:00; expected end 20–21 Nov |
-| [x] | Fully meshed reference | `02_cube_flow/reference_flow/samples/grid_h0045_dt0.02/` | complete, t = 130 s |
+| [ ] | Coupled final (particle domain to 18 m, 6 m fringe) | `02_cube_flow/samples/`, `02_cube_flow/solution/` | running to t = 100 s (window 30–100); at t = 97 on 19 Nov 11:40; stops at its t = 100 backup, about 14:30 on 19 Nov |
+| [x] | Fully meshed reference | `02_cube_flow/reference_flow/samples/grid_h0045_dt0.02/` | complete, t = 130 s; only 30–100 s is used |
 | [ ] | Figures | `02_cube_flow/figures/` | drawn from the unfinished run; redrawn at the end |
 
 - The earlier coupled cube run (24 m domain, stopped at t = 48 s) is not a result. It is outside
@@ -91,8 +91,8 @@ Folder `03_naca4412_flow/`.
 
 | Done | Run | Data | State |
 |---|---|---|---|
-| [ ] | Coupled final | `03_naca4412_flow/samples/`, `03_naca4412_flow/solution/` | complete to t = 24 s; being extended to t = 60 s (queued behind the cube) |
-| [ ] | Fully meshed reference | `03_naca4412_flow/reference_flow/samples/` | complete to t = 24 s; being extended to t = 60 s |
+| [ ] | Coupled final | `03_naca4412_flow/samples/`, `03_naca4412_flow/solution/` | complete to t = 24 s; extension to t = 48 s starts when the cube stops (about 14:30 on 19 Nov); about 58 h at full clock, end about 22 Nov |
+| [ ] | Fully meshed reference | `03_naca4412_flow/reference_flow/samples/` | about to reach t = 60 s; only 36–48 s is used |
 | [x] | Figures | `03_naca4412_flow/figures/` (`forces.png`, `errors_by_window.png`, `velocity_profiles/`, `starting_vortex/`, `fields/`, `comparison_summary.csv`) | drawn from the final |
 
 Coupled samples: `forces_history.csv`; slices `fvm_slice_x2`, `fvm_slice_z0`, `vpm_slice_x2`,
@@ -101,9 +101,11 @@ Coupled samples: `forces_history.csv`; slices `fvm_slice_x2`, `fvm_slice_z0`, `v
 
 - Why the extension: the load oscillation (period about 1.5 c/U) is still growing at t = 24 s in both
   runs. Data up to t = 24 s is final and may be plotted (start-up, starting vortex, mean loads).
-- `[ ]` To do when both reach t = 60 s: shedding frequency, saturated amplitude and spectra of the
-  loads, coupled against reference, added to the thesis (chapter 5) and the paper, with the
-  statistics window moved to the periodic state.
+- The reference is periodic from t = 36 s (cycle mean of C_L constant to 0.0005, amplitude 0.0055–0.0058),
+  so both runs are compared over 36–48 s, eight periods.
+- `[ ]` To do when the coupled run reaches t = 48 s: shedding frequency, saturated amplitude and spectra
+  of the loads, coupled against reference, added to the thesis (chapter 5) and the paper, with the
+  statistics window 36–48 s.
 
 ## 04 Oscillating cylinder, 05 Pitching airfoil, 06 Rotor
 
@@ -125,4 +127,5 @@ scripts of the two repositories; see `figure_data/README.md`.
 | [ ] | Paper `cylinder_study` | extracted 13 Nov: baseline, N = 1, cell 0.08 and 0.06 (the last one incomplete then); refreshed when all 18 are done |
 | [ ] | Cube configuration (paper Figure 14) | from the stopped cube run; to be replaced |
 | [ ] | Cube comparison | waits for the cube final |
+| [ ] | Paper `force_histories`, `force_spectra` (three cases together) | drawn 19 Nov from the cube at t = 97.1 and the wing at t = 24; redrawn with `--extract` when the cube reaches t = 100 and the wing t = 48 |
 | [ ] | Wing configuration (paper Figure 16) | `particles.csv` is a frame of 13 Nov, early in the final run; a frame near t = 24 s is still to be extracted |

@@ -11,7 +11,7 @@ The three-bladed turbine of the [VLM rotor tutorial](../../vpm/06_rotor_flow/REA
 | FVM disk | $[-2.4,2.4]\times[-9,9]\times[-9,9]$ m in the frame of the rotor |
 | Cell and particle spacing | 0.2 m at the interface, 0.025 m at the blades |
 | FVM step; coupling interval | 0.0005 s; 0.006 s (the VLM particle step) |
-| End time; output | 15 s; fields, wake planes and lines every 0.06 s, backups every 0.024 s |
+| End time; output | 15 s; fields every 0.042 s over the last two revolutions, wake planes and lines every 0.018 s from 7.5 s, backups every 0.024 s |
 
 ## Physics and numerical model
 
@@ -21,7 +21,7 @@ The disk is a coupling box with all six faces on the particle interface, meshed 
 
 ## Status
 
-The case is configured but has not run: on 2 November 2026 the mesher built the octree mesh of about 350 000 cells for every configuration tried (12 % and 18 % sections, 0.05 m and 0.025 m blade cells, sharp and blunt trailing edges) and then failed its surface-constrained wall projection on the lofted blades, with inverted cells or cell centres inside the blade. The blade surfaces were then wound inward; wound outward, as every other tutorial body, the 18 % blades with 0.025 m cells still fail the same projection with non-positive cell volumes. On 3 November that failure was reproduced on a straight, pitched slab of the tip section and fixed in the mesher: an end cap narrower than the wall faces beside it no longer pulls their vertices across the trailing edge. On the same slab the mesher then stops on the [mesher limitation](../../../docs/fvm.md#mesh-setup) of cell centres left inside a part thinner than about one wall cell; neither 0.0125 m and 0.00625 m wall cells, nor a rounded trailing edge, nor a cut at 80 % of the chord removed it, and a trailing-edge refinement box stops the mesher on a separate defect. The blades have not been meshed again since the fix. The case is blocked until these limitations are fixed; the case files are the intended configuration.
+The case is configured but has not run: the mesher stops in its wall projection on the blades. Since 19 November 2026 the mesher puts the wall on the sharp edges of a blade, the rims of its root and tip caps and the two edges of its flat base ([mesh setup](../../../docs/fvm.md#mesh-setup)); before, wall faces cut across those edges and left 27 cell centres inside the blades. A straight slab of the tip section, pitched 17° and tilted 7° against the grid, now meshes with the cells of this case, also with a 0.0125 m refinement box around its trailing edge. On the three lofted blades the octree template of 351 105 cells, 412 139 with the wall layer, takes about four hours on two cores to the end of the mesh optimisation, which cannot untangle about 80 faces at the flat bases, 7.4 mm wide at the tip and 12.7 mm at the root under the 0.025 m wall cells. The wall projection then gives one or two of the thin wall-layer cells there, near 4.7 m radius on blades 1 and 2, a non-positive volume at every relaxation, and the mesher stops with "Mesh contains non-positive cell volumes". The case files are the intended configuration.
 
 ## Run
 
@@ -31,7 +31,7 @@ Run commands from this directory.
 ./allrun.sh
 ```
 
-`./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. `python setup.py --end-time 0.03 --compute-device cpu` runs a short check on the CPU; the particle solver otherwise takes the GPU. The mesh of about half a million cells takes some minutes and a few GB of memory to generate and is cached in `assets/`.
+`./allrun.sh` starts from $t=0$; `./allcontinue.sh` resumes the latest accepted coupled backup. `python setup.py --end-time 0.03 --compute-device cpu` runs a short check on the CPU; the particle solver otherwise takes the GPU. Meshing takes about four hours on two cores and a few GB of memory before it stops (see Status); a completed mesh is cached in `assets/`.
 
 ## Results
 

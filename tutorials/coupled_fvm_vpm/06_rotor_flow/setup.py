@@ -20,7 +20,7 @@ import openonda.fvm as fvm
 import openonda.fvm.mesher as msh
 import openonda.vpm as vpm
 
-from assets.blade_surface import write_blade_stl
+from assets.blade_surface import trailing_edge_boxes, write_blade_stl
 
 CASE_DIR = Path(__file__).resolve().parent
 # The VLM blade, planform and twist: a copy of tutorials/vpm/06_rotor_flow/assets/blade.json
@@ -40,13 +40,22 @@ N_SECTION_POINTS = 61  # per surface of a blade section
 # Time, as the VLM rotor: the coupling interval is its particle step
 COUPLING_TIME_STEP = 0.006  # s
 END_TIME = 15.0  # s
-FIELD_SAMPLE_INTERVAL = 0.06  # s, fields, wake planes and lines
+FIELD_SAMPLE_INTERVAL = 0.042  # s, FVM and particle fields, 18 per revolution
+FIELD_REVOLUTIONS = 2  # revolutions of fields before the end
+WAKE_SAMPLE_INTERVAL = 0.018  # s, wake planes and lines, 43 per revolution
+WAKE_SAMPLE_START = 7.5  # s, the second half of the run
 BACKUP_INTERVAL = 0.024  # s
 FVM_SUBSTEPS = 12  # per coupling interval; the tip cells see Courant numbers near one
 
 # FVM disk and mesh
 CELL_SIZE = 0.2  # m, at the coupling interface; also the particle spacing
-BLADE_CELL_SIZE = 0.025  # m, three octree levels finer at the blade walls
+BLADE_CELL_SIZE = 0.0125  # m, four octree levels finer at the blade walls
+# m, at the flat trailing-edge bases, 7.4 mm wide at the tip and 12.7 mm at the root: the wall
+# layer over a base narrower than its cells inverts in the wall projection
+TRAILING_EDGE_CELL_SIZE = BLADE_CELL_SIZE / 2
+# m, radius from which the bases are refined; inboard the base is one blade cell wide, and
+# refinement boxes that cut the root cap leave the octree surface non-manifold
+TRAILING_EDGE_REFINEMENT_START = 1.5
 DISK_HALF_THICKNESS = 2.4  # m, along the rotor axis; the blades stay eight background cells inside
 DISK_HALF_WIDTH = 9.0  # m, normal to the axis; the blade tips stay eight background cells inside
 
@@ -66,6 +75,7 @@ TRANSFER_DIAGNOSTIC_INTERVAL = 0.6  # s
 def build_case(end_time=END_TIME, compute_device="auto"):
     """Return the FVM case, the particle case and the coupling settings."""
     fvm_time_step = COUPLING_TIME_STEP / FVM_SUBSTEPS
+    field_start = max(0.0, end_time - FIELD_REVOLUTIONS * 2.0 * math.pi / ANGULAR_VELOCITY)
     rotor_motion = fvm.RotatingMotion(
         angular_speed=-ANGULAR_VELOCITY,
         rotation_axis=(1.0, 0.0, 0.0),
@@ -111,9 +121,25 @@ def build_case(end_time=END_TIME, compute_device="auto"):
         surfaces=surfaces,
         max_cell_size=CELL_SIZE,
         # The exact lattice is anchored at the finest size; the interface keeps CELL_SIZE cells
-        cell_size_anchor=BLADE_CELL_SIZE,
+        cell_size_anchor=TRAILING_EDGE_CELL_SIZE,
         patch_refinements=tuple(
             msh.PatchRefinement(surface.patch, BLADE_CELL_SIZE) for surface in surfaces
+        ),
+        refinements=tuple(
+            msh.BoxRefinement(
+                f"blade_{index}_trailing_edge_{piece}", bounds, TRAILING_EDGE_CELL_SIZE
+            )
+            for index, azimuth in enumerate(BLADE_AZIMUTHS)
+            for piece, bounds in enumerate(
+                trailing_edge_boxes(
+                    BLADE_FILE,
+                    BLADE_THICKNESS,
+                    N_SECTION_POINTS,
+                    azimuth,
+                    TRAILING_EDGE_CELL_SIZE,
+                    TRAILING_EDGE_REFINEMENT_START,
+                )
+            )
         ),
     )
 
@@ -139,7 +165,9 @@ def build_case(end_time=END_TIME, compute_device="auto"):
         initial_conditions=fvm.InitialFields(velocity=(FREESTREAM_SPEED, 0.0, 0.0)),
         run=fvm.RunPlan(end_time=end_time),
         output=fvm.Output(
-            schedule=fvm.EveryTime(FIELD_SAMPLE_INTERVAL), compression="lz4", ghost_layers=0
+            schedule=fvm.EveryTime(FIELD_SAMPLE_INTERVAL, start_time=field_start),
+            compression="lz4",
+            ghost_layers=0,
         ),
         samplers=fvm.Samplers(
             (
@@ -153,6 +181,8 @@ def build_case(end_time=END_TIME, compute_device="auto"):
                     file_name="blade_forces",
                     schedule=fvm.EveryTime(COUPLING_TIME_STEP),
                 ),
+                # Rotor speed, with the spin-up
+                fvm.MotionSampler(schedule=fvm.EveryTime(COUPLING_TIME_STEP)),
             )
         ),
         logging=fvm.LoggingConfig(console=False),
@@ -173,7 +203,7 @@ def build_case(end_time=END_TIME, compute_device="auto"):
 
     plane_half_width = 0.65 * (2.0 * ROTOR_RADIUS)
     sample_spacing = ROTOR_RADIUS / 36
-    plane_schedule = vpm.EveryTime(FIELD_SAMPLE_INTERVAL)
+    plane_schedule = vpm.EveryTime(WAKE_SAMPLE_INTERVAL, start_time=WAKE_SAMPLE_START)
     particles = vpm.VPMCase(
         name="coupled_rotor",
         directory=CASE_DIR,
@@ -199,10 +229,11 @@ def build_case(end_time=END_TIME, compute_device="auto"):
             max_n_particles=PARTICLE_LIMIT,
         ),
         run=vpm.RunPlan(end_time=end_time, state_limit_action="stop"),
-        output=vpm.Output(schedule=vpm.EveryTime(FIELD_SAMPLE_INTERVAL)),
+        output=vpm.Output(schedule=vpm.EveryTime(FIELD_SAMPLE_INTERVAL, start_time=field_start)),
         samplers=vpm.Samplers(
             (
-                vpm.FlowIntegralsSampler(schedule=plane_schedule),
+                # Particle invariants after every coupling interval
+                vpm.FlowIntegralsSampler(),
                 # Wake planes at the disk and one and two diameters downstream
                 *(
                     vpm.SurfaceSampler(
@@ -216,7 +247,7 @@ def build_case(end_time=END_TIME, compute_device="auto"):
                         ],
                         spacing=sample_spacing,
                         file_name=f"wake_{distance}D",
-                        include_derivatives=False,
+                        include_derivatives=True,
                         schedule=plane_schedule,
                     )
                     for distance in WAKE_PLANE_DIAMETERS
@@ -228,7 +259,7 @@ def build_case(end_time=END_TIME, compute_device="auto"):
                         end=[6.0 * ROTOR_RADIUS, radial_fraction * ROTOR_RADIUS, 0.0],
                         spacing=sample_spacing,
                         file_name=f"streamwise_r{label}",
-                        include_derivatives=False,
+                        include_derivatives=True,
                         schedule=plane_schedule,
                     )
                     for label, radial_fraction in STREAMWISE_STATIONS
