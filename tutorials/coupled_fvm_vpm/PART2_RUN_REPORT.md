@@ -41,7 +41,9 @@ Pending.
 
 ## Stopped runs
 
-None so far.
+| Run | Commit | Stopped at | Message |
+| --- | --- | --- | --- |
+| S1 pre-run (case 05, first 2 %) | 1c627a9a | t = 0.275 s of 1 s, 11 intervals, 524 particles | GPU guard: "GPU free 951 MiB below 1000 MiB: stopping the run" (the coupled wing run of another session held 7,758 MiB) |
 
 ## Analysis checks
 
