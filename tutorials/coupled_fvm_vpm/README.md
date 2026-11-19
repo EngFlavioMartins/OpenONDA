@@ -1,6 +1,6 @@
 # Coupled FVM–VPM cases: run status and data folders
 
-Status on Thu 19 Nov 2026, 12:00 CET. The supervising session updates the check boxes as runs end.
+Status on Thu 19 Nov 2026, 14:30 CET. The supervising session updates the check boxes as runs end.
 
 - `[x]` complete: the data may be plotted.
 - `[ ]` not complete: do not use for results. A running case has partial data that will change.
@@ -75,8 +75,8 @@ Folder `02_cube_flow/`.
 
 | Done | Run | Data | State |
 |---|---|---|---|
-| [ ] | Coupled final (particle domain to 18 m, 6 m fringe) | `02_cube_flow/samples/`, `02_cube_flow/solution/` | running to t = 100 s (window 30–100); at t = 97 on 19 Nov 11:40; stops at its t = 100 backup, about 14:30 on 19 Nov |
-| [x] | Fully meshed reference | `02_cube_flow/reference_flow/samples/grid_h0045_dt0.02/` | complete, t = 130 s; only 30–100 s is used |
+| [x] | Coupled final (particle domain to 18 m, 6 m fringe) | `02_cube_flow/samples/`, `02_cube_flow/solution/` | stopped on 19 Nov at t = 98.5 s (forces) by the user's decision; last backup t = 98 s; window 30–98 |
+| [x] | Fully meshed reference | `02_cube_flow/reference_flow/samples/grid_h0045_dt0.02/` | complete, t = 130 s; only 30–98 s is used |
 | [ ] | Figures | `02_cube_flow/figures/` | drawn from the unfinished run; redrawn at the end |
 
 - The earlier coupled cube run (24 m domain, stopped at t = 48 s) is not a result. It is outside
@@ -91,8 +91,8 @@ Folder `03_naca4412_flow/`.
 
 | Done | Run | Data | State |
 |---|---|---|---|
-| [ ] | Coupled final | `03_naca4412_flow/samples/`, `03_naca4412_flow/solution/` | complete to t = 24 s; extension to t = 48 s starts when the cube stops (about 14:30 on 19 Nov); about 58 h at full clock, end about 22 Nov |
-| [ ] | Fully meshed reference | `03_naca4412_flow/reference_flow/samples/` | about to reach t = 60 s; only 36–48 s is used |
+| [ ] | Coupled final | `03_naca4412_flow/samples/`, `03_naca4412_flow/solution/` | extension from t = 24 s to t = 48 s running since 19 Nov 14:26 (cores 0-3,12-15, GPU); about 58 h at full clock, longer while the CPU is clamped; end about 22–23 Nov |
+| [x] | Fully meshed reference | `03_naca4412_flow/reference_flow/samples/` | complete, t = 60 s; only 36–48 s is used |
 | [x] | Figures | `03_naca4412_flow/figures/` (`forces.png`, `errors_by_window.png`, `velocity_profiles/`, `starting_vortex/`, `fields/`, `comparison_summary.csv`) | drawn from the final |
 
 Coupled samples: `forces_history.csv`; slices `fvm_slice_x2`, `fvm_slice_z0`, `vpm_slice_x2`,
@@ -127,5 +127,5 @@ scripts of the two repositories; see `figure_data/README.md`.
 | [ ] | Paper `cylinder_study` | extracted 13 Nov: baseline, N = 1, cell 0.08 and 0.06 (the last one incomplete then); refreshed when all 18 are done |
 | [ ] | Cube configuration (paper Figure 14) | from the stopped cube run; to be replaced |
 | [ ] | Cube comparison | waits for the cube final |
-| [ ] | Paper `force_histories`, `force_spectra` (three cases together) | drawn 19 Nov from the cube at t = 97.1 and the wing at t = 24; redrawn with `--extract` when the cube reaches t = 100 and the wing t = 48 |
+| [ ] | Paper `force_histories`, `force_spectra` (three cases together) | cylinder and cube final (cube window 30–98, redrawn 19 Nov 14:30); wing interim over 12–24, redrawn with `--extract` when the wing reaches t = 48 |
 | [ ] | Wing configuration (paper Figure 16) | `particles.csv` is a frame of 13 Nov, early in the final run; a frame near t = 24 s is still to be extracted |
