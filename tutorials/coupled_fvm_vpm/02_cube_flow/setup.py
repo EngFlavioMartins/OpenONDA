@@ -49,7 +49,7 @@ PARTICLE_LIMIT = 2_000_000
 
 # FVM–VPM transfer and run duration
 FVM_SUBSTEPS = 5  # FVM steps per particle step at the maximum interval
-END_TIME = 100.0  # s, 70 convective times of statistics after the transient of 30
+END_TIME = 98.0  # s, 68 convective times of statistics after the transient of 30
 
 # Output
 FORCE_INTERVAL = 0.1  # s, the maximum coupling interval: outputs must not shorten the interval

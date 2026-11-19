@@ -38,7 +38,7 @@ WAKE = (-2.0, 12.0, -2.0, 2.0, -2.0, 2.0)  # m, wake refinement
 
 # Time integration and output
 CORES = 4
-END_TIME = 100.0
+END_TIME = 98.0
 TIME_STEP_SIZE = 0.005
 MAX_COURANT_NUMBER = 0.5
 OUTPUT_INTERVAL = 2.0  # s, FVM fields

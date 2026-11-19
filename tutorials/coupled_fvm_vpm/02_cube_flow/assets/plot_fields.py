@@ -27,7 +27,7 @@ FIGURES = CASE_DIR / "figures"
 CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, bounds of the reference and particle slices
-STATISTICS_WINDOW = (30.0, 100.0)  # s, the time-mean fields
+STATISTICS_WINDOW = (30.0, 98.0)  # s, the time-mean fields
 MINIMUM_MEAN_FRAMES = 5  # slices both runs must have in the window before the means are drawn
 
 # Mid-plane slices: reference FVM, coupled FVM in the box, and particles in the outer wake.

@@ -15,7 +15,7 @@ from openonda.plotting import centered_subplots_adjust, fit_thesis_y_label_margi
 from openonda.plotting import save_validation_figure, set_thesis_style
 
 CASE_DIR = Path(__file__).absolute().parents[1]
-STATISTICS_WINDOW = (30.0, 100.0)  # s, the averaging window
+STATISTICS_WINDOW = (30.0, 98.0)  # s, the averaging window
 MINIMUM_LENGTH = 10.0  # s of the window that both runs must cover
 CUBE_SIDE = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
