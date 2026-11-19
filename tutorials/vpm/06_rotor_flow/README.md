@@ -19,7 +19,7 @@ The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`,
 
 Edit [setup.py](setup.py) and [blade.json](assets/blade.json). The JSON contains chord/twist geometry and chordwise/spanwise panel counts. Inputs are rotor radius $R=6$ m, hub radius 1 m, wind speed $U=7$ m/s, density $\rho=1.225$ kg/m³ and viscosity $\nu=1.5\times10^{-5}$ m²/s. Tip-speed ratio $\lambda=\Omega R/U=7$ gives $\Omega=8.167$ rad/s; rotation ramps over one nominal revolution. Blade chord Reynolds numbers are approximately 0.47–1.15 million.
 
-The time step is 0.006 s and duration 15 s (2500 steps). The Gaussian wake uses fast-multipole (FMM) induction, core spreading, Smagorinsky LES with $C_s=0.20$, and wake-core overlap 2.5. Selective viscosity uses coefficient 0.5; filament splitting checks every five steps when strength doubles. These numerical models require resolution checks together with the blade panels and time step.
+The time step is 0.006 s and duration 10.002 s (1667 steps, 13 revolutions). The Gaussian wake uses treecode induction ($\theta=0.3$, third-order multipoles), core spreading, Smagorinsky LES with $C_s=0.20$, and wake-core overlap 2.5. Selective viscosity uses coefficient 0.5; filament splitting checks every five steps when strength doubles. These numerical models require resolution checks together with the blade panels and time step.
 
 ## Loads and wake interpretation
 
@@ -32,9 +32,9 @@ $$
 
 where positive $P$ is extracted shaft power; the thrust and power histories are in `vlm_forces.csv` and the blade loading in `vlm_spanwise_blade_<n>.csv`. The BEM reference uses the same blade geometry, a thin-plate lift polar and hub/tip losses. The final five nominal revolutions define the mean loading and wake profiles.
 
-Wake planes lie at the disk, 1 diameter and 2 diameters downstream (`wake_<n>D.pvd`). Streamwise lines span $x/D=-1$ to 3 at $r/R=0.25$ and 0.65 (`streamwise_r025.csv`, `streamwise_r065.csv`). Ideal actuator-disk velocities are $u_d/U=1-a$ at the disk and $u_\infty/U=1-2a$ in the far wake; 1D or 2D need not be far enough for that limit. Finite-distance vortex-cylinder induction is a separate approximate comparison.
+Wake planes lie at the disk, 1 diameter and 2 diameters downstream (`wake_<n>D.pvd`). Streamwise lines span $x/D=-1$ to 3 on the axis and at $r/R=0.25$, 0.65 and 1.10 (`streamwise_r000.csv` to `streamwise_r110.csv`). Ideal actuator-disk velocities are $u_d/U=1-a$ at the disk and $u_\infty/U=1-2a$ in the far wake; 1D or 2D need not be far enough for that limit. Finite-distance vortex-cylinder induction is a separate approximate comparison.
 
-Loading CSVs are in `samples/rotor/`, with wake planes and lines every 0.018 s from 7.5 s. Particle frames and backups every 0.024 s are in `solution/rotor/`; open `vlm.pvd` and `vpm.pvd` in ParaView. `assets/rotor_flow.gif` animates the particle wake from rest with the thrust and power coefficients. Compare successive revolution windows, refine the panels, time step and wake cores, and compare developed loads and induction with the BEM reference.
+Loading CSVs are in `samples/rotor/`, with wake planes and lines every 0.018 s from 5 s. Particle frames and backups every 0.024 s are in `solution/rotor/`; open `vlm.pvd` and `vpm.pvd` in ParaView. `assets/rotor_flow.gif` animates the particle wake from rest with the thrust and power coefficients. Compare successive revolution windows, refine the panels, time step and wake cores, and compare developed loads and induction with the BEM reference.
 
 Short startup intervals do not describe a developed rotor wake; use complete averaging windows when comparing loading and induction.
 

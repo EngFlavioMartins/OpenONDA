@@ -22,15 +22,14 @@ MAX_N_PARTICLES = 600_000
 ANGULAR_VELOCITY = TIP_SPEED_RATIO * FREESTREAM_SPEED / ROTOR_RADIUS  # [rad/s]
 
 TIME_STEP_SIZE = 0.006  # [s]
-# Allow the 2D wake to develop before the final five-revolution mean. With the
-# matched BEM a ~= 0.219, ramp + 2D/[U*(1-2a)] + five revolutions is ~10.7 s.
-# This planning margin does not replace the measured stationarity checks.
-END_TIME = 15  # [s]
+# 13 revolutions (1667 steps). The last five give the mean loads and wake
+# profiles; they do not replace the measured stationarity checks.
+END_TIME = 10.002  # [s]
 FIELD_SAMPLE_INTERVAL_TIME = 0.06  # [s]
 WAKE_SAMPLE_INTERVAL_TIME = 0.018  # [s], wake planes and lines, 43 per revolution
-WAKE_SAMPLE_START_TIME = 7.5  # [s], the second half of the run
+WAKE_SAMPLE_START_TIME = 5.0  # [s], the second half of the run
 BACKUP_INTERVAL_TIME = 0.024  # [s]
-STREAMWISE_STATIONS = (("025", 0.25), ("065", 0.65))
+STREAMWISE_STATIONS = (("000", 0.0), ("025", 0.25), ("065", 0.65), ("110", 1.10))
 # 1-a applies at the disk. 1D/2D test downstream development toward the
 # 1-2a limit; no finite x/D guarantees a fully developed ideal wake.
 WAKE_PLANE_DIAMETERS = (0, 1, 2)
@@ -110,7 +109,7 @@ def build_case(
             time_step_size=time_step_size,
             vlm=vlm_setup,
             freestream_velocity=[FREESTREAM_SPEED, 0.0, 0.0],
-            turbulence=vpm.TurbulenceConfig.smagorinsky(),
+            turbulence=vpm.TurbulenceConfig.smagorinsky(smagorinsky_coefficient=0.20),
             stabilization=vpm.StabilizationConfig(
                 selective_eddy_viscosity_coefficient=0.5,
                 filament_refinement=vpm.FilamentRefinementConfig.adaptive(
@@ -121,7 +120,7 @@ def build_case(
                 kinematic_viscosity=KINEMATIC_VISCOSITY,
                 particle_spacing=wake_spacing,
             ),
-            induction=vpm.FMMInduction(),
+            induction=vpm.TreecodeInduction(theta=0.3, multipole_order=3),
             max_n_particles=MAX_N_PARTICLES,
         ),
         run=run_plan,
