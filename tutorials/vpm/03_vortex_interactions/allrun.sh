@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 ./allclean.sh
 
 python setup.py single_ring
+python setup.py single_ring_fmm
 python setup.py dns
 python setup.py les
 python setup.py les_stabilized

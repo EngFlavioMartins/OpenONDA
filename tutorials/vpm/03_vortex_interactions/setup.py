@@ -26,12 +26,12 @@ TOROIDAL_TAIL_FRACTION = 1.0e-4
 TIME_STEP_SIZE = 0.00375
 END_TIME = 12.0  # [s]
 HIGH_RE_END_TIME = 9.0  # [s]
-SINGLE_RING_END_TIME = 1.125  # [s]
+SINGLE_RING_END_TIME = 3.6  # [s], t Gamma_0 / R_0^2 = 11.3, one leapfrogging period
 MAX_N_PARTICLES = 600_000
 RELAXATION_FACTOR = 0.02  # per step: a relaxation rate of 5.3 1/s
 TUTORIAL_DIR = Path(__file__).parent
 
-CASES = ("single_ring", "dns", "les", "les_stabilized", "high_re_dns", "high_re_les")
+CASES = ("single_ring", "single_ring_fmm", "dns", "les", "les_stabilized", "high_re_dns", "high_re_les")
 
 
 def create_ring(x, group, kinematic_viscosity):
@@ -99,7 +99,7 @@ def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, end_time=END_TIME, direct
         name=name,
         directory=TUTORIAL_DIR,
         variant=name,
-        initial_conditions=rings[1:] if name == "single_ring" else rings,
+        initial_conditions=rings[1:] if name.startswith("single_ring") else rings,
         numerics=vpm.Numerics(
             time_step_size=TIME_STEP_SIZE,
             induction=induction,
@@ -133,8 +133,9 @@ def dns_case(name, *, reynolds_number=REYNOLDS_NUMBER, end_time=END_TIME, direct
 
 
 def build_case(name):
-    if name == "single_ring":
-        return dns_case(name, end_time=SINGLE_RING_END_TIME, direct=True)
+    if name.startswith("single_ring"):
+        # single_ring_fmm repeats it with the FMM induction of dns and les.
+        return dns_case(name, end_time=SINGLE_RING_END_TIME, direct=name == "single_ring")
     if name.startswith("high_re"):
         case = dns_case(
             name, reynolds_number=HIGH_REYNOLDS_NUMBER, end_time=HIGH_RE_END_TIME, direct=True

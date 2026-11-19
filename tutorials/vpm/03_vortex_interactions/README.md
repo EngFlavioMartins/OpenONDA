@@ -13,7 +13,7 @@ From this directory:
 
 The particles run on a GPU (CUDA, Vulkan or Metal) with `compute_device="auto"`, which never falls back to the CPU; without a GPU the run stops with a message.
 
-`allrun.sh` removes previous results and runs the six cases below, about seven hours on a laptop GPU (RTX 3060). For one case, use `python setup.py les_stabilized`. `./allcontinue.sh` resumes saved checkpoints.
+`allrun.sh` removes previous results and runs the seven cases below, about seven hours on a laptop GPU (RTX 3060). For one case, use `python setup.py les_stabilized`. `./allcontinue.sh` resumes saved checkpoints.
 
 ## Inputs
 
@@ -23,7 +23,8 @@ Particles sit on a toroidal lattice with spacing $h=0.05$ m and cores $\sigma=1.
 
 | Case | Model |
 | --- | --- |
-| `single_ring` | One ring for 1.1 s, for the translation speed. |
+| `single_ring` | One ring for 3.6 s ($t\Gamma_0/R_0^2=11.3$, one leapfrogging period), for the translation speed. |
+| `single_ring_fmm` | `single_ring` with the FMM induction of `dns` and `les`. |
 | `dns` | Molecular viscosity only. |
 | `les` | Sigma-model eddy viscosity, switched on where a particle's strength departs from the resolved vorticity, applied by strength exchange. |
 | `les_stabilized` | `les` plus Pedrizzetti relaxation, factor 0.02 per step ($5.3$ s⁻¹). |
