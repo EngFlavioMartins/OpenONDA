@@ -169,7 +169,10 @@ def _cfmesh_patch_keys(
     patch_ids = {
         str(patch["name"]): patch_id for patch_id, patch in enumerate(mesh_data["boundary"])
     }
-    for group in patch_groups:
+    group_of: dict[int, int] = {}
+    for group_index, group in enumerate(patch_groups):
+        for name in group:
+            group_of[patch_ids[name]] = group_index
         for name in group[1:]:
             union(patch_ids[group[0]], patch_ids[name])
 
@@ -192,6 +195,9 @@ def _cfmesh_patch_keys(
         patch_i = face_patch[attached[0]]
         patch_j = face_patch[attached[1]]
         if patch_i == patch_j:
+            continue
+        # Patches of one group form one wall, as one patch would: no junction between them
+        if patch_i in group_of and group_of.get(patch_j) == group_of[patch_i]:
             continue
         pair = (min(patch_i, patch_j), max(patch_i, patch_j))
         if _shared_edge_is_concave(points, faces[attached[0]], faces[attached[1]]):
