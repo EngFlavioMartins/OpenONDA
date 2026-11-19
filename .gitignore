@@ -111,6 +111,8 @@ log.*
 !tutorials/coupled_fvm_vpm/01_cylinder_shedding_flow/reference_flow/assets/cylinder_long.stl
 !tutorials/coupled_fvm_vpm/04_oscillating_cylinder/assets/cylinder_long.stl
 !tutorials/coupled_fvm_vpm/04_oscillating_cylinder/reference_flow/assets/cylinder_long.stl
+!tutorials/coupled_fvm_vpm/07_tandem_cylinders/assets/cylinder_long.stl
+!tutorials/coupled_fvm_vpm/07_tandem_cylinders/reference_flow/assets/cylinder_long.stl
 
 # Other simulation data
 *.xdmf
