@@ -63,8 +63,8 @@ WALL_FALLBACK_LIMIT = 0.01  # largest strength fraction per step deposited witho
 PARTICLE_LIMIT = 3_000_000
 
 # Time window
-STATISTICS_START = 12.0  # s
-END_TIME = 60.0  # s
+STATISTICS_START = 12.0  # s, first slice and field output
+END_TIME = 48.0  # s
 
 # Output
 FORCE_INTERVAL = 0.08  # s, the interval ceiling; with the 0.2 s profiles and slices, kept on the

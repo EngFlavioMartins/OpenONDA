@@ -12,13 +12,13 @@ A finite NACA 4412 wing is pitched nose-up in a uniform stream. The FVM resolves
 | FVM time step | CFL target 0.9 (about 0.0037 s, set by the 0.01 m trailing-edge cells); 0.0035 s initial |
 | VPM interval | 0.08 or 0.04 s, 0.067 s on average, about 18 FVM substeps; shorter only where the particle CFL number would pass 0.9 |
 | Output; backup intervals | forces 0.08 s, profiles and slices 0.2 s, fields 1.0 s; backups 0.48 s |
-| Statistics window | $12\le t\le24$ s |
+| Statistics window | $36\le t\le48$ s |
 
 ## Physics and numerical model
 
 `assets/naca_surface.py` writes the analytical NACA 4412 surface used by the [body-fitted Cartesian mesh](../../../docs/fvm.md#mesh-setup). The section is cut at 92.7 % of the chord and closed by a half-circle trailing edge of 10 mm radius, so the wing ends at 0.937 c; flat caps close the tips. The mesher leaves fluid-cell centres inside a body part thinner than its wall cells (see the known limitation in [docs/fvm.md](../../../docs/fvm.md#mesh-setup)), so the 20 mm trailing edge has 0.02 m cells, and its corners with the tip caps, where a 0.02 m wall face still spans the whole trailing edge, have 0.01 m cells. The six box faces form one coupling patch, meshed with exact Cartesian cells at faces, edges and corners. The wing is no-slip. The trailing edge is thinner than the 0.04 m particle lattice, so a particle at it can lack a bounded moment-conserving grid stencil for the wall step of the grid diffusion; such particles keep their strength without their first moments (`wall_fallback_limit`), and the run stops if they carry more than 1 % of the total strength in one step. Without this the first run stopped at $t=0.16$ s. Particle boundary data set the FVM boundary velocity and tangential velocity gradient; the FVM replaces particle vorticity inside the transfer region.
 
-The particle wake uses Gaussian cores, RK2 transport, grid-based diffusion and FMM induction. A 12 m outflow fringe fades trailing vorticity smoothly. The initial starting vortex leaves the near wake before the statistics window begins.
+The particle wake uses Gaussian cores, RK2 transport, grid-based diffusion and FMM induction. A 12 m outflow fringe fades trailing vorticity smoothly. The initial starting vortex leaves the near wake before the statistics window begins. The loads oscillate with a period of about 1.5 s; in the reference flow the oscillation grows until $t\approx27$ s and is periodic from $t=36$ s, so the window holds eight periods.
 
 The FVM selects a step from the maximum Courant number and recalculates it after each accepted substep. The particle step is taken as rarely as the coupling study of `01_cylinder_shedding_flow` allows: its error decreases as the interval grows, up to a particle CFL number of 0.9, at which the coupler caps the interval. The 0.08 s ceiling and the 0.0035 s initial FVM step allow up to 23 FVM substeps per particle step, so the FVM CFL limit never shortens the interval. Forces are sampled at the 0.08 s ceiling; the 0.2 s profiles and slices, kept at the sample times of the reference flow, add the output times that make some intervals 0.04 s. Every VPM interval equals the sum of its FVM substep sizes, so sampling and backup intervals remain fixed in physical time even when they do not divide the current step sizes.
 
@@ -43,7 +43,7 @@ The forces are compared without a blockage correction. The reference domain is o
 | `figures/forces` | Drag and lift against the FVM reference |
 | `figures/errors_by_window` | Error of the mean forces against the FVM-only reference in consecutive windows, with the 2 % acceptance band: mean drag and lift in 2 s windows |
 | `figures/interface_measures` | Per coupling interval: rms velocity mismatch per FVM box side and its maximum, FVM budget error, near-wall circulation ratio with the 0.97–1.03 band |
-| `figures/velocity_profiles/transverse_mean`, `figures/velocity_profiles/spanwise_mean` | Transverse and spanwise wake profiles at $x/c=2$ and $5$, averaged over $12\le t\le24$ s |
+| `figures/velocity_profiles/transverse_mean`, `figures/velocity_profiles/spanwise_mean` | Transverse and spanwise wake profiles at $x/c=2$ and $5$, averaged over $36\le t\le48$ s |
 | `figures/fields` | Reference, coupled and difference fields on mid-span and cross-flow planes |
 | `figures/starting_vortex` | Passage of the starting vortex and the tip vortices through the planes $x=4$ and 8 m, at every saved state of both runs: $\omega_z$ and $\omega_x$ maps around the passage, coupled above reference, and the histories of the integrated $\omega_z$ and of the circulation of each tip vortex |
 | `figures/coupling_cost` | Wall time by solver part and particle count |

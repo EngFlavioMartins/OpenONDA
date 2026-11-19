@@ -25,7 +25,7 @@ CHORD = 1.0  # m
 FREESTREAM_SPEED = 1.0  # m/s
 ANGLE_OF_ATTACK = 10.0  # degrees, nose-up pitch of the wing
 COUPLER_METADATA = CASE_DIR / "solution/coupler_metadata.json"
-STATISTICS_WINDOW = (12.0, 24.0)  # s, slices of the time means
+STATISTICS_WINDOW = (36.0, 48.0)  # s, slices of the time means
 MINIMUM_MEAN_FRAMES = 5  # slices both runs must share before the figures are drawn
 WING_SECTION = section_outline("4412", CHORD, 161, ANGLE_OF_ATTACK)
 
