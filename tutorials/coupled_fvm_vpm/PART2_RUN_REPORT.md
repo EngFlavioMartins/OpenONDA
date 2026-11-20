@@ -12,14 +12,20 @@ Round-off, measured before any acceptance run: two identical one-domain case 01 
 | --- | --- | --- | --- | --- | --- |
 | One domain through the new code path = single-domain coupler (commit 1cdea5cf) | force 5.576e-7, position 0, strength 9.977e-8 | passed | boundary data +1 % | force 9.513e-3, particle count differs | yes |
 | Two domains in both orders | force 1.237e-6, position 0, strength 1.003e-7 | passed | transfers one after the other with boundary data refreshed in between | force 7.039e-2, particle count differs | yes |
-| Two cylinders 200 D apart = single cylinder | pending | pending | cylinders 3 D apart | pending | pending |
+| Two cylinders 200 D apart = single cylinder | pending (the 200 D run on the CPU hit the test's 6 h timeout at 8 of 10 intervals; rerun without a timeout) | pending | cylinders 3 D apart | force 5.203e-1 | yes |
 | Continued from a two-domain backup = uninterrupted | force 1.998e-6, position 0, strength 1.244e-7 | passed | backup without the boundary-data correction of one domain | force 5.545e-4, strength 4.201e-6 | yes |
 
-The first check ran from export 336f854f, the others from 1c627a9a (identical code; it adds the case 07 cylinder surface files). The first attempt of the two-domain checks failed before any flow because the case 07 surface was not in the repository; a later attempt of the distant-bodies checks failed because the one-cylinder run used the multi-domain output layout, a fault of the test driver.
+The first check ran from export 336f854f, the order and restart checks from 1c627a9a (identical code; it adds the case 07 cylinder surface files) on CUDA, the distant-bodies checks from 46dba6d9 (identical coupler and particle solver) with the particle solver on the CPU while the GPU was reserved for another run. The side-by-side runs use FVM boxes of 1.5 D, not the 1.2 D first stated: at 1.2 D the coupler's boundary-mismatch check stopped the single cylinder at t = 0.04 s (velocity RMS difference 0.126 of the freestream, limit 0.1); cylinders 3 D apart keep their remeshing regions four spacings apart up to 1.63 D. They hold at most 200,000 particles (about a thousand are present in these runs). The first attempt of the two-domain checks failed before any flow because the case 07 surface was not in the repository; a later attempt of the distant-bodies checks failed because the one-cylinder run used the multi-domain output layout, a fault of the test driver.
 
 ## Acceptance tests of Task B
 
-Pending (see the case 06 section).
+| Requirement | Outcome |
+| --- | --- |
+| Case 06 mesh: positive volumes, no cell centre inside a blade | met at d4b6d67b: 797,383 cells, smallest volume 1.33e-8 m³, no fluid-cell centre inside a blade; max non-orthogonality 68.8°, max skewness 0.711, max aspect ratio 3.34 |
+| Pitched tip slab meshes, with a regression test | met: `tests/fvm/test_planar_feature_constraints.py` (sharp edges on the wall; fails on the base code with 5 centres inside) and `tests/fvm/test_cfmesh_region_topology.py` (no notch faces between the base and the sides; fails on the base code with `assert [29680] == []`) |
+| Meshes of cases 01–05 unchanged, or differences explained | 18a47cbd: cases 02, 04, 05 and the case 01 coupled mesh identical; the case 01 references keep their topology with vertex shifts of 1.9e-7 to 6.8e-5 m, and case 03 and its reference change at the wing tips (up to 13.6 mm), where the cap rims are now captured. d4b6d67b: cases 01, 03 coupled, 04, 05 and 07 identical to 336f854f array by array (02, the 03 reference and the 01 and 04 references not compared) |
+| `python setup.py --end-time 0.03` of case 06 completes | met (CPU particle solver): exit 0 in 192.5 min; largest FVM Courant number 15.8 in the first steps, 3.50 at 0.03 s; two coupler warnings, one moment-correction fallback and a net-strength balance of 1.27e-3 against its 1e-3 warning level |
+| Mesh tests | 100 passed at 18a47cbd, 104 passed at d4b6d67b |
 
 ## Runs
 
@@ -30,10 +36,16 @@ Pending.
 | Run | Commit | First 2 % | Wall time of the 2 % | Extrapolated wall time | Particles at 2 % |
 | --- | --- | --- | --- | --- | --- |
 | S1 reference (case 05, FVM only) | 336f854f | 1 s of 50 s | 70 min meshing (69,085 cells), then 200 steps in 31.5 min (9.45 s per step) | 26 h for 10,000 steps | none |
+| S1 coupled (case 05) | 1c627a9a | stopped by the GPU guard at 0.275 s of 1 s | mesh from cache; 11 intervals, mean 51.9 s, last ten 37.0 s per 0.025 s interval | not extrapolated (stopped); about 21 h at 37 s per interval for 2,000 intervals, before particle growth | 524 at 0.275 s; 1,414 MiB GPU |
+| S2 B1 reference (case 04, FVM only) | 1c627a9a | 3.84 s of 192 s | 66 min meshing (43,651 cells), then 1,536 steps in 81.4 min (3.18 s per step) | 68 h for 76,800 steps | none |
+| S2 B2 reference (case 04, FVM only) | d4b6d67b | 4.98 s of 249 s | 61 min meshing (43,651 cells), then 1,992 steps in 185.3 min (5.58 s per step) | 154 h for 99,600 steps | none |
+| S4a reference (case 07, FVM only) | d4b6d67b | 4 s of 200 s | 49 min meshing (69,448 cells), then 500 steps in 48.7 min (5.84 s per step) | 41 h for 25,000 steps | none |
 
 ## Deviations
 
 - The particle solver runs on CUDA, not Vulkan: only CUDA has the fast slip-slab image queries (0.026 s per boundary evaluation against about 60 s on Vulkan or the CPU).
+- The coupled simulations come from commit 82eaf968, which writes about 500 field frames per run for videos (an output-only change asked for by the author) and includes another session's change to the particle diffusion (cb8dfa5c, a narrower viscosity search), made after the acceptance runs. The VLM rotor runs from the same commit.
+- The FVM-only references ran from earlier commits with the same FVM code, meshes identical array by array and identical case files: the S1 reference from 336f854f, the S2 B1 reference from 1c627a9a, the S2 B2 and S4a references from d4b6d67b.
 - Case 06: the author agreed to finer trailing-edge cells. Boxes around the trailing edge alone leave the octree surface non-manifold, so the whole blade is refined from 0.025 m to 0.0125 m, with 0.00625 m boxes along the flat base from 1.5 m radius.
 - Output-only changes to cases 04, 05, 06 and the VLM rotor to record what the analysis needs (motion, wake lines with vorticity, particle invariants every interval); case 05 runs 50 s as this file asks.
 - Machine sharing: another session's coupled wing run holds CPUs 0–3 and 12–15 and up to 7 GB of the GPU until about 22–23 Nov. Part II runs use the other 16 cores, one particle solver at a time, at most about 4 GB of GPU memory, and stop themselves when the card has less than 1,000 MiB free; a stopped run resumes from its last backup.
