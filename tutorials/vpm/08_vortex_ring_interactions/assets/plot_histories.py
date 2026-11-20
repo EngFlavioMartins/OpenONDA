@@ -1,7 +1,7 @@
-"""Energy, enstrophy, dissipation and disturbance histories of the four runs.
+"""Energy, enstrophy, dissipation and disturbance histories of the six runs.
 
 Columns: head-on collision, leapfrogging. Rows: (a, b) kinetic energy; (c, d) enstrophy;
-(e, f) the energy loss rate -dE/dt of each run with the sub-grid part eps_sgs of the LES;
+(e, f) the energy loss rate -dE/dt of each run with the sub-grid part eps_sgs of each LES;
 (g, h) the largest azimuthal amplitude A_m of the two rings. A cross marks where a run
 stopped at a state limit.
 """
@@ -50,14 +50,14 @@ def plot():
             for row, values in enumerate(series):
                 axes[row, column].plot(time, values, label=style["label"], **line)
             axes[3, column].semilogy(amplitude.index, amplitude.to_numpy(), **line)
-            if model == "les":
+            if model != "dns":
                 axes[2, column].plot(
                     time,
                     budget["subgrid_dissipation"],
                     color=style["color"],
                     ls=":",
                     lw=1.0,
-                    label="LES, $\\varepsilon_\\mathrm{sgs}$",
+                    label=f"{style['label']}, $\\varepsilon_\\mathrm{{sgs}}$",
                 )
             if stopped(case):
                 for row, values in enumerate(series):

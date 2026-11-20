@@ -6,8 +6,9 @@ follow how the rings exchange vorticity. Brightness and size grow with the parti
 vorticity relative to the peak vorticity of the initial rings; particles below
 ``VORTICITY_RANGE[0]`` of it are not drawn.
 
-``python -m assets.render_rings`` writes ``figures/<flow>_scenes.png`` (DNS above LES at
-the same times) and ``assets/<flow>.gif`` (DNS and LES side by side).
+``python -m assets.render_rings`` writes ``figures/<flow>_scenes.png`` (DNS, Smagorinsky LES
+and spectral-cusp LES in rows at the same times) and ``assets/<flow>.gif`` (the three side by
+side).
 """
 
 from __future__ import annotations
@@ -44,6 +45,8 @@ CAMERAS = {
     "leapfrog": {"offset": (1.5, -7.0, 3.0), "focus": "centroid", "view_up": (0.0, 0.0, 1.0)},
 }
 FRAME_INTERVAL = 0.5  # [s] between animation frames
+MODELS = ("dns", "les", "les_cusp")
+LABELS = {"dns": "DNS", "les": "LES, Smagorinsky", "les_cusp": "LES, spectral cusp"}
 
 
 def load(path):
@@ -122,16 +125,16 @@ def nearest_backup(case, time):
 
 
 def scene_figure(flow):
-    """DNS row above LES row at the scene times; a DNS that stopped leaves its row blank."""
+    """One row per run at the scene times; a run that stopped leaves the rest of its row dark."""
     rows = []
-    for model in ("dns", "les"):
+    for model in MODELS:
         case = f"{flow}_{model}"
         reference = reference_vorticity(case)
         tiles = []
         for time in SCENE_TIMES[flow]:
             found = nearest_backup(case, time)
             tile = (
-                render(found[1], flow, reference, label=model.upper())
+                render(found[1], flow, reference, label=LABELS[model])
                 if found is not None
                 else np.full((IMAGE_SIZE[1], IMAGE_SIZE[0], 3), 5, dtype=np.uint8)
             )
@@ -143,17 +146,17 @@ def scene_figure(flow):
 
 
 def animation(flow):
-    """DNS and LES side by side; the DNS view holds its last state once it stops."""
-    cases = [f"{flow}_dns", f"{flow}_les"]
+    """The three runs side by side; a view holds its last state once its run stops."""
+    cases = [f"{flow}_{model}" for model in MODELS]
     references = [reference_vorticity(case) for case in cases]
     end = max(backups(case)[-1][0] for case in cases)
-    frames, last = [], [None, None]
+    frames, last = [], [None] * len(cases)
     for time in np.arange(0.0, end + 1e-6, FRAME_INTERVAL):
         views = []
         for index, case in enumerate(cases):
             found = nearest_backup(case, time)
             if found is not None:
-                last[index] = render(found[1], flow, references[index], label=case[-3:].upper())
+                last[index] = render(found[1], flow, references[index], label=LABELS[MODELS[index]])
             views.append(last[index])
         frames.append(Image.fromarray(np.concatenate(views, axis=1)).quantize(colors=255))
         print(f"{flow}: frame t = {time:.1f} s", flush=True)

@@ -7,9 +7,9 @@ vorticity transform
 
 - ``E(k)``, the kinetic-energy spectrum, ``0.5 |u_hat|^2`` with ``u_hat = i k x w_hat / k^2``;
 - ``Omega(k)``, the enstrophy spectrum ``|w_hat|^2`` (no one-half, as ``total_enstrophy``);
-- ``eps_mol(k) = nu Omega(k)`` and ``eps_sgs(k) = Re(conj(w_hat) . (nu_t w)_hat)``, the
-  molecular and eddy-viscous energy dissipation at each wavenumber. Their integrals are
-  the two parts of ``-viscous_kinetic_energy_rate`` in ``flow_integrals.csv``.
+- ``eps_mol(k) = nu Omega(k)``, the molecular energy dissipation at each wavenumber.
+
+The closures' sinks per wavenumber are in ``assets/energy_transfer.py``.
 
 Spectra are shell densities: their integrals over ``k`` are the totals. The joint PDF
 of the invariants ``Q = -tr(A^2)/2`` and ``R = -tr(A^3)/3`` of the velocity gradient
@@ -33,7 +33,9 @@ from scipy import fft
 from openonda.vpm.numerics.fourier_integrals import _grid_for_particles, _scatter_vortex_strength_m4
 
 CASE_DIR = Path(__file__).resolve().parents[1]
-CASES = ("collision_dns", "collision_les", "leapfrog_dns", "leapfrog_les")
+CASES = tuple(
+    f"{flow}_{model}" for flow in ("collision", "leapfrog") for model in ("dns", "les", "les_cusp")
+)
 SPECTRUM_INTERVAL = 2.0  # [s] between analysed backups
 INVARIANT_BINS = 101
 INVARIANT_RANGE = 3.0  # Q / Q_w and R / Q_w^(3/2) span [-3, 3]
@@ -57,7 +59,7 @@ def read_particles(path):
 
 
 def spectral_fields(state):
-    """Wavenumbers, vorticity and nu_t * vorticity transforms of one particle field."""
+    """Wavenumbers and the vorticity transform of one particle field."""
     position = state["position"]
     strength = state["vortex_strength"]
     spacing = float(np.median(np.cbrt(state["particle_volume"])))
@@ -74,18 +76,10 @@ def spectral_fields(state):
         deposit = _scatter_vortex_strength_m4(position, values, grid)
         return [fft.rfftn(deposit[..., axis], s=padded, workers=-1) * core for axis in range(3)]
 
-    vorticity = transform(strength)
-    eddy_viscosity = state["eddy_viscosity"]
-    eddy = (
-        transform(strength * eddy_viscosity[:, None])
-        if np.any(eddy_viscosity)
-        else [np.zeros_like(component) for component in vorticity]
-    )
     return {
         "k": k,
         "k_squared": k_squared,
-        "vorticity": vorticity,
-        "eddy": eddy,
+        "vorticity": transform(strength),
         "padded": padded,
         "grid_shape": grid.shape,
         "spacing": spacing,
@@ -94,7 +88,7 @@ def spectral_fields(state):
 
 
 def shell_spectra(fields):
-    """Shell-averaged E, Omega, eps_mol and eps_sgs, each a density in k."""
+    """Shell-averaged E, Omega and eps_mol, each a density in k."""
     k, k_squared = fields["k"], fields["k_squared"]
     padded, spacing = fields["padded"], fields["spacing"]
     magnitude = np.sqrt(k_squared)
@@ -109,7 +103,6 @@ def shell_spectra(fields):
     inverse = np.divide(1.0, k_squared, out=np.zeros_like(k_squared), where=k_squared > 0.0)
     w = fields["vorticity"]
     enstrophy = sum(np.abs(component) ** 2 for component in w)
-    sgs = sum(np.real(np.conj(a) * b) for a, b in zip(w, fields["eddy"]))
     # |u_hat|^2 = |k x w_hat|^2 / k^4 = (|w_hat|^2 - |k . w_hat|^2 / k^2) / k^2
     longitudinal = np.abs(k[0] * w[0] + k[1] * w[1] + k[2] * w[2]) ** 2 * inverse
     energy = 0.5 * (enstrophy - longitudinal) * inverse
@@ -126,7 +119,6 @@ def shell_spectra(fields):
         "energy": reduce(energy),
         "enstrophy": omega,
         "molecular_dissipation": fields["nu"] * omega,
-        "subgrid_dissipation": reduce(sgs),
     }
 
 

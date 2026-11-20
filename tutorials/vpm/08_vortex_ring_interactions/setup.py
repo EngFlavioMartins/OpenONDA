@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Leapfrogging and colliding vortex rings at Re_Gamma = 2e4: DNS against LES.
+"""Leapfrogging and colliding vortex rings at Re_Gamma = 2e4: DNS against two LES closures.
 
 Examples (from this case directory)::
 
-    python setup.py collision_les
+    python setup.py collision_les_cusp
     python setup.py leapfrog_dns
 """
 
@@ -33,7 +33,7 @@ PARTICLE_SPACING = 0.025  # [m], h = R_0 / 40
 CORE_RADIUS_RATIO = 1.05  # sigma / h
 VORTICITY_FLOOR = 0.02  # [1/s], regenerated nodes below it are dropped
 TOROIDAL_TAIL_FRACTION = 1.0e-3  # initial lattice ends where the Gaussian falls to this
-MAX_N_PARTICLES = 600_000
+MAX_N_PARTICLES = 2_500_000
 DIVERGENCE_LIMIT = 0.5  # |div w| / |grad w|, weighted by |w|: O(1) once vortex lines are lost
 
 # Head-on collision: opposite rings 2.5 R_0 apart meet at x = 0 and stretch radially
@@ -55,7 +55,8 @@ SAMPLE_STEPS = 10
 BACKUP_INTERVAL = 0.5  # [s], also the flow integrals, which the backups need anyway
 
 TUTORIAL_DIR = Path(__file__).parent
-CASES = ("collision_dns", "collision_les", "leapfrog_dns", "leapfrog_les")
+MODELS = ("dns", "les", "les_cusp")
+CASES = tuple(f"{flow}_{model}" for flow in ("collision", "leapfrog") for model in MODELS)
 
 
 def vortex_ring(x, circulation, group):
@@ -91,7 +92,7 @@ def vortex_ring(x, circulation, group):
 
 
 def build_case(name):
-    flow, model = name.split("_")
+    flow, model = name.split("_", 1)
     if flow == "collision":
         # A positive ring moves towards +x: ring 0 from the left, ring 1 from the right
         x = 0.5 * COLLISION_SEPARATION
@@ -114,13 +115,14 @@ def build_case(name):
         stabilization = vpm.StabilizationConfig.bounded_domain(
             domain, outflow_fringe_depth=(LEAPFROG_FRINGE, 0.0, 0.0, 0.0, 0.0, 0.0)
         )
-    # LES: the equilibrium Smagorinsky model of the coupled cases, with the selective
-    # eddy viscosity it switches on. DNS: molecular viscosity only.
-    turbulence = (
-        vpm.TurbulenceConfig.equilibrium_smagorinsky()
-        if model == "les"
-        else vpm.TurbulenceConfig.dns()
-    )
+    # les: the equilibrium Smagorinsky model of the coupled cases, with the selective eddy
+    # viscosity it switches on. les_cusp: the spectral eddy viscosity with the Kraichnan
+    # cusp on the GBD lattice. dns: molecular viscosity only.
+    turbulence = {
+        "dns": vpm.TurbulenceConfig.dns(),
+        "les": vpm.TurbulenceConfig.equilibrium_smagorinsky(),
+        "les_cusp": vpm.TurbulenceConfig.spectral_cusp(),
+    }[model]
     return vpm.VPMCase(
         name=name,
         directory=TUTORIAL_DIR,
@@ -167,5 +169,5 @@ def build_case(name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("case", nargs="?", default="collision_les", choices=CASES)
+    parser.add_argument("case", nargs="?", default="collision_les_cusp", choices=CASES)
     vpm.VPMSolver(build_case(parser.parse_args().case)).run()

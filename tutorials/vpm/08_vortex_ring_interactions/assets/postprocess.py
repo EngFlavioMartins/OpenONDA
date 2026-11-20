@@ -17,7 +17,18 @@ FLOWS = ("collision", "leapfrog")
 FLOW_TITLES = {"collision": "Head-on collision", "leapfrog": "Leapfrogging"}
 MODEL_STYLES = {
     "dns": {"label": "DNS", "color": plotting.COLORS["dark"], "linestyle": "--", "marker": "o"},
-    "les": {"label": "LES", "color": plotting.COLORS["amber"], "linestyle": "-", "marker": "s"},
+    "les": {
+        "label": "LES, Smagorinsky",
+        "color": plotting.COLORS["amber"],
+        "linestyle": "-",
+        "marker": "s",
+    },
+    "les_cusp": {
+        "label": "LES, spectral cusp",
+        "color": plotting.COLORS["blue"],
+        "linestyle": "-",
+        "marker": "D",
+    },
 }
 
 
@@ -78,16 +89,20 @@ def save(fig, name):
 def energy_budget(case):
     """Flow integrals with the energy rates split into molecular, sub-grid and numerical parts.
 
-    ``-dE/dt`` comes from the sampled energy, ``eps_mol = nu Z`` and
-    ``eps_sgs = -viscous_kinetic_energy_rate - eps_mol``; the remainder
-    ``eps_num = -dE/dt - eps_mol - eps_sgs`` is the energy the particle
-    discretisation removes, mostly by regenerating the particles on the lattice.
+    ``-dE/dt`` comes from the sampled energy and ``eps_mol = nu Z``. ``eps_sgs`` is the
+    spectral closure's recorded sink, or ``-viscous_kinetic_energy_rate - eps_mol`` for a
+    particle eddy viscosity. The remainder ``eps_num = -dE/dt - eps_mol - eps_sgs`` is what
+    the discretisation removes, mostly by regenerating the particles on the lattice; with
+    Smagorinsky it also holds the selective eddy viscosity, which the samples do not record.
     """
     table = read_table(case, "flow_integrals")
     table["molecular_dissipation"] = setup.KINEMATIC_VISCOSITY * table["total_enstrophy"]
-    table["subgrid_dissipation"] = (
-        -table["viscous_kinetic_energy_rate"] - table["molecular_dissipation"]
-    )
+    if "subgrid_kinetic_energy_rate" in table:
+        table["subgrid_dissipation"] = -table["subgrid_kinetic_energy_rate"]
+    else:
+        table["subgrid_dissipation"] = (
+            -table["viscous_kinetic_energy_rate"] - table["molecular_dissipation"]
+        )
     rate = -np.gradient(table["total_kinetic_energy"].to_numpy(), table["time"].to_numpy())
     table["energy_loss_rate"] = rate
     table["numerical_dissipation"] = (
