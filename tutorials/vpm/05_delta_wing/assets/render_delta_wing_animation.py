@@ -5,6 +5,12 @@ coloured by the wing that shed them and brightened by their vorticity. The
 inset traces the lift coefficient of each wing up to that time. By default the
 animation plays at half the physical speed. The result is
 ``assets/delta_wing.gif``, shown at the top of the main README.
+
+python -m assets.render_delta_wing_animation               the README banner GIF, 1280 x 460
+python -m assets.render_delta_wing_animation presentation  a 1920 x 1080 H.264 video for slides, in
+                                                           docs/assets/presentation/, one frame per
+                                                           saved state; its frames are kept in
+                                                           solution/delta_wing/presentation_frames/
 """
 
 from __future__ import annotations
@@ -21,16 +27,40 @@ from PIL import Image
 import pyvista as pv
 from scipy.signal import find_peaks
 
+from openonda.plotting import (
+    PRESENTATION_DIR,
+    PRESENTATION_SIZE,
+    PRESENTATION_TEXT_SCALE,
+    vorticity_discs,
+    write_presentation_video,
+)
+
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution" / "delta_wing"
 FORCES = CASE_DIR / "samples" / "delta_wing" / "vlm_surface_forces.csv"
 OUTPUT = CASE_DIR / "assets" / "delta_wing.gif"
+PRESENTATION = PRESENTATION_DIR / "delta_wing.mp4"
+PRESENTATION_FRAMES = SOLUTION_DIR / "presentation_frames"
 
 IMAGE_SIZE = (1280, 460)  # [px], the README banner
-RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
+RENDER_SCALE = 2  # GIF: render at twice the size, then downsample smoothly
 VIEW_DIRECTION = (-0.15, 1.0, 0.9)  # toward the camera
-VIEW_DISTANCE = 1.9  # camera distance per streamwise extent of the wing pair
-WAKE_SHIFT = 0.78  # focal point downstream of the wing pair, per its streamwise extent
+# The GIF frame is a figure at 100 dpi, the video frame a figure 5 in tall at height / 5 dpi, in
+# which `text` scales the gallery font sizes for a 1080p slide. `distance` is the camera distance
+# and `wake_shift` the focal point downstream of the wing pair, per its streamwise extent; the
+# video steps back to fit the banner's wake in the 16:9 picture.
+FORMATS = {
+    "gif": dict(size=IMAGE_SIZE, dpi=100, text=1.0, discs=False, distance=1.9, wake_shift=0.78,
+                inset=(0.735, 0.6, 0.235, 0.27)),
+    "presentation": dict(size=PRESENTATION_SIZE, dpi=PRESENTATION_SIZE[1] / 5.0,
+                         text=PRESENTATION_TEXT_SCALE, discs=True, distance=3.0, wake_shift=0.78,
+                         inset=(0.75, 0.72, 0.2, 0.16)),
+}
+VIDEO_FRAMES_PER_SECOND = 10  # video: saved states per second
+# Video: the particles as discs (openonda.plotting) in their wing's colour map, transparent below
+# DISC_CUT and opaque from DISC_OPAQUE, as fractions of the colour scale.
+DISC_RADIUS = 0.8 * 5.0 * 0.005  # [m], 0.8 of the particle spacing, U dt
+DISC_CUT, DISC_OPAQUE = 0.25, 0.7
 
 GALLERY_STYLE = {
     "font.family": "DejaVu Serif",
@@ -89,22 +119,23 @@ def read_series(collection: Path) -> list[tuple[float, pv.DataSet]]:
     return frames
 
 
-def camera(bounds: np.ndarray) -> dict[str, np.ndarray]:
+def camera(bounds: np.ndarray, distance: float, wake_shift: float) -> dict[str, np.ndarray]:
     """A fixed oblique view from beside and above, with the wings at the left."""
     lower, upper = bounds[::2], bounds[1::2]
     length = float(upper[0] - lower[0])
     toward_camera = np.asarray(VIEW_DIRECTION, dtype=float)
     toward_camera /= np.linalg.norm(toward_camera)
-    focal_point = 0.5 * (lower + upper) - np.array([WAKE_SHIFT * length, 0.0, 0.0])
+    focal_point = 0.5 * (lower + upper) - np.array([wake_shift * length, 0.0, 0.0])
     return {
         "focal_point": focal_point,
-        "position": focal_point + VIEW_DISTANCE * length * toward_camera,
+        "position": focal_point + distance * length * toward_camera,
         "view_up": np.array([0.0, 0.0, 1.0]),
     }
 
 
-def render_scene(plotter, particles, surface, view, omega_max):
-    """Render one frame of particles and wings, returning its RGB image."""
+def render_scene(plotter, particles, surface, view, omega_max, discs=False):
+    """Render one frame of particles and wings, returning its RGB image; the video draws the
+    particles as discs."""
     plotter.clear()
     if particles.n_points:
         points = np.asarray(particles.points)
@@ -114,6 +145,13 @@ def render_scene(plotter, particles, surface, view, omega_max):
         for index, colormap in enumerate(WING_COLORMAPS):
             shed = wing == index
             if not np.any(shed):
+                continue
+            if discs:
+                plotter.add_actor(vorticity_discs(
+                    points[shed], vorticity[shed], view["position"], radius=DISC_RADIUS,
+                    cut=DISC_CUT * omega_max, opaque=DISC_OPAQUE * omega_max, maximum=omega_max,
+                    colormap=colormap,
+                ))
                 continue
             cloud = pv.PolyData(points[shed])
             cloud["vorticity magnitude"] = vorticity[shed]
@@ -136,16 +174,17 @@ def render_scene(plotter, particles, surface, view, omega_max):
     return plotter.screenshot(return_img=True)
 
 
-def compose(image, time, loads, frequency, omega_max):
-    """Lay the rendered scene and the lift inset on one frame."""
-    with plt.rc_context(GALLERY_STYLE):
-        figure = plt.figure(figsize=(IMAGE_SIZE[0] / 100, IMAGE_SIZE[1] / 100), dpi=100)
+def compose(image, time, loads, frequency, omega_max, layout):
+    """Lay the rendered scene and the lift inset on one frame in the given format."""
+    size, dpi, text = layout["size"], layout["dpi"], layout["text"]
+    with plt.rc_context({**GALLERY_STYLE, "font.size": GALLERY_STYLE["font.size"] * text}):
+        figure = plt.figure(figsize=(size[0] / dpi, size[1] / dpi), dpi=dpi)
         figure.patch.set_facecolor("black")
         scene = figure.add_axes((0.0, 0.0, 1.0, 1.0))
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
-        inset = figure.add_axes((0.735, 0.6, 0.235, 0.27))
+        inset = figure.add_axes(layout["inset"])
         inset.set_facecolor("none")
         for surface, rows in loads.groupby("surface"):
             cycles = rows["time"].to_numpy() * frequency
@@ -162,7 +201,7 @@ def compose(image, time, loads, frequency, omega_max):
                     "o",
                     color=colour,
                     markeredgecolor="white",
-                    markersize=8,
+                    markersize=8 * text**0.5,
                     clip_on=False,
                 )
         cycles = loads["time"].to_numpy() * frequency
@@ -190,10 +229,16 @@ def compose(image, time, loads, frequency, omega_max):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("format", nargs="?", choices=tuple(FORMATS), default="gif")
     parser.add_argument("--speed", type=float, default=0.5, help="playback speed; 1 is real time")
     parser.add_argument("--output", type=Path, default=OUTPUT)
     args = parser.parse_args()
+    layout = FORMATS[args.format]
+    size = layout["size"]
+    render_scale = 1 if layout["discs"] else RENDER_SCALE
 
     particles = read_series(SOLUTION_DIR / "vpm.pvd")
     surfaces = read_series(SOLUTION_DIR / "vlm.pvd")
@@ -202,15 +247,29 @@ def main() -> None:
 
     final = particles[-1][1]
     omega_max = float(f"{np.percentile(np.linalg.norm(final['vorticity'], axis=1), 99):.1g}")
-    view = camera(np.array(surfaces[-1][1].bounds))
+    view = camera(np.array(surfaces[-1][1].bounds), layout["distance"], layout["wake_shift"])
 
-    plotter = pv.Plotter(off_screen=True, window_size=[RENDER_SCALE * size for size in IMAGE_SIZE])
+    plotter = pv.Plotter(off_screen=True, window_size=[render_scale * pixels for pixels in size])
     plotter.set_background("black")
+    if layout["discs"]:
+        plotter.enable_anti_aliasing("fxaa")
+        PRESENTATION_FRAMES.mkdir(parents=True, exist_ok=True)
+        for old in PRESENTATION_FRAMES.glob("frame_*.png"):
+            old.unlink()
     frames = []
     for (time, cloud), (_, surface) in zip(particles, surfaces, strict=True):
-        image = render_scene(plotter, cloud, surface, view, omega_max)
-        frames.append(compose(image, time, loads, frequency, omega_max))
+        image = render_scene(plotter, cloud, surface, view, omega_max, layout["discs"])
+        frames.append(compose(image, time, loads, frequency, omega_max, layout))
+        if layout["discs"]:
+            frames[-1].save(PRESENTATION_FRAMES / f"frame_{len(frames) - 1:04d}.png")
     plotter.close()
+
+    if layout["discs"]:
+        write_presentation_video(
+            frames, PRESENTATION, VIDEO_FRAMES_PER_SECOND, frame_dir=PRESENTATION_FRAMES
+        )
+        print(f"  Saved: {PRESENTATION} and {len(frames)} frames in {PRESENTATION_FRAMES}")
+        return
 
     sample = Image.new("RGB", (IMAGE_SIZE[0], 4 * IMAGE_SIZE[1]))
     for row, frame in enumerate(frames[len(frames) // 4 :: len(frames) // 4][:4]):

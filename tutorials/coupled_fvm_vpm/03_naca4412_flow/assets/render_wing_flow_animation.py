@@ -1,4 +1,12 @@
-"""Animate the coupled NACA 4412 wake, seen from above, with the lift and drag histories."""
+"""Animate the coupled NACA 4412 wake, seen from above, with the lift and drag histories.
+
+python -m assets.render_wing_flow_animation               the README gallery GIF, 800 x 500
+python -m assets.render_wing_flow_animation 24            a still of the GIF frame nearest t = 24 s
+python -m assets.render_wing_flow_animation presentation  a 1920 x 1080 H.264 video for slides, in
+                                                          docs/assets/presentation/, one frame per
+                                                          evenly spaced saved state; its frames are
+                                                          kept in solution/presentation_frames/
+"""
 
 from pathlib import Path
 import sys
@@ -11,11 +19,21 @@ import pandas as pd
 from PIL import Image
 import pyvista as pv
 
+from openonda.plotting import (
+    PRESENTATION_DIR,
+    PRESENTATION_SIZE,
+    PRESENTATION_TEXT_SCALE,
+    vorticity_discs,
+    write_presentation_video,
+)
+
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution"
 FORCES = CASE_DIR / "samples" / "forces_history.csv"
 WING = CASE_DIR / "assets" / "naca4412_wing.stl"
 OUTPUT = CASE_DIR / "assets" / "wing_flow.gif"
+PRESENTATION = PRESENTATION_DIR / "wing_flow.mp4"
+PRESENTATION_FRAMES = SOLUTION_DIR / "presentation_frames"
 
 CHORD = 1.0  # [m]
 FREESTREAM_SPEED = 1.0  # [m/s]
@@ -24,9 +42,26 @@ FVM_BOUNDS = (-1.6, 2.56, -1.32, 1.24, -3.6, 3.6)  # [m]
 # that the FVM vorticity on that plane shows.
 VPM_CLIP_BOUNDS = (-2.0, 3.0, -2.0, 2.0, 0.05, 4.0)  # [m]
 IMAGE_SIZE = (800, 500)  # [px], matching the README gallery
-RENDER_SCALE = 2
-FRAMES_PER_SECOND = 12
+# Each frame is a figure 5 in tall at height / 5 dpi; `text` scales the gallery font sizes for a
+# 1080p slide. The GIF scene is drawn at twice its size and reduced; the video scene at its own
+# size, which keeps the GPU memory of the window small beside a running solver.
+FORMATS = {
+    "gif": dict(size=IMAGE_SIZE, render_scale=2, text=1.0, discs=False,
+                bar=(0.89, 0.53, 0.035, 0.29), inset=(0.12, 0.17, 0.29, 0.24), zoom=1.0),
+    "presentation": dict(size=PRESENTATION_SIZE, render_scale=1, text=PRESENTATION_TEXT_SCALE,
+                         discs=True, bar=(0.925, 0.58, 0.016, 0.27), inset=(0.07, 0.13, 0.22, 0.16),
+                         zoom=1.1),
+}
+FRAMES_PER_SECOND = 12  # GIF: saved states per second
+POINT_SIZE = 4.0  # [px], GIF particles, at twice the gallery size
+VIDEO_FRAMES_PER_SECOND = 10  # video: saved states per second
+# The video uses evenly spaced states: the field output of setup.py (every 0.08 s from t = 8 s)
+# where the run has it, else the coupled backups (every 0.48 s).
+VIDEO_SPACINGS = ((0.08, 8.0), (0.48, 0.0))  # [s], spacing and first time
 VORTICITY_MAX = 3.0  # [1/s]
+# Video: the FVM cells and the particles outside the FVM box as vorticity discs (openonda.plotting)
+DISC_RADIUS = 0.8 * 0.04  # [m], 0.8 of the cell and particle spacing
+DISC_CUT, DISC_OPAQUE = 0.6, VORTICITY_MAX  # [1/s]
 # Opacity of the 16 colour steps: the weak vorticity of the wake sheet, which fills a long volume,
 # is left out so that the shed vortices show.
 OPACITY = np.concatenate([np.zeros(3), np.linspace(0.25, 1.0, 13)])
@@ -58,9 +93,13 @@ VORTICITY_COLORMAP = LinearSegmentedColormap.from_list(
 
 
 def frame_files(collection: Path) -> dict[float, Path]:
-    """Return the dataset paths of a ParaView collection by time; a time written twice keeps the later file."""
+    """Return the dataset paths of a ParaView collection by time; a time written twice keeps the
+    later file."""
     entries = ET.parse(collection).getroot().iter("DataSet")
-    return {round(float(entry.get("timestep")), 6): collection.parent / entry.get("file") for entry in entries}
+    return {
+        round(float(entry.get("timestep")), 6): collection.parent / entry.get("file")
+        for entry in entries
+    }
 
 
 def fvm_plane(dataset: pv.DataSet) -> pv.PolyData:
@@ -82,7 +121,34 @@ def wake_particles(dataset: pv.DataSet) -> pv.PolyData:
     return cloud
 
 
-def camera() -> dict[str, np.ndarray]:
+def disc_actor(fvm_data: pv.DataSet, particle_data: pv.DataSet, view):
+    """The FVM cells and the particles outside the FVM box as vorticity discs."""
+    particles = np.asarray(particle_data.points)
+    bounds = np.asarray(FVM_BOUNDS)
+    outside = np.any((particles < bounds[::2]) | (particles > bounds[1::2]), axis=1)
+    points = np.vstack([np.asarray(fvm_data.cell_centers().points), particles[outside]])
+    vorticity = np.concatenate([
+        np.linalg.norm(np.asarray(fvm_data.cell_data["vorticity"]), axis=1),
+        np.linalg.norm(np.asarray(particle_data["vorticity"]), axis=1)[outside],
+    ])
+    return vorticity_discs(points, vorticity, view["position"], radius=DISC_RADIUS, cut=DISC_CUT,
+                           opaque=DISC_OPAQUE, maximum=VORTICITY_MAX, colormap=VORTICITY_COLORMAP)
+
+
+def video_times(times: list[float]) -> list[float]:
+    """The saved times on the first spacing of VIDEO_SPACINGS that gives 100 states, else on the
+    last."""
+    for spacing, start in VIDEO_SPACINGS:
+        even = [
+            t for t in times
+            if t >= start - 1e-9 and abs(t / spacing - round(t / spacing)) < 1e-6
+        ]
+        if len(even) >= 100:
+            return even
+    return even
+
+
+def camera(zoom: float = 1.0) -> dict[str, np.ndarray]:
     """Set an oblique view from above the suction side, the span across the picture."""
     # The view of the cube animation turned so that y, the lift direction, points up: the wing lies
     # flat, seen from above its suction side and downstream, framed close on the FVM box and the
@@ -95,12 +161,13 @@ def camera() -> dict[str, np.ndarray]:
         "focal_point": focal_point,
         "position": focal_point + 43.5 * toward_camera,
         "view_up": view_up / np.linalg.norm(view_up),
-        "view_angle": 15.0,
+        "view_angle": 15.0 / zoom,
     }
 
 
-def render_scene(plotter, plane, cloud, wing, view):
-    """Render the FVM plane, VPM wake and wing for one time."""
+def render_scene(plotter, plane, cloud, wing, view, discs=None):
+    """Render the FVM and VPM vorticity and the wing for one time: the GIF draws the mid-span plane
+    and the particles as spheres, the video the discs of disc_actor."""
     plotter.clear()
     field = {
         "scalars": "vorticity magnitude",
@@ -109,12 +176,15 @@ def render_scene(plotter, plane, cloud, wing, view):
         "opacity": OPACITY,
         "show_scalar_bar": False,
     }
-    plotter.add_mesh(plane, **field)
-    if cloud.n_points:
+    if discs is not None:
+        plotter.add_actor(discs)
+    else:
+        plotter.add_mesh(plane, **field)
+    if discs is None and cloud.n_points:
         plotter.add_mesh(
             cloud,
             render_points_as_spheres=True,
-            point_size=2.0 * RENDER_SCALE,
+            point_size=POINT_SIZE,
             **field,
         )
 
@@ -135,26 +205,27 @@ def render_scene(plotter, plane, cloud, wing, view):
     return plotter.screenshot(return_img=True)
 
 
-def compose(image, time, forces):
+def compose(image, time, forces, layout):
     """Add the vorticity scale and the lift and drag histories to a rendered frame."""
-    with plt.rc_context(GALLERY_STYLE):
-        figure = plt.figure(figsize=(IMAGE_SIZE[0] / 100, IMAGE_SIZE[1] / 100), dpi=100)
+    size, text = layout["size"], layout["text"]
+    with plt.rc_context({**GALLERY_STYLE, "font.size": GALLERY_STYLE["font.size"] * text}):
+        figure = plt.figure(figsize=(5.0 * size[0] / size[1], 5.0), dpi=size[1] / 5.0)
         figure.patch.set_facecolor("black")
         scene = figure.add_axes((0.0, 0.0, 1.0, 1.0))
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
-        bar = figure.add_axes((0.89, 0.53, 0.035, 0.29))
+        bar = figure.add_axes(layout["bar"])
         figure.colorbar(
             plt.cm.ScalarMappable(Normalize(0.0, VORTICITY_MAX), VORTICITY_COLORMAP),
             cax=bar,
             ticks=(0.0, VORTICITY_MAX),
         )
-        bar.set_yticklabels(["0", f"{VORTICITY_MAX:g}"], fontsize=30)
-        bar.tick_params(direction="out", length=10, width=1.5)
-        bar.set_title(r"$|\omega|$ [1/s]", fontsize=30, pad=28, x=0.2)
+        bar.set_yticklabels(["0", f"{VORTICITY_MAX:g}"], fontsize=30 * text)
+        bar.tick_params(direction="out", length=10 * text, width=1.5)
+        bar.set_title(r"$|\omega|$ [1/s]", fontsize=30 * text, pad=28 * text, x=0.2)
 
-        inset = figure.add_axes((0.12, 0.17, 0.29, 0.24))
+        inset = figure.add_axes(layout["inset"])
         inset.set_facecolor("none")
         times = forces["time"].to_numpy()
         travel = times * FREESTREAM_SPEED / CHORD
@@ -172,7 +243,7 @@ def compose(image, time, forces):
                 "o",
                 color=colour,
                 markeredgecolor="white",
-                markersize=8,
+                markersize=8 * text**0.5,
                 clip_on=False,
             )
             inset.annotate(
@@ -198,33 +269,59 @@ def compose(image, time, forces):
 
 
 def main() -> None:
+    presentation = "presentation" in sys.argv[1:]
+    layout = FORMATS["presentation" if presentation else "gif"]
+    size, render_scale = layout["size"], layout["render_scale"]
     particles = frame_files(SOLUTION_DIR / "vpm.pvd")
     fvm = frame_files(SOLUTION_DIR / "fvm.pvd")
     times = sorted(set(particles) & set(fvm))
-    if len(sys.argv) > 1:  # a preview of one time: python -m assets.render_wing_flow_animation 24
-        times = [min(times, key=lambda t: abs(t - float(sys.argv[1])))]
+    if presentation:
+        times = video_times(times)
+    preview = [float(arg) for arg in sys.argv[1:] if arg != "presentation"]
+    if preview:  # one time: python -m assets.render_wing_flow_animation [presentation] 24
+        times = [min(times, key=lambda t: abs(t - preview[0]))]
     forces = pd.read_csv(FORCES).drop_duplicates("time", keep="last").sort_values("time")
     wing = pv.read(WING)
-    view = camera()
+    view = camera(layout["zoom"])
 
     plotter = pv.Plotter(
         off_screen=True,
-        window_size=[RENDER_SCALE * size for size in IMAGE_SIZE],
+        window_size=[render_scale * pixels for pixels in size],
     )
     plotter.set_background("black")
+    if layout["discs"]:
+        plotter.enable_anti_aliasing("fxaa")
+    if layout["discs"] and not preview:
+        PRESENTATION_FRAMES.mkdir(parents=True, exist_ok=True)
+        for old in PRESENTATION_FRAMES.glob("frame_*.png"):
+            old.unlink()
     frames = []
     for time in times:
-        plane = fvm_plane(pv.read(fvm[time]))
-        cloud = wake_particles(pv.read(particles[time]))
-        image = render_scene(plotter, plane, cloud, wing, view)
-        frames.append(compose(image, time, forces))
+        if layout["discs"]:
+            discs = disc_actor(pv.read(fvm[time]), pv.read(particles[time]), view)
+            image = render_scene(plotter, None, None, wing, view, discs)
+        else:
+            plane = fvm_plane(pv.read(fvm[time]))
+            cloud = wake_particles(pv.read(particles[time]))
+            image = render_scene(plotter, plane, cloud, wing, view)
+        frames.append(compose(image, time, forces, layout))
+        if layout["discs"] and not preview:
+            frames[-1].save(PRESENTATION_FRAMES / f"frame_{len(frames) - 1:04d}.png")
         print(f"  frame t = {time:g}", flush=True)
     plotter.close()
 
+    if presentation and not preview:
+        write_presentation_video(
+            frames, PRESENTATION, VIDEO_FRAMES_PER_SECOND, frame_dir=PRESENTATION_FRAMES
+        )
+        print(f"  Saved: {PRESENTATION} and {len(frames)} frames in {PRESENTATION_FRAMES}")
+        return
+
     if len(times) == 1:
-        preview = OUTPUT.with_name(f"wing_flow_t{times[0]:g}.png")
-        frames[0].save(preview)
-        print(f"  Saved: {preview}")
+        mode = "_presentation" if presentation else ""
+        still = OUTPUT.with_name(f"wing_flow_t{times[0]:g}{mode}.png")
+        frames[0].save(still)
+        print(f"  Saved: {still}")
         return
 
     sample = Image.new("RGB", (IMAGE_SIZE[0], 4 * IMAGE_SIZE[1]))

@@ -1,6 +1,15 @@
-"""Animate the developed cylinder wake over four shedding periods."""
+"""Animate the developed cylinder wake over four shedding periods.
+
+python -m assets.render_cylinder_animation               the README gallery GIF, 800 x 500
+python -m assets.render_cylinder_animation presentation  a 1920 x 1080 H.264 video for slides, in
+                                                         docs/assets/presentation/, one frame per
+                                                         saved state; its frames are kept in
+                                                         solution/presentation_frames/ of the
+                                                         baseline run
+"""
 
 from pathlib import Path
+import sys
 import xml.etree.ElementTree as ET
 
 from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -10,12 +19,23 @@ import pandas as pd
 from PIL import Image
 import pyvista as pv
 
+from openonda.plotting import (
+    PRESENTATION_DIR,
+    PRESENTATION_SIZE,
+    PRESENTATION_TEXT_SCALE,
+    vorticity_discs,
+    write_presentation_video,
+)
+
 CASE_DIR = Path(__file__).resolve().parents[1]
 BASELINE_DIR = CASE_DIR / "solution/sensitivity_analysis/box2.4_sub5_inset8.75"  # baseline run
 SOLUTION_DIR = BASELINE_DIR / "solution"
 FORCES = BASELINE_DIR / "samples" / "forces_history.csv"
 OUTPUT = CASE_DIR / "figures" / "cylinder_shedding.gif"
-FRAMES_PER_SECOND = 20.0
+PRESENTATION = PRESENTATION_DIR / "cylinder_shedding.mp4"
+PRESENTATION_FRAMES = SOLUTION_DIR / "presentation_frames"
+FRAMES_PER_SECOND = 20.0  # GIF: saved states per second
+VIDEO_FRAMES_PER_SECOND = 10  # video: saved states per second
 
 DIAMETER = 1.0  # [m]
 FREESTREAM_SPEED = 1.0  # [m/s]
@@ -25,15 +45,28 @@ SHEDDING_PERIODS = 4
 SHEDDING_PERIOD = 5.488  # [s], between upward zero crossings of the lift
 FVM_HEIGHT = 1.0  # m, drawn span of the planar FVM domain
 
-# Oblique view from above and downstream.
-VIEW_DIRECTION = (0.9, -0.9, 1.2)  # toward the camera
-FOCAL_POINT = (6.5, 0.2, 0.0)  # [m]
-VIEW_DISTANCE = 36.0  # [m]
-VIEW_ANGLE = 17.0  # deg
-
 IMAGE_SIZE = (800, 500)  # px
-RENDER_SCALE = 2
+RENDER_SCALE = 2  # GIF: render at twice the size, then downsample smoothly
 OMEGA_MAX = 1.5  # 1/s
+
+# Oblique view from above and downstream, toward_camera pointing to the camera. Each frame is a
+# figure 5 in tall at height / 5 dpi; `text` scales the gallery font sizes for a 1080p slide, whose
+# scene is drawn at its own size. The video moves the FVM box to the left, the wake across the
+# 16:9 picture.
+FORMATS = {
+    "gif": dict(size=IMAGE_SIZE, text=1.0,
+                bar=(0.80, 0.53, 0.04, 0.29), inset=(0.12, 0.17, 0.29, 0.24),
+                view=dict(toward_camera=(0.9, -0.9, 1.2), focal_point=(6.5, 0.2, 0.0),
+                          distance=36.0, view_angle=17.0)),
+    "presentation": dict(size=PRESENTATION_SIZE, text=PRESENTATION_TEXT_SCALE,
+                         bar=(0.90, 0.58, 0.016, 0.27), inset=(0.07, 0.13, 0.22, 0.16),
+                         view=dict(toward_camera=(0.9, -0.9, 1.2), focal_point=(7.2, 0.9, 0.0),
+                                   distance=36.0, view_angle=17.0)),
+}
+# Video: the FVM cells and the particles outside the FVM domain as vorticity discs
+# (openonda.plotting), transparent below DISC_CUT and opaque from DISC_OPAQUE.
+DISC_RADIUS = 0.8 * 0.04  # [m], 0.8 of the cell and particle spacing
+DISC_CUT, DISC_OPAQUE = 0.3, 1.2  # [1/s]
 
 # Dark gallery style and blue vorticity scale.
 GALLERY_STYLE = {
@@ -101,8 +134,22 @@ def wake_particles(path: Path) -> pv.PolyData:
     return cloud
 
 
-def render_scene(plotter, plane, cloud, view):
-    """Render one frame of FVM plane, particles and cylinder, returning its RGB image."""
+def disc_actor(fvm_file: Path, particle_file: Path, view):
+    """The FVM cells and the particles outside the FVM domain as vorticity discs."""
+    fvm = pv.read(fvm_file)
+    cloud = wake_particles(particle_file)
+    points = np.vstack([np.asarray(fvm.cell_centers().points), np.asarray(cloud.points)])
+    vorticity = np.concatenate([
+        np.linalg.norm(np.asarray(fvm.cell_data["vorticity"]), axis=1),
+        np.asarray(cloud["vorticity magnitude"]),
+    ])
+    return vorticity_discs(points, vorticity, view["position"], radius=DISC_RADIUS, cut=DISC_CUT,
+                           opaque=DISC_OPAQUE, maximum=OMEGA_MAX, colormap=VORTICITY_COLORMAP)
+
+
+def render_scene(plotter, plane, cloud, view, discs=None):
+    """Render one frame of FVM plane, particles and cylinder, returning its RGB image; the video
+    draws the discs of disc_actor instead of the plane and the particle spheres."""
     plotter.clear()
     # Use one vorticity scale for FVM and particles.
     vorticity = {
@@ -112,10 +159,13 @@ def render_scene(plotter, plane, cloud, view):
         "opacity": np.linspace(0.0, 1.0, 16),
         "show_scalar_bar": False,
     }
-    plotter.add_mesh(plane, **vorticity)
-    plotter.add_mesh(
-        cloud, render_points_as_spheres=True, point_size=3.0 * RENDER_SCALE, **vorticity
-    )
+    if discs is not None:
+        plotter.add_actor(discs)
+    else:
+        plotter.add_mesh(plane, **vorticity)
+        plotter.add_mesh(
+            cloud, render_points_as_spheres=True, point_size=3.0 * RENDER_SCALE, **vorticity
+        )
     # Draw the FVM-domain edges and cylinder.
     xmin, xmax, ymin, ymax = FVM_DOMAIN
     box = pv.Box(bounds=(xmin, xmax, ymin, ymax, -0.5 * FVM_HEIGHT, 0.5 * FVM_HEIGHT))
@@ -139,28 +189,29 @@ def render_scene(plotter, plane, cloud, view):
     return plotter.screenshot(return_img=True)
 
 
-def compose(image, time, forces):
-    """Lay the rendered scene, the colour bars and the force inset on one frame."""
-    with plt.rc_context(GALLERY_STYLE):
-        figure = plt.figure(figsize=(IMAGE_SIZE[0] / 100, IMAGE_SIZE[1] / 100), dpi=100)
+def compose(image, time, forces, layout):
+    """Lay the rendered scene, the colour bars and the force inset on one frame in a format."""
+    size, text = layout["size"], layout["text"]
+    with plt.rc_context({**GALLERY_STYLE, "font.size": GALLERY_STYLE["font.size"] * text}):
+        figure = plt.figure(figsize=(5.0 * size[0] / size[1], 5.0), dpi=size[1] / 5.0)
         figure.patch.set_facecolor("black")
         scene = figure.add_axes((0.0, 0.0, 1.0, 1.0))
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
         # Common vorticity scale for FVM and particle fields.
-        bar = figure.add_axes((0.80, 0.53, 0.04, 0.29))
+        bar = figure.add_axes(layout["bar"])
         figure.colorbar(
             plt.cm.ScalarMappable(Normalize(0.0, OMEGA_MAX), VORTICITY_COLORMAP),
             cax=bar,
             ticks=(0.0, OMEGA_MAX),
         )
-        bar.set_yticklabels(["0", f"{OMEGA_MAX:g}"], fontsize=30)
-        bar.tick_params(direction="out", length=10, width=1.5)
-        bar.set_title(r"$|\omega|$ [1/s]", fontsize=30, pad=28)
+        bar.set_yticklabels(["0", f"{OMEGA_MAX:g}"], fontsize=30 * text)
+        bar.tick_params(direction="out", length=10 * text, width=1.5)
+        bar.set_title(r"$|\omega|$ [1/s]", fontsize=30 * text, pad=28 * text)
 
         # Force history up to the current frame.
-        inset = figure.add_axes((0.12, 0.17, 0.29, 0.24))
+        inset = figure.add_axes(layout["inset"])
         inset.set_facecolor("none")
         times = forces["time"].to_numpy()
         travel = times * FREESTREAM_SPEED / DIAMETER
@@ -178,7 +229,7 @@ def compose(image, time, forces):
                 "o",
                 color=colour,
                 markeredgecolor="white",
-                markersize=8,
+                markersize=8 * text**0.5,
                 clip_on=False,
             )
             inset.annotate(
@@ -204,6 +255,8 @@ def compose(image, time, forces):
 
 
 def main() -> None:
+    presentation = "presentation" in sys.argv[1:]
+    layout = FORMATS["presentation" if presentation else "gif"]
     # Four shedding periods return the wake to its starting phase.
     end_time = START_TIME + SHEDDING_PERIODS * SHEDDING_PERIOD - 0.1
     particles = frame_files(SOLUTION_DIR / "vpm.pvd", START_TIME, end_time)
@@ -211,15 +264,37 @@ def main() -> None:
     forces = pd.read_csv(FORCES)
     forces = forces[(forces["time"] >= START_TIME - 1e-9) & (forces["time"] <= end_time + 1e-9)]
 
-    view = camera(VIEW_DIRECTION, FOCAL_POINT, VIEW_DISTANCE, VIEW_ANGLE)
-    plotter = pv.Plotter(off_screen=True, window_size=[RENDER_SCALE * size for size in IMAGE_SIZE])
+    view = camera(**layout["view"])
+    render_scale = 1 if presentation else RENDER_SCALE
+    window_size = [render_scale * pixels for pixels in layout["size"]]
+    plotter = pv.Plotter(off_screen=True, window_size=window_size)
     plotter.set_background("black")
-    plotter.enable_depth_peeling()
+    if presentation:
+        plotter.enable_anti_aliasing("fxaa")
+        PRESENTATION_FRAMES.mkdir(parents=True, exist_ok=True)
+        for old in PRESENTATION_FRAMES.glob("frame_*.png"):
+            old.unlink()
+    else:
+        plotter.enable_depth_peeling()
     frames = []
     for (time, particle_file), (_, plane_file) in zip(particles, planes, strict=True):
-        image = render_scene(plotter, fvm_plane(plane_file), wake_particles(particle_file), view)
-        frames.append(compose(image, time, forces))
+        if presentation:
+            discs = disc_actor(plane_file, particle_file, view)
+            image = render_scene(plotter, None, None, view, discs)
+        else:
+            plane, cloud = fvm_plane(plane_file), wake_particles(particle_file)
+            image = render_scene(plotter, plane, cloud, view)
+        frames.append(compose(image, time, forces, layout))
+        if presentation:
+            frames[-1].save(PRESENTATION_FRAMES / f"frame_{len(frames) - 1:04d}.png")
     plotter.close()
+
+    if presentation:
+        write_presentation_video(
+            frames, PRESENTATION, VIDEO_FRAMES_PER_SECOND, frame_dir=PRESENTATION_FRAMES
+        )
+        print(f"  Saved: {PRESENTATION} and {len(frames)} frames in {PRESENTATION_FRAMES}")
+        return
 
     # Reuse one palette for a compact GIF.
     sample = Image.new("RGB", (IMAGE_SIZE[0], 4 * IMAGE_SIZE[1]))

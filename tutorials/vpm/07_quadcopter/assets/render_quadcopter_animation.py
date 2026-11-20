@@ -5,6 +5,12 @@ coloured by the rotor that shed them and brightened by their vorticity. The
 inset traces the thrust and power coefficients, averaged over the four rotors,
 up to that time. The result is ``assets/quadcopter_flow.gif``, shown in the
 README gallery.
+
+python -m assets.render_quadcopter_animation               the README gallery GIF, 800 x 500
+python -m assets.render_quadcopter_animation presentation  a 1920 x 1080 H.264 video for slides, in
+                                                           docs/assets/presentation/, one frame per
+                                                           saved state; its frames are kept in
+                                                           solution/quadcopter/presentation_frames/
 """
 
 from __future__ import annotations
@@ -20,16 +26,39 @@ import pandas as pd
 from PIL import Image
 import pyvista as pv
 
+from openonda.plotting import (
+    PRESENTATION_DIR,
+    PRESENTATION_SIZE,
+    PRESENTATION_TEXT_SCALE,
+    vorticity_discs,
+    write_presentation_video,
+)
+
 CASE_DIR = Path(__file__).resolve().parents[1]
 SOLUTION_DIR = CASE_DIR / "solution" / "quadcopter"
 FORCES = CASE_DIR / "samples" / "quadcopter" / "vlm_surface_forces.csv"
 OUTPUT = CASE_DIR / "assets" / "quadcopter_flow.gif"
+PRESENTATION = PRESENTATION_DIR / "quadcopter_flow.mp4"
+PRESENTATION_FRAMES = SOLUTION_DIR / "presentation_frames"
 
 IMAGE_SIZE = (800, 500)  # [px], as the other gallery animations
-RENDER_SCALE = 2  # render at twice the size, then downsample smoothly
+RENDER_SCALE = 2  # GIF: render at twice the size, then downsample smoothly
 VIEW_DIRECTION = (-0.45, -1.0, 0.55)  # toward the camera
-VIEW_DISTANCE = 2.9  # camera distance per height of the final wake
-SCREEN_SHIFT = 0.17  # wake left of the frame centre, per height of the final wake
+# Each frame is a figure 5 in tall at height / 5 dpi; `text` scales the gallery font sizes for a
+# 1080p slide, whose scene is drawn at its own size. `distance` is the camera distance and `shift`
+# the wake left of the frame centre, per height of the final wake; the video steps back, so that
+# the final wake clears the bottom edge.
+FORMATS = {
+    "gif": dict(size=IMAGE_SIZE, text=1.0, discs=False, distance=2.9, shift=0.17,
+                inset=(0.64, 0.6, 0.32, 0.22)),
+    "presentation": dict(size=PRESENTATION_SIZE, text=PRESENTATION_TEXT_SCALE, discs=True,
+                         distance=3.3, shift=0.05, inset=(0.72, 0.66, 0.22, 0.16)),
+}
+VIDEO_FRAMES_PER_SECOND = 10  # video: saved states per second
+# Video: the particles as discs (openonda.plotting) in their rotor's colour map, transparent below
+# DISC_CUT and opaque from DISC_OPAQUE, as fractions of the colour scale.
+DISC_RADIUS = 0.8 * (0.15 - 0.03) / 12  # [m], 0.8 of the particle spacing, blade span / 12 panels
+DISC_CUT, DISC_OPAQUE = 0.25, 0.7
 
 # README gallery style: white DejaVu Serif text on black, a stepped blue vorticity scale
 GALLERY_STYLE = {
@@ -95,7 +124,7 @@ def read_series(collection: Path) -> list[tuple[float, pv.DataSet]]:
     return frames
 
 
-def camera(bounds: np.ndarray) -> dict[str, np.ndarray]:
+def camera(bounds: np.ndarray, distance: float, shift: float) -> dict[str, np.ndarray]:
     """A fixed view from above one side, with the vehicle at the top and its wake below."""
     lower, upper = bounds[::2], bounds[1::2]
     centre = 0.5 * (lower + upper)
@@ -106,16 +135,17 @@ def camera(bounds: np.ndarray) -> dict[str, np.ndarray]:
     screen_right = np.cross(view_up, toward_camera)
     screen_right /= np.linalg.norm(screen_right)
     # Aim right of the wake, so it clears the force inset
-    focal_point = centre + SCREEN_SHIFT * height * screen_right
+    focal_point = centre + shift * height * screen_right
     return {
         "focal_point": focal_point,
-        "position": focal_point + VIEW_DISTANCE * height * toward_camera,
+        "position": focal_point + distance * height * toward_camera,
         "view_up": view_up,
     }
 
 
-def render_scene(plotter, particles, blades, view, omega_max):
-    """Render one frame of particles and blades, returning its RGB image."""
+def render_scene(plotter, particles, blades, view, omega_max, discs=False):
+    """Render one frame of particles and blades, returning its RGB image; the video draws the
+    particles as discs."""
     plotter.clear()
     # The rotors start from rest, before they have shed any particle
     if particles.n_points:
@@ -126,6 +156,13 @@ def render_scene(plotter, particles, blades, view, omega_max):
         for index, colormap in enumerate(ROTOR_COLORMAPS):
             shed = rotor == index
             if not np.any(shed):
+                continue
+            if discs:
+                plotter.add_actor(vorticity_discs(
+                    points[shed], vorticity[shed], view["position"], radius=DISC_RADIUS,
+                    cut=DISC_CUT * omega_max, opaque=DISC_OPAQUE * omega_max, maximum=omega_max,
+                    colormap=colormap,
+                ))
                 continue
             cloud = pv.PolyData(points[shed])
             cloud["vorticity magnitude"] = vorticity[shed]
@@ -148,17 +185,18 @@ def render_scene(plotter, particles, blades, view, omega_max):
     return plotter.screenshot(return_img=True)
 
 
-def compose(image, time, coefficients, period):
-    """Lay the rendered scene and the force inset on one frame."""
-    with plt.rc_context(GALLERY_STYLE):
-        figure = plt.figure(figsize=(IMAGE_SIZE[0] / 100, IMAGE_SIZE[1] / 100), dpi=100)
+def compose(image, time, coefficients, period, layout):
+    """Lay the rendered scene and the force inset on one frame in the given format."""
+    size, text = layout["size"], layout["text"]
+    with plt.rc_context({**GALLERY_STYLE, "font.size": GALLERY_STYLE["font.size"] * text}):
+        figure = plt.figure(figsize=(5.0 * size[0] / size[1], 5.0), dpi=size[1] / 5.0)
         figure.patch.set_facecolor("black")
         scene = figure.add_axes((0.0, 0.0, 1.0, 1.0))
         scene.imshow(image, interpolation="antialiased")
         scene.set_axis_off()
 
         # Thrust and power up to this time; the rest of the history stays faint
-        inset = figure.add_axes((0.64, 0.6, 0.32, 0.22))
+        inset = figure.add_axes(layout["inset"])
         inset.set_facecolor("none")
         revolutions = coefficients.index.to_numpy() / period
         now = coefficients.index.to_numpy() <= time + 1e-9
@@ -176,7 +214,7 @@ def compose(image, time, coefficients, period):
                     "o",
                     color=colour,
                     markeredgecolor="white",
-                    markersize=8,
+                    markersize=8 * text**0.5,
                     clip_on=False,
                 )
         inset.set_xlim(0.0, np.ceil(revolutions.max()))
@@ -195,7 +233,7 @@ def compose(image, time, coefficients, period):
             loc="lower center",
             bbox_to_anchor=(0.45, 0.98),
             ncols=2,
-            fontsize=18,
+            fontsize=18 * text,
             handlelength=1.0,
             handletextpad=0.4,
             columnspacing=0.8,
@@ -209,10 +247,16 @@ def compose(image, time, coefficients, period):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("format", nargs="?", choices=tuple(FORMATS), default="gif")
     parser.add_argument("--fps", type=float, default=20.0)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     args = parser.parse_args()
+    layout = FORMATS[args.format]
+    size = layout["size"]
+    render_scale = 1 if layout["discs"] else RENDER_SCALE
 
     particles = read_series(SOLUTION_DIR / "vpm.pvd")
     blades = read_series(SOLUTION_DIR / "vlm.pvd")
@@ -227,15 +271,29 @@ def main() -> None:
     omega_max = float(f"{np.median(peaks):.1g}")
     final = particles[-1][1]
     bounds = np.array(final.bounds)
-    view = camera(bounds)
+    view = camera(bounds, layout["distance"], layout["shift"])
 
-    plotter = pv.Plotter(off_screen=True, window_size=[RENDER_SCALE * size for size in IMAGE_SIZE])
+    plotter = pv.Plotter(off_screen=True, window_size=[render_scale * pixels for pixels in size])
     plotter.set_background("black")
+    if layout["discs"]:
+        plotter.enable_anti_aliasing("fxaa")
+        PRESENTATION_FRAMES.mkdir(parents=True, exist_ok=True)
+        for old in PRESENTATION_FRAMES.glob("frame_*.png"):
+            old.unlink()
     frames = []
     for (time, cloud), (_, surface) in zip(particles, blades, strict=True):
-        image = render_scene(plotter, cloud, surface, view, omega_max)
-        frames.append(compose(image, time, coefficients, period))
+        image = render_scene(plotter, cloud, surface, view, omega_max, layout["discs"])
+        frames.append(compose(image, time, coefficients, period, layout))
+        if layout["discs"]:
+            frames[-1].save(PRESENTATION_FRAMES / f"frame_{len(frames) - 1:04d}.png")
     plotter.close()
+
+    if layout["discs"]:
+        write_presentation_video(
+            frames, PRESENTATION, VIDEO_FRAMES_PER_SECOND, frame_dir=PRESENTATION_FRAMES
+        )
+        print(f"  Saved: {PRESENTATION} and {len(frames)} frames in {PRESENTATION_FRAMES}")
+        return
 
     # One palette for every frame, from four frames across the animation, keeps the GIF small
     sample = Image.new("RGB", (IMAGE_SIZE[0], 4 * IMAGE_SIZE[1]))

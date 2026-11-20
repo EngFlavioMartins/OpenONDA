@@ -1,6 +1,8 @@
 """Shared figure style for OpenONDA plots: palette, sizes, line styles and export."""
 
 from collections.abc import Iterable
+import math
+import os
 from pathlib import Path
 import shutil
 
@@ -548,3 +550,120 @@ def validation_legend(fig, axis, *, ncol=2):
 def save_validation_figure(fig, path, *, figure_format="png", dpi=None):
     """Check text extents and collisions, then save a comparison figure."""
     return export_figure(fig, path, figure_format=figure_format, dpi=dpi)
+
+
+# Presentation videos.
+# Full-HD H.264 versions of the tutorial animations for slides, in docs/assets/presentation/.
+# The vorticity is drawn as unlit discs with a soft edge, blended from the farthest to the
+# nearest: transparent below a cut, opaque from a second value, linear in between, so that weak
+# vorticity does not veil the vortex tubes.
+PRESENTATION_SIZE = (1920, 1080)  # px
+PRESENTATION_TEXT_SCALE = 0.55  # of the README gallery font sizes, which suit an 800 x 500 GIF
+PRESENTATION_DIR = Path(__file__).resolve().parents[1] / "docs" / "assets" / "presentation"
+# The videos play at PRESENTATION_FPS for at least PRESENTATION_SECONDS. RIFE (rife-ncnn-vulkan,
+# https://github.com/nihui/rife-ncnn-vulkan, MIT licence) interpolates as many frames between the
+# saved states as that needs; its executable is $OPENONDA_RIFE, else the release unpacked in ~/opt.
+# Without it the videos show the saved states only, at the rate the script gives.
+PRESENTATION_FPS = 50
+PRESENTATION_SECONDS = 10.0
+RIFE = Path(os.environ.get(
+    "OPENONDA_RIFE", Path.home() / "opt" / "rife-ncnn-vulkan-20221029-ubuntu" / "rife-ncnn-vulkan"
+))
+RIFE_MODEL = "rife-v4.6"
+_DISC_SHADER = (
+    "//VTK::Color::Impl\n"
+    "float dist = dot(offsetVCVSOutput.xy, offsetVCVSOutput.xy);\n"
+    "if (dist > 1.0) { discard; }\n"
+    "opacity = opacity * (1.0 - smoothstep(0.0, 1.0, dist));\n"
+)
+
+
+def vorticity_discs(points, vorticity, camera_position, *, radius, cut, opaque, maximum, colormap,
+                    steps=16):
+    """A VTK actor drawing `points` as discs coloured by `vorticity` on `colormap` in `steps`
+    steps over [0, maximum], farthest from `camera_position` first; points at or below `cut` are
+    left out."""
+    import vtk
+    from vtk.util.numpy_support import numpy_to_vtk
+
+    points = np.asarray(points, dtype=float)
+    vorticity = np.asarray(vorticity, dtype=float)
+    drawn = vorticity > cut
+    points, vorticity = points[drawn], vorticity[drawn]
+    order = np.argsort(-np.linalg.norm(points - np.asarray(camera_position), axis=1))
+    points, vorticity = points[order], vorticity[order]
+
+    step = np.clip(np.floor(vorticity / maximum * steps), 0, steps - 1)
+    rgba = np.empty((len(vorticity), 4), dtype=np.uint8)
+    rgba[:, :3] = np.round(colormap((step + 0.5) / steps)[:, :3] * 255)
+    rgba[:, 3] = np.round(np.clip((vorticity - cut) / (opaque - cut), 0.0, 1.0) * 255)
+    vertices = vtk.vtkPoints()
+    vertices.SetData(numpy_to_vtk(np.ascontiguousarray(points), deep=True))
+    discs = vtk.vtkPolyData()
+    discs.SetPoints(vertices)
+    colours = numpy_to_vtk(rgba, deep=True, array_type=vtk.VTK_UNSIGNED_CHAR)
+    colours.SetName("rgba")
+    discs.GetPointData().SetScalars(colours)
+
+    mapper = vtk.vtkPointGaussianMapper()
+    mapper.SetInputData(discs)
+    mapper.SetScaleFactor(radius)
+    mapper.SetColorModeToDirectScalars()
+    mapper.SetScalarModeToUsePointData()
+    mapper.EmissiveOff()
+    mapper.SetSplatShaderCode(_DISC_SHADER)
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.ForceTranslucentOn()
+    return actor
+
+
+def write_presentation_video(frames, path, frames_per_second, *, hold=1.0, frame_dir=None):
+    """Write RGB frames (PIL images) as an H.264 video for slides, the last frame held `hold` s.
+
+    With `frame_dir`, the folder that holds the same frames as PNG files in order, and RIFE
+    installed, the video plays at PRESENTATION_FPS for at least PRESENTATION_SECONDS: frames are
+    interpolated between the saved states into `frame_dir`_interpolated where there are too few.
+    Otherwise it plays the frames at `frames_per_second`.
+    """
+    import subprocess
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encode = ["-c:v", "libx264", "-preset", "slow", "-crf", "16", "-pix_fmt", "yuv420p",
+              "-movflags", "+faststart", str(path)]
+    if frame_dir is not None and RIFE.exists():
+        frame_dir = Path(frame_dir)
+        interpolated = frame_dir.with_name(frame_dir.name + "_interpolated")
+        shutil.rmtree(interpolated, ignore_errors=True)
+        interpolated.mkdir()
+        per_state = math.ceil(PRESENTATION_FPS * PRESENTATION_SECONDS / (len(frames) - 1))
+        if per_state > 1:
+            subprocess.run(
+                [str(RIFE), "-i", str(frame_dir), "-o", str(interpolated), "-m",
+                 str(RIFE.parent / RIFE_MODEL), "-n", str((len(frames) - 1) * per_state + 1),
+                 "-g", "0", "-j", "1:1:1"],
+                check=True, capture_output=True,
+            )
+        else:
+            for number, source in enumerate(sorted(frame_dir.glob("*.png")), start=1):
+                (interpolated / f"{number:08d}.png").symlink_to(source.resolve())
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(PRESENTATION_FPS),
+             "-i", str(interpolated / "%08d.png"),
+             "-vf", f"tpad=stop_mode=clone:stop_duration={hold}", *encode],
+            check=True,
+        )
+        return
+    width, height = frames[0].size
+    encoder = subprocess.Popen(
+        ["ffmpeg", "-y", "-loglevel", "error",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}",
+         "-framerate", str(frames_per_second), "-i", "-", *encode],
+        stdin=subprocess.PIPE,
+    )
+    for frame in frames + [frames[-1]] * round(hold * frames_per_second):
+        encoder.stdin.write(frame.tobytes())
+    encoder.stdin.close()
+    if encoder.wait():
+        raise RuntimeError(f"ffmpeg failed to write {path}")
