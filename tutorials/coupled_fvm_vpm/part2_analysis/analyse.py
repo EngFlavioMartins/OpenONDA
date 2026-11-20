@@ -331,13 +331,14 @@ def signal_rows(
 ):
     """Statistics of one signal into the summary and the tables."""
     stats = signals.window_statistics(time, values, window)
-    summary[f"{prefix}.mean"] = statistic(stats["mean"], stats["mean_standard_error"])
-    summary[f"{prefix}.std"] = statistic(stats["std"], stats["std_standard_error"])
+    unit = "deg" if prefix.endswith("_deg") else "1"
+    summary[f"{prefix}.mean"] = statistic(stats["mean"], stats["mean_standard_error"], unit)
+    summary[f"{prefix}.std"] = statistic(stats["std"], stats["std_standard_error"], unit)
     summary[f"{prefix}.cycle_max"] = statistic(
-        stats["cycle_max_mean"], stats["cycle_max_standard_error"]
+        stats["cycle_max_mean"], stats["cycle_max_standard_error"], unit
     )
     summary[f"{prefix}.cycle_min"] = statistic(
-        stats["cycle_min_mean"], stats["cycle_min_standard_error"]
+        stats["cycle_min_mean"], stats["cycle_min_standard_error"], unit
     )
     per_cycle = signals.cycle_statistics(time, values, window)
     for index in range(window.n_cycles):
@@ -383,7 +384,7 @@ def signal_rows(
                     "fit_residual_rms": residual,
                 }
             )
-            summary[f"{prefix}.harmonic_{k}_amplitude"] = statistic(amplitude, error)
+            summary[f"{prefix}.harmonic_{k}_amplitude"] = statistic(amplitude, error, unit)
             summary[f"{prefix}.harmonic_{k}_phase"] = statistic(angle, unit="deg")
     frequency_axis, psd, resolution = signals.welch_spectrum(time, values, window)
     peak = signals.peak_frequency(frequency_axis, psd, minimum=0.5 * resolution)
@@ -471,7 +472,8 @@ def analyse_side(run: Run, side: str, samples: Path, tables: dict, files: list[P
             mt = motion["time"].to_numpy()
             if run.kind == "pitching":
                 rate = motion["angular_velocity_z"].to_numpy()
-                angle = np.concatenate(
+                # Nose up positive: case 05 turns about -z
+                angle = -np.concatenate(
                     ([0.0], np.cumsum(0.5 * (rate[1:] + rate[:-1]) * np.diff(mt)))
                 )
                 signal_rows(
