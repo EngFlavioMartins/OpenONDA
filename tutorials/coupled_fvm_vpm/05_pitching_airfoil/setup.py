@@ -56,8 +56,10 @@ END_TIME = 50.0  # s, ten pitch periods
 # Output
 FORCE_INTERVAL = 0.025  # s
 PROFILE_INTERVAL = 0.1  # s, transverse wake profiles at x = 2 and 4 m, 50 per pitch period
-FIELD_INTERVAL = 0.2  # s, FVM and particle fields
-FIELD_START = 40.0  # s, the last two pitch periods
+# FVM and particle fields every four coupling intervals from the start: 501 frames, 50 per pitch
+# period, for a video of 10 s at 50 frames per second
+FIELD_INTERVAL = 0.1  # s
+FIELD_START = 0.0  # s
 BACKUP_INTERVAL = 1.0  # s
 TRANSFER_DIAGNOSTIC_INTERVAL = 2.5  # s
 

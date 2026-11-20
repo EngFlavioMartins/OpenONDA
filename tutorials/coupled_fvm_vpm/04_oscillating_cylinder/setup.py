@@ -64,8 +64,10 @@ END_PERIODS = 25  # natural periods in water; the paper's 20 start from a develo
 # Output
 FORCE_INTERVAL = 0.04  # s, forces and cylinder motion
 PROFILE_INTERVAL = 0.12  # s, transverse wake profiles 2 D and 4 D behind the cylinder axis
-FIELD_INTERVAL = 0.2  # s, FVM and particle fields
-FIELD_PERIODS = 2  # natural periods of fields before the end
+# FVM and particle fields every three coupling intervals over the last 500 of them before the end,
+# 60 s, for a video of 10 s at 50 frames per second
+FIELD_INTERVAL = 0.12  # s
+FIELD_FRAMES = 500
 BACKUP_INTERVAL = 1.0  # s
 TRANSFER_DIAGNOSTIC_INTERVAL = 2.4  # s
 
@@ -102,7 +104,7 @@ def build_case(reynolds_number, reduced_velocity, end_time=None, compute_device=
     natural_period = reduced_velocity * DIAMETER / FREESTREAM_VELOCITY[0]  # s, in water
     if end_time is None:
         end_time = END_PERIODS * natural_period
-    field_start = max(0.0, end_time - FIELD_PERIODS * natural_period)
+    field_start = max(0.0, end_time - FIELD_FRAMES * FIELD_INTERVAL)
 
     # One FVM cell and one particle layer across the span make the flow planar.
     span = CELL_SIZE

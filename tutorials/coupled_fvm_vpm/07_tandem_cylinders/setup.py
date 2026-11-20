@@ -70,8 +70,10 @@ END_TIME = 200.0  # s, 200 D/U
 # period of about 6 s), fields over the last two periods and more, particle integrals every interval
 FORCE_INTERVAL = 0.04  # s
 PROFILE_INTERVAL = 0.12  # s, transverse lines 2 and 4 D behind each cylinder
-FIELD_INTERVAL = 0.2  # s, FVM and particle fields
-FIELD_START = 185.0  # s
+# FVM and particle fields every five coupling intervals over the statistics window: 501 frames,
+# for a video of 10 s at 50 frames per second
+FIELD_INTERVAL = 0.2  # s
+FIELD_START = 100.0  # s
 BACKUP_INTERVAL = 1.0  # s
 TRANSFER_DIAGNOSTIC_INTERVAL = 2.4  # s
 
