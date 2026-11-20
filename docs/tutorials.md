@@ -42,11 +42,12 @@ When checking convergence, refine the spacing and the time step together. Result
 | --- | --- | --- |
 | [Lamb–Oseen vortices](../tutorials/vpm/01_lamb_oseen_vortex/README.md) | Viscous vortex, dipole and merger | Building particle fields; CS, RWM, DVH and GBD diffusion |
 | [Vortex ring](../tutorials/vpm/02_vortex_ring/README.md) | Perturbed vortex ring | Stretching schemes, LES, state limits |
-| [Leapfrogging rings](../tutorials/vpm/03_vortex_interactions/README.md) | Leapfrogging rings | Long runs: DNS, selective LES and strength relaxation against an LBM reference |
+| [Vortex ring speed](../tutorials/vpm/03_vortex_ring_speed/README.md) | One Gaussian ring in still fluid | Translation speed against Saffman, remeshing when the cores have grown |
 | [Flat plate](../tutorials/vpm/04_flat_plate/README.md) | Inclined flat plate | Lifting surfaces, startup loads, wake shedding, moving frames |
 | [Heaving delta wings](../tutorials/vpm/05_delta_wing/README.md) | Two heaving wings | Prescribed motion, wake–wing interaction |
 | [Wind turbine](../tutorials/vpm/06_rotor_flow/README.md) | Wind turbine | Rotating blades, power and thrust, LES wake, filament splitting |
 | [Quadcopter](../tutorials/vpm/07_quadcopter/README.md) | Four rotors in climb | Interacting rotor wakes, the Winckelmans kernel |
+| [Interacting vortex rings](../tutorials/vpm/08_vortex_ring_interactions/README.md) | Leapfrogging and head-on colliding rings at $Re_\Gamma=2\times10^4$ | Grid-based diffusion with LES against DNS, energy budgets, spectra, sub-grid dissipation, velocity-gradient statistics |
 
 ## Coupled FVM–VPM
 
