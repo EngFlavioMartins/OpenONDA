@@ -56,7 +56,10 @@ FORCE_INTERVAL = 0.1  # s, the maximum coupling interval: outputs must not short
 PROFILE_INTERVAL = 0.2  # s, centreline and off-axis lines
 SLICE_INTERVAL = 1.0  # s, mid-plane slices, at the times of the reference slices
 SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, x and y bounds of the particle slice
-VOLUME_INTERVAL = 2.0  # s, FVM fields
+# FVM and particle frames for the animations: 490 frames over the run, 10 s of video at 49 frames
+# per second; a multiple of the maximum coupling interval, so they do not shorten it. About
+# 120 MB per pair of frames, 60 GB over the run.
+FIELD_INTERVAL = 0.2  # s
 BACKUP_INTERVAL = 1.0  # s, coupled restart states
 TRANSFER_DIAGNOSTIC_INTERVAL = 2.4  # s
 OFFAXIS_Y = 0.75 * CUBE_SIDE  # m
@@ -120,7 +123,7 @@ FVM_CASE = fvm.FVMCase(
     initial_conditions=fvm.InitialFields(velocity=FREESTREAM_VELOCITY),
     run=fvm.RunPlan(end_time=END_TIME),
     output=fvm.Output(
-        schedule=fvm.EveryTime(VOLUME_INTERVAL),
+        schedule=fvm.EveryTime(FIELD_INTERVAL),
         compression="lz4",
         ghost_layers=0,
     ),
@@ -195,6 +198,7 @@ VPM_CASE = vpm.VPMCase(
         max_n_particles=PARTICLE_LIMIT,
     ),
     run=vpm.RunPlan(end_time=END_TIME),
+    output=vpm.Output(schedule=vpm.EveryTime(FIELD_INTERVAL)),
     samplers=vpm.Samplers(
         (
             *(
@@ -224,6 +228,7 @@ VPM_CASE = vpm.VPMCase(
 )
 
 COUPLER_CONFIG = coupler.CouplerConfig(
+    band_blending_weight=0.3,  # the value of the run in samples/ (decision run F.2, 16 Nov 2026)
     freestream_velocity=FREESTREAM_VELOCITY,
     transfer_diagnostic_interval_steps=round(
         TRANSFER_DIAGNOSTIC_INTERVAL / VPM_MAX_COUPLING_INTERVAL

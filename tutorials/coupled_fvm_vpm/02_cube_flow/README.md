@@ -15,6 +15,8 @@ The FVM resolves separation from a no-slip unit cube and its near wake; vortex p
 | Cell and particle spacing | 0.045 m |
 | FVM step; coupling interval | Courant number 0.9, at most 0.02 s; 0.1 s (5 FVM steps), shorter only where the particle CFL number would pass 0.9; every output interval is a multiple of 0.1 s |
 | Coupling iterations | Up to 6 per interval, ended by the transfer tolerances |
+| Band blending weight | 0.3 |
+| Output; backup intervals | forces 0.1 s, profiles 0.2 s, slices 1.0 s, FVM and particle fields 0.2 s (490 frames for the animations); backups 1.0 s |
 | Statistics window | $30\le t\le98$ s |
 
 ## Physics and numerical model

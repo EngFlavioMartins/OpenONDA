@@ -15,7 +15,7 @@ A finite NACA 4412 wing is pitched nose-up in a uniform stream. The FVM resolves
 | Cell and particle spacing | 0.04 m, $c/25$; FVM cells of 0.02 m around the trailing edge and 0.01 m at its corners with the tips |
 | FVM time step | CFL target 0.9 (about 0.0037 s, set by the 0.01 m trailing-edge cells); 0.0035 s initial |
 | VPM interval | 0.08 or 0.04 s, 0.067 s on average, about 18 FVM substeps; shorter only where the particle CFL number would pass 0.9 |
-| Output; backup intervals | forces 0.08 s, profiles and slices 0.2 s, fields 1.0 s; backups 0.48 s |
+| Output; backup intervals | forces 0.08 s, profiles and slices 0.2 s, FVM and particle fields 0.08 s from $t=8$ s (501 frames for the animations); backups 0.48 s |
 | Statistics window | $36\le t\le48$ s |
 
 ## Physics and numerical model

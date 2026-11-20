@@ -63,7 +63,7 @@ WALL_FALLBACK_LIMIT = 0.01  # largest strength fraction per step deposited witho
 PARTICLE_LIMIT = 3_000_000
 
 # Time window
-STATISTICS_START = 12.0  # s, first slice and field output
+STATISTICS_START = 12.0  # s, first slice output
 END_TIME = 48.0  # s
 
 # Output
@@ -71,7 +71,11 @@ FORCE_INTERVAL = 0.08  # s, the interval ceiling; with the 0.2 s profiles and sl
 # sample times of the reference flow, the intervals are 0.08 and 0.04 s, 0.067 s on average
 PROFILE_INTERVAL = 0.2  # s, wake profiles over the whole run
 SLICE_INTERVAL = 0.2  # s, planar slices over the statistics window
-FIELD_INTERVAL = 1.0  # s, FVM fields and particles over the statistics window
+# FVM fields and particles for the animations: 501 frames from FIELD_START, 10 s of video at 50
+# frames per second; a multiple of the coupling interval ceiling, so they do not shorten it.
+# About 200 MB per pair of frames (2.4 million particles), 100 GB over the run.
+FIELD_INTERVAL = 0.08  # s
+FIELD_START = 8.0  # s, after the starting vortex has left the FVM domain
 BACKUP_INTERVAL = 0.48  # s, coupled restart states
 WAKE_STATIONS = (2.0, 5.0)  # m, inside the replacement region and in the particle wake
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m
@@ -112,7 +116,7 @@ FVM_MESH = msh.CartesianMesher(
 
 profiles = fvm.EveryTime(PROFILE_INTERVAL)
 slices = fvm.EveryTime(SLICE_INTERVAL, start_time=STATISTICS_START)
-fields = fvm.EveryTime(FIELD_INTERVAL, start_time=STATISTICS_START)
+fields = fvm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)
 
 FVM_CASE = fvm.FVMCase(
     name=CASE_NAME,
@@ -247,7 +251,7 @@ VPM_CASE = vpm.VPMCase(
         max_n_particles=PARTICLE_LIMIT,
     ),
     run=vpm.RunPlan(end_time=END_TIME),
-    output=vpm.Output(schedule=vpm.EveryTime(FIELD_INTERVAL, start_time=STATISTICS_START)),
+    output=vpm.Output(schedule=vpm.EveryTime(FIELD_INTERVAL, start_time=FIELD_START)),
     samplers=vpm.Samplers(
         (
             *(
