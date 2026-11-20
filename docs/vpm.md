@@ -88,6 +88,14 @@ $$
 
 with $\sigma_i$ the singular values of $\nabla\mathbf{u}$ and $C_\sigma=1.35$. The switch $s$ uses the angle $\theta$ between a particle's strength and the resolved vorticity $\nabla\times\mathbf{u}$ at the particle. It stays near zero while the particles represent the vorticity ($\theta\ll\theta_0=3^\circ$) and approaches one where the particle scale is no longer resolved. `subgrid_transport="strength_exchange"`, the default here, applies $\nu_t$ by particle strength exchange after each step. This conserves the total strength and leaves every core to the molecular viscosity: core spreading with a varying $\nu_t$ would grow neighbouring cores unevenly and spoil the overlap where the model acts. Strength exchange is not available between slip planes.
 
+`spectral_cusp()` acts on the GBD lattice instead of on the particles. After the molecular Laplacian of each step it multiplies every Fourier mode of the lattice vorticity by $\exp[-\nu_t(k|k_c)k^2\Delta t]$, with the eddy viscosity of eddy-damped quasi-normal theory for the transfer across a sharp cut-off (Chollet & Lesieur, 1981),
+
+$$
+\nu_t(k\,|\,k_c)=C_K^{-3/2}\left[0.441+15.2\,e^{-3.03\,k_c/k}\right]\sqrt{\frac{E(k_c)}{k_c}},
+$$
+
+with $C_K=1.4$, $k_c=\pi/h$ by default, and $E(k_c)$ the energy spectrum of the lattice field averaged over $0.9k_c\le k\le k_c$. The amplitude follows the energy that has reached the cut-off, so a laminar vortex is left nearly untouched. The multiplier creates no vorticity divergence and keeps the total vorticity and the linear impulse. Its energy sink per step is written to `flow_integrals.csv` as `subgrid_kinetic_energy_rate`. It needs `gbd()` and an unbounded lattice: no walls, no slip planes. The [interacting vortex rings](../tutorials/vpm/08_vortex_ring_interactions/README.md) compare it with Smagorinsky and the DNS.
+
 ## Stabilization
 
 Particles drift apart and stretch, so a long run gradually loses resolution. `StabilizationConfig` gathers the remedies. Each changes the numerical evolution, so compare with a baseline run of the same case.

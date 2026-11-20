@@ -89,9 +89,13 @@ class Numerics:
         if isinstance(self.stabilization, StabilizationConfig) and isinstance(
             self.turbulence, TurbulenceConfig
         ):
-            # An automatic selective eddy viscosity follows the turbulence model.
+            # An automatic selective eddy viscosity follows a particle eddy-viscosity model.
             object.__setattr__(
-                self, "stabilization", self.stabilization.resolved(self.turbulence.flow_model)
+                self,
+                "stabilization",
+                self.stabilization.resolved(
+                    "les" if self.turbulence.particle_eddy_viscosity else "dns"
+                ),
             )
         if not isinstance(self.integrator, RKTableau):
             raise TypeError("integrator must be an RKTableau instance")
@@ -146,6 +150,19 @@ class Numerics:
             raise ValueError(
                 "RWM is restricted to spatially uniform effective viscosity; "
                 "use GBD for LES variable-viscosity diffusion."
+            )
+        if self.turbulence.model == "spectral_cusp" and self.viscous.scheme != "gbd":
+            raise ValueError(
+                "TurbulenceConfig.spectral_cusp() acts on the grid-based-diffusion lattice; "
+                f"use ViscousConfig.gbd(), not scheme={self.viscous.scheme!r}."
+            )
+        if (
+            self.turbulence.model == "spectral_cusp"
+            and getattr(self.induction, "method", None) == "slip_slab"
+        ):
+            raise ValueError(
+                "TurbulenceConfig.spectral_cusp() needs an unbounded lattice; "
+                "it is not available between slip planes."
             )
         if self.viscous.scheme == "dvh" and self.turbulence.flow_model == "les":
             raise ValueError(

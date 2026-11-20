@@ -82,6 +82,9 @@ def flow_integral_row(solver: VPMSolver) -> dict[str, Any]:
     resolution = solver._particle_resolution_metrics
     row.update({name: resolution.get(name, float("nan")) for name in _RESOLUTION_COLUMNS})
     row.update(solver.stabilization.diagnostics)
+    if solver.spectral_closure is not None:
+        # The model's energy rate over the last step (negative, m⁵/s³) and its cut-off state
+        row.update(solver.spectral_closure.statistics.as_row())
     vlm = solver.vlm_solver
     if vlm is not None:
         bound_impulse = vlm.compute_bound_linear_impulse()

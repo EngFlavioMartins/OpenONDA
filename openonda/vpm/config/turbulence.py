@@ -15,11 +15,12 @@ class TurbulenceConfig:
 
     Parameters
     ----------
-    model : {'dns', 'smagorinsky', 'sigma', 'inviscid'}, default='dns'
+    model : {'dns', 'smagorinsky', 'sigma', 'spectral_cusp', 'inviscid'}, default='dns'
         ``dns`` applies no subgrid closure, ``smagorinsky`` computes an
         equilibrium eddy viscosity, ``sigma`` the sigma-model eddy
-        viscosity, and ``inviscid`` disables viscous/SGS modeling at this
-        layer.
+        viscosity, ``spectral_cusp`` the spectral eddy viscosity with the
+        Kraichnan cusp on the grid-based-diffusion lattice, and ``inviscid``
+        disables viscous/SGS modeling at this layer.
     smagorinsky_coefficient : float, default=0.17
         Non-negative dimensionless ``C_s`` in the filter-width eddy-viscosity
         model.
@@ -38,6 +39,11 @@ class TurbulenceConfig:
         ``core_spreading`` adds the eddy viscosity to the viscous scheme;
         ``strength_exchange`` diffuses strengths between neighbouring particles
         after each step and leaves the cores to the molecular viscosity.
+    kolmogorov_constant : float, default=1.4
+        Positive Kolmogorov constant ``C_K`` of the ``spectral_cusp`` model.
+    cutoff_wavenumber : float or None, default=None
+        Positive cut-off ``k_c`` of the ``spectral_cusp`` model in rad/m; None
+        uses the lattice Nyquist wavenumber ``pi/h``.
 
     Attributes
     ----------
@@ -56,7 +62,7 @@ class TurbulenceConfig:
     strength directly; strength exchange conserves the total strength exactly.
     """
 
-    model: Literal["dns", "smagorinsky", "sigma", "inviscid"] = "dns"
+    model: Literal["dns", "smagorinsky", "sigma", "spectral_cusp", "inviscid"] = "dns"
     """Turbulence-model identifier."""
 
     smagorinsky_coefficient: float = constants_module.SMAGORINSKY_CONSTANT
@@ -74,12 +80,18 @@ class TurbulenceConfig:
     subgrid_transport: Literal["core_spreading", "strength_exchange"] = "core_spreading"
     """How the eddy viscosity acts on the particles."""
 
+    kolmogorov_constant: float = 1.4
+    """Kolmogorov constant of the spectral cusp model."""
+
+    cutoff_wavenumber: float | None = None
+    """Cut-off wavenumber of the spectral cusp model in rad/m, or None for ``pi/h``."""
+
     flow_model: str = field(default="dns", init=False)
     """Solver flow-model category derived from ``model``."""
 
     def __post_init__(self) -> None:
         model = self.model
-        valid_models = {"dns", "smagorinsky", "sigma", "inviscid"}
+        valid_models = {"dns", "smagorinsky", "sigma", "spectral_cusp", "inviscid"}
         if model not in valid_models:
             raise ValueError(
                 f"Invalid turbulence model {self.model!r}; expected one of {sorted(valid_models)}"
@@ -92,6 +104,12 @@ class TurbulenceConfig:
             raise ValueError("filter_width must be finite and positive or None")
         if not math.isfinite(self.sigma_coefficient) or self.sigma_coefficient < 0.0:
             raise ValueError("sigma_coefficient must be finite and non-negative")
+        if not math.isfinite(self.kolmogorov_constant) or self.kolmogorov_constant <= 0.0:
+            raise ValueError("kolmogorov_constant must be finite and positive")
+        if self.cutoff_wavenumber is not None and (
+            not math.isfinite(self.cutoff_wavenumber) or self.cutoff_wavenumber <= 0.0
+        ):
+            raise ValueError("cutoff_wavenumber must be finite and positive or None")
         if self.consistency_angle is not None and not 0.0 < self.consistency_angle < 90.0:
             raise ValueError("consistency_angle must lie in (0, 90) degrees or be None")
         transport = self.subgrid_transport
@@ -104,6 +122,7 @@ class TurbulenceConfig:
             "dns": "dns",
             "smagorinsky": "les",
             "sigma": "les",
+            "spectral_cusp": "les",
             "inviscid": "inviscid",
         }[model]
 
@@ -150,6 +169,30 @@ class TurbulenceConfig:
             subgrid_transport=subgrid_transport,
             filter_width=filter_width,
         )
+
+    @staticmethod
+    def spectral_cusp(
+        kolmogorov_constant: float = 1.4,
+        cutoff_wavenumber: float | None = None,
+    ) -> TurbulenceConfig:
+        """Return the spectral eddy viscosity with the Kraichnan cusp, for grid-based diffusion.
+
+        Every GBD step multiplies each Fourier mode of the lattice vorticity by
+        ``exp(-nu_t(k|k_c) k^2 dt)``, with ``nu_t(k|k_c) = C_K^(-3/2) [0.441 +
+        15.2 exp(-3.03 k_c/k)] sqrt(E(k_c)/k_c)`` (Chollet & Lesieur 1981). The
+        amplitude follows the energy that has reached the cut-off, so laminar
+        vortices are left alone. The particles carry no eddy viscosity.
+        """
+        return TurbulenceConfig(
+            model="spectral_cusp",
+            kolmogorov_constant=kolmogorov_constant,
+            cutoff_wavenumber=cutoff_wavenumber,
+        )
+
+    @property
+    def particle_eddy_viscosity(self) -> bool:
+        """Whether the model computes an eddy viscosity on every particle."""
+        return self.model in {"smagorinsky", "sigma"}
 
     @staticmethod
     def equilibrium_smagorinsky(

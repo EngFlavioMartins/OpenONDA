@@ -35,6 +35,7 @@ from .regeneration import (
 
 if TYPE_CHECKING:
     from ...particles.container import Particles
+    from ...turbulence.spectral_cusp import SpectralCuspClosure
     from .lattice import DiffusionLattice
 
 # Bound the 64 atomic deposits per particle to keep GPU dispatches short.
@@ -192,8 +193,13 @@ def gbd_diffusion(
     effective_viscosity: np.ndarray | None = None,
     remeshing_kernel: str = "m4_prime",
     wall_fallback_limit: float = 0.0,
+    spectral_closure: "SpectralCuspClosure | None" = None,
 ) -> dict[str, np.ndarray] | None:
     """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
+
+    A ``spectral_closure`` damps the diffused lattice in Fourier space before the
+    regeneration (:class:`~openonda.vpm.turbulence.spectral_cusp.SpectralCuspClosure`);
+    it needs a lattice without walls and slip planes.
 
     Moment-preserving scatter → explicit 7-point Laplacian → weak-strength
     removal → spawn. Per-particle ``effective_viscosity`` (ν+ν_t) enables the
@@ -432,6 +438,23 @@ def gbd_diffusion(
     # -- Weak-strength removal (CPU — read diffused grid back once) --------
     with lattice.profiler.section("GBD grid download"):
         grid_np = lattice.download_active_vec_grid(lattice.current_grid, nx, ny, nz)
+
+    if spectral_closure is not None:
+        if slab_bounds is not None or lattice.wall.active:
+            raise ValueError(
+                "The spectral eddy viscosity transforms an unbounded lattice; "
+                "it is not available with walls or slip planes."
+            )
+        with lattice.profiler.section("Spectral closure"):
+            closure = spectral_closure.apply(grid_np, particle_spacing, time_step_size)
+        lattice.logger.section(
+            "spectral eddy viscosity",
+            ("cut-off wavenumber", f"{closure.cutoff_wavenumber:.4e}", "rad/m"),
+            ("E(k_c)", f"{closure.cutoff_energy_spectrum:.4e}", "m^6/s^2"),
+            ("eddy viscosity, plateau", f"{closure.plateau_eddy_viscosity:.4e}", "m^2/s"),
+            ("eddy viscosity, cut-off", f"{closure.cutoff_eddy_viscosity:.4e}", "m^2/s"),
+            ("energy removed / step", f"{closure.subgrid_kinetic_energy_rate:.4e}", "m^5/s^3"),
+        )
 
     regenerated = select_regenerated_nodes(
         lattice.logger,

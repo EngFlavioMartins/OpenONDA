@@ -142,7 +142,7 @@ class EvolutionStepper:
         self.stabilization.stage_clock(step=self._staged_step, time=self._staged_time)
 
         _gradients_required = (
-            self.flow_model == "les"
+            self.turbulence_model is not None
             or (self.stabilization_config.selective_eddy_viscosity_coefficient or 0.0) > 0.0
             or self.stabilization_config.pedrizzetti_relaxation_enabled
         )
@@ -264,7 +264,7 @@ class EvolutionStepper:
 
     def _update_les_state(self) -> None:
         """Update LES viscosity from the current strain-rate field."""
-        if self.flow_model == "les":
+        if self.turbulence_model is not None:
             self.turbulence_model.compute(self.particles, time_step_size=self.time_step_size)
 
     def _advance_particles(self, time_step_size: float) -> None:
@@ -493,9 +493,10 @@ class EvolutionStepper:
                 effective_viscosity=effective_viscosity,
             )
         else:
-            # LES uses per-particle effective viscosity in the grid Laplacian.
+            # A particle LES uses per-particle effective viscosity in the grid Laplacian;
+            # the spectral closure acts on the lattice after the molecular Laplacian.
             effective_viscosity = None
-            if self.flow_model == "les":
+            if self.turbulence_model is not None:
                 N = self.particles.n_particles_total
                 if N > 0:
                     effective_viscosity = self.particles.effective_viscosity_cpu()
@@ -511,4 +512,5 @@ class EvolutionStepper:
                 effective_viscosity=effective_viscosity,
                 remeshing_kernel=vc.gbd_remeshing_kernel,
                 wall_fallback_limit=vc.gbd_wall_fallback_limit,
+                spectral_closure=self.solver.spectral_closure,
             )

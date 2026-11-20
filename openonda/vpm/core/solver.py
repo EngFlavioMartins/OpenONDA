@@ -60,6 +60,7 @@ from ..stabilization.context import (
     StabilizationStepState,
 )
 from ..turbulence.les import ParticleLES
+from ..turbulence.spectral_cusp import SpectralCuspClosure
 from ..vlm.output import VLMDiagnostics, VLMLoadingDistribution
 from .evolution import EvolutionStepper
 
@@ -394,7 +395,14 @@ class VPMSolver:
         """Initialize LES turbulence, stretching settings, and diagnostics."""
         max_p = final_setup.max_n_particles
         self.turbulence_model = None
-        if self.flow_model == "les":
+        self.spectral_closure = None
+        if final_setup.turbulence.model == "spectral_cusp":
+            self.spectral_closure = SpectralCuspClosure(
+                kolmogorov_constant=final_setup.turbulence.kolmogorov_constant,
+                cutoff_wavenumber=final_setup.turbulence.cutoff_wavenumber,
+                use_cuda=self.compute_device == "cuda",
+            )
+        elif self.flow_model == "les":
             from ..physics.induction.slip_slab import SlipSlabInduction
 
             if final_setup.turbulence.subgrid_transport == "strength_exchange" and isinstance(

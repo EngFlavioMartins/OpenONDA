@@ -251,8 +251,11 @@ def _empty_nodes_near(populated: np.ndarray, radius: int) -> np.ndarray:
     shape = populated.shape
     occupied = np.nonzero(populated)
     lower = [max(int(index.min()) - radius, 0) for index in occupied]
-    upper = [min(int(index.max()) + radius + 1, size) for index, size in zip(occupied, shape)]
-    box = tuple(slice(low, high) for low, high in zip(lower, upper))
+    upper = [
+        min(int(index.max()) + radius + 1, size)
+        for index, size in zip(occupied, shape, strict=True)
+    ]
+    box = tuple(slice(low, high) for low, high in zip(lower, upper, strict=True))
     local = populated[box]
     near = maximum_filter(local.view(np.uint8), size=2 * radius + 1, mode="constant") > 0
     ix, iy, iz = np.nonzero(near & ~local)

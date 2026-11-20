@@ -161,6 +161,8 @@ def _turbulence_rows(system: "VPMSolver") -> list[log_style.Row]:
     """Return the rows of the turbulence model."""
     if system.turbulence_model is not None:
         return system.turbulence_model.report_rows()
+    if system.spectral_closure is not None:
+        return system.spectral_closure.report_rows()
     if system.flow_model == "inviscid":
         return [("status", "not applicable, inviscid, stretching only")]
     return [("status", "not applicable, direct numerical simulation")]
