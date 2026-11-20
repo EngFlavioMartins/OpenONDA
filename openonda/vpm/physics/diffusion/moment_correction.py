@@ -152,6 +152,7 @@ def moment_gram(
                 weights[start:stop],
                 rows,
                 rows,
+                optimize=True,
             )
         else:
             projected_rows = np.einsum("ijk,k->ij", rows, direction)
@@ -160,6 +161,7 @@ def moment_gram(
                 weights[start:stop],
                 projected_rows,
                 projected_rows,
+                optimize=True,
             )
     return gram, length_scale, weights
 
@@ -900,6 +902,7 @@ def redistribute_removed_moments(
                 weights[start:stop],
                 rows,
                 multipliers,
+                optimize=True,
             )
         return validate(
             survivor_position,

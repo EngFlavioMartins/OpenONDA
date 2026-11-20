@@ -377,11 +377,21 @@ def gbd_diffusion(
     # fluxes. This advances div(ν_eff grad(ω)), not curl(div(2 ν_eff S)).
     # With no LES coefficient, use the scalar molecular Laplacian.
     effective_viscosity_grid_np = None
+    fill_radius = None
     if effective_viscosity is not None:
         effective_viscosity_np = np.ascontiguousarray(effective_viscosity[:N], dtype=np.float32)
         # Clip negatives (defensive: Smagorinsky guards already, but the
         # grid scatter can introduce tiny excursions via round-off).
         np.clip(effective_viscosity_np, 0.0, None, out=effective_viscosity_np)
+        if slab_bounds is None and not lattice.wall.active and len(effective_viscosity_np):
+            # In free space, vorticity reaches at most two cells beyond a particle's
+            # nearest node (M4' support) plus one cell per explicit stage; a node one
+            # cell farther still meets it in a face flux. The particle maximum bounds
+            # the node maximum, so these stages are at least those of the grid.
+            stages, _ = _explicit_diffusion_substep_count(
+                float(effective_viscosity_np.max()), float(time_step_size), float(particle_spacing)
+            )
+            fill_radius = stages + 4
         effective_viscosity_grid_np = scatter_scalar_weighted(
             pos_np,
             vortex_strength,
@@ -393,6 +403,7 @@ def gbd_diffusion(
             nz,
             mapping=node_mapping,
             fill_empty=True,
+            fill_radius=fill_radius,
         )
         if slab_bounds is not None:
             # Viscosity is even under every slab image; halo nodes take
@@ -434,6 +445,7 @@ def gbd_diffusion(
         regen_threshold,
         regen_threshold_mode,
         slab_bounds,
+        fill_support_only=fill_radius is not None,
     )
     if regenerated is None:
         lattice.ping = True

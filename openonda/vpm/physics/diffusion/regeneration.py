@@ -140,8 +140,7 @@ def scatter_id_field(
     else:
         for id_val in np.unique(ids):
             mask_val = ids == id_val
-            temp = np.zeros(nx * ny * nz, dtype=np.float64)
-            np.add.at(temp, lin[mask_val], w[mask_val])
+            temp = np.bincount(lin[mask_val], weights=w[mask_val], minlength=nx * ny * nz)
             better = temp > weight_flat
             winner_flat[better] = id_val
             weight_flat[better] = temp[better]
@@ -172,6 +171,8 @@ def scatter_scalar_weighted(
     nz: int,
     mapping: NearestNodeMapping | None = None,
     fill_empty: bool = False,
+    fill_radius: int | None = None,
+    fill_where: np.ndarray | None = None,
 ) -> np.ndarray:
     """Scatter a per-particle scalar to grid nodes (|Γ|-weighted average).
 
@@ -181,6 +182,13 @@ def scatter_scalar_weighted(
     scalar instead of taking the dominant ID.  Nodes with no contributing
     particle get 0.0 unless ``fill_empty`` is true, in which case the
     nearest populated node's value is propagated.
+
+    ``fill_radius`` limits the nearest-node search to empty nodes within that
+    many cells (Chebyshev distance) of a populated node, and ``fill_where``, a
+    boolean grid, to the empty nodes it marks; every other node takes the
+    smallest populated value. A caller sets one when no value outside that set
+    is read: no vorticity reaches it during the step, so it never enters a flux
+    or a regenerated particle, and the grid maximum is unchanged.
 
     Used to carry ν_t and ν_eff from the pre-regen
     particle cloud onto the diffusion grid so that regenerated particles
@@ -210,10 +218,8 @@ def scatter_scalar_weighted(
                 out.ravel()[np.unique(lin[populated])] = s[0]
         return out
 
-    weight_flat = np.zeros(nx * ny * nz, dtype=np.float64)
-    accum_flat = np.zeros(nx * ny * nz, dtype=np.float64)
-    np.add.at(weight_flat, lin, w)
-    np.add.at(accum_flat, lin, w * s)
+    weight_flat = np.bincount(lin, weights=w, minlength=nx * ny * nz)
+    accum_flat = np.bincount(lin, weights=w * s, minlength=nx * ny * nz)
 
     nz_mask = weight_flat > 0.0
     out_flat = out.ravel()
@@ -222,12 +228,35 @@ def scatter_scalar_weighted(
         from scipy.spatial import cKDTree  # pyrefly: ignore[missing-module-attribute]
 
         populated_linear = np.flatnonzero(nz_mask)
-        empty_linear = np.flatnonzero(~nz_mask)
+        if fill_radius is None and fill_where is None:
+            empty_linear = np.flatnonzero(~nz_mask)
+        else:
+            out_flat[~nz_mask] = out_flat[populated_linear].min()
+            empty_linear = (
+                np.flatnonzero(fill_where.ravel() & ~nz_mask)
+                if fill_where is not None
+                else _empty_nodes_near(nz_mask.reshape(nx, ny, nz), fill_radius)
+            )
         populated = np.column_stack(np.unravel_index(populated_linear, (nx, ny, nz)))
         empty = np.column_stack(np.unravel_index(empty_linear, (nx, ny, nz)))
         _, nearest = cKDTree(populated, compact_nodes=False).query(empty)
         out_flat[empty_linear] = out_flat[populated_linear[nearest]]
     return out
+
+
+def _empty_nodes_near(populated: np.ndarray, radius: int) -> np.ndarray:
+    """Linear indices of the empty nodes within ``radius`` cells (Chebyshev) of a populated one."""
+    from scipy.ndimage import maximum_filter
+
+    shape = populated.shape
+    occupied = np.nonzero(populated)
+    lower = [max(int(index.min()) - radius, 0) for index in occupied]
+    upper = [min(int(index.max()) + radius + 1, size) for index, size in zip(occupied, shape)]
+    box = tuple(slice(low, high) for low, high in zip(lower, upper))
+    local = populated[box]
+    near = maximum_filter(local.view(np.uint8), size=2 * radius + 1, mode="constant") > 0
+    ix, iy, iz = np.nonzero(near & ~local)
+    return np.ravel_multi_index((ix + lower[0], iy + lower[1], iz + lower[2]), shape)
 
 
 def read_diffusion_sources(
@@ -264,6 +293,7 @@ def select_regenerated_nodes(
     regen_threshold: float,
     regen_threshold_mode: str,
     slab_bounds: tuple[float, float] | None,
+    fill_support_only: bool = False,
 ) -> RegeneratedNodes | None:
     """Choose the diffused grid nodes that become particles, or None when nothing is left.
 
@@ -271,6 +301,8 @@ def select_regenerated_nodes(
     reduced to its physical share here. Zone and group labels and the eddy viscosity
     of the old cloud are carried onto the grid. A node is kept when its strength
     magnitude reaches the cloud-wide threshold; the count must fit the particle capacity.
+    ``fill_support_only`` searches eddy-viscosity values only for the nodes that hold
+    diffused strength, the only nodes a regenerated particle can come from.
     """
     nx, ny, nz = grid_np.shape[:3]
     # Nodes no particle reaches belong to zone 3, the background zone.
@@ -286,6 +318,14 @@ def select_regenerated_nodes(
         default_id=3,
         mapping=node_mapping,
     )
+    if slab_bounds is not None:
+        # Keep the physical share only: image nodes beyond the planes are
+        # dropped, and a node on a plane, counted twice, keeps one half.
+        grid_np *= physical_slab_share(nz, float(grid_min_np[2]), particle_spacing, slab_bounds)[
+            None, None, :, None
+        ]
+    vortex_strength_magnitude = np.linalg.norm(grid_np, axis=-1)
+    max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
     # The |Γ|-weighted ν_t average is inherited by the regenerated particles.
     # Empty nodes take the nearest populated value so variable diffusion does not
     # create zero-viscosity islands.
@@ -300,15 +340,8 @@ def select_regenerated_nodes(
         nz,
         mapping=node_mapping,
         fill_empty=True,
+        fill_where=vortex_strength_magnitude > 0.0 if fill_support_only else None,
     )
-    if slab_bounds is not None:
-        # Keep the physical share only: image nodes beyond the planes are
-        # dropped, and a node on a plane, counted twice, keeps one half.
-        grid_np *= physical_slab_share(nz, float(grid_min_np[2]), particle_spacing, slab_bounds)[
-            None, None, :, None
-        ]
-    vortex_strength_magnitude = np.linalg.norm(grid_np, axis=-1)
-    max_vortex_strength_magnitude = float(vortex_strength_magnitude.max())
 
     if max_vortex_strength_magnitude < 1e-30:
         logger.warning(
