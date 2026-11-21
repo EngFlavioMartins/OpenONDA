@@ -15,20 +15,32 @@ import openonda.vpm as vpm
 class WidnallDisturbance:
     """Azimuthal displacement of the ring centreline, relative to its radius.
 
-    A single mode gives ``amplitude * R * sin(mode * theta + phase)``; without
-    ``mode`` the displacement sums ``number_of_modes`` equal-weight modes with
-    phases drawn from ``seed``. ``direction`` is ``"radial"``, ``"axial"`` or
-    ``"both"``; with ``"both"`` the axial displacement draws its phases from
-    ``seed + 1``, so the two directions are independent.
+    A single mode gives ``amplitude * R * sin(mode * theta + phase)``. Without
+    ``mode`` the displacement sums modes 1 to ``number_of_modes`` with phases
+    drawn from ``seed``: each has the amplitude ``amplitude * R`` up to
+    ``rolloff_mode`` and ``amplitude * R * (rolloff_mode / m)**2`` above it, so
+    every mode bends the centreline by about the same curvature. ``direction``
+    is ``"radial"``, ``"axial"`` or ``"both"``; with ``"both"`` the axial
+    displacement draws its phases from ``seed + 1``, so the two directions are
+    independent.
     """
 
     def __init__(
-        self, amplitude, *, mode=None, phase=0.0, number_of_modes=24, seed=42, direction="radial"
+        self,
+        amplitude,
+        *,
+        mode=None,
+        phase=0.0,
+        number_of_modes=24,
+        rolloff_mode=None,
+        seed=42,
+        direction="radial",
     ):
         self.amplitude = amplitude
         self.mode = mode
         self.phase = phase
         self.number_of_modes = number_of_modes
+        self.rolloff_mode = number_of_modes if rolloff_mode is None else rolloff_mode
         self.seed = seed
         self.direction = direction
 
@@ -45,14 +57,11 @@ class WidnallDisturbance:
         shape = np.zeros_like(azimuth, dtype=float)
         slope = np.zeros_like(azimuth, dtype=float)
         for mode in range(1, self.number_of_modes + 1):
+            weight = min(1.0, (self.rolloff_mode / mode) ** 2)
             argument = mode * azimuth + phases[mode - 1]
-            shape += np.cos(argument)
-            slope -= mode * np.sin(argument)
-        normalization = np.sqrt(self.number_of_modes)
-        return (
-            ring_radius * self.amplitude * shape / normalization,
-            ring_radius * self.amplitude * slope / normalization,
-        )
+            shape += weight * np.cos(argument)
+            slope -= weight * mode * np.sin(argument)
+        return ring_radius * self.amplitude * shape, ring_radius * self.amplitude * slope
 
     def centreline(self, azimuth, ring_radius):
         """Return the radial centreline position and its azimuthal derivative."""

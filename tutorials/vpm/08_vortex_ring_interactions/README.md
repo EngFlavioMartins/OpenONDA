@@ -32,10 +32,12 @@ Edit [setup.py](setup.py). Lengths are in units of $R_0=1$ m and $\Gamma_0=1$ mÂ
 | Rings | $+\Gamma_0$ at $x=-1.25R_0$, $-\Gamma_0$ at $x=+1.25R_0$ | $+\Gamma_0$ at $x=\mp0.5R_0$ |
 | Gaussian core $a_0$ ($\omega\propto e^{-r^2/a_0^2}$) | $0.1R_0$ | $0.1R_0$ |
 | $Re_\Gamma=\Gamma_0/\nu$ | $2\times10^4$ | $2\times10^4$ |
-| Disturbance of each centreline | 48 modes, radial and axial, $0.005R_0$ each, random phases | same |
+| Disturbance of each centreline | 48 modes, radial and axial, random phases: $0.005R_0$ up to $m=8$, $0.005R_0(8/m)^2$ above | same |
 | Spacing $h$; core $\sigma/h$ | $R_0/40$; 1.05 | same |
 | Step $\Delta t$; end | 0.0125 s; 30 s | 0.02 s; 40 s |
 | Domain | $3\times6.5\times6.5\,R_0^3$ | $7\times4.5\times4.5\,R_0^3$, moving with the pair at $0.26\,\Gamma_0/R_0$ |
+
+Above $m=8$ every mode bends the centreline as much as $m=8$ does. The radius of curvature stays above $1.7a_0$, and the largest displacement is $0.034R_0$, a third of the core. An equal amplitude up to $m=48$ would bend the centreline more tightly than the core and fold it, and in the DNS the folded cores create kinetic energy.
 
 The rings are listed as groups 0 and 1. GBD regenerates the particles on its lattice every step and gives each new particle the group that holds most of the strength at its node, so the colours of the renders follow how the rings exchange vorticity.
 

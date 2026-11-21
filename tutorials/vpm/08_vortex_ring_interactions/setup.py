@@ -24,9 +24,12 @@ REYNOLDS_NUMBER = 2.0e4  # Gamma_0 / nu
 KINEMATIC_VISCOSITY = RING_CIRCULATION / REYNOLDS_NUMBER  # [m²/s]
 CORE_RADIUS = 0.1  # [m], Gaussian e-folding radius a_0 of every ring
 
-# Widnall disturbance of each ring centreline, radial and axial, with its own phases
-DISTURBANCE_AMPLITUDE = 0.035  # relative to R_0, over all modes: 0.005 R_0 per mode
+# Widnall disturbance of each ring centreline, radial and axial, with its own phases. Above
+# DISTURBANCE_ROLLOFF_MODE the amplitude falls as (m_r/m)^2, so the centreline bends with a
+# radius at least 1.7 a_0; an equal amplitude up to m = 48 folds the cores, which then create energy.
+DISTURBANCE_AMPLITUDE = 0.005  # relative to R_0, per mode up to DISTURBANCE_ROLLOFF_MODE
 DISTURBANCE_MODES = 48
+DISTURBANCE_ROLLOFF_MODE = 8
 
 # Particles: the particle numerics of the coupled FVM-VPM cases
 PARTICLE_SPACING = 0.025  # [m], h = R_0 / 40
@@ -65,6 +68,7 @@ def vortex_ring(x, circulation, group):
     disturbance = WidnallDisturbance(
         DISTURBANCE_AMPLITUDE,
         number_of_modes=DISTURBANCE_MODES,
+        rolloff_mode=DISTURBANCE_ROLLOFF_MODE,
         seed=2 * group + 7,
         direction="both",
     )
