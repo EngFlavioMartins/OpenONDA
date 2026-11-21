@@ -56,10 +56,10 @@ FORCE_INTERVAL = 0.1  # s, the maximum coupling interval: outputs must not short
 PROFILE_INTERVAL = 0.2  # s, centreline and off-axis lines
 SLICE_INTERVAL = 1.0  # s, mid-plane slices, at the times of the reference slices
 SLICE_WINDOW = (-1.8, 12.0, -2.0, 2.0)  # m, x and y bounds of the particle slice
-# FVM and particle frames for the animations: 490 frames over the run, 10 s of video at 49 frames
-# per second; a multiple of the maximum coupling interval, so they do not shorten it. About
-# 120 MB per pair of frames, 60 GB over the run.
-FIELD_INTERVAL = 0.2  # s
+# FVM and particle frames for the animations: one per coupling interval ceiling, so they do not
+# shorten it; 980 frames over the run, 16 s of video at 60 frames per second. About 120 MB per
+# pair of frames, 120 GB over the run.
+FIELD_INTERVAL = 0.1  # s
 BACKUP_INTERVAL = 1.0  # s, coupled restart states
 TRANSFER_DIAGNOSTIC_INTERVAL = 2.4  # s
 OFFAXIS_Y = 0.75 * CUBE_SIDE  # m

@@ -71,11 +71,11 @@ FORCE_INTERVAL = 0.08  # s, the interval ceiling; with the 0.2 s profiles and sl
 # sample times of the reference flow, the intervals are 0.08 and 0.04 s, 0.067 s on average
 PROFILE_INTERVAL = 0.2  # s, wake profiles over the whole run
 SLICE_INTERVAL = 0.2  # s, planar slices over the statistics window
-# FVM fields and particles for the animations: 501 frames from FIELD_START, 10 s of video at 50
-# frames per second; a multiple of the coupling interval ceiling, so they do not shorten it.
-# About 200 MB per pair of frames (2.4 million particles), 100 GB over the run.
+# FVM fields and particles for the animations: one per coupling interval ceiling, so they do not
+# shorten it; 601 frames from FIELD_START, 10 s of video at 60 frames per second. About 200 MB per
+# pair of frames (2.4 million particles), 120 GB over the run.
 FIELD_INTERVAL = 0.08  # s
-FIELD_START = 8.0  # s, after the starting vortex has left the FVM domain
+FIELD_START = 0.0  # s
 BACKUP_INTERVAL = 0.48  # s, coupled restart states
 WAKE_STATIONS = (2.0, 5.0)  # m, inside the replacement region and in the particle wake
 PROFILE_SPACING = 2.0 * CELL_SIZE  # m

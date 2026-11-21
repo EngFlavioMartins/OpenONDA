@@ -560,11 +560,12 @@ def save_validation_figure(fig, path, *, figure_format="png", dpi=None):
 PRESENTATION_SIZE = (1920, 1080)  # px
 PRESENTATION_TEXT_SCALE = 0.55  # of the README gallery font sizes, which suit an 800 x 500 GIF
 PRESENTATION_DIR = Path(__file__).resolve().parents[1] / "docs" / "assets" / "presentation"
-# The videos play at PRESENTATION_FPS for at least PRESENTATION_SECONDS. RIFE (rife-ncnn-vulkan,
-# https://github.com/nihui/rife-ncnn-vulkan, MIT licence) interpolates as many frames between the
-# saved states as that needs; its executable is $OPENONDA_RIFE, else the release unpacked in ~/opt.
-# Without it the videos show the saved states only, at the rate the script gives.
-PRESENTATION_FPS = 50
+# A video shows one saved state per frame. A run with at least PRESENTATION_FPS *
+# PRESENTATION_SECONDS saved states plays at PRESENTATION_FPS; one with fewer plays at the rate its
+# script gives. RIFE (rife-ncnn-vulkan, https://github.com/nihui/rife-ncnn-vulkan, MIT licence) can
+# interpolate frames between sparse states on request (interpolate=True); its executable is
+# $OPENONDA_RIFE, else the release unpacked in ~/opt.
+PRESENTATION_FPS = 60
 PRESENTATION_SECONDS = 10.0
 RIFE = Path(os.environ.get(
     "OPENONDA_RIFE", Path.home() / "opt" / "rife-ncnn-vulkan-20221029-ubuntu" / "rife-ncnn-vulkan"
@@ -618,13 +619,16 @@ def vorticity_discs(points, vorticity, camera_position, *, radius, cut, opaque, 
     return actor
 
 
-def write_presentation_video(frames, path, frames_per_second, *, hold=1.0, frame_dir=None):
+def write_presentation_video(
+    frames, path, frames_per_second, *, hold=1.0, frame_dir=None, interpolate=False
+):
     """Write RGB frames (PIL images) as an H.264 video for slides, the last frame held `hold` s.
 
-    With `frame_dir`, the folder that holds the same frames as PNG files in order, and RIFE
-    installed, the video plays at PRESENTATION_FPS for at least PRESENTATION_SECONDS: frames are
-    interpolated between the saved states into `frame_dir`_interpolated where there are too few.
-    Otherwise it plays the frames at `frames_per_second`.
+    One frame per saved state: at PRESENTATION_FPS when there are at least PRESENTATION_FPS *
+    PRESENTATION_SECONDS states, else at `frames_per_second`. `frame_dir`, the folder that holds
+    the same frames as PNG files in order, lets ffmpeg read them from disk. With `interpolate` and
+    RIFE installed, frames are interpolated between the states into `frame_dir`_interpolated so
+    that the video plays at PRESENTATION_FPS for at least PRESENTATION_SECONDS.
     """
     import subprocess
 
@@ -632,25 +636,26 @@ def write_presentation_video(frames, path, frames_per_second, *, hold=1.0, frame
     path.parent.mkdir(parents=True, exist_ok=True)
     encode = ["-c:v", "libx264", "-preset", "slow", "-crf", "16", "-pix_fmt", "yuv420p",
               "-movflags", "+faststart", str(path)]
-    if frame_dir is not None and RIFE.exists():
+    if len(frames) >= PRESENTATION_FPS * PRESENTATION_SECONDS:
+        frames_per_second = PRESENTATION_FPS
+    if frame_dir is not None:
         frame_dir = Path(frame_dir)
-        interpolated = frame_dir.with_name(frame_dir.name + "_interpolated")
-        shutil.rmtree(interpolated, ignore_errors=True)
-        interpolated.mkdir()
-        per_state = math.ceil(PRESENTATION_FPS * PRESENTATION_SECONDS / (len(frames) - 1))
-        if per_state > 1:
-            subprocess.run(
-                [str(RIFE), "-i", str(frame_dir), "-o", str(interpolated), "-m",
-                 str(RIFE.parent / RIFE_MODEL), "-n", str((len(frames) - 1) * per_state + 1),
-                 "-g", "0", "-j", "1:1:1"],
-                check=True, capture_output=True,
-            )
-        else:
-            for number, source in enumerate(sorted(frame_dir.glob("*.png")), start=1):
-                (interpolated / f"{number:08d}.png").symlink_to(source.resolve())
+        source, rate = ["-pattern_type", "glob", "-i", str(frame_dir / "*.png")], frames_per_second
+        if interpolate and RIFE.exists():
+            interpolated = frame_dir.with_name(frame_dir.name + "_interpolated")
+            shutil.rmtree(interpolated, ignore_errors=True)
+            interpolated.mkdir()
+            per_state = math.ceil(PRESENTATION_FPS * PRESENTATION_SECONDS / (len(frames) - 1))
+            if per_state > 1:
+                subprocess.run(
+                    [str(RIFE), "-i", str(frame_dir), "-o", str(interpolated), "-m",
+                     str(RIFE.parent / RIFE_MODEL), "-n", str((len(frames) - 1) * per_state + 1),
+                     "-g", "0", "-j", "1:1:1"],
+                    check=True, capture_output=True,
+                )
+                source, rate = ["-i", str(interpolated / "%08d.png")], PRESENTATION_FPS
         subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(PRESENTATION_FPS),
-             "-i", str(interpolated / "%08d.png"),
+            ["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(rate), *source,
              "-vf", f"tpad=stop_mode=clone:stop_duration={hold}", *encode],
             check=True,
         )

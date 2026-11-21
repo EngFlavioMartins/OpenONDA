@@ -34,7 +34,7 @@ Each case's animation script writes its video with the `presentation` argument, 
 python -m assets.render_cube_flow_animation presentation
 ```
 
-The script keeps one PNG per saved state in `solution/presentation_frames/`. With [RIFE](https://github.com/nihui/rife-ncnn-vulkan) installed (`rife-ncnn-vulkan`, MIT licence; its executable is `$OPENONDA_RIFE`, else the release unpacked in `~/opt`), the video plays at 50 frames per second for at least 10 s: RIFE interpolates as many frames between the saved states as that needs, for example 5 between each pair of the 99 saved states of the cube. Without it, the saved states play at 10 per second. The last state is held for one second.
+The script keeps one PNG per saved state in `solution/presentation_frames/` and shows one saved state per video frame, without interpolation. A run with at least 600 saved states plays at 60 frames per second; one with fewer plays at 10 per second. The last state is held for one second. [RIFE](https://github.com/nihui/rife-ncnn-vulkan) (`rife-ncnn-vulkan`, MIT licence) can interpolate between sparse states on request (`write_presentation_video(..., interpolate=True)` in `openonda/plotting.py`); it was tried on these wakes in November 2026 and dropped.
 
 | Video | Case | Script |
 | --- | --- | --- |
@@ -47,4 +47,4 @@ The script keeps one PNG per saved state in `solution/presentation_frames/`. Wit
 | `rotor_flow.mp4` | [Wind turbine](../tutorials/vpm/06_rotor_flow/README.md) | `assets/render_rotor_wake_animation.py` |
 | `quadcopter_flow.mp4` | [Quadcopter in climb](../tutorials/vpm/07_quadcopter/README.md) | `assets/render_quadcopter_animation.py` |
 
-The coupled cases write their FVM and particle fields often enough for about 500 saved states over a run (`FIELD_INTERVAL` in `setup.py`), which play at 50 frames per second without interpolation.
+The coupled cases write their FVM and particle fields once per coupling interval ceiling (`FIELD_INTERVAL` in `setup.py`): the cube 980 states, 16 s at 60 frames per second, and the wing 601 states, 10 s.
