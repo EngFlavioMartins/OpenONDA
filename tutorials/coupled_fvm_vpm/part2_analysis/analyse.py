@@ -1168,8 +1168,9 @@ def run_side(solution: Path, records: list[Path], files: list[Path]) -> dict:
             {
                 **record,
                 "command_line": (
-                    f"PYTHONPATH={root} python setup.py {record.get('arguments', '')}".strip()
-                ),
+                    f"PYTHONPATH={root} python {record.get('script', 'setup.py')} "
+                    f"{record.get('arguments', '')}"
+                ).strip(),
                 "working_directory": record.get("case_dir"),
                 "record": str(folder),
             }
