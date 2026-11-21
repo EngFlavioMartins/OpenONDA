@@ -69,15 +69,17 @@ def motion_window(period: float, start_after: float, end: float, *, phase: float
     return Window(origin + period * np.arange(count + 1))
 
 
-def upcrossing_window(time: np.ndarray, signal: np.ndarray, start_after: float) -> Window:
-    """Whole cycles between zero up-crossings of ``signal`` (mean removed) after ``start_after``.
+def upcrossing_window(
+    time: np.ndarray, signal: np.ndarray, start_after: float, end: float = np.inf
+) -> Window:
+    """Whole cycles between zero up-crossings of ``signal`` (mean removed) in ``[start_after, end]``.
 
-    The mean is that of the samples after ``start_after``; crossing times are
+    The mean is that of the samples in that span; crossing times are
     interpolated linearly between samples.
     """
     time = np.asarray(time, dtype=np.float64)
     signal = np.asarray(signal, dtype=np.float64)
-    keep = time >= start_after
+    keep = (time >= start_after) & (time <= end)
     t, x = time[keep], signal[keep] - signal[keep].mean()
     rising = np.flatnonzero((x[:-1] < 0.0) & (x[1:] >= 0.0))
     crossings = t[rising] - x[rising] * (t[rising + 1] - t[rising]) / (x[rising + 1] - x[rising])
@@ -134,6 +136,17 @@ def standard_error(values: np.ndarray) -> float:
     if len(values) < 2:
         return float("nan")
     return float(values.std(ddof=1) / np.sqrt(len(values)))
+
+
+def cycle_frequency(window: Window) -> tuple[float, float]:
+    """Frequency 1/mean period of the window's cycles and its standard error from the period scatter.
+
+    The standard error of the mean period, divided by the mean period squared,
+    is the first-order standard error of its inverse.
+    """
+    periods = np.diff(window.edges)
+    mean = float(periods.mean())
+    return 1.0 / mean, standard_error(periods) / mean**2
 
 
 def window_statistics(time, signal, window: Window) -> dict[str, float]:
@@ -285,10 +298,13 @@ def peak_frequency(frequency: np.ndarray, psd: np.ndarray, *, minimum: float = 0
     return float(frequency[index] + offset * (frequency[1] - frequency[0]))
 
 
-def peak_amplitudes(time, signal, window: Window) -> dict[str, float]:
+def peak_amplitudes(time, signal, window: Window) -> dict[str, tuple[float, float]]:
     """Amplitude of an oscillation three ways: highest 20 % of the peaks, sqrt(2) std, maximum.
 
-    Peaks are the per-cycle maxima of the signal less its window mean.
+    Peaks are the per-cycle maxima of the signal less its window mean. Each
+    amplitude comes with its standard error from the cycle scatter: that of the
+    mean of the chosen peaks, sqrt(2) times that of the per-cycle standard
+    deviations, and none (NaN) for the maximum, a single extreme.
     """
     cycles = cycle_statistics(time, signal, window)
     stats = window_statistics(time, signal, window)
@@ -296,9 +312,12 @@ def peak_amplitudes(time, signal, window: Window) -> dict[str, float]:
     top = peaks[: max(1, int(round(0.2 * len(peaks))))]
     inside = (time >= window.start) & (time <= window.end)
     return {
-        "top_20_percent_peak_mean": float(top.mean()),
-        "sqrt2_std": float(np.sqrt(2.0) * stats["std"]),
-        "maximum": float(np.max(np.abs(signal[inside] - stats["mean"]))),
+        "top_20_percent_peak_mean": (float(top.mean()), standard_error(top)),
+        "sqrt2_std": (
+            float(np.sqrt(2.0) * stats["std"]),
+            float(np.sqrt(2.0) * stats["std_standard_error"]),
+        ),
+        "maximum": (float(np.max(np.abs(signal[inside] - stats["mean"]))), float("nan")),
     }
 
 
@@ -312,13 +331,11 @@ def block_bootstrap_interval(
         return float("nan"), float("nan")
     block = min(block, n)
     rng = np.random.default_rng(seed)
-    starts = np.arange(n - block + 1)
     n_blocks = int(np.ceil(n / block))
-    means = np.empty(resamples)
-    for row in range(resamples):
-        chosen = rng.choice(starts, size=n_blocks)
-        sample = np.concatenate([values[s : s + block] for s in chosen])[:n]
-        means[row] = sample.mean()
+    # Every resample joins n_blocks blocks of consecutive cycles, cut to n cycles
+    chosen = rng.integers(0, n - block + 1, size=(resamples, n_blocks))
+    index = (chosen[:, :, None] + np.arange(block)).reshape(resamples, -1)[:, :n]
+    means = values[index].mean(axis=1)
     low, high = np.percentile(means, [2.5, 97.5])
     return float(low), float(high)
 

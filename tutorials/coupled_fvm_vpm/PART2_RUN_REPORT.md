@@ -65,4 +65,14 @@ FVM-only references, each continued from its 2 % pre-run:
 
 ## Analysis checks
 
-`part2_analysis/checks.py`, run before any analysis: all three passed (synthetic signal recovered within 0.17 %, a 2 % change reported at 17.7 combined standard errors; a run compared with itself gives zero differences; a force equal to the body velocity is 90.0° ahead of the displacement and does positive work). To be rerun at the frozen commit.
+`part2_analysis/checks.py`, run before any analysis: all three passed (synthetic signal recovered within 0.17 %, a 2 % change reported at 17.7 combined standard errors; a run compared with itself gives zero differences; a force equal to the body velocity is 90.0° ahead of the displacement and does positive work). Rerun on 21 Nov after the changes below, with the same outcome; to be rerun at the commit that analyses the runs.
+
+End-to-end tests on real files, before any coupled run: each finished or partial FVM-only reference served as both sides of its run (S1, S2 B1 to 60 s, S4a; S3 on the VLM rotor output of an earlier, stopped run), with coupler records of earlier short coupled runs re-timed across the window. Every comparison gives zero differences (190, 215, 346 and 353 statistics), and S4b recovers a synthetic heave of 0.2 D at phase 0. These tests found and fixed, in the analysis only:
+
+- the circulation budget and the coupling iterations read the record layout of a synthetic test file, not the coupler's; on real records the budget would have been empty and every interval counted as one iteration;
+- the strength removed by the outflow fringe was not added back to the particle circulation;
+- a window of the last N periods lost one period when the end time is not a whole number of periods from t = 0 (S3: five revolutions instead of six), and a window of shedding or response cycles ran to the end of the data instead of the end time;
+- S3 had no comparison force columns (the VLM rotor writes `vlm_surface_forces.csv`) and listed its wake planes as lines; S4b lacked the Strouhal numbers and the phase between the lift histories;
+- the manifest lacked the run's commit, command line, configuration, mesh cell count and hash, hardware, peak GPU memory, wall time, end state and warnings, and the cost lacked the wall time per unit of flow time, the cell count, the mean particle count and the comparison runs.
+
+A spectral peak carries its frequency resolution, not a standard error: the inverse of the segment length, a quarter of the window, which for case 07 is 0.042 Hz, about a quarter of the shedding frequency. Frequencies with a standard error from the cycle scatter come from the mean period of the cycles: the Strouhal number of each cylinder from its lift up-crossings and, for S2, the cross-flow frequency ratio. S2 statistics with per-cycle values also carry a block-bootstrap 95 % interval over cycles.

@@ -15,9 +15,13 @@ from pathlib import Path
 import numpy as np
 
 
-def statistic(value, standard_error=float("nan"), unit: str = "1") -> dict[str, object]:
-    """One named statistic: its value, its standard error from the cycle scatter and its unit."""
-    return {"value": float(value), "standard_error": float(standard_error), "unit": unit}
+def statistic(value, standard_error=float("nan"), unit: str = "1", **extra) -> dict[str, object]:
+    """One named statistic: its value, its standard error from the cycle scatter and its unit.
+
+    ``extra`` adds named fields, such as the frequency resolution of a spectral
+    peak (which has no cycle-scatter standard error) or a bootstrap interval.
+    """
+    return {"value": float(value), "standard_error": float(standard_error), "unit": unit, **extra}
 
 
 def compare(first: dict, second: dict) -> dict[str, dict[str, object]]:
