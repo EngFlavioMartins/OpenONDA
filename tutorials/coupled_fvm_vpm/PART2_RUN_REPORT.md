@@ -29,7 +29,13 @@ The first check ran from export 336f854f, the order and restart checks from 1c62
 
 ## Runs
 
-Pending.
+Coupled runs: pending (held while the GPU is in use by other runs).
+
+FVM-only references, each continued from its 2 % pre-run:
+
+| Run | Commit | Flow time | Steps | Wall time | Exit | Peak GPU memory | Record |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| S4a reference (case 07) | d4b6d67b | 200 s | 25,000 | 49 min meshing, 48.7 min pre-run (500 steps), then 113,532 s (31.5 h) for 24,500 steps, 4.63 s per step | 0 | 0 MiB | `S4a_reference/run_record.json`; largest Courant number 0.38 in the log, no warnings |
 
 ## Cost estimates
 
