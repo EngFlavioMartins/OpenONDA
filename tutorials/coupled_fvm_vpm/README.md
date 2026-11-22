@@ -1,6 +1,6 @@
 # Coupled FVM–VPM cases: run status and data folders
 
-Status on Thu 19 Nov 2026, 14:30 CET. The supervising session updates the check boxes as runs end.
+Status on Sun 22 Nov 2026, 14:10 CET. The supervising session updates the check boxes as runs end.
 
 - `[x]` complete: the data may be plotted.
 - `[ ]` not complete: do not use for results. A running case has partial data that will change.
@@ -91,21 +91,22 @@ Folder `03_naca4412_flow/`.
 
 | Done | Run | Data | State |
 |---|---|---|---|
-| [ ] | Coupled final | `03_naca4412_flow/samples/`, `03_naca4412_flow/solution/` | extension from t = 24 s to t = 48 s running since 19 Nov 14:26 (cores 0-3,12-15, GPU); about 58 h at full clock, longer while the CPU is clamped; end about 22–23 Nov |
+| [x] | Coupled final | `03_naca4412_flow/samples/`, `03_naca4412_flow/solution/` | complete, t = 48 s (22 Nov 13:35); restarts at t = 24 and 38.88 checked: forces, profiles and slices continuous |
 | [x] | Fully meshed reference | `03_naca4412_flow/reference_flow/samples/` | complete, t = 60 s; only 36–48 s is used |
-| [x] | Figures | `03_naca4412_flow/figures/` (`forces.png`, `errors_by_window.png`, `velocity_profiles/`, `starting_vortex/`, `fields/`, `comparison_summary.csv`) | drawn from the final |
+| [x] | Figures | `03_naca4412_flow/figures/` (`forces.png`, `errors_by_window.png`, `velocity_profiles/`, `starting_vortex/`, `fields/`, `comparison_summary.csv`) | redrawn 22 Nov from the final, window 36–48 s; `fields/t012.00`–`t024.00.png` are the snapshots of the old 12–24 window |
 
 Coupled samples: `forces_history.csv`; slices `fvm_slice_x2`, `fvm_slice_z0`, `vpm_slice_x2`,
-`vpm_slice_x5`, `vpm_slice_z0` (61 frames each); profiles `*_spanwise_*.csv`,
+`vpm_slice_x5`, `vpm_slice_z0` (181 frames each, t = 12 to 48 s); profiles `*_spanwise_*.csv`,
 `*_transverse_*.csv`; `starting_vortex/`.
 
 - Why the extension: the load oscillation (period about 1.5 c/U) is still growing at t = 24 s in both
   runs. Data up to t = 24 s is final and may be plotted (start-up, starting vortex, mean loads).
 - The reference is periodic from t = 36 s (cycle mean of C_L constant to 0.0005, amplitude 0.0055–0.0058),
   so both runs are compared over 36–48 s, eight periods.
-- `[ ]` To do when the coupled run reaches t = 48 s: shedding frequency, saturated amplitude and spectra
-  of the loads, coupled against reference, added to the thesis (chapter 5) and the paper, with the
-  statistics window 36–48 s.
+- Over 36–48 s: Strouhal number 0.664 in both runs (periods within 0.04 %), lift in phase
+  (correlation 0.995), mean lift +0.13 % and mean drag −0.14 %, lift amplitude 0.0063 against
+  0.0057 (+11 %). The reference amplitude stays at about 0.0058 up to t = 60 s.
+- `[ ]` Paper and thesis (chapter 5) text: wing numbers moved to the 36–48 s window (22 Nov).
 
 ## 04 Oscillating cylinder, 05 Pitching airfoil, 06 Rotor
 
@@ -123,10 +124,10 @@ scripts of the two repositories; see `figure_data/README.md`.
 | Done | Figure data | State |
 |---|---|---|
 | [x] | Cylinder baseline (paper Figures 1, 4, 6, 7; thesis cylinder wake t = 10, 20, 40, 100) | from the final baseline run |
-| [x] | Wing comparison (paper `wing_comparison`; thesis `naca4412_wing`) | from the final wing run |
+| [x] | Wing comparison (paper `wing_comparison`, `wing_wake`, `wake_profiles`; thesis `naca4412_wing`) | from the final wing run, window 36–48 (paper redrawn 22 Nov) |
 | [ ] | Paper `cylinder_study` | extracted 13 Nov: baseline, N = 1, cell 0.08 and 0.06 (the last one incomplete then); refreshed when all 18 are done |
 | [ ] | Cube configuration (paper Figure 14) | from the stopped cube run; to be replaced |
 | [ ] | Cube comparison | waits for the cube final |
-| [ ] | Paper `force_histories`, `force_spectra` (three cases together) | cylinder and cube final (cube window 30–98, redrawn 19 Nov 14:30); wing interim over 12–24, redrawn with `--extract` when the wing reaches t = 48 |
-| [ ] | Paper Figure 7 in 3D (`figures/flow_fields/render/`) | samples `render_t<T>/` (FVM volume, particles, `render.json`) written 19 Nov by `export_render_samples.py`: cylinder t = 100, cube t = 98, wing t = 24; re-export the wing with `wing 48` when it reaches t = 48, then redraw with `pvpython render_flow_fields.py wing` |
+| [x] | Paper `force_histories`, `force_spectra` (three cases together) | final: cylinder, cube window 30–98, wing window 36–48 (redrawn 22 Nov) |
+| [x] | Paper Figure 7 in 3D (`figures/flow_fields/render/`) | samples `render_t<T>/` (FVM volume, particles, `render.json`) by `export_render_samples.py`: cylinder t = 100, cube t = 98, wing t = 48 (22 Nov); panels drawn by `render_flow_fields_vtk.py`, stacked by `stack_panels.py` |
 | [ ] | Wing configuration (paper Figure 16) | `particles.csv` is a frame of 13 Nov, early in the final run; a frame near t = 24 s is still to be extracted |
