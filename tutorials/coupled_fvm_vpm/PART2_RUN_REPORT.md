@@ -36,6 +36,7 @@ FVM-only references, each continued from its 2 % pre-run:
 | Run | Commit | Flow time | Steps | Wall time | Exit | Peak GPU memory | Record |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | S4a reference (case 07) | d4b6d67b | 200 s | 25,000 | 49 min meshing, 48.7 min pre-run (500 steps), then 113,532 s (31.5 h) for 24,500 steps, 4.63 s per step | 0 | 0 MiB | `S4a_reference/run_record.json`; largest Courant number 0.38 in the log, no warnings |
+| S2 B1 reference (case 04, Re 6400, V* 7.68) | 1c627a9a | 192 s | 76,800 | 66 min meshing, 81.4 min pre-run (1,536 steps), then 259,201 s (72.0 h) for 75,264 steps, 3.44 s per step | 0 | 0 MiB | `S2_B1_reference/run_record.json`; run status "completed" at step 76,800, t = 192.0 s; largest Courant number 1.86 in the log, no warnings |
 
 ## Cost estimates
 
