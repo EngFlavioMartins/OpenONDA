@@ -33,6 +33,9 @@ CUSP_AMPLITUDE = 15.2
 CUSP_RATE = 3.03
 CUTOFF_BAND = 0.9  # E(k_c) averages the shells 0.9 k_c <= k <= k_c
 MARGIN_CELLS = 8  # zero cells around the vorticity support, on the lattice and in the transform
+# An empty node stays empty below this fraction of the largest node: the transform leaves
+# about one float32 epsilon of round-off on every node of the box, the damping far more.
+ROUNDOFF_FLOOR = 8.0 * float(np.finfo(np.float32).eps)
 
 
 @dataclass
@@ -118,9 +121,9 @@ class SpectralCuspClosure:
         if not occupied.any():
             self.statistics = statistics
             return statistics
-        # The support with a margin of zeros, written back whole: the damping spreads a
-        # little vorticity into the margin, and a further margin of transform padding
-        # keeps the periodic images apart.
+        # The support with a margin of zeros: the damping spreads a little vorticity into
+        # the margin, and a further margin of transform padding keeps the periodic images
+        # apart.
         lower, upper = [], []
         for axis in range(3):
             filled = np.flatnonzero(occupied.any(axis=tuple(a for a in range(3) if a != axis)))
@@ -168,6 +171,12 @@ class SpectralCuspClosure:
         damped = fft.irfftn(spectrum, s=shape, axes=(0, 1, 2))
         window = tuple(slice(0, b - a) for a, b in zip(lower, upper, strict=True))
         result = damped[window]
+        # Without the floor, every empty node of the box would carry round-off, and the
+        # regeneration and the moment redistribution would handle all of them each step.
+        node_magnitude = xp.max(xp.abs(result), axis=-1)
+        floor = ROUNDOFF_FLOOR * float(xp.max(node_magnitude))
+        kept = xp.asarray(occupied[box]) | (node_magnitude > floor)
+        result = result * kept[..., None]
         grid[box] = result.get() if self.use_cuda else result
 
         statistics.cutoff_energy_spectrum = cutoff_spectrum
