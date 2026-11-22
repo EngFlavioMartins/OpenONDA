@@ -106,7 +106,8 @@ Coupled samples: `forces_history.csv`; slices `fvm_slice_x2`, `fvm_slice_z0`, `v
 - Over 36–48 s: Strouhal number 0.664 in both runs (periods within 0.04 %), lift in phase
   (correlation 0.995), mean lift +0.13 % and mean drag −0.14 %, lift amplitude 0.0063 against
   0.0057 (+11 %). The reference amplitude stays at about 0.0058 up to t = 60 s.
-- `[ ]` Paper and thesis (chapter 5) text: wing numbers moved to the 36–48 s window (22 Nov).
+- `[x]` Paper and thesis (chapter 5, also chapters 1 and 6) text: wing numbers moved to the 36–48 s window
+  and the load oscillation added (22 Nov).
 
 ## 04 Oscillating cylinder, 05 Pitching airfoil, 06 Rotor
 
