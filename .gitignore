@@ -153,3 +153,6 @@ vpm*.json
 
 # direnv
 .envrc
+
+# Syncthing keeps its old versions and conflict copies of the shared tutorials here.
+.stversions/
