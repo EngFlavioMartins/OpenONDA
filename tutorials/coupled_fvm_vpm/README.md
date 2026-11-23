@@ -1,6 +1,6 @@
 # Coupled FVM–VPM cases: run status and data folders
 
-Status on Mon 23 Nov 2026, 11:15 CET. The supervising session updates the check boxes as runs end.
+Status on Mon 23 Nov 2026, 15:20 CET. The supervising session updates the check boxes as runs end.
 
 - `[x]` complete: the data may be plotted.
 - `[ ]` not complete: do not use for results. A running case has partial data that will change.
@@ -88,6 +88,10 @@ Folder `02_cube_flow/`.
     t = 60 s (5 Nov).
   - `grid_h00675` is the next coarser grid (106,399 cells, 0.005 s) to t = 100 s. It was run on
     17 Oct with an older solver version, and its `grid_run.json` gives 385,776 cells.
+  - `[ ]` `grid_h00675_dt0.005` reruns that grid (same 106,399 cells, 0.005 s) to t = 60 s on
+    37d7d7e3, the solver of the reference (the FVM of `grid_h0045` and of the coupled run). It has
+    been running since 23 Nov 15:00 (f0 member `ref_cube_h0p0675`, about 27 h); its samples are
+    copied here when it ends, and then replace `grid_h00675` for the FVM error.
   - `grid_h010125` is an early mesh that stopped at t = 0.16 s, and is not used.
 
 ## 03 Wing (NACA 4412)
