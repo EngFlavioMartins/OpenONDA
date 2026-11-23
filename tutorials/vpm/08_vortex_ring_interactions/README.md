@@ -54,6 +54,53 @@ $$
 - $T(k)$ is the resolved non-linear transfer, which integrates to zero.
 - $D_\mathrm{mol}$ and $D_\mathrm{sgs}$ are the energy removed by the molecular viscosity and by the closure, through the solver's own operators.
 - $D_\mathrm{sel}$ is the selective eddy viscosity of `les`. The backups do not store it, so it is reconstructed from the resolved field.
-- $D_\mathrm{num}$ is the remainder: what the regeneration on the lattice and the thresholding remove.
+- $D_\mathrm{num}$ is the remainder: what the regeneration on the lattice and the thresholding remove, or create where it is negative.
 
 Each term is a shell density in $k$; its integral over $k$ is the total rate.
+
+`assets/summary.py` collects the numbers below in [summary.json](figures/auxiliary/summary.json).
+
+## Result
+
+Every run stops at the velocity-gradient limit before the rings break down into turbulence.
+
+| | DNS | LES, Smagorinsky | LES, spectral cusp |
+| --- | --- | --- | --- |
+| Collision, stop $t\Gamma_0/R_0^2$ | 6.36 | 7.54 (+18 %) | 6.38 (+0.2 %) |
+| Collision, $E/E_0$ at $t=6$ | 0.909 | 0.803 | 0.907 |
+| Leapfrogging, stop $t\Gamma_0/R_0^2$ | 12.24 | 14.76 (+21 %) | 12.54 (+2.5 %) |
+| Leapfrogging, $E/E_0$ at $t=12$ | 0.942 | 0.859 | 0.931 |
+
+![Histories](figures/histories.png)
+
+The Smagorinsky runs live longer because they damp the rings. By $t=6$ the collision has lost 20 % of its energy against 9 % in the DNS; by $t=12$ the leapfrogging pair has lost 14 % against 6 %. In the collision its enstrophy (panel c) and its azimuthal disturbance (panel g) grow later than in the DNS, so the gradient limit comes later. The spectral cusp stays within 1.1 percentage points of the DNS energy at $t=6$ and $t=12$.
+
+### Where each closure removes energy
+
+![Spectra](figures/spectra.png)
+
+Panels (c, d) give each sink as an effective viscosity, $\nu_x(k)=D_x(k)/(2k^2E(k))$, over $\nu$. The molecular operator gives 1 at small $k$ and less towards $\pi/h$, where its 7-point stencil underestimates $k^2$.
+
+The spectral cusp removes energy where it was built to. Its effective viscosity is flat up to $kR_0\approx60$, and at $kR_0=120$ it is 2.42 times its plateau in both flows; the shape of Chollet & Lesieur (1981) gives 2.43 and 2.44 there. In the leapfrogging pair at $t=12$ the cusp run holds 6.5 times less energy than the DNS at $kR_0=120$, and 3 % less at $kR_0=10$, where the rings hold their energy. Its plateau is small, $0.11\nu$ in the collision at $t=5.5$ and $0.32\nu$ in the leapfrogging at $t=11.5$, because the eddy viscosity scales with $\sqrt{E(k_c)/k_c}$ and at $t=6$ and $t=12$ the spectrum at $kR_0=120$ lies more than 7 decades below its peak. The closure follows the energy that reaches the cut-off: in the last 0.4 s of the collision $E(k_c)$ grows 60-fold, and at the stop the cusp removes 2.9 times as much energy as the molecular viscosity.
+
+Smagorinsky, with its selective viscosity, removes energy mostly from the rings. Below $kR_0=30$ its effective viscosity is 3.5 to 109 times $\nu$ in the collision at $t=5.5$ and 2.5 to 3.3 times $\nu$ in the leapfrogging at $t=11.5$; at the cut-off it falls to 1.8 and 0.66 times $\nu$. At $t=12$ the leapfrogging pair holds 47 % less energy at $kR_0=10$ than in the DNS.
+
+### Why the runs stop
+
+Before each stop the energy rises while the molecular dissipation removes it: in the leapfrogging DNS from 2.570 at $t=10.5$ to 2.580 at the stop, and in the collision with Smagorinsky from 1.644 at $t=7$ to 2.558 at the stop. Energy that rises against viscosity is created by the discretisation and appears in the budget as a negative remainder $D_\mathrm{num}$. At the four budget times where the energy rises, 91 to 100 % of the created energy lies below $kR_0=31$ ($k_c/4$), at the scale of the cores. Backups 0.5 s apart do not resolve $\mathrm{d}E(k)/\mathrm{d}t$ well enough to place it more precisely.
+
+The runs therefore do not stop because energy piles up at the cut-off, and a closure that acts at the cut-off cannot remove energy created in the cores. The joint PDFs of the velocity-gradient invariants agree: at $t=6$ and $t=12$ they gather along $R=0$ with $Q>0$, the signature of rotating cores, without the teardrop of developed turbulence.
+
+![Velocity-gradient invariants](figures/gradient_invariants.png)
+
+In the renders the colliding rings stay smooth until the DNS and the cusp run stop; the braided ring of the collision with Smagorinsky at $t=7.5$ is the state whose energy has grown by 56 %. In the leapfrogging pair the DNS and the cusp run grow thin strands between the rings by $t=8$ and shed streaks into the wake by $t=12$; the Smagorinsky run damps both.
+
+![Collision](figures/collision_scenes.png)
+
+![Leapfrogging](figures/leapfrog_scenes.png)
+
+`assets/collision.gif` and `assets/leapfrog.gif` show the three runs side by side.
+
+### Recommendation
+
+At $h=R_0/40$ keep the spectral cusp for these rings: it matches the DNS where the DNS is resolved and removes energy only near the cut-off. Do not read the Smagorinsky lifetime as a better LES; it comes from damping the rings. A run that lives into the breakdown needs the energy source in the cores removed from the particle numerics first.

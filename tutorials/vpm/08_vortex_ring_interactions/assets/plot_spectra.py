@@ -1,9 +1,11 @@
 """Energy spectra, dissipation spectra and velocity-gradient invariants of DNS and both LES.
 
 ``figures/spectra.png``: (a, b) the energy spectrum E(k) at the SPECTRUM_TIMES of each flow;
-(c, d) where each run removes energy at BUDGET_TIME: molecular nu Omega(k) and the closure's
-sink per wavenumber (Smagorinsky with its selective eddy viscosity, or the spectral cusp).
-Vertical lines mark the particle-core wavenumber 2/sigma and the lattice cut-off pi/h.
+(c, d) the effective viscosity of each sink at BUDGET_TIME, ``nu_x(k) = D_x(k) / (2 k^2 E(k))``
+over nu: the molecular operator on its 7-point stencil, Smagorinsky with its selective eddy
+viscosity, and the spectral cusp, with the shape ``1 + (15.2/0.441) exp(-3.03 k_c/k)`` of
+Chollet & Lesieur (1981) scaled to the cusp run's plateau. Vertical lines mark the
+particle-core wavenumber 2/sigma and the lattice cut-off pi/h.
 
 ``figures/gradient_invariants.png``: joint PDF of R/Q_w^(3/2) and Q/Q_w over the vortical
 nodes at INVARIANT_TIMES, with the zero-discriminant line 27R^2/4 + Q^3 = 0.
@@ -16,10 +18,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.colors import LogNorm
+from matplotlib.lines import Line2D
 
 from openonda import plotting
 
 import setup
+from openonda.vpm.turbulence.spectral_cusp import CUSP_AMPLITUDE, CUSP_RATE, PLATEAU
+
 from assets.postprocess import (
     CASE_DIR,
     FLOW_TITLES,
@@ -31,9 +36,10 @@ from assets.postprocess import (
     shared_legend,
 )
 
-SPECTRUM_TIMES = {"collision": (4.0, 10.0, 16.0), "leapfrog": (5.0, 15.0, 25.0)}
-INVARIANT_TIMES = {"collision": 12.0, "leapfrog": 20.0}
-BUDGET_TIME = {"collision": 12.0, "leapfrog": 20.0}
+# Every run reaches these times; the first run stops at t = 6.36 (collision) and 12.24 (leapfrog)
+SPECTRUM_TIMES = {"collision": (2.0, 4.0, 6.0), "leapfrog": (4.0, 8.0, 12.0)}
+INVARIANT_TIMES = {"collision": 6.0, "leapfrog": 12.0}
+BUDGET_TIME = {"collision": 5.5, "leapfrog": 11.5}
 SHADES = (0.35, 0.65, 1.0)  # line darkness by time
 
 
@@ -92,29 +98,27 @@ def plot_spectra():
             rows = at_time(budget(case), BUDGET_TIME[flow])
             if rows is None:
                 continue
-            sink = rows["subgrid_dissipation"] + rows["selective_dissipation"]
-            lower.loglog(
-                rows["wavenumber"],
-                sink.clip(lower=1e-14),
-                color=style["color"],
-                ls=style["linestyle"],
-                lw=1.0,
-                label=f"{style['label']}, closure",
-            )
+            k = rows["wavenumber"].to_numpy()
+            scale = 2.0 * setup.KINEMATIC_VISCOSITY * k**2 * rows["energy"].to_numpy()
             if model == "dns":
                 lower.loglog(
-                    rows["wavenumber"],
-                    rows["molecular_dissipation"],
+                    k,
+                    rows["molecular_dissipation"] / scale,
                     color=plotting.COLORS["gray"],
                     ls=":",
                     lw=1.0,
-                    label="$\\nu\\Omega(k)$",
                 )
-        k = np.array([4.0, 40.0])
-        upper.loglog(k, 2e-3 * (k / 4.0) ** (-5.0 / 3.0), color="k", lw=0.6)
-        upper.text(14.0, 1.2e-3, "$k^{-5/3}$", fontsize=8)
+                continue
+            ratio = (rows["subgrid_dissipation"] + rows["selective_dissipation"]) / scale
+            lower.loglog(
+                k, ratio.where(ratio > 0), color=style["color"], ls=style["linestyle"], lw=1.0
+            )
+            if model == "les_cusp":
+                shape = 1.0 + CUSP_AMPLITUDE / PLATEAU * np.exp(-CUSP_RATE * cutoff / k)
+                plateau = float(np.median(ratio[k < 0.25 * cutoff]))
+                lower.loglog(k, plateau * shape, color="k", lw=0.6)
         lower.text(
-            0.04, 0.06, f"$t\\Gamma_0/R_0^2={BUDGET_TIME[flow]:.0f}$", transform=lower.transAxes
+            0.04, 0.06, f"$t\\Gamma_0/R_0^2={BUDGET_TIME[flow]:g}$", transform=lower.transAxes
         )
         upper.set_title(FLOW_TITLES[flow])
         lower.set_xlabel("$kR_0$")
@@ -122,12 +126,24 @@ def plot_spectra():
             reference_lines(axis)
             axis.set_xlim(1.0, cutoff)
     axes[0, 0].set_ylabel("$E(k)$ [m$^6$/s$^2$]")
-    axes[1, 0].set_ylabel("Sink [m$^6$/s$^3$]")
+    axes[1, 0].set_ylabel("$\\nu_x(k)/\\nu$")
+    for axis in axes[1]:
+        axis.set_ylim(1e-2, 1e2)
     for index, axis in enumerate(axes.flat):
         panel_label(axis, index, right=True)
-    handles, names = axes[1, 0].get_legend_handles_labels()
+    handles = [
+        Line2D([], [], color=style["color"], ls=style["linestyle"], lw=1.0)
+        for style in MODEL_STYLES.values()
+    ]
+    names = [style["label"] for style in MODEL_STYLES.values()]
+    handles += [
+        Line2D([], [], color=plotting.COLORS["gray"], ls=":", lw=1.0),
+        Line2D([], [], color="k", lw=0.6),
+    ]
+    names += ["Molecular, 7-point stencil", "Chollet \\& Lesieur (1981)"]
     shared_legend(fig, handles, names, ncol=2)
-    fig.subplots_adjust(left=0.14, right=0.97, bottom=0.2, top=0.94, hspace=0.12, wspace=0.3)
+    fig.subplots_adjust(bottom=0.27, top=0.94, hspace=0.12, wspace=0.3)
+    plotting.fit_thesis_y_label_margins(fig, fig.axes)
     save(fig, "spectra")
     plt.close(fig)
 
@@ -149,7 +165,7 @@ def plot_invariants():
                 np.where(histogram > 0, histogram, np.nan),
                 levels=np.logspace(-3, 1, 9),
                 norm=LogNorm(1e-3, 10),
-                cmap=plotting.get_colormap("thesis_blue"),
+                cmap=plt.get_cmap(plotting.get_colormap("vorticity_magnitude")).reversed(),
             )
             r = np.linspace(edges[0], edges[-1], 400)
             axis.plot(r, -np.cbrt(27.0 / 4.0 * r**2), color="k", lw=0.6)
@@ -167,7 +183,8 @@ def plot_invariants():
         axis.set_ylabel("$Q/Q_w$")
     for index, axis in enumerate(axes.flat):
         panel_label(axis, index, right=True)
-    fig.subplots_adjust(left=0.13, right=0.97, bottom=0.11, top=0.94, hspace=0.1, wspace=0.1)
+    fig.subplots_adjust(bottom=0.11, top=0.94, hspace=0.1, wspace=0.1)
+    plotting.fit_thesis_y_label_margins(fig, fig.axes)
     save(fig, "gradient_invariants")
     plt.close(fig)
 

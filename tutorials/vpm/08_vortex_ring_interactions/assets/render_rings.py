@@ -36,12 +36,12 @@ IMAGE_SIZE = (800, 600)  # [px] of one view
 SUPERSAMPLE = 2
 BACKGROUND = "#05070A"
 SCENE_TIMES = {
-    "collision": (0.0, 6.0, 10.0, 14.0, 20.0),
-    "leapfrog": (0.0, 10.0, 20.0, 30.0, 40.0),
+    "collision": (0.0, 3.0, 5.0, 6.0, 7.5),
+    "leapfrog": (0.0, 4.0, 8.0, 12.0, 14.5),
 }
 # Camera position relative to the focal point, in R_0, and the focal point rule
 CAMERAS = {
-    "collision": {"offset": (6.5, -4.5, 5.0), "focus": "origin", "view_up": (0.0, 0.0, 1.0)},
+    "collision": {"offset": (8.5, -5.9, 6.5), "focus": "origin", "view_up": (0.0, 0.0, 1.0)},
     "leapfrog": {"offset": (1.5, -7.0, 3.0), "focus": "centroid", "view_up": (0.0, 0.0, 1.0)},
 }
 FRAME_INTERVAL = 0.5  # [s] between animation frames

@@ -1,7 +1,8 @@
 """Energy, enstrophy, dissipation and disturbance histories of the six runs.
 
 Columns: head-on collision, leapfrogging. Rows: (a, b) kinetic energy; (c, d) enstrophy;
-(e, f) the energy loss rate -dE/dt of each run with the sub-grid part eps_sgs of each LES;
+(e, f) the energy loss rate -dE/dt of each run with the sub-grid part eps_sgs of each LES,
+on the range the runs reach before the first of them stops;
 (g, h) the largest azimuthal amplitude A_m of the two rings. A cross marks where a run
 stopped at a state limit.
 """
@@ -67,6 +68,15 @@ def plot():
                 axes[3, column].plot(
                     amplitude.index[-1], amplitude.iloc[-1], "x", color=style["color"], ms=5, mew=1
                 )
+        # The rate of a run that blows up dwarfs the rest: show it up to the first stop
+        first_stop = min(energy_budget(f"{flow}_{m}")["time"].iloc[-1] for m in MODEL_STYLES)
+        rates = []
+        for m in MODEL_STYLES:
+            table = energy_budget(f"{flow}_{m}")
+            rates.append(table["energy_loss_rate"][table["time"] <= first_stop - 0.5])
+        low, high = min(r.min() for r in rates), max(r.max() for r in rates)
+        margin = 0.15 * (high - low)
+        axes[2, column].set_ylim(low - margin, high + margin)
         axes[0, column].set_title(FLOW_TITLES[flow])
         axes[-1, column].set_xlabel("$t\\Gamma_0/R_0^2$")
     labels = ("$E/E_0$", "$Z/Z_0$", "$-\\mathrm{d}E/\\mathrm{d}t$ [m$^5$/s$^3$]", "$\\max_m A_m$")
@@ -75,8 +85,9 @@ def plot():
     for index, axis in enumerate(axes.flat):
         panel_label(axis, index, right=index in (0, 1))
     handles, names = axes[2, 0].get_legend_handles_labels()
-    shared_legend(fig, handles, names, ncol=3)
-    fig.subplots_adjust(left=0.13, right=0.97, bottom=0.12, top=0.95, hspace=0.12, wspace=0.3)
+    shared_legend(fig, handles, names, ncol=2)
+    fig.subplots_adjust(bottom=0.2, top=0.96, hspace=0.12, wspace=0.3)
+    plotting.fit_thesis_y_label_margins(fig, fig.axes)
     save(fig, "histories")
     plt.close(fig)
 

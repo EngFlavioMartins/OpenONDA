@@ -1,0 +1,226 @@
+{
+  "runs": {
+    "collision_dns": {
+      "stop_time": 6.362500000000001,
+      "energy_ratio_at_compare_time": 0.9087787478738522,
+      "compare_time": 6.0,
+      "lowest_energy_time": 6.0,
+      "lowest_energy": 2.0635939953092195,
+      "stop_energy": 2.0739684059896595
+    },
+    "collision_les": {
+      "stop_time": 7.5375000000000005,
+      "energy_ratio_at_compare_time": 0.8026990831664055,
+      "compare_time": 6.0,
+      "lowest_energy_time": 7.0,
+      "lowest_energy": 1.6436971608826636,
+      "stop_energy": 2.557776105319722
+    },
+    "collision_les_cusp": {
+      "stop_time": 6.375,
+      "energy_ratio_at_compare_time": 0.9068295518210387,
+      "compare_time": 6.0,
+      "lowest_energy_time": 6.0,
+      "lowest_energy": 2.059167891288107,
+      "stop_energy": 2.061068575610244
+    },
+    "leapfrog_dns": {
+      "stop_time": 12.24,
+      "energy_ratio_at_compare_time": 0.9416754950465057,
+      "compare_time": 12.0,
+      "lowest_energy_time": 10.5,
+      "lowest_energy": 2.569605917738234,
+      "stop_energy": 2.579644716256648
+    },
+    "leapfrog_les": {
+      "stop_time": 14.76,
+      "energy_ratio_at_compare_time": 0.8590249260895423,
+      "compare_time": 12.0,
+      "lowest_energy_time": 13.0,
+      "lowest_energy": 2.3350163454172197,
+      "stop_energy": 2.457564519573929
+    },
+    "leapfrog_les_cusp": {
+      "stop_time": 12.540000000000001,
+      "energy_ratio_at_compare_time": 0.9307995803957337,
+      "compare_time": 12.0,
+      "lowest_energy_time": 12.0,
+      "lowest_energy": 2.545642059718916,
+      "stop_energy": 2.56146928281996
+    }
+  },
+  "spectra": {
+    "collision_dns": {
+      "E_peak": 0.1574361025038893,
+      "E_at_k10": {
+        "k": 10.638197177060164,
+        "E": 0.14741482759529573
+      },
+      "E_at_k120": {
+        "k": 119.67971824192685,
+        "E": 3.0956589471615327e-09
+      }
+    },
+    "collision_les": {
+      "E_peak": 0.16792016239566793,
+      "E_at_k10": {
+        "k": 9.773843656424026,
+        "E": 0.14282114415486225
+      },
+      "E_at_k120": {
+        "k": 120.07865063606661,
+        "E": 1.5247915059074436e-10
+      }
+    },
+    "collision_les_cusp": {
+      "E_peak": 0.15761876328561603,
+      "E_at_k10": {
+        "k": 10.638197177060164,
+        "E": 0.14731087561270426
+      },
+      "E_at_k120": {
+        "k": 119.67971824192685,
+        "E": 2.5318904723325305e-09
+      }
+    },
+    "leapfrog_dns": {
+      "E_peak": 0.7440558140689275,
+      "E_at_k10": {
+        "k": 9.574377459354148,
+        "E": 0.0588310677664651
+      },
+      "E_at_k120": {
+        "k": 119.67971824192685,
+        "E": 3.745047515792305e-08
+      }
+    },
+    "leapfrog_les": {
+      "E_peak": 0.7392500811841151,
+      "E_at_k10": {
+        "k": 9.574377459354148,
+        "E": 0.031221199365100146
+      },
+      "E_at_k120": {
+        "k": 119.67971824192685,
+        "E": 1.5276615206322445e-10
+      }
+    },
+    "leapfrog_les_cusp": {
+      "E_peak": 0.7378940247828122,
+      "E_at_k10": {
+        "k": 9.574377459354148,
+        "E": 0.056947836852075176
+      },
+      "E_at_k120": {
+        "k": 119.67971824192685,
+        "E": 5.803624917808526e-09
+      }
+    }
+  },
+  "closures": {
+    "collision_les": {
+      "time": 5.5,
+      "nu_t_over_nu_below_k30": [
+        3.4764959405728395,
+        108.62147916057887
+      ],
+      "nu_t_over_nu_at_cutoff": 1.7519675685938765
+    },
+    "collision_les_cusp": {
+      "time": 5.5,
+      "nu_t_over_nu_below_k30": [
+        0.10839759513058966,
+        0.17267116464708313
+      ],
+      "nu_t_over_nu_at_cutoff": 0.2866251757022978,
+      "plateau_nu_t_over_nu": 0.1091755917248634,
+      "k_shape": 119.67971824192685,
+      "shape_measured": 2.4199018649565587,
+      "shape_chollet_lesieur": 2.431189305833186
+    },
+    "leapfrog_les": {
+      "time": 11.5,
+      "nu_t_over_nu_below_k30": [
+        2.462735544722821,
+        3.258148657649359
+      ],
+      "nu_t_over_nu_at_cutoff": 0.6572308633373645
+    },
+    "leapfrog_les_cusp": {
+      "time": 11.5,
+      "nu_t_over_nu_below_k30": [
+        0.31041588442994555,
+        0.4478002186386263
+      ],
+      "nu_t_over_nu_at_cutoff": 0.9940009891478215,
+      "plateau_nu_t_over_nu": 0.32047727338520227,
+      "k_shape": 119.84594007281844,
+      "shape_measured": 2.4165317987990504,
+      "shape_chollet_lesieur": 2.437518556456798
+    }
+  },
+  "cusp_sink": {
+    "collision_les_cusp": [
+      {
+        "time": 6.0,
+        "subgrid_dissipation": 0.008803831333613324,
+        "molecular_dissipation": 0.027737988823612284,
+        "cutoff_energy_spectrum": 3.648989458330952e-07
+      },
+      {
+        "time": 6.375,
+        "subgrid_dissipation": 0.11497557917267713,
+        "molecular_dissipation": 0.0394714155333425,
+        "cutoff_energy_spectrum": 2.190772111737181e-05
+      }
+    ],
+    "leapfrog_les_cusp": [
+      {
+        "time": 12.0,
+        "subgrid_dissipation": 0.0036109136999584726,
+        "molecular_dissipation": 0.00724139871947698,
+        "cutoff_energy_spectrum": 8.614519888854358e-07
+      },
+      {
+        "time": 12.540000000000001,
+        "subgrid_dissipation": 0.007394423708319661,
+        "molecular_dissipation": 0.00891226531309323,
+        "cutoff_energy_spectrum": 2.02093873130298e-06
+      }
+    ]
+  },
+  "energy_creation": [
+    {
+      "case": "collision_les",
+      "time": 7.0,
+      "energy_rate": 0.6927701511025224,
+      "numerical_dissipation": -1.0695715024792904,
+      "molecular_dissipation": 0.026809617912320543,
+      "created_share_below_quarter_cutoff": 0.9098248776123812
+    },
+    {
+      "case": "leapfrog_dns",
+      "time": 11.5,
+      "energy_rate": 0.007436960797177786,
+      "numerical_dissipation": -0.014605055940895045,
+      "molecular_dissipation": 0.00716809514371724,
+      "created_share_below_quarter_cutoff": 1.0
+    },
+    {
+      "case": "leapfrog_les",
+      "time": 14.0,
+      "energy_rate": 0.04049997638072658,
+      "numerical_dissipation": -0.07332048894079024,
+      "molecular_dissipation": 0.005341121900927953,
+      "created_share_below_quarter_cutoff": 1.0
+    },
+    {
+      "case": "leapfrog_les_cusp",
+      "time": 12.0,
+      "energy_rate": 0.01037046095641958,
+      "numerical_dissipation": -0.020592690635482278,
+      "molecular_dissipation": 0.007108624592137644,
+      "created_share_below_quarter_cutoff": 0.9489341250174576
+    }
+  ]
+}

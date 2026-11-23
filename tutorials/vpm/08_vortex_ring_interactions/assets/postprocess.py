@@ -96,6 +96,15 @@ def energy_budget(case):
     Smagorinsky it also holds the selective eddy viscosity, which the samples do not record.
     """
     table = read_table(case, "flow_integrals")
+    # The Smagorinsky runs sampled a periodic energy; assets/free_space_energy.py replaces it
+    free_space = CASE_DIR / "samples" / case / "free_space_energy.csv"
+    if free_space.exists():
+        energy = pd.read_csv(free_space).set_index("time")["total_kinetic_energy"]
+        table = table.set_index("time", drop=False)
+        table["total_kinetic_energy"] = energy.reindex(
+            table.index, method="nearest", tolerance=1e-6
+        )
+        table = table.reset_index(drop=True)
     table["molecular_dissipation"] = setup.KINEMATIC_VISCOSITY * table["total_enstrophy"]
     if "subgrid_kinetic_energy_rate" in table:
         table["subgrid_dissipation"] = -table["subgrid_kinetic_energy_rate"]

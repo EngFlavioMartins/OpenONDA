@@ -164,9 +164,12 @@ def analyse(case, *, invariant_times=()):
     samples.mkdir(parents=True, exist_ok=True)
     rows, invariants = [], {}
     next_time = 0.0
-    for time, path in backups(case):
+    timed = backups(case)
+    for time, path in timed:
         wanted = any(abs(time - target) < 1e-6 for target in invariant_times)
-        if time < next_time - 1e-6 and not wanted:
+        # The last backup is the state where the run stopped
+        last = path == timed[-1][1]
+        if time < next_time - 1e-6 and not wanted and not last:
             continue
         next_time = time + SPECTRUM_INTERVAL
         fields = spectral_fields(read_particles(path))
