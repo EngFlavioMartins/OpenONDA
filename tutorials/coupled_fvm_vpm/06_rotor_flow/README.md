@@ -1,6 +1,6 @@
 # Wind turbine with meshed blades
 
-The three-bladed turbine of the [VLM rotor tutorial](../../vpm/06_rotor_flow/README.md) with its blades fully meshed: the same planform, twist, radius, wind, tip-speed ratio, spin-up, time step, end time and output cadence, so that power and blade forces compare blade for blade; only the blade model differs. The FVM resolves the blades inside a flat box, a disk normal to the rotor axis, which turns with the rotor; the vortex particles carry the wake in the inertial frame.
+The three-bladed turbine of the [VLM rotor tutorial](../../vpm/06_rotor_flow/README.md) with its blades fully meshed: the same planform, twist, radius, wind, tip-speed ratio, spin-up, time step, end time and wake sampling, so that power and blade forces compare blade for blade; only the blade model differs. The FVM resolves the blades inside a flat box, a disk normal to the rotor axis, which turns with the rotor; the vortex particles carry the wake in the inertial frame.
 
 | Quantity | Value |
 | --- | --- |
@@ -11,7 +11,7 @@ The three-bladed turbine of the [VLM rotor tutorial](../../vpm/06_rotor_flow/REA
 | FVM disk | $[-2.4,2.4]\times[-9,9]\times[-9,9]$ m in the frame of the rotor |
 | Cell and particle spacing | 0.2 m at the interface; 0.0125 m at the blades and 0.00625 m along their flat trailing-edge bases from 1.5 m radius |
 | FVM step; coupling interval | 0.0005 s; 0.006 s (the VLM particle step) |
-| End time; output | 15 s; fields every 0.042 s over the last two revolutions, wake planes and lines every 0.018 s from 7.5 s, backups every 0.024 s |
+| End time; output | 15 s; fields every 0.018 s over the last 9 s (500 frames, about twelve revolutions), wake planes and lines every 0.018 s from 7.5 s, backups every 0.12 s |
 
 ## Physics and numerical model
 

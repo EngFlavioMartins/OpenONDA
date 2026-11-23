@@ -3,7 +3,7 @@
 
 The rotor is the one of the VLM tutorial ``tutorials/vpm/06_rotor_flow``: the
 same blade planform, twist, radius, wind speed, tip-speed ratio, time step,
-end time and output cadence, so that power and blade forces compare blade for
+end time and wake sampling, so that power and blade forces compare blade for
 blade. The blades carry a NACA 0018 thickness and are meshed inside a flat box,
 a disk normal to the rotor axis, which turns with the rotor; the vortex
 particles carry the wake in the inertial frame.
@@ -40,11 +40,13 @@ N_SECTION_POINTS = 61  # per surface of a blade section
 # Time, as the VLM rotor: the coupling interval is its particle step
 COUPLING_TIME_STEP = 0.006  # s
 END_TIME = 15.0  # s
-FIELD_SAMPLE_INTERVAL = 0.042  # s, FVM and particle fields, 18 per revolution
-FIELD_REVOLUTIONS = 2  # revolutions of fields before the end
+# FVM and particle fields every three coupling intervals over the last 500 of them before the end,
+# 9 s or about twelve revolutions, for a video of over 8 s at 60 frames per second
+FIELD_SAMPLE_INTERVAL = 0.018  # s, 43 per revolution, as the wake planes
+FIELD_FRAMES = 500
 WAKE_SAMPLE_INTERVAL = 0.018  # s, wake planes and lines, 43 per revolution
 WAKE_SAMPLE_START = 7.5  # s, the second half of the run
-BACKUP_INTERVAL = 0.024  # s
+BACKUP_INTERVAL = 0.12  # s, every 20 coupling intervals; every backup is kept
 FVM_SUBSTEPS = 12  # per coupling interval; the tip cells see Courant numbers near one
 
 # FVM disk and mesh
@@ -75,7 +77,7 @@ TRANSFER_DIAGNOSTIC_INTERVAL = 0.6  # s
 def build_case(end_time=END_TIME, compute_device="auto"):
     """Return the FVM case, the particle case and the coupling settings."""
     fvm_time_step = COUPLING_TIME_STEP / FVM_SUBSTEPS
-    field_start = max(0.0, end_time - FIELD_REVOLUTIONS * 2.0 * math.pi / ANGULAR_VELOCITY)
+    field_start = max(0.0, end_time - FIELD_FRAMES * FIELD_SAMPLE_INTERVAL)
     rotor_motion = fvm.RotatingMotion(
         angular_speed=-ANGULAR_VELOCITY,
         rotation_axis=(1.0, 0.0, 0.0),
