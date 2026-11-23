@@ -1,6 +1,6 @@
 # Coupled FVM–VPM cases: run status and data folders
 
-Status on Sun 22 Nov 2026, 14:10 CET. The supervising session updates the check boxes as runs end.
+Status on Mon 23 Nov 2026, 11:15 CET. The supervising session updates the check boxes as runs end.
 
 - `[x]` complete: the data may be plotted.
 - `[ ]` not complete: do not use for results. A running case has partial data that will change.
@@ -63,8 +63,8 @@ Fully meshed references, in `01_cylinder_shedding_flow/reference_flow/samples/<n
 
 - Study table: `python -m assets.study_status` from the case folder (workstation), or
   `01_cylinder_shedding_flow/figures/study_summary.csv`.
-- Figures: `01_cylinder_shedding_flow/figures/`, redrawn by `allplot.sh`. They were last drawn
-  before the newest runs ended; `[ ]` they are redrawn once all 18 runs are done.
+- Figures: `01_cylinder_shedding_flow/figures/`, redrawn by `allplot.sh`. `[x]` Redrawn on 19 Nov,
+  after all 18 runs had ended (the last on 16 Nov).
 - `01_cylinder_shedding_flow/solution/coupled`, `fvm` and the logs directly in
   `01_cylinder_shedding_flow/solution/` date from October and are not results. Use only
   `solution/sensitivity_analysis/`.
@@ -77,13 +77,18 @@ Folder `02_cube_flow/`.
 |---|---|---|---|
 | [x] | Coupled final (particle domain to 18 m, 6 m fringe) | `02_cube_flow/samples/`, `02_cube_flow/solution/` | stopped on 19 Nov at t = 98.5 s (forces) by the user's decision; last backup t = 98 s; window 30–98 |
 | [x] | Fully meshed reference | `02_cube_flow/reference_flow/samples/grid_h0045_dt0.02/` | complete, t = 130 s; only 30–98 s is used |
-| [ ] | Figures | `02_cube_flow/figures/` | drawn from the unfinished run; redrawn at the end |
+| [x] | Figures | `02_cube_flow/figures/` | redrawn on 19 Nov from the final run |
 
 - The earlier coupled cube run (24 m domain, stopped at t = 48 s) is not a result. It is outside
   this folder, in `~/openonda_runs/old_data_2026-11-15_cube_fringe12/` on the workstation.
-- `figure_data/paper/.../cube_configuration/data/particles.csv` (paper Figure 14) comes from that
-  earlier run at t = 30 s. `[ ]` It is replaced when the new run passes t = 30 s.
-- Other reference folders (`grid_h0045`, `grid_h010125`) are earlier meshes, not the reference.
+- `[x]` The configuration figure of the paper (`case_configurations`, redrawn on 19 Nov) draws the
+  domains from the `setup.py` parameters and no particles, so it no longer uses that earlier run.
+- Other reference folders, used for the FVM error of the paper:
+  - `grid_h0045` has the reference cells (343,974) with a step four times shorter, 0.005 s, to
+    t = 60 s (5 Nov).
+  - `grid_h00675` is the next coarser grid (106,399 cells, 0.005 s) to t = 100 s. It was run on
+    17 Oct with an older solver version, and its `grid_run.json` gives 385,776 cells.
+  - `grid_h010125` is an early mesh that stopped at t = 0.16 s, and is not used.
 
 ## 03 Wing (NACA 4412)
 
@@ -126,9 +131,8 @@ scripts of the two repositories; see `figure_data/README.md`.
 |---|---|---|
 | [x] | Cylinder baseline (paper Figures 1, 4, 6, 7; thesis cylinder wake t = 10, 20, 40, 100) | from the final baseline run |
 | [x] | Wing comparison (paper `wing_comparison`, `wing_wake`, `wake_profiles`; thesis `naca4412_wing`) | from the final wing run, window 36–48 (paper redrawn 22 Nov) |
-| [ ] | Paper `cylinder_study` | extracted 13 Nov: baseline, N = 1, cell 0.08 and 0.06 (the last one incomplete then); refreshed when all 18 are done |
-| [ ] | Cube configuration (paper Figure 14) | from the stopped cube run; to be replaced |
-| [ ] | Cube comparison | waits for the cube final |
+| [x] | Paper `cylinder_study` | re-extracted on 17 Nov from all 18 runs (paper repository, `figures/common/cylinder_study/`); the copy in `figure_data/` is older |
+| [x] | Configurations (paper `case_configurations`) | domains from the `setup.py` parameters, no particles (19 Nov) |
+| [x] | Cube comparison | paper `force_histories`, `force_spectra`, `wake_profiles` and the cube numbers, from the final run over 30–98 s |
 | [x] | Paper `force_histories`, `force_spectra` (three cases together) | final: cylinder, cube window 30–98, wing window 36–48 (redrawn 22 Nov) |
 | [x] | Paper Figure 7 in 3D (`figures/flow_fields/render/`) | samples `render_t<T>/` (FVM volume, particles, `render.json`) by `export_render_samples.py`: cylinder t = 100, cube t = 98, wing t = 48 (22 Nov); panels drawn by `render_flow_fields_vtk.py`, stacked by `stack_panels.py` |
-| [ ] | Wing configuration (paper Figure 16) | `particles.csv` is a frame of 13 Nov, early in the final run; a frame near t = 24 s is still to be extracted |
