@@ -29,7 +29,7 @@ The first check ran from export 336f854f, the order and restart checks from 1c62
 
 ## Runs
 
-Coupled runs: pending (held while the GPU is in use by other runs).
+Coupled runs: S1 (case 05, 82eaf968) started on 23 Nov at 11:09 from t = 0 on cores 6, 9, 10 and 11, with the mesh from its second pre-run's cache; the others wait for it.
 
 FVM-only references, each continued from its 2 % pre-run:
 
@@ -44,6 +44,7 @@ FVM-only references, each continued from its 2 % pre-run:
 | --- | --- | --- | --- | --- | --- |
 | S1 reference (case 05, FVM only) | 336f854f | 1 s of 50 s | 70 min meshing (69,085 cells), then 200 steps in 31.5 min (9.45 s per step) | 26 h for 10,000 steps | none |
 | S1 coupled (case 05) | 1c627a9a | stopped by the GPU guard at 0.275 s of 1 s | mesh from cache; 11 intervals, mean 51.9 s, last ten 37.0 s per 0.025 s interval | not extrapolated (stopped); about 21 h at 37 s per interval for 2,000 intervals, before particle growth | 524 at 0.275 s; 1,414 MiB GPU |
+| S1 coupled (case 05), second pre-run | 82eaf968 | 1 s of 50 s | 17 min meshing (16,039 cells), then 40 intervals in 1,252 s: the first 183 s, then a median of 20.8 s and a mean of 27.4 s per 0.025 s interval (last ten 23.2 s) | 13–15 h for 2,000 intervals at 23–27 s, before particle growth | 1,125 at 1 s, about 800 more per second over the last 0.5 s; 1,476 MiB GPU |
 | S2 B1 reference (case 04, FVM only) | 1c627a9a | 3.84 s of 192 s | 66 min meshing (43,651 cells), then 1,536 steps in 81.4 min (3.18 s per step) | 68 h for 76,800 steps | none |
 | S2 B2 reference (case 04, FVM only) | d4b6d67b | 4.98 s of 249 s | 61 min meshing (43,651 cells), then 1,992 steps in 185.3 min (5.58 s per step) | 154 h for 99,600 steps | none |
 | S4a reference (case 07, FVM only) | d4b6d67b | 4 s of 200 s | 49 min meshing (69,448 cells), then 500 steps in 48.7 min (5.84 s per step) | 41 h for 25,000 steps | none |
@@ -56,7 +57,8 @@ FVM-only references, each continued from its 2 % pre-run:
 - The FVM-only references ran from earlier commits with the same FVM code, meshes identical array by array and identical case files: the S1 reference from 336f854f, the S2 B1 reference from 1c627a9a, the S2 B2 and S4a references from d4b6d67b.
 - Case 06: the author agreed to finer trailing-edge cells. Boxes around the trailing edge alone leave the octree surface non-manifold, so the whole blade is refined from 0.025 m to 0.0125 m, with 0.00625 m boxes along the flat base from 1.5 m radius.
 - Output-only changes to cases 04, 05, 06 and the VLM rotor to record what the analysis needs (motion, wake lines with vorticity, particle invariants every interval); case 05 runs 50 s as this file asks.
-- Machine sharing: another session's coupled wing run holds CPUs 0–3 and 12–15 and up to 7 GB of the GPU until about 22–23 Nov. Part II runs use the other 16 cores, one particle solver at a time, at most about 4 GB of GPU memory, and stop themselves when the card has less than 1,000 MiB free; a stopped run resumes from its last backup.
+- Machine sharing: another session's coupled wing run held CPUs 0–3 and 12–15 and up to 7 GB of the GPU until 22 Nov, and ring runs of another tutorial had the GPU from then until 23 Nov 10:24. Part II runs use cores 4–11 and 16–23, one particle solver at a time, at most about 4 GB of GPU memory. A run from 82eaf968 starts only when 2,700 MiB stay free after its own share, and stops itself when the card has less than 1,500 MiB free (1,000 MiB for the earlier runs).
+- The coupled runs of moving bodies (S1, S2, S3, S4b) start from t = 0 instead of continuing from their pre-runs. At 82eaf968 a coupled backup of a moving body cannot be loaded (S1, under stopped runs). In the code, the particle backup is loaded before the FVM domains, and its velocity update runs the solid-wall guard while the body is still at its starting pose, not at its pose at the backup time; this is read from the code, not tested. The restart acceptance check used fixed cylinders, which this order does not affect. A moving-body run stopped by the GPU guard therefore cannot resume, and is reported as stopped.
 - The acceptance tests live in the local `tests/` repository, which has no remote.
 
 ## Stopped runs
@@ -64,6 +66,7 @@ FVM-only references, each continued from its 2 % pre-run:
 | Run | Commit | Stopped at | Message |
 | --- | --- | --- | --- |
 | S1 pre-run (case 05, first 2 %) | 1c627a9a | t = 0.275 s of 1 s, 11 intervals, 524 particles | GPU guard: "GPU free 951 MiB below 1000 MiB: stopping the run" (the coupled wing run of another session held 7,758 MiB) |
+| S1 continued from the 1.0 s backup of its second pre-run | 82eaf968 | while loading the backup, before the first interval (41 s, exit 1) | `WallCorrectionTooLargeError`: "VPM wall correction exceeds a quarter of particle spacing; maximum=4.205220e-02 m, spacing=2.500000e-02 m. Reduce the time step." |
 
 ## Analysis checks
 
