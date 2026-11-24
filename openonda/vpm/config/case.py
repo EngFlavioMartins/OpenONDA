@@ -164,6 +164,14 @@ class Numerics:
                 "TurbulenceConfig.spectral_cusp() needs an unbounded lattice; "
                 "it is not available between slip planes."
             )
+        if (
+            self.viscous.gbd_solenoidal_projection
+            and getattr(self.induction, "method", None) == "slip_slab"
+        ):
+            raise ValueError(
+                "gbd_solenoidal_projection needs an unbounded lattice; "
+                "it is not available between slip planes."
+            )
         if self.viscous.scheme == "dvh" and self.turbulence.flow_model == "les":
             raise ValueError(
                 "DVH requires spatially uniform effective viscosity; "

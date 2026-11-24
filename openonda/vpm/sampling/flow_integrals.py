@@ -85,6 +85,9 @@ def flow_integral_row(solver: VPMSolver) -> dict[str, Any]:
     if solver.spectral_closure is not None:
         # The model's energy rate over the last step (negative, m⁵/s³) and its cut-off state
         row.update(solver.spectral_closure.statistics.as_row())
+    if getattr(solver, "solenoidal_projection", None) is not None:
+        # Share of the lattice |w_hat|^2 the projection removed in the last step
+        row.update(solver.solenoidal_projection.statistics.as_row())
     vlm = solver.vlm_solver
     if vlm is not None:
         bound_impulse = vlm.compute_bound_linear_impulse()

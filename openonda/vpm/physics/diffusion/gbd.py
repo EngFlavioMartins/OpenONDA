@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from ...particles.container import Particles
     from ...turbulence.spectral_cusp import SpectralCuspClosure
     from .lattice import DiffusionLattice
+    from .solenoidal_projection import SolenoidalLatticeProjection
 
 # Bound the 64 atomic deposits per particle to keep GPU dispatches short.
 _M4_SCATTER_BATCH_SIZE = 4096
@@ -194,12 +195,15 @@ def gbd_diffusion(
     remeshing_kernel: str = "m4_prime",
     wall_fallback_limit: float = 0.0,
     spectral_closure: "SpectralCuspClosure | None" = None,
+    solenoidal_projection: "SolenoidalLatticeProjection | None" = None,
 ) -> dict[str, np.ndarray] | None:
     """GBD diffusion + particle regeneration (Cottet & Koumoutsakos 2000).
 
     A ``spectral_closure`` damps the diffused lattice in Fourier space before the
     regeneration (:class:`~openonda.vpm.turbulence.spectral_cusp.SpectralCuspClosure`);
-    it needs a lattice without walls and slip planes.
+    a ``solenoidal_projection`` then removes its divergent part
+    (:class:`~openonda.vpm.physics.diffusion.solenoidal_projection.SolenoidalLatticeProjection`).
+    Both need a lattice without walls and slip planes.
 
     Moment-preserving scatter → explicit 7-point Laplacian → weak-strength
     removal → spawn. Per-particle ``effective_viscosity`` (ν+ν_t) enables the
@@ -454,6 +458,19 @@ def gbd_diffusion(
             ("eddy viscosity, plateau", f"{closure.plateau_eddy_viscosity:.4e}", "m^2/s"),
             ("eddy viscosity, cut-off", f"{closure.cutoff_eddy_viscosity:.4e}", "m^2/s"),
             ("energy removed / step", f"{closure.subgrid_kinetic_energy_rate:.4e}", "m^5/s^3"),
+        )
+
+    if solenoidal_projection is not None:
+        if slab_bounds is not None or lattice.wall.active:
+            raise ValueError(
+                "The solenoidal projection transforms an unbounded lattice; "
+                "it is not available with walls or slip planes."
+            )
+        with lattice.profiler.section("Solenoidal projection"):
+            projection = solenoidal_projection.apply(grid_np, particle_spacing)
+        lattice.logger.section(
+            "solenoidal projection",
+            ("longitudinal share removed", f"{projection.longitudinal_fraction:.4e}"),
         )
 
     regenerated = select_regenerated_nodes(

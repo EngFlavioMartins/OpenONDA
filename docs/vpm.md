@@ -71,6 +71,8 @@ Check the fast methods against `DirectInduction` on a small case before trusting
 
 The grid schemes (`dvh`, `gbd`) need a `padding` around the particles, in grid cells, and a vorticity `threshold` below which regenerated particles are dropped (`threshold_mode="absolute"` in m³/s, or a `"budget"` fraction of the total).
 
+Remeshing an advected particle set onto the GBD lattice leaves a small divergent part in the vorticity, which the stretching term can amplify. `gbd(solenoidal_projection=True)` removes it before each regeneration: it transforms the lattice vorticity and subtracts $\mathbf{k}(\mathbf{k}\cdot\hat{\boldsymbol\omega})/k^2$ from every mode. The transverse part $\mathbf{k}\times\hat{\boldsymbol\omega}$ is unchanged, and with it the induced velocity, the kinetic energy and the total vorticity. The share of $\sum|\hat{\boldsymbol\omega}|^2$ removed in the last step is written to `flow_integrals.csv` as `solenoidal_projection_longitudinal_fraction`. It needs an unbounded lattice: no walls, no slip planes.
+
 `TurbulenceConfig.dns()` adds no model. `smagorinsky()` and `equilibrium_smagorinsky()` add an eddy viscosity
 
 $$

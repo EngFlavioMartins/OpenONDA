@@ -39,6 +39,7 @@ from ..io.metadata import write_vpm_metadata
 from ..kernels.base import make_vortex_kernel
 from ..numerics.runge_kutta import RungeKutta
 from ..particles.container import FIELD_TRAILING_SHAPES, Particles, inside_box
+from ..physics.diffusion.solenoidal_projection import SolenoidalLatticeProjection
 from ..physics.engine import PhysicsEngine
 from ..physics.evaluation import ParticleFieldEvaluation
 from ..physics.induction.base import StageRates, StageState
@@ -389,6 +390,11 @@ class VPMSolver:
                 )
 
             self.physics.lattice.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
+        self.solenoidal_projection = (
+            SolenoidalLatticeProjection(use_cuda=self.compute_device == "cuda")
+            if scheme == "gbd" and viscous.gbd_solenoidal_projection
+            else None
+        )
         self.particles.set_freestream_velocity(np.array(self.numerics.freestream_velocity))
 
     def _initialize_turbulence(self, final_setup: Numerics) -> None:

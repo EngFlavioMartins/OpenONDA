@@ -268,7 +268,15 @@ def solver_info(system: "VPMSolver") -> log_style.FormattedText:
         ("STABILIZATION", _stabilization_rows(system)),
         (
             "VISCOUS DIFFUSION",
-            [("scheme", system.viscous_scheme), *_diffusion_interval_rows(system)],
+            [
+                ("scheme", system.viscous_scheme),
+                *_diffusion_interval_rows(system),
+                *(
+                    system.solenoidal_projection.report_rows()
+                    if getattr(system, "solenoidal_projection", None) is not None
+                    else []
+                ),
+            ],
         ),
         ("TURBULENCE MODEL", _turbulence_rows(system)),
         ("OUTPUT AND MONITORING", _output_rows(system)),

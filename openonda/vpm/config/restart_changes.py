@@ -55,6 +55,11 @@ def restart_configuration_values(configuration: dict[str, Any]) -> dict[str, Any
     """Return the physical configuration, leaving validated input untouched."""
     result = deepcopy(configuration)
     result.pop("compute_device", None)
+    viscous = result.get("viscous")
+    if isinstance(viscous, dict) and viscous.get("gbd_solenoidal_projection") is False:
+        # Backups written before the option existed hold no key; without the projection
+        # both describe the same evolution.
+        viscous.pop("gbd_solenoidal_projection")
     induction = result.get("induction")
     if isinstance(induction, dict):
         settings = induction.get("gaussian_mesh_settings")

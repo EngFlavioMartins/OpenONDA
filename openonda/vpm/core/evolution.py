@@ -513,4 +513,5 @@ class EvolutionStepper:
                 remeshing_kernel=vc.gbd_remeshing_kernel,
                 wall_fallback_limit=vc.gbd_wall_fallback_limit,
                 spectral_closure=self.solver.spectral_closure,
+                solenoidal_projection=self.solver.solenoidal_projection,
             )

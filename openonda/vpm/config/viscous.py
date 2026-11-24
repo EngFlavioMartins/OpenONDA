@@ -41,6 +41,12 @@ class ViscousConfig:
     gbd_remeshing_kernel : {'m4_prime', 'lagrange6'}, default='m4_prime'
         Particle-to-grid scatter. The six-point Lagrange option is experimental,
         non-positivity-preserving, and requires at least four padding cells.
+    gbd_solenoidal_projection : bool, default=False
+        Project the diffused lattice vorticity onto its divergence-free part before the
+        regeneration (an FFT Helmholtz projection on the support of the field). It removes the
+        longitudinal part that remeshing an advected particle set leaves, and keeps the induced
+        velocity, the kinetic energy and the total vorticity. Unbounded lattices only: not
+        with walls or slip planes.
     dvh_support_radius_ratio : {3, 4, 5}, default=4
         Compact DVH heat-kernel support radius divided by grid spacing.
     kinematic_viscosity : float or None
@@ -107,6 +113,9 @@ class ViscousConfig:
     gbd_remeshing_kernel: str = "m4_prime"
     """Scatter kernel: ``'m4_prime'`` or the experimental six-point ``'lagrange6'``."""
 
+    gbd_solenoidal_projection: bool = False
+    """Project the diffused GBD lattice onto its divergence-free part before the regeneration."""
+
     gbd_wall_fallback_limit: float = 0.0
     """Largest fraction of the total vortex strength per GBD step that may be deposited at a wall
     without first-moment conservation, where the wall is thinner than the lattice spacing. Zero
@@ -166,6 +175,13 @@ class ViscousConfig:
             raise ValueError(
                 "gbd_remeshing_kernel must be 'm4_prime' or 'lagrange6' "
                 f"(got {self.gbd_remeshing_kernel!r})"
+            )
+        if not isinstance(self.gbd_solenoidal_projection, bool):
+            raise TypeError("gbd_solenoidal_projection must be a bool")
+        if self.gbd_solenoidal_projection and self.scheme != "gbd":
+            raise ValueError(
+                "gbd_solenoidal_projection acts on the grid-based-diffusion lattice; "
+                f"use ViscousConfig.gbd(), not scheme={self.scheme!r}"
             )
         if self.gbd_remeshing_kernel == "lagrange6" and self.gbd_domain_padding < 4:
             raise ValueError(
@@ -302,6 +318,7 @@ class ViscousConfig:
         remeshing_kernel: str = "m4_prime",
         gbd_grid_spacing: float | None = None,
         wall_fallback_limit: float = 0.0,
+        solenoidal_projection: bool = False,
     ) -> ViscousConfig:
         """Return Grid-Based Diffusion configuration.
 
@@ -318,6 +335,9 @@ class ViscousConfig:
         ``wall_fallback_limit`` lets wall deposits that have no bounded moment-conserving
         support (a wall thinner than the lattice spacing) keep their strength without their
         first moments, up to this fraction of the total vortex strength per step.
+
+        ``solenoidal_projection`` removes the divergent part of the diffused lattice before
+        the regeneration (see ``gbd_solenoidal_projection``).
         """
         if gbd_grid_spacing is None:
             gbd_grid_spacing = particle_spacing
@@ -331,5 +351,6 @@ class ViscousConfig:
             kinematic_viscosity=kinematic_viscosity,
             gbd_remeshing_kernel=remeshing_kernel,
             gbd_wall_fallback_limit=wall_fallback_limit,
+            gbd_solenoidal_projection=solenoidal_projection,
             core_radius_ratio=core_radius_ratio,
         )
