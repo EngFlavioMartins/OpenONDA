@@ -29,12 +29,28 @@ The first check ran from export 336f854f, the order and restart checks from 1c62
 
 ## Runs
 
-Coupled runs: S1 (case 05, 82eaf968) started on 23 Nov at 11:09 from t = 0 on cores 6, 9, 10 and 11, with the mesh from its second pre-run's cache; the others wait for it.
+Coupled runs:
+
+| Run | Commit | Flow time | Intervals | Window | Cycles | Wall time | Exit | Peak GPU memory | Record |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| S1 (case 05) | 82eaf968 | 50 s | 2,000 | 20–50 s, the last six pitch periods of 5.0 s | 6 | from t = 0, mesh from the cache of its second pre-run; 124,884 s (34.7 h), 62.4 s per interval | 0 | 3,272 MiB | `S1_coupled/run_record.json`; run status "completed"; 35,124 particles at 50 s; warnings: the solid-wall exclusion moved one or two stage particles 1,812 times and accepted particles 7 times, by at most 3.224e-03 m (an eighth of the 0.025 m spacing), and the particle-set net strength changed by more than 1.0e-03 of its L1 norm in 39 intervals between steps 98 and 2,000, by at most 3.668e-03 |
+
+The S2 B1 pre-run starts once S1's cores and enough GPU memory are free; the other runs wait for it.
+
+S1 against its FVM-only reference, from `05_pitching_airfoil/analysis/S1/compare_S1_vs_reference_flow.json` in the 82eaf968 export, coupled minus reference with the combined standard error over the six cycles:
+
+- mean drag coefficient 0.1465 against 0.1484, −0.0019 ± 0.0003 (−1.3 %); second drag harmonic 0.0420 against 0.0410, +0.0010 ± 0.0002;
+- first lift harmonic 0.578 against 0.567, +0.011 ± 0.002 (+2.0 %), phase 33.9° against 33.8°;
+- first pitching-moment harmonic 0.0724 against 0.0722, +0.0002 ± 0.0002, phase 109.5° against 110.5°;
+- largest rms of the spanwise vorticity on the wake line `x2` 1.770 against 1.763, on `x4` 0.821 against 0.674 (+22 %); mean streamwise velocity on `x2` 0.982 against 0.993.
+
+The force, moment and work columns in newtons differ by a factor of about 40 because the coupled mesh spans one 0.025 m cell and the reference 1 m; only the coefficients compare. Over the window the particle circulation residual is at most 5.3e-03 of the particle L1 norm (median 2.0e-03), and the residual of particles and FVM together at most 2.6e-02 (median 1.8e-02), from `summary.json`. Per second of flow time the coupled run took 2,494 s against 1,225 s for the reference; the state checks and samplers took 63,646 s of the coupled run's 124,687 s.
 
 FVM-only references, each continued from its 2 % pre-run:
 
 | Run | Commit | Flow time | Steps | Wall time | Exit | Peak GPU memory | Record |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| S1 reference (case 05) | 336f854f | 50 s | 10,000 | 70 min meshing, 31.5 min pre-run (200 steps), then 59,400 s (16.5 h) for 9,800 steps, 6.06 s per step | 0 | 0 MiB | `S1_reference/run_record.json`, rebuilt from its GPU log and run log after the wrapper failed at the end; "RUN COMPLETED" at 50 s; largest Courant number 0.53 in the log, no warnings |
 | S4a reference (case 07) | d4b6d67b | 200 s | 25,000 | 49 min meshing, 48.7 min pre-run (500 steps), then 113,532 s (31.5 h) for 24,500 steps, 4.63 s per step | 0 | 0 MiB | `S4a_reference/run_record.json`; largest Courant number 0.38 in the log, no warnings |
 | S2 B1 reference (case 04, Re 6400, V* 7.68) | 1c627a9a | 192 s | 76,800 | 66 min meshing, 81.4 min pre-run (1,536 steps), then 259,201 s (72.0 h) for 75,264 steps, 3.44 s per step | 0 | 0 MiB | `S2_B1_reference/run_record.json`; run status "completed" at step 76,800, t = 192.0 s; largest Courant number 1.86 in the log, no warnings |
 | S2 B2 reference (case 04, Re 8300, V* 9.96) | d4b6d67b | 249 s | 99,600 | 61 min meshing, 185.3 min pre-run (1,992 steps), then 335,541 s (93.2 h) for 97,608 steps, 3.44 s per step | 0 | 0 MiB | `S2_B2_reference/run_record.json`; run status "completed", last field `fvm_099600.vtu`; largest Courant number 1.92 in the log, no warnings |
