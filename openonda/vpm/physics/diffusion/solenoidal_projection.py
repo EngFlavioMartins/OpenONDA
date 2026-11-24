@@ -16,12 +16,17 @@ tutorial 08 (h = R_0/40) a band of two cells leaves 9 % of the divergence at t =
 t = 12, against 8.7 % and 4.4 % for four cells; correcting only the occupied nodes leaves 21 %
 and changes the energy ten times more. The band adds weak nodes at the edge of the support,
 34-48 % more above the tutorial's regeneration threshold on those lattices.
+
+GBD holds the lattice on the host, so the transform runs there with SciPy, on the cores the
+process may use. On those lattices one projection takes 0.7 s at t = 1 and 3.3 s at t = 12 on
+two cores, and no GPU memory.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import os
 
 import numpy as np
 from scipy import fft as scipy_fft
@@ -48,45 +53,31 @@ class SolenoidalProjectionStatistics:
 
 
 class SolenoidalLatticeProjection:
-    """Project a GBD vorticity lattice of spacing ``h`` onto its divergence-free part.
+    """Project a GBD vorticity lattice of spacing ``h`` onto its divergence-free part."""
 
-    Parameters
-    ----------
-    use_cuda : bool
-        Transform on the GPU with CuPy (cuFFT); otherwise with SciPy on the host.
-    """
-
-    def __init__(self, *, use_cuda: bool = False) -> None:
-        self.use_cuda = bool(use_cuda)
-        if self.use_cuda:
-            import cupy
-            import cupyx.scipy.fft as cufft
-
-            self._xp, self._fft = cupy, cufft
-        else:
-            self._xp, self._fft = np, scipy_fft
+    def __init__(self) -> None:
+        self.workers = len(os.sched_getaffinity(0))
         self.statistics = SolenoidalProjectionStatistics()
 
     def report_rows(self) -> list[tuple[str, str]]:
         return [
             (
                 "solenoidal projection",
-                "lattice Helmholtz projection, " + ("cuFFT" if self.use_cuda else "SciPy FFT"),
+                f"lattice Helmholtz projection, SciPy FFT on {self.workers} cores",
             )
         ]
 
-    def _wavenumbers(self, shape: tuple[int, int, int], spacing: float):
-        xp = self._xp
+    @staticmethod
+    def _wavenumbers(shape: tuple[int, int, int], spacing: float):
         k = [2.0 * math.pi * scipy_fft.fftfreq(n, d=spacing) for n in shape[:2]]
         k.append(2.0 * math.pi * scipy_fft.rfftfreq(shape[2], d=spacing))
-        kx = xp.asarray(k[0], dtype=xp.float32)[:, None, None]
-        ky = xp.asarray(k[1], dtype=xp.float32)[None, :, None]
-        kz = xp.asarray(k[2], dtype=xp.float32)[None, None, :]
+        kx = k[0].astype(np.float32)[:, None, None]
+        ky = k[1].astype(np.float32)[None, :, None]
+        kz = k[2].astype(np.float32)[None, None, :]
         return kx, ky, kz
 
     def apply(self, grid: np.ndarray, spacing: float) -> SolenoidalProjectionStatistics:
         """Project ``grid``, the vortex strength per node in m³/s, shape (nx, ny, nz, 3), in place."""
-        xp, fft = self._xp, self._fft
         statistics = SolenoidalProjectionStatistics()
         occupied = np.any(grid != 0.0, axis=-1)
         if not occupied.any():
@@ -105,27 +96,28 @@ class SolenoidalLatticeProjection:
             for a, b in zip(lower, upper, strict=True)
         )
 
-        field = xp.asarray(grid[box], dtype=xp.float32)
-        spectrum = fft.rfftn(field, s=shape, axes=(0, 1, 2))
+        spectrum = scipy_fft.rfftn(
+            grid[box].astype(np.float32, copy=False), s=shape, axes=(0, 1, 2), workers=self.workers
+        )
         kx, ky, kz = self._wavenumbers(shape, float(spacing))
         k2 = kx * kx + ky * ky + kz * kz
         k2[0, 0, 0] = 1.0  # k . w_hat vanishes at k = 0: the total vorticity is kept
         divergence = (kx * spectrum[..., 0] + ky * spectrum[..., 1] + kz * spectrum[..., 2]) / k2
         # The half spectrum stores the modes 0 < k_z < Nyquist once for two
-        weight = xp.full(shape[2] // 2 + 1, 2.0, dtype=xp.float32)
+        weight = np.full(shape[2] // 2 + 1, 2.0, dtype=np.float32)
         weight[0] = 1.0
         if shape[2] % 2 == 0:
             weight[-1] = 1.0
-        total = float(xp.sum(xp.sum(xp.abs(spectrum) ** 2, axis=-1) * weight))
-        removed = float(xp.sum(xp.abs(divergence) ** 2 * k2 * weight))
+        total = float(np.sum(np.sum(np.abs(spectrum) ** 2, axis=-1) * weight))
+        removed = float(np.sum(np.abs(divergence) ** 2 * k2 * weight))
         spectrum[..., 0] -= kx * divergence
         spectrum[..., 1] -= ky * divergence
         spectrum[..., 2] -= kz * divergence
-        projected = fft.irfftn(spectrum, s=shape, axes=(0, 1, 2))
+        projected = scipy_fft.irfftn(spectrum, s=shape, axes=(0, 1, 2), workers=self.workers)
         window = tuple(slice(0, b - a) for a, b in zip(lower, upper, strict=True))
         result = projected[window]
-        node_magnitude = xp.max(xp.abs(result), axis=-1)
-        floor = ROUNDOFF_FLOOR * float(xp.max(node_magnitude))
+        node_magnitude = np.max(np.abs(result), axis=-1)
+        floor = ROUNDOFF_FLOOR * float(np.max(node_magnitude))
         band = (
             binary_dilation(
                 occupied[box], structure=np.ones((3, 3, 3), dtype=bool), iterations=BAND_CELLS
@@ -133,9 +125,8 @@ class SolenoidalLatticeProjection:
             if BAND_CELLS > 0
             else occupied[box]
         )
-        kept = xp.asarray(occupied[box]) | ((node_magnitude > floor) & xp.asarray(band))
-        result = result * kept[..., None]
-        grid[box] = result.get() if self.use_cuda else result
+        kept = occupied[box] | ((node_magnitude > floor) & band)
+        grid[box] = result * kept[..., None]
 
         statistics.longitudinal_fraction = removed / total if total > 0.0 else 0.0
         self.statistics = statistics

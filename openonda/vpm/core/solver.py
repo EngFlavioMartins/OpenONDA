@@ -391,7 +391,7 @@ class VPMSolver:
 
             self.physics.lattice.configure_max_grid_extent(vpm_bounds, _grid_h, _grid_pad)
         self.solenoidal_projection = (
-            SolenoidalLatticeProjection(use_cuda=self.compute_device == "cuda")
+            SolenoidalLatticeProjection()
             if scheme == "gbd" and viscous.gbd_solenoidal_projection
             else None
         )
