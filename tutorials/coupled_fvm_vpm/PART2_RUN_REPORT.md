@@ -35,7 +35,7 @@ Coupled runs:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S1 (case 05) | 82eaf968 | 50 s | 2,000 | 20–50 s, the last six pitch periods of 5.0 s | 6 | from t = 0, mesh from the cache of its second pre-run; 124,884 s (34.7 h), 62.4 s per interval | 0 | 3,272 MiB | `S1_coupled/run_record.json`; run status "completed"; 35,124 particles at 50 s; warnings: the solid-wall exclusion moved one or two stage particles 1,812 times and accepted particles 7 times, by at most 3.224e-03 m (an eighth of the 0.025 m spacing), and the particle-set net strength changed by more than 1.0e-03 of its L1 norm in 39 intervals between steps 98 and 2,000, by at most 3.668e-03 |
 
-The S2 B1 pre-run starts once S1's cores and enough GPU memory are free; the other runs wait for it.
+S2 B1 (case 04, Re 6400, V* 7.68) continued on 25 Nov at 00:12 from the backup `coupled_000096` (t = 3.84 s) of its pre-run, on cores 4, 5, 7 and 8; the other runs wait for it.
 
 S1 against its FVM-only reference, from `05_pitching_airfoil/analysis/S1/compare_S1_vs_reference_flow.json` in the 82eaf968 export, coupled minus reference with the combined standard error over the six cycles:
 
