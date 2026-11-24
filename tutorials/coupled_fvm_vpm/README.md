@@ -1,6 +1,6 @@
 # Coupled FVM–VPM cases: run status and data folders
 
-Status on Tue 24 Nov 2026, 11:00 CET. The supervising session updates the check boxes as runs end.
+Status on Tue 24 Nov 2026, 23:50 CET. The supervising session updates the check boxes as runs end.
 
 - `[x]` complete: the data may be plotted.
 - `[ ]` not complete: do not use for results. A running case has partial data that will change.
@@ -84,16 +84,18 @@ Folder `02_cube_flow/`.
 - `[x]` The configuration figure of the paper (`case_configurations`, redrawn on 19 Nov) draws the
   domains from the `setup.py` parameters and no particles, so it no longer uses that earlier run.
 - Other reference folders, used for the FVM error of the paper:
-  - `grid_h0045` has the reference cells (343,974) with a step four times shorter, 0.005 s, to
+  - `grid_h0045` has the reference cells (1,287,704) with a step four times shorter, 0.005 s, to
     t = 60 s (5 Nov).
-  - `[x]` `grid_h00675_dt0.005` is the next coarser grid (106,399 cells, 0.005 s) to t = 60 s, run
+  - `[x]` `grid_h00675_dt0.005` is the next coarser grid (385,776 cells, 0.005 s) to t = 60 s, run
     on 23–24 Nov on 37d7d7e3, the solver of the reference (the FVM of `grid_h0045` and of the
     coupled run). Over 30–60 s its mean drag is 4.1 % above that of `grid_h0045`; the paper uses
     this value.
   - `grid_h00675` is the same grid to t = 100 s, run on 17 Oct with an older solver version
     (+6.1 % over 30–60 s). It is no longer used.
-  - The `cell_count` of `grid_run.json` (385,776 and 1,287,704) is not the number of cells in a
-    parallel run; `solution/<name>/fvm_metadata.json` gives the cells.
+  - The cells are those of the `cell_count` of `grid_run.json` and of `Cells, global` in
+    `fvm.log`. In the runs above, and in all parallel runs before 24 Nov, the `mesh` section of
+    `fvm_metadata.json` holds only rank 0's owned and halo cells (343,974 and 106,399; 130,522
+    for the coupled cube, which has 975,712 FVM cells).
   - `grid_h010125` is an early mesh that stopped at t = 0.16 s, and is not used.
 
 ## 03 Wing (NACA 4412)

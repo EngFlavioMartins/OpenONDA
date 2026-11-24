@@ -26,6 +26,18 @@ if TYPE_CHECKING:
     from ..core.solver import FVMSolver
 
 
+def mesh_counts(mesh_data: dict) -> dict[str, int]:
+    """Return the numbers of cells, faces and points of ``mesh_data``."""
+    n_points = mesh_data.get("n_points")
+    if n_points is None:
+        n_points = len(mesh_data["vertex_position"])
+    return {
+        "n_cells": int(mesh_data["n_cells"]),
+        "n_faces": int(mesh_data["n_faces"]),
+        "n_points": int(n_points),
+    }
+
+
 class SolverIO:
     """Write the run's output files and rewind them on a restart.
 
@@ -110,9 +122,9 @@ class SolverIO:
         with collective_phase(solver.parallel.comm, "solver metadata"):
             if solver.parallel.is_root:
                 mesh_data = solver.mesh_data
-                n_points = mesh_data.get("n_points")
-                if n_points is None:
-                    n_points = len(mesh_data["vertex_position"])
+                # A partitioned run holds only the owned and halo cells of rank 0 here;
+                # the counts of the whole mesh were kept when it was distributed.
+                counts = mesh_data.get("_global_mesh_counts") or mesh_counts(mesh_data)
                 write_run_metadata(
                     destination,
                     solver="fvm",
@@ -121,9 +133,7 @@ class SolverIO:
                     configuration=solver._configuration,
                     sections={
                         "mesh": {
-                            "n_cells": int(mesh_data["n_cells"]),
-                            "n_faces": int(mesh_data["n_faces"]),
-                            "n_points": int(n_points),
+                            **counts,
                             "mesh_generation": mesh_data.get("mesh_generation"),
                         },
                         "state": {"step": int(solver.step), "time": float(solver.time)},

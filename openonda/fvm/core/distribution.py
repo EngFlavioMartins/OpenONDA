@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from openonda.core.parallel import collective_phase
 
 from ..io.backup import mesh_digest
+from ..io.solver_io import mesh_counts
 from ..mesh import geometry
 from ..mesh.partition import localize_mesh_and_geometry
 from ..mesh.validation import enforce_quality_thresholds, validate_geometry, validate_topology
@@ -38,8 +39,10 @@ def distribute_mesh(
     quality = None
     global_geo = None
     global_hash = None
+    global_counts = None
     with collective_phase(comm, "partitioned mesh preparation"):
         if parallel.is_root:
+            global_counts = mesh_counts(global_mesh)
             validate_topology(global_mesh)
             global_geo = geometry.compute_mesh_geometry(
                 global_mesh,
@@ -93,6 +96,9 @@ def distribute_mesh(
     assert local_partition_data is not None
     mesh_data, geo_data, partition = local_partition_data
     mesh_quality = parallel.bcast(quality, root=0)
+    # The local mesh holds the owned and halo cells of one rank; the run
+    # metadata reports the cells, faces and points of the whole mesh.
+    mesh_data["_global_mesh_counts"] = parallel.bcast(global_counts, root=0)
     parallel = parallel.with_partition(partition)
     mesh_data["_parallel_context"] = parallel
     return mesh_data, geo_data, mesh_quality, parallel
