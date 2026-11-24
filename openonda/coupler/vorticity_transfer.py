@@ -226,26 +226,21 @@ def _restore_particle_state(vpm, snapshot) -> None:
 
 
 @dataclass(frozen=True)
-class _AppliedParticleReductions:
-    """Moments and norms of the particle state about to be written to the VPM."""
+class _TransferParticleReductions:
+    """Moments and norms of the transfer-lattice particles about to be written to the VPM."""
 
     transfer_moments: VortexMoments
     transfer_vortex_strength_l1: float
     cast_correction_l1: float
     transfer_position_scale: float
-    output_vortex_strength_net: np.ndarray
-    output_vortex_strength_l1: float
-    maximum_output_vortex_strength: float
 
 
-def _reduce_applied_particle_state(
+def _reduce_transfer_particles(
     position: np.ndarray,
     vortex_strength: np.ndarray,
-    *,
-    transfer_count: int,
     reference_vortex_strength: np.ndarray,
-) -> _AppliedParticleReductions:
-    """Reduce the particle state in storage precision, chunk by chunk, without float64 copies."""
+) -> _TransferParticleReductions:
+    """Reduce the transfer particles in storage precision, in chunks, without float64 copies."""
     applied_position = np.asarray(position)
     applied_strength = np.asarray(vortex_strength)
     reference_strength = np.asarray(reference_vortex_strength, dtype=np.float64).reshape(-1, 3)
@@ -255,22 +250,15 @@ def _reduce_applied_particle_state(
         raise ValueError("applied position and vortex strength must have one common shape")
     if reference_strength.shape != applied_strength.shape:
         raise ValueError("reference vortex strength must match the applied particle state")
-    count = len(applied_position)
-    n_transfer = int(transfer_count)
-    if not 0 <= n_transfer <= count:
-        raise ValueError("transfer_count must lie inside the applied particle state")
 
     total = np.zeros(3, dtype=np.float64)
     linear_impulse = np.zeros(3, dtype=np.float64)
     angular_impulse = np.zeros(3, dtype=np.float64)
-    output_net = np.zeros(3, dtype=np.float64)
-    output_l1 = 0.0
     transfer_l1 = 0.0
     cast_correction_l1 = 0.0
     position_scale = 0.0
-    maximum_strength = 0.0
-    for start in range(0, count, _PARTICLE_REDUCTION_CHUNK_SIZE):
-        stop = min(start + _PARTICLE_REDUCTION_CHUNK_SIZE, count)
+    for start in range(0, len(applied_position), _PARTICLE_REDUCTION_CHUNK_SIZE):
+        stop = min(start + _PARTICLE_REDUCTION_CHUNK_SIZE, len(applied_position))
         position_storage_chunk = applied_position[start:stop]
         if not np.all(np.isfinite(position_storage_chunk)):
             raise RuntimeError(
@@ -281,28 +269,18 @@ def _reduce_applied_particle_state(
             raise RuntimeError(
                 "the vorticity transfer overflows the VPM strength storage precision"
             )
-        magnitude = np.linalg.norm(strength_chunk, axis=1)
-        output_net += strength_chunk.sum(axis=0, dtype=np.float64)
-        output_l1 += float(magnitude.sum(dtype=np.float64))
-        maximum_strength = max(maximum_strength, float(magnitude.max(initial=0.0)))
-
-        transfer_stop = min(stop, n_transfer)
-        if transfer_stop <= start:
-            continue
-        local_count = transfer_stop - start
-        transfer_strength = strength_chunk[:local_count]
-        transfer_position = position_storage_chunk[:local_count].astype(np.float64, copy=False)
-        position_cross_strength = np.cross(transfer_position, transfer_strength)
-        total += transfer_strength.sum(axis=0, dtype=np.float64)
+        transfer_position = position_storage_chunk.astype(np.float64, copy=False)
+        position_cross_strength = np.cross(transfer_position, strength_chunk)
+        total += strength_chunk.sum(axis=0, dtype=np.float64)
         linear_impulse += 0.5 * position_cross_strength.sum(axis=0, dtype=np.float64)
         angular_impulse += (1.0 / 3.0) * np.cross(
             transfer_position,
             position_cross_strength,
         ).sum(axis=0, dtype=np.float64)
-        transfer_l1 += float(magnitude[:local_count].sum(dtype=np.float64))
+        transfer_l1 += float(np.linalg.norm(strength_chunk, axis=1).sum(dtype=np.float64))
         cast_correction_l1 += float(
             np.linalg.norm(
-                transfer_strength - reference_strength[start:transfer_stop],
+                strength_chunk - reference_strength[start:stop],
                 axis=1,
             ).sum(dtype=np.float64)
         )
@@ -311,7 +289,7 @@ def _reduce_applied_particle_state(
             float(np.linalg.norm(transfer_position, axis=1).max(initial=0.0)),
         )
 
-    return _AppliedParticleReductions(
+    return _TransferParticleReductions(
         transfer_moments=VortexMoments(
             total_vortex_strength=total,
             linear_impulse=linear_impulse,
@@ -320,10 +298,48 @@ def _reduce_applied_particle_state(
         transfer_vortex_strength_l1=transfer_l1,
         cast_correction_l1=cast_correction_l1,
         transfer_position_scale=position_scale,
-        output_vortex_strength_net=output_net,
-        output_vortex_strength_l1=output_l1,
-        maximum_output_vortex_strength=maximum_strength,
     )
+
+
+def _particle_set_strength(vortex_strength: np.ndarray) -> tuple[np.ndarray, float, float]:
+    """Net strength, strength L1 norm and largest particle strength of a particle set, in m³/s.
+
+    The reduction runs chunk by chunk in float64 over the storage-precision strengths.
+    """
+    strength = np.asarray(vortex_strength)
+    net = np.zeros(3, dtype=np.float64)
+    l1 = 0.0
+    maximum = 0.0
+    for start in range(0, len(strength), _PARTICLE_REDUCTION_CHUNK_SIZE):
+        chunk = strength[start : start + _PARTICLE_REDUCTION_CHUNK_SIZE].astype(
+            np.float64, copy=False
+        )
+        magnitude = np.linalg.norm(chunk, axis=1)
+        net += chunk.sum(axis=0, dtype=np.float64)
+        l1 += float(magnitude.sum(dtype=np.float64))
+        maximum = max(maximum, float(magnitude.max(initial=0.0)))
+    return net, l1, maximum
+
+
+def _rows_near_lattice(
+    position: np.ndarray, lattice: TransferLattice, frame: MeshFrame
+) -> np.ndarray:
+    """Rows of the particles within the frame bounds of the transfer lattice of a moving mesh.
+
+    The bounds hold the lattice nodes, one particle spacing wider, at the current
+    mesh pose. A transfer in body coordinates changes only these particles: those
+    of the remeshing region and the kept particles that merge with a node of its
+    M4' support.
+    """
+    spacing = lattice.particle_spacing
+    box = np.ravel(
+        np.column_stack(
+            (lattice.origin - spacing, lattice.origin + spacing * np.asarray(lattice.shape))
+        )
+    )
+    corners = frame.box_corners(box)
+    inside = (position >= corners.min(axis=0)) & (position <= corners.max(axis=0))
+    return np.flatnonzero(np.all(inside, axis=1))
 
 
 def transfer_vorticity_to_particles(
@@ -352,9 +368,14 @@ def transfer_vorticity_to_particles(
     region and next to the walls (``circulation_budget_limit`` and
     ``wall_circulation_ratio_bounds``, see :func:`check_fvm_budget`) and for the
     particle strength of the zero-weight nodes
-    (:func:`check_dropped_particle_strength`) before it replaces the VPM particles. ``frame`` of a rotating mesh transfers in body coordinates,
-    where the lattice and the walls are fixed; ``None`` transfers in the VPM
-    coordinates.
+    (:func:`check_dropped_particle_strength`) before it replaces the VPM
+    particles. ``frame`` of a mesh that moves in the particle frame transfers in
+    body coordinates, where the lattice and the walls are fixed: the particles
+    within the frame bounds of the lattice are turned and moved to body
+    coordinates and back, and all others keep their stored state. ``None``
+    transfers in the VPM coordinates. The net strengths of the injected, the
+    replaced and all particles are in the axes of the particle frame, the FVM
+    budget in body coordinates.
     """
     if vpm.viscous_scheme != "gbd":
         raise ValueError("the vorticity transfer requires the GBD viscous scheme")
@@ -371,15 +392,21 @@ def transfer_vorticity_to_particles(
     n_before = int(particles.n_particles_total)
     # The storage precision distinguishes node roundoff from particles that are
     # off the lattice and need the fluid-side M4' stencil.
-    existing_position = np.asarray(particles.position_cpu()).reshape(-1, 3)
-    existing_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
-    if len(existing_position) != n_before or len(existing_strength) != n_before:
+    stored_position = np.asarray(particles.position_cpu()).reshape(-1, 3)
+    stored_strength = np.asarray(particles.vortex_strength_cpu(), dtype=np.float64).reshape(-1, 3)
+    if len(stored_position) != n_before or len(stored_strength) != n_before:
         raise RuntimeError("VPM particle arrays do not match the active particle count")
-    if not np.all(np.isfinite(existing_position)) or not np.all(np.isfinite(existing_strength)):
+    if not np.all(np.isfinite(stored_position)) or not np.all(np.isfinite(stored_strength)):
         raise RuntimeError("VPM particle state contains non-finite values")
-    if frame is not None:
-        existing_position = frame.to_body(existing_position)
-        existing_strength = frame.vectors_to_body(existing_strength)
+    # The transfer reads every particle in the VPM coordinates or, for a mesh that
+    # moves in the particle frame, those near its lattice in body coordinates.
+    if frame is None:
+        rows = np.arange(n_before)
+        existing_position, existing_strength = stored_position, stored_strength
+    else:
+        rows = _rows_near_lattice(stored_position, lattice, frame)
+        existing_position = frame.to_body(stored_position[rows])
+        existing_strength = frame.vectors_to_body(stored_strength[rows])
 
     result = transfer_on_lattice(
         existing_position,
@@ -408,7 +435,7 @@ def transfer_vorticity_to_particles(
             relative_limit=circulation_budget_limit,
             wall_ratio_bounds=wall_circulation_ratio_bounds,
         )
-    n_after = result.particle_count
+    n_after = result.particle_count + n_before - len(rows)
     if n_after > int(particles.capacity):
         raise RuntimeError(
             f"the vorticity transfer produced {n_after:,} particles, exceeding "
@@ -416,20 +443,19 @@ def transfer_vorticity_to_particles(
         )
 
     dtype = np.dtype(vpm.np_dtype)
-    applied_position = np.ascontiguousarray(result.position, dtype=dtype)
-    applied_strength = np.ascontiguousarray(result.vortex_strength, dtype=dtype)
-    applied_core_radius = np.ascontiguousarray(result.core_radius, dtype=dtype)
-    applied_particle_volume = np.ascontiguousarray(result.particle_volume, dtype=dtype)
-    transfer_output_count = min(int(result.transfer_output_count), n_after)
+    transfer_output_count = min(int(result.transfer_output_count), result.particle_count)
+    transfer_position = np.ascontiguousarray(result.position[:transfer_output_count], dtype=dtype)
+    transfer_strength = np.ascontiguousarray(
+        result.vortex_strength[:transfer_output_count], dtype=dtype
+    )
     target_moments = result.conservation_target_moments
     raw_moments = result.conservation_raw_moments
     if target_moments is None or raw_moments is None:
         raise RuntimeError("the vorticity transfer returned no reference moments")
-    reductions = _reduce_applied_particle_state(
-        applied_position,
-        applied_strength,
-        transfer_count=transfer_output_count,
-        reference_vortex_strength=result.vortex_strength,
+    reductions = _reduce_transfer_particles(
+        transfer_position,
+        transfer_strength,
+        result.vortex_strength[:transfer_output_count],
     )
     applied_moments = reductions.transfer_moments
     raw_conservation = vortex_moment_residual(target_moments, raw_moments)
@@ -481,15 +507,15 @@ def transfer_vorticity_to_particles(
 
     # Check the complete particle count before changing the VPM, so a wrong
     # result leaves the previous particle state untouched.
-    removed_mask = np.ones(n_before, dtype=bool)
-    if n_before:
-        valid = np.ones(n_before, dtype=bool)
+    removed_rows = np.ones(len(rows), dtype=bool)
+    if len(rows):
+        valid = np.ones(len(rows), dtype=bool)
         if particle_in_solid is not None:
             solid_mask = np.asarray(
                 particle_in_solid(existing_position),
                 dtype=bool,
             ).reshape(-1)
-            if len(solid_mask) != n_before:
+            if len(solid_mask) != len(rows):
                 raise RuntimeError("particle_in_solid must return one value per existing particle")
             valid &= ~solid_mask
         preserved = valid & ~np.all(
@@ -497,56 +523,105 @@ def transfer_vorticity_to_particles(
             & (existing_position <= lattice.remeshing_region_bounds[1::2]),
             axis=1,
         )
-        removed_mask = ~preserved
+        removed_rows = ~preserved
     coalesced_input = np.asarray(
         result.coalesced_outer_input_indices,
         dtype=np.int64,
     ).reshape(-1)
     if len(coalesced_input):
-        if np.any((coalesced_input < 0) | (coalesced_input >= n_before)):
+        if np.any((coalesced_input < 0) | (coalesced_input >= len(rows))):
             raise RuntimeError("the vorticity transfer returned an invalid merged-particle index")
-        removed_mask[coalesced_input] = True
+        removed_rows[coalesced_input] = True
+    removed_mask = np.zeros(n_before, dtype=bool)
+    removed_mask[rows[removed_rows]] = True
     removed_count = int(np.count_nonzero(removed_mask))
     if n_before - removed_count + transfer_output_count != n_after:
         raise RuntimeError("the vorticity transfer returned an inconsistent particle count")
-    replaced_strength = existing_strength[removed_mask]
-    input_net = existing_strength.sum(axis=0, dtype=np.float64)
+    replaced_strength = stored_strength[removed_mask]
+    input_net = stored_strength.sum(axis=0, dtype=np.float64)
 
-    # The kept outer wake keeps its own state; the GBD set holds one core radius and
-    # one particle volume, so they must already equal the transfer's.
-    outer = np.asarray(result.preserved_outer_input_indices, dtype=np.int64)
+    # The particles outside the remeshing region are kept in their input order: those the
+    # transfer read come back from it, the others keep their stored state. The GBD set holds
+    # one core radius and one particle volume, so theirs must already equal the transfer's;
+    # all keep their eddy viscosity, group and zone.
+    kept = np.flatnonzero(~removed_mask)
+    returned = np.zeros(n_before, dtype=bool)
+    returned[rows[np.asarray(result.preserved_outer_input_indices, dtype=np.int64)]] = True
+    returned = returned[kept]
+
+    def in_particle_frame(position_rows, strength_rows):
+        position_rows = np.ascontiguousarray(position_rows, dtype=dtype)
+        strength_rows = np.ascontiguousarray(strength_rows, dtype=dtype)
+        if frame is None:
+            return position_rows, strength_rows
+        return (
+            np.ascontiguousarray(frame.from_body(position_rows), dtype=dtype),
+            np.ascontiguousarray(frame.vectors_from_body(strength_rows), dtype=dtype),
+        )
+
+    position = np.empty((n_after, 3), dtype=dtype)
+    vortex_strength = np.empty((n_after, 3), dtype=dtype)
+    position[:transfer_output_count], vortex_strength[:transfer_output_count] = in_particle_frame(
+        transfer_position, transfer_strength
+    )
+    (
+        position[transfer_output_count:][returned],
+        vortex_strength[transfer_output_count:][returned],
+    ) = in_particle_frame(
+        result.position[transfer_output_count:], result.vortex_strength[transfer_output_count:]
+    )
+    position[transfer_output_count:][~returned] = stored_position[kept[~returned]]
+    vortex_strength[transfer_output_count:][~returned] = stored_strength[kept[~returned]]
+    core_radius = np.empty(n_after, dtype=dtype)
+    particle_volume = np.empty(n_after, dtype=dtype)
+    for written, values in (
+        (core_radius, result.core_radius),
+        (particle_volume, result.particle_volume),
+    ):
+        written[:transfer_output_count] = values[:transfer_output_count]
+        written[transfer_output_count:][returned] = values[transfer_output_count:]
     eddy_viscosity = np.zeros(n_after, dtype=dtype)
     group_id = np.zeros(n_after, dtype=np.int32)
     zone_id = np.zeros(n_after, dtype=np.int32)
-    if len(outer):
-        rows = slice(transfer_output_count, n_after)
-        for name, existing, applied in (
-            ("core radius", particles.core_radius_cpu(), applied_core_radius),
-            ("particle volume", particles.particle_volume_cpu(), applied_particle_volume),
+    if len(kept):
+        for name, existing, lattice_value, written in (
+            (
+                "core radius",
+                particles.core_radius_cpu(),
+                float(core_radius_ratio) * lattice.particle_spacing,
+                core_radius,
+            ),
+            (
+                "particle volume",
+                particles.particle_volume_cpu(),
+                lattice.particle_volume,
+                particle_volume,
+            ),
         ):
-            kept = np.asarray(existing, dtype=np.float64).reshape(-1)[outer]
-            expected = np.asarray(applied[rows], dtype=np.float64)
-            deviation = float(np.max(np.abs(kept - expected) / expected))
+            stored = np.asarray(existing).reshape(-1)[kept]
+            expected = float(np.asarray(lattice_value, dtype=dtype))
+            deviation = float(np.max(np.abs(stored.astype(np.float64) - expected) / expected))
             if deviation > 64.0 * float(np.finfo(dtype).eps):
                 raise RuntimeError(
                     f"the {name} of the kept outer-wake particles differs from the transfer "
                     f"lattice value by up to {deviation:.3e} (relative); the vorticity transfer "
                     "needs one GBD particle set"
                 )
-        eddy_viscosity[rows] = np.asarray(particles.eddy_viscosity_cpu()).reshape(-1)[outer]
-        group_id[rows] = np.asarray(particles.group_id_cpu()).reshape(-1)[outer]
-        zone_id[rows] = np.asarray(particles.zone_id_cpu()).reshape(-1)[outer]
+            written[transfer_output_count:][~returned] = stored[~returned]
+        kept_rows = slice(transfer_output_count, n_after)
+        eddy_viscosity[kept_rows] = np.asarray(particles.eddy_viscosity_cpu()).reshape(-1)[kept]
+        group_id[kept_rows] = np.asarray(particles.group_id_cpu()).reshape(-1)[kept]
+        zone_id[kept_rows] = np.asarray(particles.zone_id_cpu()).reshape(-1)[kept]
+    output_net, output_l1, maximum_strength = _particle_set_strength(vortex_strength)
+    injected_net = reductions.transfer_moments.total_vortex_strength
     if frame is not None:
-        applied_position = np.ascontiguousarray(frame.from_body(applied_position), dtype=dtype)
-        applied_strength = np.ascontiguousarray(
-            frame.vectors_from_body(applied_strength), dtype=dtype
-        )
+        injected_net = frame.vectors_from_body(injected_net[None])[0]
     vpm.replace_vortex_particles(
-        position=applied_position,
+        position=position,
         velocity=np.zeros((n_after, 3), dtype=dtype),
-        vortex_strength=applied_strength,
-        core_radius=applied_core_radius,
-        particle_volume=applied_particle_volume,
+        vortex_strength=vortex_strength,
+        core_radius=core_radius,
+        particle_volume=particle_volume,
         kinematic_viscosity=np.full(n_after, viscosity, dtype=dtype),
         eddy_viscosity=eddy_viscosity,
         group_id=group_id,
@@ -559,12 +634,9 @@ def transfer_vorticity_to_particles(
             f"{int(particles.n_particles_total)}, expected {n_after}"
         )
 
-    injected_net = reductions.transfer_moments.total_vortex_strength
-    output_net = reductions.output_vortex_strength_net
-    maximum_strength = reductions.maximum_output_vortex_strength
     return TransferResult(
         n_particles_before=n_before,
-        n_particles_retained=int(result.preserved_outer_count),
+        n_particles_retained=len(kept),
         n_particles_removed=removed_count,
         n_particles_blended=int(result.transfer_input_count),
         n_particles_injected=transfer_output_count,
@@ -577,9 +649,9 @@ def transfer_vorticity_to_particles(
         replaced_vortex_strength_net=replaced_strength.sum(axis=0, dtype=np.float64),
         state_change_vortex_strength_net=output_net - input_net,
         particle_set_vortex_strength_net=output_net,
-        particle_set_vortex_strength_l1=reductions.output_vortex_strength_l1,
+        particle_set_vortex_strength_l1=output_l1,
         input_vortex_strength_l1=float(
-            np.linalg.norm(existing_strength, axis=1).sum(dtype=np.float64)
+            np.linalg.norm(stored_strength, axis=1).sum(dtype=np.float64)
         ),
         fringe_removed_vortex_strength=np.array(
             vpm.stabilization.outflow_fringe_vortex_strength_removed, dtype=np.float64
@@ -595,7 +667,7 @@ def transfer_vorticity_to_particles(
         maximum_mapped_vortex_strength=maximum_strength,
         transfer_input_particles=int(result.transfer_input_count),
         transfer_output_particles=transfer_output_count,
-        preserved_outer_particles=int(result.preserved_outer_count),
+        preserved_outer_particles=len(kept),
         coalesced_outer_particles=int(result.coalesced_outer_count),
         removed_lattice_nodes=int(result.removed_node_count),
         removed_vortex_strength_l1=float(result.removed_vortex_strength_l1),

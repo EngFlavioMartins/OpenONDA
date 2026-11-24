@@ -610,7 +610,8 @@ class CoupledSolver:
                     self.vpm_particle_spacing,
                 )
             domain.vorticity_transfer.read_mesh(domain.fvm_solver)
-        # Every domain's transfer lattice shares the phase of the particle lattice.
+        # Every domain's transfer lattice starts on the phase of the particle lattice; the
+        # lattice of a mesh that moves in the particle frame leaves it as the mesh moves.
         anchors = [domain.vorticity_transfer.natural_lattice_anchor() for domain in self.domains]
         phase = None if any(anchor is None for anchor in anchors) else lattice_phase(anchors)
         spacing = self.vpm_particle_spacing
@@ -618,7 +619,6 @@ class CoupledSolver:
             if phase is not None and len(self.domains) > 1:
                 anchor = phase + np.round((anchor - phase) / spacing) * spacing
             domain.vorticity_transfer.build(domain.fvm_solver, anchor)
-        self._lattice_phase = phase
         if len(self.domains) > 1:
             with collective_phase(self._comm, "remeshing regions of the FVM domains"):
                 if self._is_root:
@@ -761,6 +761,20 @@ class CoupledSolver:
         projection = WallProjection(boundary, vpm.physics, self.vpm_particle_spacing, logger)
         vpm.stage_rhs.position_guard = projection.stage
         vpm.stage_rhs.accepted_position_projector = projection.accepted
+
+    def _place_moving_geometry(self, interval: bool | None, time: float) -> None:
+        """Place the walls and strain-excluded regions of the meshes that move in the particle frame.
+
+        ``interval`` takes the poses at the end of the coming interval, the
+        current poses otherwise; ``time`` labels the geometry revision.
+        """
+        if any(
+            domain.frame.moves and domain.vorticity_transfer.solid_boundary is not None
+            for domain in self.domains
+        ):
+            self._place_vpm_walls(interval, time)
+        if any(domain.frame.translates for domain in self.domains):
+            self._set_strain_excluded_regions(interval)
 
     # Clock
 
@@ -1403,13 +1417,7 @@ class CoupledSolver:
                     "accepted_impulse_change": np.zeros(3),
                 }
                 vpm.set_freestream_velocity(self.freestream_velocity)
-                if any(
-                    domain.frame.moves and domain.vorticity_transfer.solid_boundary is not None
-                    for domain in self.domains
-                ):
-                    self._place_vpm_walls(True, time_end)
-                if any(domain.frame.translates for domain in self.domains):
-                    self._set_strain_excluded_regions(True)
+                self._place_moving_geometry(True, time_end)
                 begin_coupling_step(logger, step, None, time_end)
                 vpm.advance(defer_output=True, time=time_end)
                 vpm.synchronize()

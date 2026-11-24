@@ -104,12 +104,6 @@ class MeshFrame:
             return np.zeros(3)
         return np.array(self._motion.kinematics.get_velocity(time), dtype=np.float64)
 
-    def velocity(self, time: float) -> np.ndarray:
-        """Particle-frame velocity in m/s at ``time``: the mesh velocity, or zero."""
-        if not self.follows_mesh:
-            return np.zeros(3)
-        return self.mesh_velocity(time)
-
     def angular_velocity(self, time: float) -> np.ndarray:
         """Mesh angular velocity in rad/s at ``time``."""
         if self._motion is None:
@@ -146,12 +140,6 @@ class MeshFrame:
             self._motion.accepted_pose
         )
         return displacement / (step_end_times[-1] - start)
-
-    def step_velocity(self, step_end_times: np.ndarray) -> np.ndarray:
-        """Mean particle-frame velocity in m/s over the coming FVM steps: the mesh's, or zero."""
-        if not self.follows_mesh:
-            return np.zeros(3)
-        return self.mesh_step_velocity(step_end_times)
 
     def to_frame(self, points: np.ndarray) -> np.ndarray:
         """Map current FVM coordinates to frame coordinates."""

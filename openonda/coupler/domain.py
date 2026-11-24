@@ -257,9 +257,10 @@ class CoupledDomain:
         gradient = self._gather_velocity_gradient_field()
         frame = self.frame
         if frame.moving:
-            # The particles see the flow relative to their frame; the transfer
-            # reads it in body axes, G[i, j] = d(u_j)/d(x_i).
-            velocity = frame.vectors_to_body(velocity - frame.velocity(self.fvm_solver.time))
+            # The transfer reads the flow relative to the rotation centre of the mesh, in
+            # body axes, G[i, j] = d(u_j)/d(x_i), with one domain or several: the walls
+            # of a translating mesh are then at rest.
+            velocity = frame.vectors_to_body(velocity - frame.mesh_velocity(self.fvm_solver.time))
             if frame.rotates:
                 rotation = frame.rotation()
                 gradient = rotation.T @ gradient @ rotation

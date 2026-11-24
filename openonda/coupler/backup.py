@@ -315,8 +315,10 @@ def load_coupled_backup(
 
     Configuration differences are refused unless
     listed. Paths starting with ``vpm.`` are passed to the VPM backup reader
-    without the prefix; the others name coupling settings. The VPM is restored
-    and validated before the FVM. Collective under MPI.
+    without the prefix; the others name coupling settings. The FVM domains are
+    restored first: the walls and strain-excluded regions of the meshes that
+    move in the particle frame then take their restored poses before the
+    particles are restored and checked against them. Collective under MPI.
     """
     comm = coupler._comm
     if isinstance(allowed_config_differences, str | bytes):
@@ -326,9 +328,15 @@ def load_coupled_backup(
     if set(expected) - set(allowed):
         raise ValueError("Configuration expectations require their exact allowed paths")
     info = None
-    with collective_phase(comm, "coupled backup validation and VPM restore"):
+    with collective_phase(comm, "coupled backup validation"):
         if coupler._is_root:
             info = _read_checkpoint_info(path)
+            names = sorted(domain.name for domain in coupler.domains)
+            if sorted(info["domains"]) != names:
+                raise ValueError(
+                    f"The coupled backup {path} holds the FVM domains {sorted(info['domains'])}, "
+                    f"the run {names}"
+                )
             changes = validate_exact_configuration_changes(
                 restart_configuration(coupler),
                 info["configuration"],
@@ -337,15 +345,6 @@ def load_coupled_backup(
                     p: v for p, v in expected.items() if not p.startswith("vpm.")
                 },
             )
-            coupler.vpm_solver.load_backup(
-                path / info["files"]["vpm"],
-                allowed_config_differences=tuple(p[4:] for p in allowed if p.startswith("vpm.")),
-                expected_config_differences={
-                    p[4:]: v for p, v in expected.items() if p.startswith("vpm.")
-                },
-            )
-            if coupler.vpm_solver.step != info["step"]:
-                raise ValueError("The VPM backup step differs from the coupled backup")
             if changes:
                 logger.warning(
                     "Loading a coupled backup with allowed configuration differences: "
@@ -353,17 +352,23 @@ def load_coupled_backup(
                 )
     if comm is not None and comm.Get_size() > 1:
         info = comm.bcast(info, root=0)
-    names = [domain.name for domain in coupler.domains]
-    if sorted(info["domains"]) != sorted(names):
-        raise ValueError(
-            f"The coupled backup {path} holds the FVM domains {sorted(info['domains'])}, "
-            f"the run {sorted(names)}"
-        )
     for domain in coupler.domains:
         entry = info["domains"][domain.name]
         domain.fvm_solver.load_backup(path / info["files"][entry["fvm"]])
     step = int(info["step"])
     coupling_time = float(info["time"])
+    with collective_phase(comm, "VPM restore"):
+        if coupler._is_root:
+            coupler._place_moving_geometry(None, coupling_time)
+            coupler.vpm_solver.load_backup(
+                path / info["files"]["vpm"],
+                allowed_config_differences=tuple(p[4:] for p in allowed if p.startswith("vpm.")),
+                expected_config_differences={
+                    p[4:]: v for p, v in expected.items() if p.startswith("vpm.")
+                },
+            )
+            if coupler.vpm_solver.step != step:
+                raise ValueError("The VPM backup step differs from the coupled backup")
     with collective_phase(comm, "coupled backup clock and boundary-data restore"):
         tolerance = max(1.0e-12, 4.0 * abs(coupling_time) * np.finfo(np.float64).eps)
         for domain in coupler.domains:
