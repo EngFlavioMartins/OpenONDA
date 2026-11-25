@@ -21,7 +21,9 @@ state and warnings of each run.
 Files written: manifest.json, summary.json, cycles.csv, phase_average.csv,
 harmonics.csv, spectra.csv, wake_profiles.csv, circulation_budget.csv,
 diagnostics_summary.json, diagnostics_by_phase.csv and, when the run has a
-comparison, compare_<run>_vs_<comparison>.json.
+comparison, compare_<run>_vs_<comparison>.json. A run that stopped before its
+first whole cycle has no statistics: its summary says so, its tables stay empty,
+and its diagnostics, circulation budget and cost cover the whole record.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 import os
@@ -831,7 +834,14 @@ def coupling_state(record: dict) -> dict[str, dict[str, float]]:
     }
 
 
-def diagnostics(run: Run, solution: Path, window: signals.Window, frequency, files: list[Path]):
+def diagnostics(
+    run: Run, solution: Path, window: signals.Window | None, frequency, files: list[Path]
+):
+    """Coupling state per domain over the window, and in phase bins of its cycles.
+
+    Without a window (a run that stopped before its first whole cycle) the
+    summary covers every interval of the record and there are no phase bins.
+    """
     path = solution / "coupler_diagnostics.jsonl"
     files.append(path)
     records = read_jsonl(path)
@@ -847,16 +857,26 @@ def diagnostics(run: Run, solution: Path, window: signals.Window, frequency, fil
             for key, value in state.get(domain, {}).items():
                 store.setdefault(key, []).append(value)
     times = np.asarray(times)
+    if window is None:
+        inside = np.ones(len(times), dtype=bool)
+    else:
+        inside = (times >= window.start) & (times <= window.end)
     summary = {
-        domain: {
-            key: signals.percentiles(np.asarray(series))
-            for key, series in store.items()
-            if len(series) == len(times)
-        }
-        for domain, store in values.items()
+        "over": "record" if window is None else "window",
+        "start_s": float(times[inside][0]),
+        "end_s": float(times[inside][-1]),
+        "intervals": int(inside.sum()),
+        "domains": {
+            domain: {
+                key: signals.percentiles(np.asarray(series)[inside])
+                for key, series in store.items()
+                if len(series) == len(times)
+            }
+            for domain, store in values.items()
+        },
     }
     by_phase = []
-    if run.kind in ("pitching", "elastic", "rotor", "heaving"):
+    if window is not None and run.kind in ("pitching", "elastic", "rotor", "heaving"):
         phase = signals.phase_of(times, window)
         bins = np.floor(phase * signals.DIAGNOSTIC_PHASE_BINS)
         for domain, store in values.items():
@@ -1088,14 +1108,18 @@ def comparison_cost(solution: Path, samples: Path, files: list[Path]) -> dict:
 
 
 def warning_lines(paths: list[Path], limit: int = 50) -> dict:
-    """Lines that contain ``warning`` (any case) in the run's logs: count and distinct messages."""
+    """Lines that contain ``warning`` (any case) in the run's logs: count and distinct messages.
+
+    The ``WARNINGS`` headers of the coupler report are left out; ``coupler_warnings``
+    reads their blocks.
+    """
     count, distinct = 0, {}
     for path in paths:
         if not path.exists():
             continue
         with path.open(errors="replace") as stream:
             for line in stream:
-                if "warning" in line.lower():
+                if "warning" in line.lower() and line.strip() != "WARNINGS":
                     count += 1
                     text = line.strip()
                     distinct[text] = distinct.get(text, 0) + 1
@@ -1106,6 +1130,47 @@ def warning_lines(paths: list[Path], limit: int = 50) -> dict:
         "messages": [{"text": text, "count": n} for text, n in ordered[:limit]],
     }
 
+
+NUMBER = re.compile(
+    r"(?<![A-Za-z_^\d.,])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"
+)
+"""A number in a report line, also with thousands separators (``1,234``), but not a
+digit of a name or unit such as ``L1`` or ``m^3``."""
+
+
+def coupler_warnings(paths: list[Path]) -> list[dict]:
+    """The ``WARNINGS`` blocks of the coupler report in the launch logs, by kind.
+
+    A block is the indented text after a ``WARNINGS`` header up to the next blank line; its
+    kind is that text with every number replaced by ``#``. For each kind: the number
+    of blocks, the first block, and the largest magnitude of each of its numbers
+    over the blocks (for example the largest wall-exclusion displacement). Each
+    launch log is read once, so a pre-run and its continuation count once each.
+    """
+    kinds: dict[str, dict] = {}
+    for path in paths:
+        if not path.exists():
+            continue
+        lines = path.read_text(errors="replace").splitlines()
+        for index, line in enumerate(lines):
+            if line.strip() != "WARNINGS":
+                continue
+            block = []
+            for following in lines[index + 1 :]:
+                if not following.strip() or not following[0].isspace():
+                    break  # a blank line, or a line of another logger (report lines are indented)
+                block.append(following.strip())
+            text = " ".join(block)
+            kind = " ".join(NUMBER.sub("#", text).split()).replace("[ ", "[").replace(" ]", "]")
+            values = [abs(float(number.replace(",", ""))) for number in NUMBER.findall(text)]
+            entry = kinds.setdefault(kind, {"kind": kind, "count": 0, "first": text})
+            entry["count"] += 1
+            largest = entry.get("largest_magnitudes")
+            if largest is None or len(largest) != len(values):
+                entry["largest_magnitudes"] = values if largest is None else largest
+            else:
+                entry["largest_magnitudes"] = [max(a, b) for a, b in zip(largest, values)]
+    return sorted(kinds.values(), key=lambda entry: -entry["count"])
 
 def hardware() -> dict:
     """CPU model and GPU names of this machine, where the runs were made."""
@@ -1202,6 +1267,7 @@ def run_side(solution: Path, records: list[Path], files: list[Path]) -> dict:
         "stopped_for_gpu_memory": any(launch.get("stopped_for_gpu_memory") for launch in launches),
         "configuration": configuration,
         "mesh_files": mesh_files(solution),
+        "coupler_warnings": coupler_warnings([folder / "run.log" for folder in records]),
         "warnings": warning_lines(logs),
     }
 
@@ -1243,19 +1309,28 @@ def analyse(
         side: {name: [] for name in ("cycles", "phases", "harmonics", "spectra")}
         for side in ("coupled", "comparison")
     }
-    coupled = analyse_side(run, "coupled", samples, tables, files)
-    window, frequency = coupled["_window"], coupled["_frequency"]
     profiles: list[dict] = []
-    coupled.update(wake_profiles(run, "coupled", samples, window, profiles, files))
+    try:
+        coupled = analyse_side(run, "coupled", samples, tables, files)
+    except signals.NoWholeCycle as error:
+        # A run that stopped before its first whole cycle has no statistics and no comparison;
+        # its record (diagnostics, budget, cost, end state) is still summarised
+        window = frequency = None
+        coupled = {"no_statistics": f"the run holds no whole cycle: {error}"}
+    else:
+        window, frequency = coupled["_window"], coupled["_frequency"]
+        coupled.update(wake_profiles(run, "coupled", samples, window, profiles, files))
     records, diagnostics_summary, by_phase = diagnostics(run, solution, window, frequency, files)
     budget = circulation_budget(run, records, samples, files)
     if budget:
-        inside = [row for row in budget if window.start <= row["time"] <= window.end]
+        inside = [
+            row for row in budget if window is None or window.start <= row["time"] <= window.end
+        ]
         for key in ("particle_residual_over_l1", "particle_and_fvm_residual_over_l1"):
             residual = np.array([row[key] for row in inside])
             coupled[f"circulation_budget.{key}"] = {
                 "unit": "1",
-                "over": "window",
+                "over": "record" if window is None else "window",
                 **signals.percentiles(np.abs(residual)),
             }
     summary = {
@@ -1265,7 +1340,7 @@ def analyse(
     }
 
     comparison_summary = None
-    if comparison is not None and run.comparison_name:
+    if window is not None and comparison is not None and run.comparison_name:
         comparison_summary = analyse_side(run, "comparison", comparison, tables, files)
         comparison_summary.update(
             wake_profiles(
@@ -1321,7 +1396,7 @@ def analyse(
             "analysis_command_line": command,
             "commit_of_analysis": git_commit(),
             "hardware": hardware(),
-            "window": window.describe(),
+            "window": None if window is None else window.describe(),
             "harmonic_frequency_hz": frequency,
             "runs": sides,
             "inputs": [

@@ -21,6 +21,10 @@ HARMONICS = 5
 """Harmonics of the motion frequency projected on the window."""
 
 
+class NoWholeCycle(ValueError):
+    """The span holds no whole cycle, as in a run that stopped before its first."""
+
+
 @dataclass(frozen=True)
 class Window:
     """A statistics window of whole cycles.
@@ -65,7 +69,7 @@ def motion_window(period: float, start_after: float, end: float, *, phase: float
     origin = first * period - phase * period / (2 * np.pi)
     count = int(np.floor((end - origin) / period + 1.0e-9))
     if count < 1:
-        raise ValueError(f"no whole period of {period:g} s lies in [{start_after:g}, {end:g}] s")
+        raise NoWholeCycle(f"no whole period of {period:g} s lies in [{start_after:g}, {end:g}] s")
     return Window(origin + period * np.arange(count + 1))
 
 
@@ -84,7 +88,7 @@ def upcrossing_window(
     rising = np.flatnonzero((x[:-1] < 0.0) & (x[1:] >= 0.0))
     crossings = t[rising] - x[rising] * (t[rising + 1] - t[rising]) / (x[rising + 1] - x[rising])
     if len(crossings) < 2:
-        raise ValueError(f"fewer than two zero up-crossings after {start_after:g} s")
+        raise NoWholeCycle(f"fewer than two zero up-crossings after {start_after:g} s")
     return Window(crossings)
 
 

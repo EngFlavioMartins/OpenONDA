@@ -34,8 +34,9 @@ Coupled runs:
 | Run | Commit | Flow time | Intervals | Window | Cycles | Wall time | Exit | Peak GPU memory | Record |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | S1 (case 05) | 82eaf968 | 50 s | 2,000 | 20–50 s, the last six pitch periods of 5.0 s | 6 | from t = 0, mesh from the cache of its second pre-run; 124,884 s (34.7 h), 62.4 s per interval | 0 | 3,272 MiB | `S1_coupled/run_record.json`; run status "completed"; 35,124 particles at 50 s; warnings: the solid-wall exclusion moved one or two stage particles 1,812 times and accepted particles 7 times, by at most 3.224e-03 m (an eighth of the 0.025 m spacing), and the particle-set net strength changed by more than 1.0e-03 of its L1 norm in 39 intervals between steps 98 and 2,000, by at most 3.668e-03 |
+| S2 B1 (case 04, Re 6400, V* 7.68) | 82eaf968 | stopped at 7.68 s of 192 s, one of 25 natural periods of 7.68 s | 192 | none: the cross-flow displacement has no whole cycle by 7.68 s | 0 | the 2 % pre-run (6,159 s), then 10,078 s from its backup at 3.84 s; 16,237 s, 84.6 s per interval | 1 | 1,162 MiB | `S2_B1_coupled_pre/run_record.json` and `S2_B1_coupled/run_record.json`; coupler status "failed" after step 192 (under stopped runs); 6,091 particles at 7.68 s; warnings: the solid-wall exclusion moved up to 30 stage particles 203 times and accepted particles 203 times, by at most 9.777e-03 m (98 % of the 0.01 m quarter spacing), the moment correction left up to two fluid components without a correction 57 times (strength L1 at most 3.442e-05 m³/s), and the particle-set net strength changed by more than 1.0e-03 of its L1 norm 3 times, by at most 2.573e-03 |
 
-S2 B1 (case 04, Re 6400, V* 7.68) continued on 25 Nov at 00:12 from the backup `coupled_000096` (t = 3.84 s) of its pre-run, on cores 4, 5, 7 and 8; the other runs wait for it.
+S2 B1 continued on 25 Nov at 00:12 from the backup `coupled_000096` (t = 3.84 s) of its pre-run and stopped at 03:00:30. Its folder `04_oscillating_cylinder/analysis/S2_B1` in the 82eaf968 export holds the manifest, the coupling diagnostics, the circulation budget and the cost over the whole record, 0.04–7.68 s, and no statistics or comparison: `summary.json` says the run holds no whole cycle. Over the record the particle circulation residual is at most 5.8e-03 of the particle L1 norm (median 9.0e-05), and that of particles and FVM together at most 4.6e-02 (median 2.2e-03); the run took 1,942 s per second of flow time, 1,639 s of it in the FVM. The S2 B2 pre-run started on 25 Nov at 03:02 on the same cores; the other runs wait for it.
 
 S1 against its FVM-only reference, from `05_pitching_airfoil/analysis/S1/compare_S1_vs_reference_flow.json` in the 82eaf968 export, coupled minus reference with the combined standard error over the six cycles:
 
@@ -80,6 +81,7 @@ FVM-only references, each continued from its 2 % pre-run:
 - S4b runs at 82eaf968 with two limits of its heaving domain, which moves in the inertial particle frame. Its vorticity transfer reads the inertial FVM velocity, so the walls of the heaving cylinder are not at rest in the transfer; 1b1bc56f makes it read the velocity relative to the mesh. Its transfer lattice leaves the particle diffusion grid as the mesh heaves, which costs one more M4′ remeshing per interval; development keeps this too. Its budgets and diagnostics are read with both in mind.
 - The FVM meshes of cases 04, 06 and 07 were built before their coupled runs with `premesh.py` in the campaign folder, on CPU cores beside the running jobs. It calls `build_or_load_mesh` with the case's mesh and mesh path and stores the result with `save_native_mesh`, as the FVM solver does on rank 0 at its start, so a run finds the mesh by its meshing input hash ("mesh cache hit" in its log) and its wall time holds no meshing. The stored meshes: case 04 22,731 cells, case 07 19,964 cells per domain, case 06 797,383 cells.
 - The acceptance tests live in the local `tests/` repository, which has no remote.
+- The S2 B2 pre-run ends at 5.00 s, 125 intervals of 0.04 s, instead of at 4.98 s, 2 % of 249 s. 4.98 s is not a whole number of coupling intervals, so the coupler would end the pre-run with a shorter interval and the continuation would start off the interval grid of a run from t = 0.
 
 ## Stopped runs
 
@@ -87,10 +89,11 @@ FVM-only references, each continued from its 2 % pre-run:
 | --- | --- | --- | --- |
 | S1 pre-run (case 05, first 2 %) | 1c627a9a | t = 0.275 s of 1 s, 11 intervals, 524 particles | GPU guard: "GPU free 951 MiB below 1000 MiB: stopping the run" (the coupled wing run of another session held 7,758 MiB) |
 | S1 continued from the 1.0 s backup of its second pre-run | 82eaf968 | while loading the backup, before the first interval (41 s, exit 1) | `WallCorrectionTooLargeError`: "VPM wall correction exceeds a quarter of particle spacing; maximum=4.205220e-02 m, spacing=2.500000e-02 m. Reduce the time step." |
+| S2 B1 continued from the 3.84 s backup of its pre-run (case 04, Re 6400, V* 7.68) | 82eaf968 | in coupling step 193, from t = 7.68 s, on 25 Nov at 03:00:30 after 10,078 s (exit 1); 7.68 s is one of 25 natural periods; last backup at 7 s | `RuntimeError` from the FVM budget check of the vorticity transfer (`check_fvm_budget`): "the vorticity transfer does not hold the FVM circulation next to the wall: near-wall circulation ratio 1.0319, bounds [0.97, 1.03]; net near-wall FVM circulation 7.092e-03 of L1 1.343e-01 m^3/s". The transfer diagnostics, printed every 60 steps, gave 0.9996 at 2.4 s, 1.0072 at 4.8 s and 1.0084 at 7.2 s. Neither fallback of the campaign applies (GPU memory, particle limit), so B1 is not rerun. |
 
 ## Analysis checks
 
-`part2_analysis/checks.py`, run before any analysis: all three passed (synthetic signal recovered within 0.17 %, a 2 % change reported at 17.7 combined standard errors; a run compared with itself gives zero differences; a force equal to the body velocity is 90.0° ahead of the displacement and does positive work). Rerun on 21 Nov after the changes below, with the same outcome; to be rerun at the commit that analyses the runs.
+`part2_analysis/checks.py`, run before any analysis: all three passed (synthetic signal recovered within 0.17 %, a 2 % change reported at 17.7 combined standard errors; a run compared with itself gives zero differences; a force equal to the body velocity is 90.0° ahead of the displacement and does positive work). Rerun on 21 Nov after the changes below, and on 25 Nov after the changes for stopped runs described at the end of this section, with the same outcome.
 
 End-to-end tests on real files, before any coupled run: each finished or partial FVM-only reference served as both sides of its run (S1, S2 B1 to 60 s, S4a; S3 on the VLM rotor output of an earlier, stopped run), with coupler records of earlier short coupled runs re-timed across the window. Every comparison gives zero differences (190, 215, 346 and 353 statistics), and S4b recovers a synthetic heave of 0.2 D at phase 0. These tests found and fixed, in the analysis only:
 
@@ -99,5 +102,13 @@ End-to-end tests on real files, before any coupled run: each finished or partial
 - a window of the last N periods lost one period when the end time is not a whole number of periods from t = 0 (S3: five revolutions instead of six), and a window of shedding or response cycles ran to the end of the data instead of the end time;
 - S3 had no comparison force columns (the VLM rotor writes `vlm_surface_forces.csv`) and listed its wake planes as lines; S4b lacked the Strouhal numbers and the phase between the lift histories;
 - the manifest lacked the run's commit, command line, configuration, mesh cell count and hash, hardware, peak GPU memory, wall time, end state and warnings, and the cost lacked the wall time per unit of flow time, the cell count, the mean particle count and the comparison runs.
+
+The stopped S2 B1 run found three more faults, fixed in the analysis on 25 Nov:
+
+- a run that stopped before its first whole cycle had no analysis at all; it now gets its manifest, coupling diagnostics, circulation budget and cost over the whole record, and a summary that says it has no statistics;
+- `diagnostics_summary.json` covered every interval of the run instead of the statistics window; it now names its span;
+- the manifest counted the `WARNINGS` headers of the coupler report instead of its warnings; it now lists each kind with its count and the largest value of each of its numbers, from the launch logs.
+
+S1 was analysed again after these changes: its `summary.json` is unchanged, and the warning counts of the runs table above are those of its manifest.
 
 A spectral peak carries its frequency resolution, not a standard error: the inverse of the segment length, a quarter of the window, which for case 07 is 0.042 Hz, about a quarter of the shedding frequency. Frequencies with a standard error from the cycle scatter come from the mean period of the cycles: the Strouhal number of each cylinder from its lift up-crossings and, for S2, the cross-flow frequency ratio. S2 statistics with per-cycle values also carry a block-bootstrap 95 % interval over cycles.
