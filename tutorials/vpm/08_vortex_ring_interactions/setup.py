@@ -36,14 +36,14 @@ PARTICLE_SPACING = 0.025  # [m], h = R_0 / 40
 CORE_RADIUS_RATIO = 1.05  # sigma / h
 VORTICITY_FLOOR = 0.02  # [1/s], regenerated nodes below it are dropped
 TOROIDAL_TAIL_FRACTION = 1.0e-3  # initial lattice ends where the Gaussian falls to this
-MAX_N_PARTICLES = 2_500_000
+MAX_N_PARTICLES = 1_800_000
 DIVERGENCE_LIMIT = 0.5  # |div w| / |grad w|, weighted by |w|: O(1) once vortex lines are lost
 
 # Head-on collision: opposite rings 2.5 R_0 apart meet at x = 0 and stretch radially
 COLLISION_SEPARATION = 2.5  # [m]
 COLLISION_DOMAIN = (-1.5, 1.5, -3.25, 3.25, -3.25, 3.25)  # [m]
 COLLISION_TIME_STEP = 0.0125  # [s]; stretched cores reach about 3 times their initial vorticity
-COLLISION_END_TIME = 30.0  # [s]
+COLLISION_END_TIME = 15.0  # [s]
 
 # Leapfrogging: equal rings R_0 apart, followed by a frame moving with the pair
 LEAPFROG_SEPARATION = 1.0  # [m]
@@ -51,7 +51,7 @@ LEAPFROG_FRAME_SPEED = 0.26  # [m/s], mean speed of the pair; the free stream is
 LEAPFROG_DOMAIN = (-4.0, 3.0, -2.25, 2.25, -2.25, 2.25)  # [m]
 LEAPFROG_FRINGE = 1.0  # [m], strengths fade out before the upstream face x = -4 m
 LEAPFROG_TIME_STEP = 0.02  # [s]
-LEAPFROG_END_TIME = 40.0  # [s]
+LEAPFROG_END_TIME = 20.0  # [s]
 
 # Output
 SAMPLE_STEPS = 10
