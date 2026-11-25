@@ -1,6 +1,6 @@
 # Coupled FVM–VPM cases: run status and data folders
 
-Status on Tue 24 Nov 2026, 23:50 CET. The supervising session updates the check boxes as runs end.
+Status on Wed 25 Nov 2026, 15:40 CET. The supervising session updates the check boxes as runs end.
 
 - `[x]` complete: the data may be plotted.
 - `[ ]` not complete: do not use for results. A running case has partial data that will change.
@@ -31,26 +31,31 @@ Folder `01_cylinder_shedding_flow/`. Every coupled run is in
 `vpm_transverse_x4.csv`). Run names: `box` = FVM box margin, `sub` = FVM steps per coupling
 interval (N), `inset` = transfer inset.
 
+Since 25 Nov every run continues from its backup at t = 55 s to t = 100 s, so that the runs are
+compared over their steady shedding periods. Its data up to t = 55 s stays as it is (a copy is in
+`~/openonda_runs/cyl_t55_copies/` on the workstation); until its box is `[x]` again, a run
+holds partial data.
+
 | Done | Group | Variation | `<run>` | End time |
 |---|---|---|---|---|
 | [x] | baseline | N = 5, margin 2.4, inset 8.75 | `box2.4_sub5_inset8.75` | 100 s |
-| [x] | T, interval | N = 1 | `box2.4_sub1_inset8.75` | 55 s |
-| [x] | T | N = 2 | `box2.4_sub2_inset8.75` | 55 s |
-| [x] | T | N = 3 | `box2.4_sub3_inset8.75` | 55 s |
-| [x] | T | N = 6 | `box2.4_sub6_inset8.75` | 55 s |
-| [x] | M, transfer iteration | one pass | `box2.4_sub5_inset8.75_k1` | 55 s |
-| [x] | M | tolerance 1e-3 | `box2.4_sub5_inset8.75_tol1e-3` | 55 s |
-| [x] | M | tolerance 1e-4 | `box2.4_sub5_inset8.75_tol1e-4` | 55 s |
-| [x] | M | constant 1e-5 | `box2.4_sub5_inset8.75_const` | 55 s |
-| [x] | D, box margin | margin 1.6 | `box1.6_sub5_inset8.75` | 55 s |
-| [x] | D | margin 2.0 | `box2.0_sub5_inset8.75` | 55 s |
-| [x] | D | margin 3.2 | `box3.2_sub5_inset8.75` | 55 s |
-| [x] | D | margin 4.0 | `box4.0_sub5_inset8.75` | 55 s |
-| [x] | I, transfer inset | inset 4 | `box2.4_sub5_inset4` | 55 s |
-| [x] | I | inset 14 | `box2.4_sub5_inset14` | 55 s |
-| [x] | S, FVM cell size | cell 0.08, interval 0.048 s | `box2.4_sub3_inset8.75_h0.08` | 55 s |
-| [x] | S | cell 0.06, interval 0.048 s | `box2.4_sub4_inset8.75_h0.06` | 55 s |
-| [x] | P, particle spacing | spacing 0.08 | `box2.4_sub5_inset8.75_hp0.08` | 55 s |
+| [ ] | T, interval | N = 1 | `box2.4_sub1_inset8.75` | 55 s; running to 100 s |
+| [ ] | T | N = 2 | `box2.4_sub2_inset8.75` | 55 s; running to 100 s |
+| [ ] | T | N = 3 | `box2.4_sub3_inset8.75` | 55 s; running to 100 s |
+| [ ] | T | N = 6 | `box2.4_sub6_inset8.75` | 55 s; running to 100 s |
+| [ ] | M, transfer iteration | one pass | `box2.4_sub5_inset8.75_k1` | 55 s; running to 100 s |
+| [ ] | M | tolerance 1e-3 | `box2.4_sub5_inset8.75_tol1e-3` | 55 s; running to 100 s |
+| [ ] | M | tolerance 1e-4 | `box2.4_sub5_inset8.75_tol1e-4` | 55 s; running to 100 s |
+| [ ] | M | constant 1e-5 | `box2.4_sub5_inset8.75_const` | 55 s; running to 100 s |
+| [ ] | D, box margin | margin 1.6 | `box1.6_sub5_inset8.75` | 55 s; running to 100 s |
+| [ ] | D | margin 2.0 | `box2.0_sub5_inset8.75` | 55 s; running to 100 s |
+| [ ] | D | margin 3.2 | `box3.2_sub5_inset8.75` | 55 s; running to 100 s |
+| [ ] | D | margin 4.0 | `box4.0_sub5_inset8.75` | 55 s; running to 100 s |
+| [ ] | I, transfer inset | inset 4 | `box2.4_sub5_inset4` | 55 s; running to 100 s |
+| [ ] | I | inset 14 | `box2.4_sub5_inset14` | 55 s; running to 100 s |
+| [ ] | S, FVM cell size | cell 0.08, interval 0.048 s | `box2.4_sub3_inset8.75_h0.08` | 55 s; running to 100 s |
+| [ ] | S | cell 0.06, interval 0.048 s | `box2.4_sub4_inset8.75_h0.06` | 55 s; running to 100 s |
+| [ ] | P, particle spacing | spacing 0.08 | `box2.4_sub5_inset8.75_hp0.08` | 55 s; running to 100 s |
 
 Fully meshed references, in `01_cylinder_shedding_flow/reference_flow/samples/<name>/`:
 
@@ -58,8 +63,8 @@ Fully meshed references, in `01_cylinder_shedding_flow/reference_flow/samples/<n
 |---|---|---|
 | [x] | cell 0.04, the baseline reference | `h0.04_dt0.008` |
 | [x] | cell 0.03, 0.06, 0.08 (mesh convergence) | `h0.03_dt0.006`, `h0.06_dt0.012`, `h0.08_dt0.016` |
-| [x] | wide far field, for margin 3.2 | `h0.04_dt0.008_fb3.2` |
-| [x] | wide far field, for margin 4.0 | `h0.04_dt0.008_fb4.0` |
+| [ ] | wide far field, for margin 3.2; running from 55 to 100 s | `h0.04_dt0.008_fb3.2` |
+| [ ] | wide far field, for margin 4.0; running from 55 to 100 s | `h0.04_dt0.008_fb4.0` |
 
 - Study table: `python -m assets.study_status` from the case folder (workstation), or
   `01_cylinder_shedding_flow/figures/study_summary.csv`.
