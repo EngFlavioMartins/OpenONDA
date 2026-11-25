@@ -11,11 +11,13 @@ The transverse part k x w_hat is unchanged mode by mode, and with it the induced
 the kinetic energy; so is the total vorticity (k = 0). The particle cores multiply every mode
 by the same real factor, so the projected node field also makes the Gaussian blob field
 divergence-free. The correction is not compact: it decays like a dipole field, r^-3, outside
-the support, and is kept within BAND_CELLS cells of it. On the leapfrogging-ring lattices of
-tutorial 08 (h = R_0/40) a band of two cells leaves 9 % of the divergence at t = 10 and 4.5 % at
-t = 12, against 8.7 % and 4.4 % for four cells; correcting only the occupied nodes leaves 21 %
-and changes the energy ten times more. The band adds weak nodes at the edge of the support,
-34-48 % more above the tutorial's regeneration threshold on those lattices.
+the support. It is kept only on the nodes that hold vorticity, so the projection adds no
+particles. On a single lattice of the leapfrogging rings of tutorial 08 (h = R_0/40, t = 10)
+this leaves 21 % of the divergence, against 9 % when the correction is also kept two cells
+beyond the support. Repeated every step, the two agree: from t = 0 to 12.5 both hold the
+vorticity-divergence error of the run below 0.003, against up to 0.12 without the projection,
+and their energies differ by less than 0.04 %. The band of two cells regenerated 17-37 % more
+particles and made the run 40 % slower.
 
 GBD holds the lattice on the host, so the transform runs there with SciPy, on the cores the
 process may use. On those lattices one projection takes 0.7 s at t = 1 and 3.3 s at t = 12 on
@@ -30,15 +32,10 @@ import os
 
 import numpy as np
 from scipy import fft as scipy_fft
-from scipy.ndimage import binary_dilation
 
 __all__ = ["SolenoidalLatticeProjection"]
 
 MARGIN_CELLS = 8  # zero cells around the vorticity support, on the lattice and in the transform
-BAND_CELLS = 2  # the correction is kept up to this many cells from an occupied node
-# An empty node stays empty below this fraction of the largest node, so the round-off of the
-# transform does not spread particles over the whole box.
-ROUNDOFF_FLOOR = 8.0 * float(np.finfo(np.float32).eps)
 
 
 @dataclass
@@ -115,18 +112,7 @@ class SolenoidalLatticeProjection:
         spectrum[..., 2] -= kz * divergence
         projected = scipy_fft.irfftn(spectrum, s=shape, axes=(0, 1, 2), workers=self.workers)
         window = tuple(slice(0, b - a) for a, b in zip(lower, upper, strict=True))
-        result = projected[window]
-        node_magnitude = np.max(np.abs(result), axis=-1)
-        floor = ROUNDOFF_FLOOR * float(np.max(node_magnitude))
-        band = (
-            binary_dilation(
-                occupied[box], structure=np.ones((3, 3, 3), dtype=bool), iterations=BAND_CELLS
-            )
-            if BAND_CELLS > 0
-            else occupied[box]
-        )
-        kept = occupied[box] | ((node_magnitude > floor) & band)
-        grid[box] = result * kept[..., None]
+        grid[box] = projected[window] * occupied[box][..., None]
 
         statistics.longitudinal_fraction = removed / total if total > 0.0 else 0.0
         self.statistics = statistics
